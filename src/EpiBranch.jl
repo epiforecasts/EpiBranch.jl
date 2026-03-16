@@ -41,6 +41,10 @@ export Individual, SimulationState
 export SimOpts, DelayOpts, OutcomeOpts, DemographicOpts
 export AbstractIntervention, Isolation, ContactTracing
 
+# Exports — accessors
+export onset_time, is_isolated, isolation_time, is_traced, is_quarantined
+export is_vaccinated, is_asymptomatic, is_test_positive, set_isolated!
+
 # Exports — distributions
 export NegBin, scale_distribution, ringbp_generation_time
 export Borel, GammaBorel, chain_size_distribution

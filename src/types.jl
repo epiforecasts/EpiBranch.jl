@@ -18,7 +18,7 @@ Return the generation time distribution for a specific individual.
 get_generation_time(gt::Distribution, individual) = gt
 
 function get_generation_time(gt::Function, individual)
-    inc_period = individual.onset_time - individual.infection_time
+    inc_period = get(individual.state, :onset_time, NaN) - individual.infection_time
     if isnan(inc_period) || inc_period <= 0.0
         inc_period = 5.0
     end
@@ -49,44 +49,66 @@ BranchingProcess(offspring::Distribution, gt::GenerationTimeSpec;
     BranchingProcess(offspring, gt, population_size)
 
 # ── Individual state ────────────────────────────────────────────────
+
+"""
+    Individual
+
+Represents a single case in the transmission tree.
+
+Core fields used by the engine:
+- `id`, `parent_id`, `generation`, `chain_id`: transmission tree structure
+- `infection_time`: time of infection (Float64, days)
+- `susceptibility`: modifier on probability of being infected (default 1.0)
+- `infectiousness`: modifier on onward transmission (default 1.0)
+- `secondary_case_ids`: filled during simulation
+
+The `state` dict holds all other properties — intervention state (isolated,
+traced, etc.), clinical state (onset_time, asymptomatic), demographics (age,
+sex), and any user-defined fields. Interventions initialise their own fields
+via `initialise_individual!`.
+"""
 mutable struct Individual
     id::Int
-    parent_id::Int                    # 0 for index cases
+    parent_id::Int
     generation::Int
     chain_id::Int
     infection_time::Float64
-    onset_time::Float64
-    asymptomatic::Bool
-    test_positive::Bool
-    # Transmission modifiers (set by interventions)
-    susceptibility::Float64           # 1.0 = fully susceptible, 0.0 = immune
-    infectiousness::Float64           # 1.0 = fully infectious
-    # Intervention state
-    isolated::Bool
-    isolation_time::Float64           # Inf if not isolated
-    traced::Bool
-    quarantined::Bool
-    vaccinated::Bool
-    vaccination_time::Float64         # Inf if not vaccinated
-    # Filled post-hoc by output pipeline
+    susceptibility::Float64
+    infectiousness::Float64
     secondary_case_ids::Vector{Int}
+    state::Dict{Symbol, Any}
 end
 
 function Individual(; id::Int, parent_id::Int=0, generation::Int=0,
                     chain_id::Int=1, infection_time::Float64=0.0,
-                    onset_time::Float64=0.0, asymptomatic::Bool=false,
-                    test_positive::Bool=true,
-                    susceptibility::Float64=1.0, infectiousness::Float64=1.0)
-    Individual(id, parent_id, generation, chain_id, infection_time, onset_time,
-               asymptomatic, test_positive,
-               susceptibility, infectiousness,
-               false, Inf, false, false, false, Inf, Int[])
+                    susceptibility::Float64=1.0, infectiousness::Float64=1.0,
+                    state::Dict{Symbol, Any}=Dict{Symbol, Any}())
+    Individual(id, parent_id, generation, chain_id, infection_time,
+               susceptibility, infectiousness, Int[], state)
+end
+
+# ── State accessors ──────────────────────────────────────────────────
+# Clean API for reading intervention/clinical state with safe defaults.
+# Interventions and output functions use these rather than raw dict access.
+
+onset_time(ind::Individual) = get(ind.state, :onset_time, NaN)::Float64
+is_isolated(ind) = get(ind.state, :isolated, false)::Bool
+isolation_time(ind) = get(ind.state, :isolation_time, Inf)::Float64
+is_traced(ind) = get(ind.state, :traced, false)::Bool
+is_quarantined(ind) = get(ind.state, :quarantined, false)::Bool
+is_vaccinated(ind) = get(ind.state, :vaccinated, false)::Bool
+is_asymptomatic(ind) = get(ind.state, :asymptomatic, false)::Bool
+is_test_positive(ind) = get(ind.state, :test_positive, true)::Bool
+
+function set_isolated!(ind, time::Float64)
+    ind.state[:isolated] = true
+    ind.state[:isolation_time] = time
 end
 
 # ── Simulation state ───────────────────────────────────────────────
 mutable struct SimulationState
     individuals::Vector{Individual}
-    active_ids::Vector{Int}           # indices of individuals who haven't transmitted yet
+    active_ids::Vector{Int}
     current_generation::Int
     rng::AbstractRNG
     cumulative_cases::Int

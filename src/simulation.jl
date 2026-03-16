@@ -8,7 +8,7 @@ function simulate(model::TransmissionModel;
                   interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
                   sim_opts::SimOpts=SimOpts(),
                   rng::AbstractRNG=Random.default_rng())
-    state = initialise_state(model, sim_opts, rng)
+    state = initialise_state(model, sim_opts, interventions, rng)
 
     while !should_terminate(state, sim_opts)
         step!(model, state, interventions)
@@ -40,37 +40,16 @@ function _get_population_size(model::TransmissionModel)
 end
 
 function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
-                          rng::AbstractRNG)
+                          interventions, rng::AbstractRNG)
     individuals = Individual[]
 
-    for i in 1:sim_opts.n_initial
-        is_asymp = rand(rng) < sim_opts.prob_asymptomatic
-        test_pos = !is_asymp && rand(rng) < sim_opts.test_sensitivity
-
-        onset = if !is_asymp && sim_opts.incubation_period !== nothing
-            rand(rng, sim_opts.incubation_period)
-        else
-            NaN
-        end
-
-        push!(individuals, Individual(;
-            id=i,
-            parent_id=0,
-            generation=0,
-            chain_id=i,
-            infection_time=0.0,
-            onset_time=onset,
-            asymptomatic=is_asymp,
-            test_positive=test_pos,
-        ))
-    end
-
-    SimulationState(
+    # Build a temporary state for intervention initialisation of index cases
+    temp_state = SimulationState(
         individuals,
-        collect(1:sim_opts.n_initial),
+        Int[],
         0,
         rng,
-        sim_opts.n_initial,
+        0,
         false,
         sim_opts.incubation_period,
         sim_opts.prob_asymptomatic,
@@ -79,6 +58,16 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         sim_opts.latent_period,
         _get_population_size(model),
     )
+
+    for i in 1:sim_opts.n_initial
+        ind = _create_individual(temp_state, 0, i, i, 0.0, interventions)
+        push!(individuals, ind)
+    end
+
+    temp_state.cumulative_cases = sim_opts.n_initial
+    temp_state.active_ids = collect(1:sim_opts.n_initial)
+
+    return temp_state
 end
 
 function should_terminate(state::SimulationState, sim_opts::SimOpts)
@@ -86,7 +75,6 @@ function should_terminate(state::SimulationState, sim_opts::SimOpts)
     state.cumulative_cases >= sim_opts.max_cases && return true
     state.current_generation >= sim_opts.max_generations && return true
 
-    # Time-based termination
     if isfinite(sim_opts.max_time) && !isempty(state.individuals)
         latest = maximum(ind.infection_time for ind in state.individuals)
         latest >= sim_opts.max_time && return true
@@ -109,29 +97,43 @@ function _susceptible_fraction(state::SimulationState)
 end
 
 """
-    _create_child(state, parent, next_id, inf_time, onset_time)
+    _create_individual(state, parent_id, chain_id, next_id, inf_time, interventions)
 
-Create a new Individual with asymptomatic status and test sensitivity
-drawn from state parameters. Internal helper used by step! functions.
+Create a new Individual with clinical state and intervention-initialised fields.
 """
-function _create_child(state::SimulationState,
-                       parent::Individual, next_id::Int,
-                       inf_time::Float64, onset_time::Float64)
+function _create_individual(state::SimulationState, parent_id::Int,
+                            chain_id::Int, next_id::Int,
+                            inf_time::Float64, interventions)
     is_asymp = rand(state.rng) < state.prob_asymptomatic
     test_pos = !is_asymp && rand(state.rng) < state.test_sensitivity
 
-    actual_onset = is_asymp ? NaN : onset_time
+    onset = if !is_asymp && state.incubation_period !== nothing
+        inf_time + rand(state.rng, state.incubation_period)
+    else
+        NaN
+    end
 
-    Individual(;
-        id=next_id,
-        parent_id=parent.id,
-        generation=state.current_generation + 1,
-        chain_id=parent.chain_id,
-        infection_time=inf_time,
-        onset_time=actual_onset,
-        asymptomatic=is_asymp,
-        test_positive=test_pos,
+    s = Dict{Symbol, Any}(
+        :onset_time => onset,
+        :asymptomatic => is_asymp,
+        :test_positive => test_pos,
     )
+
+    ind = Individual(;
+        id=next_id,
+        parent_id=parent_id,
+        generation=state.current_generation + (parent_id == 0 ? 0 : 1),
+        chain_id=chain_id,
+        infection_time=inf_time,
+        state=s,
+    )
+
+    # Let each intervention initialise its own fields
+    for intervention in interventions
+        initialise_individual!(intervention, ind, state)
+    end
+
+    return ind
 end
 
 """

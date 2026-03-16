@@ -1,20 +1,31 @@
 """
     AbstractIntervention
 
-Base type for all interventions. Subtypes implement one or both of:
+Base type for all interventions. Subtypes implement one or more of:
 
-- `resolve_individual!(intervention, individual, state)` — set isolation/tracing
-  state on an individual before they transmit (e.g. isolation based on onset time)
-- `apply_post_transmission!(intervention, state, new_individuals)` — act on newly
-  created cases after transmission (e.g. contact tracing)
+- `initialise_individual!(intervention, individual, state)` — set up
+  intervention-specific fields on a newly created individual
+- `resolve_individual!(intervention, individual, state)` — determine
+  intervention state before transmission (e.g. set isolation time)
+- `apply_post_transmission!(intervention, state, new_individuals)` — act
+  on newly created cases after transmission (e.g. contact tracing)
 """
 abstract type AbstractIntervention end
+
+"""
+    initialise_individual!(intervention, individual, state)
+
+Set up intervention-specific fields on a newly created individual.
+Called once per individual at creation, for each intervention.
+Default: no-op.
+"""
+initialise_individual!(::AbstractIntervention, individual, state) = nothing
 
 """
     resolve_individual!(intervention, individual, state)
 
 Determine intervention state for `individual` before they transmit.
-Sets isolation_time, traced, quarantined etc. Default: no-op.
+Default: no-op.
 """
 resolve_individual!(::AbstractIntervention, individual, state) = nothing
 
@@ -22,7 +33,7 @@ resolve_individual!(::AbstractIntervention, individual, state) = nothing
     apply_post_transmission!(intervention, state, new_individuals)
 
 Apply intervention effects to newly created individuals after transmission.
-Modifies `state` and/or `new_individuals` in place. Default: no-op.
+Default: no-op.
 """
 apply_post_transmission!(::AbstractIntervention, state, new_individuals) = nothing
 
@@ -42,16 +53,15 @@ Returns a value in [0, 1]. If not isolated, returns 1.0 (full transmission).
 """
 function transmission_fraction(individual, gen_time_dist::Distribution,
                                 interventions=AbstractIntervention[])
-    !individual.isolated && return 1.0
-    individual.isolation_time == Inf && return 1.0
+    !is_isolated(individual) && return 1.0
+    iso_t = isolation_time(individual)
+    iso_t == Inf && return 1.0
 
-    # Time from infection to isolation
-    t_iso = individual.isolation_time - individual.infection_time
+    t_iso = iso_t - individual.infection_time
     t_iso <= 0.0 && return _residual_fraction(interventions)
 
     pre_iso = cdf(gen_time_dist, t_iso)
 
-    # Check for leaky isolation
     residual = _residual_fraction(interventions)
     residual == 0.0 && return pre_iso
 

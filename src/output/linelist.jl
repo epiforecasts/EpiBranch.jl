@@ -40,8 +40,9 @@ function linelist(state::SimulationState;
         # Dates
         date_infections[j] = reference_date + Day(floor(Int, ind.infection_time))
 
-        if !isnan(ind.onset_time)
-            onset_date = reference_date + Day(floor(Int, ind.onset_time))
+        ind_onset = onset_time(ind)
+        if !isnan(ind_onset)
+            onset_date = reference_date + Day(floor(Int, ind_onset))
             date_onsets[j] = onset_date
 
             # Reporting delay

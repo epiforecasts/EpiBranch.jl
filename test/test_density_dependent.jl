@@ -3,8 +3,6 @@
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0); population_size=100)
         state = simulate(model; sim_opts=SimOpts(max_cases=200), rng=rng)
-
-        # Should not exceed population size
         @test state.cumulative_cases <= 100
     end
 
@@ -32,7 +30,7 @@
             sim_opts=SimOpts(max_cases=200, incubation_period=LogNormal(1.5, 0.5)),
             rng=rng)
 
-        n_isolated = count(ind -> ind.isolated, state.individuals)
+        n_isolated = count(ind -> is_isolated(ind), state.individuals)
         @test n_isolated > 0
     end
 
@@ -40,7 +38,6 @@
         rng = StableRNG(55)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0); population_size=200)
         state = simulate(model; sim_opts=SimOpts(max_generations=3), rng=rng)
-
         max_gen = maximum(ind.generation for ind in state.individuals)
         @test max_gen <= 3
     end

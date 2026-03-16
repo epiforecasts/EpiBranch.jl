@@ -18,7 +18,6 @@
         rng = StableRNG(99)
         model = BranchingProcess(Poisson(0.5), Exponential(5.0))
         state = simulate(model; sim_opts=SimOpts(n_initial=5), rng=rng)
-        # Should have 5 distinct chain IDs among index cases
         index_chains = [ind.chain_id for ind in state.individuals if ind.parent_id == 0]
         @test length(unique(index_chains)) == 5
     end
@@ -53,8 +52,8 @@
             rng=rng)
 
         for ind in state.individuals
-            @test !isnan(ind.onset_time)
-            @test ind.onset_time >= ind.infection_time
+            @test !isnan(onset_time(ind))
+            @test onset_time(ind) >= ind.infection_time
         end
     end
 end
