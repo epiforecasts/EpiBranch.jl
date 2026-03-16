@@ -156,6 +156,46 @@
         end
     end
 
+    @testset "Simulation-based chain size likelihood" begin
+        @testset "Basic evaluation" begin
+            model = BranchingProcess(Poisson(0.5), Exponential(5.0))
+            data = [1, 1, 2, 1, 3]
+            ll = chain_size_ll(data, model; n_sim=5000, rng=StableRNG(42))
+            @test isfinite(ll)
+            @test ll < 0.0
+        end
+
+        @testset "Consistent with analytical for Poisson" begin
+            data = [1, 1, 1, 2, 1]
+            ll_analytical = chain_size_ll(data, Poisson(0.5))
+            model = BranchingProcess(Poisson(0.5), Exponential(5.0))
+            ll_simulated = chain_size_ll(data, model; n_sim=50_000, rng=StableRNG(42))
+            # Should be in the same ballpark (simulation noise)
+            @test abs(ll_analytical - ll_simulated) < 1.0
+        end
+
+        @testset "With interventions" begin
+            model = BranchingProcess(Poisson(2.0), Exponential(5.0))
+            iso = Isolation(delay=Exponential(1.0))
+            data = [1, 1, 2, 1]
+            ll = chain_size_ll(data, model;
+                interventions=[iso],
+                sim_opts=SimOpts(incubation_period=LogNormal(1.5, 0.5)),
+                n_sim=5000, rng=StableRNG(42))
+            @test isfinite(ll)
+        end
+    end
+
+    @testset "Simulation-based chain length likelihood" begin
+        @testset "Basic evaluation" begin
+            model = BranchingProcess(Poisson(0.5), Exponential(5.0))
+            data = [0, 1, 0, 2, 1]
+            ll = chain_length_ll(data, model; n_sim=5000, rng=StableRNG(42))
+            @test isfinite(ll)
+            @test ll < 0.0
+        end
+    end
+
     @testset "Proportion transmission (superspreading)" begin
         @testset "Basic 80/20" begin
             # With high R and low k, top 20% should cause most transmission

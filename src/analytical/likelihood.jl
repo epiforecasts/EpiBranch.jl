@@ -1,10 +1,15 @@
+# ── Analytical chain size likelihoods ─────────────────────────────────
+
 """
     chain_size_ll(data::AbstractVector{<:Integer}, offspring::Distribution)
 
 Log-likelihood of observed chain sizes `data` under the analytical chain size
 distribution implied by the given offspring distribution.
 
-Supports Poisson and NegativeBinomial offspring distributions.
+Dispatches to the appropriate analytical distribution:
+- `Poisson` → Borel
+- `NegativeBinomial` → uses the Lagrange-inversion formula (individual-level
+  overdispersion, NOT outbreak-level Gamma-Borel)
 """
 function chain_size_ll(data::AbstractVector{<:Integer}, offspring::Distribution)
     dist = chain_size_distribution(offspring)
@@ -16,10 +21,7 @@ end
                   obs_prob::Real)
 
 Log-likelihood with imperfect observation. Each case is observed independently
-with probability `obs_prob`. The observed chain size distribution is computed
-via numerical convolution.
-
-This approximation sums over possible true chain sizes.
+with probability `obs_prob`. Marginalises over true chain sizes.
 """
 function chain_size_ll(data::AbstractVector{<:Integer}, offspring::Distribution,
                        obs_prob::Real)
@@ -47,44 +49,138 @@ function chain_size_ll(data::AbstractVector{<:Integer}, offspring::Distribution,
     return ll
 end
 
+# ── Simulation-based likelihood ──────────────────────────────────────
+
 """
-    chain_length_ll(data::AbstractVector{<:Integer}, offspring::Distribution)
+    chain_size_ll(data::AbstractVector{<:Integer}, model::TransmissionModel;
+                  interventions=[], sim_opts=SimOpts(), n_sim=10_000,
+                  rng=Random.default_rng())
 
-Log-likelihood of observed chain lengths under the analytical chain length
-distribution. Chain length is the number of generations.
+Simulation-based log-likelihood of observed chain sizes under any transmission
+model, optionally with interventions. Uses the simulation engine to build an
+empirical chain size distribution.
 
-For Poisson(λ): P(length = n) = Geometric(1 - λ) for λ < 1.
-For NegativeBinomial: uses simulation-based approximation via the
-extinction probability.
+This is the key synthesis: the same engine that runs forward simulations also
+provides likelihoods for inference, including under interventions — something
+the R packages cannot do because epichains and ringbp are separate codebases.
+"""
+function chain_size_ll(data::AbstractVector{<:Integer}, model::TransmissionModel;
+                       interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
+                       sim_opts::SimOpts=SimOpts(),
+                       n_sim::Int=10_000,
+                       rng::AbstractRNG=Random.default_rng())
+    # Simulate chains
+    states = simulate_batch(model, n_sim; interventions, sim_opts, rng)
+
+    # Collect all chain sizes
+    sim_sizes = Int[]
+    for state in states
+        cs = chain_statistics(state)
+        append!(sim_sizes, cs.size)
+    end
+
+    isempty(sim_sizes) && return -Inf
+
+    # Build empirical PMF with add-one smoothing
+    max_size = max(maximum(data), maximum(sim_sizes))
+    counts = zeros(Int, max_size)
+    for s in sim_sizes
+        counts[s] += 1
+    end
+
+    n_total = length(sim_sizes)
+    n_unique = max_size
+
+    ll = 0.0
+    for obs in data
+        if obs > max_size || obs < 1
+            return -Inf
+        end
+        # Add-one (Laplace) smoothing to avoid log(0)
+        prob = (counts[obs] + 1) / (n_total + n_unique)
+        ll += log(prob)
+    end
+    return ll
+end
+
+"""
+    chain_length_ll(data::AbstractVector{<:Integer}, model::TransmissionModel;
+                    interventions=[], sim_opts=SimOpts(), n_sim=10_000,
+                    rng=Random.default_rng())
+
+Simulation-based log-likelihood of observed chain lengths under any
+transmission model, optionally with interventions.
+"""
+function chain_length_ll(data::AbstractVector{<:Integer}, model::TransmissionModel;
+                         interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
+                         sim_opts::SimOpts=SimOpts(),
+                         n_sim::Int=10_000,
+                         rng::AbstractRNG=Random.default_rng())
+    states = simulate_batch(model, n_sim; interventions, sim_opts, rng)
+
+    sim_lengths = Int[]
+    for state in states
+        cs = chain_statistics(state)
+        append!(sim_lengths, cs.length)
+    end
+
+    isempty(sim_lengths) && return -Inf
+
+    max_len = max(maximum(data), maximum(sim_lengths))
+    counts = zeros(Int, max_len + 1)  # 0-indexed (length 0 is possible)
+    for l in sim_lengths
+        counts[l + 1] += 1
+    end
+
+    n_total = length(sim_lengths)
+    n_unique = max_len + 1
+
+    ll = 0.0
+    for obs in data
+        if obs < 0 || obs > max_len
+            return -Inf
+        end
+        prob = (counts[obs + 1] + 1) / (n_total + n_unique)
+        ll += log(prob)
+    end
+    return ll
+end
+
+# ── Analytical chain length likelihoods ──────────────────────────────
+
+"""
+    chain_length_ll(data::AbstractVector{<:Integer}, offspring::Poisson)
+
+Analytical log-likelihood of chain lengths for Poisson offspring.
+P(length = n) = (1-λ) · λ^(n-1) for subcritical λ < 1.
 """
 function chain_length_ll(data::AbstractVector{<:Integer}, offspring::Poisson)
     λ = mean(offspring)
     λ < 1.0 || throw(ArgumentError("chain length distribution only defined for subcritical process (λ < 1)"))
-    # P(chain length ≥ n) = λ^(n-1), so P(length = n) = (1-λ) * λ^(n-1)
-    # This is Geometric with success probability (1-λ), shifted by 1
     return sum(log(1.0 - λ) + (n - 1) * log(λ) for n in data)
 end
 
+"""
+    chain_length_ll(data::AbstractVector{<:Integer}, offspring::NegativeBinomial)
+
+Analytical log-likelihood of chain lengths for NegBin offspring.
+Uses PGF iteration to compute P(extinct by generation n).
+"""
 function chain_length_ll(data::AbstractVector{<:Integer}, offspring::NegativeBinomial)
     k = offspring.r
     R = mean(offspring)
     R < 1.0 || throw(ArgumentError("chain length distribution only defined for subcritical process (R < 1)"))
 
-    # For NegBin offspring, chain length follows a geometric-like distribution
-    # P(length = n) ≈ (1 - q_ext_complement) where we use the PGF iteratively
-    # Use numerical PGF iteration to compute P(extinct by generation n)
     p = k / (k + R)
     max_len = maximum(data)
 
-    # q_n = P(extinct by generation n), computed via PGF iteration
+    # q_n = P(extinct by generation n)
     q = zeros(max_len + 1)
-    q[1] = (p / (1.0 - (1.0 - p) * 0.0))^k  # P(0 offspring) = pgf(0)
+    q[1] = (p / (1.0 - (1.0 - p) * 0.0))^k
     for n in 2:(max_len + 1)
         q[n] = (p / (1.0 - (1.0 - p) * q[n-1]))^k
     end
 
-    # P(chain length = n) = q[n+1] - q[n] (probability of going extinct at generation n)
-    # where q[1] = P(extinct at gen 0) = P(0 offspring)
     ll = 0.0
     for len in data
         if len == 0
@@ -99,6 +195,8 @@ function chain_length_ll(data::AbstractVector{<:Integer}, offspring::NegativeBin
     end
     return ll
 end
+
+# ── Utilities ────────────────────────────────────────────────────────
 
 """
     logsumexp(x)
