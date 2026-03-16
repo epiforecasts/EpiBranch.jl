@@ -11,5 +11,6 @@ using StableRNGs
     include("test_linelist.jl")
     include("test_chains.jl")
     include("test_analytical.jl")
+    include("test_multitype.jl")
     include("test_integration.jl")
 end

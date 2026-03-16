@@ -39,6 +39,14 @@ function _get_population_size(model::TransmissionModel)
     nothing
 end
 
+function _get_n_types(model::BranchingProcess)
+    model.n_types
+end
+
+function _get_n_types(model::TransmissionModel)
+    1
+end
+
 function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
                           interventions, rng::AbstractRNG)
     individuals = Individual[]
@@ -59,8 +67,13 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         _get_population_size(model),
     )
 
+    n_types = _get_n_types(model)
     for i in 1:sim_opts.n_initial
         ind = _create_individual(temp_state, 0, i, i, 0.0, interventions)
+        # For multi-type, assign index cases to types uniformly at random
+        if n_types > 1
+            ind.state[:type] = rand(rng, 1:n_types)
+        end
         push!(individuals, ind)
     end
 
