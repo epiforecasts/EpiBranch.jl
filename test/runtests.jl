@@ -1,0 +1,15 @@
+using Test
+using EpiBranch
+using Distributions
+using StableRNGs
+
+@testset "EpiBranch" begin
+    include("test_types.jl")
+    include("test_branching_process.jl")
+    include("test_interventions.jl")
+    include("test_density_dependent.jl")
+    include("test_linelist.jl")
+    include("test_chains.jl")
+    include("test_analytical.jl")
+    include("test_integration.jl")
+end
