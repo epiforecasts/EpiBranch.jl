@@ -17,7 +17,7 @@ the [epichains](https://github.com/epiverse-trace/epichains) R package.
 using EpiBranch
 using Distributions
 using DataFrames
-using StableRNGs
+using Random: Xoshiro
 ```
 
 ## Simulating transmission chains
@@ -29,7 +29,7 @@ then simulate. Each initial case seeds an independent transmission chain.
 # Simulate 20 independent chains with Poisson(0.9) offspring
 model = BranchingProcess(Poisson(0.9), Exponential(5.0))
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state = simulate(model;
     sim_opts = SimOpts(n_initial = 20, max_cases = 10_000),
     rng = rng
@@ -123,7 +123,7 @@ simulation-based likelihood:
 ```{julia}
 # Simulation-based likelihood — works with any model
 model = BranchingProcess(Poisson(0.9), Exponential(5.0))
-ll_sim = chain_size_ll(observed_sizes, model; n_sim = 10_000, rng = StableRNG(42))
+ll_sim = chain_size_ll(observed_sizes, model; n_sim = 5_000, rng = Xoshiro(42))
 println("LL (simulation-based): ", round(ll_sim, digits = 2))
 println("LL (analytical):       ", round(ll_mid, digits = 2))
 ```
@@ -138,8 +138,8 @@ model_with_iso = BranchingProcess(Poisson(2.0), Exponential(5.0))
 ll_with_iso = chain_size_ll(observed_sizes, model_with_iso;
     interventions = [iso],
     sim_opts = SimOpts(incubation_period = LogNormal(1.5, 0.5)),
-    n_sim = 10_000,
-    rng = StableRNG(42)
+    n_sim = 5_000,
+    rng = Xoshiro(42)
 )
 println("LL with isolation: ", round(ll_with_iso, digits = 2))
 ```
@@ -169,7 +169,7 @@ modified with susceptible depletion:
 model_finite = BranchingProcess(Poisson(2.0), Exponential(5.0);
     population_size = 500)
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state = simulate(model_finite;
     sim_opts = SimOpts(max_cases = 1000),
     rng = rng
@@ -186,7 +186,7 @@ We can validate simulation against analytical results:
 R, k = 1.5, 0.5
 q_analytical = extinction_probability(R, k)
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 model = BranchingProcess(NegBin(R, k), Exponential(5.0))
 results = simulate_batch(model, 5000;
     sim_opts = SimOpts(max_cases = 10_000, max_generations = 200),

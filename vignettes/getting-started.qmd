@@ -25,7 +25,7 @@ using EpiBranch
 using Distributions
 using DataFrames
 using Dates
-using StableRNGs
+using Random: Xoshiro
 ```
 
 ## A simple outbreak
@@ -36,7 +36,7 @@ model = BranchingProcess(
     LogNormal(1.6, 0.5)        # generation time distribution
 )
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state = simulate(model;
     sim_opts = SimOpts(max_cases = 1000),
     rng = rng
@@ -54,7 +54,7 @@ Interventions are composable — stack them in a vector:
 iso = Isolation(delay = Exponential(2.0))
 ct = ContactTracing(probability = 0.5, delay = Exponential(1.5))
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state = simulate(model;
     interventions = [iso, ct],
     sim_opts = SimOpts(
@@ -95,7 +95,7 @@ ll = linelist(state;
         onset_to_reporting = Exponential(3.0),
         onset_to_outcome = Exponential(14.0),
     ),
-    rng = StableRNG(99),
+    rng = Xoshiro(99),
 )
 first(ll, 5)
 ```
@@ -127,7 +127,7 @@ first(r_df, 5)
 Run many replicates to estimate containment probability:
 
 ```{julia}
-rng = StableRNG(42)
+rng = Xoshiro(42)
 results = simulate_batch(model, 500;
     interventions = [iso, ct],
     sim_opts = SimOpts(

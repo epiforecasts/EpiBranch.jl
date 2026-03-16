@@ -18,7 +18,7 @@ R package.
 using EpiBranch
 using Distributions
 using DataFrames
-using StableRNGs
+using Random: Xoshiro
 ```
 
 ## Basic outbreak simulation
@@ -32,7 +32,7 @@ model = BranchingProcess(
     LogNormal(1.6, 0.5)        # generation time
 )
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state = simulate(model;
     sim_opts = SimOpts(
         max_cases = 5000,
@@ -54,7 +54,7 @@ to the generation time (hazard-based model):
 ```{julia}
 iso = Isolation(delay = LogNormal(1.0, 0.5))
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 results_iso = simulate_batch(model, 500;
     interventions = [iso],
     sim_opts = SimOpts(
@@ -76,7 +76,7 @@ Contact tracing identifies and isolates contacts of detected cases:
 ```{julia}
 ct = ContactTracing(probability = 0.5, delay = Exponential(2.0))
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 results_both = simulate_batch(model, 500;
     interventions = [iso, ct],
     sim_opts = SimOpts(
@@ -97,7 +97,7 @@ Asymptomatic cases cannot be detected through symptom-based surveillance,
 which reduces the effectiveness of isolation and contact tracing:
 
 ```{julia}
-rng = StableRNG(42)
+rng = Xoshiro(42)
 results_asymp = simulate_batch(model, 500;
     interventions = [iso, ct],
     sim_opts = SimOpts(
@@ -123,7 +123,7 @@ containment = Float64[]
 
 for p in trace_probs
     ct_sweep = ContactTracing(probability = p, delay = Exponential(2.0))
-    rng = StableRNG(42)
+    rng = Xoshiro(42)
     results = simulate_batch(model, 500;
         interventions = [iso, ct_sweep],
         sim_opts = SimOpts(
@@ -148,7 +148,7 @@ sweep_df
 Track how interventions reduce R over generations:
 
 ```{julia}
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state = simulate_conditioned(model, 50:500;
     interventions = [iso, ct],
     sim_opts = SimOpts(
@@ -199,14 +199,14 @@ The `residual_transmission` parameter models this:
 iso_perfect = Isolation(delay = LogNormal(1.0, 0.5), residual_transmission = 0.0)
 iso_leaky = Isolation(delay = LogNormal(1.0, 0.5), residual_transmission = 0.3)
 
-rng1 = StableRNG(42)
+rng1 = Xoshiro(42)
 results_perfect = simulate_batch(model, 500;
     interventions = [iso_perfect],
     sim_opts = SimOpts(max_cases = 5000, incubation_period = LogNormal(1.5, 0.5)),
     rng = rng1
 )
 
-rng2 = StableRNG(42)
+rng2 = Xoshiro(42)
 results_leaky = simulate_batch(model, 500;
     interventions = [iso_leaky],
     sim_opts = SimOpts(max_cases = 5000, incubation_period = LogNormal(1.5, 0.5)),
@@ -227,7 +227,7 @@ the proportion of presymptomatic transmission:
 gt_fn = ringbp_generation_time(presymptomatic_fraction = 0.3)
 model_ringbp = BranchingProcess(NegBin(2.5, 0.16), gt_fn)
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state = simulate(model_ringbp;
     sim_opts = SimOpts(
         max_cases = 100,

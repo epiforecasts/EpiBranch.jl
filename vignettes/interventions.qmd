@@ -22,7 +22,7 @@ truncates it.
 using EpiBranch
 using Distributions
 using DataFrames
-using StableRNGs
+using Random: Xoshiro
 ```
 
 ## How interventions work
@@ -61,7 +61,7 @@ delays = [0.5, 1.0, 2.0, 5.0, 10.0]
 
 for d in delays
     iso = Isolation(delay = Exponential(d))
-    rng = StableRNG(42)
+    rng = Xoshiro(42)
     results = simulate_batch(model, 200;
         interventions = [iso],
         sim_opts = SimOpts(
@@ -83,7 +83,7 @@ household contacts may still occur:
 ```{julia}
 for r in [0.0, 0.1, 0.3, 0.5]
     iso = Isolation(delay = Exponential(2.0), residual_transmission = r)
-    rng = StableRNG(42)
+    rng = Xoshiro(42)
     results = simulate_batch(model, 200;
         interventions = [iso],
         sim_opts = SimOpts(max_cases = 500, incubation_period = LogNormal(1.5, 0.5)),
@@ -105,7 +105,7 @@ iso = Isolation(delay = Exponential(2.0))
 
 for p in [0.0, 0.25, 0.5, 0.75, 1.0]
     ct = ContactTracing(probability = p, delay = Exponential(1.0))
-    rng = StableRNG(42)
+    rng = Xoshiro(42)
     results = simulate_batch(model, 200;
         interventions = [iso, ct],
         sim_opts = SimOpts(max_cases = 500, incubation_period = LogNormal(1.5, 0.5)),
@@ -125,14 +125,14 @@ iso = Isolation(delay = Exponential(2.0))
 ct_q = ContactTracing(probability = 0.7, delay = Exponential(1.0), quarantine_on_trace = true)
 ct_nq = ContactTracing(probability = 0.7, delay = Exponential(1.0), quarantine_on_trace = false)
 
-rng1 = StableRNG(42)
+rng1 = Xoshiro(42)
 r_q = simulate_batch(model, 200;
     interventions = [iso, ct_q],
     sim_opts = SimOpts(max_cases = 500, incubation_period = LogNormal(1.5, 0.5)),
     rng = rng1
 )
 
-rng2 = StableRNG(42)
+rng2 = Xoshiro(42)
 r_nq = simulate_batch(model, 200;
     interventions = [iso, ct_nq],
     sim_opts = SimOpts(max_cases = 500, incubation_period = LogNormal(1.5, 0.5)),
@@ -153,7 +153,7 @@ iso = Isolation(delay = Exponential(2.0))
 ct = ContactTracing(probability = 0.5, delay = Exponential(1.0))
 
 for pa in [0.0, 0.1, 0.3, 0.5]
-    rng = StableRNG(42)
+    rng = Xoshiro(42)
     results = simulate_batch(model, 200;
         interventions = [iso, ct],
         sim_opts = SimOpts(
@@ -176,7 +176,7 @@ Imperfect testing means some symptomatic cases are missed:
 iso = Isolation(delay = Exponential(2.0))
 
 for ts in [0.5, 0.7, 0.9, 1.0]
-    rng = StableRNG(42)
+    rng = Xoshiro(42)
     results = simulate_batch(model, 200;
         interventions = [iso],
         sim_opts = SimOpts(
@@ -200,7 +200,7 @@ compute intervention effort metrics:
 iso = Isolation(delay = Exponential(2.0))
 ct = ContactTracing(probability = 0.7, delay = Exponential(1.0))
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state = simulate_conditioned(
     BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)),
     50:200;
@@ -268,7 +268,7 @@ This custom intervention composes with the built-in ones:
 model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
 ssd = SuperSpreaderDetection(5, 0.9)
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state = simulate(model;
     interventions = [ssd],
     sim_opts = SimOpts(max_cases = 200),

@@ -17,7 +17,7 @@ transmission between types is governed by an offspring matrix.
 using EpiBranch
 using Distributions
 using DataFrames
-using StableRNGs
+using Random: Xoshiro
 ```
 
 ## Offspring matrix
@@ -63,7 +63,7 @@ model = BranchingProcess(
     type_labels = ["0-14", "15-64", "65+"]
 )
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state = simulate(model;
     sim_opts = SimOpts(max_cases = 500),
     rng = rng
@@ -89,7 +89,7 @@ M_assort = [3.0 0.1 0.1;
 model_assort = BranchingProcess(M_assort, R_j -> Poisson(R_j), Exponential(5.0);
     type_labels = ["A", "B", "C"])
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state_a = simulate(model_assort;
     sim_opts = SimOpts(max_cases = 200),
     rng = rng
@@ -127,7 +127,7 @@ model = BranchingProcess(
     LogNormal(1.6, 0.5)
 )
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 results = simulate_batch(model, 200;
     interventions = [iso, ct],
     sim_opts = SimOpts(
@@ -164,7 +164,7 @@ end
 model = BranchingProcess(my_offspring, Exponential(5.0);
     n_types = 2, type_labels = ["super-spreader", "normal"])
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state = simulate(model; sim_opts = SimOpts(max_cases = 200), rng = rng)
 
 infected = filter(is_infected, state.individuals)
@@ -196,7 +196,7 @@ model = BranchingProcess(
     population_size = 200
 )
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 state = simulate(model; sim_opts = SimOpts(max_cases = 500), rng = rng)
 println("Cases in finite population: ", state.cumulative_cases, " / 200")
 ```

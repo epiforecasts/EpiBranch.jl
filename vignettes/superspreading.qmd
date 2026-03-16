@@ -127,13 +127,13 @@ println("Analytical (1/R):                   $(round(1/R, digits=6))")
 ## Combining analytical and simulation results
 
 ```{julia}
-using StableRNGs
+using Random: Xoshiro
 
 # Compare analytical extinction probability with simulation
 R, k = 2.0, 0.3
 q_analytical = extinction_probability(R, k)
 
-rng = StableRNG(42)
+rng = Xoshiro(42)
 model = BranchingProcess(NegBin(R, k), Exponential(5.0))
 results = simulate_batch(model, 5000;
     sim_opts = SimOpts(max_cases = 10_000, max_generations = 200),
