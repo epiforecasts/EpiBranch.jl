@@ -1,0 +1,191 @@
+---
+title: "Getting started with EpiBranch.jl"
+subtitle: "Branching process simulation for infectious disease epidemiology"
+format:
+  html:
+    code-fold: false
+engine: julia
+---
+
+## Overview
+
+EpiBranch.jl is a unified framework for stochastic branching process
+simulation of infectious disease outbreaks. It combines the functionality
+of several R packages (ringbp, simulist, epichains, superspreading) into
+a single package with a shared simulation engine.
+
+The key design principle: **offspring draw is decoupled from timing and
+interventions**. The branching process generates contacts; the generation
+time distribution assigns timing; interventions act as competing risks
+on whether contacts are infected. This separation enables composable
+interventions, simulation-based inference, and full effort tracking.
+
+```{julia}
+using EpiBranch
+using Distributions
+using DataFrames
+using Dates
+using StableRNGs
+```
+
+## A simple outbreak
+
+```{julia}
+model = BranchingProcess(
+    NegBin(2.5, 0.16),         # offspring: R₀ = 2.5, dispersion k = 0.16
+    LogNormal(1.6, 0.5)        # generation time distribution
+)
+
+rng = StableRNG(42)
+state = simulate(model;
+    sim_opts = SimOpts(max_cases = 1000),
+    rng = rng
+)
+
+println("Cases: ", state.cumulative_cases)
+println("Extinct: ", state.extinct)
+```
+
+## Adding interventions
+
+Interventions are composable — stack them in a vector:
+
+```{julia}
+iso = Isolation(delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.5, delay = Exponential(1.5))
+
+rng = StableRNG(42)
+state = simulate(model;
+    interventions = [iso, ct],
+    sim_opts = SimOpts(
+        max_cases = 1000,
+        incubation_period = LogNormal(1.5, 0.5),
+    ),
+    rng = rng
+)
+
+println("Cases: ", state.cumulative_cases)
+println("Isolated: ", count(is_isolated, state.individuals))
+println("Traced: ", count(is_traced, state.individuals))
+```
+
+## Contacts vs cases
+
+Every potential transmission is tracked, not just successful infections.
+This gives you contacts that weren't infected — essential for effort tracking:
+
+```{julia}
+n_total = length(state.individuals)
+n_infected = count(is_infected, state.individuals)
+n_not_infected = n_total - n_infected
+
+println("Total contacts: ", n_total)
+println("Infected (cases): ", n_infected)
+println("Not infected: ", n_not_infected)
+```
+
+## Outputs
+
+### Line list
+
+```{julia}
+ll = linelist(state;
+    reference_date = Date(2024, 1, 1),
+    delay_opts = DelayOpts(
+        onset_to_reporting = Exponential(3.0),
+        onset_to_outcome = Exponential(14.0),
+    ),
+    rng = StableRNG(99),
+)
+first(ll, 5)
+```
+
+### Contacts table
+
+```{julia}
+ct_df = contacts(state; reference_date = Date(2024, 1, 1))
+println("Contacts: $(nrow(ct_df)) ($(count(ct_df.was_case)) infected)")
+first(ct_df, 5)
+```
+
+### Chain statistics
+
+```{julia}
+cs = chain_statistics(state)
+cs
+```
+
+### Effective reproduction number
+
+```{julia}
+r_df = effective_R(state)
+first(r_df, 5)
+```
+
+## Batch simulation and containment
+
+Run many replicates to estimate containment probability:
+
+```{julia}
+rng = StableRNG(42)
+results = simulate_batch(model, 500;
+    interventions = [iso, ct],
+    sim_opts = SimOpts(
+        max_cases = 5000,
+        incubation_period = LogNormal(1.5, 0.5),
+    ),
+    rng = rng
+)
+
+cp = containment_probability(results)
+println("Containment probability: ", round(cp, digits = 3))
+```
+
+## Analytical functions
+
+No simulation needed for these:
+
+```{julia}
+# Extinction probability
+q = extinction_probability(2.5, 0.16)
+println("P(extinction | R=2.5, k=0.16): ", round(q, digits = 3))
+
+# Superspreading metric
+prop = proportion_transmission(2.5, 0.16; prop_cases = 0.2)
+println("Top 20% of cases cause $(round(prop * 100, digits=1))% of transmission")
+
+# Chain size distribution
+d = chain_size_distribution(Poisson(0.8))
+println("Mean chain size (Poisson, λ=0.8): ", round(mean(d), digits = 2))
+```
+
+## What makes this different
+
+1. **One engine, many use cases**: the same `simulate()` call produces
+   data for containment analysis (ringbp), line lists (simulist),
+   chain statistics (epichains), and likelihood evaluation.
+
+2. **Competing risks framework**: interventions are decoupled from the
+   branching process. Isolation, contact tracing, and vaccination all
+   operate through the same mechanism — modifying when and whether
+   contacts are infected.
+
+3. **Full contact tracking**: every contact is stored, not just infections.
+   This enables effort metrics and the simulist-style contacts table.
+
+4. **Simulation-based likelihood**: estimate offspring parameters under
+   interventions using the same engine — something no individual R
+   package can do.
+
+5. **Extensible individuals**: the `state` dict on each individual holds
+   any data you need. Interventions define their own fields. Users add
+   demographics, risk groups, or custom state without modifying source.
+```{julia}
+# Example: access individual state
+ind = state.individuals[1]
+println("Individual $(ind.id):")
+println("  Infection time: ", round(ind.infection_time, digits = 1))
+println("  Onset time: ", round(onset_time(ind), digits = 1))
+println("  Isolated: ", is_isolated(ind))
+println("  State keys: ", collect(keys(ind.state)))
+```

@@ -1,0 +1,199 @@
+---
+title: "Chain statistics and likelihood"
+subtitle: "Reproducing the epichains R package functionality"
+format:
+  html:
+    code-fold: false
+engine: julia
+---
+
+## Overview
+
+This vignette demonstrates how to simulate transmission chains and compute
+chain statistics using EpiBranch.jl, reproducing the core functionality of
+the [epichains](https://github.com/epiverse-trace/epichains) R package.
+
+```{julia}
+using EpiBranch
+using Distributions
+using DataFrames
+using StableRNGs
+```
+
+## Simulating transmission chains
+
+The basic workflow: define an offspring distribution and a generation time,
+then simulate. Each initial case seeds an independent transmission chain.
+
+```{julia}
+# Simulate 20 independent chains with Poisson(0.9) offspring
+model = BranchingProcess(Poisson(0.9), Exponential(5.0))
+
+rng = StableRNG(42)
+state = simulate(model;
+    sim_opts = SimOpts(n_initial = 20, max_cases = 10_000),
+    rng = rng
+)
+
+println("Total cases: ", state.cumulative_cases)
+println("Extinct: ", state.extinct)
+```
+
+## Chain size and length
+
+`chain_statistics` computes the size (total cases) and length (number of
+generations) for each chain:
+
+```{julia}
+cs = chain_statistics(state)
+first(cs, 10)
+```
+
+Summary statistics:
+
+```{julia}
+println("Mean chain size: ", round(mean(cs.size), digits = 2))
+println("Max chain size: ", maximum(cs.size))
+println("Mean chain length: ", round(mean(cs.length), digits = 2))
+```
+
+## Analytical chain size distributions
+
+For Poisson offspring, the chain size follows a Borel distribution.
+For Negative Binomial offspring, it follows a distribution derived via
+Lagrange inversion:
+
+```{julia}
+# Borel distribution for Poisson(0.9) offspring
+d = chain_size_distribution(Poisson(0.9))
+println("Chain size distribution: ", typeof(d))
+println("Mean chain size (analytical): ", round(mean(d), digits = 2))
+
+# For NegBin offspring
+d_nb = chain_size_distribution(NegBin(0.8, 0.5))
+println("NegBin chain size distribution: ", typeof(d_nb))
+```
+
+## Likelihood of observed chain sizes
+
+Given observed chain sizes, we can compute the log-likelihood under
+different offspring distribution parameters. This is useful for
+estimating R and k from outbreak data.
+
+```{julia}
+# Observed chain sizes (e.g. from contact tracing data)
+observed_sizes = [1, 1, 2, 1, 3, 1, 1, 5, 1, 2]
+
+# Log-likelihood under different parameters
+ll_low = chain_size_ll(observed_sizes, Poisson(0.5))
+ll_mid = chain_size_ll(observed_sizes, Poisson(0.9))
+ll_high = chain_size_ll(observed_sizes, Poisson(1.5))
+
+println("LL at λ=0.5: ", round(ll_low, digits = 2))
+println("LL at λ=0.9: ", round(ll_mid, digits = 2))
+println("LL at λ=1.5: ", round(ll_high, digits = 2))
+```
+
+With Negative Binomial offspring:
+
+```{julia}
+ll_nb = chain_size_ll(observed_sizes, NegBin(0.9, 0.5))
+println("LL for NegBin(R=0.9, k=0.5): ", round(ll_nb, digits = 2))
+```
+
+## Likelihood with imperfect observation
+
+In practice, not all cases are observed. If each case is independently
+observed with probability `obs_prob`, the likelihood accounts for this:
+
+```{julia}
+ll_full = chain_size_ll(observed_sizes, Poisson(0.9))
+ll_partial = chain_size_ll(observed_sizes, Poisson(0.9), 0.7)
+
+println("LL (full observation): ", round(ll_full, digits = 2))
+println("LL (70% observation): ", round(ll_partial, digits = 2))
+```
+
+## Simulation-based likelihood
+
+When the offspring distribution doesn't have an analytical chain size
+distribution, or when interventions are present, we can use
+simulation-based likelihood:
+
+```{julia}
+# Simulation-based likelihood — works with any model
+model = BranchingProcess(Poisson(0.9), Exponential(5.0))
+ll_sim = chain_size_ll(observed_sizes, model; n_sim = 10_000, rng = StableRNG(42))
+println("LL (simulation-based): ", round(ll_sim, digits = 2))
+println("LL (analytical):       ", round(ll_mid, digits = 2))
+```
+
+The key advantage: simulation-based likelihood works with **interventions**:
+
+```{julia}
+# Likelihood under a model with isolation
+iso = Isolation(delay = Exponential(2.0))
+model_with_iso = BranchingProcess(Poisson(2.0), Exponential(5.0))
+
+ll_with_iso = chain_size_ll(observed_sizes, model_with_iso;
+    interventions = [iso],
+    sim_opts = SimOpts(incubation_period = LogNormal(1.5, 0.5)),
+    n_sim = 10_000,
+    rng = StableRNG(42)
+)
+println("LL with isolation: ", round(ll_with_iso, digits = 2))
+```
+
+This is something the R epichains package cannot do — its likelihood
+function has no concept of interventions.
+
+## Chain length likelihood
+
+Similarly, chain length likelihoods are available analytically for
+Poisson and Negative Binomial offspring:
+
+```{julia}
+observed_lengths = [0, 1, 0, 2, 1, 0, 0, 3, 0, 1]
+
+ll_len = chain_length_ll(observed_lengths, Poisson(0.5))
+println("Chain length LL: ", round(ll_len, digits = 2))
+```
+
+## Finite population (susceptible depletion)
+
+For outbreaks in small populations, the branching process can be
+modified with susceptible depletion:
+
+```{julia}
+# Finite population of 500
+model_finite = BranchingProcess(Poisson(2.0), Exponential(5.0);
+    population_size = 500)
+
+rng = StableRNG(42)
+state = simulate(model_finite;
+    sim_opts = SimOpts(max_cases = 1000),
+    rng = rng
+)
+
+println("Cases: ", state.cumulative_cases, " / 500 population")
+```
+
+## Comparing with analytical extinction probability
+
+We can validate simulation against analytical results:
+
+```{julia}
+R, k = 1.5, 0.5
+q_analytical = extinction_probability(R, k)
+
+rng = StableRNG(42)
+model = BranchingProcess(NegBin(R, k), Exponential(5.0))
+results = simulate_batch(model, 5000;
+    sim_opts = SimOpts(max_cases = 10_000, max_generations = 200),
+    rng = rng
+)
+q_simulated = containment_probability(results)
+
+println("Extinction probability (analytical): ", round(q_analytical, digits = 4))
+println("Extinction probability (simulated):  ", round(q_simulated, digits = 4))
+```

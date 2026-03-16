@@ -1,0 +1,240 @@
+---
+title: "Outbreak containment with interventions"
+subtitle: "Reproducing the ringbp R package functionality"
+format:
+  html:
+    code-fold: false
+engine: julia
+---
+
+## Overview
+
+This vignette demonstrates how to assess the feasibility of controlling
+an outbreak using isolation and contact tracing, reproducing the core
+functionality of the [ringbp](https://github.com/epiforecasts/ringbp)
+R package.
+
+```{julia}
+using EpiBranch
+using Distributions
+using DataFrames
+using StableRNGs
+```
+
+## Basic outbreak simulation
+
+Define a transmission model with overdispersed offspring (NegBin with
+low dispersion k = 0.16, as estimated for SARS-CoV-2):
+
+```{julia}
+model = BranchingProcess(
+    NegBin(2.5, 0.16),         # R₀ = 2.5, k = 0.16
+    LogNormal(1.6, 0.5)        # generation time
+)
+
+rng = StableRNG(42)
+state = simulate(model;
+    sim_opts = SimOpts(
+        max_cases = 5000,
+        incubation_period = LogNormal(1.5, 0.5),
+    ),
+    rng = rng
+)
+
+println("Cases: ", state.cumulative_cases)
+println("Extinct: ", state.extinct)
+```
+
+## Adding isolation
+
+Symptomatic cases are isolated after a delay from symptom onset.
+The effectiveness depends on how quickly isolation happens relative
+to the generation time (hazard-based model):
+
+```{julia}
+iso = Isolation(delay = LogNormal(1.0, 0.5))
+
+rng = StableRNG(42)
+results_iso = simulate_batch(model, 500;
+    interventions = [iso],
+    sim_opts = SimOpts(
+        max_cases = 5000,
+        max_generations = 50,
+        incubation_period = LogNormal(1.5, 0.5),
+    ),
+    rng = rng
+)
+
+cp = containment_probability(results_iso)
+println("Containment probability (isolation only): ", round(cp, digits = 3))
+```
+
+## Adding contact tracing
+
+Contact tracing identifies and isolates contacts of detected cases:
+
+```{julia}
+ct = ContactTracing(probability = 0.5, delay = Exponential(2.0))
+
+rng = StableRNG(42)
+results_both = simulate_batch(model, 500;
+    interventions = [iso, ct],
+    sim_opts = SimOpts(
+        max_cases = 5000,
+        max_generations = 50,
+        incubation_period = LogNormal(1.5, 0.5),
+    ),
+    rng = rng
+)
+
+cp = containment_probability(results_both)
+println("Containment probability (isolation + tracing): ", round(cp, digits = 3))
+```
+
+## Effect of asymptomatic cases
+
+Asymptomatic cases cannot be detected through symptom-based surveillance,
+which reduces the effectiveness of isolation and contact tracing:
+
+```{julia}
+rng = StableRNG(42)
+results_asymp = simulate_batch(model, 500;
+    interventions = [iso, ct],
+    sim_opts = SimOpts(
+        max_cases = 5000,
+        max_generations = 50,
+        incubation_period = LogNormal(1.5, 0.5),
+        prob_asymptomatic = 0.3,
+    ),
+    rng = rng
+)
+
+cp = containment_probability(results_asymp)
+println("Containment probability (30% asymptomatic): ", round(cp, digits = 3))
+```
+
+## Parameter sweep
+
+Vary the proportion of contacts traced to assess feasibility:
+
+```{julia}
+trace_probs = 0.0:0.2:1.0
+containment = Float64[]
+
+for p in trace_probs
+    ct_sweep = ContactTracing(probability = p, delay = Exponential(2.0))
+    rng = StableRNG(42)
+    results = simulate_batch(model, 500;
+        interventions = [iso, ct_sweep],
+        sim_opts = SimOpts(
+            max_cases = 5000,
+            max_generations = 50,
+            incubation_period = LogNormal(1.5, 0.5),
+        ),
+        rng = rng
+    )
+    push!(containment, containment_probability(results))
+end
+
+sweep_df = DataFrame(
+    trace_probability = collect(trace_probs),
+    containment = containment
+)
+sweep_df
+```
+
+## Effective reproduction number
+
+Track how interventions reduce R over generations:
+
+```{julia}
+rng = StableRNG(42)
+state = simulate_conditioned(model, 50:500;
+    interventions = [iso, ct],
+    sim_opts = SimOpts(
+        max_cases = 500,
+        incubation_period = LogNormal(1.5, 0.5),
+    ),
+    rng = rng
+)
+
+r_df = effective_R(state)
+println("R_eff by generation:")
+first(r_df, 5)
+```
+
+## Weekly incidence
+
+```{julia}
+using Dates
+
+wi = weekly_incidence(state; reference_date = Date(2024, 1, 1))
+first(wi, 10)
+```
+
+## Intervention effort tracking
+
+Because we track all contacts (infected and non-infected), we can
+compute intervention effort:
+
+```{julia}
+n_total_contacts = length(state.individuals)
+n_infected = count(is_infected, state.individuals)
+n_traced = count(ind -> is_traced(ind), state.individuals)
+n_isolated = count(ind -> is_isolated(ind), state.individuals)
+
+println("Total contacts: ", n_total_contacts)
+println("Infected: ", n_infected)
+println("Traced: ", n_traced)
+println("Isolated: ", n_isolated)
+println("Contact-to-case ratio: ", round(n_total_contacts / n_infected, digits = 1))
+```
+
+## Leaky isolation
+
+In reality, isolated cases may still transmit (e.g. household contacts).
+The `residual_transmission` parameter models this:
+
+```{julia}
+iso_perfect = Isolation(delay = LogNormal(1.0, 0.5), residual_transmission = 0.0)
+iso_leaky = Isolation(delay = LogNormal(1.0, 0.5), residual_transmission = 0.3)
+
+rng1 = StableRNG(42)
+results_perfect = simulate_batch(model, 500;
+    interventions = [iso_perfect],
+    sim_opts = SimOpts(max_cases = 5000, incubation_period = LogNormal(1.5, 0.5)),
+    rng = rng1
+)
+
+rng2 = StableRNG(42)
+results_leaky = simulate_batch(model, 500;
+    interventions = [iso_leaky],
+    sim_opts = SimOpts(max_cases = 5000, incubation_period = LogNormal(1.5, 0.5)),
+    rng = rng2
+)
+
+println("Containment (perfect isolation): ", round(containment_probability(results_perfect), digits = 3))
+println("Containment (30% residual):      ", round(containment_probability(results_leaky), digits = 3))
+```
+
+## Incubation-linked generation time
+
+The ringbp-style parameterisation derives the generation time from
+each individual's incubation period, with a parameter controlling
+the proportion of presymptomatic transmission:
+
+```{julia}
+gt_fn = ringbp_generation_time(presymptomatic_fraction = 0.3)
+model_ringbp = BranchingProcess(NegBin(2.5, 0.16), gt_fn)
+
+rng = StableRNG(42)
+state = simulate(model_ringbp;
+    sim_opts = SimOpts(
+        max_cases = 100,
+        incubation_period = LogNormal(1.5, 0.5),
+    ),
+    rng = rng
+)
+
+println("Cases with incubation-linked GT: ", state.cumulative_cases)
+```

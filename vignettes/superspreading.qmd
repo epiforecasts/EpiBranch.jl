@@ -1,0 +1,148 @@
+---
+title: "Superspreading and offspring distribution analytics"
+subtitle: "Reproducing the superspreading R package functionality"
+format:
+  html:
+    code-fold: false
+engine: julia
+---
+
+## Overview
+
+This vignette demonstrates analytical functions for offspring distributions
+and superspreading, reproducing the core functionality of the
+[superspreading](https://github.com/epiverse-trace/superspreading) R package.
+
+```{julia}
+using EpiBranch
+using Distributions
+using DataFrames
+```
+
+## Epidemic and extinction probability
+
+The probability that a single introduction leads to a sustained epidemic
+depends on the reproduction number R and the dispersion parameter k:
+
+```{julia}
+# For R = 2.5, varying dispersion
+for k in [0.1, 0.5, 1.0, 10.0]
+    p = epidemic_probability(2.5, k)
+    q = extinction_probability(2.5, k)
+    println("k = $k: P(epidemic) = $(round(p, digits=3)), P(extinction) = $(round(q, digits=3))")
+end
+```
+
+Higher overdispersion (lower k) means higher extinction probability even
+with the same R — because superspreading concentrates transmission in
+fewer individuals, giving more outbreaks that go extinct by chance.
+
+## Effect of R on epidemic probability
+
+```{julia}
+R_values = 0.5:0.1:3.0
+results = DataFrame(
+    R = collect(R_values),
+    p_epidemic_k01 = [epidemic_probability(R, 0.1) for R in R_values],
+    p_epidemic_k05 = [epidemic_probability(R, 0.5) for R in R_values],
+    p_epidemic_k10 = [epidemic_probability(R, 1.0) for R in R_values],
+    p_epidemic_kinf = [epidemic_probability(R, 100.0) for R in R_values],
+)
+first(results, 10)
+```
+
+## Proportion of transmission from top transmitters
+
+The "80/20 rule" — what fraction of transmission is caused by the most
+infectious 20% of cases?
+
+```{julia}
+# For SARS-CoV-2: R = 2.5, k = 0.16
+prop = proportion_transmission(2.5, 0.16; prop_cases = 0.2)
+println("Top 20% of cases cause $(round(prop * 100, digits=1))% of transmission")
+```
+
+This depends strongly on the dispersion parameter:
+
+```{julia}
+k_values = [0.01, 0.05, 0.1, 0.16, 0.5, 1.0, 5.0, 100.0]
+for k in k_values
+    prop = proportion_transmission(2.5, k; prop_cases = 0.2)
+    println("k = $(lpad(k, 5)): top 20% cause $(round(prop * 100, digits=1))% of transmission")
+end
+```
+
+## Chain size distributions
+
+The chain size distribution depends on the offspring distribution.
+For Poisson offspring, chain sizes follow the Borel distribution:
+
+```{julia}
+d = Borel(0.8)
+println("Borel(0.8):")
+println("  Mean: ", round(mean(d), digits = 2))
+for n in 1:5
+    println("  P(size = $n) = ", round(pdf(d, n), digits = 4))
+end
+```
+
+For Negative Binomial offspring, the chain size distribution is derived
+via Lagrange inversion:
+
+```{julia}
+d = chain_size_distribution(NegBin(0.8, 0.5))
+println("NegBin(R=0.8, k=0.5) chain sizes:")
+for n in 1:5
+    println("  P(size = $n) = ", round(pdf(d, n), digits = 4))
+end
+```
+
+## Extinction probability for different distributions
+
+```{julia}
+# Poisson offspring
+q_pois = extinction_probability(Poisson(2.0))
+println("Poisson(λ=2): P(extinction) = ", round(q_pois, digits = 4))
+
+# NegBin offspring — same mean but overdispersed
+q_nb = extinction_probability(NegBin(2.0, 0.5))
+println("NegBin(R=2, k=0.5): P(extinction) = ", round(q_nb, digits = 4))
+
+q_nb2 = extinction_probability(NegBin(2.0, 0.1))
+println("NegBin(R=2, k=0.1): P(extinction) = ", round(q_nb2, digits = 4))
+```
+
+## Validation: known analytical results
+
+For Geometric offspring (NegBin with k=1 and mean R), the extinction
+probability is exactly 1/R:
+
+```{julia}
+R = 3.0
+q = extinction_probability(R, 1.0)
+println("Extinction prob for Geometric(R=$R): $(round(q, digits=6))")
+println("Analytical (1/R):                   $(round(1/R, digits=6))")
+```
+
+## Combining analytical and simulation results
+
+```{julia}
+using StableRNGs
+
+# Compare analytical extinction probability with simulation
+R, k = 2.0, 0.3
+q_analytical = extinction_probability(R, k)
+
+rng = StableRNG(42)
+model = BranchingProcess(NegBin(R, k), Exponential(5.0))
+results = simulate_batch(model, 5000;
+    sim_opts = SimOpts(max_cases = 10_000, max_generations = 200),
+    rng = rng
+)
+q_simulated = containment_probability(results)
+
+println("R = $R, k = $k:")
+println("  Analytical: $(round(q_analytical, digits=4))")
+println("  Simulated:  $(round(q_simulated, digits=4))")
+println("  Difference: $(round(abs(q_analytical - q_simulated), digits=4))")
+```

@@ -1,0 +1,280 @@
+---
+title: "Interventions"
+subtitle: "Composable interventions through the competing risks framework"
+format:
+  html:
+    code-fold: false
+engine: julia
+---
+
+## Overview
+
+EpiBranch.jl models interventions through a **competing risks** framework.
+The branching process generates potential contacts. Each contact's fate is
+determined by competing risks: the generation time (when would transmission
+occur?) vs the intervention time (when is the parent isolated/traced?).
+
+This is grounded in survival analysis — the generation time CDF is the
+survival function of remaining potential transmission, and isolation
+truncates it.
+
+```{julia}
+using EpiBranch
+using Distributions
+using DataFrames
+using StableRNGs
+```
+
+## How interventions work
+
+### The three hooks
+
+Every intervention can implement up to three methods:
+
+1. **`initialise_individual!`** — set up fields on a new contact
+   (e.g. Isolation adds `:isolated` and `:isolation_time`)
+2. **`resolve_individual!`** — determine intervention state before
+   transmission (e.g. compute isolation time from onset + delay)
+3. **`apply_post_transmission!`** — act on contacts after creation
+   (e.g. contact tracing identifies and traces contacts)
+
+### The two universal modifiers
+
+All interventions ultimately affect transmission through two numbers:
+
+- **`susceptibility`** (on the contact): probability of being infected given
+  exposure. Modified by vaccination, prior immunity.
+- **`infectiousness`** (on the parent): modifier on onward transmission.
+  Modified by isolation (via hazard truncation), treatment.
+
+## Isolation
+
+Isolation reduces transmission by truncating the infectious period.
+How much it reduces depends on *when* isolation happens relative to
+the generation time distribution:
+
+```{julia}
+model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+
+# Compare fast vs slow isolation
+delays = [0.5, 1.0, 2.0, 5.0, 10.0]
+
+for d in delays
+    iso = Isolation(delay = Exponential(d))
+    rng = StableRNG(42)
+    results = simulate_batch(model, 200;
+        interventions = [iso],
+        sim_opts = SimOpts(
+            max_cases = 500,
+            incubation_period = LogNormal(1.5, 0.5),
+        ),
+        rng = rng
+    )
+    cp = containment_probability(results)
+    println("Isolation delay ~ Exp($(d)): containment = $(round(cp, digits=3))")
+end
+```
+
+### Leaky isolation
+
+Perfect isolation assumes zero transmission after isolation. In practice,
+household contacts may still occur:
+
+```{julia}
+for r in [0.0, 0.1, 0.3, 0.5]
+    iso = Isolation(delay = Exponential(2.0), residual_transmission = r)
+    rng = StableRNG(42)
+    results = simulate_batch(model, 200;
+        interventions = [iso],
+        sim_opts = SimOpts(max_cases = 500, incubation_period = LogNormal(1.5, 0.5)),
+        rng = rng
+    )
+    cp = containment_probability(results)
+    println("Residual = $(r): containment = $(round(cp, digits=3))")
+end
+```
+
+## Contact tracing
+
+Contact tracing identifies contacts of isolated cases and can:
+- Isolate them earlier (before symptom onset, if quarantined)
+- Track effort (number of contacts traced)
+
+```{julia}
+iso = Isolation(delay = Exponential(2.0))
+
+for p in [0.0, 0.25, 0.5, 0.75, 1.0]
+    ct = ContactTracing(probability = p, delay = Exponential(1.0))
+    rng = StableRNG(42)
+    results = simulate_batch(model, 200;
+        interventions = [iso, ct],
+        sim_opts = SimOpts(max_cases = 500, incubation_period = LogNormal(1.5, 0.5)),
+        rng = rng
+    )
+    cp = containment_probability(results)
+    println("Trace prob = $(p): containment = $(round(cp, digits=3))")
+end
+```
+
+### Quarantine vs no quarantine
+
+With quarantine, traced contacts can be isolated *before* symptom onset:
+
+```{julia}
+iso = Isolation(delay = Exponential(2.0))
+ct_q = ContactTracing(probability = 0.7, delay = Exponential(1.0), quarantine_on_trace = true)
+ct_nq = ContactTracing(probability = 0.7, delay = Exponential(1.0), quarantine_on_trace = false)
+
+rng1 = StableRNG(42)
+r_q = simulate_batch(model, 200;
+    interventions = [iso, ct_q],
+    sim_opts = SimOpts(max_cases = 500, incubation_period = LogNormal(1.5, 0.5)),
+    rng = rng1
+)
+
+rng2 = StableRNG(42)
+r_nq = simulate_batch(model, 200;
+    interventions = [iso, ct_nq],
+    sim_opts = SimOpts(max_cases = 500, incubation_period = LogNormal(1.5, 0.5)),
+    rng = rng2
+)
+
+println("With quarantine:    $(round(containment_probability(r_q), digits=3))")
+println("Without quarantine: $(round(containment_probability(r_nq), digits=3))")
+```
+
+## Asymptomatic cases
+
+Asymptomatic individuals escape symptom-based surveillance — they are
+never isolated and their contacts are never traced:
+
+```{julia}
+iso = Isolation(delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.5, delay = Exponential(1.0))
+
+for pa in [0.0, 0.1, 0.3, 0.5]
+    rng = StableRNG(42)
+    results = simulate_batch(model, 200;
+        interventions = [iso, ct],
+        sim_opts = SimOpts(
+            max_cases = 500,
+            incubation_period = LogNormal(1.5, 0.5),
+            prob_asymptomatic = pa,
+        ),
+        rng = rng
+    )
+    cp = containment_probability(results)
+    println("$(Int(pa*100))% asymptomatic: containment = $(round(cp, digits=3))")
+end
+```
+
+## Test sensitivity
+
+Imperfect testing means some symptomatic cases are missed:
+
+```{julia}
+iso = Isolation(delay = Exponential(2.0))
+
+for ts in [0.5, 0.7, 0.9, 1.0]
+    rng = StableRNG(42)
+    results = simulate_batch(model, 200;
+        interventions = [iso],
+        sim_opts = SimOpts(
+            max_cases = 500,
+            incubation_period = LogNormal(1.5, 0.5),
+            test_sensitivity = ts,
+        ),
+        rng = rng
+    )
+    cp = containment_probability(results)
+    println("Test sensitivity = $(ts): containment = $(round(cp, digits=3))")
+end
+```
+
+## Effort tracking
+
+Because all contacts are stored (infected and non-infected), you can
+compute intervention effort metrics:
+
+```{julia}
+iso = Isolation(delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.7, delay = Exponential(1.0))
+
+rng = StableRNG(42)
+state = simulate_conditioned(
+    BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)),
+    50:200;
+    interventions = [iso, ct],
+    sim_opts = SimOpts(max_cases = 200, incubation_period = LogNormal(1.5, 0.5)),
+    rng = rng
+)
+
+total = length(state.individuals)
+infected = count(is_infected, state.individuals)
+traced = count(is_traced, state.individuals)
+isolated = count(is_isolated, state.individuals)
+quarantined = count(is_quarantined, state.individuals)
+
+println("Effort summary:")
+println("  Total contacts generated: ", total)
+println("  Infections: ", infected)
+println("  Traced: ", traced)
+println("  Isolated: ", isolated)
+println("  Quarantined: ", quarantined)
+println("  Contacts per case: ", round(total / infected, digits = 1))
+println("  Traces per case: ", round(traced / infected, digits = 1))
+```
+
+## Writing a custom intervention
+
+Any struct that subtypes `AbstractIntervention` can be an intervention.
+Here's a minimal example — a "super-spreader detection" intervention
+that reduces infectiousness for high-offspring individuals:
+
+```{julia}
+struct SuperSpreaderDetection <: AbstractIntervention
+    threshold::Int      # offspring above this triggers detection
+    reduction::Float64  # infectiousness reduction when detected
+end
+
+# Initialise our field on each individual
+function EpiBranch.initialise_individual!(ssd::SuperSpreaderDetection, ind, state)
+    ind.state[:detected_superspreader] = false
+end
+
+# After transmission, check if the parent had many contacts
+function EpiBranch.apply_post_transmission!(ssd::SuperSpreaderDetection, state, new_contacts)
+    # Count contacts per parent
+    parent_counts = Dict{Int, Int}()
+    for c in new_contacts
+        parent_counts[c.parent_id] = get(parent_counts, c.parent_id, 0) + 1
+    end
+    # Mark high-offspring parents
+    for (pid, count) in parent_counts
+        if count > ssd.threshold
+            idx = findfirst(i -> i.id == pid, state.individuals)
+            if idx !== nothing
+                state.individuals[idx].state[:detected_superspreader] = true
+                state.individuals[idx].infectiousness *= (1.0 - ssd.reduction)
+            end
+        end
+    end
+end
+```
+
+This custom intervention composes with the built-in ones:
+
+```{julia}
+model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
+ssd = SuperSpreaderDetection(5, 0.9)
+
+rng = StableRNG(42)
+state = simulate(model;
+    interventions = [ssd],
+    sim_opts = SimOpts(max_cases = 200),
+    rng = rng
+)
+
+n_detected = count(ind -> get(ind.state, :detected_superspreader, false), state.individuals)
+println("Super-spreaders detected: ", n_detected)
+```
