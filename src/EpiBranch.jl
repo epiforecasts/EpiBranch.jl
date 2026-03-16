@@ -36,7 +36,7 @@ include("analytical/likelihood.jl")
 include("analytical/superspreading.jl")
 
 # Exports — types
-export TransmissionModel, BranchingProcess, DensityDependent
+export TransmissionModel, BranchingProcess
 export Individual, SimulationState
 export SimOpts, DelayOpts, OutcomeOpts, DemographicOpts
 export AbstractIntervention, Isolation, ContactTracing

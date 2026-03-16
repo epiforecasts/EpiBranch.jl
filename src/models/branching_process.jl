@@ -4,16 +4,25 @@
 Process one generation of the branching process using hazard-based transmission.
 
 For each active individual:
-1. Resolve interventions (set isolation time etc.)
+1. Resolve interventions (set isolation time, susceptibility, infectiousness)
 2. Get individual-specific generation time distribution
-3. Compute transmission fraction from generation time CDF at isolation time
+3. Compute effective transmission: hazard truncation × infectiousness
 4. Draw potential offspring, thin by transmission fraction
-5. Assign infection times from generation time distribution (truncated at isolation)
-6. Apply post-transmission interventions (contact tracing)
+5. Thin by susceptible fraction (if finite population)
+6. Create secondary cases, applying offspring susceptibility
+7. Apply post-transmission interventions (contact tracing, vaccination)
 """
 function step!(model::BranchingProcess, state::SimulationState, interventions)
     new_individuals = Individual[]
     next_id = state.cumulative_cases + 1
+
+    # Population-level susceptible fraction (1.0 for infinite population)
+    pop_suscept = _susceptible_fraction(state)
+    if pop_suscept <= 0.0
+        state.extinct = true
+        state.active_ids = Int[]
+        return state
+    end
 
     for idx in state.active_ids
         individual = state.individuals[idx]
@@ -23,24 +32,31 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
             resolve_individual!(intervention, individual, state)
         end
 
-        # Step 2: get generation time distribution for this individual
+        # Step 2: get generation time distribution
         gt_dist = get_generation_time(model.generation_time, individual)
 
-        # Step 3: compute fraction of transmission before intervention
+        # Step 3: compute effective transmission fraction
         frac = transmission_fraction(individual, gt_dist, interventions)
+        frac *= individual.infectiousness
 
-        # Step 4: draw potential offspring, scale for asymptomatic, thin by frac
+        # Step 4: draw potential offspring, scale for asymptomatic
         n_potential = rand(state.rng, model.offspring)
         if individual.asymptomatic && state.asymptomatic_R_scaling < 1.0
             n_potential = rand(state.rng, Binomial(n_potential,
                                                     state.asymptomatic_R_scaling))
         end
+
+        # Thin by transmission fraction (infectiousness side)
         n_offspring = _thin_offspring(state.rng, n_potential, frac)
 
-        # Step 5: create secondary cases with generation times
+        # Step 5: thin by susceptible fraction (population level)
+        if pop_suscept < 1.0
+            n_offspring = rand(state.rng, Binomial(n_offspring, pop_suscept))
+        end
+
+        # Step 6: create secondary cases
         for _ in 1:n_offspring
             gt = _sample_truncated_gt(state.rng, gt_dist, individual, frac)
-            # Enforce latent period
             gt = max(gt, state.latent_period)
             inf_time = individual.infection_time + gt
 
@@ -58,7 +74,7 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
         end
     end
 
-    # Step 6: apply post-transmission interventions (e.g. contact tracing)
+    # Step 7: apply post-transmission interventions
     for intervention in interventions
         apply_post_transmission!(intervention, state, new_individuals)
     end

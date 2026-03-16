@@ -90,7 +90,7 @@ using Dates
     end
 
     @testset "linelist empty state" begin
-        state = SimulationState(Individual[], Int[], 0, StableRNG(1), 0, true, nothing, 0.0, 1.0, 1.0, 0.0)
+        state = SimulationState(Individual[], Int[], 0, StableRNG(1), 0, true, nothing, 0.0, 1.0, 1.0, 0.0, nothing)
         df = linelist(state)
         @test nrow(df) == 0
         @test ncol(df) == 11

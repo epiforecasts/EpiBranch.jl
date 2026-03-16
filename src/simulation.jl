@@ -31,6 +31,14 @@ end
 
 # ── Internal helpers ───────────────────────────────────────────────
 
+function _get_population_size(model::BranchingProcess)
+    model.population_size
+end
+
+function _get_population_size(model::TransmissionModel)
+    nothing
+end
+
 function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
                           rng::AbstractRNG)
     individuals = Individual[]
@@ -69,6 +77,7 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         sim_opts.asymptomatic_R_scaling,
         sim_opts.test_sensitivity,
         sim_opts.latent_period,
+        _get_population_size(model),
     )
 end
 
@@ -87,6 +96,19 @@ function should_terminate(state::SimulationState, sim_opts::SimOpts)
 end
 
 """
+    _susceptible_fraction(state)
+
+Compute the fraction of the population still susceptible. Returns 1.0
+for infinite population (no depletion).
+"""
+function _susceptible_fraction(state::SimulationState)
+    state.population_size === nothing && return 1.0
+    n_susceptible = state.population_size - state.cumulative_cases
+    n_susceptible <= 0 && return 0.0
+    return n_susceptible / state.population_size
+end
+
+"""
     _create_child(state, parent, next_id, inf_time, onset_time)
 
 Create a new Individual with asymptomatic status and test sensitivity
@@ -98,7 +120,6 @@ function _create_child(state::SimulationState,
     is_asymp = rand(state.rng) < state.prob_asymptomatic
     test_pos = !is_asymp && rand(state.rng) < state.test_sensitivity
 
-    # Asymptomatic cases have no onset
     actual_onset = is_asymp ? NaN : onset_time
 
     Individual(;
