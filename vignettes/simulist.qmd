@@ -121,7 +121,7 @@ Use rejection sampling to generate outbreaks of a specific size:
 
 ```{julia}
 rng = Xoshiro(42)
-state = simulate_conditioned(model, 100:150;
+state = simulate_conditioned(model, 30:100;
     sim_opts = SimOpts(
         max_cases = 200,
         incubation_period = LogNormal(1.5, 0.5),
@@ -129,7 +129,7 @@ state = simulate_conditioned(model, 100:150;
     rng = rng,
 )
 
-println("Outbreak size: ", state.cumulative_cases, " (target: 100-150)")
+println("Outbreak size: ", state.cumulative_cases, " (target: 30-100)")
 ```
 
 ## Combined outbreak simulation
