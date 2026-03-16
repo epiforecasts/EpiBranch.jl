@@ -5,7 +5,6 @@ makedocs(;
     modules = [EpiBranch],
     sitename = "EpiBranch.jl",
     remotes = nothing,
-    warnonly = [:missing_docs, :cross_references],
     format = Documenter.HTML(;
         prettyurls = get(ENV, "CI", "false") == "true",
     ),

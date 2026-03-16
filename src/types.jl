@@ -172,24 +172,53 @@ function Individual(; id::Int, parent_id::Int=0, generation::Int=0,
 end
 
 # ── State accessors ──────────────────────────────────────────────────
+# Clean API for reading intervention/clinical state with safe defaults.
 
+"""Symptom onset time (Float64, NaN if asymptomatic or not set)."""
 onset_time(ind::Individual) = get(ind.state, :onset_time, NaN)::Float64
+
+"""Whether the individual is isolated."""
 is_isolated(ind) = get(ind.state, :isolated, false)::Bool
+
+"""Time of isolation (Float64, Inf if not isolated)."""
 isolation_time(ind) = get(ind.state, :isolation_time, Inf)::Float64
+
+"""Whether the individual was traced via contact tracing."""
 is_traced(ind) = get(ind.state, :traced, false)::Bool
+
+"""Whether the individual is quarantined."""
 is_quarantined(ind) = get(ind.state, :quarantined, false)::Bool
+
+"""Whether the individual is vaccinated."""
 is_vaccinated(ind) = get(ind.state, :vaccinated, false)::Bool
+
+"""Whether the individual is asymptomatic."""
 is_asymptomatic(ind) = get(ind.state, :asymptomatic, false)::Bool
+
+"""Whether the individual tested positive."""
 is_test_positive(ind) = get(ind.state, :test_positive, true)::Bool
+
+"""Whether the individual was successfully infected (vs contact only)."""
 is_infected(ind) = get(ind.state, :infected, true)::Bool
+
+"""Type index for multi-type branching processes (default 1)."""
 individual_type(ind) = get(ind.state, :type, 1)::Int
 
+"""Mark an individual as isolated at the given time."""
 function set_isolated!(ind, time::Float64)
     ind.state[:isolated] = true
     ind.state[:isolation_time] = time
 end
 
 # ── Simulation state ───────────────────────────────────────────────
+
+"""
+    SimulationState
+
+Holds the state of a running or completed simulation: all individuals
+(infected and non-infected contacts), active case indices, generation
+counter, RNG, and clinical/population parameters.
+"""
 mutable struct SimulationState
     individuals::Vector{Individual}
     active_ids::Vector{Int}
