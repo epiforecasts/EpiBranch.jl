@@ -117,6 +117,7 @@ function _create_individual(state::SimulationState, parent_id::Int,
         :onset_time => onset,
         :asymptomatic => is_asymp,
         :test_positive => test_pos,
+        :infected => true,
     )
 
     ind = Individual(;

@@ -14,7 +14,8 @@ function linelist(state::SimulationState;
                   outcome_opts::OutcomeOpts=OutcomeOpts(),
                   demographic_opts::DemographicOpts=DemographicOpts(),
                   rng::AbstractRNG=Random.default_rng())
-    n = length(state.individuals)
+    cases = filter(is_infected, state.individuals)
+    n = length(cases)
     n == 0 && return _empty_linelist()
 
     ids = Vector{Int}(undef, n)
@@ -29,7 +30,7 @@ function linelist(state::SimulationState;
     date_outcomes = Vector{Union{Date, Missing}}(undef, n)
     ct_values = Vector{Union{Float64, Missing}}(undef, n)
 
-    for (j, ind) in enumerate(state.individuals)
+    for (j, ind) in enumerate(cases)
         ids[j] = ind.id
         case_types[j] = ind.parent_id == 0 ? "index" : "secondary"
 
@@ -109,34 +110,36 @@ end
 """
     contacts(state::SimulationState; reference_date=Date(2020, 1, 1))
 
-Generate a contacts DataFrame with one row per transmission pair.
+Generate a contacts DataFrame with one row per contact (infected and non-infected).
 
-Columns: from, to, generation, infection_time, date_infection.
+Columns: from, to, was_case, generation, infection_time, date_infection.
 """
 function contacts(state::SimulationState;
                   reference_date::Date=Date(2020, 1, 1))
-    pairs = Tuple{Int, Int, Int, Float64}[]
+    froms = Int[]
+    tos = Int[]
+    was_cases = Bool[]
+    generations = Int[]
+    infection_times = Float64[]
+    date_infections = Date[]
 
     for ind in state.individuals
         for child_id in ind.secondary_case_ids
             child_idx = findfirst(i -> i.id == child_id, state.individuals)
             child_idx === nothing && continue
             child = state.individuals[child_idx]
-            push!(pairs, (ind.id, child.id, child.generation, child.infection_time))
+            push!(froms, ind.id)
+            push!(tos, child.id)
+            push!(was_cases, is_infected(child))
+            push!(generations, child.generation)
+            push!(infection_times, child.infection_time)
+            push!(date_infections, reference_date + Day(floor(Int, child.infection_time)))
         end
     end
 
-    isempty(pairs) && return DataFrame(
-        from=Int[], to=Int[], generation=Int[],
-        infection_time=Float64[], date_infection=Date[]
-    )
-
     DataFrame(
-        from=[p[1] for p in pairs],
-        to=[p[2] for p in pairs],
-        generation=[p[3] for p in pairs],
-        infection_time=[p[4] for p in pairs],
-        date_infection=[reference_date + Day(floor(Int, p[4])) for p in pairs],
+        from=froms, to=tos, was_case=was_cases, generation=generations,
+        infection_time=infection_times, date_infection=date_infections,
     )
 end
 

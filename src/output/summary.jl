@@ -41,6 +41,7 @@ function is_extinct(state::SimulationState;
     # Week-based extinction
     weeks = by_week isa Int ? (by_week:by_week) : by_week
     for ind in state.individuals
+        !is_infected(ind) && continue
         isnan(ind.infection_time) && continue
         day = floor(Int, ind.infection_time)
         date = reference_date + Day(day)
@@ -57,14 +58,16 @@ Compute effective reproduction number per generation.
 Returns a DataFrame with columns `generation` and `R_eff`.
 """
 function effective_R(state::SimulationState)
-    max_gen = maximum(ind.generation for ind in state.individuals)
+    infected = filter(is_infected, state.individuals)
+    isempty(infected) && return DataFrame(generation=Int[], R_eff=Float64[])
+    max_gen = maximum(ind.generation for ind in infected)
 
     generations = Int[]
     r_effs = Float64[]
 
     for g in 0:(max_gen - 1)
-        parents = filter(i -> i.generation == g, state.individuals)
-        children = filter(i -> i.generation == g + 1, state.individuals)
+        parents = filter(i -> i.generation == g, infected)
+        children = filter(i -> i.generation == g + 1, infected)
 
         n_parents = length(parents)
         n_parents == 0 && continue
@@ -84,9 +87,10 @@ Returns a DataFrame with columns `week` (Date) and `cases` (Int).
 """
 function weekly_incidence(state::SimulationState;
                           reference_date::Date=Date(2020, 1, 1))
-    isempty(state.individuals) && return DataFrame(week=Date[], cases=Int[])
+    infected = filter(is_infected, state.individuals)
+    isempty(infected) && return DataFrame(week=Date[], cases=Int[])
 
-    inf_days = [floor(Int, ind.infection_time) for ind in state.individuals]
+    inf_days = [floor(Int, ind.infection_time) for ind in infected]
 
     weeks = Dict{Date, Int}()
     for d in inf_days

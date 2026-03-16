@@ -2,17 +2,19 @@
     chain_statistics(state::SimulationState)
 
 Compute chain size and length for each transmission chain in the simulation.
+Only counts infected individuals (not uninfected contacts).
 Returns a DataFrame with columns: chain_id, size, length.
 """
 function chain_statistics(state::SimulationState)
-    chain_ids = unique(ind.chain_id for ind in state.individuals)
+    infected = filter(is_infected, state.individuals)
+    chain_ids = unique(ind.chain_id for ind in infected)
 
     cids = Int[]
     sizes = Int[]
     lengths = Int[]
 
     for cid in chain_ids
-        chain_inds = filter(i -> i.chain_id == cid, state.individuals)
+        chain_inds = filter(i -> i.chain_id == cid, infected)
         push!(cids, cid)
         push!(sizes, length(chain_inds))
         push!(lengths, maximum(i.generation for i in chain_inds))

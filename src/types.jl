@@ -99,6 +99,7 @@ is_quarantined(ind) = get(ind.state, :quarantined, false)::Bool
 is_vaccinated(ind) = get(ind.state, :vaccinated, false)::Bool
 is_asymptomatic(ind) = get(ind.state, :asymptomatic, false)::Bool
 is_test_positive(ind) = get(ind.state, :test_positive, true)::Bool
+is_infected(ind) = get(ind.state, :infected, true)::Bool
 
 function set_isolated!(ind, time::Float64)
     ind.state[:isolated] = true
