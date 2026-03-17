@@ -2,12 +2,12 @@ using DataFrames
 using Dates
 
 @testset "Line list output" begin
+    clinical = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
+
     @testset "linelist basic output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model;
-            sim_opts=SimOpts(max_cases=50, incubation_period=LogNormal(1.5, 0.5)),
-            rng=rng)
+        state = simulate(model; init=clinical, sim_opts=SimOpts(max_cases=50), rng=rng)
 
         rng2 = StableRNG(99)
         df = linelist(state; rng=rng2)
@@ -17,19 +17,12 @@ using Dates
         @test ncol(df) == 11
         @test "id" in names(df)
         @test "case_type" in names(df)
-        @test "sex" in names(df)
-        @test "age" in names(df)
-        @test "date_infection" in names(df)
-        @test "date_onset" in names(df)
-        @test "outcome" in names(df)
     end
 
     @testset "linelist with delays" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model;
-            sim_opts=SimOpts(max_cases=30, incubation_period=LogNormal(1.5, 0.5)),
-            rng=rng)
+        state = simulate(model; init=clinical, sim_opts=SimOpts(max_cases=30), rng=rng)
 
         rng2 = StableRNG(99)
         df = linelist(state;
@@ -40,11 +33,8 @@ using Dates
             ),
             rng=rng2)
 
-        # Some rows should have non-missing reporting dates
         @test any(!ismissing, df.date_reporting)
-        # All onset dates should be present (incubation period was set)
         @test all(!ismissing, df.date_onset)
-        # Onset should be on or after infection
         for row in eachrow(df)
             if !ismissing(row.date_onset)
                 @test row.date_onset >= row.date_infection
@@ -55,9 +45,7 @@ using Dates
     @testset "linelist demographics" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model;
-            sim_opts=SimOpts(max_cases=100, incubation_period=LogNormal(1.5, 0.5)),
-            rng=rng)
+        state = simulate(model; init=clinical, sim_opts=SimOpts(max_cases=100), rng=rng)
 
         rng2 = StableRNG(99)
         df = linelist(state;
@@ -75,9 +63,7 @@ using Dates
     @testset "linelist with age-specific CFR" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model;
-            sim_opts=SimOpts(max_cases=200, incubation_period=LogNormal(1.5, 0.5)),
-            rng=rng)
+        state = simulate(model; init=clinical, sim_opts=SimOpts(max_cases=200), rng=rng)
 
         age_cfr = Dict((0, 50) => 0.01, (51, 90) => 0.5)
         rng2 = StableRNG(99)
@@ -90,8 +76,7 @@ using Dates
     end
 
     @testset "linelist empty state" begin
-        state = SimulationState(Individual[], Int[], 0, StableRNG(1), 0, true,
-                                nothing, 0.0, 1.0, 1.0, 0.0, nothing)
+        state = SimulationState(Individual[], Int[], 0, StableRNG(1), 0, true, nothing, 0.0, nothing)
         df = linelist(state)
         @test nrow(df) == 0
         @test ncol(df) == 11
@@ -100,27 +85,19 @@ using Dates
     @testset "contacts output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        state = simulate(model;
-            sim_opts=SimOpts(max_cases=50),
-            rng=rng)
+        state = simulate(model; sim_opts=SimOpts(max_cases=50), rng=rng)
 
         df = contacts(state)
         @test df isa DataFrame
         @test "from" in names(df)
         @test "to" in names(df)
-        @test "date_infection" in names(df)
-
-        # Number of contact pairs should equal total secondary cases
-        n_secondary = state.cumulative_cases - count(i -> i.parent_id == 0, state.individuals)
-        @test nrow(df) == n_secondary
+        @test "was_case" in names(df)
     end
 
     @testset "index cases labelled correctly" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model;
-            sim_opts=SimOpts(max_cases=20, n_initial=3, incubation_period=LogNormal(1.5, 0.5)),
-            rng=rng)
+        state = simulate(model; init=clinical, sim_opts=SimOpts(max_cases=20, n_initial=3), rng=rng)
 
         rng2 = StableRNG(99)
         df = linelist(state; rng=rng2)

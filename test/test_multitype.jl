@@ -64,17 +64,19 @@ using DataFrames
              0.5 0.4]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
+        # Run multiple simulations to reduce stochastic variation
+        n_type1_total = 0
+        n_type2_total = 0
         rng = StableRNG(42)
-        state = simulate(model;
-            sim_opts=SimOpts(max_cases=200),
-            rng=rng)
+        for _ in 1:20
+            state = simulate(model; sim_opts=SimOpts(max_cases=200), rng=rng)
+            infected = filter(is_infected, state.individuals)
+            n_type1_total += count(ind -> individual_type(ind) == 1, infected)
+            n_type2_total += count(ind -> individual_type(ind) == 2, infected)
+        end
 
-        infected = filter(is_infected, state.individuals)
-        n_type1 = count(ind -> individual_type(ind) == 1, infected)
-        n_type2 = count(ind -> individual_type(ind) == 2, infected)
-
-        # Type 1 should dominate since R₁ = 3.0 >> R₂ = 0.5
-        @test n_type1 > n_type2
+        # Type 1 should dominate across many simulations
+        @test n_type1_total > n_type2_total
     end
 
     @testset "NegBin offspring with matrix" begin
@@ -117,11 +119,12 @@ using DataFrames
              0.3 1.0]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
         iso = Isolation(delay=Exponential(1.0))
+        init_fn = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
 
         rng = StableRNG(42)
         state = simulate(model;
-            interventions=[iso],
-            sim_opts=SimOpts(max_cases=100, incubation_period=LogNormal(1.5, 0.5)),
+            interventions=[iso], init=init_fn,
+            sim_opts=SimOpts(max_cases=100),
             rng=rng)
 
         n_isolated = count(ind -> is_isolated(ind), state.individuals)

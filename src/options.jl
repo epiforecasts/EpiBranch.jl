@@ -1,21 +1,18 @@
 """
     SimOpts(; kwargs...)
 
-Options controlling simulation termination and setup.
+Options controlling simulation termination and setup. Contains only
+simulation control parameters — clinical and demographic properties
+are set via `init` functions and interventions.
 """
 Base.@kwdef struct SimOpts
     max_cases::Int = 10_000
     max_generations::Int = 100
     max_time::Float64 = Inf
     n_initial::Int = 1
-    incubation_period::Union{Distribution, Nothing} = nothing
-    prob_asymptomatic::Float64 = 0.0
-    asymptomatic_R_scaling::Float64 = 1.0
-    test_sensitivity::Float64 = 1.0
-    latent_period::Float64 = 0.0
 end
 
-# ── Phase 2: Output options ──────────────────────────────────────────
+# ── Output options ───────────────────────────────────────────────────
 
 """
     DelayOpts(; kwargs...)

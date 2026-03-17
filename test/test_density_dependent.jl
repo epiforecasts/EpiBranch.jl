@@ -24,14 +24,13 @@
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0); population_size=500)
         iso = Isolation(delay=Exponential(1.0))
+        init_fn = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
 
         state = simulate(model;
-            interventions=[iso],
-            sim_opts=SimOpts(max_cases=200, incubation_period=LogNormal(1.5, 0.5)),
-            rng=rng)
+            interventions=[iso], init=init_fn,
+            sim_opts=SimOpts(max_cases=200), rng=rng)
 
-        n_isolated = count(ind -> is_isolated(ind), state.individuals)
-        @test n_isolated > 0
+        @test count(is_isolated, state.individuals) > 0
     end
 
     @testset "Generation tracking works" begin
@@ -47,7 +46,7 @@
         model = BranchingProcess(Poisson(2.0), Exponential(5.0); population_size=500)
         state = simulate(model; sim_opts=SimOpts(max_cases=50), rng=rng)
 
-        for ind in state.individuals
+        for ind in filter(is_infected, state.individuals)
             if ind.parent_id > 0
                 parent_idx = findfirst(i -> i.id == ind.parent_id, state.individuals)
                 parent = state.individuals[parent_idx]

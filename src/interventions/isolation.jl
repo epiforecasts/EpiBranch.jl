@@ -3,13 +3,8 @@
 
 Isolate symptomatic, test-positive individuals after a delay from symptom onset.
 
-The reduction in transmission is determined by the generation time CDF
-evaluated at the isolation time (hazard-based formulation). With leaky
-isolation (`residual_transmission > 0`), some transmission continues
-after isolation.
-
-Requires `onset_time`, `asymptomatic`, and `test_positive` fields on individuals
-(set during individual creation by the engine).
+Requires fields on individuals (set via `clinical_presentation()`):
+`:onset_time`, `:asymptomatic`, `:test_positive`.
 
 Initialises: `:isolated`, `:isolation_time`.
 """
@@ -18,6 +13,8 @@ Base.@kwdef struct Isolation <: AbstractIntervention
     start_time::Float64 = 0.0
     residual_transmission::Float64 = 0.0
 end
+
+required_fields(::Isolation) = [:onset_time, :asymptomatic, :test_positive]
 
 function initialise_individual!(iso::Isolation, individual, state)
     individual.state[:isolated] = false

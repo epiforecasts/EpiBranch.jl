@@ -64,25 +64,17 @@ end
 
 # ── Offspring drawing ────────────────────────────────────────────────
 
-"""Single-type: draw from distribution, apply asymptomatic scaling."""
+"""Single-type: draw from distribution."""
 function _draw_offspring(rng::AbstractRNG, offspring::Distribution,
                          individual, state::SimulationState)
-    n = rand(rng, offspring)
-    if is_asymptomatic(individual) && state.asymptomatic_R_scaling < 1.0
-        n = rand(rng, Binomial(n, state.asymptomatic_R_scaling))
-    end
-    return n
+    return rand(rng, offspring)
 end
 
 """Multi-type: call offspring function with parent type."""
 function _draw_offspring(rng::AbstractRNG, offspring::Function,
                          individual, state::SimulationState)
     parent_type = individual_type(individual)
-    counts = offspring(rng, parent_type)
-    if is_asymptomatic(individual) && state.asymptomatic_R_scaling < 1.0
-        counts = [rand(rng, Binomial(c, state.asymptomatic_R_scaling)) for c in counts]
-    end
-    return counts
+    return offspring(rng, parent_type)
 end
 
 # ── Contact creation ─────────────────────────────────────────────────
@@ -98,7 +90,7 @@ function _create_contacts!(new_contacts, new_infected_indices,
         inf_time = parent.infection_time + gt
 
         contact = _create_individual(state, parent.id, parent.chain_id,
-                                      next_id, inf_time, interventions)
+                                          next_id, inf_time, interventions)
 
         infected = _resolve_infection(state.rng, parent, contact,
                                        gt, pop_suscept, residual)

@@ -64,20 +64,23 @@ struct BranchingProcess <: TransmissionModel
     offspring::OffspringSpec
     generation_time::GenerationTimeSpec
     population_size::Union{Int, Nothing}
+    latent_period::Float64
     n_types::Int
     type_labels::Union{Vector{String}, Nothing}
 end
 
-# Single-type constructor (existing API unchanged)
+# Single-type constructor
 BranchingProcess(offspring::Distribution, gt::GenerationTimeSpec;
-                 population_size::Union{Int, Nothing}=nothing) =
-    BranchingProcess(offspring, gt, population_size, 1, nothing)
+                 population_size::Union{Int, Nothing}=nothing,
+                 latent_period::Real=0.0) =
+    BranchingProcess(offspring, gt, population_size, Float64(latent_period), 1, nothing)
 
 # Multi-type with explicit offspring function
 BranchingProcess(offspring::Function, gt::GenerationTimeSpec;
                  n_types::Int, population_size::Union{Int, Nothing}=nothing,
+                 latent_period::Real=0.0,
                  type_labels::Union{Vector{String}, Nothing}=nothing) =
-    BranchingProcess(offspring, gt, population_size, n_types, type_labels)
+    BranchingProcess(offspring, gt, population_size, Float64(latent_period), n_types, type_labels)
 
 """
     BranchingProcess(offspring_matrix, dist_fn, generation_time; kwargs...)
@@ -94,6 +97,7 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
                           dist_fn::Function,
                           gt::GenerationTimeSpec;
                           population_size::Union{Int, Nothing}=nothing,
+                          latent_period::Real=0.0,
                           type_labels::Union{Vector{String}, Nothing}=nothing)
     n = size(offspring_matrix, 1)
     size(offspring_matrix, 2) == n || throw(ArgumentError(
@@ -129,7 +133,7 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
         return counts
     end
 
-    BranchingProcess(offspring_fn, gt, population_size, n, type_labels)
+    BranchingProcess(offspring_fn, gt, population_size, Float64(latent_period), n, type_labels)
 end
 
 # ── Individual state ────────────────────────────────────────────────
@@ -226,10 +230,7 @@ mutable struct SimulationState
     rng::AbstractRNG
     cumulative_cases::Int
     extinct::Bool
-    incubation_period::Union{Distribution, Nothing}
-    prob_asymptomatic::Float64
-    asymptomatic_R_scaling::Float64
-    test_sensitivity::Float64
-    latent_period::Float64
     population_size::Union{Int, Nothing}
+    latent_period::Float64
+    init::Union{Function, Nothing}
 end

@@ -50,6 +50,9 @@ export individual_type, set_isolated!
 export NegBin, scale_distribution, ringbp_generation_time
 export Borel, GammaBorel, chain_size_distribution
 
+# Exports — init functions
+export clinical_presentation, demographics, compose
+
 # Exports — simulation
 export simulate, simulate_batch, simulate_conditioned
 
