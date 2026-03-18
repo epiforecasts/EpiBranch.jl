@@ -84,6 +84,7 @@ GammaBorel
 
 ```@docs
 clinical_presentation
+testing
 demographics
 compose
 ```
