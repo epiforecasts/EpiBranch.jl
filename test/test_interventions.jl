@@ -9,12 +9,12 @@
 
         rng1 = StableRNG(42)
         results_no_iso = simulate_batch(model, 100;
-            init=clinical, sim_opts=SimOpts(max_cases=200), rng=rng1)
+            attributes=clinical, sim_opts=SimOpts(max_cases=200), rng=rng1)
 
         rng2 = StableRNG(42)
         iso = Isolation(delay=Exponential(2.0))
         results_iso = simulate_batch(model, 100;
-            interventions=[iso], init=clinical,
+            interventions=[iso], attributes=clinical,
             sim_opts=SimOpts(max_cases=200), rng=rng2)
 
         ext_no_iso = count(s -> s.extinct, results_no_iso)
@@ -29,7 +29,7 @@
         ct = ContactTracing(probability=1.0, delay=Exponential(1.0))
 
         state = simulate(model;
-            interventions=[iso, ct], init=clinical,
+            interventions=[iso, ct], attributes=clinical,
             sim_opts=SimOpts(max_cases=50), rng=rng)
 
         n_traced = count(is_traced, state.individuals)
@@ -51,7 +51,7 @@
         iso = Isolation(delay=Exponential(1.0), start_time=1000.0)
 
         state = simulate(model;
-            interventions=[iso], init=clinical,
+            interventions=[iso], attributes=clinical,
             sim_opts=SimOpts(max_cases=50), rng=rng)
 
         @test all(ind -> ind.infection_time < 1000.0, state.individuals)
@@ -67,7 +67,7 @@
         )
 
         state = simulate(model;
-            interventions=[iso], init=clinical_asymp,
+            interventions=[iso], attributes=clinical_asymp,
             sim_opts=SimOpts(max_cases=500), rng=rng)
 
         for ind in state.individuals
@@ -81,13 +81,13 @@
     @testset "Test sensitivity affects isolation" begin
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         iso = Isolation(delay=Exponential(1.0))
-        clinical_no_test = clinical_presentation(
-            incubation_period=LogNormal(1.5, 0.5),
-            test_sensitivity=0.0,
+        clinical_no_test = compose(
+            clinical_presentation(incubation_period=LogNormal(1.5, 0.5)),
+            testing(sensitivity=0.0),
         )
 
         state = simulate(model;
-            interventions=[iso], init=clinical_no_test,
+            interventions=[iso], attributes=clinical_no_test,
             sim_opts=SimOpts(max_cases=100), rng=StableRNG(42))
 
         n_isolated = count(is_isolated, state.individuals)
@@ -100,13 +100,13 @@
         rng1 = StableRNG(42)
         iso_fast = Isolation(delay=Exponential(0.5))
         results_fast = simulate_batch(model, 200;
-            interventions=[iso_fast], init=clinical,
+            interventions=[iso_fast], attributes=clinical,
             sim_opts=SimOpts(max_cases=200), rng=rng1)
 
         rng2 = StableRNG(42)
         iso_slow = Isolation(delay=Exponential(10.0))
         results_slow = simulate_batch(model, 200;
-            interventions=[iso_slow], init=clinical,
+            interventions=[iso_slow], attributes=clinical,
             sim_opts=SimOpts(max_cases=200), rng=rng2)
 
         @test containment_probability(results_fast) >= containment_probability(results_slow)
@@ -119,7 +119,7 @@
         ct = ContactTracing(probability=0.5, delay=Exponential(1.0))
 
         state = simulate(model;
-            interventions=[iso, ct], init=clinical,
+            interventions=[iso, ct], attributes=clinical,
             sim_opts=SimOpts(max_cases=20), rng=rng)
 
         for ind in state.individuals
@@ -145,7 +145,7 @@
         )
 
         state = simulate(model;
-            init=init_fn, sim_opts=SimOpts(max_cases=50), rng=rng)
+            attributes=init_fn, sim_opts=SimOpts(max_cases=50), rng=rng)
 
         ind = state.individuals[1]
         @test haskey(ind.state, :onset_time)

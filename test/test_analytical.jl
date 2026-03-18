@@ -180,7 +180,7 @@
             data = [1, 1, 2, 1]
             ll = chain_size_ll(data, model;
                 interventions=[iso],
-                init=clinical_presentation(incubation_period=LogNormal(1.5, 0.5)),
+                attributes=clinical_presentation(incubation_period=LogNormal(1.5, 0.5)),
                 n_sim=5000, rng=StableRNG(42))
             @test isfinite(ll)
         end

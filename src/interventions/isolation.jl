@@ -14,7 +14,7 @@ Base.@kwdef struct Isolation <: AbstractIntervention
     residual_transmission::Float64 = 0.0
 end
 
-required_fields(::Isolation) = [:onset_time, :asymptomatic, :test_positive]
+required_fields(::Isolation) = [:onset_time, :asymptomatic]
 
 function initialise_individual!(iso::Isolation, individual, state)
     individual.state[:isolated] = false

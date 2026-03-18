@@ -19,7 +19,7 @@ model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5))
 
 rng = StableRNG(42)
 state = simulate_conditioned(model, 50:200;
-    init = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     sim_opts = SimOpts(max_cases = 200),
     rng = rng,
 )
@@ -96,7 +96,7 @@ Generate outbreaks of a specific size range:
 ```@example linelist
 rng = StableRNG(42)
 state = simulate_conditioned(model, 100:150;
-    init = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     sim_opts = SimOpts(max_cases = 200),
     rng = rng,
 )

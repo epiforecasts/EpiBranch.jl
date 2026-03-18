@@ -28,7 +28,7 @@ iso = Isolation(delay = Exponential(2.0))
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
     interventions = [iso],
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
@@ -44,7 +44,7 @@ for d in [0.5, 2.0, 10.0]
     rng = StableRNG(42)
     results = simulate_batch(model, 200;
         interventions = [iso],
-        init = clinical,
+        attributes = clinical,
         sim_opts = SimOpts(max_cases = 500),
         rng = rng,
     )
@@ -63,7 +63,7 @@ iso_leaky = Isolation(delay = Exponential(2.0), residual_transmission = 0.3)
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
     interventions = [iso_leaky],
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
@@ -82,7 +82,7 @@ ct = ContactTracing(probability = 0.7, delay = Exponential(1.0), quarantine_on_t
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
     interventions = [iso, ct],
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
@@ -96,16 +96,18 @@ means some symptomatic cases are also missed. Both are configured via
 [`clinical_presentation`](@ref):
 
 ```@example interventions
-clinical_hard = clinical_presentation(
-    incubation_period = LogNormal(1.5, 0.5),
-    prob_asymptomatic = 0.3,
-    test_sensitivity = 0.8,
+clinical_hard = compose(
+    clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5),
+        prob_asymptomatic = 0.3,
+    ),
+    testing(sensitivity = 0.8),
 )
 
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
     interventions = [iso, ct],
-    init = clinical_hard,
+    attributes = clinical_hard,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
@@ -121,7 +123,7 @@ effort is fully trackable:
 rng = StableRNG(42)
 state = simulate_conditioned(model, 50:200;
     interventions = [iso, ct],
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 200),
     rng = rng,
 )

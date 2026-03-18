@@ -1,22 +1,22 @@
 """
-    simulate(model::TransmissionModel; interventions=[], init=nothing,
+    simulate(model::TransmissionModel; interventions=[], attributes=nothing,
              sim_opts=SimOpts(), rng=Random.default_rng())
 
 Run a single outbreak simulation.
 
 - `model`: transmission model (e.g. `BranchingProcess`)
 - `interventions`: vector of `AbstractIntervention`
-- `init`: function `(rng, individual) -> nothing` that sets attributes on
+- `attributes`: function `(rng, individual) -> nothing` that sets attributes on
   new individuals (clinical state, demographics, etc.), or `nothing`
 - `sim_opts`: simulation control (max_cases, max_generations, etc.)
 - `rng`: random number generator
 """
 function simulate(model::TransmissionModel;
                   interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
-                  init::Union{Function, Nothing}=nothing,
+                  attributes::Union{Function, Nothing}=nothing,
                   sim_opts::SimOpts=SimOpts(),
                   rng::AbstractRNG=Random.default_rng())
-    state = initialise_state(model, sim_opts, interventions, init, rng)
+    state = initialise_state(model, sim_opts, interventions, attributes, rng)
 
     # Validate required fields after first individual is initialised
     if !isempty(state.individuals)
@@ -37,10 +37,10 @@ Run `n` independent outbreak simulations. Returns a vector of `SimulationState`.
 """
 function simulate_batch(model::TransmissionModel, n::Int;
                         interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
-                        init::Union{Function, Nothing}=nothing,
+                        attributes::Union{Function, Nothing}=nothing,
                         sim_opts::SimOpts=SimOpts(),
                         rng::AbstractRNG=Random.default_rng())
-    [simulate(model; interventions, init, sim_opts, rng) for _ in 1:n]
+    [simulate(model; interventions, attributes, sim_opts, rng) for _ in 1:n]
 end
 
 """
@@ -52,11 +52,11 @@ Run simulations until one produces an outbreak within `size_range`.
 function simulate_conditioned(model::TransmissionModel, size_range::UnitRange{Int};
                               max_attempts::Int=10_000,
                               interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
-                              init::Union{Function, Nothing}=nothing,
+                              attributes::Union{Function, Nothing}=nothing,
                               sim_opts::SimOpts=SimOpts(),
                               rng::AbstractRNG=Random.default_rng())
     for _ in 1:max_attempts
-        state = simulate(model; interventions, init, sim_opts, rng)
+        state = simulate(model; interventions, attributes, sim_opts, rng)
         state.cumulative_cases in size_range && return state
     end
     throw(ErrorException(
@@ -91,7 +91,7 @@ function _get_n_types(model::TransmissionModel)
 end
 
 function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
-                          interventions, init, rng::AbstractRNG)
+                          interventions, attributes, rng::AbstractRNG)
     individuals = Individual[]
 
     temp_state = SimulationState(
@@ -103,7 +103,7 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         false,
         _get_population_size(model),
         _get_latent_period(model),
-        init,
+        attributes,
     )
 
     n_types = _get_n_types(model)
@@ -150,7 +150,7 @@ end
 """
     _create_individual(state, parent_id, chain_id, next_id, inf_time, interventions)
 
-Create a new Individual. The `state.init` function (if provided) sets
+Create a new Individual. The `state.attributes` function (if provided) sets
 clinical/demographic attributes. Then each intervention's `initialise_individual!`
 sets intervention state.
 """
@@ -168,9 +168,9 @@ function _create_individual(state::SimulationState, parent_id::Int,
         state=s,
     )
 
-    # User-provided init function sets clinical/demographic attributes
-    if state.init !== nothing
-        state.init(state.rng, ind)
+    # User-provided attributes function sets clinical/demographic attributes
+    if state.attributes !== nothing
+        state.attributes(state.rng, ind)
     end
 
     # Each intervention initialises its own fields
@@ -184,24 +184,20 @@ end
 # ── Init function constructors ───────────────────────────────────────
 
 """
-    clinical_presentation(; incubation_period, prob_asymptomatic=0.0,
-                           test_sensitivity=1.0)
+    clinical_presentation(; incubation_period, prob_asymptomatic=0.0)
 
-Return an init function that sets clinical attributes on individuals:
-`:onset_time`, `:asymptomatic`, `:test_positive`.
+Return an attributes function that sets clinical attributes on individuals:
+`:onset_time`, `:asymptomatic`.
 
 These fields are required by [`Isolation`](@ref) and read by
 [`ContactTracing`](@ref).
 """
 function clinical_presentation(; incubation_period::Distribution,
-                                 prob_asymptomatic::Real=0.0,
-                                 test_sensitivity::Real=1.0)
+                                 prob_asymptomatic::Real=0.0)
     pa = Float64(prob_asymptomatic)
-    ts = Float64(test_sensitivity)
     return function (rng, ind)
         is_asymp = rand(rng) < pa
         ind.state[:asymptomatic] = is_asymp
-        ind.state[:test_positive] = !is_asymp && rand(rng) < ts
         ind.state[:onset_time] = if !is_asymp
             ind.infection_time + rand(rng, incubation_period)
         else
@@ -211,9 +207,26 @@ function clinical_presentation(; incubation_period::Distribution,
 end
 
 """
+    testing(; sensitivity=1.0)
+
+Return an attributes function that sets `:test_positive` on individuals.
+Asymptomatic individuals always test negative. Symptomatic individuals
+test positive with the given sensitivity.
+
+Requires `:asymptomatic` to be set (e.g. via [`clinical_presentation`](@ref)).
+"""
+function testing(; sensitivity::Real=1.0)
+    ts = Float64(sensitivity)
+    return function (rng, ind)
+        is_asymp = get(ind.state, :asymptomatic, false)
+        ind.state[:test_positive] = !is_asymp && rand(rng) < ts
+    end
+end
+
+"""
     demographics(; age_distribution=nothing, age_range=(0, 90), prob_female=0.5)
 
-Return an init function that sets demographic attributes on individuals:
+Return an attributes function that sets demographic attributes on individuals:
 `:age`, `:sex`.
 """
 function demographics(; age_distribution::Union{Distribution, Nothing}=nothing,
@@ -233,10 +246,10 @@ end
 """
     compose(fs...)
 
-Compose multiple init functions into one. Functions are called in order.
+Compose multiple attributes functions into one. Functions are called in order.
 
 ```julia
-init = compose(
+attributes = compose(
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     demographics(age_distribution = Normal(40, 15)),
 )
@@ -271,11 +284,11 @@ end
 
 function _field_hint(field::Symbol)
     hints = Dict(
-        :onset_time => "Provide init = clinical_presentation(incubation_period = ...).",
-        :asymptomatic => "Provide init = clinical_presentation(incubation_period = ...).",
-        :test_positive => "Provide init = clinical_presentation(incubation_period = ...).",
-        :age => "Provide init = demographics(age_distribution = ...).",
-        :sex => "Provide init = demographics(...).",
+        :onset_time => "Provide attributes = clinical_presentation(incubation_period = ...).",
+        :asymptomatic => "Provide attributes = clinical_presentation(incubation_period = ...).",
+        :test_positive => "Provide attributes = clinical_presentation(incubation_period = ...).",
+        :age => "Provide attributes = demographics(age_distribution = ...).",
+        :sex => "Provide attributes = demographics(...).",
     )
-    return get(hints, field, "Set this field via an init function.")
+    return get(hints, field, "Set this field via an attributes function.")
 end

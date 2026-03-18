@@ -3,7 +3,7 @@
 
 Options controlling simulation termination and setup. Contains only
 simulation control parameters — clinical and demographic properties
-are set via `init` functions and interventions.
+are set via `attributes` functions and interventions.
 """
 Base.@kwdef struct SimOpts
     max_cases::Int = 10_000

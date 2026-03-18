@@ -1,35 +1,36 @@
 # EpiBranch.jl
 
-A unified framework for stochastic branching process simulation of infectious
-disease outbreaks.
+Stochastic branching process simulation for infectious disease epidemiology.
 
-EpiBranch.jl combines the functionality of several R packages into a single
-Julia package with a shared simulation engine:
+EpiBranch.jl brings together the functionality of several R packages into
+a single Julia package with one shared simulation engine:
 
 - **Outbreak simulation with interventions** (cf. [ringbp](https://github.com/epiforecasts/ringbp))
 - **Line list and contact tracing data** (cf. [simulist](https://github.com/epiverse-trace/simulist))
 - **Chain statistics and likelihood** (cf. [epichains](https://github.com/epiverse-trace/epichains))
 - **Offspring distribution analytics** (cf. [superspreading](https://github.com/epiverse-trace/superspreading))
 
-## Key design principles
+## Design
 
-1. **Offspring draw decoupled from timing and interventions.** The branching
-   process generates contacts; generation times assign timing; interventions
-   act as competing risks. See [Design](design.md).
+1. **Offspring draw is decoupled from timing and interventions.** Contacts
+   are drawn from a branching process, with the generation time distribution
+   used to assign timing. Interventions then act as competing risks on
+   whether each contact is actually infected. See [Design](design.md).
 
-2. **Composable interventions.** Isolation, contact tracing, and future
-   interventions (vaccination, PEP) stack in a vector and operate through
-   the same mechanism.
+2. **Interventions are composable.** Isolation, contact tracing, vaccination,
+   and PEP all stack in a vector and operate through the same hooks.
 
-3. **Full contact tracking.** Every potential transmission is stored — infected
-   and non-infected — enabling effort metrics and simulist-style contacts tables.
+3. **All contacts are tracked.** Every potential transmission event is stored
+   (infected and non-infected), so you can compute effort metrics, build
+   simulist-style contacts tables, and track who was traced or vaccinated.
 
-4. **Simulation-based likelihood.** Estimate offspring parameters under
-   interventions using the same engine that runs forward simulations.
+4. **Likelihood evaluation uses the same engine.** You can estimate offspring
+   parameters under interventions with the same simulation code used for
+   forward simulation.
 
-5. **Extensible individuals.** The `state` dict on each individual holds
-   any data you need — interventions define their own fields, users add
-   demographics or custom state.
+5. **Individuals are extensible.** Each individual carries a `state` dict
+   where interventions and attributes functions set their own fields. You add
+   demographics, risk groups, or anything else without modifying the engine.
 
 ## Quick start
 
@@ -49,7 +50,7 @@ ct = ContactTracing(probability = 0.5, delay = Exponential(1.5))
 rng = StableRNG(42)
 results = simulate_batch(model, 500;
     interventions = [iso, ct],
-    init = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     sim_opts = SimOpts(max_cases = 5000),
     rng = rng,
 )

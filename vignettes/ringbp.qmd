@@ -37,7 +37,7 @@ clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 ```{julia}
 rng = Xoshiro(42)
 state = simulate(model;
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 5000),
     rng = rng
 )
@@ -54,7 +54,7 @@ iso = Isolation(delay = LogNormal(1.0, 0.5))
 rng = Xoshiro(42)
 results_iso = simulate_batch(model, 500;
     interventions = [iso],
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 5000, max_generations = 50),
     rng = rng
 )
@@ -71,7 +71,7 @@ ct = ContactTracing(probability = 0.5, delay = Exponential(2.0))
 rng = Xoshiro(42)
 results_both = simulate_batch(model, 500;
     interventions = [iso, ct],
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 5000, max_generations = 50),
     rng = rng
 )
@@ -91,7 +91,7 @@ clinical_asymp = clinical_presentation(
 rng = Xoshiro(42)
 results_asymp = simulate_batch(model, 500;
     interventions = [iso, ct],
-    init = clinical_asymp,
+    attributes = clinical_asymp,
     sim_opts = SimOpts(max_cases = 5000, max_generations = 50),
     rng = rng
 )
@@ -111,7 +111,7 @@ for p in trace_probs
     local rng = Xoshiro(42)
     local results = simulate_batch(model, 500;
         interventions = [iso, ct_sweep],
-        init = clinical,
+        attributes = clinical,
         sim_opts = SimOpts(max_cases = 5000, max_generations = 50),
         rng = rng
     )
@@ -131,7 +131,7 @@ sweep_df
 rng = Xoshiro(42)
 state = simulate_conditioned(model, 50:500;
     interventions = [iso, ct],
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng
 )
@@ -174,7 +174,7 @@ iso_leaky = Isolation(delay = LogNormal(1.0, 0.5), residual_transmission = 0.3)
 rng1 = Xoshiro(42)
 results_perfect = simulate_batch(model, 500;
     interventions = [iso_perfect],
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 5000),
     rng = rng1
 )
@@ -182,7 +182,7 @@ results_perfect = simulate_batch(model, 500;
 rng2 = Xoshiro(42)
 results_leaky = simulate_batch(model, 500;
     interventions = [iso_leaky],
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 5000),
     rng = rng2
 )
@@ -199,7 +199,7 @@ model_ringbp = BranchingProcess(NegBin(2.5, 0.16), gt_fn)
 
 rng = Xoshiro(42)
 state = simulate(model_ringbp;
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 100),
     rng = rng
 )

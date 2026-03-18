@@ -66,12 +66,12 @@ the R packages cannot do because epichains and ringbp are separate codebases.
 """
 function chain_size_ll(data::AbstractVector{<:Integer}, model::TransmissionModel;
                        interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
-                       init::Union{Function, Nothing}=nothing,
+                       attributes::Union{Function, Nothing}=nothing,
                        sim_opts::SimOpts=SimOpts(),
                        n_sim::Int=10_000,
                        rng::AbstractRNG=Random.default_rng())
     # Simulate chains
-    states = simulate_batch(model, n_sim; interventions, init, sim_opts, rng)
+    states = simulate_batch(model, n_sim; interventions, attributes, sim_opts, rng)
 
     # Collect all chain sizes
     sim_sizes = Int[]
@@ -114,11 +114,11 @@ transmission model, optionally with interventions.
 """
 function chain_length_ll(data::AbstractVector{<:Integer}, model::TransmissionModel;
                          interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
-                         init::Union{Function, Nothing}=nothing,
+                         attributes::Union{Function, Nothing}=nothing,
                          sim_opts::SimOpts=SimOpts(),
                          n_sim::Int=10_000,
                          rng::AbstractRNG=Random.default_rng())
-    states = simulate_batch(model, n_sim; interventions, init, sim_opts, rng)
+    states = simulate_batch(model, n_sim; interventions, attributes, sim_opts, rng)
 
     sim_lengths = Int[]
     for state in states

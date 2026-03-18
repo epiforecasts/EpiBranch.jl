@@ -123,7 +123,7 @@ using DataFrames
 
         rng = StableRNG(42)
         state = simulate(model;
-            interventions=[iso], init=init_fn,
+            interventions=[iso], attributes=init_fn,
             sim_opts=SimOpts(max_cases=100),
             rng=rng)
 

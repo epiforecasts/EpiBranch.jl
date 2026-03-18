@@ -82,7 +82,7 @@ iso = Isolation(delay = Exponential(2.0))
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
     interventions = [iso],
-    init = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )

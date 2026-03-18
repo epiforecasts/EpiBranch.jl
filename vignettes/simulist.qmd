@@ -32,7 +32,7 @@ clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
 rng = Xoshiro(42)
 state = simulate_conditioned(model, 50:200;
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 200),
     rng = rng
 )
@@ -121,7 +121,7 @@ Use rejection sampling to generate outbreaks of a specific size:
 ```{julia}
 rng = Xoshiro(42)
 state = simulate_conditioned(model, 30:100;
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 200),
     rng = rng,
 )
@@ -137,7 +137,7 @@ Generate both line list and contacts from the same simulation:
 rng = Xoshiro(42)
 model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5))
 state = simulate_conditioned(model, 50:200;
-    init = clinical,
+    attributes = clinical,
     sim_opts = SimOpts(max_cases = 200, n_initial = 3),
     rng = rng,
 )

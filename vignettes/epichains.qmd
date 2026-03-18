@@ -128,7 +128,7 @@ println("LL (simulation-based): ", round(ll_sim, digits = 2))
 println("LL (analytical):       ", round(ll_mid, digits = 2))
 ```
 
-The key advantage: simulation-based likelihood works with **interventions**:
+The advantage here: simulation-based likelihood works with **interventions**:
 
 ```{julia}
 # Likelihood under a model with isolation
@@ -137,7 +137,7 @@ model_with_iso = BranchingProcess(Poisson(2.0), Exponential(5.0))
 
 ll_with_iso = chain_size_ll(observed_sizes, model_with_iso;
     interventions = [iso],
-    init = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     n_sim = 5_000,
     rng = Xoshiro(42)
 )

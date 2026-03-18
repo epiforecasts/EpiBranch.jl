@@ -85,15 +85,15 @@ iso = Isolation(delay = Exponential(2.0))
 
 ll = chain_size_ll(data, model;
     interventions = [iso],
-    init = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     n_sim = 5000,
     rng = StableRNG(42),
 )
 println("LL with interventions: $(round(ll, digits=2))")
 ```
 
-This is the key synthesis — the same simulation engine that runs forward
-simulations also evaluates likelihoods, including under interventions.
+This is the same simulation engine used for forward simulation — it also
+evaluates likelihoods, including under interventions.
 
 ## Chain length likelihood
 

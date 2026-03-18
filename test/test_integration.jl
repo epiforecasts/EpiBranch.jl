@@ -49,7 +49,7 @@ using Dates
         ct = ContactTracing(probability=0.5, delay=Exponential(2.0))
 
         results = simulate_batch(model, 500;
-            interventions=[iso, ct], init=clinical,
+            interventions=[iso, ct], attributes=clinical,
             sim_opts=SimOpts(max_cases=5000, max_generations=50),
             rng=rng)
 
@@ -61,7 +61,7 @@ using Dates
         model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5))
 
         state = simulate(model;
-            init=clinical,
+            attributes=clinical,
             sim_opts=SimOpts(max_cases=100, n_initial=3),
             rng=rng)
 
@@ -82,13 +82,13 @@ using Dates
         rng1 = StableRNG(42)
         iso_perfect = Isolation(delay=Exponential(1.0), residual_transmission=0.0)
         results_perfect = simulate_batch(model, 200;
-            interventions=[iso_perfect], init=clinical,
+            interventions=[iso_perfect], attributes=clinical,
             sim_opts=SimOpts(max_cases=200), rng=rng1)
 
         rng2 = StableRNG(42)
         iso_leaky = Isolation(delay=Exponential(1.0), residual_transmission=0.5)
         results_leaky = simulate_batch(model, 200;
-            interventions=[iso_leaky], init=clinical,
+            interventions=[iso_leaky], attributes=clinical,
             sim_opts=SimOpts(max_cases=200), rng=rng2)
 
         @test containment_probability(results_perfect) >= containment_probability(results_leaky)
@@ -101,7 +101,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(NegBin(2.5, 0.16), gt_fn)
         state = simulate(model;
-            init=clinical, sim_opts=SimOpts(max_cases=50), rng=rng)
+            attributes=clinical, sim_opts=SimOpts(max_cases=50), rng=rng)
         @test state.cumulative_cases > 0
     end
 

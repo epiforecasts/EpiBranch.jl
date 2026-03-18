@@ -232,5 +232,5 @@ mutable struct SimulationState
     extinct::Bool
     population_size::Union{Int, Nothing}
     latent_period::Float64
-    init::Union{Function, Nothing}
+    attributes::Union{Function, Nothing}
 end

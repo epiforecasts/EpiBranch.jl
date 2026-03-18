@@ -27,7 +27,7 @@
         init_fn = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
 
         state = simulate(model;
-            interventions=[iso], init=init_fn,
+            interventions=[iso], attributes=init_fn,
             sim_opts=SimOpts(max_cases=200), rng=rng)
 
         @test count(is_isolated, state.individuals) > 0

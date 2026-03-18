@@ -7,7 +7,7 @@ using Dates
     @testset "linelist basic output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model; init=clinical, sim_opts=SimOpts(max_cases=50), rng=rng)
+        state = simulate(model; attributes=clinical, sim_opts=SimOpts(max_cases=50), rng=rng)
 
         rng2 = StableRNG(99)
         df = linelist(state; rng=rng2)
@@ -22,7 +22,7 @@ using Dates
     @testset "linelist with delays" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model; init=clinical, sim_opts=SimOpts(max_cases=30), rng=rng)
+        state = simulate(model; attributes=clinical, sim_opts=SimOpts(max_cases=30), rng=rng)
 
         rng2 = StableRNG(99)
         df = linelist(state;
@@ -45,7 +45,7 @@ using Dates
     @testset "linelist demographics" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model; init=clinical, sim_opts=SimOpts(max_cases=100), rng=rng)
+        state = simulate(model; attributes=clinical, sim_opts=SimOpts(max_cases=100), rng=rng)
 
         rng2 = StableRNG(99)
         df = linelist(state;
@@ -62,8 +62,9 @@ using Dates
 
     @testset "linelist with age-specific CFR" begin
         rng = StableRNG(42)
-        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model; init=clinical, sim_opts=SimOpts(max_cases=200), rng=rng)
+        model = BranchingProcess(Poisson(2.0), Exponential(5.0))
+        state = simulate_conditioned(model, 50:500;
+            attributes=clinical, sim_opts=SimOpts(max_cases=500), rng=rng)
 
         age_cfr = Dict((0, 50) => 0.01, (51, 90) => 0.5)
         rng2 = StableRNG(99)
@@ -97,7 +98,7 @@ using Dates
     @testset "index cases labelled correctly" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model; init=clinical, sim_opts=SimOpts(max_cases=20, n_initial=3), rng=rng)
+        state = simulate(model; attributes=clinical, sim_opts=SimOpts(max_cases=20, n_initial=3), rng=rng)
 
         rng2 = StableRNG(99)
         df = linelist(state; rng=rng2)

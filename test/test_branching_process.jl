@@ -49,7 +49,7 @@
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         init_fn = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
         state = simulate(model;
-            init=init_fn,
+            attributes=init_fn,
             sim_opts=SimOpts(max_cases=50),
             rng=rng)
 
