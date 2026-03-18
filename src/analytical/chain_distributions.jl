@@ -94,3 +94,15 @@ function chain_size_distribution(d::NegativeBinomial)
     R = mean(d)
     GammaBorel(k, R)
 end
+
+"""
+    chain_size_distribution(model::BranchingProcess)
+
+Return the analytical chain size distribution for a single-type branching
+process model, extracted from its offspring distribution.
+"""
+function chain_size_distribution(model::BranchingProcess)
+    model.offspring isa Distribution || throw(ArgumentError(
+        "Analytical chain size distribution only available for single-type models"))
+    return chain_size_distribution(model.offspring)
+end

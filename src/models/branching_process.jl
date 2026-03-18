@@ -30,7 +30,8 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
         offspring_result = _draw_offspring(state.rng, model.offspring, individual, state)
 
         # Create contacts and resolve infection
-        gt_dist = get_generation_time(model.generation_time, individual)
+        gt_dist = model.generation_time === nothing ? nothing :
+            get_generation_time(model.generation_time, individual)
         residual = _residual_fraction(interventions)
 
         next_id = _create_contacts!(new_contacts, new_infected_indices,
@@ -85,9 +86,15 @@ function _create_contacts!(new_contacts, new_infected_indices,
                            gt_dist, pop_suscept, residual,
                            interventions, next_id)
     for _ in 1:n_contacts
-        gt = rand(state.rng, gt_dist)
-        gt = max(gt, state.latent_period)
-        inf_time = parent.infection_time + gt
+        if gt_dist === nothing
+            # No generation time — pure chain statistics, no timing
+            gt = 0.0
+            inf_time = parent.infection_time
+        else
+            gt = rand(state.rng, gt_dist)
+            gt = max(gt, state.latent_period)
+            inf_time = parent.infection_time + gt
+        end
 
         contact = _create_individual(state, parent.id, parent.chain_id,
                                           next_id, inf_time, interventions)
@@ -111,9 +118,14 @@ function _create_contacts!(new_contacts, new_infected_indices,
                            interventions, next_id)
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
-            gt = rand(state.rng, gt_dist)
-            gt = max(gt, state.latent_period)
-            inf_time = parent.infection_time + gt
+            if gt_dist === nothing
+                gt = 0.0
+                inf_time = parent.infection_time
+            else
+                gt = rand(state.rng, gt_dist)
+                gt = max(gt, state.latent_period)
+                inf_time = parent.infection_time + gt
+            end
 
             contact = _create_individual(state, parent.id, parent.chain_id,
                                           next_id, inf_time, interventions)

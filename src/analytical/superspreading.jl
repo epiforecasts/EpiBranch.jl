@@ -46,3 +46,21 @@ function proportion_transmission(R::Real, k::Real; prop_cases::Real=0.2)
 
     return 1.0 - lorenz_bottom
 end
+
+"""
+    proportion_transmission(model::BranchingProcess; prop_cases=0.2)
+
+Proportion of transmission from the most infectious fraction of cases,
+extracted from the model's offspring distribution (must be NegativeBinomial).
+"""
+proportion_transmission(d::NegativeBinomial; prop_cases::Real=0.2) =
+    proportion_transmission(mean(d), d.r; prop_cases)
+
+proportion_transmission(d::Poisson; prop_cases::Real=0.2) =
+    proportion_transmission(mean(d), 1e6; prop_cases)
+
+function proportion_transmission(model::BranchingProcess; prop_cases::Real=0.2)
+    model.offspring isa Distribution || throw(ArgumentError(
+        "Analytical proportion_transmission only available for single-type models"))
+    return proportion_transmission(model.offspring; prop_cases)
+end

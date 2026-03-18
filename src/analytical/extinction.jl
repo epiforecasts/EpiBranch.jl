@@ -73,3 +73,25 @@ Probability of a major epidemic for a given offspring distribution.
 """
 epidemic_probability(d::Distribution; kwargs...) =
     1.0 - extinction_probability(d; kwargs...)
+
+# ── BranchingProcess dispatch ────────────────────────────────────────
+
+"""
+    extinction_probability(model::BranchingProcess; kwargs...)
+
+Extinction probability for a single-type branching process, extracted
+from the model's offspring distribution.
+"""
+function extinction_probability(model::BranchingProcess; kwargs...)
+    model.offspring isa Distribution || throw(ArgumentError(
+        "Analytical extinction probability only available for single-type models"))
+    return extinction_probability(model.offspring; kwargs...)
+end
+
+"""
+    epidemic_probability(model::BranchingProcess; kwargs...)
+
+Epidemic probability for a single-type branching process.
+"""
+epidemic_probability(model::BranchingProcess; kwargs...) =
+    1.0 - extinction_probability(model; kwargs...)

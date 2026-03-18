@@ -62,18 +62,23 @@ Multi-type with custom offspring function:
 """
 struct BranchingProcess <: TransmissionModel
     offspring::OffspringSpec
-    generation_time::GenerationTimeSpec
+    generation_time::Union{GenerationTimeSpec, Nothing}
     population_size::Union{Int, Nothing}
     latent_period::Float64
     n_types::Int
     type_labels::Union{Vector{String}, Nothing}
 end
 
-# Single-type constructor
+# Single-type with generation time
 BranchingProcess(offspring::Distribution, gt::GenerationTimeSpec;
                  population_size::Union{Int, Nothing}=nothing,
                  latent_period::Real=0.0) =
     BranchingProcess(offspring, gt, population_size, Float64(latent_period), 1, nothing)
+
+# Single-type without generation time (pure chain statistics, no timing)
+BranchingProcess(offspring::Distribution;
+                 population_size::Union{Int, Nothing}=nothing) =
+    BranchingProcess(offspring, nothing, population_size, 0.0, 1, nothing)
 
 # Multi-type with explicit offspring function
 BranchingProcess(offspring::Function, gt::GenerationTimeSpec;
