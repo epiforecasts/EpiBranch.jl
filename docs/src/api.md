@@ -80,6 +80,14 @@ Borel
 GammaBorel
 ```
 
+## Init functions
+
+```@docs
+clinical_presentation
+demographics
+compose
+```
+
 ## Convenience constructors
 
 ```@docs
@@ -102,4 +110,6 @@ EpiBranch._susceptible_fraction
 EpiBranch._residual_fraction
 EpiBranch._create_individual
 EpiBranch.logsumexp
+EpiBranch.required_fields
+EpiBranch._validate_required_fields
 ```

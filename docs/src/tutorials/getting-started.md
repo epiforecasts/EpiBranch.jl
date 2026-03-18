@@ -41,15 +41,13 @@ outbreak metadata.
 ## Adding clinical parameters
 
 To model symptom onset (needed for isolation-based interventions), provide
-an incubation period distribution:
+an incubation period distribution via [`clinical_presentation`](@ref):
 
 ```@example gettingstarted
 rng = StableRNG(42)
 state = simulate(model;
-    sim_opts = SimOpts(
-        max_cases = 500,
-        incubation_period = LogNormal(1.5, 0.5),
-    ),
+    init = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
 
@@ -69,10 +67,8 @@ ct = ContactTracing(probability = 0.5, delay = Exponential(1.5))
 rng = StableRNG(42)
 state = simulate(model;
     interventions = [iso, ct],
-    sim_opts = SimOpts(
-        max_cases = 500,
-        incubation_period = LogNormal(1.5, 0.5),
-    ),
+    init = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
 println("Cases: $(state.cumulative_cases)")
@@ -88,10 +84,8 @@ Run many replicates to estimate containment probability:
 rng = StableRNG(42)
 results = simulate_batch(model, 500;
     interventions = [iso, ct],
-    sim_opts = SimOpts(
-        max_cases = 5000,
-        incubation_period = LogNormal(1.5, 0.5),
-    ),
+    init = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    sim_opts = SimOpts(max_cases = 5000),
     rng = rng,
 )
 println("Containment probability: $(round(containment_probability(results), digits=3))")

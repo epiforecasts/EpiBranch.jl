@@ -13,7 +13,8 @@ function of remaining potential transmission, and isolation truncates it.
 ### Isolation
 
 [`Isolation`](@ref) isolates symptomatic, test-positive individuals after
-a delay from symptom onset:
+a delay from symptom onset. It requires clinical state on individuals,
+provided by [`clinical_presentation`](@ref):
 
 ```@example interventions
 using EpiBranch
@@ -21,12 +22,14 @@ using Distributions
 using StableRNGs
 
 model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 iso = Isolation(delay = Exponential(2.0))
 
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
     interventions = [iso],
-    sim_opts = SimOpts(max_cases = 500, incubation_period = LogNormal(1.5, 0.5)),
+    init = clinical,
+    sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
 println("Containment: $(round(containment_probability(results), digits=3))")
@@ -41,7 +44,8 @@ for d in [0.5, 2.0, 10.0]
     rng = StableRNG(42)
     results = simulate_batch(model, 200;
         interventions = [iso],
-        sim_opts = SimOpts(max_cases = 500, incubation_period = LogNormal(1.5, 0.5)),
+        init = clinical,
+        sim_opts = SimOpts(max_cases = 500),
         rng = rng,
     )
     println("Delay ~ Exp($d): containment = $(round(containment_probability(results), digits=3))")
@@ -59,7 +63,8 @@ iso_leaky = Isolation(delay = Exponential(2.0), residual_transmission = 0.3)
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
     interventions = [iso_leaky],
-    sim_opts = SimOpts(max_cases = 500, incubation_period = LogNormal(1.5, 0.5)),
+    init = clinical,
+    sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
 println("Leaky isolation: $(round(containment_probability(results), digits=3))")
@@ -77,7 +82,8 @@ ct = ContactTracing(probability = 0.7, delay = Exponential(1.0), quarantine_on_t
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
     interventions = [iso, ct],
-    sim_opts = SimOpts(max_cases = 500, incubation_period = LogNormal(1.5, 0.5)),
+    init = clinical,
+    sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
 println("Isolation + tracing: $(round(containment_probability(results), digits=3))")
@@ -86,18 +92,21 @@ println("Isolation + tracing: $(round(containment_probability(results), digits=3
 ## Asymptomatic cases and test sensitivity
 
 Asymptomatic cases escape symptom-based surveillance. Imperfect testing
-means some symptomatic cases are also missed:
+means some symptomatic cases are also missed. Both are configured via
+[`clinical_presentation`](@ref):
 
 ```@example interventions
+clinical_hard = clinical_presentation(
+    incubation_period = LogNormal(1.5, 0.5),
+    prob_asymptomatic = 0.3,
+    test_sensitivity = 0.8,
+)
+
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
     interventions = [iso, ct],
-    sim_opts = SimOpts(
-        max_cases = 500,
-        incubation_period = LogNormal(1.5, 0.5),
-        prob_asymptomatic = 0.3,
-        test_sensitivity = 0.8,
-    ),
+    init = clinical_hard,
+    sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
 println("30% asymptomatic, 80% test sensitivity: $(round(containment_probability(results), digits=3))")
@@ -112,7 +121,8 @@ effort is fully trackable:
 rng = StableRNG(42)
 state = simulate_conditioned(model, 50:200;
     interventions = [iso, ct],
-    sim_opts = SimOpts(max_cases = 200, incubation_period = LogNormal(1.5, 0.5)),
+    init = clinical,
+    sim_opts = SimOpts(max_cases = 200),
     rng = rng,
 )
 

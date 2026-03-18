@@ -85,7 +85,7 @@ iso = Isolation(delay = Exponential(2.0))
 
 ll = chain_size_ll(data, model;
     interventions = [iso],
-    sim_opts = SimOpts(incubation_period = LogNormal(1.5, 0.5)),
+    init = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     n_sim = 5000,
     rng = StableRNG(42),
 )

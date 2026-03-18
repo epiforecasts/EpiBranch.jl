@@ -49,10 +49,8 @@ ct = ContactTracing(probability = 0.5, delay = Exponential(1.5))
 rng = StableRNG(42)
 results = simulate_batch(model, 500;
     interventions = [iso, ct],
-    sim_opts = SimOpts(
-        max_cases = 5000,
-        incubation_period = LogNormal(1.5, 0.5),
-    ),
+    init = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    sim_opts = SimOpts(max_cases = 5000),
     rng = rng,
 )
 
