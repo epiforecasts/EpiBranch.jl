@@ -1,12 +1,12 @@
 """
-    containment_probability(states::Vector{SimulationState}; max_cases=nothing)
+    containment_probability(states::Vector{<:SimulationState}; max_cases=nothing)
 
 Fraction of simulations that went extinct (i.e. the outbreak was contained).
 
 If `max_cases` is provided, simulations that hit the case cap are not
 considered extinct (they are assumed to have continued growing).
 """
-function containment_probability(states::Vector{SimulationState};
+function containment_probability(states::Vector{<:SimulationState};
                                   max_cases::Union{Int, Nothing}=nothing)
     n_extinct = count(states) do s
         if max_cases !== nothing && s.cumulative_cases >= max_cases

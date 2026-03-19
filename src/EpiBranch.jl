@@ -20,7 +20,6 @@ include("interventions/vaccination.jl")
 
 # Transmission models
 include("models/branching_process.jl")
-include("models/density_dependent.jl")
 
 # Simulation engine
 include("simulation.jl")

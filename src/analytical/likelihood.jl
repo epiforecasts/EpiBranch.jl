@@ -37,14 +37,9 @@ function chain_size_ll(data::AbstractVector{<:Integer}, offspring::Distribution,
 
     ll = 0.0
     for obs in data
-        # P(observed = obs) = Σ_n P(true = n) * Binomial(n, obs_prob).pdf(obs)
-        log_terms = Float64[]
-        for n in obs:max_true
-            lp = log_p_true[n] + logpdf(Binomial(n, obs_prob), obs)
-            push!(log_terms, lp)
-        end
-        isempty(log_terms) && return -Inf
-        ll += logsumexp(log_terms)
+        obs > max_true && return -Inf
+        ll += logsumexp(log_p_true[n] + logpdf(Binomial(n, obs_prob), obs)
+                        for n in obs:max_true)
     end
     return ll
 end
@@ -203,11 +198,14 @@ end
 """
     logsumexp(x)
 
-Numerically stable log-sum-exp.
+Numerically stable log-sum-exp. Accepts any iterable of reals.
 """
-function logsumexp(x::AbstractVector{<:Real})
-    isempty(x) && return -Inf
-    mx = maximum(x)
+function logsumexp(x)
+    mx = -Inf
+    for xi in x
+        xi > mx && (mx = xi)
+    end
     isinf(mx) && return mx
-    return mx + log(sum(exp.(x .- mx)))
+    s = sum(exp(xi - mx) for xi in x)
+    return mx + log(s)
 end

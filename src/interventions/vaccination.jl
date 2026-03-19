@@ -66,11 +66,14 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
             end
         end
 
-        # Re-evaluate infection status given reduced susceptibility
-        if ind.susceptibility < 1.0 && is_infected(ind)
-            # The contact was marked infected before vaccination was applied.
-            # With reduced susceptibility, it might not have been infected.
-            if rand(state.rng) > ind.susceptibility
+        # Re-evaluate infection status given reduced susceptibility.
+        # This is an approximation: infection was decided in _resolve_infection
+        # before vaccination was applied (vaccination happens in
+        # apply_post_transmission!). The re-sampling here is not exactly
+        # equivalent to having vaccinated before the infection decision,
+        # but is a reasonable approximation for the competing risk framework.
+        if is_infected(ind) && ind.susceptibility < 1.0
+            if rand(state.rng) > ind.susceptibility / 1.0
                 ind.state[:infected] = false
             end
         end
@@ -115,8 +118,8 @@ function apply_post_transmission!(pep::PEP, state, new_contacts)
             end
         end
 
-        # Re-evaluate infection
-        if ind.susceptibility < 1.0 && is_infected(ind)
+        # Re-evaluate infection (same approximation as RingVaccination)
+        if is_infected(ind) && ind.susceptibility < 1.0
             if rand(state.rng) > ind.susceptibility
                 ind.state[:infected] = false
             end

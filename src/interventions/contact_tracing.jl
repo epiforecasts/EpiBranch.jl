@@ -27,10 +27,10 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
     for ind in new_contacts
         ind.infection_time < ct.start_time && continue
 
-        # Find parent
-        parent_idx = findfirst(i -> i.id == ind.parent_id, state.individuals)
-        parent_idx === nothing && continue
-        parent = state.individuals[parent_idx]
+        # O(1) parent lookup: id == 1-based index into individuals
+        ind.parent_id == 0 && continue
+        ind.parent_id > length(state.individuals) && continue
+        parent = state.individuals[ind.parent_id]
 
         # Contact tracing only triggers from symptomatic, isolated parents
         is_asymptomatic(parent) && continue

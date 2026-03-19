@@ -59,6 +59,9 @@ proportion_transmission(d::NegativeBinomial; prop_cases::Real=0.2) =
 proportion_transmission(d::Poisson; prop_cases::Real=0.2) =
     proportion_transmission(mean(d), 1e6; prop_cases)
 
+proportion_transmission(d::Distribution; prop_cases::Real=0.2) =
+    throw(ArgumentError("proportion_transmission not defined for $(typeof(d)). Use NegativeBinomial or Poisson."))
+
 function proportion_transmission(model::BranchingProcess; prop_cases::Real=0.2)
     model.offspring isa Distribution || throw(ArgumentError(
         "Analytical proportion_transmission only available for single-type models"))

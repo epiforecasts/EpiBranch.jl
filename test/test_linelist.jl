@@ -107,8 +107,12 @@ using Dates
     end
 
     @testset "linelist empty state" begin
-        state = SimulationState(Individual[], Int[], 0, StableRNG(1), 0, true, nothing, 0.0, nothing)
-        df = linelist(state)
+        # Use simulate with impossible conditions to get an empty-ish state
+        model = BranchingProcess(Poisson(0.0), Exponential(1.0))
+        state = simulate(model; sim_opts=SimOpts(max_cases=1), rng=StableRNG(1))
+        empty_state = SimulationState(Individual[], Int[], 0, StableRNG(1), 0, true,
+                                       nothing, 0.0, 0.0, nothing)
+        df = linelist(empty_state)
         @test nrow(df) == 0
     end
 

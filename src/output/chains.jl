@@ -1,9 +1,9 @@
 """
     chain_statistics(state::SimulationState)
 
-Compute chain size and length for each transmission chain in the simulation.
-Only counts infected individuals (not uninfected contacts).
-Returns a DataFrame with columns: chain_id, size, length.
+Compute chain size and length for each transmission chain.
+Only infected individuals are counted. Returns a DataFrame with
+columns: chain_id, size, length.
 """
 function chain_statistics(state::SimulationState)
     infected = filter(is_infected, state.individuals)
@@ -24,12 +24,12 @@ function chain_statistics(state::SimulationState)
 end
 
 """
-    chain_statistics(states::Vector{SimulationState})
+    chain_statistics(states::Vector{<:SimulationState})
 
 Compute chain statistics across multiple simulations.
 Returns a DataFrame with columns: sim_id, chain_id, size, length.
 """
-function chain_statistics(states::Vector{SimulationState})
+function chain_statistics(states::Vector{<:SimulationState})
     sim_ids = Int[]
     chain_ids = Int[]
     sizes = Int[]
@@ -37,12 +37,12 @@ function chain_statistics(states::Vector{SimulationState})
 
     for (s, state) in enumerate(states)
         cs = chain_statistics(state)
-        for row in eachrow(cs)
-            push!(sim_ids, s)
-            push!(chain_ids, row.chain_id)
-            push!(sizes, row.size)
-            push!(lengths, row.length)
-        end
+        # Issue 10: append column arrays directly instead of iterating eachrow
+        n = nrow(cs)
+        append!(sim_ids, fill(s, n))
+        append!(chain_ids, cs.chain_id)
+        append!(sizes, cs.size)
+        append!(lengths, cs.length)
     end
 
     DataFrame(sim_id=sim_ids, chain_id=chain_ids, size=sizes, length=lengths)

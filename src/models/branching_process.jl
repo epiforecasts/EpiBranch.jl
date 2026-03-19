@@ -2,13 +2,10 @@
     step!(model::BranchingProcess, state::SimulationState, interventions)
 
 Process one generation of the branching process.
-
-Supports single-type (offspring::Distribution) and multi-type
-(offspring::Function returning Vector{Int}) offspring.
 """
 function step!(model::BranchingProcess, state::SimulationState, interventions)
     new_contacts = Individual[]
-    new_infected_indices = Int[]
+    new_infected_ids = Int[]
     next_id = length(state.individuals) + 1
 
     pop_suscept = _susceptible_fraction(state)
@@ -21,43 +18,45 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
     for idx in state.active_ids
         individual = state.individuals[idx]
 
-        # Resolve interventions on the parent
         for intervention in interventions
             resolve_individual!(intervention, individual, state)
         end
 
-        # Draw offspring — returns Int (single-type) or Vector{Int} (multi-type)
         offspring_result = _draw_offspring(state.rng, model.offspring, individual, state)
 
-        # Create contacts and resolve infection
         gt_dist = model.generation_time === nothing ? nothing :
             get_generation_time(model.generation_time, individual)
-        residual = _residual_fraction(interventions)
+        residual = _residual_transmission(interventions)
 
-        next_id = _create_contacts!(new_contacts, new_infected_indices,
+        next_id = _create_contacts!(new_contacts, new_infected_ids,
                                      offspring_result, individual, state,
                                      gt_dist, pop_suscept, residual,
                                      interventions, next_id)
     end
 
-    # Apply post-transmission interventions to ALL contacts
     for intervention in interventions
         apply_post_transmission!(intervention, state, new_contacts)
     end
 
-    # Update state — all contacts stored, only infected are active
+    # Update state
     append!(state.individuals, new_contacts)
-    n_infected = length(new_infected_indices)
+    n_infected = length(new_infected_ids)
     state.cumulative_cases += n_infected
     state.current_generation += 1
+
+    # Issue 19: update max infection time incrementally
+    for c in new_contacts
+        if is_infected(c) && c.infection_time > state.max_infection_time
+            state.max_infection_time = c.infection_time
+        end
+    end
 
     if n_infected == 0
         state.extinct = true
         state.active_ids = Int[]
     else
-        base_idx = length(state.individuals) - length(new_contacts)
-        state.active_ids = [base_idx + findfirst(==(nid), [c.id for c in new_contacts])
-                           for nid in new_infected_indices]
+        # Issue 2: IDs are 1-based indices, so active_ids ARE the infected IDs
+        state.active_ids = copy(new_infected_ids)
     end
 
     return state
@@ -65,29 +64,25 @@ end
 
 # ── Offspring drawing ────────────────────────────────────────────────
 
-"""Single-type: draw from distribution."""
-function _draw_offspring(rng::AbstractRNG, offspring::Distribution,
-                         individual, state::SimulationState)
-    return rand(rng, offspring)
-end
+"""Single-type offspring draw."""
+_draw_offspring(rng::AbstractRNG, offspring::Distribution,
+                individual, state::SimulationState) = rand(rng, offspring)
 
-"""Multi-type: call offspring function with parent type."""
+"""Multi-type offspring draw."""
 function _draw_offspring(rng::AbstractRNG, offspring::Function,
                          individual, state::SimulationState)
-    parent_type = individual_type(individual)
-    return offspring(rng, parent_type)
+    return offspring(rng, individual_type(individual))
 end
 
 # ── Contact creation ─────────────────────────────────────────────────
 
-"""Single-type contacts: n_contacts is an Int, no type assignment."""
-function _create_contacts!(new_contacts, new_infected_indices,
+"""Single-type contacts."""
+function _create_contacts!(new_contacts, new_infected_ids,
                            n_contacts::Int, parent, state,
                            gt_dist, pop_suscept, residual,
                            interventions, next_id)
     for _ in 1:n_contacts
         if gt_dist === nothing
-            # No generation time — pure chain statistics, no timing
             gt = 0.0
             inf_time = parent.infection_time
         else
@@ -97,7 +92,7 @@ function _create_contacts!(new_contacts, new_infected_indices,
         end
 
         contact = _create_individual(state, parent.id, parent.chain_id,
-                                          next_id, inf_time, interventions)
+                                      next_id, inf_time, interventions)
 
         infected = _resolve_infection(state.rng, parent, contact,
                                        gt, pop_suscept, residual)
@@ -105,14 +100,14 @@ function _create_contacts!(new_contacts, new_infected_indices,
 
         push!(parent.secondary_case_ids, next_id)
         push!(new_contacts, contact)
-        infected && push!(new_infected_indices, next_id)
+        infected && push!(new_infected_ids, next_id)
         next_id += 1
     end
     return next_id
 end
 
-"""Multi-type contacts: counts is a Vector{Int}, each contact gets a type."""
-function _create_contacts!(new_contacts, new_infected_indices,
+"""Multi-type contacts."""
+function _create_contacts!(new_contacts, new_infected_ids,
                            counts::Vector{Int}, parent, state,
                            gt_dist, pop_suscept, residual,
                            interventions, next_id)
@@ -137,7 +132,7 @@ function _create_contacts!(new_contacts, new_infected_indices,
 
             push!(parent.secondary_case_ids, next_id)
             push!(new_contacts, contact)
-            infected && push!(new_infected_indices, next_id)
+            infected && push!(new_infected_ids, next_id)
             next_id += 1
         end
     end
@@ -146,36 +141,20 @@ end
 
 # ── Infection resolution ─────────────────────────────────────────────
 
-"""
-Determine whether a contact is successfully infected via competing risks.
-"""
+"""Determine whether a contact is successfully infected via competing risks."""
 function _resolve_infection(rng::AbstractRNG, parent, contact,
                              generation_time::Float64, pop_suscept::Float64,
                              residual_transmission::Float64)
-    # Population-level susceptible depletion
-    if pop_suscept < 1.0 && rand(rng) > pop_suscept
-        return false
-    end
+    pop_suscept < 1.0 && rand(rng) > pop_suscept && return false
+    contact.susceptibility < 1.0 && rand(rng) > contact.susceptibility && return false
+    parent.infectiousness < 1.0 && rand(rng) > parent.infectiousness && return false
 
-    # Individual susceptibility (vaccination, prior immunity)
-    if contact.susceptibility < 1.0 && rand(rng) > contact.susceptibility
-        return false
-    end
-
-    # Parent infectiousness modifier
-    if parent.infectiousness < 1.0 && rand(rng) > parent.infectiousness
-        return false
-    end
-
-    # Competing risk: did transmission happen before parent was isolated?
+    # Issue 1: O(1) parent lookup via direct indexing (id == index)
     if is_isolated(parent)
         iso_t = isolation_time(parent)
         transmission_time = parent.infection_time + generation_time
-
         if transmission_time >= iso_t
-            if residual_transmission <= 0.0 || rand(rng) > residual_transmission
-                return false
-            end
+            (residual_transmission <= 0.0 || rand(rng) > residual_transmission) && return false
         end
     end
 

@@ -3,13 +3,6 @@
              sim_opts=SimOpts(), rng=Random.default_rng())
 
 Run a single outbreak simulation.
-
-- `model`: transmission model (e.g. `BranchingProcess`)
-- `interventions`: vector of `AbstractIntervention`
-- `attributes`: function `(rng, individual) -> nothing` that sets attributes on
-  new individuals (clinical state, demographics, etc.), or `nothing`
-- `sim_opts`: simulation control (max_cases, max_generations, etc.)
-- `rng`: random number generator
 """
 function simulate(model::TransmissionModel;
                   interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
@@ -18,7 +11,7 @@ function simulate(model::TransmissionModel;
                   rng::AbstractRNG=Random.default_rng())
     state = initialise_state(model, sim_opts, interventions, attributes, rng)
 
-    # Validate required fields after first individual is initialised
+    # Validate required fields on a representative individual
     if !isempty(state.individuals)
         _validate_required_fields(state.individuals[1], interventions)
     end
@@ -33,7 +26,7 @@ end
 """
     simulate_batch(model, n; kwargs...)
 
-Run `n` independent outbreak simulations. Returns a vector of `SimulationState`.
+Run `n` independent outbreak simulations.
 """
 function simulate_batch(model::TransmissionModel, n::Int;
                         interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
@@ -66,30 +59,6 @@ end
 
 # ── Internal helpers ───────────────────────────────────────────────
 
-function _get_population_size(model::BranchingProcess)
-    model.population_size
-end
-
-function _get_population_size(model::TransmissionModel)
-    nothing
-end
-
-function _get_latent_period(model::BranchingProcess)
-    model.latent_period
-end
-
-function _get_latent_period(model::TransmissionModel)
-    0.0
-end
-
-function _get_n_types(model::BranchingProcess)
-    model.n_types
-end
-
-function _get_n_types(model::TransmissionModel)
-    1
-end
-
 function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
                           interventions, attributes, rng::AbstractRNG)
     individuals = Individual[]
@@ -101,16 +70,17 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         rng,
         0,
         false,
-        _get_population_size(model),
-        _get_latent_period(model),
+        population_size(model),
+        latent_period(model),
+        0.0,
         attributes,
     )
 
-    n_types = _get_n_types(model)
+    nt = n_types(model)
     for i in 1:sim_opts.n_initial
         ind = _create_individual(temp_state, 0, i, i, 0.0, interventions)
-        if n_types > 1
-            ind.state[:type] = rand(rng, 1:n_types)
+        if nt > 1
+            ind.state[:type] = rand(rng, 1:nt)
         end
         push!(individuals, ind)
     end
@@ -121,25 +91,16 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
     return temp_state
 end
 
+# Issue 19: track max_infection_time incrementally instead of scanning
 function should_terminate(state::SimulationState, sim_opts::SimOpts)
     state.extinct && return true
     state.cumulative_cases >= sim_opts.max_cases && return true
     state.current_generation >= sim_opts.max_generations && return true
-
-    if isfinite(sim_opts.max_time) && !isempty(state.individuals)
-        latest = maximum(ind.infection_time for ind in state.individuals)
-        latest >= sim_opts.max_time && return true
-    end
-
+    isfinite(sim_opts.max_time) && state.max_infection_time >= sim_opts.max_time && return true
     return false
 end
 
-"""
-    _susceptible_fraction(state)
-
-Compute the fraction of the population still susceptible. Returns 1.0
-for infinite population (no depletion).
-"""
+"""Fraction of the population still susceptible (1.0 for infinite population)."""
 function _susceptible_fraction(state::SimulationState)
     state.population_size === nothing && return 1.0
     n_susceptible = state.population_size - state.cumulative_cases
@@ -147,13 +108,7 @@ function _susceptible_fraction(state::SimulationState)
     return n_susceptible / state.population_size
 end
 
-"""
-    _create_individual(state, parent_id, chain_id, next_id, inf_time, interventions)
-
-Create a new Individual. The `state.attributes` function (if provided) sets
-clinical/demographic attributes. Then each intervention's `initialise_individual!`
-sets intervention state.
-"""
+"""Create a new Individual with attributes and intervention state."""
 function _create_individual(state::SimulationState, parent_id::Int,
                             chain_id::Int, next_id::Int,
                             inf_time::Float64, interventions)
@@ -168,12 +123,10 @@ function _create_individual(state::SimulationState, parent_id::Int,
         state=s,
     )
 
-    # User-provided attributes function sets clinical/demographic attributes
     if state.attributes !== nothing
         state.attributes(state.rng, ind)
     end
 
-    # Each intervention initialises its own fields
     for intervention in interventions
         initialise_individual!(intervention, ind, state)
     end
@@ -181,16 +134,13 @@ function _create_individual(state::SimulationState, parent_id::Int,
     return ind
 end
 
-# ── Init function constructors ───────────────────────────────────────
+# ── Attributes function constructors ─────────────────────────────────
 
 """
     clinical_presentation(; incubation_period, prob_asymptomatic=0.0)
 
-Return an attributes function that sets clinical attributes on individuals:
-`:onset_time`, `:asymptomatic`.
-
-These fields are required by [`Isolation`](@ref) and read by
-[`ContactTracing`](@ref).
+Return an attributes function that sets `:onset_time` and `:asymptomatic`
+on individuals. Required by [`Isolation`](@ref).
 """
 function clinical_presentation(; incubation_period::Distribution,
                                  prob_asymptomatic::Real=0.0)
@@ -210,10 +160,7 @@ end
     testing(; sensitivity=1.0)
 
 Return an attributes function that sets `:test_positive` on individuals.
-Asymptomatic individuals always test negative. Symptomatic individuals
-test positive with the given sensitivity.
-
-Requires `:asymptomatic` to be set (e.g. via [`clinical_presentation`](@ref)).
+Asymptomatic individuals always test negative.
 """
 function testing(; sensitivity::Real=1.0)
     ts = Float64(sensitivity)
@@ -226,8 +173,7 @@ end
 """
     demographics(; age_distribution=nothing, age_range=(0, 90), prob_female=0.5)
 
-Return an attributes function that sets demographic attributes on individuals:
-`:age`, `:sex`.
+Return an attributes function that sets `:age` and `:sex` on individuals.
 """
 function demographics(; age_distribution::Union{Distribution, Nothing}=nothing,
                         age_range::Tuple{Int, Int}=(0, 90),
@@ -246,37 +192,23 @@ end
 """
     compose(fs...)
 
-Compose multiple attributes functions into one. Functions are called in order.
-
-```julia
-attributes = compose(
-    clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-    demographics(age_distribution = Normal(40, 15)),
-)
-```
+Compose multiple attributes functions into one, called in order.
 """
 compose(fs...) = (rng, ind) -> for f in fs; f(rng, ind); end
 
 # ── Intervention field validation ────────────────────────────────────
 
-"""
-    required_fields(intervention)
-
-Return a vector of field names (Symbols) that this intervention requires
-on individuals. Default: empty (no requirements).
-"""
+"""Fields that an intervention requires on individuals. Default: none."""
 required_fields(::AbstractIntervention) = Symbol[]
 
-"""Validate that all required fields are present on an individual."""
+"""Check that all required fields are present on an individual."""
 function _validate_required_fields(individual, interventions)
     for intervention in interventions
         for field in required_fields(intervention)
             if !haskey(individual.state, field)
                 itype = typeof(intervention)
                 hint = _field_hint(field)
-                error(
-                    "$itype requires field :$field on individuals. $hint"
-                )
+                error("$itype requires field :$field on individuals. $hint")
             end
         end
     end
@@ -286,7 +218,7 @@ function _field_hint(field::Symbol)
     hints = Dict(
         :onset_time => "Provide attributes = clinical_presentation(incubation_period = ...).",
         :asymptomatic => "Provide attributes = clinical_presentation(incubation_period = ...).",
-        :test_positive => "Provide attributes = clinical_presentation(incubation_period = ...).",
+        :test_positive => "Provide attributes = compose(clinical_presentation(...), testing(...)).",
         :age => "Provide attributes = demographics(age_distribution = ...).",
         :sex => "Provide attributes = demographics(...).",
     )
