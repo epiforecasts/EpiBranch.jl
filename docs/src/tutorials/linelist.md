@@ -1,12 +1,12 @@
 # Line lists and contacts
 
-Generate simulated epidemiological data from any branching process simulation.
-The output pipeline is model-agnostic — it works with single-type, multi-type,
+Simulated epidemiological data can be generated from any branching process simulation.
+The output pipeline is model-agnostic: it works with single-type, multi-type,
 with or without interventions.
 
 ## Line list
 
-[`linelist`](@ref) converts a simulation to a DataFrame with one row per case:
+[`linelist`](@ref) converts a simulation state to a DataFrame with one row per case:
 
 ```@example linelist
 using EpiBranch
@@ -26,12 +26,12 @@ state = simulate_conditioned(model, 50:200;
 
 ll = linelist(state;
     reference_date = Date(2024, 1, 1),
-    delay_opts = DelayOpts(
+    delays = DelayOpts(
         onset_to_reporting = Exponential(3.0),
         onset_to_admission = Exponential(5.0),
         onset_to_outcome = Exponential(14.0),
     ),
-    outcome_opts = OutcomeOpts(prob_hospitalisation = 0.2, prob_death = 0.05),
+    outcomes = OutcomeOpts(prob_hospitalisation = 0.2, prob_death = 0.05),
     rng = StableRNG(99),
 )
 first(ll, 5)
@@ -44,7 +44,7 @@ Control age distribution, age range, and sex ratio:
 ```@example linelist
 ll = linelist(state;
     reference_date = Date(2024, 1, 1),
-    demographic_opts = DemographicOpts(
+    demographics = DemographicOpts(
         age_distribution = Normal(40, 15),
         age_range = (0, 90),
         prob_female = 0.55,
@@ -65,8 +65,8 @@ age_cfr = Dict((0, 14) => 0.001, (15, 64) => 0.01, (65, 90) => 0.15)
 
 ll = linelist(state;
     reference_date = Date(2024, 1, 1),
-    outcome_opts = OutcomeOpts(age_specific_cfr = age_cfr),
-    demographic_opts = DemographicOpts(age_range = (0, 90)),
+    outcomes = OutcomeOpts(age_specific_cfr = age_cfr),
+    demographics = DemographicOpts(age_range = (0, 90)),
     rng = StableRNG(99),
 )
 
@@ -81,7 +81,7 @@ end
 ## Contacts table
 
 [`contacts`](@ref) returns all contacts (infected and non-infected) with
-a `was_case` flag — matching the simulist R package output format:
+a `was_case` flag, matching the **simulist** R package output format:
 
 ```@example linelist
 ct = contacts(state; reference_date = Date(2024, 1, 1))

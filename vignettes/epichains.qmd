@@ -9,8 +9,8 @@ engine: julia
 
 ## Overview
 
-This vignette demonstrates how to simulate transmission chains and compute
-chain statistics using EpiBranch.jl, reproducing the core functionality of
+This vignette demonstrates simulating transmission chains and computing
+chain statistics with **EpiBranch.jl**, reproducing the core functionality of
 the [epichains](https://github.com/epiverse-trace/epichains) R package.
 
 ```{julia}
@@ -41,8 +41,8 @@ println("Extinct: ", state.extinct)
 
 ## Chain size and length
 
-`chain_statistics` computes the size (total cases) and length (number of
-generations) for each chain:
+Size (total cases) and length (number of generations) for each chain are
+computed by `chain_statistics`:
 
 ```{julia}
 cs = chain_statistics(state)
@@ -76,9 +76,9 @@ println("NegBin chain size distribution: ", typeof(d_nb))
 
 ## Likelihood of observed chain sizes
 
-Given observed chain sizes, we can compute the log-likelihood under
-different offspring distribution parameters. This is useful for
-estimating R and k from outbreak data.
+Given observed chain sizes, the log-likelihood under different offspring
+distribution parameters can be computed. This is useful for estimating
+R and k from outbreak data.
 
 ```{julia}
 # Observed chain sizes (e.g. from contact tracing data)
@@ -116,9 +116,9 @@ println("LL (70% observation): ", round(ll_partial, digits = 2))
 
 ## Simulation-based likelihood
 
-When the offspring distribution doesn't have an analytical chain size
-distribution, or when interventions are present, we can use
-simulation-based likelihood:
+When the offspring distribution does not have an analytical chain size
+distribution, or when interventions are present, simulation-based
+likelihood can be used:
 
 ```{julia}
 # Simulation-based likelihood — works with any model
@@ -128,7 +128,7 @@ println("LL (simulation-based): ", round(ll_sim, digits = 2))
 println("LL (analytical):       ", round(ll_mid, digits = 2))
 ```
 
-The advantage here: simulation-based likelihood works with **interventions**:
+Simulation-based likelihood also works with interventions:
 
 ```{julia}
 # Likelihood under a model with isolation
@@ -144,8 +144,8 @@ ll_with_iso = chain_size_ll(observed_sizes, model_with_iso;
 println("LL with isolation: ", round(ll_with_iso, digits = 2))
 ```
 
-This is something the R epichains package cannot do — its likelihood
-function has no concept of interventions.
+The R **epichains** package does not support this; its likelihood function
+has no concept of interventions.
 
 ## Chain length likelihood
 
@@ -161,8 +161,8 @@ println("Chain length LL: ", round(ll_len, digits = 2))
 
 ## Finite population (susceptible depletion)
 
-For outbreaks in small populations, the branching process can be
-modified with susceptible depletion:
+For outbreaks in small populations, susceptible depletion can be added
+to the branching process:
 
 ```{julia}
 # Finite population of 500
@@ -180,7 +180,7 @@ println("Cases: ", state.cumulative_cases, " / 500 population")
 
 ## Comparing with analytical extinction probability
 
-We can validate simulation against analytical results:
+Simulation results can be validated against analytical solutions:
 
 ```{julia}
 R, k = 1.5, 0.5

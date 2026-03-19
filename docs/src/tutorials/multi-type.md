@@ -1,13 +1,13 @@
 # Multi-type models
 
-EpiBranch.jl supports multi-type branching processes where individuals
+Multi-type branching processes are supported, where individuals
 belong to types (age groups, risk groups, spatial patches) and transmission
 between types is governed by an offspring matrix.
 
 ## Offspring matrix
 
-The offspring matrix `M[i,j]` gives the expected number of type-`i`
-offspring from a type-`j` parent — the next-generation matrix.
+`M[i,j]` gives the expected number of type-`i` offspring from a type-`j`
+parent — the next-generation matrix.
 
 ```@example multitype
 using EpiBranch

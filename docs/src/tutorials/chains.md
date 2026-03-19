@@ -92,8 +92,8 @@ ll = chain_size_ll(data, model;
 println("LL with interventions: $(round(ll, digits=2))")
 ```
 
-This is the same simulation engine used for forward simulation — it also
-evaluates likelihoods, including under interventions.
+The same simulation engine used for forward simulation is used here.
+Likelihoods can be evaluated under interventions.
 
 ## Chain length likelihood
 

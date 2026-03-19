@@ -9,7 +9,7 @@ engine: julia
 
 ## Overview
 
-This vignette demonstrates how to assess the feasibility of controlling
+This vignette demonstrates assessing the feasibility of controlling
 an outbreak using isolation and contact tracing, reproducing the core
 functionality of the [ringbp](https://github.com/epiforecasts/ringbp)
 R package.

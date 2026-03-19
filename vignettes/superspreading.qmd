@@ -11,7 +11,7 @@ engine: julia
 
 This vignette demonstrates analytical functions for offspring distributions
 and superspreading, reproducing the core functionality of the
-[superspreading](https://github.com/epiverse-trace/superspreading) R package.
+[**superspreading**](https://github.com/epiverse-trace/superspreading) R package.
 
 ```{julia}
 using EpiBranch
@@ -21,8 +21,8 @@ using DataFrames
 
 ## Epidemic and extinction probability
 
-The probability that a single introduction leads to a sustained epidemic
-depends on the reproduction number R and the dispersion parameter k:
+Whether a single introduction leads to a sustained epidemic depends on
+the reproduction number R and the dispersion parameter k:
 
 ```{julia}
 # For R = 2.5, varying dispersion
@@ -62,7 +62,7 @@ prop = proportion_transmission(2.5, 0.16; prop_cases = 0.2)
 println("Top 20% of cases cause $(round(prop * 100, digits=1))% of transmission")
 ```
 
-This depends strongly on the dispersion parameter:
+The result depends strongly on the dispersion parameter:
 
 ```{julia}
 k_values = [0.01, 0.05, 0.1, 0.16, 0.5, 1.0, 5.0, 100.0]
@@ -74,7 +74,7 @@ end
 
 ## Chain size distributions
 
-The chain size distribution depends on the offspring distribution.
+Chain size distributions depend on the offspring distribution.
 For Poisson offspring, chain sizes follow the Borel distribution:
 
 ```{julia}

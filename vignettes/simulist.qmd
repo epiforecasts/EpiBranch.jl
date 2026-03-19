@@ -11,7 +11,7 @@ engine: julia
 
 This vignette demonstrates generating simulated line lists and contact
 tracing data, reproducing the core functionality of the
-[simulist](https://github.com/epiverse-trace/simulist) R package.
+[**simulist**](https://github.com/epiverse-trace/simulist) R package.
 
 ```{julia}
 using EpiBranch
@@ -40,12 +40,12 @@ state = simulate_conditioned(model, 50:200;
 rng2 = Xoshiro(99)
 ll = linelist(state;
     reference_date = Date(2024, 1, 1),
-    delay_opts = DelayOpts(
+    delays = DelayOpts(
         onset_to_reporting = Exponential(3.0),
         onset_to_admission = Exponential(5.0),
         onset_to_outcome = Exponential(14.0),
     ),
-    outcome_opts = OutcomeOpts(
+    outcomes = OutcomeOpts(
         prob_hospitalisation = 0.2,
         prob_death = 0.05,
     ),
@@ -64,7 +64,7 @@ Control the age distribution and sex ratio:
 rng3 = Xoshiro(99)
 ll_demo = linelist(state;
     reference_date = Date(2024, 1, 1),
-    demographic_opts = DemographicOpts(
+    demographics = DemographicOpts(
         age_distribution = Normal(40, 15),
         age_range = (0, 90),
         prob_female = 0.55,
@@ -88,8 +88,8 @@ age_cfr = Dict(
 rng4 = Xoshiro(99)
 ll_age_cfr = linelist(state;
     reference_date = Date(2024, 1, 1),
-    outcome_opts = OutcomeOpts(age_specific_cfr = age_cfr),
-    demographic_opts = DemographicOpts(age_range = (0, 90)),
+    outcomes = OutcomeOpts(age_specific_cfr = age_cfr),
+    demographics = DemographicOpts(age_range = (0, 90)),
     rng = rng4,
 )
 
@@ -103,7 +103,7 @@ end
 
 ## Contacts table
 
-The contacts table includes both infected and non-infected contacts,
+Both infected and non-infected contacts are included in the contacts table,
 with a `was_case` flag:
 
 ```{julia}

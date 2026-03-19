@@ -4,8 +4,8 @@ Closed-form solutions for offspring distribution properties — no simulation ne
 
 ## Extinction and epidemic probability
 
-The extinction probability of a branching process with Negative Binomial
-offspring is computed via fixed-point iteration on the probability
+For a branching process with Negative Binomial offspring, the extinction
+probability is computed via fixed-point iteration on the probability
 generating function:
 
 ```@example analytical
@@ -18,7 +18,7 @@ q = extinction_probability(3.0, 1.0)
 println("Geometric(R=3): P(ext) = $(round(q, digits=4)) (analytical: $(round(1/3, digits=4)))")
 ```
 
-The epidemic probability is the complement:
+The epidemic probability is the complement of the extinction probability:
 
 ```@example analytical
 p = epidemic_probability(2.5, 0.16)
@@ -39,7 +39,7 @@ end
 
 ### Distribution dispatch
 
-Also works directly on `Distribution` objects:
+`Distribution` objects are also accepted directly:
 
 ```@example analytical
 println("Poisson(2.0):   P(ext) = $(round(extinction_probability(Poisson(2.0)), digits=4))")
@@ -57,7 +57,7 @@ prop = proportion_transmission(2.5, 0.16; prop_cases = 0.2)
 println("Top 20% of cases cause $(round(prop * 100, digits=1))% of transmission")
 ```
 
-This depends almost entirely on the dispersion parameter k:
+The result depends almost entirely on the dispersion parameter k:
 
 ```@example analytical
 for k in [0.01, 0.1, 0.16, 0.5, 1.0, 10.0, 1000.0]
@@ -82,8 +82,8 @@ for n in 1:5
 end
 ```
 
-The [`chain_size_distribution`](@ref) function dispatches on the offspring
-type to return the appropriate analytical distribution:
+[`chain_size_distribution`](@ref) dispatches on the offspring type and
+returns the appropriate analytical distribution:
 
 ```@example analytical
 d_pois = chain_size_distribution(Poisson(0.8))

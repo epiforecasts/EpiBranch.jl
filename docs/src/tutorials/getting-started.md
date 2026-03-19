@@ -1,6 +1,6 @@
 # Getting started
 
-This tutorial covers the core workflow: defining a model, running simulations,
+The core workflow is covered here: defining a model, running simulations,
 and extracting results.
 
 ## Defining a transmission model
@@ -35,7 +35,7 @@ state = simulate(model;
 println("Cases: $(state.cumulative_cases), Extinct: $(state.extinct)")
 ```
 
-The result is a `SimulationState` containing all individuals and
+A `SimulationState` is returned, containing all individuals and
 outbreak metadata.
 
 ## Adding clinical parameters
@@ -104,11 +104,11 @@ println("Infected (cases): $n_infected")
 println("Not infected: $(n_total - n_infected)")
 ```
 
-This enables tracking intervention effort — see [Interventions](interventions.md).
+Intervention effort can be tracked this way. For more information, see [Interventions](interventions.md).
 
 ## Outputs
 
-Several output functions convert the simulation state to DataFrames:
+Simulation state can be converted to DataFrames with several output functions:
 
 ```@example gettingstarted
 using DataFrames, Dates

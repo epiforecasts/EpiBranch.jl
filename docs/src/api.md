@@ -34,6 +34,8 @@ EpiBranch.step!
 AbstractIntervention
 Isolation
 ContactTracing
+RingVaccination
+PEP
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
@@ -113,4 +115,5 @@ EpiBranch._create_individual
 EpiBranch.logsumexp
 EpiBranch.required_fields
 EpiBranch._validate_required_fields
+EpiBranch._column_order
 ```
