@@ -114,6 +114,80 @@ results = simulate_batch(model, 200;
 println("30% asymptomatic, 80% test sensitivity: $(round(containment_probability(results), digits=3))")
 ```
 
+### Ring vaccination
+
+[`RingVaccination`](@ref) vaccinates traced contacts, reducing their
+susceptibility. It is applied after contact tracing has identified contacts,
+so it requires [`ContactTracing`](@ref) in the intervention stack.
+
+The vaccine can be leaky (everyone's susceptibility reduced) or
+all-or-nothing (a fraction are fully protected):
+
+```@example interventions
+iso = Isolation(delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.7, delay = Exponential(1.0))
+rv = RingVaccination(efficacy = 0.8, mode = :leaky)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso, ct, rv],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println("Iso + tracing + ring vaccination: $(round(containment_probability(results), digits=3))")
+```
+
+A delay between vaccination and protective immunity can be specified.
+If transmission occurs before immunity develops, there is no protection:
+
+```@example interventions
+rv_delayed = RingVaccination(efficacy = 0.9, delay_to_immunity = 7.0)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso, ct, rv_delayed],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println("With 7-day delay to immunity: $(round(containment_probability(results), digits=3))")
+```
+
+We can also count the number of vaccine doses administered:
+
+```@example interventions
+rng = StableRNG(42)
+state = simulate_conditioned(model, 50:200;
+    interventions = [iso, ct, rv],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 200),
+    rng = rng,
+)
+n_vaccinated = count(is_vaccinated, state.individuals)
+n_infected = count(is_infected, state.individuals)
+println("Vaccinated: $n_vaccinated, Infected: $n_infected")
+```
+
+### Post-exposure prophylaxis
+
+[`PEP`](@ref) works like ring vaccination but acts immediately (no delay
+to immunity). It is suitable for modelling antivirals or antibiotics
+given to traced contacts:
+
+```@example interventions
+pep = PEP(efficacy = 0.9, mode = :leaky)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso, ct, pep],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println("Iso + tracing + PEP: $(round(containment_probability(results), digits=3))")
+```
+
 ## Effort tracking
 
 Because all contacts are stored (infected and non-infected), intervention
