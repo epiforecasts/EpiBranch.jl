@@ -39,7 +39,7 @@ include("analytical/superspreading.jl")
 export TransmissionModel, BranchingProcess
 export Individual, SimulationState
 export SimOpts, DelayOpts, OutcomeOpts, DemographicOpts
-export AbstractIntervention, Isolation, ContactTracing, RingVaccination, PEP
+export AbstractIntervention, Isolation, ContactTracing, RingVaccination
 
 # Exports — accessors
 export onset_time, is_isolated, isolation_time, is_traced, is_quarantined

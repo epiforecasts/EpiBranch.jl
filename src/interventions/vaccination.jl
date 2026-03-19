@@ -3,19 +3,20 @@
 
 Vaccinate traced contacts, reducing their susceptibility to infection.
 
-Ring vaccination is applied in `apply_post_transmission!` to contacts that
-have been traced (`:traced == true`, set by [`ContactTracing`](@ref)).
-Contacts not yet infected at the time of vaccination have their
-susceptibility reduced.
+Applied to contacts that have been traced (`:traced == true`, set by
+[`ContactTracing`](@ref)). Contacts not yet infected at the time of
+vaccination have their susceptibility reduced.
 
-Requires `:traced` to be set (by [`ContactTracing`](@ref)).
+For post-exposure prophylaxis (PEP), set `delay_to_immunity = 0.0`
+(the default). For ring vaccination with a vaccine that takes time to
+confer protection, set `delay_to_immunity` to the appropriate delay.
 
-- `efficacy`: vaccine efficacy (0–1)
-- `delay_to_immunity`: time from vaccination to protective immunity (days).
-  If the contact's generation time is shorter than the delay, vaccination
-  has no effect.
-- `mode`: `:leaky` (everyone's susceptibility reduced by `efficacy`) or
-  `:all_or_nothing` (fraction `efficacy` are fully protected, rest unaffected)
+Requires `:traced` (set by [`ContactTracing`](@ref)).
+
+- `efficacy`: vaccine/PEP efficacy (0–1)
+- `delay_to_immunity`: time from administration to protective immunity (days)
+- `mode`: `:leaky` (susceptibility reduced by `efficacy` for everyone) or
+  `:all_or_nothing` (fraction `efficacy` fully protected, rest unaffected)
 
 Initialises: `:vaccinated`, `:vaccination_time`.
 """
@@ -80,49 +81,3 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
     end
 end
 
-"""
-    PEP(; efficacy, mode=:leaky)
-
-Post-exposure prophylaxis for traced contacts. Similar to
-[`RingVaccination`](@ref) but acts immediately (no delay to immunity).
-
-- `efficacy`: reduction in probability of infection (0–1)
-- `mode`: `:leaky` or `:all_or_nothing`
-
-Initialises: `:pep_received`.
-"""
-Base.@kwdef struct PEP <: AbstractIntervention
-    efficacy::Float64
-    mode::Symbol = :leaky
-end
-
-required_fields(::PEP) = [:traced]
-
-function initialise_individual!(pep::PEP, individual, state)
-    individual.state[:pep_received] = false
-    return nothing
-end
-
-function apply_post_transmission!(pep::PEP, state, new_contacts)
-    for ind in new_contacts
-        is_traced(ind) || continue
-
-        ind.state[:pep_received] = true
-
-        # PEP acts immediately — no delay
-        if pep.mode == :leaky
-            ind.susceptibility *= (1.0 - pep.efficacy)
-        elseif pep.mode == :all_or_nothing
-            if rand(state.rng) < pep.efficacy
-                ind.susceptibility = 0.0
-            end
-        end
-
-        # Re-evaluate infection (same approximation as RingVaccination)
-        if is_infected(ind) && ind.susceptibility < 1.0
-            if rand(state.rng) > ind.susceptibility
-                ind.state[:infected] = false
-            end
-        end
-    end
-end

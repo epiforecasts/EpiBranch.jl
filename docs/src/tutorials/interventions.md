@@ -171,12 +171,11 @@ println("Vaccinated: $n_vaccinated, Infected: $n_infected")
 
 ### Post-exposure prophylaxis
 
-[`PEP`](@ref) works like ring vaccination but acts immediately (no delay
-to immunity). It is suitable for modelling antivirals or antibiotics
-given to traced contacts:
+For PEP (antivirals or antibiotics given to traced contacts), use
+`RingVaccination` with `delay_to_immunity = 0.0` (the default):
 
 ```@example interventions
-pep = PEP(efficacy = 0.9, mode = :leaky)
+pep = RingVaccination(efficacy = 0.9)  # delay_to_immunity defaults to 0
 
 rng = StableRNG(42)
 results = simulate_batch(model, 200;

@@ -27,7 +27,7 @@ convention.
 ## Running a simulation
 
 ```@example gettingstarted
-rng = StableRNG(42)
+rng = StableRNG(123)
 state = simulate(model;
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
@@ -142,9 +142,9 @@ first(r_df, 5)
 Some quantities have closed-form solutions — no simulation needed:
 
 ```@example gettingstarted
-println("P(extinction | R=2.5, k=0.16): $(round(extinction_probability(2.5, 0.16), digits=3))")
-println("P(epidemic | R=2.5, k=0.16): $(round(epidemic_probability(2.5, 0.16), digits=3))")
-println("Top 20% cause $(round(proportion_transmission(2.5, 0.16; prop_cases=0.2) * 100, digits=1))% of transmission")
+println("P(extinction): $(round(extinction_probability(model), digits=3))")
+println("P(epidemic):   $(round(epidemic_probability(model), digits=3))")
+println("Top 20% cause $(round(proportion_transmission(model; prop_cases=0.2) * 100, digits=1))% of transmission")
 ```
 
 ## Conditioned simulation

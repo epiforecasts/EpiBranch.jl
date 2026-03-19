@@ -33,7 +33,6 @@ AbstractIntervention
 Isolation
 ContactTracing
 RingVaccination
-PEP
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!

@@ -37,13 +37,16 @@ for k in [0.01, 0.1, 0.5, 1.0, 10.0]
 end
 ```
 
-### Distribution dispatch
+### Dispatch on distributions and models
 
-`Distribution` objects are also accepted directly:
+`Distribution` objects and `BranchingProcess` models are also accepted:
 
 ```@example analytical
 println("Poisson(2.0):   P(ext) = $(round(extinction_probability(Poisson(2.0)), digits=4))")
 println("NegBin(2, 0.5): P(ext) = $(round(extinction_probability(NegBin(2.0, 0.5)), digits=4))")
+
+model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
+println("Model:          P(ext) = $(round(extinction_probability(model), digits=4))")
 ```
 
 ## Superspreading: proportion of transmission
