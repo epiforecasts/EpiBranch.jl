@@ -5,7 +5,7 @@ Compute the extinction probability of a branching process with
 Negative Binomial offspring distribution parameterised by mean `R`
 and dispersion `k`.
 
-Uses fixed-point iteration on the probability generating function.
+Fixed-point iteration on the probability generating function is used.
 For R ≤ 1, returns 1.0 (certain extinction).
 """
 function extinction_probability(R::Real, k::Real; tol::Real=1e-10, max_iter::Int=1000)
@@ -35,8 +35,8 @@ end
 Compute extinction probability for any discrete offspring distribution
 via fixed-point iteration on the PGF.
 
-For Poisson(λ): uses the PGF exp(λ(s-1)).
-For NegativeBinomial: extracts R and k and uses the closed-form PGF.
+For Poisson(λ): the PGF exp(λ(s-1)) is used.
+For NegativeBinomial: R and k are extracted and the closed-form PGF is applied.
 """
 function extinction_probability(d::Poisson; tol::Real=1e-10, max_iter::Int=1000)
     λ = mean(d)

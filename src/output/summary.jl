@@ -21,7 +21,7 @@ end
     is_extinct(state::SimulationState; by_week=nothing, reference_date=Date(2020,1,1),
                max_cases=nothing)
 
-Flexible extinction classification for a single simulation.
+Extinction classification for a single simulation with optional criteria.
 
 - No keyword args: returns `state.extinct`
 - `by_week::Int`: extinct if no cases with onset in that week
@@ -55,7 +55,7 @@ end
     effective_R(state::SimulationState)
 
 Compute effective reproduction number per generation.
-Returns a DataFrame with columns `generation` and `R_eff`.
+A DataFrame with columns `generation` and `R_eff` is returned.
 """
 function effective_R(state::SimulationState)
     infected = filter(is_infected, state.individuals)
@@ -83,7 +83,7 @@ end
     weekly_incidence(state::SimulationState; reference_date::Date=Date(2020, 1, 1))
 
 Compute weekly case counts from a single simulation.
-Returns a DataFrame with columns `week` (Date) and `cases` (Int).
+A DataFrame with columns `week` (Date) and `cases` (Int) is returned.
 """
 function weekly_incidence(state::SimulationState;
                           reference_date::Date=Date(2020, 1, 1))

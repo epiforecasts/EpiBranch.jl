@@ -82,8 +82,8 @@ for n in 1:5
 end
 ```
 
-[`chain_size_distribution`](@ref) dispatches on the offspring type and
-returns the appropriate analytical distribution:
+The appropriate analytical distribution is returned by
+[`chain_size_distribution`](@ref) based on the offspring type:
 
 ```@example analytical
 d_pois = chain_size_distribution(Poisson(0.8))

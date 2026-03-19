@@ -22,3 +22,8 @@ makedocs(;
         "API reference" => "api.md",
     ],
 )
+
+deploydocs(;
+    repo = "github.com/epiforecasts/EpiBranch.jl.git",
+    push_preview = true,
+)

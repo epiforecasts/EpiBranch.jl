@@ -6,9 +6,9 @@
 Log-likelihood of observed chain sizes `data` under the analytical chain size
 distribution implied by the given offspring distribution.
 
-Dispatches to the appropriate analytical distribution:
+The appropriate analytical distribution is selected based on the offspring type:
 - `Poisson` → Borel
-- `NegativeBinomial` → uses the Lagrange-inversion formula (individual-level
+- `NegativeBinomial` → Lagrange-inversion formula (individual-level
   overdispersion, NOT outbreak-level Gamma-Borel)
 """
 function chain_size_ll(data::AbstractVector{<:Integer}, offspring::Distribution)
@@ -21,7 +21,7 @@ end
                   obs_prob::Real)
 
 Log-likelihood with imperfect observation. Each case is observed independently
-with probability `obs_prob`. Marginalises over true chain sizes.
+with probability `obs_prob`. True chain sizes are marginalised over.
 """
 function chain_size_ll(data::AbstractVector{<:Integer}, offspring::Distribution,
                        obs_prob::Real)
@@ -52,12 +52,12 @@ end
                   rng=Random.default_rng())
 
 Simulation-based log-likelihood of observed chain sizes under any transmission
-model, optionally with interventions. Uses the simulation engine to build an
-empirical chain size distribution.
+model, optionally with interventions. An empirical chain size distribution
+is built via the simulation engine.
 
-This is the key synthesis: the same engine that runs forward simulations also
-provides likelihoods for inference, including under interventions — something
-the R packages cannot do because epichains and ringbp are separate codebases.
+The same engine used for forward simulations also
+produces likelihoods for inference, including under interventions — something
+not possible in the R packages because **epichains** and **ringbp** are separate codebases.
 """
 function chain_size_ll(data::AbstractVector{<:Integer}, model::TransmissionModel;
                        interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
@@ -161,7 +161,7 @@ end
     chain_length_ll(data::AbstractVector{<:Integer}, offspring::NegativeBinomial)
 
 Analytical log-likelihood of chain lengths for NegBin offspring.
-Uses PGF iteration to compute P(extinct by generation n).
+PGF iteration is used to compute P(extinct by generation n).
 """
 function chain_length_ll(data::AbstractVector{<:Integer}, offspring::NegativeBinomial)
     k = offspring.r
@@ -198,7 +198,7 @@ end
 """
     logsumexp(x)
 
-Numerically stable log-sum-exp. Accepts any iterable of reals.
+Numerically stable log-sum-exp. Any iterable of reals is accepted.
 """
 function logsumexp(x)
     mx = -Inf

@@ -9,8 +9,8 @@ engine: julia
 
 ## Overview
 
-This vignette demonstrates simulating transmission chains and computing
-chain statistics with **EpiBranch.jl**, reproducing the core functionality of
+Transmission chain simulation and chain statistics computation with
+**EpiBranch.jl** are demonstrated here, reproducing the core functionality of
 the [epichains](https://github.com/epiverse-trace/epichains) R package.
 
 ```{julia}
@@ -144,8 +144,8 @@ ll_with_iso = chain_size_ll(observed_sizes, model_with_iso;
 println("LL with isolation: ", round(ll_with_iso, digits = 2))
 ```
 
-The R **epichains** package does not support this; its likelihood function
-has no concept of interventions.
+In the R **epichains** package, likelihood evaluation under interventions
+is not supported.
 
 ## Chain length likelihood
 

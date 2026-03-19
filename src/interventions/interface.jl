@@ -12,7 +12,7 @@ initialise_individual!(::AbstractIntervention, individual, state) = nothing
 """Determine intervention state before transmission. Default: no-op."""
 resolve_individual!(::AbstractIntervention, individual, state) = nothing
 
-"""Act on contacts after creation. Receives all contacts. Default: no-op."""
+"""Act on contacts after creation. All contacts are received. Default: no-op."""
 apply_post_transmission!(::AbstractIntervention, state, new_contacts) = nothing
 
 """Residual transmission fraction while isolated. Default: 0 (perfect isolation)."""

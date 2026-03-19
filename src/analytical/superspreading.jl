@@ -9,7 +9,7 @@ This is the "80/20 rule" metric for superspreading: with `prop_cases=0.2`,
 returns the proportion of all transmission events caused by the top 20% of
 transmitters.
 
-Uses the incomplete beta function via the regularised beta function.
+Computed via the regularised incomplete beta function.
 """
 function proportion_transmission(R::Real, k::Real; prop_cases::Real=0.2)
     R > 0 || throw(ArgumentError("R must be positive, got $R"))

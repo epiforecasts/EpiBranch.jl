@@ -20,7 +20,7 @@ model = BranchingProcess(
 )
 ```
 
-[`NegBin`](@ref) is a convenience constructor for the Negative Binomial
+[`NegBin`](@ref) is a convenience constructor for the Negative Binomial,
 parameterised by mean (R) and dispersion (k), matching the epidemiological
 convention.
 
@@ -108,7 +108,7 @@ Intervention effort can be tracked this way. For more information, see [Interven
 
 ## Outputs
 
-Simulation state can be converted to DataFrames with several output functions:
+Simulation state can be converted to DataFrames with several output functions.
 
 ```@example gettingstarted
 using DataFrames, Dates

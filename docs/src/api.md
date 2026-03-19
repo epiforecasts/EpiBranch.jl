@@ -15,8 +15,6 @@ SimOpts
 DelayOpts
 OutcomeOpts
 DemographicOpts
-EpiBranch.GenerationTimeSpec
-EpiBranch.OffspringSpec
 ```
 
 ## Simulation
@@ -110,7 +108,9 @@ EpiBranch._draw_offspring
 EpiBranch._create_contacts!
 EpiBranch._resolve_infection
 EpiBranch._susceptible_fraction
-EpiBranch._residual_fraction
+EpiBranch.residual_transmission
+EpiBranch._residual_transmission
+EpiBranch.population_size
 EpiBranch._create_individual
 EpiBranch.logsumexp
 EpiBranch.required_fields

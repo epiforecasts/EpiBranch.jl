@@ -9,8 +9,8 @@ engine: julia
 
 ## Overview
 
-This vignette demonstrates generating simulated line lists and contact
-tracing data, reproducing the core functionality of the
+Simulated line lists and contact tracing data are generated here,
+reproducing the core functionality of the
 [**simulist**](https://github.com/epiverse-trace/simulist) R package.
 
 ```{julia}

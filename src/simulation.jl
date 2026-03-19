@@ -139,8 +139,8 @@ end
 """
     clinical_presentation(; incubation_period, prob_asymptomatic=0.0)
 
-Return an attributes function that sets `:onset_time` and `:asymptomatic`
-on individuals. Required by [`Isolation`](@ref).
+Return an attributes function. `:onset_time` and `:asymptomatic` are
+set on each individual. Required by [`Isolation`](@ref).
 """
 function clinical_presentation(; incubation_period::Distribution,
                                  prob_asymptomatic::Real=0.0)
@@ -159,7 +159,7 @@ end
 """
     testing(; sensitivity=1.0)
 
-Return an attributes function that sets `:test_positive` on individuals.
+Return an attributes function. `:test_positive` is set on each individual.
 Asymptomatic individuals always test negative.
 """
 function testing(; sensitivity::Real=1.0)
@@ -173,7 +173,7 @@ end
 """
     demographics(; age_distribution=nothing, age_range=(0, 90), prob_female=0.5)
 
-Return an attributes function that sets `:age` and `:sex` on individuals.
+Return an attributes function. `:age` and `:sex` are set on each individual.
 """
 function demographics(; age_distribution::Union{Distribution, Nothing}=nothing,
                         age_range::Tuple{Int, Int}=(0, 90),

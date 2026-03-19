@@ -27,7 +27,7 @@ end
     chain_statistics(states::Vector{<:SimulationState})
 
 Compute chain statistics across multiple simulations.
-Returns a DataFrame with columns: sim_id, chain_id, size, length.
+A DataFrame with columns sim_id, chain_id, size, length is returned.
 """
 function chain_statistics(states::Vector{<:SimulationState})
     sim_ids = Int[]

@@ -4,7 +4,7 @@
 Convenience constructor for a Negative Binomial offspring distribution
 parameterised by mean reproduction number `R` and dispersion parameter `k`.
 
-Returns a `NegativeBinomial` from Distributions.jl with mean `R` and
+A `NegativeBinomial` from Distributions.jl is returned, with mean `R` and
 variance `R + R²/k`.
 """
 function NegBin(R::Real, k::Real)
@@ -21,9 +21,9 @@ Return a function suitable for the `generation_time` field of a
 `BranchingProcess`, implementing ringbp's incubation-linked generation
 time model.
 
-The returned function takes an incubation period (Float64) and returns a
-truncated normal approximation to the skew-normal SN(ξ, ω, α) where
-ξ = incubation period, and α is chosen so that the fraction of generation
+An incubation period (Float64) is accepted by the returned function, and a
+truncated normal approximation to the skew-normal SN(ξ, ω, α) is produced,
+where ξ = incubation period, and α is chosen so that the fraction of generation
 times shorter than the incubation period equals `presymptomatic_fraction`.
 
 Usage:

@@ -9,10 +9,9 @@ engine: julia
 
 ## Overview
 
-This vignette demonstrates assessing the feasibility of controlling
-an outbreak using isolation and contact tracing, reproducing the core
-functionality of the [ringbp](https://github.com/epiforecasts/ringbp)
-R package.
+The feasibility of controlling an outbreak using isolation and contact
+tracing is assessed here, reproducing the core functionality of the
+[ringbp](https://github.com/epiforecasts/ringbp) R package.
 
 ```{julia}
 using EpiBranch

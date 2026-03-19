@@ -93,7 +93,7 @@ println("LL with interventions: $(round(ll, digits=2))")
 ```
 
 The same simulation engine used for forward simulation is used here.
-Likelihoods can be evaluated under interventions.
+Likelihoods can therefore be evaluated under interventions.
 
 ## Chain length likelihood
 

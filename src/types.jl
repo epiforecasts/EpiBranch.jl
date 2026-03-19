@@ -4,8 +4,8 @@
     get_generation_time(gt, individual)
 
 Return the generation time distribution for a specific individual.
-For a `Distribution`, returns it unchanged. For a `Function`, calls it
-with the individual's incubation period.
+For a `Distribution`, it is returned unchanged. For a `Function`, it is
+called with the individual's incubation period.
 """
 get_generation_time(gt::Distribution, individual) = gt
 

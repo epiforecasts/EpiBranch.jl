@@ -2,8 +2,8 @@
     scale_distribution(d::Distribution, factor::Real)
 
 Scale a distribution's mean by `factor`, preserving distribution family and shape.
-For Poisson: returns Poisson(λ * factor).
-For NegativeBinomial: returns NegativeBinomial with same k, scaled mean.
+For Poisson: a Poisson(λ * factor) is returned.
+For NegativeBinomial: a NegativeBinomial with same k and scaled mean is returned.
 """
 function scale_distribution(d::Poisson, factor::Real)
     Poisson(mean(d) * factor)

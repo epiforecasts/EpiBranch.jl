@@ -9,8 +9,8 @@ engine: julia
 
 ## Overview
 
-This vignette demonstrates analytical functions for offspring distributions
-and superspreading, reproducing the core functionality of the
+Analytical functions for offspring distributions and superspreading are
+covered here, reproducing the core functionality of the
 [**superspreading**](https://github.com/epiverse-trace/superspreading) R package.
 
 ```{julia}

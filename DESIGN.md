@@ -2,7 +2,7 @@
 
 ## Core idea
 
-The offspring draw is completely decoupled from timing and interventions. The competing risks framework on the transmission hazard connects naturally to survival analysis (Kenah's pairwise survival analysis, dynamic survival analysis).
+The offspring draw is completely decoupled from timing and interventions. The competing risks framework on the transmission hazard is connected naturally to survival analysis (Kenah's pairwise survival analysis, dynamic survival analysis).
 
 ## Architecture
 
@@ -36,7 +36,7 @@ Contacts that fail any of these checks are not infected but are still stored. Th
 
 Because the offspring distribution is a pure probabilistic object, it can be analysed with standard tools: extinction probability from the dominant eigenvalue, chain size distributions, analytical likelihoods. None of this depends on timing or interventions.
 
-Interventions operate on the timing layer, not the offspring layer. The hazard is truncated by isolation. The truncation point is shifted earlier by contact tracing. Susceptibility is modified by vaccination. All of these are competing risks on the same set of potential contacts.
+At the intervention stage, the timing layer is modified, not the offspring layer. The hazard is truncated by isolation. The truncation point is shifted earlier by contact tracing. Susceptibility is modified by vaccination. All of these are competing risks on the same set of potential contacts.
 
 The generation time CDF evaluated at the intervention time *is* the survival function. The same mathematical objects appear in simulation and in Kenah's pairwise likelihood framework. Intervention effectiveness can be estimated from observed generation times using the same quantities used in simulation.
 
@@ -68,9 +68,9 @@ Three hooks, all optional:
 
 - `initialise_individual!(intervention, individual, state)` — set up fields on a new contact
 - `resolve_individual!(intervention, individual, state)` — determine intervention state before transmission (e.g. compute isolation time from onset + delay)
-- `apply_post_transmission!(intervention, state, new_contacts)` — act on contacts after creation (e.g. contact tracing, ring vaccination). Receives all contacts, infected and non-infected.
+- `apply_post_transmission!(intervention, state, new_contacts)` — act on contacts after creation (e.g. contact tracing, ring vaccination). All contacts, infected and non-infected, are passed.
 
-Interventions are composable. They stack in a vector and are applied in order. Each intervention owns its own fields on the individual and documents what fields it requires.
+Interventions are composable. They are stacked in a vector and applied in order. Each intervention owns its own fields on the individual and documents what fields it requires.
 
 ## Transmission modifiers
 
@@ -94,7 +94,7 @@ The generation time distribution g(t) = h(t)/R is the normalised infectiousness 
 - P(transmission before isolation) = G(t_iso)
 - P(transmission after isolation) = 1 - G(t_iso)
 
-This is right-censoring of the transmission process. The generation time distribution (derived from the hazard) is connected to the population growth rate through the Euler-Lotka equation R = 1/M_g(-r).
+The result is right-censoring of the transmission process. The generation time distribution (derived from the hazard) is connected to the population growth rate through the Euler-Lotka equation R = 1/M_g(-r).
 
 The same objects -- the generation time distribution and the censoring time -- appear in both simulation and Kenah's pairwise likelihood. Inference built on top of this framework would fit the same quantities we simulate from.
 
