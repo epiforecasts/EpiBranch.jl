@@ -9,14 +9,25 @@ using Dates
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         state = simulate(model; attributes=clinical, sim_opts=SimOpts(max_cases=50), rng=rng)
 
-        rng2 = StableRNG(99)
-        df = linelist(state; rng=rng2)
+        df = linelist(state; rng=StableRNG(99))
 
         @test df isa DataFrame
         @test nrow(df) == state.cumulative_cases
-        @test ncol(df) == 11
         @test "id" in names(df)
         @test "case_type" in names(df)
+        @test "date_infection" in names(df)
+        @test "date_onset" in names(df)
+    end
+
+    @testset "linelist without clinical presentation has no onset" begin
+        rng = StableRNG(42)
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        state = simulate(model; sim_opts=SimOpts(max_cases=50), rng=rng)
+
+        df = linelist(state)
+        @test "id" in names(df)
+        @test !("date_onset" in names(df))
+        @test !("age" in names(df))
     end
 
     @testset "linelist with delays" begin
@@ -24,16 +35,18 @@ using Dates
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         state = simulate(model; attributes=clinical, sim_opts=SimOpts(max_cases=30), rng=rng)
 
-        rng2 = StableRNG(99)
         df = linelist(state;
-            delay_opts=DelayOpts(
+            delays=DelayOpts(
                 onset_to_reporting=Exponential(3.0),
                 onset_to_admission=Exponential(5.0),
                 onset_to_outcome=Exponential(10.0),
             ),
-            rng=rng2)
+            outcomes=OutcomeOpts(),
+            rng=StableRNG(99))
 
-        @test any(!ismissing, df.date_reporting)
+        @test "date_reporting" in names(df)
+        @test "date_admission" in names(df)
+        @test "outcome" in names(df)
         @test all(!ismissing, df.date_onset)
         for row in eachrow(df)
             if !ismissing(row.date_onset)
@@ -42,22 +55,39 @@ using Dates
         end
     end
 
-    @testset "linelist demographics" begin
+    @testset "linelist post-hoc demographics" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         state = simulate(model; attributes=clinical, sim_opts=SimOpts(max_cases=100), rng=rng)
 
-        rng2 = StableRNG(99)
         df = linelist(state;
-            demographic_opts=DemographicOpts(
+            demographics=DemographicOpts(
                 age_distribution=Normal(40, 15),
                 age_range=(0, 90),
                 prob_female=0.6,
             ),
-            rng=rng2)
+            rng=StableRNG(99))
 
+        @test "age" in names(df)
+        @test "sex" in names(df)
         @test all(0 .<= df.age .<= 90)
         @test all(s -> s in ("female", "male"), df.sex)
+    end
+
+    @testset "linelist with demographics from attributes" begin
+        rng = StableRNG(42)
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        init_fn = compose(
+            clinical_presentation(incubation_period=LogNormal(1.5, 0.5)),
+            demographics(age_distribution=Normal(40, 15)),
+        )
+        state = simulate(model; attributes=init_fn, sim_opts=SimOpts(max_cases=50), rng=rng)
+
+        df = linelist(state)
+        @test "age" in names(df)
+        @test "sex" in names(df)
+        # Demographics should NOT be overwritten by post-hoc
+        @test !ismissing(df.age[1])
     end
 
     @testset "linelist with age-specific CFR" begin
@@ -67,10 +97,10 @@ using Dates
             attributes=clinical, sim_opts=SimOpts(max_cases=500), rng=rng)
 
         age_cfr = Dict((0, 50) => 0.01, (51, 90) => 0.5)
-        rng2 = StableRNG(99)
         df = linelist(state;
-            outcome_opts=OutcomeOpts(age_specific_cfr=age_cfr),
-            rng=rng2)
+            demographics=DemographicOpts(age_range=(0, 90)),
+            outcomes=OutcomeOpts(age_specific_cfr=age_cfr),
+            rng=StableRNG(99))
 
         @test any(df.outcome .== "died")
         @test any(df.outcome .== "recovered")
@@ -80,7 +110,18 @@ using Dates
         state = SimulationState(Individual[], Int[], 0, StableRNG(1), 0, true, nothing, 0.0, nothing)
         df = linelist(state)
         @test nrow(df) == 0
-        @test ncol(df) == 11
+    end
+
+    @testset "linelist includes intervention state" begin
+        rng = StableRNG(42)
+        model = BranchingProcess(Poisson(2.0), Exponential(5.0))
+        iso = Isolation(delay=Exponential(1.0))
+        state = simulate(model;
+            interventions=[iso], attributes=clinical,
+            sim_opts=SimOpts(max_cases=50), rng=rng)
+
+        df = linelist(state)
+        @test "isolated" in names(df)
     end
 
     @testset "contacts output" begin
@@ -100,8 +141,7 @@ using Dates
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         state = simulate(model; attributes=clinical, sim_opts=SimOpts(max_cases=20, n_initial=3), rng=rng)
 
-        rng2 = StableRNG(99)
-        df = linelist(state; rng=rng2)
+        df = linelist(state; rng=StableRNG(99))
 
         n_index = count(df.case_type .== "index")
         @test n_index == 3
