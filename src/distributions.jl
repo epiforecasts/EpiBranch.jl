@@ -26,8 +26,8 @@ Return a function suitable for the `generation_time` field of a
 `BranchingProcess`, implementing ringbp's incubation-linked generation
 time model.
 
-An incubation period (Float64) is accepted by the returned function, and a
-truncated normal approximation to the skew-normal SN(ξ, ω, α) is produced,
+The returned function takes an incubation period (Float64) and produces a
+truncated normal approximation to the skew-normal SN(ξ, ω, α),
 where ξ = incubation period, and α is chosen so that the fraction of generation
 times shorter than the incubation period equals `presymptomatic_fraction`.
 

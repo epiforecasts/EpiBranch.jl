@@ -53,10 +53,9 @@ end
 
 Simulation-based log-likelihood of observed chain sizes under any transmission
 model, optionally with interventions. An empirical chain size distribution
-is built via the simulation engine.
+is built from simulated chains.
 
-The same engine used for forward simulations also
-produces likelihoods for inference, including under interventions — something
+Likelihoods can be evaluated under interventions — something
 not possible in the R packages because **epichains** and **ringbp** are separate codebases.
 """
 function chain_size_ll(data::AbstractVector{<:Integer}, model::TransmissionModel;

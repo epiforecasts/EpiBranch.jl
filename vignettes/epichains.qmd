@@ -144,8 +144,8 @@ ll_with_iso = chain_size_ll(observed_sizes, model_with_iso;
 println("LL with isolation: ", round(ll_with_iso, digits = 2))
 ```
 
-In the R **epichains** package, likelihood evaluation under interventions
-is not supported.
+Likelihood evaluation under interventions is not available in the
+R **epichains** package.
 
 ## Chain length likelihood
 

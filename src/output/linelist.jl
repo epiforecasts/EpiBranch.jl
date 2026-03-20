@@ -17,8 +17,8 @@ Columns are built dynamically from what is available on each individual:
   `delays` and/or `outcomes` are provided and onset times are available
 - Any other state dict fields are included as additional columns.
 
-The `demographics` kwarg accepts a `DemographicOpts` to generate age/sex
-post-hoc for individuals that don't already have them.
+If a `DemographicOpts` is passed via the `demographics` kwarg, age/sex
+are generated post-hoc for individuals that don't already have them.
 """
 function linelist(state::SimulationState;
                   reference_date::Date=Date(2020, 1, 1),

@@ -12,9 +12,9 @@ survival function of remaining potential transmission, truncated by isolation.
 
 ### Isolation
 
-[`Isolation`](@ref) applies to symptomatic, test-positive individuals after
-a delay from symptom onset. Clinical state on individuals is required,
-set by [`clinical_presentation`](@ref):
+Symptomatic, test-positive individuals are isolated after a delay from
+symptom onset using [`Isolation`](@ref). Clinical state on individuals
+is required, set by [`clinical_presentation`](@ref):
 
 ```@example interventions
 using EpiBranch
@@ -72,8 +72,8 @@ println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 
 ### Contact tracing
 
-[`ContactTracing`](@ref) identifies contacts of isolated cases. With
-quarantine, traced contacts are isolated before symptom onset:
+Contacts of isolated cases are identified using [`ContactTracing`](@ref).
+With quarantine, traced contacts are isolated before symptom onset:
 
 ```@example interventions
 iso = Isolation(delay = Exponential(2.0))
@@ -91,23 +91,22 @@ println("Isolation + tracing: $(round(containment_probability(results), digits=3
 
 ## Asymptomatic cases and test sensitivity
 
-Asymptomatic cases escape symptom-based surveillance. Imperfect testing
-means some symptomatic cases are also missed. Both are configured via
-[`clinical_presentation`](@ref):
+Asymptomatic cases escape symptom-based surveillance. The asymptomatic
+fraction is set via [`Disease`](@ref). Imperfect testing is a property
+of isolation — symptomatic cases are missed with probability
+`1 - test_sensitivity`:
 
 ```@example interventions
-clinical_hard = compose(
-    clinical_presentation(
-        incubation_period = LogNormal(1.5, 0.5),
-        prob_asymptomatic = 0.3,
-    ),
-    testing(sensitivity = 0.8),
+disease_hard = Disease(
+    incubation_period = LogNormal(1.5, 0.5),
+    prob_asymptomatic = 0.3,
 )
+iso_imperfect = Isolation(delay = Exponential(2.0), test_sensitivity = 0.8)
 
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
-    interventions = [iso, ct],
-    attributes = clinical_hard,
+    interventions = [iso_imperfect, ct],
+    attributes = disease_hard,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
@@ -116,9 +115,9 @@ println("30% asymptomatic, 80% test sensitivity: $(round(containment_probability
 
 ### Ring vaccination
 
-[`RingVaccination`](@ref) vaccinates traced contacts, reducing their
-susceptibility. It is applied after contact tracing has identified contacts,
-so it requires [`ContactTracing`](@ref) in the intervention stack.
+Traced contacts are vaccinated using [`RingVaccination`](@ref), reducing their
+susceptibility. This is applied after contact tracing has identified contacts,
+so [`ContactTracing`](@ref) must be in the intervention stack.
 
 The vaccine can be leaky (everyone's susceptibility reduced) or
 all-or-nothing (a fraction are fully protected):
@@ -210,7 +209,7 @@ println("Contacts per case: $(round(total / infected, digits=1))")
 
 ## Writing a custom intervention
 
-Any struct subtyping [`AbstractIntervention`](@ref) can serve as an intervention.
+Custom interventions are defined as structs subtyping [`AbstractIntervention`](@ref).
 One or more of the following methods should be implemented:
 - `initialise_individual!` — set up fields on new contacts
 - `resolve_individual!` — determine state before transmission

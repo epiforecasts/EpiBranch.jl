@@ -4,7 +4,7 @@
 Trace contacts of isolated symptomatic cases with given probability and delay.
 
 Requires fields set by [`Isolation`](@ref): `:isolated`, `:isolation_time`.
-Also reads `:asymptomatic` and `:onset_time` (from `clinical_presentation()`).
+Also requires `:asymptomatic` and `:onset_time` (from `clinical_presentation()`).
 
 Initialises: `:traced`, `:quarantined`.
 """

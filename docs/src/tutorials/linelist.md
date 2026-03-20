@@ -1,12 +1,12 @@
 # Line lists and contacts
 
 Simulated epidemiological data can be generated from any branching process simulation.
-The output pipeline is model-agnostic: it works with single-type, multi-type,
+Output generation is model-agnostic and works with single-type, multi-type,
 with or without interventions.
 
 ## Line list
 
-[`linelist`](@ref) converts a simulation state to a DataFrame with one row per case:
+A simulation state is converted to a DataFrame with one row per case using [`linelist`](@ref):
 
 ```@example linelist
 using EpiBranch
@@ -80,8 +80,8 @@ end
 
 ## Contacts table
 
-[`contacts`](@ref) returns all contacts (infected and non-infected) with
-a `was_case` flag, matching the **simulist** R package output format:
+All contacts (infected and non-infected) are returned by [`contacts`](@ref),
+with a `was_case` flag matching the **simulist** R package output format:
 
 ```@example linelist
 ct = contacts(state; reference_date = Date(2024, 1, 1))

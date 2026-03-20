@@ -6,7 +6,7 @@ between types is governed by an offspring matrix.
 
 ## Offspring matrix
 
-`M[i,j]` gives the expected number of type-`i` offspring from a type-`j`
+`M[i,j]` is the expected number of type-`i` offspring from a type-`j`
 parent — the next-generation matrix.
 
 ```@example multitype

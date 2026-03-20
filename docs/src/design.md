@@ -68,7 +68,7 @@ Three hooks, all optional:
 - `resolve_individual!(intervention, individual, state)` — determine intervention state before transmission (e.g. compute isolation time from onset + delay)
 - `apply_post_transmission!(intervention, state, new_contacts)` — act on contacts after creation (e.g. contact tracing, ring vaccination). All contacts, infected and non-infected, are passed.
 
-Interventions are composable. They are stacked in a vector and applied in order. Each intervention owns its own fields on the individual and documents what fields it requires.
+Interventions are composable. They are stacked in a vector and applied in order. Each intervention has its own fields on the individual and declares what fields it requires.
 
 ## Transmission modifiers
 
@@ -83,7 +83,7 @@ For a contact to be infected, it must survive the parent's infectiousness check 
 
 Multiple types (age groups, risk groups, spatial patches) are supported in the offspring draw. For a parent of type `j`, offspring counts per type are drawn from a joint distribution. The mixing pattern comes from a contact matrix; the count distribution comes from the offspring distribution family.
 
-Each contact is allocated to a type, stored as `:type` in its state dict. The rest of the pipeline (interventions, output) is unchanged and operates on individual-level state, not types.
+Each contact is allocated to a type, stored as `:type` in its state dict. Interventions and output are unchanged — they operate on individual-level state, not types.
 
 ## Connection to survival analysis
 
