@@ -37,9 +37,7 @@ function Distributions.mean(d::Borel)
     return 1.0 / (1.0 - d.μ)
 end
 
-# Issue 16: rand via inversion of CDF (rejection for simplicity)
 function Base.rand(rng::AbstractRNG, d::Borel)
-    # Simple rejection sampler: draw from a geometric proposal, accept/reject
     u = rand(rng)
     cumprob = 0.0
     for n in 1:10_000

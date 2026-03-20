@@ -11,7 +11,7 @@ function simulate(model::TransmissionModel;
                   rng::AbstractRNG=Random.default_rng())
     state = initialise_state(model, sim_opts, interventions, attributes, rng)
 
-    # Validate required fields on a representative individual
+
     if !isempty(state.individuals)
         _validate_required_fields(state.individuals[1], interventions)
     end
@@ -91,7 +91,7 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
     return temp_state
 end
 
-# Issue 19: track max_infection_time incrementally instead of scanning
+# track max_infection_time incrementally instead of scanning
 function should_terminate(state::SimulationState, sim_opts::SimOpts)
     state.extinct && return true
     state.cumulative_cases >= sim_opts.max_cases && return true

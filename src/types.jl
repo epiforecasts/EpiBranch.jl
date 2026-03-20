@@ -89,7 +89,6 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
         alloc_probs[:, j] = s > 0.0 ? offspring_matrix[:, j] ./ s : fill(1.0 / n, n)
     end
 
-    # Issue 11: use Multinomial from Distributions.jl instead of hand-rolled loop
     offspring_fn = function (rng::AbstractRNG, parent_type::Int)
         dist = dist_fn(R_by_type[parent_type])
         total = rand(rng, dist)

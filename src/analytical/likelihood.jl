@@ -65,10 +65,8 @@ function chain_size_ll(data::AbstractVector{<:Integer}, model::TransmissionModel
                        sim_opts::SimOpts=SimOpts(),
                        n_sim::Int=10_000,
                        rng::AbstractRNG=Random.default_rng())
-    # Simulate chains
     states = simulate_batch(model, n_sim; interventions, attributes, sim_opts, rng)
 
-    # Collect all chain sizes
     sim_sizes = Int[]
     for state in states
         cs = chain_statistics(state)
@@ -77,7 +75,6 @@ function chain_size_ll(data::AbstractVector{<:Integer}, model::TransmissionModel
 
     isempty(sim_sizes) && return -Inf
 
-    # Build empirical PMF with add-one smoothing
     max_size = max(maximum(data), maximum(sim_sizes))
     counts = zeros(Int, max_size)
     for s in sim_sizes

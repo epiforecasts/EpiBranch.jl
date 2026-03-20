@@ -37,7 +37,7 @@ function chain_statistics(states::Vector{<:SimulationState})
 
     for (s, state) in enumerate(states)
         cs = chain_statistics(state)
-        # Issue 10: append column arrays directly instead of iterating eachrow
+        # append column arrays directly instead of iterating eachrow
         n = nrow(cs)
         append!(sim_ids, fill(s, n))
         append!(chain_ids, cs.chain_id)

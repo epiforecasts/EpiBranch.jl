@@ -38,13 +38,11 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
         apply_post_transmission!(intervention, state, new_contacts)
     end
 
-    # Update state
     append!(state.individuals, new_contacts)
     n_infected = length(new_infected_ids)
     state.cumulative_cases += n_infected
     state.current_generation += 1
 
-    # Issue 19: update max infection time incrementally
     for c in new_contacts
         if is_infected(c) && c.infection_time > state.max_infection_time
             state.max_infection_time = c.infection_time
@@ -55,7 +53,7 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
         state.extinct = true
         state.active_ids = Int[]
     else
-        # Issue 2: IDs are 1-based indices, so active_ids ARE the infected IDs
+        # IDs are 1-based indices, so active_ids ARE the infected IDs
         state.active_ids = copy(new_infected_ids)
     end
 
@@ -149,7 +147,6 @@ function _resolve_infection(rng::AbstractRNG, parent, contact,
     contact.susceptibility < 1.0 && rand(rng) > contact.susceptibility && return false
     parent.infectiousness < 1.0 && rand(rng) > parent.infectiousness && return false
 
-    # Issue 1: O(1) parent lookup via direct indexing (id == index)
     if is_isolated(parent)
         iso_t = isolation_time(parent)
         transmission_time = parent.infection_time + generation_time
