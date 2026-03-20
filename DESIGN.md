@@ -100,8 +100,7 @@ The same objects -- the generation time distribution and the censoring time -- a
 
 ## References
 
-- Kenah & Robins (2007). Generation interval contraction and epidemic data analysis.
-- Kenah (2011). Contact intervals, survival analysis of epidemic data, and estimation of R0.
-- KhudaBukhsh et al. (2020). Survival dynamical systems.
-- Hart et al. (2022). Generation time and effective reproduction number under preventive measures.
-- Wallinga & Lipsitch (2007). How generation intervals shape the relationship between growth rates and reproductive numbers.
+- Kenah E, Lipsitch M, Robins JM (2008). Generation interval contraction and epidemic data analysis. *Mathematical Biosciences* 213(1):71–79. [doi:10.1016/j.mbs.2008.02.007](https://doi.org/10.1016/j.mbs.2008.02.007)
+- Kenah E (2011). Contact intervals, survival analysis of epidemic data, and estimation of R0. *Biostatistics* 12(3):548–566. [doi:10.1093/biostatistics/kxq068](https://doi.org/10.1093/biostatistics/kxq068)
+- KhudaBukhsh WR, Choi B, Kenah E, Rempala GA (2020). Survival dynamical systems: individual-level survival analysis from population-level epidemic models. *Interface Focus* 10(1):20190048. [doi:10.1098/rsfs.2019.0048](https://doi.org/10.1098/rsfs.2019.0048)
+- Wallinga J, Lipsitch M (2007). How generation intervals shape the relationship between growth rates and reproductive numbers. *Proceedings of the Royal Society B* 274(1609):599–604. [doi:10.1098/rspb.2006.3754](https://doi.org/10.1098/rspb.2006.3754)
