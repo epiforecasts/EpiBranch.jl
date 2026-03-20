@@ -8,13 +8,9 @@ vs when is the parent isolated (intervention time)?
 There is a connection to survival analysis. The generation time CDF is the
 survival function of remaining potential transmission, truncated by isolation.
 
-## Built-in interventions
+## Without interventions
 
-### Isolation
-
-Symptomatic, test-positive individuals are isolated after a delay from
-symptom onset using [`Isolation`](@ref). Clinical state on individuals
-is required, set by [`clinical_presentation`](@ref):
+First, let's see the baseline — a supercritical outbreak with no interventions:
 
 ```@example interventions
 using EpiBranch
@@ -23,6 +19,27 @@ using StableRNGs
 
 model = BranchingProcess(Poisson(3.0), Exponential(5.0))
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+
+rng = StableRNG(42)
+results_baseline = simulate_batch(model, 200;
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println("Containment (no interventions): $(round(containment_probability(results_baseline), digits=3))")
+```
+
+With R = 3.0, most outbreaks are not contained. Interventions are needed.
+
+## Built-in interventions
+
+### Isolation
+
+Symptomatic, test-positive individuals are isolated after a delay from
+symptom onset using [`Isolation`](@ref). Clinical state on individuals
+is required, set by [`clinical_presentation`](@ref) or [`Disease`](@ref):
+
+```@example interventions
 iso = Isolation(delay = Exponential(2.0))
 
 rng = StableRNG(42)
@@ -32,7 +49,7 @@ results = simulate_batch(model, 200;
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
-println("Containment: $(round(containment_probability(results), digits=3))")
+println("Containment (isolation): $(round(containment_probability(results), digits=3))")
 ```
 
 Effectiveness depends on how quickly isolation happens relative to the

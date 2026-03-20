@@ -47,7 +47,12 @@ println("NegBin(2, 0.5): P(ext) = $(round(extinction_probability(NegBin(2.0, 0.5
 
 model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
 println("Model:          P(ext) = $(round(extinction_probability(model), digits=4))")
+println("Model:          top 20% = $(round(proportion_transmission(model; prop_cases=0.2) * 100, digits=1))%")
+println("Model:          chain size dist = $(chain_size_distribution(model))")
 ```
+
+All analytical functions accept R/k values, `Distribution` objects, or
+`BranchingProcess` models.
 
 ## Superspreading: proportion of transmission
 
