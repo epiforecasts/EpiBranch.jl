@@ -157,17 +157,22 @@ function clinical_presentation(; incubation_period::Distribution,
 end
 
 """
-    testing(; sensitivity=1.0)
+    Disease(; incubation_period, prob_asymptomatic=0.0)
 
-Return an attributes function. `:test_positive` is set on each individual.
-Asymptomatic individuals always test negative.
+Convenience wrapper for specifying disease properties. Can be passed
+directly as the `attributes` argument to [`simulate`](@ref).
+
+Sets `:onset_time` and `:asymptomatic` on each individual. Equivalent
+to `clinical_presentation(; incubation_period, prob_asymptomatic)` but
+with a name that reflects what is being specified.
+
+```julia
+disease = Disease(incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.3)
+simulate(model; attributes = disease, interventions = [iso])
+```
 """
-function testing(; sensitivity::Real=1.0)
-    ts = Float64(sensitivity)
-    return function (rng, ind)
-        is_asymp = get(ind.state, :asymptomatic, false)
-        ind.state[:test_positive] = !is_asymp && rand(rng) < ts
-    end
+function Disease(; incubation_period::Distribution, prob_asymptomatic::Real=0.0)
+    clinical_presentation(; incubation_period, prob_asymptomatic)
 end
 
 """
@@ -216,9 +221,8 @@ end
 
 function _field_hint(field::Symbol)
     hints = Dict(
-        :onset_time => "Provide attributes = clinical_presentation(incubation_period = ...).",
-        :asymptomatic => "Provide attributes = clinical_presentation(incubation_period = ...).",
-        :test_positive => "Provide attributes = compose(clinical_presentation(...), testing(...)).",
+        :onset_time => "Provide attributes = Disease(incubation_period = ...).",
+        :asymptomatic => "Provide attributes = Disease(incubation_period = ...).",
         :age => "Provide attributes = demographics(age_distribution = ...).",
         :sex => "Provide attributes = demographics(...).",
     )

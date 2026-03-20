@@ -80,14 +80,10 @@
 
     @testset "Test sensitivity affects isolation" begin
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        iso = Isolation(delay=Exponential(1.0))
-        clinical_no_test = compose(
-            clinical_presentation(incubation_period=LogNormal(1.5, 0.5)),
-            testing(sensitivity=0.0),
-        )
+        iso = Isolation(delay=Exponential(1.0), test_sensitivity=0.0)
 
         state = simulate(model;
-            interventions=[iso], attributes=clinical_no_test,
+            interventions=[iso], attributes=clinical,
             sim_opts=SimOpts(max_cases=100), rng=StableRNG(42))
 
         n_isolated = count(is_isolated, state.individuals)

@@ -51,7 +51,7 @@ export NegBin, scale_distribution, ringbp_generation_time
 export Borel, GammaBorel, chain_size_distribution
 
 # Exports — attributes functions
-export clinical_presentation, testing, demographics, compose
+export Disease, clinical_presentation, demographics, compose
 
 # Exports — simulation
 export simulate, simulate_batch, simulate_conditioned

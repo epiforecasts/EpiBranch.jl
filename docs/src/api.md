@@ -82,8 +82,8 @@ GammaBorel
 ## Init functions
 
 ```@docs
+Disease
 clinical_presentation
-testing
 demographics
 compose
 ```

@@ -1,17 +1,21 @@
 """
-    Isolation(; delay, start_time=0.0, residual_transmission=0.0)
+    Isolation(; delay, start_time=0.0, residual_transmission=0.0, test_sensitivity=1.0)
 
 Isolate symptomatic, test-positive individuals after a delay from symptom onset.
 
-Requires fields on individuals (set via `clinical_presentation()`):
-`:onset_time`, `:asymptomatic`, `:test_positive`.
+Requires `:onset_time` and `:asymptomatic` on individuals (set via
+[`Disease`](@ref) or [`clinical_presentation`](@ref)).
 
-Initialises: `:isolated`, `:isolation_time`.
+`test_sensitivity` is the probability that a symptomatic individual tests
+positive and is therefore eligible for isolation.
+
+Initialises: `:isolated`, `:isolation_time`, `:test_positive`.
 """
 Base.@kwdef struct Isolation <: AbstractIntervention
     delay::Distribution
     start_time::Float64 = 0.0
     residual_transmission::Float64 = 0.0
+    test_sensitivity::Float64 = 1.0
 end
 
 required_fields(::Isolation) = [:onset_time, :asymptomatic]
@@ -20,7 +24,9 @@ residual_transmission(iso::Isolation) = iso.residual_transmission
 function initialise_individual!(iso::Isolation, individual, state)
     individual.state[:isolated] = false
     individual.state[:isolation_time] = Inf
-    return nothing
+    # Test result determined by isolation's test sensitivity
+    is_asymp = get(individual.state, :asymptomatic, false)
+    individual.state[:test_positive] = !is_asymp && rand(state.rng) < iso.test_sensitivity
 end
 
 function resolve_individual!(iso::Isolation, individual, state)
@@ -33,6 +39,5 @@ function resolve_individual!(iso::Isolation, individual, state)
     iso_time = onset_time(individual) + iso_delay
 
     set_isolated!(individual, iso_time)
-
     return nothing
 end
