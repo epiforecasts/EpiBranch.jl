@@ -6,7 +6,8 @@ several R packages (cf.
 [ringbp](https://github.com/epiforecasts/ringbp),
 [simulist](https://github.com/epiverse-trace/simulist),
 [epichains](https://github.com/epiverse-trace/epichains),
-[superspreading](https://github.com/epiverse-trace/superspreading)) is
+[superspreading](https://github.com/epiverse-trace/superspreading),
+[pepbp](https://github.com/sophiemeakin/pepbp)) is
 brought together in a single package with one shared simulation engine.
 
 The offspring draw is decoupled from timing and interventions: contacts

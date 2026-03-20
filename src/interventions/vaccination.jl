@@ -7,7 +7,8 @@ Applied to contacts that have been traced (`:traced == true`, set by
 [`ContactTracing`](@ref)). Contacts not yet infected at the time of
 vaccination have their susceptibility reduced.
 
-For post-exposure prophylaxis (PEP), set `delay_to_immunity = 0.0`
+For post-exposure prophylaxis (PEP, cf.
+[pepbp](https://github.com/sophiemeakin/pepbp)), set `delay_to_immunity = 0.0`
 (the default). For ring vaccination with a vaccine that takes time to
 confer protection, set `delay_to_immunity` to the appropriate delay.
 
