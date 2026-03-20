@@ -1,5 +1,5 @@
 
-# Stochastic branching process simulation for infectious disease epidemiology
+# Branching process models for infectious disease epidemiology
 
 <!-- badges: start -->
 [![CI](https://github.com/epiforecasts/EpiBranch.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/epiforecasts/EpiBranch.jl/actions/workflows/CI.yml)
