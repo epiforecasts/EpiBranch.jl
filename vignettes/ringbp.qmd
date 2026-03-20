@@ -135,7 +135,7 @@ state = simulate_conditioned(model, 50:500;
     rng = rng
 )
 
-r_df = effective_R(state)
+r_df = generation_R(state)
 println("R_eff by generation:")
 first(r_df, 5)
 ```

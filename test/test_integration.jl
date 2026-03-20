@@ -105,13 +105,13 @@ using Dates
         @test state.cumulative_cases > 0
     end
 
-    @testset "effective_R output" begin
+    @testset "generation_R output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
         state = simulate_conditioned(model, 20:500;
             sim_opts=SimOpts(max_cases=500), rng=rng)
 
-        df = effective_R(state)
+        df = generation_R(state)
         @test df isa DataFrame
         @test nrow(df) > 0
         @test df.R_eff[1] > 0

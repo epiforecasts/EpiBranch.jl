@@ -62,7 +62,7 @@ contacts
 chain_statistics
 containment_probability
 is_extinct
-effective_R
+generation_R
 weekly_incidence
 ```
 

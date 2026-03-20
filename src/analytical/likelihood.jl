@@ -195,14 +195,13 @@ end
 """
     logsumexp(x)
 
-Numerically stable log-sum-exp. Any iterable of reals is accepted.
+Numerically stable log-sum-exp. Any iterable is accepted (generators
+are collected first to allow two-pass computation).
 """
 function logsumexp(x)
-    mx = -Inf
-    for xi in x
-        xi > mx && (mx = xi)
-    end
+    v = x isa AbstractVector ? x : collect(Float64, x)
+    isempty(v) && return -Inf
+    mx = maximum(v)
     isinf(mx) && return mx
-    s = sum(exp(xi - mx) for xi in x)
-    return mx + log(s)
+    return mx + log(sum(exp(xi - mx) for xi in v))
 end

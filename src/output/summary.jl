@@ -52,12 +52,12 @@ function is_extinct(state::SimulationState;
 end
 
 """
-    effective_R(state::SimulationState)
+    generation_R(state::SimulationState)
 
 Compute effective reproduction number per generation.
 A DataFrame with columns `generation` and `R_eff` is returned.
 """
-function effective_R(state::SimulationState)
+function generation_R(state::SimulationState)
     infected = filter(is_infected, state.individuals)
     isempty(infected) && return DataFrame(generation=Int[], R_eff=Float64[])
     max_gen = maximum(ind.generation for ind in infected)

@@ -56,17 +56,24 @@ function linelist(state::SimulationState;
     has_age = any(haskey(ind.state, :age) for ind in cases)
     has_sex = any(haskey(ind.state, :sex) for ind in cases)
 
-    if has_age
-        cols[:age] = [get(ind.state, :age, missing) for ind in cases]
-    elseif demographics !== nothing
-        cols[:age] = [_sample_age(rng, demographics) for _ in 1:n]
+    # Apply post-hoc demographics if not already set on individuals
+    if demographics !== nothing && (!has_age || !has_sex)
+        demo_fn = EpiBranch.demographics(;
+            age_distribution=demographics.age_distribution,
+            age_range=demographics.age_range,
+            prob_female=demographics.prob_female)
+        for ind in cases
+            haskey(ind.state, :age) || demo_fn(rng, ind)
+        end
+        has_age = true
+        has_sex = true
     end
 
+    if has_age
+        cols[:age] = [get(ind.state, :age, missing) for ind in cases]
+    end
     if has_sex
         cols[:sex] = [string(get(ind.state, :sex, missing)) for ind in cases]
-    elseif demographics !== nothing
-        cols[:sex] = [rand(rng) < demographics.prob_female ? "female" : "male"
-                     for _ in 1:n]
     end
 
     # Type (from multi-type branching process)
@@ -167,9 +174,8 @@ function contacts(state::SimulationState;
 
     for ind in state.individuals
         for child_id in ind.secondary_case_ids
-            child_idx = findfirst(i -> i.id == child_id, state.individuals)
-            child_idx === nothing && continue
-            child = state.individuals[child_idx]
+            child_id > length(state.individuals) && continue
+            child = state.individuals[child_id]
             push!(froms, ind.id)
             push!(tos, child.id)
             push!(was_cases, is_infected(child))
@@ -187,14 +193,6 @@ end
 
 # ── Internal helpers ─────────────────────────────────────────────────
 
-function _sample_age(rng::AbstractRNG, opts::DemographicOpts)
-    if opts.age_distribution !== nothing
-        age = floor(Int, rand(rng, opts.age_distribution))
-        return clamp(age, opts.age_range[1], opts.age_range[2])
-    else
-        return rand(rng, opts.age_range[1]:opts.age_range[2])
-    end
-end
 
 function _get_cfr(age::Int, opts::OutcomeOpts)
     if opts.age_specific_cfr !== nothing

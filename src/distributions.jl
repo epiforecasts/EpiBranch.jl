@@ -6,6 +6,11 @@ parameterised by mean reproduction number `R` and dispersion parameter `k`.
 
 A `NegativeBinomial` from Distributions.jl is returned, with mean `R` and
 variance `R + R²/k`.
+
+_Note:_ `NegativeBinomial(r, p)` from Distributions.jl uses a different
+parameterisation (number of successes and success probability). Using it
+directly as an offspring distribution will produce silently wrong results.
+Always use `NegBin(R, k)` for epidemiological parameterisation.
 """
 function NegBin(R::Real, k::Real)
     R > 0 || throw(ArgumentError("R must be positive, got $R"))

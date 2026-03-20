@@ -133,7 +133,7 @@ cs
 
 ```@example gettingstarted
 # Effective R per generation
-r_df = effective_R(state)
+r_df = generation_R(state)
 first(r_df, 5)
 ```
 

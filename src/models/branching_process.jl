@@ -74,32 +74,42 @@ end
 
 # ── Contact creation ─────────────────────────────────────────────────
 
+function _make_one_contact!(new_contacts, new_infected_ids, parent, state,
+                             gt_dist, pop_suscept, residual,
+                             interventions, next_id;
+                             type_idx::Union{Int, Nothing}=nothing)
+    if gt_dist === nothing
+        gt = 0.0
+        inf_time = parent.infection_time
+    else
+        gt = rand(state.rng, gt_dist)
+        gt = max(gt, state.latent_period)
+        inf_time = parent.infection_time + gt
+    end
+
+    contact = _create_individual(state, parent.id, parent.chain_id,
+                                  next_id, inf_time, interventions)
+    type_idx !== nothing && (contact.state[:type] = type_idx)
+
+    infected = _resolve_infection(state.rng, parent, contact,
+                                   gt, pop_suscept, residual)
+    contact.state[:infected] = infected
+
+    push!(parent.secondary_case_ids, next_id)
+    push!(new_contacts, contact)
+    infected && push!(new_infected_ids, next_id)
+    return next_id + 1
+end
+
 """Single-type contacts."""
 function _create_contacts!(new_contacts, new_infected_ids,
                            n_contacts::Int, parent, state,
                            gt_dist, pop_suscept, residual,
                            interventions, next_id)
     for _ in 1:n_contacts
-        if gt_dist === nothing
-            gt = 0.0
-            inf_time = parent.infection_time
-        else
-            gt = rand(state.rng, gt_dist)
-            gt = max(gt, state.latent_period)
-            inf_time = parent.infection_time + gt
-        end
-
-        contact = _create_individual(state, parent.id, parent.chain_id,
-                                      next_id, inf_time, interventions)
-
-        infected = _resolve_infection(state.rng, parent, contact,
-                                       gt, pop_suscept, residual)
-        contact.state[:infected] = infected
-
-        push!(parent.secondary_case_ids, next_id)
-        push!(new_contacts, contact)
-        infected && push!(new_infected_ids, next_id)
-        next_id += 1
+        next_id = _make_one_contact!(new_contacts, new_infected_ids, parent, state,
+                                      gt_dist, pop_suscept, residual,
+                                      interventions, next_id)
     end
     return next_id
 end
@@ -111,27 +121,9 @@ function _create_contacts!(new_contacts, new_infected_ids,
                            interventions, next_id)
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
-            if gt_dist === nothing
-                gt = 0.0
-                inf_time = parent.infection_time
-            else
-                gt = rand(state.rng, gt_dist)
-                gt = max(gt, state.latent_period)
-                inf_time = parent.infection_time + gt
-            end
-
-            contact = _create_individual(state, parent.id, parent.chain_id,
-                                          next_id, inf_time, interventions)
-            contact.state[:type] = type_idx
-
-            infected = _resolve_infection(state.rng, parent, contact,
-                                           gt, pop_suscept, residual)
-            contact.state[:infected] = infected
-
-            push!(parent.secondary_case_ids, next_id)
-            push!(new_contacts, contact)
-            infected && push!(new_infected_ids, next_id)
-            next_id += 1
+            next_id = _make_one_contact!(new_contacts, new_infected_ids, parent, state,
+                                          gt_dist, pop_suscept, residual,
+                                          interventions, next_id; type_idx)
         end
     end
     return next_id

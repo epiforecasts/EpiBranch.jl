@@ -60,6 +60,7 @@ struct GammaBorel <: DiscreteUnivariateDistribution
     function GammaBorel(k::Real, R::Real)
         k > 0 || throw(ArgumentError("k must be positive, got $k"))
         R > 0 || throw(ArgumentError("R must be positive, got $R"))
+        R <= 1.0 || @warn "GammaBorel with R > 1 (supercritical): PMF does not sum to 1, chain size is infinite with positive probability"
         new(Float64(k), Float64(R))
     end
 end

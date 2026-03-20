@@ -67,14 +67,13 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
             end
         end
 
-        # Re-evaluate infection status given reduced susceptibility.
-        # This is an approximation: infection was decided in _resolve_infection
-        # before vaccination was applied (vaccination happens in
-        # apply_post_transmission!). The re-sampling here is not exactly
-        # equivalent to having vaccinated before the infection decision,
-        # but is a reasonable approximation for the competing risk framework.
-        if is_infected(ind) && ind.susceptibility < 1.0
-            if rand(state.rng) > ind.susceptibility / 1.0
+        # Re-evaluate infection: the vaccine's marginal effect on a contact
+        # that was already marked infected. With leaky efficacy, the contact
+        # avoids infection with probability equal to the efficacy.
+        if is_infected(ind)
+            avoided = rv.mode == :leaky ? (rand(state.rng) < rv.efficacy) :
+                      (ind.susceptibility == 0.0)
+            if avoided
                 ind.state[:infected] = false
             end
         end
