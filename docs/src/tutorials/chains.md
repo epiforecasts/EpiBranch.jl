@@ -86,7 +86,7 @@ iso = Isolation(delay = Exponential(2.0))
 ll = chain_size_ll(data, model;
     interventions = [iso],
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-    n_sim = 5000,
+    n_sim = 1000,
     rng = StableRNG(42),
 )
 println("LL with interventions: $(round(ll, digits=2))")

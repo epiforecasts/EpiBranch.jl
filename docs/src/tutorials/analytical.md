@@ -103,7 +103,7 @@ R, k = 1.5, 0.5
 q_exact = extinction_probability(R, k)
 
 model = BranchingProcess(NegBin(R, k), Exponential(5.0))
-results = simulate_batch(model, 5000;
+results = simulate_batch(model, 1000;
     sim_opts = SimOpts(max_cases = 10_000, max_generations = 200),
     rng = StableRNG(42),
 )
