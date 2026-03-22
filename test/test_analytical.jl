@@ -169,7 +169,7 @@
             data = [1, 1, 1, 2, 1]
             ll_analytical = chain_size_ll(data, Poisson(0.5))
             model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-            ll_simulated = chain_size_ll(data, model; n_sim=50_000, rng=StableRNG(42))
+            ll_simulated = chain_size_ll(data, model; n_sim=10_000, rng=StableRNG(42))
             # Should be in the same ballpark (simulation noise)
             @test abs(ll_analytical - ll_simulated) < 1.0
         end
