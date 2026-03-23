@@ -20,6 +20,7 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
 
         for intervention in interventions
             resolve_individual!(intervention, individual, state)
+            _enforce_start_time!(intervention, individual)
         end
 
         offspring_result = _draw_offspring(state.rng, model.offspring, individual, state)
@@ -36,6 +37,9 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
 
     for intervention in interventions
         apply_post_transmission!(intervention, state, new_contacts)
+        for contact in new_contacts
+            _enforce_start_time!(intervention, contact)
+        end
     end
 
     append!(state.individuals, new_contacts)

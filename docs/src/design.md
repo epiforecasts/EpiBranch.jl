@@ -72,6 +72,20 @@ Three hooks, all optional:
 
 Interventions are composable. They are stacked in a vector and applied in order. Each intervention has its own fields on the individual and declares what fields it requires.
 
+### Time-based scheduling
+
+Interventions with a `start_time` field represent policies that are not available from the start. The framework enforces `start_time` generically: after each hook call, it checks whether the intervention's effect on an individual falls before the policy start and undoes it if so.
+
+Each intervention declares:
+
+- `intervention_time(intervention, individual)` — the time at which the effect occurs (e.g. isolation time, trace time). Default: `-Inf` (always applies).
+- `reset!(intervention, individual)` — reverts all state changes made by the intervention. Default: no-op.
+- `start_time(intervention)` — the policy start time. Default: `0.0`.
+
+The check is on *action time*, not infection time. An individual infected before the policy start can still be affected if their computed action time (e.g. `onset + delay`) falls after `start_time`. This is the correct competing-risk interpretation: the testing infrastructure must be available at the time the individual would be tested.
+
+The `Scheduled` wrapper adds population-level conditions (case-count triggers, time windows, custom predicates) on top of this mechanism. It forwards `start_time` to the inner intervention when provided.
+
 ## Transmission modifiers
 
 All interventions ultimately map onto two numbers:

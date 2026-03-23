@@ -20,6 +20,14 @@ end
 
 required_fields(::Isolation) = [:onset_time, :asymptomatic]
 residual_transmission(iso::Isolation) = iso.residual_transmission
+start_time(iso::Isolation) = iso.start_time
+intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
+
+function reset!(::Isolation, ind::Individual)
+    ind.state[:isolated] = false
+    ind.state[:isolation_time] = Inf
+    return nothing
+end
 
 function initialise_individual!(iso::Isolation, individual, state)
     individual.state[:isolated] = false
@@ -31,7 +39,6 @@ end
 
 function resolve_individual!(iso::Isolation, individual, state)
     is_isolated(individual) && return nothing
-    individual.infection_time < iso.start_time && return nothing
     is_asymptomatic(individual) && return nothing
     !is_test_positive(individual) && return nothing
 

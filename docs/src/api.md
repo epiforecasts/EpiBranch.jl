@@ -33,9 +33,14 @@ AbstractIntervention
 Isolation
 ContactTracing
 RingVaccination
+Scheduled
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
+EpiBranch.intervention_time
+EpiBranch.reset!
+EpiBranch.start_time
+is_active
 ```
 
 ## State accessors
@@ -115,4 +120,6 @@ EpiBranch.logsumexp
 EpiBranch.required_fields
 EpiBranch._validate_required_fields
 EpiBranch._column_order
+EpiBranch._with_start_time
+EpiBranch._enforce_start_time!
 ```

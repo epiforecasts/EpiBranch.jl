@@ -16,6 +16,18 @@ Base.@kwdef struct ContactTracing <: AbstractIntervention
 end
 
 required_fields(::ContactTracing) = [:isolated, :asymptomatic]
+start_time(ct::ContactTracing) = ct.start_time
+intervention_time(::ContactTracing, ind::Individual) = isolation_time(ind)
+
+function reset!(::ContactTracing, ind::Individual)
+    ind.state[:traced] = false
+    ind.state[:quarantined] = false
+    if is_isolated(ind)
+        ind.state[:isolated] = false
+        ind.state[:isolation_time] = Inf
+    end
+    return nothing
+end
 
 function initialise_individual!(ct::ContactTracing, individual, state)
     individual.state[:traced] = false
@@ -25,8 +37,6 @@ end
 
 function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
     for ind in new_contacts
-        ind.infection_time < ct.start_time && continue
-
         # O(1) parent lookup: id == 1-based index into individuals
         ind.parent_id == 0 && continue
         ind.parent_id > length(state.individuals) && continue
@@ -38,10 +48,10 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
 
         # Trace with given probability
         if rand(state.rng) < ct.probability
-            ind.state[:traced] = true
-
             trace_delay = rand(state.rng, ct.delay)
             trace_time = isolation_time(parent) + trace_delay
+
+            ind.state[:traced] = true
 
             if ct.quarantine_on_trace
                 ind.state[:quarantined] = true

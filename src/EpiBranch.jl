@@ -17,6 +17,7 @@ include("interventions/interface.jl")
 include("interventions/isolation.jl")
 include("interventions/contact_tracing.jl")
 include("interventions/vaccination.jl")
+include("interventions/scheduled.jl")
 
 # Transmission models
 include("models/branching_process.jl")
@@ -39,7 +40,8 @@ include("analytical/superspreading.jl")
 export TransmissionModel, BranchingProcess
 export Individual, SimulationState
 export SimOpts, DelayOpts, OutcomeOpts, DemographicOpts
-export AbstractIntervention, Isolation, ContactTracing, RingVaccination
+export AbstractIntervention, Isolation, ContactTracing, RingVaccination, Scheduled
+export is_active, intervention_time
 
 # Exports — accessors
 export onset_time, is_isolated, isolation_time, is_traced, is_quarantined

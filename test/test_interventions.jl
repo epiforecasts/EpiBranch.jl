@@ -148,4 +148,122 @@
         @test haskey(ind.state, :age)
         @test haskey(ind.state, :sex)
     end
+
+    @testset "Scheduled interventions" begin
+        @testset "start_time delays activation" begin
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+
+            # Compare scheduled (late start) vs always-on — scheduled should contain less
+            rng1 = StableRNG(42)
+            iso_late = Scheduled(Isolation(delay=Exponential(1.0)); start_time=20.0)
+            results_late = simulate_batch(model, 100;
+                interventions=[iso_late], attributes=clinical,
+                sim_opts=SimOpts(max_cases=200), rng=rng1)
+
+            rng2 = StableRNG(42)
+            iso_always = Isolation(delay=Exponential(1.0))
+            results_always = simulate_batch(model, 100;
+                interventions=[iso_always], attributes=clinical,
+                sim_opts=SimOpts(max_cases=200), rng=rng2)
+
+            @test containment_probability(results_always) >= containment_probability(results_late)
+
+            # Fields should still be initialised on all individuals
+            state = simulate(model;
+                interventions=[iso_late], attributes=clinical,
+                sim_opts=SimOpts(max_cases=50), rng=StableRNG(99))
+            for ind in state.individuals
+                @test haskey(ind.state, :isolated)
+            end
+        end
+
+        @testset "start_after_cases delays activation" begin
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            iso = Scheduled(Isolation(delay=Exponential(0.5)); start_after_cases=20)
+
+            rng1 = StableRNG(42)
+            results_scheduled = simulate_batch(model, 100;
+                interventions=[iso], attributes=clinical,
+                sim_opts=SimOpts(max_cases=200), rng=rng1)
+
+            # Compare with always-on isolation — scheduled should contain less
+            rng2 = StableRNG(42)
+            iso_always = Isolation(delay=Exponential(0.5))
+            results_always = simulate_batch(model, 100;
+                interventions=[iso_always], attributes=clinical,
+                sim_opts=SimOpts(max_cases=200), rng=rng2)
+
+            @test containment_probability(results_always) >= containment_probability(results_scheduled)
+        end
+
+        @testset "custom predicate" begin
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            iso = Scheduled(Isolation(delay=Exponential(1.0)),
+                state -> state.current_generation >= 3)
+
+            state = simulate(model;
+                interventions=[iso], attributes=clinical,
+                sim_opts=SimOpts(max_cases=100), rng=StableRNG(42))
+
+            # Verify the intervention ran without errors and fields exist
+            for ind in state.individuals
+                @test haskey(ind.state, :isolated)
+            end
+        end
+
+        @testset "end_time deactivates" begin
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            # Active only in a short window
+            iso = Scheduled(Isolation(delay=Exponential(0.5));
+                start_time=5.0, end_time=10.0)
+
+            state = simulate(model;
+                interventions=[iso], attributes=clinical,
+                sim_opts=SimOpts(max_cases=100), rng=StableRNG(42))
+
+            # Late individuals should not be isolated
+            late = filter(i -> is_infected(i) && i.infection_time > 15.0, state.individuals)
+            if !isempty(late)
+                @test !any(is_isolated, late)
+            end
+        end
+
+        @testset "mixed Scheduled and always-on" begin
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            iso = Isolation(delay=Exponential(1.0))
+            ct = Scheduled(ContactTracing(probability=0.5, delay=Exponential(1.0));
+                start_after_cases=10)
+
+            state = simulate(model;
+                interventions=[iso, ct], attributes=clinical,
+                sim_opts=SimOpts(max_cases=50), rng=StableRNG(42))
+
+            # All individuals should have both isolation and tracing fields
+            for ind in state.individuals
+                @test haskey(ind.state, :isolated)
+                @test haskey(ind.state, :traced)
+            end
+        end
+
+        @testset "filters on action time not infection time" begin
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            iso = Scheduled(Isolation(delay=Exponential(0.1)); start_time=15.0)
+
+            state = simulate(model;
+                interventions=[iso], attributes=clinical,
+                sim_opts=SimOpts(max_cases=200), rng=StableRNG(42))
+
+            # No individual should be isolated with isolation_time < 15.0
+            for ind in state.individuals
+                if is_isolated(ind)
+                    @test isolation_time(ind) >= 15.0
+                end
+            end
+        end
+
+        @testset "requires at least one condition" begin
+            iso = Isolation(delay=Exponential(1.0))
+            @test_throws ErrorException Scheduled(iso)
+        end
+    end
 end

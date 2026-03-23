@@ -224,6 +224,102 @@ println("Contacts: $total, Infections: $infected, Traced: $traced")
 println("Contacts per case: $(round(total / infected, digits=1))")
 ```
 
+## Time-dependent policies
+
+In real outbreaks, interventions are not active from the start. Testing
+may begin on day 14, contact tracing may start once cumulative cases
+exceed a threshold.
+
+### The `start_time` field
+
+`Isolation` and `ContactTracing` accept a `start_time` parameter. This
+filters on *action time* — an individual is only isolated if their
+computed isolation time falls after the policy start, regardless of when
+they were infected. This is a competing risk: the testing infrastructure
+must be available at the time the individual would be tested.
+
+```@example interventions
+# Testing starts on day 10
+iso_delayed = Isolation(delay = Exponential(2.0), start_time = 10.0)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso_delayed],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println("Isolation from day 10: $(round(containment_probability(results), digits=3))")
+```
+
+Someone infected on day 8 with symptom onset on day 9 and delay 2 has
+isolation time = 11, which is after day 10, so they **are** isolated.
+Someone with isolation time = 9 is **not** isolated — testing was not
+yet available.
+
+### The `Scheduled` wrapper
+
+[`Scheduled`](@ref) wraps any intervention with a population-level
+activation condition. When `start_time` is passed, it is automatically
+forwarded to the inner intervention's own `start_time` field:
+
+```@example interventions
+# Equivalent to the above — Scheduled forwards start_time
+iso_scheduled = Scheduled(Isolation(delay = Exponential(2.0)); start_time = 10.0)
+```
+
+`Scheduled` is most useful for conditions that cannot be expressed as a
+fixed time, such as case-count triggers:
+
+```@example interventions
+# Start contact tracing after 20 cumulative cases
+iso = Isolation(delay = Exponential(2.0))
+ct_triggered = Scheduled(
+    ContactTracing(probability = 0.7, delay = Exponential(1.0));
+    start_after_cases = 20,
+)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso, ct_triggered],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println("Tracing after 20 cases: $(round(containment_probability(results), digits=3))")
+```
+
+Conditions can be combined:
+
+```@example interventions
+# Active only between day 5 and day 30
+iso_window = Scheduled(Isolation(delay = Exponential(1.0));
+    start_time = 5.0, end_time = 30.0)
+```
+
+For full flexibility, pass a predicate on [`SimulationState`](@ref):
+
+```@example interventions
+# Start isolation from generation 3 onwards
+iso_gen3 = Scheduled(
+    Isolation(delay = Exponential(2.0)),
+    state -> state.current_generation >= 3,
+)
+```
+
+### How the framework enforces `start_time`
+
+Each intervention can define two methods:
+
+- [`intervention_time`](@ref) — returns the time at which the effect
+  occurs for an individual (e.g. isolation time, trace time)
+- [`reset!`](@ref EpiBranch.reset!) — undoes the effect if it falls before `start_time`
+
+After each `resolve_individual!` and `apply_post_transmission!` call,
+the framework checks: if `intervention_time < start_time`, call `reset!`.
+This happens in one place for all interventions — individual interventions
+do not need to check `start_time` themselves.
+
 ## Writing a custom intervention
 
 Custom interventions are defined as structs subtyping [`AbstractIntervention`](@ref).
@@ -231,6 +327,11 @@ One or more of the following methods should be implemented:
 - `initialise_individual!` — set up fields on new contacts
 - `resolve_individual!` — determine state before transmission
 - `apply_post_transmission!` — act on contacts after creation
+
+To support `start_time` scheduling, also implement:
+- `start_time` — return the intervention's policy start time
+- `intervention_time` — return the time at which the effect occurs for an individual
+- `reset!` — undo the effect if it falls before `start_time`
 
 ```@example interventions
 # A gathering limit that caps the number of contacts per individual
