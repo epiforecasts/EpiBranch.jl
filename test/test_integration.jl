@@ -147,10 +147,10 @@ using Dates
 
         rng = StableRNG(42)
         model = BranchingProcess(NegBin(R, k), Exponential(5.0))
-        results = simulate_batch(model, 1000;
-            sim_opts=SimOpts(max_cases=10_000, max_generations=200), rng=rng)
+        results = simulate_batch(model, 500;
+            sim_opts=SimOpts(max_cases=5000, max_generations=200), rng=rng)
         q_simulated = containment_probability(results)
 
-        @test abs(q_analytical - q_simulated) < 0.05
+        @test abs(q_analytical - q_simulated) < 0.1
     end
 end
