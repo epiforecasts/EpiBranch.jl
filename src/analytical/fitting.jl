@@ -82,6 +82,10 @@ for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
                            sim_opts::SimOpts=SimOpts(),
                            n_sim::Int=10_000,
                            rng::AbstractRNG=Random.default_rng())
+        # Fast path: if no interventions and single-type, use analytical likelihood
+        if isempty(interventions) && model.offspring isa Distribution
+            return loglikelihood(data, model.offspring)
+        end
         _sim_loglikelihood(data.data, model, $(QuoteNode(col)), $mv;
                            interventions, attributes, sim_opts, n_sim, rng)
     end

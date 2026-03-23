@@ -71,7 +71,7 @@ state = simulate(model; sim_opts = SimOpts(max_cases = 100), rng = rng)
 println("Cases: $(state.cumulative_cases)")
 ```
 
-## Interventions compose with multi-type
+## Interventions work with multi-type models
 
 Interventions operate on individual state, not types — they work unchanged:
 

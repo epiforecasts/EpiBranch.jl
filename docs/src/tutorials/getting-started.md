@@ -58,7 +58,7 @@ println("Infection: $(round(ind.infection_time, digits=1)), Onset: $(round(onset
 
 ## Adding interventions
 
-Interventions are composable — pass them as a vector:
+You can combine interventions by passing them as a vector:
 
 ```@example gettingstarted
 iso = Isolation(delay = Exponential(2.0))
@@ -162,7 +162,7 @@ println("Outbreak size: $(state.cumulative_cases) (target: 50-100)")
 
 ## Next steps
 
-- [Interventions](interventions.md) — composable interventions and the competing risks framework
+- [Interventions](interventions.md) — combining interventions and the competing risks framework
 - [Multi-type models](multi-type.md) — age-structured and heterogeneous transmission
 - [Line lists and contacts](linelist.md) — generating epidemiological data
 - [Chain statistics and likelihood](chains.md) — inference from chain data

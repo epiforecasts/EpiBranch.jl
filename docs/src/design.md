@@ -70,7 +70,7 @@ Three hooks, all optional:
 - `resolve_individual!(intervention, individual, state)` — determine intervention state before transmission (e.g. compute isolation time from onset + delay)
 - `apply_post_transmission!(intervention, state, new_contacts)` — act on contacts after creation (e.g. contact tracing, ring vaccination). All contacts, infected and non-infected, are passed.
 
-Interventions are composable. They are stacked in a vector and applied in order. Each intervention has its own fields on the individual and declares what fields it requires.
+Interventions are stacked in a vector and applied in order. Each intervention has its own fields on the individual and declares what fields it requires.
 
 ### Time-based scheduling
 
