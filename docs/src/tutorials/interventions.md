@@ -57,15 +57,16 @@ generation time. Faster isolation truncates more of the infectious period:
 
 ```@example interventions
 for d in [0.5, 2.0, 10.0]
-    iso = Isolation(delay = Exponential(d))
-    rng = StableRNG(42)
-    results = simulate_batch(model, 200;
-        interventions = [iso],
-        attributes = clinical,
-        sim_opts = SimOpts(max_cases = 500),
-        rng = rng,
-    )
-    println("Delay ~ Exp($d): containment = $(round(containment_probability(results), digits=3))")
+    let iso = Isolation(delay = Exponential(d)),
+        rng = StableRNG(42)
+        results = simulate_batch(model, 200;
+            interventions = [iso],
+            attributes = clinical,
+            sim_opts = SimOpts(max_cases = 500),
+            rng = rng,
+        )
+        println("Delay ~ Exp($d): containment = $(round(containment_probability(results), digits=3))")
+    end
 end
 ```
 
