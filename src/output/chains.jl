@@ -6,21 +6,25 @@ Only infected individuals are counted. Returns a DataFrame with
 columns: chain_id, size, length.
 """
 function chain_statistics(state::SimulationState)
-    infected = filter(is_infected, state.individuals)
-    chain_ids = unique(ind.chain_id for ind in infected)
+    # Single-pass aggregation: track size and max generation per chain
+    chain_size = Dict{Int, Int}()
+    chain_maxgen = Dict{Int, Int}()
 
-    cids = Int[]
-    sizes = Int[]
-    lengths = Int[]
-
-    for cid in chain_ids
-        chain_inds = filter(i -> i.chain_id == cid, infected)
-        push!(cids, cid)
-        push!(sizes, length(chain_inds))
-        push!(lengths, maximum(i.generation for i in chain_inds))
+    for ind in state.individuals
+        is_infected(ind) || continue
+        cid = ind.chain_id
+        chain_size[cid] = get(chain_size, cid, 0) + 1
+        prev = get(chain_maxgen, cid, -1)
+        gen = ind.generation
+        gen > prev && (chain_maxgen[cid] = gen)
     end
 
-    DataFrame(chain_id=cids, size=sizes, length=lengths)
+    cids = sort!(collect(keys(chain_size)))
+    DataFrame(
+        chain_id = cids,
+        size = [chain_size[c] for c in cids],
+        length = [chain_maxgen[c] for c in cids],
+    )
 end
 
 """

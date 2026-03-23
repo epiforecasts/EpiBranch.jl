@@ -36,6 +36,31 @@ results = simulate_batch(model, 500;
 containment_probability(results)
 ```
 
+## Why Julia?
+
+In R, branching process simulation, chain statistics, line list generation, intervention modelling, and offspring fitting live in separate CRAN packages with separate codebases. This means, for example, that likelihoods cannot be evaluated under interventions because the simulation engine and the likelihood code don't share a common interface.
+
+Julia's multiple dispatch makes it natural to unify these into a single package where components compose freely:
+
+- **Same `loglikelihood` function** works with offspring counts, chain sizes, or chain lengths — dispatch on the data type selects the right method
+- **Same `fit` function** estimates offspring distribution parameters from any of those data types
+- **Same simulation engine** runs with or without interventions, and the simulation-based likelihood reuses it directly — enabling likelihood evaluation under interventions
+- **Interventions compose** via a shared interface: isolation, contact tracing, ring vaccination, and time-dependent scheduling all stack in a vector and interact through competing risks on individual state
+
+### Performance
+
+Benchmarks against the R [epichains](https://github.com/epiverse-trace/epichains) package (median times, same scenarios):
+
+| Scenario | R | Julia | Speedup |
+|---|---|---|---|
+| 1000 chains, Poisson(0.9) | 23.9 ms | 2.0 ms | 12x |
+| 1000 chains, NegBin(0.8, 0.5) | 11.8 ms | 1.2 ms | 10x |
+| 1000 chains + generation time | 31.6 ms | 2.6 ms | 12x |
+| Chain statistics | 0.48 ms | 0.27 ms | 1.8x |
+| Analytical log-likelihood | 0.16 ms | 0.008 ms | 20x |
+
+Benchmark scripts are in [`benchmarks/`](benchmarks/).
+
 ## Documentation
 
 For information on how to use the package, see the [documentation](https://epiforecasts.github.io/EpiBranch.jl/).
