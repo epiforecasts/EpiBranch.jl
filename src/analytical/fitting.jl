@@ -26,27 +26,17 @@ function loglikelihood(data::ChainSizes, offspring::Distribution)
     return sum(logpdf(dist, n) for n in data.data)
 end
 
-# AD-compatible methods: compute logpdf inline to avoid Float64 conversion in structs
+# AD-compatible methods: use shared _borel_logpdf / _gammaborel_logpdf
+# which accept any numeric type for parameters (ForwardDiff Dual compatible)
 function loglikelihood(data::ChainSizes, offspring::Poisson{T}) where T
     data.obs_prob < 1.0 && return _chain_size_ll_obs(data.data, offspring, data.obs_prob)
-    μ = mean(offspring)
-    μ = min(μ, one(μ))
-    return sum(data.data) do n
-        (n - 1) * log(μ * n) - μ * n - logabsgamma(n + 1)[1]
-    end
+    μ = min(mean(offspring), one(mean(offspring)))
+    return sum(n -> _borel_logpdf(μ, n), data.data)
 end
 
 function loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T}) where T
     data.obs_prob < 1.0 && return _chain_size_ll_obs(data.data, offspring, data.obs_prob)
-    k = offspring.r
-    R = mean(offspring)
-    return sum(data.data) do n
-        (logabsgamma(k * n + n - 1)[1]
-         - logabsgamma(k * n)[1]
-         - logabsgamma(n + 1)[1]
-         + k * n * log(k / (k + R))
-         + (n - 1) * log(R / (k + R)))
-    end
+    return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
 end
 
 """
@@ -74,34 +64,27 @@ end
 Simulation-based log-likelihood under any transmission model, optionally
 with interventions.
 """
-function loglikelihood(data::ChainSizes, model::TransmissionModel;
-                       interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
-                       attributes::Union{Function, Nothing}=nothing,
-                       sim_opts::SimOpts=SimOpts(),
-                       n_sim::Int=10_000,
-                       rng::AbstractRNG=Random.default_rng())
+function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
+                            interventions, attributes, sim_opts, n_sim, rng)
     states = simulate_batch(model, n_sim; interventions, attributes, sim_opts, rng)
-    sim_sizes = Int[]
+    sim_values = Int[]
     for state in states
         cs = chain_statistics(state)
-        append!(sim_sizes, cs.size)
+        append!(sim_values, getproperty(cs, column))
     end
-    return _empirical_ll(data.data, sim_sizes, min_val=1)
+    return _empirical_ll(observed, sim_values; min_val)
 end
 
-function loglikelihood(data::ChainLengths, model::TransmissionModel;
-                       interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
-                       attributes::Union{Function, Nothing}=nothing,
-                       sim_opts::SimOpts=SimOpts(),
-                       n_sim::Int=10_000,
-                       rng::AbstractRNG=Random.default_rng())
-    states = simulate_batch(model, n_sim; interventions, attributes, sim_opts, rng)
-    sim_lengths = Int[]
-    for state in states
-        cs = chain_statistics(state)
-        append!(sim_lengths, cs.length)
+for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
+    @eval function loglikelihood(data::$DT, model::TransmissionModel;
+                           interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
+                           attributes::Union{Function, Nothing}=nothing,
+                           sim_opts::SimOpts=SimOpts(),
+                           n_sim::Int=10_000,
+                           rng::AbstractRNG=Random.default_rng())
+        _sim_loglikelihood(data.data, model, $(QuoteNode(col)), $mv;
+                           interventions, attributes, sim_opts, n_sim, rng)
     end
-    return _empirical_ll(data.data, sim_lengths, min_val=0)
 end
 
 # ── Unified fit interface (extends Distributions.fit) ────────────────

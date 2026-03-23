@@ -18,13 +18,6 @@ function _chain_size_ll_obs(data, offspring, obs_prob)
     return ll
 end
 
-"""Analytical chain length likelihood for Poisson offspring."""
-function _chain_length_ll_poisson(data, offspring::Poisson)
-    λ = mean(offspring)
-    λ < 1.0 || throw(ArgumentError("chain length distribution only defined for subcritical process (λ < 1)"))
-    return sum(log(1.0 - λ) + (n - 1) * log(λ) for n in data)
-end
-
 """Analytical chain length likelihood for NegBin offspring."""
 function _chain_length_ll_negbin(data, offspring::NegativeBinomial)
     k = offspring.r

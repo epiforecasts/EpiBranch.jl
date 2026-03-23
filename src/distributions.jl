@@ -27,9 +27,16 @@ Return a function suitable for the `generation_time` field of a
 time model.
 
 The returned function takes an incubation period (Float64) and produces a
-truncated normal approximation to the skew-normal SN(ξ, ω, α),
-where ξ = incubation period, and α is chosen so that the fraction of generation
-times shorter than the incubation period equals `presymptomatic_fraction`.
+truncated normal distribution matching the mean and variance of the
+skew-normal SN(ξ, ω, α), where ξ = incubation period, and α is chosen so
+that the fraction of generation times shorter than the incubation period
+equals `presymptomatic_fraction`.
+
+!!! note
+    This is a moment-matched Normal approximation, not the full skew-normal.
+    The skewness of the generation time distribution is not captured. The
+    original ringbp R package uses the actual skew-normal (via the `sn`
+    package). For most practical uses this approximation is adequate.
 
 Usage:
 ```julia

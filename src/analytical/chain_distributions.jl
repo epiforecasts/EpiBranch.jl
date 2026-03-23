@@ -21,11 +21,11 @@ end
 
 Distributions.params(d::Borel) = (d.μ,)
 
-function Distributions.logpdf(d::Borel, n::Integer)
-    n < 1 && return -Inf
-    μ = d.μ
-    return (n - 1) * log(μ * n) - μ * n - logabsgamma(n + 1)[1]
-end
+"""Log-PDF of the Borel distribution. Accepts any numeric type for μ (AD-compatible)."""
+_borel_logpdf(μ, n::Integer) =
+    n < 1 ? oftype(float(μ), -Inf) : (n - 1) * log(μ * n) - μ * n - logabsgamma(n + 1)[1]
+
+Distributions.logpdf(d::Borel, n::Integer) = _borel_logpdf(d.μ, n)
 
 Distributions.pdf(d::Borel, n::Integer) = exp(logpdf(d, n))
 Distributions.minimum(::Borel) = 1
@@ -67,15 +67,17 @@ end
 
 Distributions.params(d::GammaBorel) = (d.k, d.R)
 
-function Distributions.logpdf(d::GammaBorel, n::Integer)
-    n < 1 && return -Inf
-    k, R = d.k, d.R
+"""Log-PDF of the GammaBorel distribution. Accepts any numeric type for k, R (AD-compatible)."""
+function _gammaborel_logpdf(k, R, n::Integer)
+    n < 1 && return oftype(float(k), -Inf)
     return (logabsgamma(k * n + n - 1)[1]
             - logabsgamma(k * n)[1]
             - logabsgamma(n + 1)[1]
             + k * n * log(k / (k + R))
             + (n - 1) * log(R / (k + R)))
 end
+
+Distributions.logpdf(d::GammaBorel, n::Integer) = _gammaborel_logpdf(d.k, d.R, n)
 
 Distributions.pdf(d::GammaBorel, n::Integer) = exp(logpdf(d, n))
 Distributions.minimum(::GammaBorel) = 1
@@ -113,7 +115,5 @@ Analytical chain size distribution extracted from the model's offspring
 distribution (single-type only).
 """
 function chain_size_distribution(model::BranchingProcess)
-    model.offspring isa Distribution || throw(ArgumentError(
-        "Analytical chain size distribution only available for single-type models"))
-    return chain_size_distribution(model.offspring)
+    return chain_size_distribution(_single_type_offspring(model))
 end

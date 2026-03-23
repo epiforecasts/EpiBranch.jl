@@ -149,6 +149,86 @@
         @test haskey(ind.state, :sex)
     end
 
+    @testset "Ring vaccination" begin
+        @testset "Leaky mode reduces transmission" begin
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            iso = Isolation(delay=Exponential(1.0))
+            ct = ContactTracing(probability=1.0, delay=Exponential(0.5))
+
+            rng1 = StableRNG(42)
+            rv = RingVaccination(efficacy=0.9, mode=:leaky)
+            results_vacc = simulate_batch(model, 100;
+                interventions=[iso, ct, rv], attributes=clinical,
+                sim_opts=SimOpts(max_cases=200), rng=rng1)
+
+            rng2 = StableRNG(42)
+            results_no_vacc = simulate_batch(model, 100;
+                interventions=[iso, ct], attributes=clinical,
+                sim_opts=SimOpts(max_cases=200), rng=rng2)
+
+            @test containment_probability(results_vacc) >= containment_probability(results_no_vacc)
+        end
+
+        @testset "All-or-nothing mode" begin
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            iso = Isolation(delay=Exponential(1.0))
+            ct = ContactTracing(probability=1.0, delay=Exponential(0.5))
+            rv = RingVaccination(efficacy=0.8, mode=:all_or_nothing)
+
+            state = simulate(model;
+                interventions=[iso, ct, rv], attributes=clinical,
+                sim_opts=SimOpts(max_cases=100), rng=StableRNG(42))
+
+            n_vaccinated = count(is_vaccinated, state.individuals)
+            @test n_vaccinated > 0
+
+            for ind in state.individuals
+                @test haskey(ind.state, :vaccinated)
+                @test haskey(ind.state, :vaccination_time)
+            end
+        end
+
+        @testset "Delay to immunity" begin
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            iso = Isolation(delay=Exponential(1.0))
+            ct = ContactTracing(probability=1.0, delay=Exponential(0.5))
+
+            rng1 = StableRNG(42)
+            rv_instant = RingVaccination(efficacy=0.9, delay_to_immunity=0.0)
+            results_instant = simulate_batch(model, 100;
+                interventions=[iso, ct, rv_instant], attributes=clinical,
+                sim_opts=SimOpts(max_cases=200), rng=rng1)
+
+            rng2 = StableRNG(42)
+            rv_delayed = RingVaccination(efficacy=0.9, delay_to_immunity=14.0)
+            results_delayed = simulate_batch(model, 100;
+                interventions=[iso, ct, rv_delayed], attributes=clinical,
+                sim_opts=SimOpts(max_cases=200), rng=rng2)
+
+            # Instant immunity should contain better than delayed
+            @test containment_probability(results_instant) >= containment_probability(results_delayed)
+        end
+    end
+
+    @testset "Contact tracing without quarantine" begin
+        rng = StableRNG(42)
+        model = BranchingProcess(Poisson(2.0), Exponential(5.0))
+        iso = Isolation(delay=Exponential(1.0))
+        ct = ContactTracing(probability=1.0, delay=Exponential(1.0),
+            quarantine_on_trace=false)
+
+        state = simulate(model;
+            interventions=[iso, ct], attributes=clinical,
+            sim_opts=SimOpts(max_cases=50), rng=rng)
+
+        n_traced = count(is_traced, state.individuals)
+        if n_traced > 0
+            # Traced contacts should not be quarantined
+            traced = filter(is_traced, state.individuals)
+            @test !any(is_quarantined, traced)
+        end
+    end
+
     @testset "Scheduled interventions" begin
         @testset "start_time delays activation" begin
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))

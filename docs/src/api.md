@@ -155,8 +155,10 @@ EpiBranch._column_order
 EpiBranch._with_start_time
 EpiBranch._enforce_start_time!
 EpiBranch._chain_size_ll_obs
-EpiBranch._chain_length_ll_poisson
 EpiBranch._chain_length_ll_negbin
+EpiBranch._borel_logpdf
+EpiBranch._gammaborel_logpdf
+EpiBranch._single_type_offspring
 EpiBranch._empirical_ll
 EpiBranch._bisect_min
 ```

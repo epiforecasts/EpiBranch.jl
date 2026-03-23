@@ -83,9 +83,7 @@ Extinction probability for a single-type branching process, extracted
 from the model's offspring distribution.
 """
 function extinction_probability(model::BranchingProcess; kwargs...)
-    model.offspring isa Distribution || throw(ArgumentError(
-        "Analytical extinction probability only available for single-type models"))
-    return extinction_probability(model.offspring; kwargs...)
+    return extinction_probability(_single_type_offspring(model); kwargs...)
 end
 
 """
@@ -167,7 +165,5 @@ end
 Containment probability for a branching process model.
 """
 function probability_contain(model::BranchingProcess; kwargs...)
-    model.offspring isa Distribution || throw(ArgumentError(
-        "Analytical probability_contain only available for single-type models"))
-    return probability_contain(model.offspring; kwargs...)
+    return probability_contain(_single_type_offspring(model); kwargs...)
 end

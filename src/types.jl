@@ -10,8 +10,10 @@ it is called with the individual's incubation period.
 get_generation_time(gt::Distribution, individual) = gt
 
 function get_generation_time(gt::Function, individual)
-    inc_period = get(individual.state, :onset_time, NaN) - individual.infection_time
+    onset = get(individual.state, :onset_time, NaN)
+    inc_period = onset - individual.infection_time
     if isnan(inc_period) || inc_period <= 0.0
+        @warn "Missing or non-positive incubation period for individual $(individual.id); using 5.0 days" maxlog=1
         inc_period = 5.0
     end
     gt(inc_period)
@@ -22,6 +24,13 @@ abstract type TransmissionModel end
 
 """Interface methods with defaults for any TransmissionModel."""
 population_size(::TransmissionModel) = nothing
+
+"""Extract the offspring distribution from a single-type model, or throw."""
+function _single_type_offspring(model::TransmissionModel)
+    model.offspring isa Distribution || throw(ArgumentError(
+        "This function only works with single-type models (Distribution offspring)"))
+    return model.offspring
+end
 latent_period(::TransmissionModel) = 0.0
 n_types(::TransmissionModel) = 1
 
@@ -160,7 +169,7 @@ is_vaccinated(ind) = get(ind.state, :vaccinated, false)::Bool
 is_asymptomatic(ind) = get(ind.state, :asymptomatic, false)::Bool
 
 """Whether the individual tested positive."""
-is_test_positive(ind) = get(ind.state, :test_positive, true)::Bool
+is_test_positive(ind) = get(ind.state, :test_positive, false)::Bool
 
 """Whether the individual was successfully infected (vs contact only)."""
 is_infected(ind) = get(ind.state, :infected, true)::Bool

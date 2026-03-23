@@ -63,9 +63,7 @@ proportion_transmission(d::Distribution; prop_cases::Real=0.2) =
     throw(ArgumentError("proportion_transmission not defined for $(typeof(d)). Use NegativeBinomial or Poisson."))
 
 function proportion_transmission(model::BranchingProcess; prop_cases::Real=0.2)
-    model.offspring isa Distribution || throw(ArgumentError(
-        "Analytical proportion_transmission only available for single-type models"))
-    return proportion_transmission(model.offspring; prop_cases)
+    return proportion_transmission(_single_type_offspring(model); prop_cases)
 end
 
 # ── Proportion of cases from large clusters ──────────────────────────
@@ -87,8 +85,7 @@ function proportion_cluster_size(R::Real, k::Real; cluster_size::Int=10)
     k > 0 || throw(ArgumentError("k must be positive, got $k"))
     cluster_size >= 1 || throw(ArgumentError("cluster_size must be ≥ 1, got $cluster_size"))
 
-    d = NegBin(R, k)
-    nb = NegativeBinomial(d.r, d.p)
+    nb = NegBin(R, k)
 
     # Proportion of all secondary cases from infectors with ≥ cluster_size cases
     # = Σ_{x≥c} x·P(X=x) / E[X]
@@ -114,11 +111,10 @@ proportion_cluster_size(d::NegativeBinomial; cluster_size::Int=10) =
 Proportion of cases from large clusters for a branching process model.
 """
 function proportion_cluster_size(model::BranchingProcess; cluster_size::Int=10)
-    model.offspring isa Distribution || throw(ArgumentError(
-        "Analytical proportion_cluster_size only available for single-type models"))
-    model.offspring isa NegativeBinomial || throw(ArgumentError(
+    d = _single_type_offspring(model)
+    d isa NegativeBinomial || throw(ArgumentError(
         "proportion_cluster_size requires NegativeBinomial offspring"))
-    return proportion_cluster_size(model.offspring; cluster_size)
+    return proportion_cluster_size(d; cluster_size)
 end
 
 # ── Network-adjusted reproduction number ─────────────────────────────

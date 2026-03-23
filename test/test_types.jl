@@ -32,7 +32,7 @@
         @test isnan(onset_time(ind))
         @test !is_traced(ind)
         @test !is_asymptomatic(ind)
-        @test is_test_positive(ind)
+        @test !is_test_positive(ind)
     end
 
     @testset "BranchingProcess construction" begin

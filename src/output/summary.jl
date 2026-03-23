@@ -58,22 +58,25 @@ Compute effective reproduction number per generation.
 A DataFrame with columns `generation` and `R_eff` is returned.
 """
 function generation_R(state::SimulationState)
-    infected = filter(is_infected, state.individuals)
-    isempty(infected) && return DataFrame(generation=Int[], R_eff=Float64[])
-    max_gen = maximum(ind.generation for ind in infected)
+    # Single-pass: count infected individuals per generation
+    gen_counts = Dict{Int, Int}()
+    for ind in state.individuals
+        is_infected(ind) || continue
+        g = ind.generation
+        gen_counts[g] = get(gen_counts, g, 0) + 1
+    end
+
+    isempty(gen_counts) && return DataFrame(generation=Int[], R_eff=Float64[])
+    max_gen = maximum(keys(gen_counts))
 
     generations = Int[]
     r_effs = Float64[]
-
     for g in 0:(max_gen - 1)
-        parents = filter(i -> i.generation == g, infected)
-        children = filter(i -> i.generation == g + 1, infected)
-
-        n_parents = length(parents)
+        n_parents = get(gen_counts, g, 0)
         n_parents == 0 && continue
-
+        n_children = get(gen_counts, g + 1, 0)
         push!(generations, g)
-        push!(r_effs, length(children) / n_parents)
+        push!(r_effs, n_children / n_parents)
     end
 
     DataFrame(generation=generations, R_eff=r_effs)
