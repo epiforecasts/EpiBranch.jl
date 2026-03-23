@@ -82,10 +82,15 @@ for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
                            sim_opts::SimOpts=SimOpts(),
                            n_sim::Int=10_000,
                            rng::AbstractRNG=Random.default_rng())
-        # Fast path: if no interventions and single-type with known analytical
-        # solution, use it instead of simulation
-        if isempty(interventions) && model.offspring isa Union{Poisson, NegativeBinomial}
-            return loglikelihood(data, model.offspring)
+        # Fast path: use analytical likelihood when no interventions and the
+        # offspring distribution has one. Falls through to simulation if the
+        # analytical method throws (e.g. unsupported distribution type).
+        if isempty(interventions) && model.offspring isa Distribution
+            try
+                return loglikelihood(data, model.offspring)
+            catch e
+                e isa MethodError || rethrow()
+            end
         end
         _sim_loglikelihood(data.data, model, $(QuoteNode(col)), $mv;
                            interventions, attributes, sim_opts, n_sim, rng)
