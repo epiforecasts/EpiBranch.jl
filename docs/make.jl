@@ -5,6 +5,7 @@ makedocs(;
     modules = [EpiBranch],
     sitename = "EpiBranch.jl",
     remotes = nothing,
+    warnonly = [:missing_docs],
     format = Documenter.HTML(;
         prettyurls = get(ENV, "CI", "false") == "true",
     ),
@@ -15,7 +16,7 @@ makedocs(;
             "Interventions" => "tutorials/interventions.md",
             "Multi-type models" => "tutorials/multi-type.md",
             "Line lists and contacts" => "tutorials/linelist.md",
-            "Chain statistics and likelihood" => "tutorials/chains.md",
+            "Chain statistics, likelihood, and fitting" => "tutorials/chains.md",
             "Analytical functions" => "tutorials/analytical.md",
         ],
         "Design" => "design.md",

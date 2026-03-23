@@ -1,5 +1,5 @@
 ---
-title: "Chain statistics and likelihood"
+title: "Chain statistics, likelihood, and fitting"
 subtitle: "Reproducing the epichains R package functionality"
 format:
   html:
@@ -9,9 +9,10 @@ engine: julia
 
 ## Overview
 
-Transmission chain simulation and chain statistics computation with
-**EpiBranch.jl** are demonstrated here, reproducing the core functionality of
-the [epichains](https://github.com/epiverse-trace/epichains) R package.
+Transmission chain simulation, chain statistics, likelihood computation,
+and offspring distribution fitting with **EpiBranch.jl** are demonstrated
+here, reproducing and extending the core functionality of the
+[epichains](https://github.com/epiverse-trace/epichains) R package.
 
 ```{julia}
 using EpiBranch
@@ -77,38 +78,34 @@ println("NegBin chain size distribution: ", typeof(d_nb))
 ## Likelihood of observed chain sizes
 
 Given observed chain sizes, the log-likelihood under different offspring
-distribution parameters can be computed. This is useful for estimating
-R and k from outbreak data.
+distribution parameters can be computed. Wrap the data in `ChainSizes`:
 
 ```{julia}
 # Observed chain sizes (e.g. from contact tracing data)
-observed_sizes = [1, 1, 2, 1, 3, 1, 1, 5, 1, 2]
+observed = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
 
 # Log-likelihood under different parameters
-ll_low = chain_size_ll(observed_sizes, Poisson(0.5))
-ll_mid = chain_size_ll(observed_sizes, Poisson(0.9))
-ll_high = chain_size_ll(observed_sizes, Poisson(1.5))
-
-println("LL at λ=0.5: ", round(ll_low, digits = 2))
-println("LL at λ=0.9: ", round(ll_mid, digits = 2))
-println("LL at λ=1.5: ", round(ll_high, digits = 2))
+for λ in [0.5, 0.9, 1.5]
+    ll = loglikelihood(observed, Poisson(λ))
+    println("LL at λ=$λ: ", round(ll, digits = 2))
+end
 ```
 
 With Negative Binomial offspring:
 
 ```{julia}
-ll_nb = chain_size_ll(observed_sizes, NegBin(0.9, 0.5))
+ll_nb = loglikelihood(observed, NegBin(0.9, 0.5))
 println("LL for NegBin(R=0.9, k=0.5): ", round(ll_nb, digits = 2))
 ```
 
 ## Likelihood with imperfect observation
 
-In practice, not all cases are observed. If each case is independently
-observed with probability `obs_prob`, the likelihood accounts for this:
+In practice, not all cases are observed. Pass `obs_prob` when constructing
+`ChainSizes`:
 
 ```{julia}
-ll_full = chain_size_ll(observed_sizes, Poisson(0.9))
-ll_partial = chain_size_ll(observed_sizes, Poisson(0.9), 0.7)
+ll_full = loglikelihood(observed, Poisson(0.9))
+ll_partial = loglikelihood(ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2]; obs_prob = 0.7), Poisson(0.9))
 
 println("LL (full observation): ", round(ll_full, digits = 2))
 println("LL (70% observation): ", round(ll_partial, digits = 2))
@@ -116,26 +113,24 @@ println("LL (70% observation): ", round(ll_partial, digits = 2))
 
 ## Simulation-based likelihood
 
-When the offspring distribution does not have an analytical chain size
-distribution, or when interventions are present, simulation-based
-likelihood can be used:
+When interventions are present, simulation-based likelihood can be used.
+Pass a `BranchingProcess` model instead of a distribution:
 
 ```{julia}
-# Simulation-based likelihood — works with any model
 model = BranchingProcess(Poisson(0.9), Exponential(5.0))
-ll_sim = chain_size_ll(observed_sizes, model; n_sim = 5_000, rng = Xoshiro(42))
+ll_sim = loglikelihood(observed, model; n_sim = 5_000, rng = Xoshiro(42))
+ll_analytical = loglikelihood(observed, Poisson(0.9))
 println("LL (simulation-based): ", round(ll_sim, digits = 2))
-println("LL (analytical):       ", round(ll_mid, digits = 2))
+println("LL (analytical):       ", round(ll_analytical, digits = 2))
 ```
 
 Simulation-based likelihood also works with interventions:
 
 ```{julia}
-# Likelihood under a model with isolation
 iso = Isolation(delay = Exponential(2.0))
 model_with_iso = BranchingProcess(Poisson(2.0), Exponential(5.0))
 
-ll_with_iso = chain_size_ll(observed_sizes, model_with_iso;
+ll_with_iso = loglikelihood(ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2]), model_with_iso;
     interventions = [iso],
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     n_sim = 5_000,
@@ -147,15 +142,34 @@ println("LL with isolation: ", round(ll_with_iso, digits = 2))
 Likelihood evaluation under interventions is not available in the
 R **epichains** package.
 
-## Chain length likelihood
+## Fitting offspring distributions
 
-Similarly, chain length likelihoods are available analytically for
-Poisson and Negative Binomial offspring:
+Use `fit` to find the maximum likelihood offspring distribution.
+The same interface works for all data types — it extends `Distributions.fit`:
 
 ```{julia}
-observed_lengths = [0, 1, 0, 2, 1, 0, 0, 3, 0, 1]
+# From offspring counts (direct secondary case observations)
+offspring_data = OffspringCounts([0, 1, 2, 0, 3, 1, 0, 2, 5, 0])
+d_pois = fit(Poisson, offspring_data)
+d_nb = fit(NegativeBinomial, offspring_data)
+println("Poisson MLE: R = ", round(mean(d_pois), digits = 2))
+println("NegBin MLE:  R = ", round(mean(d_nb), digits = 2), ", k = ", round(d_nb.r, digits = 2))
+```
 
-ll_len = chain_length_ll(observed_lengths, Poisson(0.5))
+```{julia}
+# From chain sizes (subcritical only)
+d = fit(Poisson, observed)
+println("Poisson MLE from chain sizes: R = ", round(mean(d), digits = 2))
+```
+
+## Chain length likelihood
+
+Chain length likelihoods are available analytically for Poisson and
+Negative Binomial offspring:
+
+```{julia}
+lengths = ChainLengths([0, 1, 0, 2, 1, 0, 0, 3, 0, 1])
+ll_len = loglikelihood(lengths, Poisson(0.5))
 println("Chain length LL: ", round(ll_len, digits = 2))
 ```
 
@@ -165,7 +179,6 @@ For outbreaks in small populations, susceptible depletion can be added
 to the branching process:
 
 ```{julia}
-# Finite population of 500
 model_finite = BranchingProcess(Poisson(2.0), Exponential(5.0);
     population_size = 500)
 

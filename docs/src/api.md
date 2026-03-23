@@ -78,11 +78,40 @@ extinction_probability
 epidemic_probability
 proportion_transmission
 chain_size_distribution
-chain_size_ll
-chain_length_ll
 Borel
 GammaBorel
 ```
+
+## Inference
+
+### Data types
+
+```@docs
+OffspringCounts
+ChainSizes
+ChainLengths
+```
+
+### Likelihood and fitting
+
+EpiBranch extends `Distributions.loglikelihood` and `Distributions.fit`
+with methods that accept the data types above:
+
+```julia
+loglikelihood(OffspringCounts(data), Poisson(0.5))
+loglikelihood(ChainSizes(data), NegBin(0.8, 0.5))
+loglikelihood(ChainLengths(data), Poisson(0.5))
+loglikelihood(ChainSizes(data), model; interventions=[iso])
+
+fit(Poisson, OffspringCounts(data))
+fit(NegativeBinomial, OffspringCounts(data))
+fit(Poisson, ChainSizes(data))
+fit(NegativeBinomial, ChainSizes(data))
+fit(Poisson, ChainLengths(data))
+```
+
+See the [chains tutorial](@ref "Chain statistics, likelihood, and fitting")
+for examples.
 
 ## Init functions
 
@@ -122,4 +151,9 @@ EpiBranch._validate_required_fields
 EpiBranch._column_order
 EpiBranch._with_start_time
 EpiBranch._enforce_start_time!
+EpiBranch._chain_size_ll_obs
+EpiBranch._chain_length_ll_poisson
+EpiBranch._chain_length_ll_negbin
+EpiBranch._empirical_ll
+EpiBranch._bisect_min
 ```

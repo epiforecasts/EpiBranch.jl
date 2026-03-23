@@ -33,8 +33,10 @@ include("output/summary.jl")
 # Analytical
 include("analytical/extinction.jl")
 include("analytical/chain_distributions.jl")
+include("analytical/data_types.jl")
 include("analytical/likelihood.jl")
 include("analytical/superspreading.jl")
+include("analytical/fitting.jl")
 
 # Exports — types
 export TransmissionModel, BranchingProcess
@@ -64,7 +66,9 @@ export containment_probability, is_extinct, generation_R, weekly_incidence
 
 # Exports — analytical
 export extinction_probability, epidemic_probability
-export chain_size_ll, chain_length_ll
 export proportion_transmission
+
+# Exports — unified inference interface
+export OffspringCounts, ChainSizes, ChainLengths
 
 end # module

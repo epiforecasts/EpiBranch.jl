@@ -111,74 +111,66 @@
 
     @testset "Chain size likelihood" begin
         @testset "Basic evaluation" begin
-            data = [1, 1, 2, 1, 3]
-            ll = chain_size_ll(data, Poisson(0.5))
+            ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3]), Poisson(0.5))
             @test isfinite(ll)
-            @test ll < 0.0  # log-likelihood is negative
+            @test ll < 0.0
         end
 
         @testset "Higher λ gives different likelihood" begin
-            data = [1, 1, 1, 2, 1]
-            ll1 = chain_size_ll(data, Poisson(0.3))
-            ll2 = chain_size_ll(data, Poisson(0.8))
+            data = ChainSizes([1, 1, 1, 2, 1])
+            ll1 = loglikelihood(data, Poisson(0.3))
+            ll2 = loglikelihood(data, Poisson(0.8))
             @test ll1 != ll2
         end
 
         @testset "NegBin offspring" begin
-            data = [1, 2, 1, 3, 1]
-            ll = chain_size_ll(data, NegBin(0.8, 0.5))
+            ll = loglikelihood(ChainSizes([1, 2, 1, 3, 1]), NegBin(0.8, 0.5))
             @test isfinite(ll)
         end
 
         @testset "With observation probability" begin
-            data = [1, 1, 2]
-            ll = chain_size_ll(data, Poisson(0.5), 0.8)
+            ll = loglikelihood(ChainSizes([1, 1, 2]; obs_prob=0.8), Poisson(0.5))
             @test isfinite(ll)
         end
     end
 
     @testset "Chain length likelihood" begin
         @testset "Poisson offspring" begin
-            data = [0, 1, 0, 2, 1]
-            ll = chain_length_ll(data, Poisson(0.5))
+            ll = loglikelihood(ChainLengths([0, 1, 0, 2, 1]), Poisson(0.5))
             @test isfinite(ll)
         end
 
         @testset "NegBin offspring" begin
-            data = [0, 1, 0, 2, 1]
-            ll = chain_length_ll(data, NegBin(0.8, 0.5))
+            ll = loglikelihood(ChainLengths([0, 1, 0, 2, 1]), NegBin(0.8, 0.5))
             @test isfinite(ll)
         end
 
         @testset "Supercritical throws" begin
-            @test_throws ArgumentError chain_length_ll([1, 2], Poisson(1.5))
-            @test_throws ArgumentError chain_length_ll([1, 2], NegBin(1.5, 0.5))
+            @test_throws ArgumentError loglikelihood(ChainLengths([1, 2]), Poisson(1.5))
+            @test_throws ArgumentError loglikelihood(ChainLengths([1, 2]), NegBin(1.5, 0.5))
         end
     end
 
     @testset "Simulation-based chain size likelihood" begin
         @testset "Basic evaluation" begin
             model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-            data = [1, 1, 2, 1, 3]
-            ll = chain_size_ll(data, model; n_sim=5000, rng=StableRNG(42))
+            ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3]), model; n_sim=5000, rng=StableRNG(42))
             @test isfinite(ll)
             @test ll < 0.0
         end
 
         @testset "Consistent with analytical for Poisson" begin
-            data = [1, 1, 1, 2, 1]
-            ll_analytical = chain_size_ll(data, Poisson(0.5))
+            data = ChainSizes([1, 1, 1, 2, 1])
+            ll_analytical = loglikelihood(data, Poisson(0.5))
             model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-            ll_simulated = chain_size_ll(data, model; n_sim=10_000, rng=StableRNG(42))
-            # Should be in the same ballpark (simulation noise)
+            ll_simulated = loglikelihood(data, model; n_sim=10_000, rng=StableRNG(42))
             @test abs(ll_analytical - ll_simulated) < 1.0
         end
 
         @testset "With interventions" begin
             model = BranchingProcess(Poisson(2.0), Exponential(5.0))
             iso = Isolation(delay=Exponential(1.0))
-            data = [1, 1, 2, 1]
-            ll = chain_size_ll(data, model;
+            ll = loglikelihood(ChainSizes([1, 1, 2, 1]), model;
                 interventions=[iso],
                 attributes=clinical_presentation(incubation_period=LogNormal(1.5, 0.5)),
                 sim_opts=SimOpts(max_cases=500),
@@ -190,8 +182,7 @@
     @testset "Simulation-based chain length likelihood" begin
         @testset "Basic evaluation" begin
             model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-            data = [0, 1, 0, 2, 1]
-            ll = chain_length_ll(data, model; n_sim=5000, rng=StableRNG(42))
+            ll = loglikelihood(ChainLengths([0, 1, 0, 2, 1]), model; n_sim=5000, rng=StableRNG(42))
             @test isfinite(ll)
             @test ll < 0.0
         end
@@ -226,5 +217,77 @@
             prop = proportion_transmission(2.0, 1000.0; prop_cases=0.2)
             @test prop ≈ 0.2 atol=0.05
         end
+    end
+
+    @testset "Offspring likelihood" begin
+        @testset "Basic evaluation" begin
+            ll = loglikelihood(OffspringCounts([0, 1, 2, 0, 3]), Poisson(1.2))
+            @test isfinite(ll)
+            @test ll < 0.0
+        end
+    end
+
+    @testset "fit" begin
+        @testset "Poisson from offspring counts" begin
+            rng = StableRNG(42)
+            data = OffspringCounts(rand(rng, Poisson(2.5), 1000))
+            d = fit(Poisson, data)
+            @test d isa Poisson
+            @test mean(d) ≈ 2.5 atol=0.2
+        end
+
+        @testset "NegBin from offspring counts" begin
+            rng = StableRNG(42)
+            d_true = NegBin(2.0, 0.5)
+            raw = rand(rng, Distributions.NegativeBinomial(d_true.r, d_true.p), 2000)
+            d = fit(NegativeBinomial, OffspringCounts(raw))
+            @test mean(d) ≈ 2.0 atol=0.3
+            @test d.r ≈ 0.5 atol=0.2
+        end
+
+        @testset "NegBin with low overdispersion returns high k" begin
+            rng = StableRNG(42)
+            data = OffspringCounts(rand(rng, Poisson(3.0), 500))
+            d = fit(NegativeBinomial, data)
+            @test mean(d) ≈ 3.0 atol=0.3
+            @test d.r > 10.0
+        end
+
+        @testset "All zeros" begin
+            d = fit(Poisson, OffspringCounts(zeros(Int, 100)))
+            @test mean(d) == 0.0
+        end
+
+        @testset "Poisson from chain sizes" begin
+            rng = StableRNG(42)
+            model = BranchingProcess(Poisson(0.5), Exponential(5.0))
+            states = simulate_batch(model, 500; rng=rng)
+            sizes = Int[]
+            for s in states
+                cs = chain_statistics(s)
+                append!(sizes, cs.size)
+            end
+            d = fit(Poisson, ChainSizes(sizes))
+            @test d isa Poisson
+            @test mean(d) ≈ 0.5 atol=0.2
+        end
+
+        @testset "MLE maximises likelihood" begin
+            rng = StableRNG(42)
+            data = OffspringCounts(rand(rng, Poisson(2.0), 200))
+            d_mle = fit(Poisson, data)
+            ll_mle = loglikelihood(data, d_mle)
+            ll_other = loglikelihood(data, Poisson(5.0))
+            @test ll_mle >= ll_other
+        end
+    end
+
+    @testset "Data wrapper validation" begin
+        @test_throws ArgumentError OffspringCounts(Int[])
+        @test_throws ArgumentError OffspringCounts([-1, 0, 1])
+        @test_throws ArgumentError ChainSizes(Int[])
+        @test_throws ArgumentError ChainSizes([0, 1, 2])
+        @test_throws ArgumentError ChainLengths(Int[])
+        @test_throws ArgumentError ChainLengths([-1, 0])
     end
 end
