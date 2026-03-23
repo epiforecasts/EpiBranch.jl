@@ -46,6 +46,7 @@ Julia's multiple dispatch makes it natural to unify these into a single package 
 - **Same `fit` function** estimates offspring distribution parameters from any of those data types
 - **Same simulation engine** runs with or without interventions, and the simulation-based likelihood reuses it directly — enabling likelihood evaluation under interventions
 - **Interventions compose** via a shared interface: isolation, contact tracing, ring vaccination, and time-dependent scheduling all stack in a vector and interact through competing risks on individual state
+- **AD-compatible likelihoods** work with [Turing.jl](https://turinglang.org) for Bayesian inference — including parameter estimation under interventions, which is not possible when simulation and inference live in separate packages
 
 ### Performance
 
