@@ -17,6 +17,7 @@ makedocs(;
             "Multi-type models" => "tutorials/multi-type.md",
             "Line lists and contacts" => "tutorials/linelist.md",
             "Chain statistics, likelihood, and fitting" => "tutorials/chains.md",
+            "Inference" => "tutorials/inference.md",
             "Analytical functions" => "tutorials/analytical.md",
         ],
         "Design" => "design.md",

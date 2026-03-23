@@ -26,17 +26,46 @@ function loglikelihood(data::ChainSizes, offspring::Distribution)
     return sum(logpdf(dist, n) for n in data.data)
 end
 
+# AD-compatible methods: compute logpdf inline to avoid Float64 conversion in structs
+function loglikelihood(data::ChainSizes, offspring::Poisson{T}) where T
+    data.obs_prob < 1.0 && return _chain_size_ll_obs(data.data, offspring, data.obs_prob)
+    μ = mean(offspring)
+    μ = min(μ, one(μ))
+    return sum(data.data) do n
+        (n - 1) * log(μ * n) - μ * n - logabsgamma(n + 1)[1]
+    end
+end
+
+function loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T}) where T
+    data.obs_prob < 1.0 && return _chain_size_ll_obs(data.data, offspring, data.obs_prob)
+    k = offspring.r
+    R = mean(offspring)
+    return sum(data.data) do n
+        (logabsgamma(k * n + n - 1)[1]
+         - logabsgamma(k * n)[1]
+         - logabsgamma(n + 1)[1]
+         + k * n * log(k / (k + R))
+         + (n - 1) * log(R / (k + R)))
+    end
+end
+
 """
     loglikelihood(data::ChainLengths, offspring::Distribution)
 
 Analytical log-likelihood of observed chain lengths. Only defined for
 subcritical processes (R < 1).
 """
-loglikelihood(data::ChainLengths, offspring::Poisson) =
-    _chain_length_ll_poisson(data.data, offspring)
+# AD-compatible chain length: Poisson — P(length=n) = (1-λ)λ^n for subcritical
+function loglikelihood(data::ChainLengths, offspring::Poisson{T}) where T
+    λ = mean(offspring)
+    λ < 1 || throw(ArgumentError("chain length distribution only defined for subcritical process (λ < 1)"))
+    return sum(log(one(λ) - λ) + (n - 1) * log(λ) for n in data.data)
+end
 
-loglikelihood(data::ChainLengths, offspring::NegativeBinomial) =
+# AD-compatible chain length: NegBin — PGF iteration
+function loglikelihood(data::ChainLengths, offspring::NegativeBinomial{T}) where T
     _chain_length_ll_negbin(data.data, offspring)
+end
 
 """
     loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
