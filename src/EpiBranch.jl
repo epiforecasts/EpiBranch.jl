@@ -66,7 +66,8 @@ export containment_probability, is_extinct, generation_R, weekly_incidence
 
 # Exports — analytical
 export extinction_probability, epidemic_probability
-export proportion_transmission
+export proportion_transmission, proportion_cluster_size, network_R
+export probability_contain
 
 # Exports — unified inference interface
 export OffspringCounts, ChainSizes, ChainLengths

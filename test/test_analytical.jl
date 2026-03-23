@@ -219,6 +219,85 @@
         end
     end
 
+    @testset "Proportion cluster size" begin
+        @testset "High overdispersion concentrates cases" begin
+            # k=0.1 → most cases from large clusters
+            prop = proportion_cluster_size(2.0, 0.1; cluster_size=5)
+            @test 0.0 < prop < 1.0
+            @test prop > 0.5
+        end
+
+        @testset "Low overdispersion spreads cases" begin
+            prop_low_k = proportion_cluster_size(2.0, 0.1; cluster_size=5)
+            prop_high_k = proportion_cluster_size(2.0, 10.0; cluster_size=5)
+            @test prop_low_k > prop_high_k
+        end
+
+        @testset "cluster_size=1 captures everything" begin
+            prop = proportion_cluster_size(2.0, 0.5; cluster_size=1)
+            @test prop ≈ 1.0 atol=1e-6
+        end
+    end
+
+    @testset "Containment probability" begin
+        @testset "Subcritical always contained" begin
+            @test probability_contain(0.5, 0.5) == 1.0
+        end
+
+        @testset "Supercritical partially contained" begin
+            p = probability_contain(2.0, 0.5)
+            @test 0.0 < p < 1.0
+        end
+
+        @testset "Matches extinction_probability for defaults" begin
+            q = extinction_probability(2.0, 0.5)
+            p = probability_contain(2.0, 0.5)
+            @test p ≈ q atol=1e-8
+        end
+
+        @testset "Multiple introductions reduce containment" begin
+            p1 = probability_contain(2.0, 0.5; n_initial=1)
+            p5 = probability_contain(2.0, 0.5; n_initial=5)
+            @test p5 < p1
+            @test p5 ≈ p1^5 atol=1e-8
+        end
+
+        @testset "Population control increases containment" begin
+            p_none = probability_contain(2.0, 0.5; pop_control=0.0)
+            p_half = probability_contain(2.0, 0.5; pop_control=0.5)
+            @test p_half > p_none
+        end
+
+        @testset "Individual control increases containment" begin
+            p_none = probability_contain(2.0, 0.5; ind_control=0.0)
+            p_half = probability_contain(2.0, 0.5; ind_control=0.5)
+            @test p_half > p_none
+        end
+
+        @testset "Full control → certain containment" begin
+            @test probability_contain(5.0, 0.1; pop_control=0.9) ≈ 1.0 atol=1e-6
+        end
+    end
+
+    @testset "Network R" begin
+        @testset "Homogeneous contacts" begin
+            result = network_R(10.0, 0.0, 1.0, 0.1)
+            @test result.R ≈ 1.0
+            @test result.R_net ≈ 1.0  # no variance → no adjustment
+        end
+
+        @testset "Heterogeneous contacts amplify R" begin
+            result = network_R(10.0, 20.0, 1.0, 0.1)
+            @test result.R_net > result.R
+        end
+
+        @testset "Zero contacts" begin
+            result = network_R(0.0, 0.0, 1.0, 0.5)
+            @test result.R == 0.0
+            @test result.R_net == 0.0
+        end
+    end
+
     @testset "Offspring likelihood" begin
         @testset "Basic evaluation" begin
             ll = loglikelihood(OffspringCounts([0, 1, 2, 0, 3]), Poisson(1.2))

@@ -76,7 +76,10 @@ weekly_incidence
 ```@docs
 extinction_probability
 epidemic_probability
+probability_contain
 proportion_transmission
+proportion_cluster_size
+network_R
 chain_size_distribution
 Borel
 GammaBorel
