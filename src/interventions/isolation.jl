@@ -45,6 +45,9 @@ function resolve_individual!(iso::Isolation, individual, state)
     iso_delay = rand(state.rng, iso.delay)
     iso_time = onset_time(individual) + iso_delay
 
-    set_isolated!(individual, iso_time)
+    # If contact tracing has already computed a traced isolation time,
+    # take the earlier of self-reporting and tracing
+    traced_time = get(individual.state, :traced_isolation_time, Inf)
+    set_isolated!(individual, min(iso_time, traced_time))
     return nothing
 end

@@ -65,14 +65,11 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
             else
                 ind_onset = onset_time(ind)
                 if !isnan(ind_onset)
-                    # No quarantine: isolated at onset or trace, whichever is later
-                    # But take minimum with any existing isolation (self-reporting)
+                    # No quarantine: store traced isolation time.
+                    # Isolation will later compute self-reporting time and
+                    # take the minimum of the two.
                     traced_iso = max(ind_onset, trace_time)
-                    if is_isolated(ind)
-                        set_isolated!(ind, min(isolation_time(ind), traced_iso))
-                    else
-                        set_isolated!(ind, traced_iso)
-                    end
+                    ind.state[:traced_isolation_time] = traced_iso
                 end
             end
         end
