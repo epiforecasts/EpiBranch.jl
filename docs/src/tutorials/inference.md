@@ -134,14 +134,15 @@ sampler like `MH()` instead of `NUTS()`:
 ```@example inference
 # Generate "observed" chain sizes from a model WITH isolation
 rng = StableRNG(42)
-true_R = 2.0
-true_model = BranchingProcess(Poisson(true_R), Exponential(5.0))
+true_R = 0.8
+true_k = 0.5
+true_model = BranchingProcess(NegBin(true_R, true_k), Exponential(5.0))
 iso = Isolation(delay=Exponential(2.0))
 clinical = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
 
-observed_states = simulate_batch(true_model, 50;
+observed_states = simulate_batch(true_model, 100;
     interventions=[iso], attributes=clinical,
-    sim_opts=SimOpts(max_cases=200), rng=rng)
+    sim_opts=SimOpts(max_cases=500), rng=rng)
 observed_sizes = Int[]
 for s in observed_states
     cs = chain_statistics(s)
@@ -155,19 +156,19 @@ Now estimate R from the observed data, accounting for the intervention:
 
 ```@example inference
 @model function intervention_model(data, iso, clinical)
-    R ~ LogNormal(0.5, 0.5)
+    R ~ LogNormal(0.0, 0.5)
     model = BranchingProcess(Poisson(R), Exponential(5.0))
     Turing.@addlogprob! loglikelihood(
         ChainSizes(data), model;
         interventions=[iso], attributes=clinical,
-        sim_opts=SimOpts(max_cases=200),
-        n_sim=200, rng=StableRNG(hash(R))
+        sim_opts=SimOpts(max_cases=500),
+        n_sim=500, rng=StableRNG(hash(R))
     )
 end
 
 chain = sample(
     intervention_model(observed_sizes, iso, clinical),
-    MH(), 500; progress=false
+    MH(), 2000; progress=false
 )
 println("True R = $true_R")
 println("Posterior R: $(round(mean(chain[:R]), digits=2)) " *
@@ -175,9 +176,10 @@ println("Posterior R: $(round(mean(chain[:R]), digits=2)) " *
         "$(round(quantile(vec(chain[:R]), 0.975), digits=2)))")
 ```
 
-The posterior recovers the true R despite the intervention reducing the
-observed chain sizes. Without accounting for the intervention, you would
-underestimate R.
+The posterior recovers the true R. Note that for supercritical models,
+the simulation case cap can bias the empirical chain size distribution
+downward — use a high enough `max_cases` or consider adjusting for
+truncation.
 
 ## When to use `fit` vs Turing
 
