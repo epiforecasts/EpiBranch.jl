@@ -13,7 +13,7 @@ function get_generation_time(gt::Function, individual)
     onset = get(individual.state, :onset_time, NaN)
     inc_period = onset - individual.infection_time
     if isnan(inc_period) || inc_period <= 0.0
-        @warn "Missing or non-positive incubation period for individual $(individual.id); using 5.0 days" maxlog=1
+        @debug "Missing or non-positive incubation period (e.g. asymptomatic individual); using 5.0 days" maxlog=1
         inc_period = 5.0
     end
     gt(inc_period)
