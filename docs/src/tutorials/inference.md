@@ -123,3 +123,69 @@ println("From offspring counts: R=$(round(mean(d_offspring), digits=2))")
 println("From chain sizes:     R=$(round(mean(d_chains), digits=2))")
 println("True:                 R=$true_R")
 ```
+
+## Inference under interventions
+
+When you pass a `BranchingProcess` model with interventions to
+`loglikelihood`, it uses simulation-based likelihood. Because this is
+stochastic and not differentiable, use a gradient-free sampler like
+`MH()` instead of `NUTS()`:
+
+```@example inference
+# Generate "observed" chain sizes from a model WITH isolation
+rng = StableRNG(42)
+true_R = 2.0
+true_model = BranchingProcess(Poisson(true_R), Exponential(5.0))
+iso = Isolation(delay=Exponential(2.0))
+clinical = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
+
+observed_states = simulate_batch(true_model, 50;
+    interventions=[iso], attributes=clinical,
+    sim_opts=SimOpts(max_cases=200), rng=rng)
+observed_sizes = Int[]
+for s in observed_states
+    cs = chain_statistics(s)
+    append!(observed_sizes, cs.size)
+end
+println("Observed $(length(observed_sizes)) chain sizes under isolation")
+println("Mean size: $(round(mean(observed_sizes), digits=1))")
+```
+
+Now estimate R from the observed data, accounting for the intervention:
+
+```@example inference
+@model function intervention_model(data, iso, clinical)
+    R ~ LogNormal(0.5, 0.5)
+    model = BranchingProcess(Poisson(R), Exponential(5.0))
+    Turing.@addlogprob! loglikelihood(
+        ChainSizes(data), model;
+        interventions=[iso], attributes=clinical,
+        sim_opts=SimOpts(max_cases=200),
+        n_sim=200, rng=StableRNG(hash(R))
+    )
+end
+
+chain = sample(
+    intervention_model(observed_sizes, iso, clinical),
+    MH(), 500; progress=false
+)
+println("True R = $true_R")
+println("Posterior R: $(round(mean(chain[:R]), digits=2)) " *
+        "(95% CI: $(round(quantile(vec(chain[:R]), 0.025), digits=2))–" *
+        "$(round(quantile(vec(chain[:R]), 0.975), digits=2)))")
+```
+
+The posterior recovers the true R despite the intervention reducing the
+observed chain sizes. Without accounting for the intervention, you would
+underestimate R.
+
+## When to use `fit` vs Turing
+
+- **`fit`**: MLE point estimate. Use for quick exploration or initial
+  parameter guesses.
+- **Turing + analytical likelihood**: full posterior with NUTS. Fast
+  and precise.
+- **Turing + simulation-based likelihood**: when interventions or
+  complex model features make analytical likelihood unavailable. Slower
+  (many simulations per likelihood evaluation) but handles models that
+  have no closed-form likelihood.
