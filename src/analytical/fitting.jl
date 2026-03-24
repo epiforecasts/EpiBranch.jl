@@ -68,11 +68,17 @@ function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
                             interventions, attributes, sim_opts, n_sim, rng)
     states = simulate_batch(model, n_sim; interventions, attributes, sim_opts, rng)
     sim_values = Int[]
+    # Track which simulations hit the case cap (right-censored)
+    censored = Bool[]
     for state in states
         cs = chain_statistics(state)
-        append!(sim_values, getproperty(cs, column))
+        vals = getproperty(cs, column)
+        append!(sim_values, vals)
+        hit_cap = !state.extinct && state.cumulative_cases >= sim_opts.max_cases
+        append!(censored, fill(hit_cap, length(vals)))
     end
-    return _empirical_ll(observed, sim_values; min_val)
+    return _empirical_ll(observed, sim_values; min_val, censored,
+                          cap=sim_opts.max_cases)
 end
 
 for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
@@ -295,24 +301,44 @@ function _bisect_min(f, lo::Float64, hi::Float64; tol::Float64=1e-8, maxiter::In
     return (lo + hi) / 2.0
 end
 
-"""Empirical log-likelihood with Laplace smoothing."""
-function _empirical_ll(observed, simulated; min_val::Int=0)
+"""Empirical log-likelihood with Laplace smoothing and right-censoring.
+
+When `censored` is provided, simulated values flagged as censored contribute
+to P(size >= cap) rather than P(size = cap). Observed values at or above
+`cap` are evaluated as P(size >= cap).
+"""
+function _empirical_ll(observed, simulated;
+                       min_val::Int=0,
+                       censored::Vector{Bool}=Bool[],
+                       cap::Int=typemax(Int))
     isempty(simulated) && return -Inf
+    n_total = length(simulated)
+
+    # Count uncensored simulated values
     max_val = max(maximum(observed), maximum(simulated))
     counts = zeros(Int, max_val - min_val + 1)
-    for s in simulated
-        counts[s - min_val + 1] += 1
+    n_censored = 0
+    for (i, s) in enumerate(simulated)
+        if !isempty(censored) && censored[i]
+            n_censored += 1
+        else
+            counts[s - min_val + 1] += 1
+        end
     end
-    n_total = length(simulated)
-    n_unique = length(counts)
+    n_unique = length(counts) + (n_censored > 0 ? 1 : 0)
 
     ll = 0.0
     for obs in observed
-        idx = obs - min_val + 1
-        if idx < 1 || idx > length(counts)
-            return -Inf
+        if obs >= cap && n_censored > 0
+            # Right-censored: P(size >= cap)
+            prob = (n_censored + 1) / (n_total + n_unique)
+        else
+            idx = obs - min_val + 1
+            if idx < 1 || idx > length(counts)
+                return -Inf
+            end
+            prob = (counts[idx] + 1) / (n_total + n_unique)
         end
-        prob = (counts[idx] + 1) / (n_total + n_unique)
         ll += log(prob)
     end
     return ll

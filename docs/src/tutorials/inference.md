@@ -134,9 +134,8 @@ sampler like `MH()` instead of `NUTS()`:
 ```@example inference
 # Generate "observed" chain sizes from a model WITH isolation
 rng = StableRNG(42)
-true_R = 0.8
-true_k = 0.5
-true_model = BranchingProcess(NegBin(true_R, true_k), Exponential(5.0))
+true_R = 2.0
+true_model = BranchingProcess(Poisson(true_R), Exponential(5.0))
 iso = Isolation(delay=Exponential(2.0))
 clinical = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
 
@@ -152,11 +151,14 @@ println("Observed $(length(observed_sizes)) chain sizes under isolation")
 println("Mean size: $(round(mean(observed_sizes), digits=1))")
 ```
 
-Now estimate R from the observed data, accounting for the intervention:
+Now estimate R from the observed data, accounting for the intervention.
+The simulation-based likelihood automatically handles right-censoring:
+simulations that hit the case cap contribute P(size >= cap) instead of
+P(size = cap).
 
 ```@example inference
 @model function intervention_model(data, iso, clinical)
-    R ~ LogNormal(0.0, 0.5)
+    R ~ LogNormal(0.5, 0.5)
     model = BranchingProcess(Poisson(R), Exponential(5.0))
     Turing.@addlogprob! loglikelihood(
         ChainSizes(data), model;
@@ -176,10 +178,8 @@ println("Posterior R: $(round(mean(chain[:R]), digits=2)) " *
         "$(round(quantile(vec(chain[:R]), 0.975), digits=2)))")
 ```
 
-The posterior recovers the true R. Note that for supercritical models,
-the simulation case cap can bias the empirical chain size distribution
-downward — use a high enough `max_cases` or consider adjusting for
-truncation.
+The posterior recovers the true R despite the intervention and the
+case cap truncating large outbreaks.
 
 ## When to use `fit` vs Turing
 
