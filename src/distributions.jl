@@ -27,16 +27,10 @@ Return a function suitable for the `generation_time` field of a
 time model.
 
 The returned function takes an incubation period (Float64) and produces a
-truncated normal distribution matching the mean and variance of the
-skew-normal SN(ξ, ω, α), where ξ = incubation period, and α is chosen so
-that the fraction of generation times shorter than the incubation period
-equals `presymptomatic_fraction`.
-
-!!! note
-    This is a moment-matched Normal approximation, not the full skew-normal.
-    The skewness of the generation time distribution is not captured. The
-    original ringbp R package uses the actual skew-normal (via the `sn`
-    package). For most practical uses this approximation is adequate.
+truncated skew-normal distribution SN(ξ, ω, α), where ξ = incubation
+period, and α is chosen so that the fraction of generation times shorter
+than the incubation period equals `presymptomatic_fraction`. This matches
+the generation time model in ringbp (Hellewell et al. 2020).
 
 Usage:
 ```julia
@@ -56,12 +50,29 @@ function ringbp_generation_time(; presymptomatic_fraction::Real=0.3,
     # For SN(xi, omega, alpha): P(X < xi) = 0.5 - arctan(alpha)/π
     # => alpha = tan(π(0.5 - presymp_frac))
     alpha = tan(Float64(π) * (0.5 - Float64(presymptomatic_fraction)))
-    delta = alpha / sqrt(1.0 + alpha^2)
     om = Float64(omega)
 
     return function (inc_period::Float64)
-        mu = inc_period + om * delta * sqrt(2.0 / π)
-        sigma = om * sqrt(1.0 - 2.0 * delta^2 / π)
-        truncated(Normal(mu, max(sigma, 0.01)), 0.0, Inf)
+        _TruncatedSkewNormal(inc_period, om, alpha)
     end
 end
+
+"""Skew-normal truncated to [0, ∞) via rejection sampling (cdf not available)."""
+struct _TruncatedSkewNormal <: ContinuousUnivariateDistribution
+    ξ::Float64
+    ω::Float64
+    α::Float64
+    inner::SkewNormal{Float64}
+    _TruncatedSkewNormal(ξ, ω, α) = new(ξ, ω, α, SkewNormal(ξ, ω, α))
+end
+
+function Base.rand(rng::AbstractRNG, d::_TruncatedSkewNormal)
+    for _ in 1:10_000
+        x = rand(rng, d.inner)
+        x >= 0.0 && return x
+    end
+    return 0.0  # fallback
+end
+
+Distributions.logpdf(d::_TruncatedSkewNormal, x::Real) =
+    x < 0.0 ? -Inf : logpdf(d.inner, x)
