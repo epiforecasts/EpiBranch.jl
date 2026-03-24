@@ -128,8 +128,8 @@ println("True:                 R=$true_R")
 
 When you pass a `BranchingProcess` model with interventions to
 `loglikelihood`, it uses simulation-based likelihood. Because this is
-stochastic and not differentiable, use a gradient-free sampler like
-`MH()` instead of `NUTS()`:
+stochastic and not differentiable, you have to use a gradient-free
+sampler like `MH()` instead of `NUTS()`:
 
 ```@example inference
 # Generate "observed" chain sizes from a model WITH isolation
@@ -183,8 +183,8 @@ underestimate R.
 
 - **`fit`**: MLE point estimate. Use for quick exploration or initial
   parameter guesses.
-- **Turing + analytical likelihood**: full posterior with NUTS. Fast
-  and precise.
+- **Turing + analytical likelihood**: full posterior with NUTS (when
+  the analytical likelihood is available).
 - **Turing + simulation-based likelihood**: when interventions or
   complex model features make analytical likelihood unavailable. Slower
   (many simulations per likelihood evaluation) but handles models that
