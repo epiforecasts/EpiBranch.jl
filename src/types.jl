@@ -43,9 +43,9 @@ Stochastic branching process transmission model.
     BranchingProcess(NegBin(0.8, 0.5))  # no timing, pure chain statistics
     BranchingProcess(M, R_j -> NegBin(R_j, 0.16), LogNormal(1.6, 0.5))  # multi-type
 """
-struct BranchingProcess <: TransmissionModel
-    offspring::Union{Distribution, Function}
-    generation_time::Union{Distribution, Function, Nothing}
+struct BranchingProcess{O, G} <: TransmissionModel
+    offspring::O
+    generation_time::G
     population_size::Union{Int, Nothing}
     latent_period::Float64
     n_types::Int
@@ -55,6 +55,14 @@ end
 population_size(m::BranchingProcess) = m.population_size
 latent_period(m::BranchingProcess) = m.latent_period
 n_types(m::BranchingProcess) = m.n_types
+
+function Base.show(io::IO, m::BranchingProcess)
+    off_str = m.offspring isa Distribution ? string(typeof(m.offspring)) : "Function"
+    gt_str = m.generation_time === nothing ? "nothing" :
+             m.generation_time isa Distribution ? string(typeof(m.generation_time)) : "Function"
+    pop_str = m.population_size === nothing ? "unlimited" : string(m.population_size)
+    print(io, "BranchingProcess(offspring=$(off_str), generation_time=$(gt_str), population_size=$(pop_str))")
+end
 
 # Single-type with generation time
 BranchingProcess(offspring::Distribution, gt::Union{Distribution, Function};
@@ -137,6 +145,12 @@ mutable struct Individual
     state::Dict{Symbol, Any}
 end
 
+function Base.show(io::IO, ind::Individual)
+    infected_str = is_infected(ind) ? "infected" : "contact-only"
+    isolated_str = is_isolated(ind) ? ", isolated" : ""
+    print(io, "Individual(id=$(ind.id), gen=$(ind.generation), chain=$(ind.chain_id), t=$(round(ind.infection_time, digits=1)), $(infected_str)$(isolated_str))")
+end
+
 function Individual(; id::Int, parent_id::Int=0, generation::Int=0,
                     chain_id::Int=1, infection_time::Float64=0.0,
                     susceptibility::Float64=1.0, infectiousness::Float64=1.0,
@@ -151,34 +165,34 @@ end
 onset_time(ind::Individual) = get(ind.state, :onset_time, NaN)::Float64
 
 """Whether the individual is isolated."""
-is_isolated(ind) = get(ind.state, :isolated, false)::Bool
+is_isolated(ind::Individual) = get(ind.state, :isolated, false)::Bool
 
 """Time of isolation (Float64, Inf if not isolated)."""
-isolation_time(ind) = get(ind.state, :isolation_time, Inf)::Float64
+isolation_time(ind::Individual) = get(ind.state, :isolation_time, Inf)::Float64
 
 """Whether the individual was traced via contact tracing."""
-is_traced(ind) = get(ind.state, :traced, false)::Bool
+is_traced(ind::Individual) = get(ind.state, :traced, false)::Bool
 
 """Whether the individual is quarantined."""
-is_quarantined(ind) = get(ind.state, :quarantined, false)::Bool
+is_quarantined(ind::Individual) = get(ind.state, :quarantined, false)::Bool
 
 """Whether the individual is vaccinated."""
-is_vaccinated(ind) = get(ind.state, :vaccinated, false)::Bool
+is_vaccinated(ind::Individual) = get(ind.state, :vaccinated, false)::Bool
 
 """Whether the individual is asymptomatic."""
-is_asymptomatic(ind) = get(ind.state, :asymptomatic, false)::Bool
+is_asymptomatic(ind::Individual) = get(ind.state, :asymptomatic, false)::Bool
 
 """Whether the individual tested positive."""
-is_test_positive(ind) = get(ind.state, :test_positive, false)::Bool
+is_test_positive(ind::Individual) = get(ind.state, :test_positive, false)::Bool
 
 """Whether the individual was successfully infected (vs contact only)."""
-is_infected(ind) = get(ind.state, :infected, true)::Bool
+is_infected(ind::Individual) = get(ind.state, :infected, true)::Bool
 
 """Type index for multi-type branching processes (default 1)."""
-individual_type(ind) = get(ind.state, :type, 1)::Int
+individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 
 """Mark an individual as isolated at the given time."""
-function set_isolated!(ind, time::Float64)
+function set_isolated!(ind::Individual, time::Float64)
     ind.state[:isolated] = true
     ind.state[:isolation_time] = time
 end
@@ -201,4 +215,9 @@ mutable struct SimulationState{R <: AbstractRNG}
     latent_period::Float64
     max_infection_time::Float64
     attributes::Union{Function, Nothing}
+end
+
+function Base.show(io::IO, s::SimulationState)
+    status = s.extinct ? "extinct" : "active"
+    print(io, "SimulationState(cases=$(s.cumulative_cases), individuals=$(length(s.individuals)), gen=$(s.current_generation), $(status))")
 end

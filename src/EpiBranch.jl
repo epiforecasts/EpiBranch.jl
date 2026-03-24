@@ -62,7 +62,7 @@ export simulate, simulate_batch, simulate_conditioned
 
 # Exports — output
 export linelist, contacts, chain_statistics
-export containment_probability, is_extinct, generation_R, weekly_incidence
+export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
 
 # Exports — analytical
 export extinction_probability, epidemic_probability

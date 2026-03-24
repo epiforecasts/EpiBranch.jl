@@ -351,6 +351,21 @@
             @test mean(d) ≈ 0.5 atol=0.2
         end
 
+        @testset "NegBin from chain lengths" begin
+            rng = StableRNG(42)
+            true_R, true_k = 0.6, 0.5
+            model = BranchingProcess(NegBin(true_R, true_k), Exponential(5.0))
+            states = simulate_batch(model, 500; rng=rng)
+            lengths = Int[]
+            for s in states
+                cs = chain_statistics(s)
+                append!(lengths, cs.length)
+            end
+            d = fit(NegativeBinomial, ChainLengths(lengths))
+            @test d isa NegativeBinomial
+            @test mean(d) ≈ true_R atol=0.3
+        end
+
         @testset "MLE maximises likelihood" begin
             rng = StableRNG(42)
             data = OffspringCounts(rand(rng, Poisson(2.0), 200))

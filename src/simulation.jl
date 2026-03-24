@@ -24,16 +24,32 @@ function simulate(model::TransmissionModel;
 end
 
 """
-    simulate_batch(model, n; kwargs...)
+    simulate_batch(model, n; parallel=false, kwargs...)
 
 Run `n` independent outbreak simulations.
+
+When `parallel=true`, simulations are distributed across available threads
+using independent RNG streams derived from the provided `rng`. Use
+`julia --threads N` to enable multi-threading.
 """
 function simulate_batch(model::TransmissionModel, n::Int;
                         interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
                         attributes::Union{Function, Nothing}=nothing,
                         sim_opts::SimOpts=SimOpts(),
-                        rng::AbstractRNG=Random.default_rng())
-    [simulate(model; interventions, attributes, sim_opts, rng) for _ in 1:n]
+                        rng::AbstractRNG=Random.default_rng(),
+                        parallel::Bool=false)
+    if parallel && Threads.nthreads() > 1
+        # Derive independent RNG streams for each simulation
+        seeds = [rand(rng, UInt64) for _ in 1:n]
+        results = Vector{SimulationState}(undef, n)
+        Threads.@threads for i in 1:n
+            local_rng = Random.Xoshiro(seeds[i])
+            results[i] = simulate(model; interventions, attributes, sim_opts, rng=local_rng)
+        end
+        return results
+    else
+        return [simulate(model; interventions, attributes, sim_opts, rng) for _ in 1:n]
+    end
 end
 
 """

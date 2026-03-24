@@ -44,8 +44,7 @@ function is_extinct(state::SimulationState;
         !is_infected(ind) && continue
         isnan(ind.infection_time) && continue
         day = floor(Int, ind.infection_time)
-        date = reference_date + Day(day)
-        week_num = div(Dates.value(date - reference_date), 7) + 1
+        week_num = div(day, 7) + 1
         week_num in weeks && return false
     end
     return true
@@ -105,4 +104,65 @@ function weekly_incidence(state::SimulationState;
     df = DataFrame(week=collect(keys(weeks)), cases=collect(values(weeks)))
     sort!(df, :week)
     return df
+end
+
+"""
+    scenario_sweep(params::Dict{Symbol, Vector}; n_sim=500, sim_opts=SimOpts(), rng=Random.default_rng())
+
+Run a parameter sweep over all combinations of parameters and return a
+DataFrame of results. Each row contains the parameter values and the
+containment probability.
+
+`params` must include `:offspring` (vector of offspring distributions) and
+may include `:generation_time`, `:interventions`, `:attributes`, and any
+other named parameters. `:interventions` values should be vectors of
+intervention stacks (each element is a `Vector{<:AbstractIntervention}`).
+
+```julia
+results = scenario_sweep(Dict(
+    :offspring => [NegBin(2.5, 0.16), NegBin(1.5, 0.5)],
+    :interventions => [[Isolation(delay=Exponential(d))] for d in [1.0, 2.0, 5.0]],
+    :generation_time => [LogNormal(1.6, 0.5)],
+))
+```
+"""
+function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
+                         n_sim::Int=500,
+                         sim_opts::SimOpts=SimOpts(),
+                         rng::AbstractRNG=Random.default_rng())
+    haskey(params, :offspring) || throw(ArgumentError("params must include :offspring"))
+
+    keys_ordered = collect(keys(params))
+    value_lists = [params[k] for k in keys_ordered]
+    combinations = Iterators.product(value_lists...)
+
+    rows = Dict{Symbol, Vector{Any}}(k => Any[] for k in keys_ordered)
+    rows[:containment_probability] = Any[]
+
+    for combo in combinations
+        vals = Dict(k => v for (k, v) in zip(keys_ordered, combo))
+
+        offspring = vals[:offspring]
+        gt = get(vals, :generation_time, nothing)
+        interventions = get(vals, :interventions, AbstractIntervention[])
+        attributes = get(vals, :attributes, nothing)
+        pop_size = get(vals, :population_size, nothing)
+
+        model = gt === nothing ?
+            BranchingProcess(offspring; population_size=pop_size) :
+            BranchingProcess(offspring, gt; population_size=pop_size)
+
+        results = simulate_batch(model, n_sim;
+            interventions=interventions isa Vector ? interventions : [interventions],
+            attributes=attributes,
+            sim_opts=sim_opts,
+            rng=rng)
+
+        for k in keys_ordered
+            push!(rows[k], vals[k])
+        end
+        push!(rows[:containment_probability], containment_probability(results))
+    end
+
+    DataFrame(rows)
 end

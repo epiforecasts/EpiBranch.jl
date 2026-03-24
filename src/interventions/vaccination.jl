@@ -59,22 +59,21 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
             continue
         end
 
-        # Apply vaccine effect to susceptibility
-        if rv.mode == :leaky
-            ind.susceptibility *= (1.0 - rv.efficacy)
+        # Determine vaccine protection via a single draw
+        protected = if rv.mode == :leaky
+            rand(state.rng) < rv.efficacy
         elseif rv.mode == :all_or_nothing
-            if rand(state.rng) < rv.efficacy
-                ind.susceptibility = 0.0
-            end
+            rand(state.rng) < rv.efficacy
+        else
+            false
         end
 
-        # Re-evaluate infection: the vaccine's marginal effect on a contact
-        # that was already marked infected. With leaky efficacy, the contact
-        # avoids infection with probability equal to the efficacy.
-        if is_infected(ind)
-            avoided = rv.mode == :leaky ? (rand(state.rng) < rv.efficacy) :
-                      (ind.susceptibility == 0.0)
-            if avoided
+        if protected
+            # Reduce susceptibility for future onward transmission
+            ind.susceptibility = rv.mode == :all_or_nothing ? 0.0 :
+                ind.susceptibility * (1.0 - rv.efficacy)
+            # Retroactively prevent infection if already infected
+            if is_infected(ind)
                 ind.state[:infected] = false
             end
         end

@@ -31,9 +31,9 @@ Pass any `f(::SimulationState) -> Bool`:
 Scheduled(iso, state -> state.current_generation >= 3)
 ```
 """
-struct Scheduled{I <: AbstractIntervention} <: AbstractIntervention
+struct Scheduled{I <: AbstractIntervention, F} <: AbstractIntervention
     intervention::I
-    condition::Function
+    condition::F
 end
 
 # ── Keyword convenience constructor ──────────────────────────────────
