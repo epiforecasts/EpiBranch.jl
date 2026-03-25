@@ -80,13 +80,13 @@ using Dates
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
 
         rng1 = StableRNG(42)
-        iso_perfect = Isolation(delay=Exponential(1.0), residual_transmission=0.0)
+        iso_perfect = Isolation(delay=Exponential(1.0), post_isolation_transmission=0.0)
         results_perfect = simulate_batch(model, 200;
             interventions=[iso_perfect], attributes=clinical,
             sim_opts=SimOpts(max_cases=200), rng=rng1)
 
         rng2 = StableRNG(42)
-        iso_leaky = Isolation(delay=Exponential(1.0), residual_transmission=0.5)
+        iso_leaky = Isolation(delay=Exponential(1.0), post_isolation_transmission=0.5)
         results_leaky = simulate_batch(model, 200;
             interventions=[iso_leaky], attributes=clinical,
             sim_opts=SimOpts(max_cases=200), rng=rng2)

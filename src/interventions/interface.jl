@@ -18,8 +18,8 @@ resolve_individual!(::AbstractIntervention, individual, state) = nothing
 """Act on contacts after creation. All contacts are received. Default: no-op."""
 apply_post_transmission!(::AbstractIntervention, state, new_contacts) = nothing
 
-"""Residual transmission fraction while isolated. Default: 0 (perfect isolation)."""
-residual_transmission(::AbstractIntervention) = 0.0
+"""Fraction of transmission that occurs after isolation. Default: 0 (no transmission after isolation)."""
+post_isolation_transmission(::AbstractIntervention) = 0.0
 
 """Whether an intervention is currently active given the simulation state. Default: always."""
 is_active(::AbstractIntervention, ::SimulationState) = true
@@ -66,14 +66,14 @@ function _enforce_start_time!(intervention, individual)
 end
 
 """
-    _residual_transmission(interventions)
+    _post_isolation_transmission(interventions)
 
 Maximum residual transmission across all interventions in the stack.
 """
-function _residual_transmission(interventions)
+function _post_isolation_transmission(interventions)
     r = 0.0
     for i in interventions
-        r = max(r, residual_transmission(i))
+        r = max(r, post_isolation_transmission(i))
     end
     return r
 end

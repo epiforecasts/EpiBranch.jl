@@ -91,7 +91,7 @@ function apply_post_transmission!(s::Scheduled, state, new_contacts)
     return nothing
 end
 
-residual_transmission(s::Scheduled) = residual_transmission(s.intervention)
+post_isolation_transmission(s::Scheduled) = post_isolation_transmission(s.intervention)
 required_fields(s::Scheduled) = required_fields(s.intervention)
 start_time(s::Scheduled) = start_time(s.intervention)
 intervention_time(s::Scheduled, ind::Individual) = intervention_time(s.intervention, ind)

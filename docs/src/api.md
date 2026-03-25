@@ -144,8 +144,8 @@ EpiBranch._draw_offspring
 EpiBranch._create_contacts!
 EpiBranch._resolve_infection
 EpiBranch._susceptible_fraction
-EpiBranch.residual_transmission
-EpiBranch._residual_transmission
+EpiBranch.post_isolation_transmission
+EpiBranch._post_isolation_transmission
 EpiBranch.population_size
 EpiBranch._create_individual
 EpiBranch.logsumexp

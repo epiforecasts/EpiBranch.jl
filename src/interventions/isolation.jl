@@ -1,5 +1,5 @@
 """
-    Isolation(; delay, start_time=0.0, residual_transmission=0.0, test_sensitivity=1.0)
+    Isolation(; delay, start_time=0.0, post_isolation_transmission=0.0, test_sensitivity=1.0)
 
 Isolate symptomatic, test-positive individuals after a delay from symptom onset.
 
@@ -14,12 +14,12 @@ Initialises: `:isolated`, `:isolation_time`, `:test_positive`.
 Base.@kwdef struct Isolation <: AbstractIntervention
     delay::Distribution
     start_time::Float64 = 0.0
-    residual_transmission::Float64 = 0.0
+    post_isolation_transmission::Float64 = 0.0
     test_sensitivity::Float64 = 1.0
 end
 
 required_fields(::Isolation) = [:onset_time, :asymptomatic]
-residual_transmission(iso::Isolation) = iso.residual_transmission
+post_isolation_transmission(iso::Isolation) = iso.post_isolation_transmission
 start_time(iso::Isolation) = iso.start_time
 intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 

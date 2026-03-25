@@ -72,11 +72,11 @@ end
 
 #### Leaky isolation
 
-With `residual_transmission > 0`, isolated individuals still transmit at
+With `post_isolation_transmission > 0`, isolated individuals still transmit at
 a reduced rate (e.g. household contacts):
 
 ```@example interventions
-iso_leaky = Isolation(delay = Exponential(2.0), residual_transmission = 0.3)
+iso_leaky = Isolation(delay = Exponential(2.0), post_isolation_transmission = 0.3)
 
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
