@@ -55,8 +55,9 @@ end
 For full control, pass a function `(rng, parent_type) → Vector{Int}`:
 
 ```@example multitype
-function heterogeneous_offspring(rng, parent_type)
-    if parent_type == 1  # high-risk type
+function heterogeneous_offspring(rng, individual)
+    pt = individual_type(individual)
+    if pt == 1  # high-risk type
         n = rand(rng, NegBin(5.0, 0.1))
         return [rand(rng, Binomial(n, 0.3)), n - rand(rng, Binomial(n, 0.3))]
     else  # low-risk type

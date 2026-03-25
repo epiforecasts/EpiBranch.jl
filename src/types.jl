@@ -106,11 +106,12 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
         alloc_probs[:, j] = s > 0.0 ? offspring_matrix[:, j] ./ s : fill(1.0 / n, n)
     end
 
-    offspring_fn = function (rng::AbstractRNG, parent_type::Int)
-        dist = dist_fn(R_by_type[parent_type])
+    offspring_fn = function (rng::AbstractRNG, individual)
+        pt = individual_type(individual)
+        dist = dist_fn(R_by_type[pt])
         total = rand(rng, dist)
         total == 0 && return zeros(Int, n)
-        return rand(rng, Multinomial(total, alloc_probs[:, parent_type]))
+        return rand(rng, Multinomial(total, alloc_probs[:, pt]))
     end
 
     BranchingProcess(offspring_fn, gt, population_size, Float64(latent_period), n, type_labels)

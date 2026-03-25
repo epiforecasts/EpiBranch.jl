@@ -70,10 +70,10 @@ end
 _draw_offspring(rng::AbstractRNG, offspring::Distribution,
                 individual, state::SimulationState) = rand(rng, offspring)
 
-"""Multi-type offspring draw."""
+"""Function-based offspring draw. The function receives the RNG and individual."""
 function _draw_offspring(rng::AbstractRNG, offspring::Function,
                          individual, state::SimulationState)
-    return offspring(rng, individual_type(individual))
+    return offspring(rng, individual)
 end
 
 # ── Contact creation ─────────────────────────────────────────────────
