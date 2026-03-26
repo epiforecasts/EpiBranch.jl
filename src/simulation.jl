@@ -6,7 +6,7 @@ Run a single outbreak simulation.
 """
 function simulate(model::TransmissionModel;
                   interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
-                  attributes::Union{Function, Nothing}=nothing,
+                  attributes::Union{Function, NoAttributes}=NoAttributes(),
                   sim_opts::SimOpts=SimOpts(),
                   rng::AbstractRNG=Random.default_rng())
     state = initialise_state(model, sim_opts, interventions, attributes, rng)
@@ -34,7 +34,7 @@ using independent RNG streams derived from the provided `rng`. Use
 """
 function simulate_batch(model::TransmissionModel, n::Int;
                         interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
-                        attributes::Union{Function, Nothing}=nothing,
+                        attributes::Union{Function, NoAttributes}=NoAttributes(),
                         sim_opts::SimOpts=SimOpts(),
                         rng::AbstractRNG=Random.default_rng(),
                         parallel::Bool=false)
@@ -61,7 +61,7 @@ Run simulations until one produces an outbreak within `size_range`.
 function simulate_conditioned(model::TransmissionModel, size_range::UnitRange{Int};
                               max_attempts::Int=10_000,
                               interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
-                              attributes::Union{Function, Nothing}=nothing,
+                              attributes::Union{Function, NoAttributes}=NoAttributes(),
                               sim_opts::SimOpts=SimOpts(),
                               rng::AbstractRNG=Random.default_rng())
     for _ in 1:max_attempts
@@ -117,8 +117,9 @@ function should_terminate(state::SimulationState, sim_opts::SimOpts)
 end
 
 """Fraction of the population still susceptible (1.0 for infinite population)."""
-function _susceptible_fraction(state::SimulationState)
-    state.population_size === nothing && return 1.0
+_susceptible_fraction(state::SimulationState{<:Any, NoPopulation}) = 1.0
+
+function _susceptible_fraction(state::SimulationState{<:Any, Int})
     n_susceptible = state.population_size - state.cumulative_cases
     n_susceptible <= 0 && return 0.0
     return n_susceptible / state.population_size
@@ -139,9 +140,7 @@ function _create_individual(state::SimulationState, parent_id::Int,
         state=s,
     )
 
-    if state.attributes !== nothing
-        state.attributes(state.rng, ind)
-    end
+    _apply_attributes!(state.attributes, state.rng, ind)
 
     for intervention in interventions
         initialise_individual!(intervention, ind, state)
@@ -149,6 +148,10 @@ function _create_individual(state::SimulationState, parent_id::Int,
 
     return ind
 end
+
+"""Apply attributes function to an individual. No-op for NoAttributes."""
+_apply_attributes!(::NoAttributes, rng, ind) = nothing
+_apply_attributes!(f::Function, rng, ind) = f(rng, ind)
 
 # ── Attributes function constructors ─────────────────────────────────
 
@@ -196,19 +199,18 @@ end
 
 Return an attributes function. `:age` and `:sex` are set on each individual.
 """
-function demographics(; age_distribution::Union{Distribution, Nothing}=nothing,
+function demographics(; age_distribution::Union{Distribution, NoAgeDistribution}=NoAgeDistribution(),
                         age_range::Tuple{Int, Int}=(0, 90),
                         prob_female::Real=0.5)
     pf = Float64(prob_female)
     return function (rng, ind)
-        ind.state[:age] = if age_distribution !== nothing
-            clamp(floor(Int, rand(rng, age_distribution)), age_range...)
-        else
-            rand(rng, age_range[1]:age_range[2])
-        end
+        ind.state[:age] = _sample_age(rng, age_distribution, age_range)
         ind.state[:sex] = rand(rng) < pf ? :female : :male
     end
 end
+
+_sample_age(rng, ::NoAgeDistribution, age_range) = rand(rng, age_range[1]:age_range[2])
+_sample_age(rng, dist::Distribution, age_range) = clamp(floor(Int, rand(rng, dist)), age_range...)
 
 """
     compose(fs...)
