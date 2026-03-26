@@ -1,8 +1,6 @@
 """
-    SimOpts(; kwargs...)
-
 Options controlling simulation termination and setup. Contains only
-simulation control parameters — clinical and demographic properties
+simulation control parameters -- clinical and demographic properties
 are set via `attributes` functions and interventions.
 """
 Base.@kwdef struct SimOpts
@@ -15,8 +13,6 @@ end
 # ── Output options ───────────────────────────────────────────────────
 
 """
-    DelayOpts(; kwargs...)
-
 Distributions for delays used in line list generation.
 """
 Base.@kwdef struct DelayOpts
@@ -26,8 +22,6 @@ Base.@kwdef struct DelayOpts
 end
 
 """
-    OutcomeOpts(; kwargs...)
-
 Parameters controlling case outcomes (hospitalisation and death).
 """
 Base.@kwdef struct OutcomeOpts
@@ -37,8 +31,6 @@ Base.@kwdef struct OutcomeOpts
 end
 
 """
-    DemographicOpts(; kwargs...)
-
 Parameters for generating demographic data (age, sex).
 """
 Base.@kwdef struct DemographicOpts
