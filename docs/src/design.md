@@ -101,6 +101,23 @@ Multiple types (age groups, risk groups, spatial patches) are supported in the o
 
 Each contact is allocated to a type, stored as `:type` in its state dict. Interventions and output are unchanged — they operate on individual-level state, not types.
 
+## In-place mutation and AD compatibility
+
+The simulation engine uses in-place mutation throughout. The `step!` function appends new contacts to `state.individuals`, updates `state.cumulative_cases`, advances `state.current_generation`, and modifies individual-level state via interventions. This is a deliberate design choice: branching process simulations grow an unbounded tree of individuals, and allocating a fresh copy of the full state at every generation would be prohibitively expensive.
+
+### Implications for automatic differentiation
+
+The `loglikelihood` functions in the analytical module are purely scalar-valued and do not call the simulation engine. They are compatible with any AD backend.
+
+When differentiating through simulation-based quantities (e.g. a simulated containment probability as a function of intervention parameters), the in-place mutation constrains which AD backends can be used:
+
+- **ForwardDiff.jl**: fully compatible. Forward-mode AD does not require a recorded tape of operations, so mutation is not a problem.
+- **Enzyme.jl / Mooncake.jl**: compatible. These backends support mutation natively.
+- **ReverseDiff.jl with compiled tape**: **not supported**. A compiled tape assumes the computational graph is static, but `step!` grows the `individuals` vector and mutates fields across generations. The uncompiled (dynamic) tape mode may work but is not tested or recommended.
+- **Zygote.jl**: **not supported**. Zygote does not support in-place mutation.
+
+For inference workflows that need reverse-mode AD, the recommended approach is to wrap the simulation in a function that returns a scalar summary (e.g. mean outbreak size) and differentiate that wrapper using Enzyme or ForwardDiff. The simulation itself runs forward without AD; only the mapping from parameters to the scalar output is differentiated.
+
 ## Connection to survival analysis
 
 The generation time distribution g(t) = h(t)/R is the normalised infectiousness profile. Its CDF, G(t), is the cumulative hazard. When isolation occurs at time t_iso, the probabilities are:
