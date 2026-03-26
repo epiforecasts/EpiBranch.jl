@@ -43,11 +43,11 @@ Stochastic branching process transmission model.
     BranchingProcess(NegBin(0.8, 0.5))  # no timing, pure chain statistics
     BranchingProcess(M, R_j -> NegBin(R_j, 0.16), LogNormal(1.6, 0.5))  # multi-type
 """
-struct BranchingProcess{O, G} <: TransmissionModel
+struct BranchingProcess{O, G, T<:AbstractFloat} <: TransmissionModel
     offspring::O
     generation_time::G
     population_size::Union{Int, Nothing}
-    latent_period::Float64
+    latent_period::T
     n_types::Int
     type_labels::Union{Vector{String}, Nothing}
 end
@@ -68,7 +68,7 @@ end
 BranchingProcess(offspring::Distribution, gt::Union{Distribution, Function};
                  population_size::Union{Int, Nothing}=nothing,
                  latent_period::Real=0.0) =
-    BranchingProcess(offspring, gt, population_size, Float64(latent_period), 1, nothing)
+    BranchingProcess(offspring, gt, population_size, float(latent_period), 1, nothing)
 
 # Single-type without generation time (pure chain statistics)
 BranchingProcess(offspring::Distribution;
@@ -80,7 +80,7 @@ BranchingProcess(offspring::Function, gt::Union{Distribution, Function};
                  n_types::Int, population_size::Union{Int, Nothing}=nothing,
                  latent_period::Real=0.0,
                  type_labels::Union{Vector{String}, Nothing}=nothing) =
-    BranchingProcess(offspring, gt, population_size, Float64(latent_period), n_types, type_labels)
+    BranchingProcess(offspring, gt, population_size, float(latent_period), n_types, type_labels)
 
 """
     BranchingProcess(offspring_matrix, dist_fn, generation_time; kwargs...)
@@ -114,7 +114,7 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
         return rand(rng, Multinomial(total, alloc_probs[:, pt]))
     end
 
-    BranchingProcess(offspring_fn, gt, population_size, Float64(latent_period), n, type_labels)
+    BranchingProcess(offspring_fn, gt, population_size, float(latent_period), n, type_labels)
 end
 
 # ── Individual state ────────────────────────────────────────────────

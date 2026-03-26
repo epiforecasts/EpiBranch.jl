@@ -160,7 +160,7 @@ set on each individual. Required by [`Isolation`](@ref).
 """
 function clinical_presentation(; incubation_period::Distribution,
                                  prob_asymptomatic::Real=0.0)
-    pa = Float64(prob_asymptomatic)
+    pa = float(prob_asymptomatic)
     return function (rng, ind)
         is_asymp = rand(rng) < pa
         ind.state[:asymptomatic] = is_asymp
@@ -199,7 +199,7 @@ Return an attributes function. `:age` and `:sex` are set on each individual.
 function demographics(; age_distribution::Union{Distribution, Nothing}=nothing,
                         age_range::Tuple{Int, Int}=(0, 90),
                         prob_female::Real=0.5)
-    pf = Float64(prob_female)
+    pf = float(prob_female)
     return function (rng, ind)
         ind.state[:age] = if age_distribution !== nothing
             clamp(floor(Int, rand(rng, age_distribution)), age_range...)

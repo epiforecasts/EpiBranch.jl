@@ -9,13 +9,13 @@ This is the chain size distribution for a Poisson(μ) branching process.
 μ = 0 is excluded because the distribution is degenerate (always 1)
 and would cause log(0) in the PMF.
 """
-struct Borel <: DiscreteUnivariateDistribution
-    μ::Float64
+struct Borel{T<:AbstractFloat} <: DiscreteUnivariateDistribution
+    μ::T
 
     function Borel(μ::Real)
         0.0 < μ || throw(ArgumentError("μ must be positive, got $μ"))
         μ <= 1.0 || throw(ArgumentError("μ must be ≤ 1, got $μ"))
-        new(Float64(μ))
+        new{typeof(float(μ))}(float(μ))
     end
 end
 
@@ -53,15 +53,16 @@ end
 Chain size distribution for a NegativeBinomial(k, R) branching process,
 derived via Lagrange inversion.
 """
-struct GammaBorel <: DiscreteUnivariateDistribution
-    k::Float64
-    R::Float64
+struct GammaBorel{T<:AbstractFloat} <: DiscreteUnivariateDistribution
+    k::T
+    R::T
 
     function GammaBorel(k::Real, R::Real)
         k > 0 || throw(ArgumentError("k must be positive, got $k"))
         R > 0 || throw(ArgumentError("R must be positive, got $R"))
         R <= 1.0 || @warn "GammaBorel with R > 1 (supercritical): PMF does not sum to 1, chain size is infinite with positive probability"
-        new(Float64(k), Float64(R))
+        T = float(promote_type(typeof(k), typeof(R)))
+        new{T}(T(k), T(R))
     end
 end
 
