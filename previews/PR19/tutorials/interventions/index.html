@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Interventions · EpiBranch.jl</title><meta name="title" content="Interventions · EpiBranch.jl"/><meta property="og:title" content="Interventions · EpiBranch.jl"/><meta property="twitter:title" content="Interventions · EpiBranch.jl"/><meta name="description" content="Documentation for EpiBranch.jl."/><meta property="og:description" content="Documentation for EpiBranch.jl."/><meta property="twitter:description" content="Documentation for EpiBranch.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">EpiBranch.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../getting-started/">Getting started</a></li><li class="is-active"><a class="tocitem" href>Interventions</a><ul class="internal"><li><a class="tocitem" href="#Without-interventions"><span>Without interventions</span></a></li><li><a class="tocitem" href="#Built-in-interventions"><span>Built-in interventions</span></a></li><li><a class="tocitem" href="#Asymptomatic-cases-and-test-sensitivity"><span>Asymptomatic cases and test sensitivity</span></a></li><li><a class="tocitem" href="#Effort-tracking"><span>Effort tracking</span></a></li><li><a class="tocitem" href="#Time-dependent-policies"><span>Time-dependent policies</span></a></li><li><a class="tocitem" href="#Writing-a-custom-intervention"><span>Writing a custom intervention</span></a></li></ul></li><li><a class="tocitem" href="../multi-type/">Multi-type models</a></li><li><a class="tocitem" href="../linelist/">Line lists and contacts</a></li><li><a class="tocitem" href="../chains/">Chain statistics, likelihood, and fitting</a></li><li><a class="tocitem" href="../inference/">Inference</a></li><li><a class="tocitem" href="../analytical/">Analytical functions</a></li><li><a class="tocitem" href="../extending/">Extending EpiBranch</a></li></ul></li><li><a class="tocitem" href="../../design/">Design</a></li><li><a class="tocitem" href="../../api/">API reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Tutorials</a></li><li class="is-active"><a href>Interventions</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Interventions</a></li></ul></nav><div class="docs-right"><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Interventions"><a class="docs-heading-anchor" href="#Interventions">Interventions</a><a id="Interventions-1"></a><a class="docs-heading-anchor-permalink" href="#Interventions" title="Permalink"></a></h1><p>Interventions in <strong>EpiBranch.jl</strong> are modelled through a competing risks framework. Potential contacts are generated by the branching process. Each contact&#39;s fate is determined by competing risks: when would transmission occur (generation time) vs when is the parent isolated (intervention time)?</p><p>There is a connection to survival analysis. The generation time CDF is the survival function of remaining potential transmission, truncated by isolation.</p><h2 id="Without-interventions"><a class="docs-heading-anchor" href="#Without-interventions">Without interventions</a><a id="Without-interventions-1"></a><a class="docs-heading-anchor-permalink" href="#Without-interventions" title="Permalink"></a></h2><p>First, let&#39;s see the baseline — a supercritical outbreak with no interventions:</p><pre><code class="language-julia hljs">using EpiBranch
+using Distributions
+using StableRNGs
+
+model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+
+rng = StableRNG(42)
+results_baseline = simulate_batch(model, 200;
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println(&quot;Containment (no interventions): $(round(containment_probability(results_baseline), digits=3))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Containment (no interventions): 0.04</code></pre><p>With R = 3.0, most outbreaks are not contained. Interventions are needed.</p><h2 id="Built-in-interventions"><a class="docs-heading-anchor" href="#Built-in-interventions">Built-in interventions</a><a id="Built-in-interventions-1"></a><a class="docs-heading-anchor-permalink" href="#Built-in-interventions" title="Permalink"></a></h2><h3 id="Isolation"><a class="docs-heading-anchor" href="#Isolation">Isolation</a><a id="Isolation-1"></a><a class="docs-heading-anchor-permalink" href="#Isolation" title="Permalink"></a></h3><p>Symptomatic, test-positive individuals are isolated after a delay from symptom onset using <a href="#Isolation"><code>Isolation</code></a>. Clinical state on individuals is required, set by <a href="../../api/#EpiBranch.clinical_presentation"><code>clinical_presentation</code></a> or <a href="../../api/#EpiBranch.Disease"><code>Disease</code></a>:</p><pre><code class="language-julia hljs">iso = Isolation(delay = Exponential(2.0))
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println(&quot;Containment (isolation): $(round(containment_probability(results), digits=3))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Containment (isolation): 0.15</code></pre><p>Effectiveness depends on how quickly isolation happens relative to the generation time. Faster isolation truncates more of the infectious period:</p><pre><code class="language-julia hljs">for d in [0.5, 2.0, 10.0]
+    let iso = Isolation(delay = Exponential(d)),
+        rng = StableRNG(42)
+        results = simulate_batch(model, 200;
+            interventions = [iso],
+            attributes = clinical,
+            sim_opts = SimOpts(max_cases = 500),
+            rng = rng,
+        )
+        println(&quot;Delay ~ Exp($d): containment = $(round(containment_probability(results), digits=3))&quot;)
+    end
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Delay ~ Exp(0.5): containment = 0.25
+Delay ~ Exp(2.0): containment = 0.15
+Delay ~ Exp(10.0): containment = 0.11</code></pre><h4 id="Leaky-isolation"><a class="docs-heading-anchor" href="#Leaky-isolation">Leaky isolation</a><a id="Leaky-isolation-1"></a><a class="docs-heading-anchor-permalink" href="#Leaky-isolation" title="Permalink"></a></h4><p>With <code>post_isolation_transmission &gt; 0</code>, isolated individuals still transmit at a reduced rate (e.g. household contacts):</p><pre><code class="language-julia hljs">iso_leaky = Isolation(delay = Exponential(2.0), post_isolation_transmission = 0.3)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso_leaky],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println(&quot;Leaky isolation: $(round(containment_probability(results), digits=3))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Leaky isolation: 0.165</code></pre><h3 id="Contact-tracing"><a class="docs-heading-anchor" href="#Contact-tracing">Contact tracing</a><a id="Contact-tracing-1"></a><a class="docs-heading-anchor-permalink" href="#Contact-tracing" title="Permalink"></a></h3><p>Contacts of isolated cases are identified using <a href="../../api/#EpiBranch.ContactTracing"><code>ContactTracing</code></a>. With quarantine, traced contacts are isolated before symptom onset:</p><pre><code class="language-julia hljs">iso = Isolation(delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.7, delay = Exponential(1.0), quarantine_on_trace = true)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso, ct],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println(&quot;Isolation + tracing: $(round(containment_probability(results), digits=3))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Isolation + tracing: 0.29</code></pre><h2 id="Asymptomatic-cases-and-test-sensitivity"><a class="docs-heading-anchor" href="#Asymptomatic-cases-and-test-sensitivity">Asymptomatic cases and test sensitivity</a><a id="Asymptomatic-cases-and-test-sensitivity-1"></a><a class="docs-heading-anchor-permalink" href="#Asymptomatic-cases-and-test-sensitivity" title="Permalink"></a></h2><p>Asymptomatic cases escape symptom-based surveillance. The asymptomatic fraction is set via <a href="../../api/#EpiBranch.Disease"><code>Disease</code></a>. Imperfect testing is a property of isolation — symptomatic cases are missed with probability <code>1 - test_sensitivity</code>:</p><pre><code class="language-julia hljs">disease_hard = Disease(
+    incubation_period = LogNormal(1.5, 0.5),
+    prob_asymptomatic = 0.3,
+)
+iso_imperfect = Isolation(delay = Exponential(2.0), test_sensitivity = 0.8)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso_imperfect, ct],
+    attributes = disease_hard,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println(&quot;30% asymptomatic, 80% test sensitivity: $(round(containment_probability(results), digits=3))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">30% asymptomatic, 80% test sensitivity: 0.145</code></pre><h3 id="Ring-vaccination"><a class="docs-heading-anchor" href="#Ring-vaccination">Ring vaccination</a><a id="Ring-vaccination-1"></a><a class="docs-heading-anchor-permalink" href="#Ring-vaccination" title="Permalink"></a></h3><p>Traced contacts are vaccinated using <a href="../../api/#EpiBranch.RingVaccination"><code>RingVaccination</code></a>, reducing their susceptibility. This is applied after contact tracing has identified contacts, so <a href="../../api/#EpiBranch.ContactTracing"><code>ContactTracing</code></a> must be in the intervention stack.</p><p>The vaccine can be leaky (everyone&#39;s susceptibility reduced) or all-or-nothing (a fraction are fully protected):</p><pre><code class="language-julia hljs">iso = Isolation(delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.7, delay = Exponential(1.0))
+rv = RingVaccination(efficacy = 0.8, mode = :leaky)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso, ct, rv],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println(&quot;Iso + tracing + ring vaccination: $(round(containment_probability(results), digits=3))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Iso + tracing + ring vaccination: 0.22</code></pre><p>A delay between vaccination and protective immunity can be specified. If transmission occurs before immunity develops, there is no protection:</p><pre><code class="language-julia hljs">rv_delayed = RingVaccination(efficacy = 0.9, delay_to_immunity = 7.0)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso, ct, rv_delayed],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println(&quot;With 7-day delay to immunity: $(round(containment_probability(results), digits=3))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">With 7-day delay to immunity: 0.255</code></pre><p>We can also count the number of vaccine doses administered:</p><pre><code class="language-julia hljs">rng = StableRNG(42)
+state = simulate_conditioned(model, 50:200;
+    interventions = [iso, ct, rv],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 200),
+    rng = rng,
+)
+n_vaccinated = count(is_vaccinated, state.individuals)
+n_infected = count(is_infected, state.individuals)
+println(&quot;Vaccinated: $n_vaccinated, Infected: $n_infected&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Vaccinated: 212, Infected: 200</code></pre><h3 id="Post-exposure-prophylaxis"><a class="docs-heading-anchor" href="#Post-exposure-prophylaxis">Post-exposure prophylaxis</a><a id="Post-exposure-prophylaxis-1"></a><a class="docs-heading-anchor-permalink" href="#Post-exposure-prophylaxis" title="Permalink"></a></h3><p>For PEP (antivirals or antibiotics given to traced contacts), use <code>RingVaccination</code> with <code>delay_to_immunity = 0.0</code> (the default):</p><pre><code class="language-julia hljs">pep = RingVaccination(efficacy = 0.9)  # delay_to_immunity defaults to 0
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso, ct, pep],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println(&quot;Iso + tracing + PEP: $(round(containment_probability(results), digits=3))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Iso + tracing + PEP: 0.22</code></pre><h2 id="Effort-tracking"><a class="docs-heading-anchor" href="#Effort-tracking">Effort tracking</a><a id="Effort-tracking-1"></a><a class="docs-heading-anchor-permalink" href="#Effort-tracking" title="Permalink"></a></h2><p>Because all contacts are stored (infected and non-infected), intervention effort is fully trackable:</p><pre><code class="language-julia hljs">rng = StableRNG(42)
+state = simulate_conditioned(model, 50:200;
+    interventions = [iso, ct],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 200),
+    rng = rng,
+)
+
+total = length(state.individuals)
+infected = count(is_infected, state.individuals)
+traced = count(is_traced, state.individuals)
+println(&quot;Contacts: $total, Infections: $infected, Traced: $traced&quot;)
+println(&quot;Contacts per case: $(round(total / infected, digits=1))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Contacts: 326, Infections: 200, Traced: 245
+Contacts per case: 1.6</code></pre><h2 id="Time-dependent-policies"><a class="docs-heading-anchor" href="#Time-dependent-policies">Time-dependent policies</a><a id="Time-dependent-policies-1"></a><a class="docs-heading-anchor-permalink" href="#Time-dependent-policies" title="Permalink"></a></h2><p>In real outbreaks, interventions are not active from the start. Testing may begin on day 14, contact tracing may start once cumulative cases exceed a threshold.</p><h3 id="The-start_time-field"><a class="docs-heading-anchor" href="#The-start_time-field">The <code>start_time</code> field</a><a id="The-start_time-field-1"></a><a class="docs-heading-anchor-permalink" href="#The-start_time-field" title="Permalink"></a></h3><p><code>Isolation</code> and <code>ContactTracing</code> accept a <code>start_time</code> parameter. This filters on <em>action time</em> — an individual is only isolated if their computed isolation time falls after the policy start, regardless of when they were infected. This is a competing risk: the testing infrastructure must be available at the time the individual would be tested.</p><pre><code class="language-julia hljs"># Testing starts on day 10
+iso_delayed = Isolation(delay = Exponential(2.0), start_time = 10.0)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso_delayed],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println(&quot;Isolation from day 10: $(round(containment_probability(results), digits=3))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Isolation from day 10: 0.08</code></pre><p>Someone infected on day 8 with symptom onset on day 9 and delay 2 has isolation time = 11, which is after day 10, so they <strong>are</strong> isolated. Someone with isolation time = 9 is <strong>not</strong> isolated — testing was not yet available.</p><h3 id="The-Scheduled-wrapper"><a class="docs-heading-anchor" href="#The-Scheduled-wrapper">The <code>Scheduled</code> wrapper</a><a id="The-Scheduled-wrapper-1"></a><a class="docs-heading-anchor-permalink" href="#The-Scheduled-wrapper" title="Permalink"></a></h3><p><a href="../../api/#EpiBranch.Scheduled"><code>Scheduled</code></a> wraps any intervention with a population-level activation condition. When <code>start_time</code> is passed, it is automatically forwarded to the inner intervention&#39;s own <code>start_time</code> field:</p><pre><code class="language-julia hljs"># Equivalent to the above — Scheduled forwards start_time
+iso_scheduled = Scheduled(Isolation(delay = Exponential(2.0)); start_time = 10.0)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Scheduled{Isolation, EpiBranch.var&quot;#26#27&quot;{Float64}}(Isolation(Distributions.Exponential{Float64}(θ=2.0), 10.0, 0.0, 1.0), EpiBranch.var&quot;#26#27&quot;{Float64}(10.0))</code></pre><p><code>Scheduled</code> is most useful for conditions that cannot be expressed as a fixed time, such as case-count triggers:</p><pre><code class="language-julia hljs"># Start contact tracing after 20 cumulative cases
+iso = Isolation(delay = Exponential(2.0))
+ct_triggered = Scheduled(
+    ContactTracing(probability = 0.7, delay = Exponential(1.0));
+    start_after_cases = 20,
+)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [iso, ct_triggered],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println(&quot;Tracing after 20 cases: $(round(containment_probability(results), digits=3))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Tracing after 20 cases: 0.19</code></pre><p>Conditions can be combined:</p><pre><code class="language-julia hljs"># Active only between day 5 and day 30
+iso_window = Scheduled(Isolation(delay = Exponential(1.0));
+    start_time = 5.0, end_time = 30.0)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Scheduled{Isolation, EpiBranch.var&quot;#32#33&quot;{Vector{Function}}}(Isolation(Distributions.Exponential{Float64}(θ=1.0), 5.0, 0.0, 1.0), EpiBranch.var&quot;#32#33&quot;{Vector{Function}}(Function[EpiBranch.var&quot;#26#27&quot;{Float64}(5.0), EpiBranch.var&quot;#28#29&quot;{Float64}(30.0)]))</code></pre><p>For full flexibility, pass a predicate on <a href="../../api/#EpiBranch.SimulationState"><code>SimulationState</code></a>:</p><pre><code class="language-julia hljs"># Start isolation from generation 3 onwards
+iso_gen3 = Scheduled(
+    Isolation(delay = Exponential(2.0)),
+    state -&gt; state.current_generation &gt;= 3,
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Scheduled{Isolation, Main.var&quot;#2#3&quot;}(Isolation(Distributions.Exponential{Float64}(θ=2.0), 0.0, 0.0, 1.0), Main.var&quot;#2#3&quot;())</code></pre><h3 id="How-the-framework-enforces-start_time"><a class="docs-heading-anchor" href="#How-the-framework-enforces-start_time">How the framework enforces <code>start_time</code></a><a id="How-the-framework-enforces-start_time-1"></a><a class="docs-heading-anchor-permalink" href="#How-the-framework-enforces-start_time" title="Permalink"></a></h3><p>Each intervention can define two methods:</p><ul><li><a href="../../api/#EpiBranch.intervention_time"><code>intervention_time</code></a> — returns the time at which the effect occurs for an individual (e.g. isolation time, trace time)</li><li><a href="../../api/#EpiBranch.reset!"><code>reset!</code></a> — undoes the effect if it falls before <code>start_time</code></li></ul><p>After each <code>resolve_individual!</code> and <code>apply_post_transmission!</code> call, the framework checks: if <code>intervention_time &lt; start_time</code>, call <code>reset!</code>. This happens in one place for all interventions — individual interventions do not need to check <code>start_time</code> themselves.</p><h2 id="Writing-a-custom-intervention"><a class="docs-heading-anchor" href="#Writing-a-custom-intervention">Writing a custom intervention</a><a id="Writing-a-custom-intervention-1"></a><a class="docs-heading-anchor-permalink" href="#Writing-a-custom-intervention" title="Permalink"></a></h2><p>Custom interventions are defined as structs subtyping <a href="../../api/#EpiBranch.AbstractIntervention"><code>AbstractIntervention</code></a>. One or more of the following methods should be implemented:</p><ul><li><code>initialise_individual!</code> — set up fields on new contacts</li><li><code>resolve_individual!</code> — determine state before transmission</li><li><code>apply_post_transmission!</code> — act on contacts after creation</li></ul><p>To support <code>start_time</code> scheduling, also implement:</p><ul><li><code>start_time</code> — return the intervention&#39;s policy start time</li><li><code>intervention_time</code> — return the time at which the effect occurs for an individual</li><li><code>reset!</code> — undo the effect if it falls before <code>start_time</code></li></ul><pre><code class="language-julia hljs"># A gathering limit that caps the number of contacts per individual
+struct GatheringLimit &lt;: AbstractIntervention
+    max_contacts::Int
+end
+
+function EpiBranch.apply_post_transmission!(gl::GatheringLimit, state, new_contacts)
+    # Count contacts per parent, mark excess as not infected
+    parent_counts = Dict{Int, Int}()
+    for c in new_contacts
+        count = get(parent_counts, c.parent_id, 0) + 1
+        parent_counts[c.parent_id] = count
+        if count &gt; gl.max_contacts
+            c.state[:infected] = false
+        end
+    end
+end
+
+# Test it
+gl = GatheringLimit(5)
+rng = StableRNG(42)
+results_gl = simulate_batch(
+    BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)), 200;
+    interventions = [gl],
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println(&quot;With gathering limit (max 5): $(round(containment_probability(results_gl), digits=3))&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">With gathering limit (max 5): 0.82</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../getting-started/">« Getting started</a><a class="docs-footer-nextpage" href="../multi-type/">Multi-type models »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 26 March 2026 11:09">Thursday 26 March 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
