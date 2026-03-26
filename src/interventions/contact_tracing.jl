@@ -1,6 +1,4 @@
 """
-    ContactTracing(; probability, delay, quarantine_on_trace=true, start_time=0.0)
-
 Trace contacts of isolated symptomatic cases with given probability and delay.
 
 Requires fields set by [`Isolation`](@ref): `:isolated`, `:isolation_time`.

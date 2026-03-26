@@ -1,6 +1,4 @@
 """
-    AbstractIntervention
-
 Base type for all interventions. Subtypes implement one or more of:
 `initialise_individual!`, `resolve_individual!`, `apply_post_transmission!`.
 

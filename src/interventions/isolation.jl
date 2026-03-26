@@ -1,6 +1,4 @@
 """
-    Isolation(; delay, start_time=0.0, post_isolation_transmission=0.0, test_sensitivity=1.0)
-
 Isolate symptomatic, test-positive individuals after a delay from symptom onset.
 
 Requires `:onset_time` and `:asymptomatic` on individuals (set via

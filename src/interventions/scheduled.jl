@@ -1,7 +1,4 @@
 """
-    Scheduled(intervention; start_time, end_time, start_after_cases)
-    Scheduled(intervention, condition::Function)
-
 Wrap an intervention so it only runs when a condition on the simulation
 state is met.  Individuals are always initialised (so fields exist before
 the policy activates), but `resolve_individual!` and
