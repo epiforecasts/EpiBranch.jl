@@ -1,0 +1,141 @@
+version: '3'
+
+tasks:
+  # Default task - show help
+  default:
+    desc: Show available tasks
+    cmds:
+      - task: help
+
+  # === TESTING ===
+  test:
+    desc: Run the full test suite
+    cmds:
+      - julia --project=. --quiet -e 'using Pkg; Pkg.test()'
+
+  # === DOCUMENTATION ===
+  docs:
+    desc: Build documentation with Documenter.jl
+    cmds:
+      - julia --project=docs -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+      - julia --project=docs docs/make.jl
+
+  # === FORMATTING ===
+  format:
+    desc: Format code with JuliaFormatter
+    cmds:
+      - julia --project=. --quiet -e '
+          using Pkg;
+          Pkg.activate(temp=true);
+          Pkg.add("JuliaFormatter");
+          using JuliaFormatter;
+          format("src", verbose=true, overwrite=true);
+          format("test", verbose=true, overwrite=true);
+          format("docs", verbose=true, overwrite=true);
+          format("benchmarks", verbose=true, overwrite=true);
+          format("examples", verbose=true, overwrite=true)'
+
+  format-check:
+    desc: Check formatting without modifying files
+    cmds:
+      - julia --project=. --quiet -e '
+          using Pkg;
+          Pkg.activate(temp=true);
+          Pkg.add("JuliaFormatter");
+          using JuliaFormatter;
+          ok = format("src", verbose=true, overwrite=false) &&
+               format("test", verbose=true, overwrite=false) &&
+               format("docs", verbose=true, overwrite=false);
+          ok || exit(1)'
+
+  # === LINTING / QUALITY ===
+  lint:
+    desc: Run quality checks (Aqua.jl)
+    cmds:
+      - julia --project=. --quiet -e '
+          using Pkg;
+          Pkg.activate(temp=true);
+          Pkg.add("Aqua");
+          Pkg.develop(PackageSpec(path=pwd()));
+          using Aqua, EpiBranch;
+          Aqua.test_all(EpiBranch)'
+
+  # === BENCHMARKS ===
+  benchmark:
+    desc: Run Julia benchmarks
+    cmds:
+      - julia --project=. benchmarks/benchmark_julia.jl
+
+  # === R VALIDATION ===
+  validate:
+    desc: Run R validation scripts against reference implementations
+    cmds:
+      - Rscript benchmarks/validate_reference_r.R
+      - Rscript benchmarks/validate_superspreading.R
+      - julia --project=. benchmarks/validate_vs_r.jl
+      - julia --project=. benchmarks/validate_superspreading.jl
+
+  validate-r:
+    desc: Run only the R-side validation scripts
+    cmds:
+      - Rscript benchmarks/validate_reference_r.R
+      - Rscript benchmarks/validate_superspreading.R
+
+  validate-julia:
+    desc: Run only the Julia-side validation scripts
+    cmds:
+      - julia --project=. benchmarks/validate_vs_r.jl
+      - julia --project=. benchmarks/validate_superspreading.jl
+
+  # === DEVELOPMENT SETUP ===
+  setup:
+    desc: Set up development environment (instantiate all Project.toml files)
+    cmds:
+      - julia --project=. -e 'using Pkg; Pkg.instantiate()'
+      - julia --project=docs -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+
+  # === DEVELOPMENT WORKFLOWS ===
+  dev:
+    desc: Quick development cycle (format, test)
+    cmds:
+      - task: format
+      - task: test
+
+  ci:
+    desc: Simulate CI pipeline locally (format check, test, docs)
+    cmds:
+      - task: format-check
+      - task: lint
+      - task: test
+      - task: docs
+
+  # === VIGNETTES ===
+  vignettes:
+    desc: Render Quarto vignettes
+    cmds:
+      - quarto render vignettes/
+
+  # === UTILITIES ===
+  clean:
+    desc: Remove build artefacts and temporary files
+    cmds:
+      - rm -rf docs/build/
+      - rm -f docs/Manifest.toml
+      - rm -rf vignettes/*_files/ vignettes/*.html
+      - echo "Build artefacts removed"
+
+  info:
+    desc: Show project and environment information
+    cmds:
+      - julia --project=. --quiet -e '
+          using Pkg;
+          pkg = Pkg.project();
+          println("Package: ", pkg.name, " v", pkg.version);
+          println("Julia:   ", VERSION)'
+      - echo ""
+      - julia --project=. --quiet -e 'using Pkg; Pkg.status()'
+
+  help:
+    desc: Show available commands
+    cmds:
+      - task --list
