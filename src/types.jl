@@ -35,13 +35,15 @@ latent_period(::TransmissionModel) = 0.0
 n_types(::TransmissionModel) = 1
 
 """
-    BranchingProcess(offspring, generation_time; population_size=nothing)
-
 Stochastic branching process transmission model.
 
-    BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
-    BranchingProcess(NegBin(0.8, 0.5))  # no timing, pure chain statistics
-    BranchingProcess(M, R_j -> NegBin(R_j, 0.16), LogNormal(1.6, 0.5))  # multi-type
+# Examples
+
+```julia
+BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
+BranchingProcess(NegBin(0.8, 0.5))  # no timing, pure chain statistics
+BranchingProcess(M, R_j -> NegBin(R_j, 0.16), LogNormal(1.6, 0.5))  # multi-type
+```
 """
 struct BranchingProcess{O, G} <: TransmissionModel
     offspring::O
@@ -120,8 +122,6 @@ end
 # ── Individual state ────────────────────────────────────────────────
 
 """
-    Individual
-
 A single contact in the transmission tree (infected or not).
 
 Core fields (used by the engine): `id`, `parent_id`, `generation`,
@@ -201,8 +201,6 @@ end
 # ── Simulation state ───────────────────────────────────────────────
 
 """
-    SimulationState
-
 State of a running or completed simulation.
 """
 mutable struct SimulationState{R <: AbstractRNG}
