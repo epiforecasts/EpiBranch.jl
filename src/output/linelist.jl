@@ -23,8 +23,8 @@ are generated post-hoc for individuals that don't already have them.
 function linelist(state::SimulationState;
                   reference_date::Date=Date(2020, 1, 1),
                   delays::DelayOpts=DelayOpts(),
-                  outcomes::Union{OutcomeOpts, Nothing}=nothing,
-                  demographics::Union{DemographicOpts, Nothing}=nothing,
+                  outcomes::Union{OutcomeOpts, NoOutcomes}=NoOutcomes(),
+                  demographics::Union{DemographicOpts, NoDemographics}=NoDemographics(),
                   rng::AbstractRNG=Random.default_rng())
     cases = filter(is_infected, state.individuals)
     n = length(cases)
@@ -57,7 +57,7 @@ function linelist(state::SimulationState;
     has_sex = any(haskey(ind.state, :sex) for ind in cases)
 
     # Apply post-hoc demographics if not already set on individuals
-    if demographics !== nothing && (!has_age || !has_sex)
+    if demographics isa DemographicOpts && (!has_age || !has_sex)
         demo_fn = EpiBranch.demographics(;
             age_distribution=demographics.age_distribution,
             age_range=demographics.age_range,
@@ -83,7 +83,7 @@ function linelist(state::SimulationState;
     end
 
     # Reporting delay
-    if has_onset && delays.onset_to_reporting !== nothing
+    if has_onset && delays.onset_to_reporting isa Distribution
         cols[:date_reporting] = Union{Date, Missing}[
             let ot = onset_time(ind)
                 if isnan(ot)
@@ -98,8 +98,8 @@ function linelist(state::SimulationState;
     end
 
     # Hospitalisation
-    if has_onset && delays.onset_to_admission !== nothing
-        prob_hosp = outcomes !== nothing ? outcomes.prob_hospitalisation : 0.2
+    if has_onset && delays.onset_to_admission isa Distribution
+        prob_hosp = outcomes isa OutcomeOpts ? outcomes.prob_hospitalisation : 0.2
         cols[:date_admission] = Union{Date, Missing}[
             let ot = onset_time(ind)
                 if isnan(ot) || rand(rng) >= prob_hosp
@@ -114,7 +114,7 @@ function linelist(state::SimulationState;
     end
 
     # Outcomes
-    if outcomes !== nothing && has_onset
+    if outcomes isa OutcomeOpts && has_onset
         age_col = get(cols, :age, nothing)
         outcome_strs = Vector{String}(undef, n)
         date_outcomes = Vector{Union{Date, Missing}}(undef, n)
@@ -133,7 +133,7 @@ function linelist(state::SimulationState;
 
                 outcome_strs[j] = rand(rng) < prob_death ? "died" : "recovered"
 
-                if delays.onset_to_outcome !== nothing
+                if delays.onset_to_outcome isa Distribution
                     d = rand(rng, delays.onset_to_outcome)
                     date_outcomes[j] = reference_date + Day(floor(Int, ot + d))
                 else
@@ -194,11 +194,11 @@ end
 # ── Internal helpers ─────────────────────────────────────────────────
 
 
+_get_cfr(age::Int, opts::OutcomeOpts{NoCFR}) = opts.prob_death
+
 function _get_cfr(age::Int, opts::OutcomeOpts)
-    if opts.age_specific_cfr !== nothing
-        for ((lo, hi), cfr) in opts.age_specific_cfr
-            lo <= age <= hi && return cfr
-        end
+    for ((lo, hi), cfr) in opts.age_specific_cfr
+        lo <= age <= hi && return cfr
     end
     return opts.prob_death
 end

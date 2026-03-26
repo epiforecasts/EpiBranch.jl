@@ -1,3 +1,34 @@
+# ── Sentinel types ──────────────────────────────────────────────────
+# These replace Union{T, Nothing} patterns throughout the codebase,
+# enabling dispatch instead of runtime nothing-checks.
+
+"""Sentinel indicating no population size constraint (infinite population)."""
+struct NoPopulation end
+
+"""Sentinel indicating no attributes function is provided."""
+struct NoAttributes end
+
+"""Sentinel indicating no type labels for multi-type models."""
+struct NoTypeLabels end
+
+"""Sentinel indicating no delay distribution is provided."""
+struct NoDelay end
+
+"""Sentinel indicating no age-specific case fatality rate is provided."""
+struct NoCFR end
+
+"""Sentinel indicating no age distribution is provided."""
+struct NoAgeDistribution end
+
+"""Sentinel indicating no outcome options are provided."""
+struct NoOutcomes end
+
+"""Sentinel indicating no demographic options are provided."""
+struct NoDemographics end
+
+"""Sentinel indicating no case cap for extinction/containment checks."""
+struct NoCases end
+
 # ── Generation time specification ────────────────────────────────────
 
 """
@@ -23,7 +54,7 @@ end
 abstract type TransmissionModel end
 
 """Interface methods with defaults for any TransmissionModel."""
-population_size(::TransmissionModel) = nothing
+population_size(::TransmissionModel) = NoPopulation()
 
 """Extract the offspring distribution from a single-type model, or throw."""
 function _single_type_offspring(model::TransmissionModel)
@@ -43,13 +74,13 @@ Stochastic branching process transmission model.
     BranchingProcess(NegBin(0.8, 0.5))  # no timing, pure chain statistics
     BranchingProcess(M, R_j -> NegBin(R_j, 0.16), LogNormal(1.6, 0.5))  # multi-type
 """
-struct BranchingProcess{O, G} <: TransmissionModel
+struct BranchingProcess{O, G, P, L} <: TransmissionModel
     offspring::O
     generation_time::G
-    population_size::Union{Int, Nothing}
+    population_size::P
     latent_period::Float64
     n_types::Int
-    type_labels::Union{Vector{String}, Nothing}
+    type_labels::L
 end
 
 population_size(m::BranchingProcess) = m.population_size
@@ -60,26 +91,26 @@ function Base.show(io::IO, m::BranchingProcess)
     off_str = m.offspring isa Distribution ? string(typeof(m.offspring)) : "Function"
     gt_str = m.generation_time === nothing ? "nothing" :
              m.generation_time isa Distribution ? string(typeof(m.generation_time)) : "Function"
-    pop_str = m.population_size === nothing ? "unlimited" : string(m.population_size)
+    pop_str = m.population_size isa NoPopulation ? "unlimited" : string(m.population_size)
     print(io, "BranchingProcess(offspring=$(off_str), generation_time=$(gt_str), population_size=$(pop_str))")
 end
 
 # Single-type with generation time
 BranchingProcess(offspring::Distribution, gt::Union{Distribution, Function};
-                 population_size::Union{Int, Nothing}=nothing,
+                 population_size::Union{Int, NoPopulation}=NoPopulation(),
                  latent_period::Real=0.0) =
-    BranchingProcess(offspring, gt, population_size, Float64(latent_period), 1, nothing)
+    BranchingProcess(offspring, gt, population_size, Float64(latent_period), 1, NoTypeLabels())
 
 # Single-type without generation time (pure chain statistics)
 BranchingProcess(offspring::Distribution;
-                 population_size::Union{Int, Nothing}=nothing) =
-    BranchingProcess(offspring, nothing, population_size, 0.0, 1, nothing)
+                 population_size::Union{Int, NoPopulation}=NoPopulation()) =
+    BranchingProcess(offspring, nothing, population_size, 0.0, 1, NoTypeLabels())
 
 # Multi-type with explicit offspring function
 BranchingProcess(offspring::Function, gt::Union{Distribution, Function};
-                 n_types::Int, population_size::Union{Int, Nothing}=nothing,
+                 n_types::Int, population_size::Union{Int, NoPopulation}=NoPopulation(),
                  latent_period::Real=0.0,
-                 type_labels::Union{Vector{String}, Nothing}=nothing) =
+                 type_labels::Union{Vector{String}, NoTypeLabels}=NoTypeLabels()) =
     BranchingProcess(offspring, gt, population_size, Float64(latent_period), n_types, type_labels)
 
 """
@@ -92,9 +123,9 @@ Construct a multi-type branching process from an offspring matrix.
 function BranchingProcess(offspring_matrix::Matrix{Float64},
                           dist_fn::Function,
                           gt::Union{Distribution, Function};
-                          population_size::Union{Int, Nothing}=nothing,
+                          population_size::Union{Int, NoPopulation}=NoPopulation(),
                           latent_period::Real=0.0,
-                          type_labels::Union{Vector{String}, Nothing}=nothing)
+                          type_labels::Union{Vector{String}, NoTypeLabels}=NoTypeLabels())
     n = size(offspring_matrix, 1)
     size(offspring_matrix, 2) == n || throw(ArgumentError(
         "offspring_matrix must be square, got $(size(offspring_matrix))"))
@@ -205,17 +236,17 @@ end
 
 State of a running or completed simulation.
 """
-mutable struct SimulationState{R <: AbstractRNG}
+mutable struct SimulationState{R <: AbstractRNG, P, A}
     individuals::Vector{Individual}
     active_ids::Vector{Int}
     current_generation::Int
     rng::R
     cumulative_cases::Int
     extinct::Bool
-    population_size::Union{Int, Nothing}
+    population_size::P
     latent_period::Float64
     max_infection_time::Float64
-    attributes::Union{Function, Nothing}
+    attributes::A
 end
 
 function Base.show(io::IO, s::SimulationState)
