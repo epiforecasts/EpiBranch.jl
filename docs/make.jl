@@ -1,13 +1,17 @@
 using Documenter
+using DocumenterVitepress
 using EpiBranch
 
 makedocs(;
     modules = [EpiBranch],
     sitename = "EpiBranch.jl",
+    authors = "epiforecasts contributors",
     remotes = nothing,
     warnonly = [:missing_docs],
-    format = Documenter.HTML(;
-        prettyurls = get(ENV, "CI", "false") == "true",
+    format = DocumenterVitepress.MarkdownVitepress(
+        repo = "github.com/epiforecasts/EpiBranch.jl",
+        devbranch = "main",
+        devurl = "dev",
     ),
     pages = [
         "Home" => "index.md",
@@ -25,8 +29,8 @@ makedocs(;
     ],
 )
 
-deploydocs(;
-    repo = "github.com/epiforecasts/EpiBranch.jl.git",
+DocumenterVitepress.deploydocs(;
+    repo = "github.com/epiforecasts/EpiBranch.jl",
     devbranch = "main",
     push_preview = true,
 )
