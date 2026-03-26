@@ -319,7 +319,13 @@ Each intervention can define two methods:
 After each `resolve_individual!` and `apply_post_transmission!` call,
 the framework checks: if `intervention_time < start_time`, call `reset!`.
 This happens in one place for all interventions — individual interventions
-do not need to check `start_time` themselves.
+do not need to check `start_time` themselves. Here is the actual
+implementation:
+
+```@example interventions
+using CodeTracking
+print(@code_string EpiBranch._enforce_start_time!(iso, state.individuals[1]))
+```
 
 ## Writing a custom intervention
 
@@ -333,6 +339,17 @@ To support `start_time` scheduling, also implement:
 - `start_time` — return the intervention's policy start time
 - `intervention_time` — return the time at which the effect occurs for an individual
 - `reset!` — undo the effect if it falls before `start_time`
+
+### Reference: the built-in `Isolation` intervention
+
+Before writing your own, it helps to see a complete built-in example.
+The source code of [`Isolation`](@ref) is shown below via
+[CodeTracking.jl](https://github.com/timholy/CodeTracking.jl), so it
+always reflects the current implementation:
+
+```@example interventions
+print(@code_string EpiBranch.resolve_individual!(iso, state.individuals[1], state))
+```
 
 ```@example interventions
 # A gathering limit that caps the number of contacts per individual
