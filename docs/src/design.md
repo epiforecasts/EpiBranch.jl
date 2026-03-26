@@ -101,6 +101,20 @@ Multiple types (age groups, risk groups, spatial patches) are supported in the o
 
 Each contact is allocated to a type, stored as `:type` in its state dict. Interventions and output are unchanged — they operate on individual-level state, not types.
 
+## Simulation, mutation, and automatic differentiation
+
+The simulation engine uses in-place mutation: `step!` appends individuals, updates case counts, and modifies individual state via interventions. This is deliberate — branching process simulations grow an unbounded tree, and copying the full state at every generation would be prohibitively expensive.
+
+### Analytical likelihoods
+
+`loglikelihood(ChainSizes(data), Poisson(R))` and similar analytical methods are deterministic scalar functions of the parameters. They work with any AD backend (ForwardDiff, Enzyme, Mooncake, ReverseDiff) and with gradient-based samplers like NUTS.
+
+### Simulation-based likelihoods
+
+`loglikelihood(ChainSizes(data), model; interventions=...)` runs stochastic simulations internally. Because the simulation draws random numbers, the output is a noisy estimate of the true likelihood, not a smooth function of the parameters. Gradients of a single stochastic realisation are not useful estimates of the gradient of the expected likelihood. Gradient-based samplers (NUTS, HMC) should not be used here.
+
+Use gradient-free samplers instead: Metropolis-Hastings (`MH()`), particle methods, or similar. The inference tutorial demonstrates this with `MH()`.
+
 ## Connection to survival analysis
 
 The generation time distribution g(t) = h(t)/R is the normalised infectiousness profile. Its CDF, G(t), is the cumulative hazard. When isolation occurs at time t_iso, the probabilities are:
