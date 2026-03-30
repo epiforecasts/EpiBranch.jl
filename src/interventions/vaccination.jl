@@ -1,6 +1,4 @@
 """
-    RingVaccination(; efficacy, delay_to_immunity=0.0, mode=:leaky)
-
 Vaccinate traced contacts, reducing their susceptibility to infection.
 
 Applied to contacts that have been traced (`:traced == true`, set by
@@ -13,11 +11,6 @@ For post-exposure prophylaxis (PEP, cf.
 confer protection, set `delay_to_immunity` to the appropriate delay.
 
 Requires `:traced` (set by [`ContactTracing`](@ref)).
-
-- `efficacy`: vaccine/PEP efficacy (0–1)
-- `delay_to_immunity`: time from administration to protective immunity (days)
-- `mode`: `:leaky` (susceptibility reduced by `efficacy` for everyone) or
-  `:all_or_nothing` (fraction `efficacy` fully protected, rest unaffected)
 
 Initialises: `:vaccinated`, `:vaccination_time`.
 """

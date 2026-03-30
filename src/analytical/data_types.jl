@@ -1,10 +1,10 @@
 # ── Data wrapper types for unified likelihood/fitting interface ────────
 
 """
-    OffspringCounts(data::Vector{Int})
-
-Observed secondary case counts — the number of individuals each case
+Observed secondary case counts -- the number of individuals each case
 infected.  Used with `loglikelihood` and `fit`.
+
+# Examples
 
 ```julia
 data = OffspringCounts([0, 1, 2, 0, 3, 1, 0])
@@ -21,10 +21,10 @@ struct OffspringCounts
 end
 
 """
-    ChainSizes(data::Vector{Int})
-
 Observed transmission chain sizes (total number of cases per chain).
 Used with `loglikelihood` and `fit`.
+
+# Examples
 
 ```julia
 data = ChainSizes([1, 1, 3, 1, 5])
@@ -43,10 +43,10 @@ struct ChainSizes
 end
 
 """
-    ChainLengths(data::Vector{Int})
-
 Observed transmission chain lengths (number of generations).
 Used with `loglikelihood` and `fit`.
+
+# Examples
 
 ```julia
 data = ChainLengths([0, 1, 0, 2, 1])

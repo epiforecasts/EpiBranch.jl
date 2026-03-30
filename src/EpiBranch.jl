@@ -6,6 +6,9 @@ using Distributions
 using Random
 using SpecialFunctions
 
+# Docstring templates (must come before any docstrings)
+include("docstrings.jl")
+
 # Core types
 include("types.jl")
 include("options.jl")
