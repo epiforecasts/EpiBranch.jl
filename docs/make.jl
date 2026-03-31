@@ -23,6 +23,7 @@ makedocs(;
             "Chain statistics, likelihood, and fitting" => "tutorials/chains.md",
             "Inference" => "tutorials/inference.md",
             "Analytical functions" => "tutorials/analytical.md",
+            "Extending EpiBranch" => "tutorials/extending.md",
         ],
         "Design" => "design.md",
         "API reference" => "api.md",
