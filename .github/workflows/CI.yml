@@ -20,7 +20,7 @@ jobs:
 
   docs:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: write
       pages: write
@@ -31,6 +31,9 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - run: |
           julia --project=docs -e '
             using Pkg
