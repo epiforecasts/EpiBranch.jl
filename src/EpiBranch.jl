@@ -22,6 +22,9 @@ include("interventions/contact_tracing.jl")
 include("interventions/vaccination.jl")
 include("interventions/scheduled.jl")
 
+# Public API declarations (Julia 1.11+)
+include("public.jl")
+
 # Transmission models
 include("models/branching_process.jl")
 
