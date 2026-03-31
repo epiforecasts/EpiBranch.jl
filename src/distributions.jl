@@ -49,21 +49,24 @@ function ringbp_generation_time(; presymptomatic_fraction::Real=0.3,
     # Compute skew-normal alpha from presymptomatic fraction
     # For SN(xi, omega, alpha): P(X < xi) = 0.5 - arctan(alpha)/π
     # => alpha = tan(π(0.5 - presymp_frac))
-    alpha = tan(Float64(π) * (0.5 - Float64(presymptomatic_fraction)))
-    om = Float64(omega)
+    alpha = tan(float(π) * (0.5 - float(presymptomatic_fraction)))
+    om = float(omega)
 
-    return function (inc_period::Float64)
+    return function (inc_period)
         _TruncatedSkewNormal(inc_period, om, alpha)
     end
 end
 
 """Skew-normal truncated to [0, ∞) via rejection sampling (cdf not available)."""
-struct _TruncatedSkewNormal <: ContinuousUnivariateDistribution
-    ξ::Float64
-    ω::Float64
-    α::Float64
-    inner::SkewNormal{Float64}
-    _TruncatedSkewNormal(ξ, ω, α) = new(ξ, ω, α, SkewNormal(ξ, ω, α))
+struct _TruncatedSkewNormal{T<:AbstractFloat} <: ContinuousUnivariateDistribution
+    ξ::T
+    ω::T
+    α::T
+    inner::SkewNormal{T}
+    function _TruncatedSkewNormal(ξ::Real, ω::Real, α::Real)
+        T = float(promote_type(typeof(ξ), typeof(ω), typeof(α)))
+        new{T}(T(ξ), T(ω), T(α), SkewNormal(T(ξ), T(ω), T(α)))
+    end
 end
 
 function Base.rand(rng::AbstractRNG, d::_TruncatedSkewNormal)
