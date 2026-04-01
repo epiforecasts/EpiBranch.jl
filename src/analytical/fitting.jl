@@ -84,7 +84,7 @@ end
 for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
     @eval function loglikelihood(data::$DT, model::TransmissionModel;
                            interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
-                           attributes::Union{Function, Nothing}=nothing,
+                           attributes::Union{Function, NoAttributes}=NoAttributes(),
                            sim_opts::SimOpts=SimOpts(),
                            n_sim::Int=10_000,
                            rng::AbstractRNG=Random.default_rng())
