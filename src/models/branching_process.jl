@@ -2,6 +2,13 @@
     step!(model::BranchingProcess, state::SimulationState, interventions)
 
 Process one generation of the branching process.
+
+Mutates `state` in place: appends new contacts to `state.individuals`,
+updates `state.cumulative_cases`, `state.current_generation`,
+`state.active_ids`, and `state.extinct`. Individual-level fields are also
+modified by interventions via their hooks. See the
+[Design](@ref "Simulation, mutation, and automatic differentiation") section
+for implications on automatic differentiation.
 """
 function step!(model::BranchingProcess, state::SimulationState, interventions)
     new_contacts = Individual[]
