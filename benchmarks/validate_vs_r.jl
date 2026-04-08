@@ -30,7 +30,7 @@ println()
 println("2. Simulate 20 chains, Poisson(0.9), max_cases=10")
 model = BranchingProcess(Poisson(0.9))
 rng = StableRNG(32)
-states = simulate_batch(model, 20; sim_opts=SimOpts(max_cases=10), rng=rng)
+states = simulate_batch(model, 20; sim_opts = SimOpts(max_cases = 10), rng = rng)
 sizes = Int[]
 for s in states
     cs = chain_statistics(s)
@@ -47,9 +47,9 @@ println()
 #                         offspring_dist=rnbinom, mu=0.9, size=0.36,
 #                         statistic="size", stat_threshold=10)
 println("3. NegBin(0.9, 0.36), finite pop=1000, 10% immune")
-model_fp = BranchingProcess(NegBin(0.9, 0.36); population_size=900)  # 1000*(1-0.1)
+model_fp = BranchingProcess(NegBin(0.9, 0.36); population_size = 900)  # 1000*(1-0.1)
 rng = StableRNG(32)
-states = simulate_batch(model_fp, 20; sim_opts=SimOpts(max_cases=10), rng=rng)
+states = simulate_batch(model_fp, 20; sim_opts = SimOpts(max_cases = 10), rng = rng)
 sizes = Int[]
 for s in states
     cs = chain_statistics(s)
@@ -80,7 +80,7 @@ println()
 println("5. Chain statistics, Poisson(2.0)")
 model = BranchingProcess(Poisson(2.0), Exponential(3.0))
 rng = StableRNG(32)
-state = simulate(model; sim_opts=SimOpts(n_initial=10, max_cases=100), rng=rng)
+state = simulate(model; sim_opts = SimOpts(n_initial = 10, max_cases = 100), rng = rng)
 cs = chain_statistics(state)
 println("   $(nrow(cs)) chains")
 println("   Sizes: $(cs.size)")
@@ -94,7 +94,7 @@ println("6. Extinction probability: NegBin(R=1.5, k=0.5)")
 q_analytical = extinction_probability(1.5, 0.5)
 model = BranchingProcess(NegBin(1.5, 0.5))
 rng = StableRNG(42)
-results = simulate_batch(model, 2000; sim_opts=SimOpts(max_cases=5000), rng=rng)
+results = simulate_batch(model, 2000; sim_opts = SimOpts(max_cases = 5000), rng = rng)
 q_simulated = containment_probability(results)
 println("   Analytical: $(round(q_analytical, digits=4))")
 println("   Simulated:  $(round(q_simulated, digits=4))")
@@ -108,7 +108,7 @@ println()
 println("7. Population control: R reduced from 1.2 to 0.9")
 model_controlled = BranchingProcess(NegBin(0.9, 0.5))
 rng = StableRNG(42)
-results = simulate_batch(model_controlled, 200; sim_opts=SimOpts(max_cases=99), rng=rng)
+results = simulate_batch(model_controlled, 200; sim_opts = SimOpts(max_cases = 99), rng = rng)
 cp = containment_probability(results)
 println("   Containment probability: $(round(cp, digits=3))")
 # With R=0.9 (subcritical), most chains should die out
@@ -118,7 +118,7 @@ println()
 # ── 8. Containment probability with control parameters ──────────────
 # This extends the epichains approach using our analytical function
 println("8. probability_contain(R=1.2, k=0.5, pop_control=0.25)")
-pc = probability_contain(1.2, 0.5; pop_control=0.25)
+pc = probability_contain(1.2, 0.5; pop_control = 0.25)
 println("   P(contain) = $(round(pc, digits=4))")
 # R_eff = 1.2 * 0.75 = 0.9, which is subcritical → containment = 1.0
 @test pc == 1.0
@@ -129,7 +129,7 @@ println()
 println("9. Fit Poisson from chain sizes")
 rng = StableRNG(42)
 model = BranchingProcess(Poisson(0.7))
-states = simulate_batch(model, 500; rng=rng)
+states = simulate_batch(model, 500; rng = rng)
 sizes = Int[]
 for s in states
     cs = chain_statistics(s)
@@ -142,7 +142,7 @@ println()
 
 # ── 10. Superspreading: proportion of transmission ───────────────────
 println("10. Proportion of transmission from top 20% (R=2.5, k=0.16)")
-prop = proportion_transmission(2.5, 0.16; prop_cases=0.2)
+prop = proportion_transmission(2.5, 0.16; prop_cases = 0.2)
 println("    Top 20% cause $(round(prop * 100, digits=1))% of transmission")
 # Known: with high overdispersion, top 20% cause ~80% of transmission
 @test prop > 0.7

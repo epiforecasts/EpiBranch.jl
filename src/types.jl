@@ -92,28 +92,35 @@ n_types(m::BranchingProcess) = m.n_types
 function Base.show(io::IO, m::BranchingProcess)
     off_str = m.offspring isa Distribution ? string(typeof(m.offspring)) : "Function"
     gt_str = m.generation_time === nothing ? "nothing" :
-             m.generation_time isa Distribution ? string(typeof(m.generation_time)) : "Function"
+             m.generation_time isa Distribution ? string(typeof(m.generation_time)) :
+             "Function"
     pop_str = m.population_size isa NoPopulation ? "unlimited" : string(m.population_size)
-    print(io, "BranchingProcess(offspring=$(off_str), generation_time=$(gt_str), population_size=$(pop_str))")
+    print(io,
+        "BranchingProcess(offspring=$(off_str), generation_time=$(gt_str), population_size=$(pop_str))")
 end
 
 # Single-type with generation time
-BranchingProcess(offspring::Distribution, gt::Union{Distribution, Function};
-                 population_size::Union{Int, NoPopulation}=NoPopulation(),
-                 latent_period::Real=0.0) =
-    BranchingProcess(offspring, gt, population_size, Float64(latent_period), 1, NoTypeLabels())
+function BranchingProcess(offspring::Distribution, gt::Union{Distribution, Function};
+        population_size::Union{Int, NoPopulation} = NoPopulation(),
+        latent_period::Real = 0.0)
+    BranchingProcess(
+        offspring, gt, population_size, Float64(latent_period), 1, NoTypeLabels())
+end
 
 # Single-type without generation time (pure chain statistics)
-BranchingProcess(offspring::Distribution;
-                 population_size::Union{Int, NoPopulation}=NoPopulation()) =
+function BranchingProcess(offspring::Distribution;
+        population_size::Union{Int, NoPopulation} = NoPopulation())
     BranchingProcess(offspring, nothing, population_size, 0.0, 1, NoTypeLabels())
+end
 
 # Multi-type with explicit offspring function
-BranchingProcess(offspring::Function, gt::Union{Distribution, Function};
-                 n_types::Int, population_size::Union{Int, NoPopulation}=NoPopulation(),
-                 latent_period::Real=0.0,
-                 type_labels::Union{Vector{String}, NoTypeLabels}=NoTypeLabels()) =
-    BranchingProcess(offspring, gt, population_size, Float64(latent_period), n_types, type_labels)
+function BranchingProcess(offspring::Function, gt::Union{Distribution, Function};
+        n_types::Int, population_size::Union{Int, NoPopulation} = NoPopulation(),
+        latent_period::Real = 0.0,
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
+    BranchingProcess(
+        offspring, gt, population_size, Float64(latent_period), n_types, type_labels)
+end
 
 """
     BranchingProcess(offspring_matrix, dist_fn, generation_time; kwargs...)
@@ -123,16 +130,16 @@ Construct a multi-type branching process from an offspring matrix.
 `dist_fn` maps each type's R to an offspring distribution.
 """
 function BranchingProcess(offspring_matrix::Matrix{Float64},
-                          dist_fn::Function,
-                          gt::Union{Distribution, Function};
-                          population_size::Union{Int, NoPopulation}=NoPopulation(),
-                          latent_period::Real=0.0,
-                          type_labels::Union{Vector{String}, NoTypeLabels}=NoTypeLabels())
+        dist_fn::Function,
+        gt::Union{Distribution, Function};
+        population_size::Union{Int, NoPopulation} = NoPopulation(),
+        latent_period::Real = 0.0,
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
     n = size(offspring_matrix, 1)
     size(offspring_matrix, 2) == n || throw(ArgumentError(
         "offspring_matrix must be square, got $(size(offspring_matrix))"))
 
-    R_by_type = vec(sum(offspring_matrix, dims=1))
+    R_by_type = vec(sum(offspring_matrix, dims = 1))
     alloc_probs = similar(offspring_matrix)
     for j in 1:n
         s = R_by_type[j]
@@ -147,7 +154,8 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
         return rand(rng, Multinomial(total, alloc_probs[:, pt]))
     end
 
-    BranchingProcess(offspring_fn, gt, population_size, float(latent_period), n, type_labels)
+    BranchingProcess(
+        offspring_fn, gt, population_size, float(latent_period), n, type_labels)
 end
 
 # ── Individual state ────────────────────────────────────────────────
@@ -180,15 +188,16 @@ end
 function Base.show(io::IO, ind::Individual)
     infected_str = is_infected(ind) ? "infected" : "contact-only"
     isolated_str = is_isolated(ind) ? ", isolated" : ""
-    print(io, "Individual(id=$(ind.id), gen=$(ind.generation), chain=$(ind.chain_id), t=$(round(ind.infection_time, digits=1)), $(infected_str)$(isolated_str))")
+    print(io,
+        "Individual(id=$(ind.id), gen=$(ind.generation), chain=$(ind.chain_id), t=$(round(ind.infection_time, digits=1)), $(infected_str)$(isolated_str))")
 end
 
-function Individual(; id::Int, parent_id::Int=0, generation::Int=0,
-                    chain_id::Int=1, infection_time::Float64=0.0,
-                    susceptibility::Float64=1.0, infectiousness::Float64=1.0,
-                    state::Dict{Symbol, Any}=Dict{Symbol, Any}())
+function Individual(; id::Int, parent_id::Int = 0, generation::Int = 0,
+        chain_id::Int = 1, infection_time::Float64 = 0.0,
+        susceptibility::Float64 = 1.0, infectiousness::Float64 = 1.0,
+        state::Dict{Symbol, Any} = Dict{Symbol, Any}())
     Individual(id, parent_id, generation, chain_id, infection_time,
-               susceptibility, infectiousness, Int[], state)
+        susceptibility, infectiousness, Int[], state)
 end
 
 # ── State accessors ──────────────────────────────────────────────────
@@ -249,5 +258,6 @@ end
 
 function Base.show(io::IO, s::SimulationState)
     status = s.extinct ? "extinct" : "active"
-    print(io, "SimulationState(cases=$(s.cumulative_cases), individuals=$(length(s.individuals)), gen=$(s.current_generation), $(status))")
+    print(io,
+        "SimulationState(cases=$(s.cumulative_cases), individuals=$(length(s.individuals)), gen=$(s.current_generation), $(status))")
 end

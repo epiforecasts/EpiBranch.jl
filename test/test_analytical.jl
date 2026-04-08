@@ -129,7 +129,7 @@
         end
 
         @testset "With observation probability" begin
-            ll = loglikelihood(ChainSizes([1, 1, 2]; obs_prob=0.8), Poisson(0.5))
+            ll = loglikelihood(ChainSizes([1, 1, 2]; obs_prob = 0.8), Poisson(0.5))
             @test isfinite(ll)
         end
     end
@@ -154,7 +154,7 @@
     @testset "Simulation-based chain size likelihood" begin
         @testset "Basic evaluation" begin
             model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-            ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3]), model; n_sim=5000, rng=StableRNG(42))
+            ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3]), model; n_sim = 5000, rng = StableRNG(42))
             @test isfinite(ll)
             @test ll < 0.0
         end
@@ -163,18 +163,18 @@
             data = ChainSizes([1, 1, 1, 2, 1])
             ll_analytical = loglikelihood(data, Poisson(0.5))
             model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-            ll_simulated = loglikelihood(data, model; n_sim=10_000, rng=StableRNG(42))
+            ll_simulated = loglikelihood(data, model; n_sim = 10_000, rng = StableRNG(42))
             @test abs(ll_analytical - ll_simulated) < 1.0
         end
 
         @testset "With interventions" begin
             model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-            iso = Isolation(delay=Exponential(1.0))
+            iso = Isolation(delay = Exponential(1.0))
             ll = loglikelihood(ChainSizes([1, 1, 2, 1]), model;
-                interventions=[iso],
-                attributes=clinical_presentation(incubation_period=LogNormal(1.5, 0.5)),
-                sim_opts=SimOpts(max_cases=500),
-                n_sim=500, rng=StableRNG(42))
+                interventions = [iso],
+                attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+                sim_opts = SimOpts(max_cases = 500),
+                n_sim = 500, rng = StableRNG(42))
             @test isfinite(ll)
         end
     end
@@ -182,7 +182,7 @@
     @testset "Simulation-based chain length likelihood" begin
         @testset "Basic evaluation" begin
             model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-            ll = loglikelihood(ChainLengths([0, 1, 0, 2, 1]), model; n_sim=5000, rng=StableRNG(42))
+            ll = loglikelihood(ChainLengths([0, 1, 0, 2, 1]), model; n_sim = 5000, rng = StableRNG(42))
             @test isfinite(ll)
             @test ll < 0.0
         end
@@ -191,15 +191,15 @@
     @testset "Proportion transmission (superspreading)" begin
         @testset "Basic 80/20" begin
             # With high R and low k, top 20% should cause most transmission
-            prop = proportion_transmission(2.5, 0.16; prop_cases=0.2)
+            prop = proportion_transmission(2.5, 0.16; prop_cases = 0.2)
             @test 0.0 < prop < 1.0
             @test prop > 0.5  # high overdispersion → top 20% cause > 50%
         end
 
         @testset "No overdispersion → more equal" begin
             # High k means little overdispersion
-            prop_low_k = proportion_transmission(2.0, 0.1; prop_cases=0.2)
-            prop_high_k = proportion_transmission(2.0, 100.0; prop_cases=0.2)
+            prop_low_k = proportion_transmission(2.0, 0.1; prop_cases = 0.2)
+            prop_high_k = proportion_transmission(2.0, 100.0; prop_cases = 0.2)
             # Lower k → more unequal → top 20% cause more
             @test prop_low_k > prop_high_k
         end
@@ -207,14 +207,14 @@
         @testset "Argument validation" begin
             @test_throws ArgumentError proportion_transmission(-1.0, 0.5)
             @test_throws ArgumentError proportion_transmission(2.0, -0.5)
-            @test_throws ArgumentError proportion_transmission(2.0, 0.5; prop_cases=0.0)
-            @test_throws ArgumentError proportion_transmission(2.0, 0.5; prop_cases=1.0)
+            @test_throws ArgumentError proportion_transmission(2.0, 0.5; prop_cases = 0.0)
+            @test_throws ArgumentError proportion_transmission(2.0, 0.5; prop_cases = 1.0)
         end
 
         @testset "Known approximate values" begin
             # For k → ∞ (Poisson limit), distribution is nearly uniform
             # Top 20% should cause ≈ 20% of transmission
-            prop = proportion_transmission(2.0, 1000.0; prop_cases=0.2)
+            prop = proportion_transmission(2.0, 1000.0; prop_cases = 0.2)
             @test prop ≈ 0.2 atol=0.05
         end
     end
@@ -222,19 +222,19 @@
     @testset "Proportion cluster size" begin
         @testset "High overdispersion concentrates cases" begin
             # k=0.1 → most cases from large clusters
-            prop = proportion_cluster_size(2.0, 0.1; cluster_size=5)
+            prop = proportion_cluster_size(2.0, 0.1; cluster_size = 5)
             @test 0.0 < prop < 1.0
             @test prop > 0.5
         end
 
         @testset "Low overdispersion spreads cases" begin
-            prop_low_k = proportion_cluster_size(2.0, 0.1; cluster_size=5)
-            prop_high_k = proportion_cluster_size(2.0, 10.0; cluster_size=5)
+            prop_low_k = proportion_cluster_size(2.0, 0.1; cluster_size = 5)
+            prop_high_k = proportion_cluster_size(2.0, 10.0; cluster_size = 5)
             @test prop_low_k > prop_high_k
         end
 
         @testset "cluster_size=1 captures everything" begin
-            prop = proportion_cluster_size(2.0, 0.5; cluster_size=1)
+            prop = proportion_cluster_size(2.0, 0.5; cluster_size = 1)
             @test prop ≈ 1.0 atol=1e-6
         end
     end
@@ -256,26 +256,26 @@
         end
 
         @testset "Multiple introductions reduce containment" begin
-            p1 = probability_contain(2.0, 0.5; n_initial=1)
-            p5 = probability_contain(2.0, 0.5; n_initial=5)
+            p1 = probability_contain(2.0, 0.5; n_initial = 1)
+            p5 = probability_contain(2.0, 0.5; n_initial = 5)
             @test p5 < p1
             @test p5 ≈ p1^5 atol=1e-8
         end
 
         @testset "Population control increases containment" begin
-            p_none = probability_contain(2.0, 0.5; pop_control=0.0)
-            p_half = probability_contain(2.0, 0.5; pop_control=0.5)
+            p_none = probability_contain(2.0, 0.5; pop_control = 0.0)
+            p_half = probability_contain(2.0, 0.5; pop_control = 0.5)
             @test p_half > p_none
         end
 
         @testset "Individual control increases containment" begin
-            p_none = probability_contain(2.0, 0.5; ind_control=0.0)
-            p_half = probability_contain(2.0, 0.5; ind_control=0.5)
+            p_none = probability_contain(2.0, 0.5; ind_control = 0.0)
+            p_half = probability_contain(2.0, 0.5; ind_control = 0.5)
             @test p_half > p_none
         end
 
         @testset "Full control → certain containment" begin
-            @test probability_contain(5.0, 0.1; pop_control=0.9) ≈ 1.0 atol=1e-6
+            @test probability_contain(5.0, 0.1; pop_control = 0.9) ≈ 1.0 atol=1e-6
         end
     end
 
@@ -340,7 +340,7 @@
         @testset "Poisson from chain sizes" begin
             rng = StableRNG(42)
             model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-            states = simulate_batch(model, 500; rng=rng)
+            states = simulate_batch(model, 500; rng = rng)
             sizes = Int[]
             for s in states
                 cs = chain_statistics(s)
@@ -355,7 +355,7 @@
             rng = StableRNG(42)
             true_R, true_k = 0.6, 0.5
             model = BranchingProcess(NegBin(true_R, true_k), Exponential(5.0))
-            states = simulate_batch(model, 500; rng=rng)
+            states = simulate_batch(model, 500; rng = rng)
             lengths = Int[]
             for s in states
                 cs = chain_statistics(s)

@@ -36,9 +36,9 @@ end
 # ── Keyword convenience constructor ──────────────────────────────────
 
 function Scheduled(intervention::AbstractIntervention;
-                   start_time::Union{Float64, Nothing}=nothing,
-                   end_time::Union{Float64, Nothing}=nothing,
-                   start_after_cases::Union{Int, Nothing}=nothing)
+        start_time::Union{Float64, Nothing} = nothing,
+        end_time::Union{Float64, Nothing} = nothing,
+        start_after_cases::Union{Int, Nothing} = nothing)
     # Forward start_time to inner intervention for individual-level filtering
     if start_time !== nothing
         intervention = _with_start_time(intervention, start_time)
@@ -75,8 +75,9 @@ end
 is_active(s::Scheduled, state::SimulationState) = s.condition(state)
 
 # Always initialise — fields must exist before the policy activates.
-initialise_individual!(s::Scheduled, ind, state) =
+function initialise_individual!(s::Scheduled, ind, state)
     initialise_individual!(s.intervention, ind, state)
+end
 
 function resolve_individual!(s::Scheduled, ind, state)
     is_active(s, state) && resolve_individual!(s.intervention, ind, state)

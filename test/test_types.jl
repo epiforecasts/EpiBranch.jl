@@ -8,7 +8,7 @@
     end
 
     @testset "Individual construction" begin
-        ind = Individual(; id=1, infection_time=0.0)
+        ind = Individual(; id = 1, infection_time = 0.0)
         @test ind.id == 1
         @test ind.parent_id == 0
         @test ind.generation == 0
@@ -20,13 +20,13 @@
 
     @testset "Individual with state" begin
         s = Dict{Symbol, Any}(:age => 30, :isolated => true)
-        ind = Individual(; id=1, state=s)
+        ind = Individual(; id = 1, state = s)
         @test ind.state[:age] == 30
         @test is_isolated(ind)
     end
 
     @testset "State accessors with defaults" begin
-        ind = Individual(; id=1)
+        ind = Individual(; id = 1)
         @test !is_isolated(ind)
         @test isolation_time(ind) == Inf
         @test isnan(onset_time(ind))
@@ -43,7 +43,7 @@
     end
 
     @testset "BranchingProcess with population_size" begin
-        model = BranchingProcess(Poisson(2.0), Exponential(5.0); population_size=1000)
+        model = BranchingProcess(Poisson(2.0), Exponential(5.0); population_size = 1000)
         @test model.population_size == 1000
     end
 

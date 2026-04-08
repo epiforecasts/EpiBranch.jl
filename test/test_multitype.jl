@@ -24,8 +24,8 @@ using DataFrames
 
         rng = StableRNG(42)
         state = simulate(model;
-            sim_opts=SimOpts(max_cases=100),
-            rng=rng)
+            sim_opts = SimOpts(max_cases = 100),
+            rng = rng)
 
         @test state.cumulative_cases > 0
 
@@ -45,8 +45,8 @@ using DataFrames
 
         rng = StableRNG(42)
         state = simulate(model;
-            sim_opts=SimOpts(max_cases=200),
-            rng=rng)
+            sim_opts = SimOpts(max_cases = 200),
+            rng = rng)
 
         infected = filter(is_infected, state.individuals)
         # Children should have the same type as their parent
@@ -69,7 +69,7 @@ using DataFrames
         n_type2_total = 0
         rng = StableRNG(42)
         for _ in 1:20
-            state = simulate(model; sim_opts=SimOpts(max_cases=200), rng=rng)
+            state = simulate(model; sim_opts = SimOpts(max_cases = 200), rng = rng)
             infected = filter(is_infected, state.individuals)
             n_type1_total += count(ind -> individual_type(ind) == 1, infected)
             n_type2_total += count(ind -> individual_type(ind) == 2, infected)
@@ -86,8 +86,8 @@ using DataFrames
 
         rng = StableRNG(42)
         state = simulate(model;
-            sim_opts=SimOpts(max_cases=50),
-            rng=rng)
+            sim_opts = SimOpts(max_cases = 50),
+            rng = rng)
 
         @test state.cumulative_cases > 0
     end
@@ -102,12 +102,12 @@ using DataFrames
             end
         end
 
-        model = BranchingProcess(my_offspring, Exponential(5.0); n_types=2)
+        model = BranchingProcess(my_offspring, Exponential(5.0); n_types = 2)
 
         rng = StableRNG(42)
         state = simulate(model;
-            sim_opts=SimOpts(max_cases=50),
-            rng=rng)
+            sim_opts = SimOpts(max_cases = 50),
+            rng = rng)
 
         @test state.cumulative_cases > 0
         infected = filter(is_infected, state.individuals)
@@ -118,14 +118,14 @@ using DataFrames
         M = [1.5 0.3;
              0.3 1.0]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
-        iso = Isolation(delay=Exponential(1.0))
-        init_fn = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
+        iso = Isolation(delay = Exponential(1.0))
+        init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
         rng = StableRNG(42)
         state = simulate(model;
-            interventions=[iso], attributes=init_fn,
-            sim_opts=SimOpts(max_cases=100),
-            rng=rng)
+            interventions = [iso], attributes = init_fn,
+            sim_opts = SimOpts(max_cases = 100),
+            rng = rng)
 
         n_isolated = count(ind -> is_isolated(ind), state.individuals)
         @test n_isolated > 0
@@ -135,12 +135,12 @@ using DataFrames
         M = [1.5 0.3;
              0.3 1.0]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0);
-                                  population_size=50)
+            population_size = 50)
 
         rng = StableRNG(42)
         state = simulate(model;
-            sim_opts=SimOpts(max_cases=100),
-            rng=rng)
+            sim_opts = SimOpts(max_cases = 100),
+            rng = rng)
 
         @test state.cumulative_cases <= 50
     end
@@ -151,7 +151,7 @@ using DataFrames
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         rng = StableRNG(42)
-        state = simulate(model; sim_opts=SimOpts(max_cases=50), rng=rng)
+        state = simulate(model; sim_opts = SimOpts(max_cases = 50), rng = rng)
 
         cs = chain_statistics(state)
         @test cs isa DataFrame
@@ -164,7 +164,7 @@ using DataFrames
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         rng = StableRNG(42)
-        state = simulate(model; sim_opts=SimOpts(max_cases=50), rng=rng)
+        state = simulate(model; sim_opts = SimOpts(max_cases = 50), rng = rng)
 
         ct = contacts(state)
         @test ct isa DataFrame
@@ -175,7 +175,7 @@ using DataFrames
         M = [1.5 0.3;
              0.3 1.0]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0);
-                                  type_labels=["children", "adults"])
+            type_labels = ["children", "adults"])
         @test model.type_labels == ["children", "adults"]
     end
 
@@ -184,12 +184,12 @@ using DataFrames
              0.5 1.5 0.3;
              0.1 0.3 0.8]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0);
-                                  type_labels=["0-14", "15-64", "65+"])
+            type_labels = ["0-14", "15-64", "65+"])
 
         rng = StableRNG(42)
         state = simulate(model;
-            sim_opts=SimOpts(max_cases=100),
-            rng=rng)
+            sim_opts = SimOpts(max_cases = 100),
+            rng = rng)
 
         infected = filter(is_infected, state.individuals)
         types = [individual_type(ind) for ind in infected]

@@ -33,13 +33,13 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
         offspring_result = _draw_offspring(state.rng, model.offspring, individual, state)
 
         gt_dist = model.generation_time === nothing ? nothing :
-            get_generation_time(model.generation_time, individual)
+                  get_generation_time(model.generation_time, individual)
         residual = _post_isolation_transmission(interventions)
 
         next_id = _create_contacts!(new_contacts, new_infected_ids,
-                                     offspring_result, individual, state,
-                                     gt_dist, pop_suscept, residual,
-                                     interventions, next_id)
+            offspring_result, individual, state,
+            gt_dist, pop_suscept, residual,
+            interventions, next_id)
     end
 
     for intervention in interventions
@@ -74,21 +74,23 @@ end
 # ── Offspring drawing ────────────────────────────────────────────────
 
 """Single-type offspring draw."""
-_draw_offspring(rng::AbstractRNG, offspring::Distribution,
-                individual, state::SimulationState) = rand(rng, offspring)
+function _draw_offspring(rng::AbstractRNG, offspring::Distribution,
+        individual, state::SimulationState)
+    rand(rng, offspring)
+end
 
 """Function-based offspring draw. The function receives the RNG and individual."""
 function _draw_offspring(rng::AbstractRNG, offspring::Function,
-                         individual, state::SimulationState)
+        individual, state::SimulationState)
     return offspring(rng, individual)
 end
 
 # ── Contact creation ─────────────────────────────────────────────────
 
 function _make_one_contact!(new_contacts, new_infected_ids, parent, state,
-                             gt_dist, pop_suscept, residual,
-                             interventions, next_id;
-                             type_idx::Union{Int, NoTypeLabels}=NoTypeLabels())
+        gt_dist, pop_suscept, residual,
+        interventions, next_id;
+        type_idx::Union{Int, NoTypeLabels} = NoTypeLabels())
     if gt_dist === nothing
         gt = 0.0
         inf_time = parent.infection_time
@@ -99,11 +101,11 @@ function _make_one_contact!(new_contacts, new_infected_ids, parent, state,
     end
 
     contact = _create_individual(state, parent.id, parent.chain_id,
-                                  next_id, inf_time, interventions)
+        next_id, inf_time, interventions)
     _set_type!(contact, type_idx)
 
     infected = _resolve_infection(state.rng, parent, contact,
-                                   gt, pop_suscept, residual)
+        gt, pop_suscept, residual)
     contact.state[:infected] = infected
 
     push!(parent.secondary_case_ids, next_id)
@@ -117,27 +119,27 @@ _set_type!(contact, idx::Int) = (contact.state[:type] = idx)
 
 """Single-type contacts."""
 function _create_contacts!(new_contacts, new_infected_ids,
-                           n_contacts::Int, parent, state,
-                           gt_dist, pop_suscept, residual,
-                           interventions, next_id)
+        n_contacts::Int, parent, state,
+        gt_dist, pop_suscept, residual,
+        interventions, next_id)
     for _ in 1:n_contacts
         next_id = _make_one_contact!(new_contacts, new_infected_ids, parent, state,
-                                      gt_dist, pop_suscept, residual,
-                                      interventions, next_id)
+            gt_dist, pop_suscept, residual,
+            interventions, next_id)
     end
     return next_id
 end
 
 """Multi-type contacts."""
 function _create_contacts!(new_contacts, new_infected_ids,
-                           counts::Vector{Int}, parent, state,
-                           gt_dist, pop_suscept, residual,
-                           interventions, next_id)
+        counts::Vector{Int}, parent, state,
+        gt_dist, pop_suscept, residual,
+        interventions, next_id)
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
             next_id = _make_one_contact!(new_contacts, new_infected_ids, parent, state,
-                                          gt_dist, pop_suscept, residual,
-                                          interventions, next_id; type_idx)
+                gt_dist, pop_suscept, residual,
+                interventions, next_id; type_idx)
         end
     end
     return next_id
@@ -147,8 +149,8 @@ end
 
 """Determine whether a contact is successfully infected via competing risks."""
 function _resolve_infection(rng::AbstractRNG, parent, contact,
-                             generation_time::Float64, pop_suscept::Float64,
-                             post_isolation_transmission::Float64)
+        generation_time::Float64, pop_suscept::Float64,
+        post_isolation_transmission::Float64)
     pop_suscept < 1.0 && rand(rng) > pop_suscept && return false
     contact.susceptibility < 1.0 && rand(rng) > contact.susceptibility && return false
     parent.infectiousness < 1.0 && rand(rng) > parent.infectiousness && return false
@@ -157,7 +159,8 @@ function _resolve_infection(rng::AbstractRNG, parent, contact,
         iso_t = isolation_time(parent)
         transmission_time = parent.infection_time + generation_time
         if transmission_time >= iso_t
-            (post_isolation_transmission <= 0.0 || rand(rng) > post_isolation_transmission) && return false
+            (post_isolation_transmission <= 0.0 ||
+             rand(rng) > post_isolation_transmission) && return false
         end
     end
 

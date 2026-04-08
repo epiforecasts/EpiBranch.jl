@@ -66,7 +66,7 @@
             0.1 => 0.8379,
             0.5 => 0.5,
             1.0 => 0.3333,
-            4.0 => 0.1354,
+            4.0 => 0.1354
         )
         for (k, r_ref) in r_vals
             @test extinction_probability(3.0, k) ≈ r_ref atol = 1e-3
@@ -138,7 +138,7 @@
             (0.5, 0.75, 0.999),
             (1.0, 0.25, 0.4444),
             (1.0, 0.5, 0.6667),
-            (1.0, 0.75, 0.999),
+            (1.0, 0.75, 0.999)
         ]
         for (k, ctrl, r_ref) in r_vals
             jl = probability_contain(3.0, k; pop_control = ctrl)

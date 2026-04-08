@@ -7,7 +7,7 @@ If `max_cases` is provided, simulations that hit the case cap are not
 considered extinct (they are assumed to have continued growing).
 """
 function containment_probability(states::Vector{<:SimulationState};
-                                  max_cases::Union{Int, NoCases}=NoCases())
+        max_cases::Union{Int, NoCases} = NoCases())
     n_extinct = count(s -> _is_contained(s, max_cases), states)
     return n_extinct / length(states)
 end
@@ -31,9 +31,9 @@ Extinction classification for a single simulation with optional criteria.
 - `max_cases::Int`: outbreaks hitting this cap are not considered extinct
 """
 function is_extinct(state::SimulationState;
-                    by_week::Union{Int, UnitRange{Int}, Nothing}=nothing,
-                    reference_date::Date=Date(2020, 1, 1),
-                    max_cases::Union{Int, NoCases}=NoCases())
+        by_week::Union{Int, UnitRange{Int}, Nothing} = nothing,
+        reference_date::Date = Date(2020, 1, 1),
+        max_cases::Union{Int, NoCases} = NoCases())
     _check_max_cases(state, max_cases) && return false
 
     by_week === nothing && return state.extinct
@@ -65,7 +65,7 @@ function generation_R(state::SimulationState)
         gen_counts[g] = get(gen_counts, g, 0) + 1
     end
 
-    isempty(gen_counts) && return DataFrame(generation=Int[], R_eff=Float64[])
+    isempty(gen_counts) && return DataFrame(generation = Int[], R_eff = Float64[])
     max_gen = maximum(keys(gen_counts))
 
     generations = Int[]
@@ -78,7 +78,7 @@ function generation_R(state::SimulationState)
         push!(r_effs, n_children / n_parents)
     end
 
-    DataFrame(generation=generations, R_eff=r_effs)
+    DataFrame(generation = generations, R_eff = r_effs)
 end
 
 """
@@ -88,9 +88,9 @@ Compute weekly case counts from a single simulation.
 A DataFrame with columns `week` (Date) and `cases` (Int) is returned.
 """
 function weekly_incidence(state::SimulationState;
-                          reference_date::Date=Date(2020, 1, 1))
+        reference_date::Date = Date(2020, 1, 1))
     infected = filter(is_infected, state.individuals)
-    isempty(infected) && return DataFrame(week=Date[], cases=Int[])
+    isempty(infected) && return DataFrame(week = Date[], cases = Int[])
 
     inf_days = [floor(Int, ind.infection_time) for ind in infected]
 
@@ -101,7 +101,7 @@ function weekly_incidence(state::SimulationState;
         weeks[week_start] = get(weeks, week_start, 0) + 1
     end
 
-    df = DataFrame(week=collect(keys(weeks)), cases=collect(values(weeks)))
+    df = DataFrame(week = collect(keys(weeks)), cases = collect(values(weeks)))
     sort!(df, :week)
     return df
 end
@@ -127,9 +127,9 @@ results = scenario_sweep(Dict(
 ```
 """
 function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
-                         n_sim::Int=500,
-                         sim_opts::SimOpts=SimOpts(),
-                         rng::AbstractRNG=Random.default_rng())
+        n_sim::Int = 500,
+        sim_opts::SimOpts = SimOpts(),
+        rng::AbstractRNG = Random.default_rng())
     haskey(params, :offspring) || throw(ArgumentError("params must include :offspring"))
 
     keys_ordered = collect(keys(params))
@@ -149,14 +149,14 @@ function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
         pop_size = get(vals, :population_size, NoPopulation())
 
         model = gt === nothing ?
-            BranchingProcess(offspring; population_size=pop_size) :
-            BranchingProcess(offspring, gt; population_size=pop_size)
+                BranchingProcess(offspring; population_size = pop_size) :
+                BranchingProcess(offspring, gt; population_size = pop_size)
 
         results = simulate_batch(model, n_sim;
-            interventions=interventions isa Vector ? interventions : [interventions],
-            attributes=attributes,
-            sim_opts=sim_opts,
-            rng=rng)
+            interventions = interventions isa Vector ? interventions : [interventions],
+            attributes = attributes,
+            sim_opts = sim_opts,
+            rng = rng)
 
         for k in keys_ordered
             push!(rows[k], vals[k])

@@ -8,8 +8,9 @@ import Distributions: fit, loglikelihood
 Log-likelihood of observed secondary case counts under a given
 offspring distribution.
 """
-loglikelihood(data::OffspringCounts, offspring::Distribution) =
+function loglikelihood(data::OffspringCounts, offspring::Distribution)
     sum(logpdf(offspring, x) for x in data.data)
+end
 
 """
     loglikelihood(data::ChainSizes, offspring::Distribution)
@@ -28,13 +29,13 @@ end
 
 # AD-compatible methods: use shared _borel_logpdf / _gammaborel_logpdf
 # which accept any numeric type for parameters (ForwardDiff Dual compatible)
-function loglikelihood(data::ChainSizes, offspring::Poisson{T}) where T
+function loglikelihood(data::ChainSizes, offspring::Poisson{T}) where {T}
     data.obs_prob < 1.0 && return _chain_size_ll_obs(data.data, offspring, data.obs_prob)
     μ = min(mean(offspring), one(mean(offspring)))
     return sum(n -> _borel_logpdf(μ, n), data.data)
 end
 
-function loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T}) where T
+function loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T}) where {T}
     data.obs_prob < 1.0 && return _chain_size_ll_obs(data.data, offspring, data.obs_prob)
     return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
 end
@@ -46,14 +47,15 @@ Analytical log-likelihood of observed chain lengths. Only defined for
 subcritical processes (R < 1).
 """
 # AD-compatible chain length: Poisson — P(length=n) = (1-λ)λ^n for subcritical
-function loglikelihood(data::ChainLengths, offspring::Poisson{T}) where T
+function loglikelihood(data::ChainLengths, offspring::Poisson{T}) where {T}
     λ = mean(offspring)
-    λ < 1 || throw(ArgumentError("chain length distribution only defined for subcritical process (λ < 1)"))
+    λ < 1 ||
+        throw(ArgumentError("chain length distribution only defined for subcritical process (λ < 1)"))
     return sum(log(one(λ) - λ) + (n - 1) * log(λ) for n in data.data)
 end
 
 # AD-compatible chain length: NegBin — PGF iteration
-function loglikelihood(data::ChainLengths, offspring::NegativeBinomial{T}) where T
+function loglikelihood(data::ChainLengths, offspring::NegativeBinomial{T}) where {T}
     _chain_length_ll_negbin(data.data, offspring)
 end
 
@@ -65,7 +67,7 @@ Simulation-based log-likelihood under any transmission model, optionally
 with interventions.
 """
 function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
-                            interventions, attributes, sim_opts, n_sim, rng)
+        interventions, attributes, sim_opts, n_sim, rng)
     states = simulate_batch(model, n_sim; interventions, attributes, sim_opts, rng)
     sim_values = Int[]
     # Track which simulations hit the case cap (right-censored)
@@ -78,16 +80,16 @@ function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
         append!(censored, fill(hit_cap, length(vals)))
     end
     return _empirical_ll(observed, sim_values; min_val, censored,
-                          cap=sim_opts.max_cases)
+        cap = sim_opts.max_cases)
 end
 
 for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
     @eval function loglikelihood(data::$DT, model::TransmissionModel;
-                           interventions::Vector{<:AbstractIntervention}=AbstractIntervention[],
-                           attributes::Union{Function, NoAttributes}=NoAttributes(),
-                           sim_opts::SimOpts=SimOpts(),
-                           n_sim::Int=10_000,
-                           rng::AbstractRNG=Random.default_rng())
+            interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
+            attributes::Union{Function, NoAttributes} = NoAttributes(),
+            sim_opts::SimOpts = SimOpts(),
+            n_sim::Int = 10_000,
+            rng::AbstractRNG = Random.default_rng())
         # Fast path: use analytical likelihood when no interventions and the
         # offspring distribution has one. Falls through to simulation if the
         # analytical method throws (e.g. unsupported distribution type).
@@ -99,7 +101,7 @@ for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
             end
         end
         _sim_loglikelihood(data.data, model, $(QuoteNode(col)), $mv;
-                           interventions, attributes, sim_opts, n_sim, rng)
+            interventions, attributes, sim_opts, n_sim, rng)
     end
 end
 
@@ -124,7 +126,7 @@ The mean `R` is the sample mean; dispersion `k` is found by bisection on
 the score equation.
 """
 function fit(::Type{NegativeBinomial}, data::OffspringCounts;
-             k_range::Tuple{Float64, Float64}=(0.01, 100.0))
+        k_range::Tuple{Float64, Float64} = (0.01, 100.0))
     d = data.data
     n = length(d)
     R = mean(d)
@@ -174,7 +176,7 @@ observed chain sizes, using the Borel chain size distribution.
 Only defined for subcritical R < 1.
 """
 function fit(::Type{Poisson}, data::ChainSizes;
-             R_range::Tuple{Float64, Float64}=(0.001, 0.999))
+        R_range::Tuple{Float64, Float64} = (0.001, 0.999))
     neg_ll(R) = -loglikelihood(data, Poisson(R))
     R = _bisect_min(neg_ll, R_range...)
     return Poisson(R)
@@ -189,16 +191,17 @@ observed chain sizes, using the GammaBorel chain size distribution.
 Only defined for subcritical R < 1.
 """
 function fit(::Type{NegativeBinomial}, data::ChainSizes;
-             R_range::Tuple{Float64, Float64}=(0.001, 0.999),
-             k_range::Tuple{Float64, Float64}=(0.01, 100.0),
-             n_grid::Int=50)
+        R_range::Tuple{Float64, Float64} = (0.001, 0.999),
+        k_range::Tuple{Float64, Float64} = (0.01, 100.0),
+        n_grid::Int = 50)
     best_ll = -Inf
     best_R, best_k = 0.5, 1.0
 
-    Rs = range(R_range..., length=n_grid)
-    ks = range(k_range..., length=n_grid)
+    Rs = range(R_range..., length = n_grid)
+    ks = range(k_range..., length = n_grid)
 
     for R in Rs, k in ks
+
         ll = loglikelihood(data, NegBin(R, k))
         if ll > best_ll
             best_ll = ll
@@ -209,11 +212,12 @@ function fit(::Type{NegativeBinomial}, data::ChainSizes;
     step_R = (Rs[2] - Rs[1]) * 2
     step_k = (ks[2] - ks[1]) * 2
     Rs2 = range(max(R_range[1], best_R - step_R),
-                min(R_range[2], best_R + step_R), length=n_grid)
+        min(R_range[2], best_R + step_R), length = n_grid)
     ks2 = range(max(k_range[1], best_k - step_k),
-                min(k_range[2], best_k + step_k), length=n_grid)
+        min(k_range[2], best_k + step_k), length = n_grid)
 
     for R in Rs2, k in ks2
+
         ll = loglikelihood(data, NegBin(R, k))
         if ll > best_ll
             best_ll = ll
@@ -231,7 +235,7 @@ Maximum likelihood estimate of a Poisson offspring distribution from
 observed chain lengths.
 """
 function fit(::Type{Poisson}, data::ChainLengths;
-             R_range::Tuple{Float64, Float64}=(0.001, 0.999))
+        R_range::Tuple{Float64, Float64} = (0.001, 0.999))
     neg_ll(R) = -loglikelihood(data, Poisson(R))
     R = _bisect_min(neg_ll, R_range...)
     return Poisson(R)
@@ -246,16 +250,17 @@ observed chain lengths, using the analytical chain length distribution.
 Only defined for subcritical R < 1.
 """
 function fit(::Type{NegativeBinomial}, data::ChainLengths;
-             R_range::Tuple{Float64, Float64}=(0.001, 0.999),
-             k_range::Tuple{Float64, Float64}=(0.01, 100.0),
-             n_grid::Int=50)
+        R_range::Tuple{Float64, Float64} = (0.001, 0.999),
+        k_range::Tuple{Float64, Float64} = (0.01, 100.0),
+        n_grid::Int = 50)
     best_ll = -Inf
     best_R, best_k = 0.5, 1.0
 
-    Rs = range(R_range..., length=n_grid)
-    ks = range(k_range..., length=n_grid)
+    Rs = range(R_range..., length = n_grid)
+    ks = range(k_range..., length = n_grid)
 
     for R in Rs, k in ks
+
         ll = loglikelihood(data, NegBin(R, k))
         if ll > best_ll
             best_ll = ll
@@ -266,11 +271,12 @@ function fit(::Type{NegativeBinomial}, data::ChainLengths;
     step_R = (Rs[2] - Rs[1]) * 2
     step_k = (ks[2] - ks[1]) * 2
     Rs2 = range(max(R_range[1], best_R - step_R),
-                min(R_range[2], best_R + step_R), length=n_grid)
+        min(R_range[2], best_R + step_R), length = n_grid)
     ks2 = range(max(k_range[1], best_k - step_k),
-                min(k_range[2], best_k + step_k), length=n_grid)
+        min(k_range[2], best_k + step_k), length = n_grid)
 
     for R in Rs2, k in ks2
+
         ll = loglikelihood(data, NegBin(R, k))
         if ll > best_ll
             best_ll = ll
@@ -284,7 +290,7 @@ end
 # ── Helpers ──────────────────────────────────────────────────────────
 
 """Golden section search for minimum of a 1D function on [lo, hi]."""
-function _bisect_min(f, lo::Float64, hi::Float64; tol::Float64=1e-8, maxiter::Int=100)
+function _bisect_min(f, lo::Float64, hi::Float64; tol::Float64 = 1e-8, maxiter::Int = 100)
     φ = (sqrt(5.0) - 1.0) / 2.0
     c = hi - φ * (hi - lo)
     d = lo + φ * (hi - lo)
@@ -308,9 +314,9 @@ to P(size >= cap) rather than P(size = cap). Observed values at or above
 `cap` are evaluated as P(size >= cap).
 """
 function _empirical_ll(observed, simulated;
-                       min_val::Int=0,
-                       censored::Vector{Bool}=Bool[],
-                       cap::Int=typemax(Int))
+        min_val::Int = 0,
+        censored::Vector{Bool} = Bool[],
+        cap::Int = typemax(Int))
     isempty(simulated) && return -Inf
     n_total = length(simulated)
 

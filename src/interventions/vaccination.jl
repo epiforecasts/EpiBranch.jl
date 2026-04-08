@@ -64,7 +64,7 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
         if protected
             # Reduce susceptibility for future onward transmission
             ind.susceptibility = rv.mode == :all_or_nothing ? 0.0 :
-                ind.susceptibility * (1.0 - rv.efficacy)
+                                 ind.susceptibility * (1.0 - rv.efficacy)
             # Retroactively prevent infection if already infected
             if is_infected(ind)
                 ind.state[:infected] = false
@@ -72,4 +72,3 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
         end
     end
 end
-

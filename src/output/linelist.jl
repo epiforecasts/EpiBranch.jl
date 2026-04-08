@@ -21,11 +21,11 @@ If a `DemographicOpts` is passed via the `demographics` kwarg, age/sex
 are generated post-hoc for individuals that don't already have them.
 """
 function linelist(state::SimulationState;
-                  reference_date::Date=Date(2020, 1, 1),
-                  delays::DelayOpts=DelayOpts(),
-                  outcomes::Union{OutcomeOpts, NoOutcomes}=NoOutcomes(),
-                  demographics::Union{DemographicOpts, NoDemographics}=NoDemographics(),
-                  rng::AbstractRNG=Random.default_rng())
+        reference_date::Date = Date(2020, 1, 1),
+        delays::DelayOpts = DelayOpts(),
+        outcomes::Union{OutcomeOpts, NoOutcomes} = NoOutcomes(),
+        demographics::Union{DemographicOpts, NoDemographics} = NoDemographics(),
+        rng::AbstractRNG = Random.default_rng())
     cases = filter(is_infected, state.individuals)
     n = length(cases)
     n == 0 && return DataFrame()
@@ -38,18 +38,17 @@ function linelist(state::SimulationState;
         :chain_id => [ind.chain_id for ind in cases],
         :case_type => [ind.parent_id == 0 ? "index" : "secondary" for ind in cases],
         :date_infection => [reference_date + Day(floor(Int, ind.infection_time))
-                           for ind in cases],
+                            for ind in cases]
     )
 
     # Onset time → date_onset
     has_onset = any(haskey(ind.state, :onset_time) for ind in cases)
     if has_onset
-        cols[:date_onset] = Union{Date, Missing}[
-            let ot = onset_time(ind)
-                isnan(ot) ? missing : reference_date + Day(floor(Int, ot))
-            end
-            for ind in cases
-        ]
+        cols[:date_onset] = Union{Date, Missing}[let ot = onset_time(ind)
+                                                     isnan(ot) ? missing :
+                                                     reference_date + Day(floor(Int, ot))
+                                                 end
+                                                 for ind in cases]
     end
 
     # Demographics — from state dict or generated post-hoc
@@ -59,9 +58,9 @@ function linelist(state::SimulationState;
     # Apply post-hoc demographics if not already set on individuals
     if demographics isa DemographicOpts && (!has_age || !has_sex)
         demo_fn = EpiBranch.demographics(;
-            age_distribution=demographics.age_distribution,
-            age_range=demographics.age_range,
-            prob_female=demographics.prob_female)
+            age_distribution = demographics.age_distribution,
+            age_range = demographics.age_range,
+            prob_female = demographics.prob_female)
         for ind in cases
             haskey(ind.state, :age) || demo_fn(rng, ind)
         end
@@ -84,33 +83,32 @@ function linelist(state::SimulationState;
 
     # Reporting delay
     if has_onset && delays.onset_to_reporting isa Distribution
-        cols[:date_reporting] = Union{Date, Missing}[
-            let ot = onset_time(ind)
-                if isnan(ot)
-                    missing
-                else
-                    d = rand(rng, delays.onset_to_reporting)
-                    reference_date + Day(floor(Int, ot + d))
-                end
-            end
-            for ind in cases
-        ]
+        cols[:date_reporting] = Union{Date, Missing}[let ot = onset_time(ind)
+                                                         if isnan(ot)
+                                                             missing
+                                                         else
+                                                             d = rand(rng, delays.onset_to_reporting)
+                                                             reference_date +
+                                                             Day(floor(Int, ot + d))
+                                                         end
+                                                     end
+                                                     for ind in cases]
     end
 
     # Hospitalisation
     if has_onset && delays.onset_to_admission isa Distribution
         prob_hosp = outcomes isa OutcomeOpts ? outcomes.prob_hospitalisation : 0.2
-        cols[:date_admission] = Union{Date, Missing}[
-            let ot = onset_time(ind)
-                if isnan(ot) || rand(rng) >= prob_hosp
-                    missing
-                else
-                    d = rand(rng, delays.onset_to_admission)
-                    reference_date + Day(floor(Int, ot + d))
-                end
-            end
-            for ind in cases
-        ]
+        cols[:date_admission] = Union{Date, Missing}[let ot = onset_time(ind)
+                                                         if isnan(ot) ||
+                                                            rand(rng) >= prob_hosp
+                                                             missing
+                                                         else
+                                                             d = rand(rng, delays.onset_to_admission)
+                                                             reference_date +
+                                                             Day(floor(Int, ot + d))
+                                                         end
+                                                     end
+                                                     for ind in cases]
     end
 
     # Outcomes
@@ -164,7 +162,7 @@ end
 Generate a contacts DataFrame with one row per contact (infected and non-infected).
 """
 function contacts(state::SimulationState;
-                  reference_date::Date=Date(2020, 1, 1))
+        reference_date::Date = Date(2020, 1, 1))
     froms = Int[]
     tos = Int[]
     was_cases = Bool[]
@@ -186,13 +184,12 @@ function contacts(state::SimulationState;
     end
 
     DataFrame(
-        from=froms, to=tos, was_case=was_cases, generation=generations,
-        infection_time=infection_times, date_infection=date_infections,
+        from = froms, to = tos, was_case = was_cases, generation = generations,
+        infection_time = infection_times, date_infection = date_infections
     )
 end
 
 # ── Internal helpers ─────────────────────────────────────────────────
-
 
 _get_cfr(age::Int, opts::OutcomeOpts{NoCFR}) = opts.prob_death
 
@@ -209,7 +206,7 @@ function _column_order(ks)
         :id, :parent_id, :generation, :chain_id, :case_type, :type,
         :age, :sex, :date_infection, :date_onset, :date_reporting,
         :date_admission, :outcome, :date_outcome,
-        :asymptomatic, :isolated, :traced, :quarantined, :vaccinated,
+        :asymptomatic, :isolated, :traced, :quarantined, :vaccinated
     ]
     ordered = Symbol[]
     for k in priority
