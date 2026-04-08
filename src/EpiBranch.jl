@@ -23,7 +23,9 @@ include("interventions/vaccination.jl")
 include("interventions/scheduled.jl")
 
 # Public API declarations (Julia 1.11+)
-include("public.jl")
+@static if VERSION >= v"1.11"
+    include("public.jl")
+end
 
 # Transmission models
 include("models/branching_process.jl")
