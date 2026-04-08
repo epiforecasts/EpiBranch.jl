@@ -53,6 +53,10 @@ export SimOpts, DelayOpts, OutcomeOpts, DemographicOpts
 export AbstractIntervention, Isolation, ContactTracing, RingVaccination, Scheduled
 export is_active, intervention_time
 
+# Exports — sentinel types
+export NoPopulation, NoAttributes, NoTypeLabels, NoDelay, NoCFR
+export NoAgeDistribution, NoOutcomes, NoDemographics, NoCases
+
 # Exports — accessors
 export onset_time, is_isolated, isolation_time, is_traced, is_quarantined
 export is_vaccinated, is_asymptomatic, is_test_positive, is_infected

@@ -88,7 +88,7 @@ end
 function _make_one_contact!(new_contacts, new_infected_ids, parent, state,
                              gt_dist, pop_suscept, residual,
                              interventions, next_id;
-                             type_idx::Union{Int, Nothing}=nothing)
+                             type_idx::Union{Int, NoTypeLabels}=NoTypeLabels())
     if gt_dist === nothing
         gt = 0.0
         inf_time = parent.infection_time
@@ -100,7 +100,7 @@ function _make_one_contact!(new_contacts, new_infected_ids, parent, state,
 
     contact = _create_individual(state, parent.id, parent.chain_id,
                                   next_id, inf_time, interventions)
-    type_idx !== nothing && (contact.state[:type] = type_idx)
+    _set_type!(contact, type_idx)
 
     infected = _resolve_infection(state.rng, parent, contact,
                                    gt, pop_suscept, residual)
@@ -111,6 +111,9 @@ function _make_one_contact!(new_contacts, new_infected_ids, parent, state,
     infected && push!(new_infected_ids, next_id)
     return next_id + 1
 end
+
+_set_type!(contact, ::NoTypeLabels) = nothing
+_set_type!(contact, idx::Int) = (contact.state[:type] = idx)
 
 """Single-type contacts."""
 function _create_contacts!(new_contacts, new_infected_ids,

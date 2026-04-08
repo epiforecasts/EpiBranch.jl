@@ -39,7 +39,7 @@
         model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
         @test model.offspring isa NegativeBinomial
         @test model.generation_time isa Distribution
-        @test model.population_size === nothing
+        @test model.population_size isa NoPopulation
     end
 
     @testset "BranchingProcess with population_size" begin

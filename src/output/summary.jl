@@ -7,15 +7,17 @@ If `max_cases` is provided, simulations that hit the case cap are not
 considered extinct (they are assumed to have continued growing).
 """
 function containment_probability(states::Vector{<:SimulationState};
-                                  max_cases::Union{Int, Nothing}=nothing)
-    n_extinct = count(states) do s
-        if max_cases !== nothing && s.cumulative_cases >= max_cases
-            return false
-        end
-        s.extinct
-    end
+                                  max_cases::Union{Int, NoCases}=NoCases())
+    n_extinct = count(s -> _is_contained(s, max_cases), states)
     return n_extinct / length(states)
 end
+
+_is_contained(s::SimulationState, ::NoCases) = s.extinct
+_is_contained(s::SimulationState, cap::Int) = s.cumulative_cases < cap && s.extinct
+
+"""Whether a simulation has exceeded the max_cases cap (false if no cap)."""
+_check_max_cases(::SimulationState, ::NoCases) = false
+_check_max_cases(state::SimulationState, cap::Int) = state.cumulative_cases >= cap
 
 """
     is_extinct(state::SimulationState; by_week=nothing, reference_date=Date(2020,1,1),
@@ -31,10 +33,8 @@ Extinction classification for a single simulation with optional criteria.
 function is_extinct(state::SimulationState;
                     by_week::Union{Int, UnitRange{Int}, Nothing}=nothing,
                     reference_date::Date=Date(2020, 1, 1),
-                    max_cases::Union{Int, Nothing}=nothing)
-    if max_cases !== nothing && state.cumulative_cases >= max_cases
-        return false
-    end
+                    max_cases::Union{Int, NoCases}=NoCases())
+    _check_max_cases(state, max_cases) && return false
 
     by_week === nothing && return state.extinct
 
@@ -145,8 +145,8 @@ function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
         offspring = vals[:offspring]
         gt = get(vals, :generation_time, nothing)
         interventions = get(vals, :interventions, AbstractIntervention[])
-        attributes = get(vals, :attributes, nothing)
-        pop_size = get(vals, :population_size, nothing)
+        attributes = get(vals, :attributes, NoAttributes())
+        pop_size = get(vals, :population_size, NoPopulation())
 
         model = gt === nothing ?
             BranchingProcess(offspring; population_size=pop_size) :
