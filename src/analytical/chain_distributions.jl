@@ -45,7 +45,8 @@ function Base.rand(rng::AbstractRNG, d::Borel)
         cumprob += pdf(d, n)
         u <= cumprob && return n
     end
-    return 10_000  # truncation fallback
+    @warn "Borel inverse CDF did not converge in 10,000 terms, returning 10,000"
+    return 10_000
 end
 
 """
@@ -94,6 +95,7 @@ function Base.rand(rng::AbstractRNG, d::GammaBorel)
         cumprob += pdf(d, n)
         u <= cumprob && return n
     end
+    @warn "GammaBorel inverse CDF did not converge in 10,000 terms, returning 10,000"
     return 10_000
 end
 

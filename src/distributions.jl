@@ -74,7 +74,8 @@ function Base.rand(rng::AbstractRNG, d::_TruncatedSkewNormal)
         x = rand(rng, d.inner)
         x >= 0.0 && return x
     end
-    return 0.0  # fallback
+    @warn "rejection sampling for TruncatedSkewNormal failed after 10,000 attempts, returning 0.0"
+    return 0.0
 end
 
 Distributions.logpdf(d::_TruncatedSkewNormal, x::Real) = x < 0.0 ? -Inf : logpdf(d.inner, x)
