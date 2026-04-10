@@ -51,7 +51,7 @@ function loglikelihood(data::ChainLengths, offspring::Poisson{T}) where {T}
     λ = mean(offspring)
     λ < 1 ||
         throw(ArgumentError("chain length distribution only defined for subcritical process (λ < 1)"))
-    return sum(log(one(λ) - λ) + (n - 1) * log(λ) for n in data.data)
+    return sum(log(one(λ) - λ) + n * log(λ) for n in data.data)
 end
 
 # AD-compatible chain length: NegBin — PGF iteration
@@ -178,7 +178,7 @@ Only defined for subcritical R < 1.
 function fit(::Type{Poisson}, data::ChainSizes;
         R_range::Tuple{Float64, Float64} = (0.001, 0.999))
     neg_ll(R) = -loglikelihood(data, Poisson(R))
-    R = _bisect_min(neg_ll, R_range...)
+    R = _golden_section_min(neg_ll, R_range...)
     return Poisson(R)
 end
 
@@ -194,38 +194,7 @@ function fit(::Type{NegativeBinomial}, data::ChainSizes;
         R_range::Tuple{Float64, Float64} = (0.001, 0.999),
         k_range::Tuple{Float64, Float64} = (0.01, 100.0),
         n_grid::Int = 50)
-    best_ll = -Inf
-    best_R, best_k = 0.5, 1.0
-
-    Rs = range(R_range..., length = n_grid)
-    ks = range(k_range..., length = n_grid)
-
-    for R in Rs, k in ks
-
-        ll = loglikelihood(data, NegBin(R, k))
-        if ll > best_ll
-            best_ll = ll
-            best_R, best_k = R, k
-        end
-    end
-
-    step_R = (Rs[2] - Rs[1]) * 2
-    step_k = (ks[2] - ks[1]) * 2
-    Rs2 = range(max(R_range[1], best_R - step_R),
-        min(R_range[2], best_R + step_R), length = n_grid)
-    ks2 = range(max(k_range[1], best_k - step_k),
-        min(k_range[2], best_k + step_k), length = n_grid)
-
-    for R in Rs2, k in ks2
-
-        ll = loglikelihood(data, NegBin(R, k))
-        if ll > best_ll
-            best_ll = ll
-            best_R, best_k = R, k
-        end
-    end
-
-    return NegBin(best_R, best_k)
+    _grid_search_negbin(data, R_range, k_range, n_grid)
 end
 
 """
@@ -237,7 +206,7 @@ observed chain lengths.
 function fit(::Type{Poisson}, data::ChainLengths;
         R_range::Tuple{Float64, Float64} = (0.001, 0.999))
     neg_ll(R) = -loglikelihood(data, Poisson(R))
-    R = _bisect_min(neg_ll, R_range...)
+    R = _golden_section_min(neg_ll, R_range...)
     return Poisson(R)
 end
 
@@ -253,6 +222,13 @@ function fit(::Type{NegativeBinomial}, data::ChainLengths;
         R_range::Tuple{Float64, Float64} = (0.001, 0.999),
         k_range::Tuple{Float64, Float64} = (0.01, 100.0),
         n_grid::Int = 50)
+    _grid_search_negbin(data, R_range, k_range, n_grid)
+end
+
+# ── Helpers ──────────────────────────────────────────────────────────
+
+"""Two-pass grid search for NegBin(R, k) MLE given any data type with a loglikelihood method."""
+function _grid_search_negbin(data, R_range, k_range, n_grid)
     best_ll = -Inf
     best_R, best_k = 0.5, 1.0
 
@@ -268,6 +244,7 @@ function fit(::Type{NegativeBinomial}, data::ChainLengths;
         end
     end
 
+    # Refine around best point
     step_R = (Rs[2] - Rs[1]) * 2
     step_k = (ks[2] - ks[1]) * 2
     Rs2 = range(max(R_range[1], best_R - step_R),
@@ -287,10 +264,9 @@ function fit(::Type{NegativeBinomial}, data::ChainLengths;
     return NegBin(best_R, best_k)
 end
 
-# ── Helpers ──────────────────────────────────────────────────────────
-
 """Golden section search for minimum of a 1D function on [lo, hi]."""
-function _bisect_min(f, lo::Float64, hi::Float64; tol::Float64 = 1e-8, maxiter::Int = 100)
+function _golden_section_min(
+        f, lo::Float64, hi::Float64; tol::Float64 = 1e-8, maxiter::Int = 100)
     φ = (sqrt(5.0) - 1.0) / 2.0
     c = hi - φ * (hi - lo)
     d = lo + φ * (hi - lo)
