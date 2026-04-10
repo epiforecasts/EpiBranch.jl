@@ -93,8 +93,8 @@ using Dates
     @testset "linelist with age-specific CFR" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        state = simulate_conditioned(model, 50:500;
-            attributes = clinical, sim_opts = SimOpts(max_cases = 500), rng = rng)
+        state = simulate(model;
+            condition = 50:500, attributes = clinical, sim_opts = SimOpts(max_cases = 500), rng = rng)
 
         age_cfr = Dict((0, 50) => 0.01, (51, 90) => 0.5)
         df = linelist(state;

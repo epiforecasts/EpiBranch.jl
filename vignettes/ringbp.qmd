@@ -128,7 +128,8 @@ sweep_df
 
 ```{julia}
 rng = Xoshiro(42)
-state = simulate_conditioned(model, 50:500;
+state = simulate(model;
+    condition = 50:500,
     interventions = [iso, ct],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),

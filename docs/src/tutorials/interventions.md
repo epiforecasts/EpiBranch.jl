@@ -175,7 +175,8 @@ We can also count the number of vaccine doses administered:
 
 ```@example interventions
 rng = StableRNG(42)
-state = simulate_conditioned(model, 50:200;
+state = simulate(model;
+    condition = 50:200,
     interventions = [iso, ct, rv],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 200),
@@ -211,7 +212,8 @@ effort is fully trackable:
 
 ```@example interventions
 rng = StableRNG(42)
-state = simulate_conditioned(model, 50:200;
+state = simulate(model;
+    condition = 50:200,
     interventions = [iso, ct],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 200),

@@ -1,14 +1,31 @@
 """
     simulate(model::TransmissionModel; interventions=[], attributes=nothing,
-             sim_opts=SimOpts(), rng=Random.default_rng())
+             sim_opts=SimOpts(), rng=Random.default_rng(),
+             condition=nothing, max_attempts=10_000)
 
 Run a single outbreak simulation.
+
+If `condition` is provided (a `UnitRange{Int}`), simulations are repeated
+until one produces an outbreak whose cumulative cases fall within the range,
+up to `max_attempts`.
 """
 function simulate(model::TransmissionModel;
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
         sim_opts::SimOpts = SimOpts(),
-        rng::AbstractRNG = Random.default_rng())
+        rng::AbstractRNG = Random.default_rng(),
+        condition::Union{UnitRange{Int}, Nothing} = nothing,
+        max_attempts::Int = 10_000)
+    if condition !== nothing
+        for _ in 1:max_attempts
+            state = simulate(model; interventions, attributes, sim_opts, rng)
+            state.cumulative_cases in condition && return state
+        end
+        throw(ErrorException(
+            "No simulation produced an outbreak of size $condition within $max_attempts attempts"
+        ))
+    end
+
     state = initialise_state(model, sim_opts, interventions, attributes, rng)
 
     if !isempty(state.individuals)
@@ -50,27 +67,6 @@ function simulate_batch(model::TransmissionModel, n::Int;
     else
         return [simulate(model; interventions, attributes, sim_opts, rng) for _ in 1:n]
     end
-end
-
-"""
-    simulate_conditioned(model::TransmissionModel, size_range::UnitRange{Int};
-                         max_attempts=10_000, kwargs...)
-
-Run simulations until one produces an outbreak within `size_range`.
-"""
-function simulate_conditioned(model::TransmissionModel, size_range::UnitRange{Int};
-        max_attempts::Int = 10_000,
-        interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
-        attributes::Union{Function, NoAttributes} = NoAttributes(),
-        sim_opts::SimOpts = SimOpts(),
-        rng::AbstractRNG = Random.default_rng())
-    for _ in 1:max_attempts
-        state = simulate(model; interventions, attributes, sim_opts, rng)
-        state.cumulative_cases in size_range && return state
-    end
-    throw(ErrorException(
-        "No simulation produced an outbreak of size $size_range within $max_attempts attempts"
-    ))
 end
 
 # ── Internal helpers ───────────────────────────────────────────────

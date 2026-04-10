@@ -70,7 +70,7 @@ export Borel, GammaBorel, chain_size_distribution
 export Disease, clinical_presentation, demographics, compose
 
 # Exports — simulation
-export simulate, simulate_batch, simulate_conditioned
+export simulate, simulate_batch
 
 # Exports — output
 export linelist, contacts, chain_statistics
