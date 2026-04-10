@@ -26,6 +26,7 @@ makedocs(;
             "Extending EpiBranch" => "tutorials/extending.md"
         ],
         "Design" => "design.md",
+        "Benchmarks" => "benchmarks.md",
         "API reference" => "api.md"
     ]
 )

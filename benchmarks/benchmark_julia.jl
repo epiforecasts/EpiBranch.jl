@@ -16,7 +16,7 @@ println("=== Julia Benchmarks ===\n")
 
 println("1. Simulate 1000 chains (Poisson, R=0.9)")
 model_pois = BranchingProcess(Poisson(0.9))
-b = @benchmark simulate_batch($model_pois, 1000; rng = StableRNG(42))
+b = @benchmark simulate_batch($model_pois, 1000, rng = StableRNG(42))
 println("   Median: $(round(median(b.times) / 1e6, digits=1)) ms\n")
 
 # ── 2. Chain simulation (NegBin offspring, overdispersed) ────────────

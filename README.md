@@ -50,19 +50,7 @@ Julia's multiple dispatch makes it natural to unify these into a single package 
 
 ### Performance
 
-Indicative benchmarks comparing current implementations of EpiBranch.jl
-and the R [epichains](https://github.com/epiverse-trace/epichains)
-package. Neither implementation is specifically optimised for speed.
-
-| Scenario | R (epichains) | Julia (EpiBranch) |
-|---|---|---|
-| 1000 chains, Poisson(0.9) | 23.9 ms | 2.0 ms |
-| 1000 chains, NegBin(0.8, 0.5) | 11.8 ms | 1.2 ms |
-| 1000 chains + generation time | 31.6 ms | 2.6 ms |
-| Chain statistics | 0.48 ms | 0.27 ms |
-| Analytical log-likelihood | 0.16 ms | 0.008 ms |
-
-Benchmark scripts are in [`benchmarks/`](benchmarks/).
+Benchmark scripts comparing EpiBranch.jl against R equivalents (epichains, ringbp) are in [`benchmarks/`](benchmarks/). See the [benchmarks page](https://epiforecasts.github.io/EpiBranch.jl/dev/benchmarks) in the documentation for details.
 
 ## Documentation
 
