@@ -31,12 +31,12 @@ incubation = LogNormal(1.57, 0.65)
 
 # Generation time: ringbp-style incubation-linked model
 # 15% presymptomatic transmission
-gt = ringbp_generation_time(presymptomatic_fraction=0.15)
+gt = ringbp_generation_time(presymptomatic_fraction = 0.15)
 
 # Clinical attributes: 10% asymptomatic
 clinical = Disease(
-    incubation_period=incubation,
-    prob_asymptomatic=0.1,
+    incubation_period = incubation,
+    prob_asymptomatic = 0.1
 )
 
 println("=== ringbp clone: Hellewell et al. 2020 scenarios ===\n")
@@ -44,12 +44,12 @@ println("=== ringbp clone: Hellewell et al. 2020 scenarios ===\n")
 # ── Run scenarios ────────────────────────────────────────────────────
 
 results = DataFrame(
-    delay_group=String[],
-    R0=Float64[],
-    k=Float64[],
-    tracing_prob=Float64[],
-    initial_cases=Int[],
-    containment_prob=Float64[],
+    delay_group = String[],
+    R0 = Float64[],
+    k = Float64[],
+    tracing_prob = Float64[],
+    initial_cases = Int[],
+    containment_prob = Float64[]
 )
 
 n_sim = 500
@@ -61,13 +61,13 @@ for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan
             for initial_cases in [5, 20]
                 k = 0.16
                 model = BranchingProcess(NegBin(R0, k), gt)
-                iso = Isolation(delay=delay_dist, test_sensitivity=1.0)
+                iso = Isolation(delay = delay_dist, test_sensitivity = 1.0)
 
                 interventions = if tracing_prob > 0
                     ct = ContactTracing(
-                        probability=tracing_prob,
-                        delay=Exponential(1.0),
-                        quarantine_on_trace=false,
+                        probability = tracing_prob,
+                        delay = Exponential(1.0),
+                        quarantine_on_trace = false
                     )
                     [iso, ct]
                 else
@@ -75,26 +75,27 @@ for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan
                 end
 
                 batch = simulate_batch(model, n_sim;
-                    interventions=interventions,
-                    attributes=clinical,
-                    sim_opts=SimOpts(
-                        max_cases=5000,
-                        max_time=350.0,
-                        n_initial=initial_cases,
+                    interventions = interventions,
+                    attributes = clinical,
+                    sim_opts = SimOpts(
+                        max_cases = 5000,
+                        max_time = 350.0,
+                        n_initial = initial_cases
                     ),
-                    rng=rng,
+                    rng = rng
                 )
 
                 cp = containment_probability(batch)
 
-                push!(results, (
-                    delay_group=delay_name,
-                    R0=R0,
-                    k=k,
-                    tracing_prob=tracing_prob,
-                    initial_cases=initial_cases,
-                    containment_prob=round(cp, digits=3),
-                ))
+                push!(results,
+                    (
+                        delay_group = delay_name,
+                        R0 = R0,
+                        k = k,
+                        tracing_prob = tracing_prob,
+                        initial_cases = initial_cases,
+                        containment_prob = round(cp, digits = 3)
+                    ))
             end
         end
     end

@@ -9,7 +9,7 @@ This is the chain size distribution for a Poisson(μ) branching process.
 μ = 0 is excluded because the distribution is degenerate (always 1)
 and would cause log(0) in the PMF.
 """
-struct Borel{T<:AbstractFloat} <: DiscreteUnivariateDistribution
+struct Borel{T <: AbstractFloat} <: DiscreteUnivariateDistribution
     μ::T
 
     function Borel(μ::Real)
@@ -22,8 +22,9 @@ end
 Distributions.params(d::Borel) = (d.μ,)
 
 """Log-PDF of the Borel distribution. Accepts any numeric type for μ (AD-compatible)."""
-_borel_logpdf(μ, n::Integer) =
+function _borel_logpdf(μ, n::Integer)
     n < 1 ? oftype(float(μ), -Inf) : (n - 1) * log(μ * n) - μ * n - logabsgamma(n + 1)[1]
+end
 
 Distributions.logpdf(d::Borel, n::Integer) = _borel_logpdf(d.μ, n)
 
@@ -53,14 +54,15 @@ end
 Chain size distribution for a NegativeBinomial(k, R) branching process,
 derived via Lagrange inversion.
 """
-struct GammaBorel{T<:AbstractFloat} <: DiscreteUnivariateDistribution
+struct GammaBorel{T <: AbstractFloat} <: DiscreteUnivariateDistribution
     k::T
     R::T
 
     function GammaBorel(k::Real, R::Real)
         k > 0 || throw(ArgumentError("k must be positive, got $k"))
         R > 0 || throw(ArgumentError("R must be positive, got $R"))
-        R <= 1.0 || @warn "GammaBorel with R > 1 (supercritical): PMF does not sum to 1, chain size is infinite with positive probability"
+        R <= 1.0 ||
+            @warn "GammaBorel with R > 1 (supercritical): PMF does not sum to 1, chain size is infinite with positive probability"
         T = float(promote_type(typeof(k), typeof(R)))
         new{T}(T(k), T(R))
     end

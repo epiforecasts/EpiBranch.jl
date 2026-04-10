@@ -8,7 +8,7 @@ and dispersion `k`.
 Fixed-point iteration on the probability generating function is used.
 For R ≤ 1, returns 1.0 (certain extinction).
 """
-function extinction_probability(R::Real, k::Real; tol::Real=1e-10, max_iter::Int=1000)
+function extinction_probability(R::Real, k::Real; tol::Real = 1e-10, max_iter::Int = 1000)
     R > 0 || throw(ArgumentError("R must be positive, got $R"))
     k > 0 || throw(ArgumentError("k must be positive, got $k"))
 
@@ -38,7 +38,7 @@ via fixed-point iteration on the PGF.
 For Poisson(λ): the PGF exp(λ(s-1)) is used.
 For NegativeBinomial: R and k are extracted and the closed-form PGF is applied.
 """
-function extinction_probability(d::Poisson; tol::Real=1e-10, max_iter::Int=1000)
+function extinction_probability(d::Poisson; tol::Real = 1e-10, max_iter::Int = 1000)
     λ = mean(d)
     λ <= 1.0 && return 1.0
 
@@ -51,7 +51,7 @@ function extinction_probability(d::Poisson; tol::Real=1e-10, max_iter::Int=1000)
     return q
 end
 
-function extinction_probability(d::NegativeBinomial; tol::Real=1e-10, max_iter::Int=1000)
+function extinction_probability(d::NegativeBinomial; tol::Real = 1e-10, max_iter::Int = 1000)
     k = d.r
     R = mean(d)
     return extinction_probability(R, k; tol, max_iter)
@@ -63,16 +63,18 @@ end
 Probability that a single introduction leads to a major epidemic.
 Complement of extinction probability.
 """
-epidemic_probability(R::Real, k::Real; kwargs...) =
+function epidemic_probability(R::Real, k::Real; kwargs...)
     1.0 - extinction_probability(R, k; kwargs...)
+end
 
 """
     epidemic_probability(d::Distribution; kwargs...)
 
 Probability of a major epidemic for a given offspring distribution.
 """
-epidemic_probability(d::Distribution; kwargs...) =
+function epidemic_probability(d::Distribution; kwargs...)
     1.0 - extinction_probability(d; kwargs...)
+end
 
 # ── BranchingProcess dispatch ────────────────────────────────────────
 
@@ -91,8 +93,9 @@ end
 
 Epidemic probability for a single-type branching process.
 """
-epidemic_probability(model::BranchingProcess; kwargs...) =
+function epidemic_probability(model::BranchingProcess; kwargs...)
     1.0 - extinction_probability(model; kwargs...)
+end
 
 # ── Containment probability (analytical) ─────────────────────────────
 
@@ -117,10 +120,10 @@ where `pgf` is the PGF of the offspring distribution with effective R.
 For `n_initial` independent introductions, the probability is `q^n_initial`.
 """
 function probability_contain(R::Real, k::Real;
-                             n_initial::Int=1,
-                             ind_control::Real=0.0,
-                             pop_control::Real=0.0,
-                             tol::Real=1e-10, max_iter::Int=1000)
+        n_initial::Int = 1,
+        ind_control::Real = 0.0,
+        pop_control::Real = 0.0,
+        tol::Real = 1e-10, max_iter::Int = 1000)
     R > 0 || throw(ArgumentError("R must be positive, got $R"))
     k > 0 || throw(ArgumentError("k must be positive, got $k"))
     0.0 <= ind_control <= 1.0 || throw(ArgumentError("ind_control must be in [0, 1]"))
@@ -153,8 +156,8 @@ function probability_contain(d::NegativeBinomial; kwargs...)
     return probability_contain(mean(d), d.r; kwargs...)
 end
 
-function probability_contain(d::Poisson; n_initial::Int=1,
-                             ind_control::Real=0.0, pop_control::Real=0.0, kwargs...)
+function probability_contain(d::Poisson; n_initial::Int = 1,
+        ind_control::Real = 0.0, pop_control::Real = 0.0, kwargs...)
     # Poisson is NegBin with k→∞; use large k
     return probability_contain(mean(d), 1e6; n_initial, ind_control, pop_control, kwargs...)
 end

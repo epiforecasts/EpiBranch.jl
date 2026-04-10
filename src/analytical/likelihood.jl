@@ -13,7 +13,7 @@ function _chain_size_ll_obs(data, offspring, obs_prob)
     for obs in data
         obs > max_true && return -Inf
         ll += logsumexp(log_p_true[n] + logpdf(Binomial(n, obs_prob), obs)
-                        for n in obs:max_true)
+        for n in obs:max_true)
     end
     return ll
 end
@@ -22,7 +22,8 @@ end
 function _chain_length_ll_negbin(data, offspring::NegativeBinomial)
     k = offspring.r
     R = mean(offspring)
-    R < 1.0 || throw(ArgumentError("chain length distribution only defined for subcritical process (R < 1)"))
+    R < 1.0 ||
+        throw(ArgumentError("chain length distribution only defined for subcritical process (R < 1)"))
 
     p = k / (k + R)
     max_len = maximum(data)
@@ -30,7 +31,7 @@ function _chain_length_ll_negbin(data, offspring::NegativeBinomial)
     q = zeros(max_len + 1)
     q[1] = (p / (1.0 - (1.0 - p) * 0.0))^k
     for n in 2:(max_len + 1)
-        q[n] = (p / (1.0 - (1.0 - p) * q[n-1]))^k
+        q[n] = (p / (1.0 - (1.0 - p) * q[n - 1]))^k
     end
 
     ll = 0.0

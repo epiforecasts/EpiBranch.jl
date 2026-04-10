@@ -40,8 +40,8 @@ model = BranchingProcess(
 )
 ```
 """
-function ringbp_generation_time(; presymptomatic_fraction::Real=0.3,
-                                  omega::Real=2.0)
+function ringbp_generation_time(; presymptomatic_fraction::Real = 0.3,
+        omega::Real = 2.0)
     0.0 < presymptomatic_fraction < 1.0 || throw(ArgumentError(
         "presymptomatic_fraction must be in (0, 1), got $presymptomatic_fraction"))
     omega > 0.0 || throw(ArgumentError("omega must be positive, got $omega"))
@@ -58,7 +58,7 @@ function ringbp_generation_time(; presymptomatic_fraction::Real=0.3,
 end
 
 """Skew-normal truncated to [0, ∞) via rejection sampling (cdf not available)."""
-struct _TruncatedSkewNormal{T<:AbstractFloat} <: ContinuousUnivariateDistribution
+struct _TruncatedSkewNormal{T <: AbstractFloat} <: ContinuousUnivariateDistribution
     ξ::T
     ω::T
     α::T
@@ -77,5 +77,4 @@ function Base.rand(rng::AbstractRNG, d::_TruncatedSkewNormal)
     return 0.0  # fallback
 end
 
-Distributions.logpdf(d::_TruncatedSkewNormal, x::Real) =
-    x < 0.0 ? -Inf : logpdf(d.inner, x)
+Distributions.logpdf(d::_TruncatedSkewNormal, x::Real) = x < 0.0 ? -Inf : logpdf(d.inner, x)

@@ -4,7 +4,7 @@ using DataFrames
     @testset "Single chain" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(0.8), Exponential(5.0))
-        state = simulate(model; sim_opts=SimOpts(n_initial=1), rng=rng)
+        state = simulate(model; sim_opts = SimOpts(n_initial = 1), rng = rng)
 
         df = chain_statistics(state)
         @test df isa DataFrame
@@ -16,7 +16,7 @@ using DataFrames
     @testset "Multiple chains" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-        state = simulate(model; sim_opts=SimOpts(n_initial=5), rng=rng)
+        state = simulate(model; sim_opts = SimOpts(n_initial = 5), rng = rng)
 
         df = chain_statistics(state)
         @test nrow(df) == 5
@@ -26,7 +26,7 @@ using DataFrames
     @testset "Chain length matches max generation" begin
         rng = StableRNG(77)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model; sim_opts=SimOpts(max_cases=50), rng=rng)
+        state = simulate(model; sim_opts = SimOpts(max_cases = 50), rng = rng)
 
         df = chain_statistics(state)
         max_gen = maximum(ind.generation for ind in state.individuals)
@@ -36,7 +36,7 @@ using DataFrames
     @testset "Batch chain statistics" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(0.8), Exponential(5.0))
-        states = simulate_batch(model, 10; rng=rng)
+        states = simulate_batch(model, 10; rng = rng)
 
         df = chain_statistics(states)
         @test "sim_id" in names(df)
