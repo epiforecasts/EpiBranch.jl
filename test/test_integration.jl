@@ -28,18 +28,18 @@ using Dates
         @test sum(df.cases) == state.cumulative_cases
     end
 
-    @testset "simulate_conditioned" begin
+    @testset "simulate with condition" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.2), Exponential(5.0))
-        state = simulate_conditioned(model, 10:50; rng = rng)
+        state = simulate(model; condition = 10:50, rng = rng)
         @test state.cumulative_cases in 10:50
     end
 
-    @testset "simulate_conditioned throws on impossible range" begin
+    @testset "simulate with condition throws on impossible range" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(0.1), Exponential(5.0))
-        @test_throws ErrorException simulate_conditioned(
-            model, 1000:2000; max_attempts = 100, rng = rng)
+        @test_throws ErrorException simulate(
+            model; condition = 1000:2000, max_attempts = 100, rng = rng)
     end
 
     @testset "ringbp-style scenario" begin
@@ -109,8 +109,8 @@ using Dates
     @testset "generation_R output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-        state = simulate_conditioned(model, 20:500;
-            sim_opts = SimOpts(max_cases = 500), rng = rng)
+        state = simulate(model;
+            condition = 20:500, sim_opts = SimOpts(max_cases = 500), rng = rng)
 
         df = generation_R(state)
         @test df isa DataFrame

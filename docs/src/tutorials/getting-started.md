@@ -153,7 +153,8 @@ Generate outbreaks of a specific size via rejection sampling:
 
 ```@example gettingstarted
 rng = StableRNG(42)
-state = simulate_conditioned(model, 50:100;
+state = simulate(model;
+    condition = 50:100,
     sim_opts = SimOpts(max_cases = 200),
     rng = rng,
 )

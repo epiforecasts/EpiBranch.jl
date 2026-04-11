@@ -62,8 +62,8 @@
     @testset "Latent period enforces minimum generation time" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0); latent_period = 3.0)
-        state = simulate_conditioned(model, 20:500;
-            sim_opts = SimOpts(max_cases = 500), rng = rng)
+        state = simulate(model;
+            condition = 20:500, sim_opts = SimOpts(max_cases = 500), rng = rng)
 
         for ind in filter(is_infected, state.individuals)
             if ind.parent_id > 0

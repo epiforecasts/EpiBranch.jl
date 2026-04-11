@@ -22,7 +22,6 @@ DemographicOpts
 ```@docs
 simulate
 simulate_batch
-simulate_conditioned
 EpiBranch.step!
 ```
 
