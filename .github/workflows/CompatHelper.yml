@@ -13,7 +13,12 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1'
-      - uses: julia-actions/CompatHelper@v1
+      - run: |
+          import Pkg
+          Pkg.add("CompatHelper")
+          using CompatHelper
+          CompatHelper.main()
+        shell: julia {0}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMPATHELPER_PRIV: ''
