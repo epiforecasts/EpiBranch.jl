@@ -1,6 +1,6 @@
 # EpiBranch.jl
 
-**EpiBranch.jl** is a package for stochastic branching process simulation
+**EpiBranch.jl** is a [Julia](https://julialang.org/) package for stochastic branching process simulation
 of infectious disease outbreaks. Functionality from
 several R packages (cf.
 [ringbp](https://github.com/epiforecasts/ringbp),
