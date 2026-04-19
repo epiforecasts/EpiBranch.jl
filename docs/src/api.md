@@ -100,6 +100,12 @@ ChainLengths
 PartiallyObserved
 ```
 
+### Cluster-level heterogeneity
+
+```@docs
+ClusterMixed
+```
+
 ### Likelihood and fitting
 
 EpiBranch extends `Distributions.loglikelihood` and `Distributions.fit`

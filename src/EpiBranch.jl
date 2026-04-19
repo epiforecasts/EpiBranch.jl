@@ -3,6 +3,7 @@ module EpiBranch
 using DataFrames
 using Dates
 using Distributions
+using QuadGK
 using Random
 using SpecialFunctions
 
@@ -48,6 +49,7 @@ include("analytical/data_types.jl")
 include("analytical/likelihood.jl")
 include("analytical/superspreading.jl")
 include("analytical/fitting.jl")
+include("analytical/cluster_mixed.jl")
 
 # Exports — types
 export TransmissionModel, BranchingProcess
@@ -87,5 +89,6 @@ export probability_contain
 
 # Exports — unified inference interface
 export OffspringCounts, ChainSizes, ChainLengths
+export ClusterMixed
 
 end # module

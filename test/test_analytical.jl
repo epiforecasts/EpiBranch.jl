@@ -142,6 +142,30 @@
             ll_strict = loglikelihood(ChainSizes([1, 1, 2]), PartiallyObserved(base, 0.3))
             @test isfinite(ll_strict)
         end
+
+        @testset "Cluster-level heterogeneity" begin
+            data = ChainSizes([1, 1, 2, 3, 1])
+
+            # Narrow mixing should approximately match a fixed offspring
+            o_narrow = ClusterMixed(R -> NegBin(R, 0.5),
+                truncated(Normal(0.8, 0.001); lower = 0.0, upper = 0.999))
+            ll_narrow = loglikelihood(data, o_narrow)
+            ll_fixed = loglikelihood(data, NegBin(0.8, 0.5))
+            @test ll_narrow ≈ ll_fixed atol=0.05
+
+            # Wider mixing gives a finite but different likelihood
+            o_wide = ClusterMixed(R -> NegBin(R, 0.5),
+                truncated(Gamma(2.0, 0.3); upper = 0.999))
+            ll_wide = loglikelihood(data, o_wide)
+            @test isfinite(ll_wide)
+            @test ll_wide != ll_fixed
+
+            # Poisson mixing also works
+            o_pois = ClusterMixed(λ -> Poisson(λ),
+                truncated(Gamma(2.0, 0.3); upper = 0.999))
+            ll_pois = loglikelihood(data, o_pois)
+            @test isfinite(ll_pois)
+        end
     end
 
     @testset "Chain length likelihood" begin
