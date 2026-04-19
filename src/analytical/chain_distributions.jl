@@ -1,20 +1,22 @@
 """
     Borel(μ)
 
-The Borel distribution with parameter `μ` (0 < μ ≤ 1).
+The Borel distribution with parameter `μ > 0`.
 
 P(X = n) = (μn)^(n-1) * exp(-μn) / n!  for n = 1, 2, ...
 
 This is the chain size distribution for a Poisson(μ) branching process.
-μ = 0 is excluded because the distribution is degenerate (always 1)
-and would cause log(0) in the PMF.
+For `μ > 1` (supercritical) the PMF remains valid pointwise but the
+total mass is less than 1 — chains are infinite with positive
+probability. This is useful when integrating chain size PMFs over a
+mixing distribution that spans both subcritical and supercritical
+regions.
 """
 struct Borel{T <: AbstractFloat} <: DiscreteUnivariateDistribution
     μ::T
 
     function Borel(μ::Real)
         0.0 < μ || throw(ArgumentError("μ must be positive, got $μ"))
-        μ <= 1.0 || throw(ArgumentError("μ must be ≤ 1, got $μ"))
         new{typeof(float(μ))}(float(μ))
     end
 end
@@ -54,6 +56,10 @@ end
 
 Chain size distribution for a NegativeBinomial(k, R) branching process,
 derived via Lagrange inversion.
+
+For `R > 1` (supercritical) the PMF remains valid pointwise but the
+total mass is less than 1 — chains are infinite with positive
+probability.
 """
 struct GammaBorel{T <: AbstractFloat} <: DiscreteUnivariateDistribution
     k::T
@@ -62,8 +68,6 @@ struct GammaBorel{T <: AbstractFloat} <: DiscreteUnivariateDistribution
     function GammaBorel(k::Real, R::Real)
         k > 0 || throw(ArgumentError("k must be positive, got $k"))
         R > 0 || throw(ArgumentError("R must be positive, got $R"))
-        R <= 1.0 ||
-            @warn "GammaBorel with R > 1 (supercritical): PMF does not sum to 1, chain size is infinite with positive probability"
         T = float(promote_type(typeof(k), typeof(R)))
         new{T}(T(k), T(R))
     end
@@ -100,11 +104,69 @@ function Base.rand(rng::AbstractRNG, d::GammaBorel)
 end
 
 """
+    PoissonGammaChainSize(k, R)
+
+Chain size distribution when the per-chain offspring distribution is
+`Poisson(λ)` with `λ ~ Gamma(shape = k, mean = R)` — i.e. rate
+heterogeneity at the chain (cluster) level, not the individual level.
+
+This is distinct from `GammaBorel`, which is the chain size
+distribution for `NegativeBinomial` offspring (Gamma-Poisson mixing at
+the individual level).
+"""
+struct PoissonGammaChainSize{T <: AbstractFloat} <: DiscreteUnivariateDistribution
+    k::T
+    R::T
+
+    function PoissonGammaChainSize(k::Real, R::Real)
+        k > 0 || throw(ArgumentError("k must be positive, got $k"))
+        R > 0 || throw(ArgumentError("R must be positive, got $R"))
+        T = float(promote_type(typeof(k), typeof(R)))
+        new{T}(T(k), T(R))
+    end
+end
+
+Distributions.params(d::PoissonGammaChainSize) = (d.k, d.R)
+
+"""Log-PDF of the PoissonGammaChainSize distribution (AD-compatible)."""
+function _poisson_gamma_logpdf(k, R, n::Integer)
+    n < 1 && return oftype(float(k), -Inf)
+    return (logabsgamma(k + n - 1)[1]
+            - logabsgamma(n + 1)[1]
+            - logabsgamma(k)[1]
+            -
+            k * log(R / k)
+            +
+            (n - 1) * log(n)
+            -
+            (k + n - 1) * log(n + k / R))
+end
+
+function Distributions.logpdf(d::PoissonGammaChainSize, n::Integer)
+    _poisson_gamma_logpdf(d.k, d.R, n)
+end
+Distributions.pdf(d::PoissonGammaChainSize, n::Integer) = exp(logpdf(d, n))
+Distributions.minimum(::PoissonGammaChainSize) = 1
+Distributions.maximum(::PoissonGammaChainSize) = Inf
+Distributions.insupport(::PoissonGammaChainSize, n::Integer) = n >= 1
+
+function Base.rand(rng::AbstractRNG, d::PoissonGammaChainSize)
+    u = rand(rng)
+    cumprob = 0.0
+    for n in 1:10_000
+        cumprob += pdf(d, n)
+        u <= cumprob && return n
+    end
+    @warn "PoissonGammaChainSize inverse CDF did not converge in 10,000 terms, returning 10,000"
+    return 10_000
+end
+
+"""
     chain_size_distribution(offspring::Poisson)
 
 Analytical chain size distribution for Poisson offspring.
 """
-chain_size_distribution(d::Poisson) = Borel(min(mean(d), 1.0))
+chain_size_distribution(d::Poisson) = Borel(mean(d))
 
 """
     chain_size_distribution(offspring::NegativeBinomial)

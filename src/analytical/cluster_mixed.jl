@@ -46,6 +46,10 @@ the mixing distribution should have support restricted so that all
 drawn offspring distributions have mean < 1 (chains with mean ≥ 1
 have infinite size with positive probability and contribute no density
 to finite observed chain sizes).
+
+Known closed forms (e.g. Poisson offspring with Gamma-mixed rate) are
+available via dedicated chain size distributions such as
+[`PoissonGammaChainSize`](@ref) and avoid the quadrature cost.
 """
 function loglikelihood(data::ChainSizes, o::ClusterMixed)
     lo = quantile(o.mixing, 1e-3)
@@ -55,7 +59,6 @@ function loglikelihood(data::ChainSizes, o::ClusterMixed)
     for n in data.data
         integrand = function (θ)
             dist = o.build(θ)
-            mean(dist) >= 1.0 && return 0.0
             pdf(chain_size_distribution(dist), n) * pdf(o.mixing, θ)
         end
         prob, _ = quadgk(integrand, lo, hi)

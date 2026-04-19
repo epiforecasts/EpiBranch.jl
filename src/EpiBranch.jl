@@ -70,7 +70,7 @@ export individual_type, set_isolated!
 
 # Exports — distributions
 export NegBin, scale_distribution, ringbp_generation_time
-export Borel, GammaBorel, chain_size_distribution
+export Borel, GammaBorel, PoissonGammaChainSize, chain_size_distribution
 
 # Exports — attributes functions
 export Disease, clinical_presentation, demographics, compose

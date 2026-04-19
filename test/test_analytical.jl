@@ -60,7 +60,10 @@
             d = Borel(0.5)
             @test d.μ == 0.5
             @test_throws ArgumentError Borel(-0.1)
-            @test_throws ArgumentError Borel(1.5)
+            # Supercritical allowed: PMF valid pointwise, used inside quadrature
+            d_super = Borel(1.5)
+            @test d_super.μ == 1.5
+            @test isfinite(logpdf(d_super, 2))
         end
 
         @testset "PMF sums to ≈ 1" begin
@@ -154,17 +157,20 @@
             @test ll_narrow ≈ ll_fixed atol=0.05
 
             # Wider mixing gives a finite but different likelihood
-            o_wide = ClusterMixed(R -> NegBin(R, 0.5),
-                truncated(Gamma(2.0, 0.3); upper = 0.999))
+            o_wide = ClusterMixed(R -> NegBin(R, 0.5), Gamma(2.0, 0.3))
             ll_wide = loglikelihood(data, o_wide)
             @test isfinite(ll_wide)
             @test ll_wide != ll_fixed
 
-            # Poisson mixing also works
-            o_pois = ClusterMixed(λ -> Poisson(λ),
-                truncated(Gamma(2.0, 0.3); upper = 0.999))
-            ll_pois = loglikelihood(data, o_pois)
-            @test isfinite(ll_pois)
+            # Poisson offspring with Gamma-mixed rate: quadrature should
+            # agree with the closed-form PoissonGammaChainSize likelihood.
+            k, R = 0.5, 0.8
+            o_pois = ClusterMixed(λ -> Poisson(λ), Gamma(k, R / k))
+            data_pg = ChainSizes([1, 1, 2, 3, 1, 4])
+            ll_quad = loglikelihood(data_pg, o_pois)
+            d_closed = PoissonGammaChainSize(k, R)
+            ll_closed = sum(logpdf(d_closed, n) for n in data_pg.data)
+            @test ll_quad ≈ ll_closed atol=0.05
         end
     end
 
