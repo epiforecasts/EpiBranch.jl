@@ -17,12 +17,8 @@ end
 
 Log-likelihood of observed chain sizes under the analytical chain size
 distribution implied by the offspring distribution.
-
-If `data` was constructed with `obs_prob < 1`, imperfect observation
-is accounted for by marginalising over true chain sizes.
 """
 function loglikelihood(data::ChainSizes, offspring::Distribution)
-    data.obs_prob < 1.0 && return _chain_size_ll_obs(data.data, offspring, data.obs_prob)
     dist = chain_size_distribution(offspring)
     return sum(logpdf(dist, n) for n in data.data)
 end
@@ -30,14 +26,24 @@ end
 # AD-compatible methods: use shared _borel_logpdf / _gammaborel_logpdf
 # which accept any numeric type for parameters (ForwardDiff Dual compatible)
 function loglikelihood(data::ChainSizes, offspring::Poisson{T}) where {T}
-    data.obs_prob < 1.0 && return _chain_size_ll_obs(data.data, offspring, data.obs_prob)
     μ = min(mean(offspring), one(mean(offspring)))
     return sum(n -> _borel_logpdf(μ, n), data.data)
 end
 
 function loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T}) where {T}
-    data.obs_prob < 1.0 && return _chain_size_ll_obs(data.data, offspring, data.obs_prob)
     return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
+end
+
+"""
+    loglikelihood(data::ChainSizes, m::PartiallyObserved)
+
+Log-likelihood of observed chain sizes under a partially observed
+branching process, marginalising over the true (unobserved) chain
+sizes using the underlying model's analytical chain size distribution.
+"""
+function loglikelihood(data::ChainSizes, m::PartiallyObserved)
+    offspring = _single_type_offspring(m.model)
+    return _chain_size_ll_obs(data.data, offspring, m.detection_prob)
 end
 
 """

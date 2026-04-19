@@ -94,6 +94,12 @@ ChainSizes
 ChainLengths
 ```
 
+### Observation models
+
+```@docs
+PartiallyObserved
+```
+
 ### Likelihood and fitting
 
 EpiBranch extends `Distributions.loglikelihood` and `Distributions.fit`

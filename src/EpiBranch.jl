@@ -30,6 +30,9 @@ end
 # Transmission models
 include("models/branching_process.jl")
 
+# Observation models (wrappers around TransmissionModel)
+include("observation.jl")
+
 # Simulation engine
 include("simulation.jl")
 
@@ -52,6 +55,7 @@ export Individual, SimulationState
 export SimOpts, DelayOpts, OutcomeOpts, DemographicOpts
 export AbstractIntervention, Isolation, ContactTracing, RingVaccination, Scheduled
 export is_active, intervention_time
+export PartiallyObserved
 
 # Exports — sentinel types
 export NoPopulation, NoAttributes, NoTypeLabels, NoDelay, NoCFR

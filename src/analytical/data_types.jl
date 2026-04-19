@@ -33,12 +33,10 @@ fit(data, NegativeBinomial)
 """
 struct ChainSizes
     data::Vector{Int}
-    obs_prob::Float64
-    function ChainSizes(data::AbstractVector{<:Integer}; obs_prob::Float64 = 1.0)
+    function ChainSizes(data::AbstractVector{<:Integer})
         isempty(data) && throw(ArgumentError("data must be non-empty"))
         all(x -> x >= 1, data) || throw(ArgumentError("chain sizes must be ≥ 1"))
-        0.0 < obs_prob <= 1.0 || throw(ArgumentError("obs_prob must be in (0, 1]"))
-        new(convert(Vector{Int}, data), obs_prob)
+        new(convert(Vector{Int}, data))
     end
 end
 

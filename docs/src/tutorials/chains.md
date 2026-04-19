@@ -66,13 +66,17 @@ println("NegBin(R=0.9, k=0.5): LL = $(round(ll, digits=2))")
 
 ### Imperfect observation
 
-Account for incomplete case ascertainment by passing `obs_prob`:
+Account for incomplete case ascertainment by wrapping a model in
+[`PartiallyObserved`](@ref). Each case in a chain is detected
+independently with the given probability:
 
 ```@example chains
-data_full = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
-data_partial = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2]; obs_prob = 0.7)
-println("Full observation:  $(round(loglikelihood(data_full, Poisson(0.9)), digits=2))")
-println("70% observation:   $(round(loglikelihood(data_partial, Poisson(0.9)), digits=2))")
+data = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
+base = BranchingProcess(Poisson(0.9))
+full = PartiallyObserved(base, 1.0)
+partial = PartiallyObserved(base, 0.7)
+println("Full observation:  $(round(loglikelihood(data, full), digits=2))")
+println("70% observation:   $(round(loglikelihood(data, partial), digits=2))")
 ```
 
 ### Offspring counts

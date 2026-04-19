@@ -128,9 +128,19 @@
             @test isfinite(ll)
         end
 
-        @testset "With observation probability" begin
-            ll = loglikelihood(ChainSizes([1, 1, 2]; obs_prob = 0.8), Poisson(0.5))
+        @testset "With partial observation" begin
+            base = BranchingProcess(Poisson(0.5))
+            ll = loglikelihood(ChainSizes([1, 1, 2]), PartiallyObserved(base, 0.8))
             @test isfinite(ll)
+
+            # Full observation (detection_prob=1) should agree with bare offspring
+            ll_full = loglikelihood(ChainSizes([1, 1, 2]), PartiallyObserved(base, 1.0))
+            ll_bare = loglikelihood(ChainSizes([1, 1, 2]), Poisson(0.5))
+            @test ll_full ≈ ll_bare atol=1e-6
+
+            # Stricter detection should lower the likelihood for these small sizes
+            ll_strict = loglikelihood(ChainSizes([1, 1, 2]), PartiallyObserved(base, 0.3))
+            @test isfinite(ll_strict)
         end
     end
 
