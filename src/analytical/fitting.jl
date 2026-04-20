@@ -38,12 +38,12 @@ end
     loglikelihood(data::ChainSizes, m::PartiallyObserved)
 
 Log-likelihood of observed chain sizes under a partially observed
-branching process, marginalising over the true (unobserved) chain
-sizes using the underlying model's analytical chain size distribution.
+branching process. Routes through `chain_size_distribution(m)` so
+nested wrappers compose without per-pair specialisations.
 """
 function loglikelihood(data::ChainSizes, m::PartiallyObserved)
-    offspring = _single_type_offspring(m.model)
-    return _chain_size_ll_obs(data.data, offspring, m.detection_prob)
+    d = chain_size_distribution(m)
+    return sum(logpdf(d, n) for n in data.data)
 end
 
 """

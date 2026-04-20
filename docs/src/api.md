@@ -166,7 +166,6 @@ EpiBranch._validate_required_fields
 EpiBranch._column_order
 EpiBranch._with_start_time
 EpiBranch._enforce_start_time!
-EpiBranch._chain_size_ll_obs
 EpiBranch._chain_length_ll_negbin
 EpiBranch._borel_logpdf
 EpiBranch._gammaborel_logpdf

@@ -1,23 +1,6 @@
 # ── Internal likelihood implementations ──────────────────────────────
 # These are called by the unified loglikelihood() interface in fitting.jl.
 
-"""Chain size likelihood with imperfect observation."""
-function _chain_size_ll_obs(data, offspring, obs_prob)
-    dist = chain_size_distribution(offspring)
-    max_obs = maximum(data)
-    max_true = min(max_obs * 5, 10_000)
-
-    log_p_true = [logpdf(dist, n) for n in 1:max_true]
-
-    ll = 0.0
-    for obs in data
-        obs > max_true && return -Inf
-        ll += logsumexp(log_p_true[n] + logpdf(Binomial(n, obs_prob), obs)
-        for n in obs:max_true)
-    end
-    return ll
-end
-
 """Analytical chain length likelihood for NegBin offspring."""
 function _chain_length_ll_negbin(data, offspring::NegativeBinomial)
     k = offspring.r

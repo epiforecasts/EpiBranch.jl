@@ -222,9 +222,8 @@
 
         @testset "Sim ↔ analytical consistency" begin
             # Bare NegBin offspring: simulation should match GammaBorel PMF
-            emp,
-            ana = sim_analytical_consistent(
-                NegBin(0.6, 0.5), Exponential(5.0);
+            bp = BranchingProcess(NegBin(0.6, 0.5), Exponential(5.0))
+            emp, ana = sim_analytical_consistent(bp;
                 n_chains = 5000, rng = StableRNG(1))
             for (e, a) in zip(emp, ana)
                 @test e≈a atol=0.02
@@ -234,11 +233,23 @@
             # closed-form PoissonGammaChainSize via dispatch
             k, R = 0.5, 0.6
             cm = ClusterMixed(Poisson, Gamma(k, R / k))
+            bp_cm = BranchingProcess(cm, Exponential(5.0))
             emp_cm,
-            ana_cm = sim_analytical_consistent(
-                cm, Exponential(5.0);
+            ana_cm = sim_analytical_consistent(bp_cm;
                 n_chains = 5000, rng = StableRNG(42))
             for (e, a) in zip(emp_cm, ana_cm)
+                @test e≈a atol=0.02
+            end
+
+            # PartiallyObserved(bp, p): simulate bare, thin per case, compare
+            # against ThinnedChainSize PMF. This is how any new observation
+            # wrapper should be tested — define observe_chain_sizes and
+            # the helper does the rest.
+            emp_po,
+            ana_po = sim_analytical_consistent(
+                bp |> PartiallyObserved(0.6);
+                n_chains = 5000, rng = StableRNG(7))
+            for (e, a) in zip(emp_po, ana_po)
                 @test e≈a atol=0.02
             end
 
