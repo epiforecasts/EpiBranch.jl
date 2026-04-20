@@ -56,11 +56,20 @@ abstract type TransmissionModel end
 """Interface methods with defaults for any TransmissionModel."""
 population_size(::TransmissionModel) = NoPopulation()
 
-"""Extract the offspring distribution from a single-type model, or throw."""
+"""Extract the offspring specification from a single-type model.
+
+Returns whatever the model stores in `offspring` (typically a
+`Distribution`, but can also be any type for which
+`chain_size_distribution` is defined — e.g. `ClusterMixed`). Callers
+that need a `Distribution` specifically should check the return type.
+Throws only for multi-type (function-based) offspring, which this
+accessor cannot sensibly return.
+"""
 function _single_type_offspring(model::TransmissionModel)
-    model.offspring isa Distribution || throw(ArgumentError(
-        "This function only works with single-type models (Distribution offspring)"))
-    return model.offspring
+    off = model.offspring
+    off isa Function && throw(ArgumentError(
+        "This function only works with single-type models (not multi-type function offspring)"))
+    return off
 end
 latent_period(::TransmissionModel) = 0.0
 n_types(::TransmissionModel) = 1

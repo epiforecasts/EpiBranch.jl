@@ -104,6 +104,7 @@ PartiallyObserved
 
 ```@docs
 ClusterMixed
+ChainSizeMixture
 ```
 
 ### Likelihood and fitting

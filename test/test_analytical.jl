@@ -162,15 +162,44 @@
             @test isfinite(ll_wide)
             @test ll_wide != ll_fixed
 
-            # Poisson offspring with Gamma-mixed rate: quadrature should
-            # agree with the closed-form PoissonGammaChainSize likelihood.
+            # Poisson + Gamma: dispatch picks closed-form PoissonGammaChainSize
             k, R = 0.5, 0.8
-            o_pois = ClusterMixed(λ -> Poisson(λ), Gamma(k, R / k))
+            cm = ClusterMixed(Poisson, Gamma(k, R / k))
+            @test chain_size_distribution(cm) isa PoissonGammaChainSize
             data_pg = ChainSizes([1, 1, 2, 3, 1, 4])
-            ll_quad = loglikelihood(data_pg, o_pois)
+            ll_cm = loglikelihood(data_pg, cm)
             d_closed = PoissonGammaChainSize(k, R)
             ll_closed = sum(logpdf(d_closed, n) for n in data_pg.data)
+            @test ll_cm ≈ ll_closed atol=1e-8
+
+            # Quadrature fallback for non-closed-form combinations agrees with
+            # the closed form when the combination reduces to Poisson + Gamma
+            cm_quad = ClusterMixed(λ -> Poisson(λ), Gamma(k, R / k))
+            ll_quad = loglikelihood(data_pg, cm_quad)
             @test ll_quad ≈ ll_closed atol=0.05
+        end
+
+        @testset "Composition: PartiallyObserved(BranchingProcess(ClusterMixed))" begin
+            k, R = 0.5, 0.8
+            data = ChainSizes([1, 1, 2, 3, 1, 4])
+            cm = ClusterMixed(Poisson, Gamma(k, R / k))
+            bp = BranchingProcess(cm)
+
+            # With detection_prob = 1 should equal the bare likelihood
+            ll_full = loglikelihood(data, PartiallyObserved(bp, 1.0))
+            ll_bare = loglikelihood(data, cm)
+            @test ll_full ≈ ll_bare atol=1e-6
+
+            # Partial observation reduces the likelihood for small observed sizes
+            ll_partial = loglikelihood(data, PartiallyObserved(bp, 0.7))
+            @test isfinite(ll_partial)
+            @test ll_partial < ll_full
+
+            # Composition also works over the quadrature fallback
+            cm_nb = ClusterMixed(R -> NegBin(R, 0.5), Gamma(2.0, 0.3))
+            bp_nb = BranchingProcess(cm_nb)
+            ll_nb_partial = loglikelihood(data, PartiallyObserved(bp_nb, 0.7))
+            @test isfinite(ll_nb_partial)
         end
     end
 
