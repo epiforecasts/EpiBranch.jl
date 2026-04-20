@@ -120,6 +120,15 @@ function loglikelihood(data::ChainSizes, m::PartiallyObserved;
         cap = sim_opts.max_cases)
 end
 
+# Chain length under per-case detection has no clean transformation
+# (observed length depends on which specific cases are detected, not
+# just the true length). Raise a clear error rather than silently
+# simulating the wrapper through an undefined `step!` method.
+function loglikelihood(::ChainLengths, ::PartiallyObserved; kwargs...)
+    throw(ArgumentError(
+        "loglikelihood(ChainLengths, PartiallyObserved) is not defined: per-case detection does not translate to a well-defined chain length distribution. Evaluate on the wrapped generative model directly, or use ChainSizes."))
+end
+
 for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
     @eval function loglikelihood(data::$DT, model::TransmissionModel;
             interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
@@ -127,11 +136,10 @@ for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
             sim_opts::SimOpts = SimOpts(),
             n_sim::Int = 10_000,
             rng::AbstractRNG = Random.default_rng())
-        # Fast path: use analytical likelihood when no interventions and the
-        # offspring distribution has one. Falls through to simulation if the
-        # analytical method throws (e.g. unsupported distribution type).
-        if isempty(interventions) && hasproperty(model, :offspring) &&
-           model.offspring isa Distribution
+        # Fast path: use analytical likelihood when no interventions and
+        # the offspring specification has one. Falls through to simulation
+        # if no analytical method is defined.
+        if isempty(interventions) && hasproperty(model, :offspring)
             try
                 return loglikelihood(data, model.offspring)
             catch e

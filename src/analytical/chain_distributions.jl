@@ -43,13 +43,23 @@ end
 function Base.rand(rng::AbstractRNG, d::Borel)
     d.μ >= 1.0 && throw(ArgumentError(
         "rand is not defined for supercritical Borel (μ ≥ 1): total mass is < 1 and the chain is infinite with positive probability"))
+    _inverse_cdf_rand(rng, d, "Borel")
+end
+
+"""
+Sample an integer from a discrete distribution on `1, 2, …` by walking
+the inverse CDF. Used by the chain size distributions defined in this
+file, which do not have faster dedicated samplers. Warns and returns
+`10_000` if the cumulative mass doesn't reach `u` within 10,000 terms.
+"""
+function _inverse_cdf_rand(rng::AbstractRNG, d, name::AbstractString)
     u = rand(rng)
     cumprob = 0.0
     for n in 1:10_000
         cumprob += pdf(d, n)
         u <= cumprob && return n
     end
-    @warn "Borel inverse CDF did not converge in 10,000 terms, returning 10,000"
+    @warn "$name inverse CDF did not converge in 10,000 terms, returning 10,000"
     return 10_000
 end
 
@@ -97,14 +107,7 @@ Distributions.insupport(::GammaBorel, n::Integer) = n >= 1
 function Base.rand(rng::AbstractRNG, d::GammaBorel)
     d.R >= 1.0 && throw(ArgumentError(
         "rand is not defined for supercritical GammaBorel (R ≥ 1): total mass is < 1 and the chain is infinite with positive probability"))
-    u = rand(rng)
-    cumprob = 0.0
-    for n in 1:10_000
-        cumprob += pdf(d, n)
-        u <= cumprob && return n
-    end
-    @warn "GammaBorel inverse CDF did not converge in 10,000 terms, returning 10,000"
-    return 10_000
+    _inverse_cdf_rand(rng, d, "GammaBorel")
 end
 
 """
@@ -158,14 +161,7 @@ Distributions.insupport(::PoissonGammaChainSize, n::Integer) = n >= 1
 function Base.rand(rng::AbstractRNG, d::PoissonGammaChainSize)
     d.R >= 1.0 && throw(ArgumentError(
         "rand is not defined for PoissonGammaChainSize with mean R ≥ 1: too much Gamma mass sits above 1 (supercritical rates) and chains are infinite with positive probability"))
-    u = rand(rng)
-    cumprob = 0.0
-    for n in 1:10_000
-        cumprob += pdf(d, n)
-        u <= cumprob && return n
-    end
-    @warn "PoissonGammaChainSize inverse CDF did not converge in 10,000 terms, returning 10,000; chain may be infinite with non-negligible probability"
-    return 10_000
+    _inverse_cdf_rand(rng, d, "PoissonGammaChainSize")
 end
 
 """

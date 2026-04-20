@@ -313,6 +313,15 @@
             @test_throws ArgumentError loglikelihood(ChainLengths([1, 2]), Poisson(1.5))
             @test_throws ArgumentError loglikelihood(ChainLengths([1, 2]), NegBin(1.5, 0.5))
         end
+
+        @testset "PartiallyObserved rejects ChainLengths" begin
+            # Per-case detection doesn't cleanly transform chain length.
+            # Raise a clear error rather than routing through an undefined
+            # simulate path.
+            bp = BranchingProcess(Poisson(0.5), Exponential(5.0))
+            @test_throws ArgumentError loglikelihood(
+                ChainLengths([0, 1]), PartiallyObserved(bp, 0.7))
+        end
     end
 
     @testset "Simulation-based chain size likelihood" begin
@@ -329,6 +338,19 @@
             model = BranchingProcess(Poisson(0.5), Exponential(5.0))
             ll_simulated = loglikelihood(data, model; n_sim = 10_000, rng = StableRNG(42))
             @test abs(ll_analytical - ll_simulated) < 1.0
+        end
+
+        @testset "Fast path catches ClusterMixed analytical" begin
+            # BranchingProcess(ClusterMixed(...)) should route to the
+            # analytical closed form via the generic kwarg method, not
+            # fall through to simulation.
+            k, R = 0.5, 0.6
+            cm = ClusterMixed(Poisson, Gamma(k, R / k))
+            model = BranchingProcess(cm, Exponential(5.0))
+            data = ChainSizes([1, 1, 2, 3])
+            ll_fast = loglikelihood(data, model; n_sim = 100, rng = StableRNG(1))
+            ll_direct = loglikelihood(data, cm)
+            @test ll_fast ≈ ll_direct atol=1e-8
         end
 
         @testset "With interventions" begin
