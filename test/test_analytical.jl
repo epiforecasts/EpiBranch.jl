@@ -202,39 +202,66 @@
             @test isfinite(ll_nb_partial)
         end
 
-        @testset "Simulation of BranchingProcess(ClusterMixed)" begin
+        @testset "Composition via pipe and stacking" begin
+            data = ChainSizes([1, 1, 2, 3, 1, 4])
+            model = BranchingProcess(NegBin(0.5, 0.5))
+
+            # Stacking compounds detection probabilities
+            ll_nested = loglikelihood(data,
+                PartiallyObserved(PartiallyObserved(model, 0.5), 0.5))
+            ll_single = loglikelihood(data, PartiallyObserved(model, 0.25))
+            @test ll_nested ≈ ll_single
+
+            # Julia pipe
+            ll_pipe = loglikelihood(data, model |> PartiallyObserved(0.25))
+            @test ll_pipe ≈ ll_single
+            ll_stacked_pipe = loglikelihood(data,
+                model |> PartiallyObserved(0.5) |> PartiallyObserved(0.5))
+            @test ll_stacked_pipe ≈ ll_single
+        end
+
+        @testset "Sim ↔ analytical consistency" begin
+            # Bare NegBin offspring: simulation should match GammaBorel PMF
+            emp,
+            ana = sim_analytical_consistent(
+                NegBin(0.6, 0.5), Exponential(5.0);
+                n_chains = 5000, rng = StableRNG(1))
+            for (e, a) in zip(emp, ana)
+                @test e≈a atol=0.02
+            end
+
+            # ClusterMixed(Poisson, Gamma): simulation should match
+            # closed-form PoissonGammaChainSize via dispatch
             k, R = 0.5, 0.6
             cm = ClusterMixed(Poisson, Gamma(k, R / k))
+            emp_cm,
+            ana_cm = sim_analytical_consistent(
+                cm, Exponential(5.0);
+                n_chains = 5000, rng = StableRNG(42))
+            for (e, a) in zip(emp_cm, ana_cm)
+                @test e≈a atol=0.02
+            end
+
+            # Verify the per-chain θ invariant: all individuals in a
+            # chain share :cluster_theta
             model = BranchingProcess(cm, Exponential(5.0))
-
-            states = simulate_batch(
-                model, 5000; sim_opts = SimOpts(max_cases = 500),
-                rng = StableRNG(42))
-            chain_sizes = Int[]
-            for s in states
-                append!(chain_sizes, chain_statistics(s).size)
-            end
-
-            # Empirical PMF at small sizes should match the closed form
-            d = PoissonGammaChainSize(k, R)
-            for n in 1:4
-                emp = count(==(n), chain_sizes) / length(chain_sizes)
-                @test emp ≈ pdf(d, n) atol=0.02
-            end
-
-            # All individuals in a chain must share the same :cluster_theta
+            states = simulate_batch(model, 500;
+                sim_opts = SimOpts(max_cases = 200), rng = StableRNG(3))
+            all_consistent = true
             for s in states
                 by_chain = Dict{Int, Float64}()
                 for ind in s.individuals
                     haskey(ind.state, :cluster_theta) || continue
                     θ = ind.state[:cluster_theta]
-                    if haskey(by_chain, ind.chain_id)
-                        @test by_chain[ind.chain_id] == θ
+                    if haskey(by_chain, ind.chain_id) &&
+                       by_chain[ind.chain_id] != θ
+                        all_consistent = false
                     else
                         by_chain[ind.chain_id] = θ
                     end
                 end
             end
+            @test all_consistent
         end
     end
 

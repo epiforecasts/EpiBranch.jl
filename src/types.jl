@@ -64,8 +64,13 @@ Returns whatever the model stores in `offspring` (typically a
 that need a `Distribution` specifically should check the return type.
 Throws only for multi-type (function-based) offspring, which this
 accessor cannot sensibly return.
+
+Wrapper models (e.g. `PartiallyObserved`) should specialise this to
+delegate through to the wrapped model.
 """
 function _single_type_offspring(model::TransmissionModel)
+    hasproperty(model, :offspring) || throw(ArgumentError(
+        "$(typeof(model)) has no `offspring` field — did you forget to specialise _single_type_offspring for it?"))
     off = model.offspring
     off isa Function && throw(ArgumentError(
         "This function only works with single-type models (not multi-type function offspring)"))

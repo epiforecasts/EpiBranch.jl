@@ -41,3 +41,20 @@ end
 population_size(m::PartiallyObserved) = population_size(m.model)
 latent_period(m::PartiallyObserved) = latent_period(m.model)
 n_types(m::PartiallyObserved) = n_types(m.model)
+
+# Wrappers delegate offspring extraction through to the wrapped model.
+_single_type_offspring(m::PartiallyObserved) = _single_type_offspring(m.model)
+
+# Pure per-case detection thins Binomially; stacking compounds the
+# probabilities. This keeps the underlying generative model free of
+# observation state and makes repeated wrapping mathematically correct.
+function PartiallyObserved(inner::PartiallyObserved, detection_prob::Real)
+    PartiallyObserved(inner.model, detection_prob * inner.detection_prob)
+end
+
+"""
+    PartiallyObserved(detection_prob) -> m -> PartiallyObserved(m, detection_prob)
+
+Curried form for pipe composition: `model |> PartiallyObserved(0.7)`.
+"""
+PartiallyObserved(detection_prob::Real) = m -> PartiallyObserved(m, detection_prob)

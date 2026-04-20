@@ -1,7 +1,10 @@
 using Test
 using EpiBranch
 using Distributions
+using Random
 using StableRNGs
+
+include("testutils/sim_analytical_consistency.jl")
 
 @testset "EpiBranch" begin
     include("test_quality.jl")
