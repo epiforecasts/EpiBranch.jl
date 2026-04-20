@@ -179,11 +179,13 @@ Analytical chain size distribution for NegativeBinomial offspring.
 chain_size_distribution(d::NegativeBinomial) = GammaBorel(d.r, mean(d))
 
 """
-    chain_size_distribution(model::BranchingProcess)
+    chain_size_distribution(model::TransmissionModel)
 
 Analytical chain size distribution extracted from the model's offspring
-distribution (single-type only).
+specification via `_single_type_offspring`. Works for `BranchingProcess`
+and any wrapper that delegates that accessor (e.g. `PartiallyObserved`
+delegates before applying its own transformed distribution).
 """
-function chain_size_distribution(model::BranchingProcess)
+function chain_size_distribution(model::TransmissionModel)
     return chain_size_distribution(_single_type_offspring(model))
 end

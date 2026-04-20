@@ -66,7 +66,7 @@ function proportion_transmission(d::Distribution; prop_cases::Real = 0.2)
     throw(ArgumentError("proportion_transmission not defined for $(typeof(d)). Use NegativeBinomial or Poisson."))
 end
 
-function proportion_transmission(model::BranchingProcess; prop_cases::Real = 0.2)
+function proportion_transmission(model::TransmissionModel; prop_cases::Real = 0.2)
     return proportion_transmission(_single_type_offspring(model); prop_cases)
 end
 
@@ -115,7 +115,7 @@ end
 
 Proportion of cases from large clusters for a branching process model.
 """
-function proportion_cluster_size(model::BranchingProcess; cluster_size::Int = 10)
+function proportion_cluster_size(model::TransmissionModel; cluster_size::Int = 10)
     d = _single_type_offspring(model)
     d isa NegativeBinomial || throw(ArgumentError(
         "proportion_cluster_size requires NegativeBinomial offspring"))

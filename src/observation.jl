@@ -43,7 +43,9 @@ n_types(m::PartiallyObserved) = n_types(m.model)
 
 # Forward offspring extraction so analytical helpers that route through
 # `_single_type_offspring` (extinction_probability, probability_contain,
-# superspreading metrics) work on wrapped models.
+# superspreading metrics) work on wrapped models. Per-case detection
+# does not change transmission dynamics, so these helpers delegate to
+# the wrapped model.
 _single_type_offspring(m::PartiallyObserved) = _single_type_offspring(m.model)
 
 """

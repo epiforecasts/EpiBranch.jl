@@ -79,21 +79,23 @@ end
 # ── BranchingProcess dispatch ────────────────────────────────────────
 
 """
-    extinction_probability(model::BranchingProcess; kwargs...)
+    extinction_probability(model::TransmissionModel; kwargs...)
 
-Extinction probability for a single-type branching process, extracted
-from the model's offspring distribution.
+Extinction probability for a single-type transmission model, extracted
+from the model's offspring specification via `_single_type_offspring`.
+Works for `BranchingProcess` and wrappers that delegate that accessor
+(e.g. `PartiallyObserved`).
 """
-function extinction_probability(model::BranchingProcess; kwargs...)
+function extinction_probability(model::TransmissionModel; kwargs...)
     return extinction_probability(_single_type_offspring(model); kwargs...)
 end
 
 """
-    epidemic_probability(model::BranchingProcess; kwargs...)
+    epidemic_probability(model::TransmissionModel; kwargs...)
 
-Epidemic probability for a single-type branching process.
+Epidemic probability for a single-type transmission model.
 """
-function epidemic_probability(model::BranchingProcess; kwargs...)
+function epidemic_probability(model::TransmissionModel; kwargs...)
     1.0 - extinction_probability(model; kwargs...)
 end
 
@@ -163,10 +165,12 @@ function probability_contain(d::Poisson; n_initial::Int = 1,
 end
 
 """
-    probability_contain(model::BranchingProcess; kwargs...)
+    probability_contain(model::TransmissionModel; kwargs...)
 
-Containment probability for a branching process model.
+Containment probability for a single-type transmission model. Delegates
+through `_single_type_offspring`, so wrappers such as `PartiallyObserved`
+work too.
 """
-function probability_contain(model::BranchingProcess; kwargs...)
+function probability_contain(model::TransmissionModel; kwargs...)
     return probability_contain(_single_type_offspring(model); kwargs...)
 end

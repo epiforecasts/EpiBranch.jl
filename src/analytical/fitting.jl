@@ -111,6 +111,10 @@ function loglikelihood(data::ChainSizes, m::PartiallyObserved;
         cs = chain_statistics(state)
         for true_size in cs.size
             obs = rand(rng, Binomial(true_size, m.detection_prob))
+            # Chains with zero detected cases do not enter the observed
+            # dataset; skip them rather than passing obs=0 through to the
+            # empirical likelihood (which would under-index `counts`).
+            obs >= 1 || continue
             push!(sim_values, obs)
             hit_cap = !state.extinct && state.cumulative_cases >= sim_opts.max_cases
             push!(censored, hit_cap)

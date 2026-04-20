@@ -48,6 +48,16 @@
             q2 = extinction_probability(2.5, 0.16)
             @test q ≈ q2
         end
+
+        @testset "Delegates through PartiallyObserved" begin
+            # Regression: extinction_probability goes via
+            # _single_type_offspring, which must delegate through
+            # observation wrappers. Before the fix it threw FieldError
+            # because PartiallyObserved has no `offspring` field.
+            bp = BranchingProcess(NegBin(0.5, 0.5))
+            @test extinction_probability(PartiallyObserved(bp, 0.7)) ==
+                  extinction_probability(bp)
+        end
     end
 
     @testset "Epidemic probability" begin
@@ -81,6 +91,14 @@
             d = Borel(1.0)
             @test mean(d) == Inf
         end
+
+        @testset "rand throws on supercritical" begin
+            # Regression: previously silently returned 10_000 with a
+            # warning, giving a nominally valid sample for a distribution
+            # whose total mass is < 1.
+            @test_throws ArgumentError rand(Borel(1.5))
+            @test_throws ArgumentError rand(Borel(1.0))
+        end
     end
 
     @testset "GammaBorel distribution" begin
@@ -96,6 +114,26 @@
             d = GammaBorel(0.5, 0.8)
             total = sum(pdf(d, n) for n in 1:500)
             @test total ≈ 1.0 atol=1e-2
+        end
+
+        @testset "Supercritical allowed in logpdf, rejected in rand" begin
+            # Regression: supercritical GammaBorel is needed for
+            # quadrature integrands that cross R=1, so logpdf stays
+            # defined, but rand would silently truncate at chain size
+            # 10_000.
+            d_super = GammaBorel(0.5, 1.5)
+            @test isfinite(logpdf(d_super, 3))
+            @test_throws ArgumentError rand(d_super)
+        end
+    end
+
+    @testset "PoissonGammaChainSize" begin
+        @testset "rand throws when Gamma mean ≥ 1" begin
+            # Regression: supercritical mean R puts too much Gamma mass
+            # above 1, so rand would silently truncate.
+            d_super = PoissonGammaChainSize(0.5, 1.5)
+            @test isfinite(logpdf(d_super, 2))
+            @test_throws ArgumentError rand(d_super)
         end
     end
 
@@ -357,6 +395,22 @@
             model = BranchingProcess(Poisson(2.0), Exponential(5.0))
             iso = Isolation(delay = Exponential(1.0))
             ll = loglikelihood(ChainSizes([1, 1, 2, 1]), model;
+                interventions = [iso],
+                attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+                sim_opts = SimOpts(max_cases = 500),
+                n_sim = 500, rng = StableRNG(42))
+            @test isfinite(ll)
+        end
+
+        @testset "PartiallyObserved sim path with interventions" begin
+            # Regression: previously crashed because the generic sim
+            # fallback accessed model.offspring, which PartiallyObserved
+            # does not have. The merged kwarg method now simulates the
+            # wrapped model, thins chain sizes per case, and compares.
+            model = BranchingProcess(Poisson(2.0), Exponential(5.0))
+            iso = Isolation(delay = Exponential(1.0))
+            po = PartiallyObserved(model, 0.7)
+            ll = loglikelihood(ChainSizes([1, 1, 2, 1]), po;
                 interventions = [iso],
                 attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
                 sim_opts = SimOpts(max_cases = 500),
