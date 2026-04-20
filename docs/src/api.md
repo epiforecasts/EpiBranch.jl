@@ -82,6 +82,7 @@ network_R
 chain_size_distribution
 Borel
 GammaBorel
+PoissonGammaChainSize
 ```
 
 ## Inference
@@ -98,6 +99,7 @@ ChainLengths
 
 ```@docs
 PartiallyObserved
+ThinnedChainSize
 ```
 
 ### Cluster-level heterogeneity

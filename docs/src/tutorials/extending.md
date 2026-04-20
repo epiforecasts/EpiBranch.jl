@@ -327,6 +327,100 @@ results = simulate_batch(model_waning, 200;
 println("Waning-R model: $(round(containment_probability(results), digits=3))")
 ```
 
+## Adding an observation wrapper
+
+Observation wrappers subtype `TransmissionModel` and transform the
+analytical chain size distribution of the wrapped model. `PartiallyObserved`
+is the reference template. A new wrapper needs three pieces:
+
+1. **A wrapper struct** holding the inner model and observation parameters.
+2. **A transformed chain size distribution** — a new `DiscreteUnivariateDistribution` type whose `logpdf` expresses the observation process applied to a base distribution. Nesting works because this type can wrap any distribution, including another transformed one.
+3. **A `chain_size_distribution` method** that pairs the wrapper with its transformed distribution.
+
+### Minimal sketch
+
+```julia
+# 1. Wrapper
+struct CensoredAtSize{M <: TransmissionModel} <: TransmissionModel
+    model::M
+    max_observed::Int
+end
+
+# Forward TransmissionModel accessors
+EpiBranch.population_size(m::CensoredAtSize) = EpiBranch.population_size(m.model)
+EpiBranch.latent_period(m::CensoredAtSize) = EpiBranch.latent_period(m.model)
+
+# 2. Transformed chain size distribution
+struct TruncatedChainSize{D} <: DiscreteUnivariateDistribution
+    base::D
+    cap::Int
+end
+Distributions.minimum(::TruncatedChainSize) = 1
+Distributions.maximum(d::TruncatedChainSize) = d.cap
+Distributions.insupport(d::TruncatedChainSize, n::Integer) = 1 <= n <= d.cap
+
+function Distributions.logpdf(d::TruncatedChainSize, n::Integer)
+    1 <= n <= d.cap || return -Inf
+    # Renormalise by mass up to the cap
+    Z = sum(pdf(d.base, m) for m in 1:d.cap)
+    return logpdf(d.base, n) - log(Z)
+end
+
+# 3. Hook into the dispatch
+function EpiBranch.chain_size_distribution(m::CensoredAtSize)
+    TruncatedChainSize(EpiBranch.chain_size_distribution(m.model), m.max_observed)
+end
+
+function Distributions.loglikelihood(data::ChainSizes, m::CensoredAtSize)
+    d = EpiBranch.chain_size_distribution(m)
+    sum(logpdf(d, n) for n in data.data)
+end
+```
+
+With these three pieces, the wrapper composes with anything else that
+participates in `chain_size_distribution` — `CensoredAtSize(PartiallyObserved(m, p), 10)` and `PartiallyObserved(CensoredAtSize(m, 10), p)` both work via nested dispatch.
+
+### Pipe support
+
+Add a curried constructor for pipe composition:
+
+```julia
+CensoredAtSize(cap::Int) = m -> CensoredAtSize(m, cap)
+# Usage: model |> PartiallyObserved(0.7) |> CensoredAtSize(10)
+```
+
+### Sim ↔ analytical consistency test
+
+The test helper in `test/testutils/sim_analytical_consistency.jl`
+automatically cross-checks simulation against your new distribution if
+you define two methods:
+
+```julia
+# Strip the observation wrapper so simulation runs on the base model
+generative_model(m::CensoredAtSize) = generative_model(m.model)
+
+# Transform simulated true sizes into observed ones
+function observe_chain_sizes(m::CensoredAtSize, true_sizes, rng::AbstractRNG)
+    inner = observe_chain_sizes(m.model, true_sizes, rng)
+    # cap-censoring: drop chains above the cap
+    return filter(n -> n <= m.max_observed, inner)
+end
+```
+
+Then `sim_analytical_consistent(model; n_chains=5000, rng=StableRNG(1))` returns empirical and analytical PMFs that should agree within sampling error.
+
+## Adding an offspring specification
+
+Offspring specifications replace what `BranchingProcess` draws per
+individual. `ClusterMixed(build, mixing)` (per-chain parameter variation)
+is the reference template. A new offspring type needs:
+
+1. **Simulation dispatch**: `_draw_offspring(rng, offspring, individual, state)` returning the number of offspring.
+2. **Analytical dispatch** (optional but recommended): `chain_size_distribution(offspring)` returning the analytical PMF. Falls back to simulation-based likelihood when not defined.
+3. **A `BranchingProcess` constructor** so the type can be stored as `offspring`.
+
+See `src/analytical/cluster_mixed.jl` for the full pattern, including how `ClusterMixed` caches per-chain state on the index case and lets descendants inherit via `parent_id` lookup.
+
 ## Summary of extension points
 
 | Extension point | Mechanism | When called |
@@ -335,5 +429,8 @@ println("Waning-R model: $(round(containment_probability(results), digits=3))")
 | Time-dependent intervention | `start_time`, `intervention_time`, `reset!` | After each hook |
 | Custom attributes | Function `(rng, ind) -> nothing` | Individual creation |
 | Composed attributes | `compose(f1, f2, ...)` | Individual creation |
-| Custom offspring | Function `(rng, ind) -> Int` | Offspring draw |
+| Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
+| Custom offspring (type) | Struct + `_draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
+| Observation wrapper | Struct `<: TransmissionModel` + transformed chain size distribution + `chain_size_distribution` method | Analytics / inference |
+| Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
