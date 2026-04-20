@@ -201,6 +201,41 @@
             ll_nb_partial = loglikelihood(data, PartiallyObserved(bp_nb, 0.7))
             @test isfinite(ll_nb_partial)
         end
+
+        @testset "Simulation of BranchingProcess(ClusterMixed)" begin
+            k, R = 0.5, 0.6
+            cm = ClusterMixed(Poisson, Gamma(k, R / k))
+            model = BranchingProcess(cm, Exponential(5.0))
+
+            states = simulate_batch(
+                model, 5000; sim_opts = SimOpts(max_cases = 500),
+                rng = StableRNG(42))
+            chain_sizes = Int[]
+            for s in states
+                append!(chain_sizes, chain_statistics(s).size)
+            end
+
+            # Empirical PMF at small sizes should match the closed form
+            d = PoissonGammaChainSize(k, R)
+            for n in 1:4
+                emp = count(==(n), chain_sizes) / length(chain_sizes)
+                @test emp ≈ pdf(d, n) atol=0.02
+            end
+
+            # All individuals in a chain must share the same :cluster_theta
+            for s in states
+                by_chain = Dict{Int, Float64}()
+                for ind in s.individuals
+                    haskey(ind.state, :cluster_theta) || continue
+                    θ = ind.state[:cluster_theta]
+                    if haskey(by_chain, ind.chain_id)
+                        @test by_chain[ind.chain_id] == θ
+                    else
+                        by_chain[ind.chain_id] = θ
+                    end
+                end
+            end
+        end
     end
 
     @testset "Chain length likelihood" begin

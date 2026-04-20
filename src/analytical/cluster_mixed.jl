@@ -109,15 +109,42 @@ function loglikelihood(data::ChainSizes, o::ClusterMixed)
 end
 
 """
+    BranchingProcess(offspring::ClusterMixed, gt; population_size=NoPopulation(), latent_period=0.0)
     BranchingProcess(offspring::ClusterMixed; population_size=NoPopulation())
 
-Wrap a cluster-mixed offspring specification in a `BranchingProcess` so
-that it composes with other `TransmissionModel` machinery
-(e.g. `PartiallyObserved`). Only the likelihood path is supported;
-`simulate` is not yet implemented for cluster-level heterogeneity
-(per-chain parameter sampling requires engine changes).
+Wrap a cluster-mixed offspring specification in a `BranchingProcess`.
+Simulation samples `θ` from `mixing` once per chain (at the index case)
+and reuses it for all individuals in that chain via `parent_id` lookup.
+The per-individual offspring draw is `rand(build(θ))`.
 """
+function BranchingProcess(offspring::ClusterMixed, gt::Union{Distribution, Function};
+        population_size::Union{Int, NoPopulation} = NoPopulation(),
+        latent_period::Real = 0.0)
+    BranchingProcess(
+        offspring, gt, population_size, Float64(latent_period), 1, NoTypeLabels())
+end
+
 function BranchingProcess(offspring::ClusterMixed;
         population_size::Union{Int, NoPopulation} = NoPopulation())
     BranchingProcess(offspring, nothing, population_size, 0.0, 1, NoTypeLabels())
+end
+
+"""
+    _draw_offspring(rng, offspring::ClusterMixed, individual, state)
+
+Draw offspring for an individual under a cluster-mixed specification.
+Samples `θ ~ mixing` once per chain, caches it on the index case's
+state, and looks it up via `parent_id` for descendants so every
+individual in a chain shares the same `θ`.
+"""
+function _draw_offspring(rng::AbstractRNG, offspring::ClusterMixed,
+        individual, state::SimulationState)
+    θ = get!(individual.state, :cluster_theta) do
+        if individual.parent_id == 0
+            rand(rng, offspring.mixing)
+        else
+            state.individuals[individual.parent_id].state[:cluster_theta]
+        end
+    end
+    return rand(rng, offspring.build(θ))
 end
