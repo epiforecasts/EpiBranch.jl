@@ -35,18 +35,6 @@ function loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T}) where {
 end
 
 """
-    loglikelihood(data::ChainSizes, m::PartiallyObserved)
-
-Log-likelihood of observed chain sizes under a partially observed
-branching process. Routes through `chain_size_distribution(m)` so
-nested wrappers compose without per-pair specialisations.
-"""
-function loglikelihood(data::ChainSizes, m::PartiallyObserved)
-    d = chain_size_distribution(m)
-    return sum(logpdf(d, n) for n in data.data)
-end
-
-"""
     loglikelihood(data::ChainLengths, offspring::Distribution)
 
 Analytical log-likelihood of observed chain lengths. Only defined for
@@ -89,6 +77,49 @@ function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
         cap = sim_opts.max_cases)
 end
 
+"""
+    loglikelihood(data::ChainSizes, m::PartiallyObserved; kwargs...)
+
+Log-likelihood under a partially observed model. With no interventions,
+routes through the analytical `chain_size_distribution(m)`. When
+interventions are supplied, simulates the wrapped generative model,
+applies per-case Binomial thinning, and compares against the observed
+data via the empirical likelihood.
+
+Merged into a single method so that a call without kwargs still
+resolves unambiguously (kwargs do not participate in dispatch).
+"""
+function loglikelihood(data::ChainSizes, m::PartiallyObserved;
+        interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
+        attributes::Union{Function, NoAttributes} = NoAttributes(),
+        sim_opts::SimOpts = SimOpts(),
+        n_sim::Int = 10_000,
+        rng::AbstractRNG = Random.default_rng())
+    if isempty(interventions)
+        try
+            d = chain_size_distribution(m)
+            return sum(logpdf(d, n) for n in data.data)
+        catch e
+            e isa MethodError || rethrow()
+        end
+    end
+    states = simulate_batch(m.model, n_sim;
+        interventions, attributes, sim_opts, rng)
+    sim_values = Int[]
+    censored = Bool[]
+    for state in states
+        cs = chain_statistics(state)
+        for true_size in cs.size
+            obs = rand(rng, Binomial(true_size, m.detection_prob))
+            push!(sim_values, obs)
+            hit_cap = !state.extinct && state.cumulative_cases >= sim_opts.max_cases
+            push!(censored, hit_cap)
+        end
+    end
+    return _empirical_ll(data.data, sim_values; min_val = 1, censored,
+        cap = sim_opts.max_cases)
+end
+
 for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
     @eval function loglikelihood(data::$DT, model::TransmissionModel;
             interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
@@ -99,7 +130,8 @@ for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
         # Fast path: use analytical likelihood when no interventions and the
         # offspring distribution has one. Falls through to simulation if the
         # analytical method throws (e.g. unsupported distribution type).
-        if isempty(interventions) && model.offspring isa Distribution
+        if isempty(interventions) && hasproperty(model, :offspring) &&
+           model.offspring isa Distribution
             try
                 return loglikelihood(data, model.offspring)
             catch e

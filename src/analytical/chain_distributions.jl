@@ -41,6 +41,8 @@ function Distributions.mean(d::Borel)
 end
 
 function Base.rand(rng::AbstractRNG, d::Borel)
+    d.μ >= 1.0 && throw(ArgumentError(
+        "rand is not defined for supercritical Borel (μ ≥ 1): total mass is < 1 and the chain is infinite with positive probability"))
     u = rand(rng)
     cumprob = 0.0
     for n in 1:10_000
@@ -93,6 +95,8 @@ Distributions.maximum(::GammaBorel) = Inf
 Distributions.insupport(::GammaBorel, n::Integer) = n >= 1
 
 function Base.rand(rng::AbstractRNG, d::GammaBorel)
+    d.R >= 1.0 && throw(ArgumentError(
+        "rand is not defined for supercritical GammaBorel (R ≥ 1): total mass is < 1 and the chain is infinite with positive probability"))
     u = rand(rng)
     cumprob = 0.0
     for n in 1:10_000
@@ -152,13 +156,15 @@ Distributions.maximum(::PoissonGammaChainSize) = Inf
 Distributions.insupport(::PoissonGammaChainSize, n::Integer) = n >= 1
 
 function Base.rand(rng::AbstractRNG, d::PoissonGammaChainSize)
+    d.R >= 1.0 && throw(ArgumentError(
+        "rand is not defined for PoissonGammaChainSize with mean R ≥ 1: too much Gamma mass sits above 1 (supercritical rates) and chains are infinite with positive probability"))
     u = rand(rng)
     cumprob = 0.0
     for n in 1:10_000
         cumprob += pdf(d, n)
         u <= cumprob && return n
     end
-    @warn "PoissonGammaChainSize inverse CDF did not converge in 10,000 terms, returning 10,000"
+    @warn "PoissonGammaChainSize inverse CDF did not converge in 10,000 terms, returning 10,000; chain may be infinite with non-negligible probability"
     return 10_000
 end
 

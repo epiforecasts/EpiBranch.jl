@@ -254,7 +254,9 @@
             end
 
             # Verify the per-chain θ invariant: all individuals in a
-            # chain share :cluster_theta
+            # chain share :cluster_theta, and chains with distinct
+            # chain_id get independent θ draws (including the
+            # n_initial > 1 case where multiple index cases exist).
             model = BranchingProcess(cm, Exponential(5.0))
             states = simulate_batch(model, 500;
                 sim_opts = SimOpts(max_cases = 200), rng = StableRNG(3))
@@ -273,6 +275,26 @@
                 end
             end
             @test all_consistent
+
+            # With n_initial > 1, each index case starts its own chain
+            # and samples an independent θ. Collect θs across runs and
+            # check they are not all identical (which would indicate
+            # incorrect inheritance).
+            states_multi = simulate_batch(model, 200;
+                sim_opts = SimOpts(max_cases = 50, n_initial = 3),
+                rng = StableRNG(5))
+            thetas = Float64[]
+            for s in states_multi
+                seen_chains = Set{Int}()
+                for ind in s.individuals
+                    ind.chain_id in seen_chains && continue
+                    haskey(ind.state, :cluster_theta) || continue
+                    push!(thetas, ind.state[:cluster_theta])
+                    push!(seen_chains, ind.chain_id)
+                end
+            end
+            @test length(thetas) > 1
+            @test length(unique(thetas)) > 1
         end
     end
 

@@ -41,6 +41,11 @@ population_size(m::PartiallyObserved) = population_size(m.model)
 latent_period(m::PartiallyObserved) = latent_period(m.model)
 n_types(m::PartiallyObserved) = n_types(m.model)
 
+# Forward offspring extraction so analytical helpers that route through
+# `_single_type_offspring` (extinction_probability, probability_contain,
+# superspreading metrics) work on wrapped models.
+_single_type_offspring(m::PartiallyObserved) = _single_type_offspring(m.model)
+
 """
     ThinnedChainSize(base, detection_prob)
 
@@ -67,17 +72,26 @@ Distributions.insupport(::ThinnedChainSize, n::Integer) = n >= 1
 function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
     obs < 1 && return -Inf
     p = d.detection_prob
-    # Sum terms until the running log-sum-exp stabilises within `tol`. A
-    # fixed truncation like `obs * 5` under-integrates heavy-tailed bases
-    # (e.g. GammaBorel with low k).
+    # Streaming log-sum-exp: maintain running max `m` and `S = Σ exp(xᵢ - m)`.
+    # Stop when the accumulated value stops changing (within `tol`) and at
+    # least 20 further terms have been added, to avoid false early
+    # convergence on heavy-tailed bases (e.g. GammaBorel with low k).
     tol = 1e-12
-    acc = Float64[logpdf(d.base, obs) + logpdf(Binomial(obs, p), obs)]
-    prev = logsumexp(acc)
-    n = obs + 1
     max_n = 100_000
+    first = logpdf(d.base, obs) + logpdf(Binomial(obs, p), obs)
+    m = first
+    S = 1.0
+    prev = m
+    n = obs + 1
     while n <= max_n
-        push!(acc, logpdf(d.base, n) + logpdf(Binomial(n, p), obs))
-        cur = logsumexp(acc)
+        x = logpdf(d.base, n) + logpdf(Binomial(n, p), obs)
+        if x > m
+            S = 1.0 + S * exp(m - x)
+            m = x
+        else
+            S += exp(x - m)
+        end
+        cur = m + log(S)
         if isfinite(cur) && isfinite(prev) && abs(cur - prev) < tol &&
            n - obs >= 20
             return cur
