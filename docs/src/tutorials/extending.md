@@ -330,12 +330,12 @@ println("Waning-R model: $(round(containment_probability(results), digits=3))")
 ## Adding an observation wrapper
 
 Observation wrappers subtype `TransmissionModel` and transform the
-analytical chain size distribution of the wrapped model. `PartiallyObserved`
-is the reference template. A new wrapper needs three pieces:
+analytical chain size distribution of the model they wrap.
+`PartiallyObserved` is the reference. A new wrapper needs three pieces:
 
-1. **A wrapper struct** holding the inner model and observation parameters.
-2. **A transformed chain size distribution** — a new `DiscreteUnivariateDistribution` type whose `logpdf` expresses the observation process applied to a base distribution. Nesting works because this type can wrap any distribution, including another transformed one.
-3. **A `chain_size_distribution` method** that pairs the wrapper with its transformed distribution.
+1. A wrapper struct holding the inner model and observation parameters.
+2. A transformed chain size distribution (a new `DiscreteUnivariateDistribution`) whose `logpdf` applies the observation process to a base distribution. This type can wrap any distribution, including one produced by another wrapper, so nesting works.
+3. A `chain_size_distribution` method that pairs the wrapper with its transformed distribution.
 
 ### Minimal sketch
 
@@ -377,8 +377,7 @@ function Distributions.loglikelihood(data::ChainSizes, m::CensoredAtSize)
 end
 ```
 
-With these three pieces, the wrapper composes with anything else that
-participates in `chain_size_distribution` — `CensoredAtSize(PartiallyObserved(m, p), 10)` and `PartiallyObserved(CensoredAtSize(m, 10), p)` both work via nested dispatch.
+With these three pieces the wrapper composes with anything else that has a `chain_size_distribution` method. Both `CensoredAtSize(PartiallyObserved(m, p), 10)` and `PartiallyObserved(CensoredAtSize(m, 10), p)` work through nested dispatch.
 
 ### Pipe support
 
@@ -391,9 +390,8 @@ CensoredAtSize(cap::Int) = m -> CensoredAtSize(m, cap)
 
 ### Sim ↔ analytical consistency test
 
-The test helper in `test/testutils/sim_analytical_consistency.jl`
-automatically cross-checks simulation against your new distribution if
-you define two methods:
+The helper in `test/testutils/sim_analytical_consistency.jl` cross-checks
+simulation against your new distribution once you define two methods:
 
 ```julia
 # Strip the observation wrapper so simulation runs on the base model
@@ -407,19 +405,19 @@ function observe_chain_sizes(m::CensoredAtSize, true_sizes, rng::AbstractRNG)
 end
 ```
 
-Then `sim_analytical_consistent(model; n_chains=5000, rng=StableRNG(1))` returns empirical and analytical PMFs that should agree within sampling error.
+With those in place, `sim_analytical_consistent(model; n_chains=5000, rng=StableRNG(1))` returns empirical and analytical PMFs that should agree within sampling error.
 
 ## Adding an offspring specification
 
 Offspring specifications replace what `BranchingProcess` draws per
-individual. `ClusterMixed(build, mixing)` (per-chain parameter variation)
-is the reference template. A new offspring type needs:
+individual. `ClusterMixed(build, mixing)` (per-chain parameter
+variation) is the reference. A new offspring type needs:
 
-1. **Simulation dispatch**: `_draw_offspring(rng, offspring, individual, state)` returning the number of offspring.
-2. **Analytical dispatch** (optional but recommended): `chain_size_distribution(offspring)` returning the analytical PMF. Falls back to simulation-based likelihood when not defined.
-3. **A `BranchingProcess` constructor** so the type can be stored as `offspring`.
+1. Simulation dispatch: `_draw_offspring(rng, offspring, individual, state)` returning the number of offspring.
+2. Analytical dispatch (optional but recommended): `chain_size_distribution(offspring)` returning the analytical PMF. Without it, the likelihood falls back to simulation.
+3. A `BranchingProcess` constructor so the type can be stored in the `offspring` field.
 
-See `src/analytical/cluster_mixed.jl` for the full pattern, including how `ClusterMixed` caches per-chain state on the index case and lets descendants inherit via `parent_id` lookup.
+See `src/analytical/cluster_mixed.jl` for the full pattern, including how `ClusterMixed` caches per-chain state on the index case and has descendants inherit it through `parent_id`.
 
 ## Summary of extension points
 

@@ -101,49 +101,49 @@ Multiple types (age groups, risk groups, spatial patches) are supported in the o
 
 Each contact is allocated to a type, stored as `:type` in its state dict. Interventions and output are unchanged — they operate on individual-level state, not types.
 
-## Compositional analytics
+## Composing analytical methods
 
-The simulation side is extended by implementing an intervention protocol. The analytical/inference side uses a parallel but distinct pattern: **each extension is a Julia type that participates in dispatch on `chain_size_distribution` and/or `loglikelihood`**. No shared abstract type is needed beyond the existing `TransmissionModel`; Julia's multiple dispatch is the framework.
+The simulation side is extended by implementing the intervention protocol. The analytical side uses a different pattern. Each extension is a Julia type with a method on `chain_size_distribution` or `loglikelihood`, or both. There is no new abstract type beyond the existing `TransmissionModel`; multiple dispatch handles the rest.
 
 ### Two kinds of extension
 
-**Offspring specifications** replace or augment what the branching process draws per individual. Examples: `ClusterMixed(build, mixing)` for per-chain parameter variation. They are stored in `BranchingProcess.offspring` and dispatched on via:
+Offspring specifications replace what a branching process draws per individual. An example is `ClusterMixed(build, mixing)`, which lets the offspring distribution's parameters vary from chain to chain. These are stored in `BranchingProcess.offspring` and participate via:
 
-- `_draw_offspring(rng, offspring_spec, individual, state)` — simulation
-- `chain_size_distribution(offspring_spec)` — analytics (returns a distribution)
+- `_draw_offspring(rng, offspring_spec, individual, state)` for simulation
+- `chain_size_distribution(offspring_spec)` for analytics (returns a distribution)
 
-**Transmission-model wrappers** modify how a model is observed or its outputs transformed. They subtype `TransmissionModel` and hold a wrapped model. Example: `PartiallyObserved(model, detection_prob)`. Participation:
+Transmission-model wrappers modify how a model is observed. They subtype `TransmissionModel` and hold a wrapped model. `PartiallyObserved(model, detection_prob)` is the current example. They participate via:
 
-- `chain_size_distribution(wrapper)` — returns a new distribution that transforms the wrapped model's chain size distribution (e.g. `ThinnedChainSize(chain_size_distribution(m.model), p)`)
-- `loglikelihood(data, wrapper)` — typically just routes through `chain_size_distribution`
+- `chain_size_distribution(wrapper)` returning a distribution that transforms the wrapped model's chain size distribution (e.g. `ThinnedChainSize(chain_size_distribution(m.model), p)`)
+- `loglikelihood(data, wrapper)`, which usually just routes through `chain_size_distribution`
 
-### Why wrappers return distributions, not inline math
+### Why wrappers return distributions
 
-`chain_size_distribution(m::PartiallyObserved)` returns `ThinnedChainSize(base, p)`. That transformed distribution is itself a first-class `DiscreteUnivariateDistribution` with `logpdf`. Because it is a distribution, a future wrapper (say, `TimeCensored`) can wrap *it*: `CensoredChainSize(ThinnedChainSize(base, p), p_c)`. Composition is just nesting.
+`chain_size_distribution(m::PartiallyObserved)` returns `ThinnedChainSize(base, p)`. The result is itself a `DiscreteUnivariateDistribution` with its own `logpdf`, so a future wrapper such as `TimeCensored` can wrap it: `CensoredChainSize(ThinnedChainSize(base, p), p_c)`. Composition is then just nesting the distributions.
 
-The alternative — inlining the thinning math inside `loglikelihood(::PartiallyObserved)` — works for a single wrapper but breaks down as soon as a second wrapper needs to compose with it: every new wrapper would need to re-derive composition with every existing one. Returning a distribution keeps composition structural and avoids combinatorial dispatch.
+If instead the thinning were computed inside `loglikelihood(::PartiallyObserved)`, adding a second wrapper would require working out its joint likelihood with `PartiallyObserved` by hand, and every new pair would need the same treatment. Returning a distribution means each wrapper can be written once.
 
 ### Closed forms as dispatch optimisations
 
-Some combinations of offspring and mixing have closed forms (e.g. Poisson offspring with Gamma-mixed rate → `PoissonGammaChainSize`, the same distribution epichains calls `gborel`). These are implemented by specialising `chain_size_distribution`:
+Some combinations of offspring and mixing have closed forms. Poisson offspring with a Gamma-distributed rate gives `PoissonGammaChainSize`, which is the `gborel` likelihood from `epichains`. These plug in by specialising `chain_size_distribution`:
 
 ```julia
 chain_size_distribution(o::ClusterMixed) = ChainSizeMixture(o.build, o.mixing)
 chain_size_distribution(o::ClusterMixed{PoissonFamily, <:Gamma}) = PoissonGammaChainSize(...)
 ```
 
-The generic case uses adaptive Gauss-Kronrod quadrature via `ChainSizeMixture`. Specific closed forms are picked up automatically by dispatch. Users never pass a flag; the framework picks the best available representation.
+The generic case uses adaptive Gauss-Kronrod quadrature via `ChainSizeMixture`. When a closed form applies, dispatch uses it without the user having to ask.
 
 ### Pipe composition
 
 Wrappers have curried constructors so pipes work:
 
 ```julia
-model |> PartiallyObserved(0.7)                    # single wrap
-model |> PartiallyObserved(0.5) |> PartiallyObserved(0.5)   # nested; compounds to 0.25
+model |> PartiallyObserved(0.7)
+model |> PartiallyObserved(0.5) |> PartiallyObserved(0.5)   # compounds to 0.25
 ```
 
-Non-commuting wrappers express order via the pipe direction.
+When the wrappers don't commute, order matters and the pipe reads left to right.
 
 ## Simulation, mutation, and automatic differentiation
 
@@ -161,12 +161,12 @@ Use gradient-free samplers instead: Metropolis-Hastings (`MH()`), particle metho
 
 ### Sim ↔ analytical consistency
 
-Any extension that has both an analytical chain size distribution and a simulation path should have a regression test confirming they agree. The test suite provides a helper (`test/testutils/sim_analytical_consistency.jl`) that expects a new type to define two methods:
+An extension with both an analytical chain size distribution and a simulation path should have a regression test confirming they agree. The test suite has a helper at `test/testutils/sim_analytical_consistency.jl`. A new type plugs in by defining two methods:
 
-- `generative_model(m)` — strip any observation wrappers so `simulate_batch` can run.
-- `observe_chain_sizes(m, true_sizes, rng)` — transform simulated true chain sizes into the observed form. Defaults to the identity; observation wrappers override it.
+- `generative_model(m)` strips observation wrappers so `simulate_batch` can run
+- `observe_chain_sizes(m, true_sizes, rng)` transforms simulated true chain sizes into observed ones (defaults to the identity; observation wrappers override it)
 
-Then `sim_analytical_consistent(model; n_chains, sizes, rng)` simulates, applies `observe_chain_sizes`, and compares the empirical PMF against `chain_size_distribution(model)`. The same helper tests bare offspring, `ClusterMixed`, and `PartiallyObserved` without change.
+`sim_analytical_consistent(model; n_chains, sizes, rng)` then simulates, applies `observe_chain_sizes`, and compares the empirical PMF against `chain_size_distribution(model)`. The same helper already covers bare offspring, `ClusterMixed`, and `PartiallyObserved`.
 
 ## Connection to survival analysis
 

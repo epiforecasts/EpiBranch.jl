@@ -6,11 +6,11 @@ The Borel distribution with parameter `μ > 0`.
 P(X = n) = (μn)^(n-1) * exp(-μn) / n!  for n = 1, 2, ...
 
 This is the chain size distribution for a Poisson(μ) branching process.
-For `μ > 1` (supercritical) the PMF remains valid pointwise but the
-total mass is less than 1 — chains are infinite with positive
-probability. This is useful when integrating chain size PMFs over a
-mixing distribution that spans both subcritical and supercritical
-regions.
+For `μ > 1` (supercritical) the PMF is still valid at each `n`, but its
+total mass is less than 1: chains are infinite with positive probability.
+We keep the PMF defined in the supercritical region so that integrating
+chain size PMFs over a mixing distribution that spans both sides of 1
+works pointwise.
 """
 struct Borel{T <: AbstractFloat} <: DiscreteUnivariateDistribution
     μ::T
@@ -57,8 +57,8 @@ end
 Chain size distribution for a NegativeBinomial(k, R) branching process,
 derived via Lagrange inversion.
 
-For `R > 1` (supercritical) the PMF remains valid pointwise but the
-total mass is less than 1 — chains are infinite with positive
+For `R > 1` (supercritical) the PMF is still valid at each `n`, but its
+total mass is less than 1: chains are infinite with positive
 probability.
 """
 struct GammaBorel{T <: AbstractFloat} <: DiscreteUnivariateDistribution
@@ -107,12 +107,13 @@ end
     PoissonGammaChainSize(k, R)
 
 Chain size distribution when the per-chain offspring distribution is
-`Poisson(λ)` with `λ ~ Gamma(shape = k, mean = R)` — i.e. rate
-heterogeneity at the chain (cluster) level, not the individual level.
+`Poisson(λ)` with `λ ~ Gamma(shape = k, mean = R)`. This corresponds
+to rate heterogeneity at the chain (cluster) level rather than the
+individual level, and matches the `gborel` likelihood in `epichains`.
 
-This is distinct from `GammaBorel`, which is the chain size
-distribution for `NegativeBinomial` offspring (Gamma-Poisson mixing at
-the individual level).
+Note: this is different from `GammaBorel`, which is the chain size
+distribution for `NegativeBinomial` offspring (Gamma-Poisson mixing
+at the individual level).
 """
 struct PoissonGammaChainSize{T <: AbstractFloat} <: DiscreteUnivariateDistribution
     k::T
