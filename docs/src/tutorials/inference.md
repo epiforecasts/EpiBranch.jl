@@ -189,10 +189,27 @@ inference in the style of Endo, Abbott, Kucharski & Funk (2020,
 some clusters start from more than one imported case, and some are
 still ongoing so the observed size is only a lower bound.
 
+`concluded` is a per-cluster flag; the likelihood takes it at face value
+and doesn't care how it was decided. Endo et al. used a 7-day rule on
+WHO reports — a cluster was treated as ongoing if any case had been
+reported in the last 7 days:
+
+```julia
+using Dates
+# Derive `concluded` from raw case dates and a reporting cutoff.
+endo_concluded(latest_case_dates, cutoff; window_days = 7) =
+    [cutoff - d >= Day(window_days) for d in latest_case_dates]
+```
+
+Other analyses might base `concluded` on phylogenetic closure, expert
+judgement, negative-test rings, or anything else. The likelihood is
+agnostic about the decision rule.
+
+Synthetic data below uses the same kind of mix (some clusters
+multi-seed, some ongoing):
+
 ```@example inference
-# Synthetic data: mixed single- and two-seed imports, some ongoing.
 true_R, true_k = 0.6, 0.2
-d_true = GammaBorel(true_k, true_R)
 
 rng = StableRNG(7)
 n = 50
@@ -230,9 +247,9 @@ println("k: $(round(mean(k_post), digits=2)) (95% CI: " *
         "$(round(quantile(k_post, 0.975), digits=2)))")
 ```
 
-The likelihood handles the concluded and ongoing clusters through a
-single call: concluded ones contribute `log P(X = x | s)`, ongoing
-ones contribute `log P(X ≥ x | s)`, summed across observations.
+The likelihood handles the concluded and ongoing clusters in one
+call: concluded ones contribute `log P(X = x | s)`, ongoing ones
+contribute `log P(X ≥ x | s)`, summed across observations.
 
 ## When to use `fit` vs Turing
 

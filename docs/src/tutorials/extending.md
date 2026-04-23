@@ -420,6 +420,65 @@ variation) is the reference. A new offspring type needs:
 
 See `src/analytical/cluster_mixed.jl` for the full pattern, including how `ClusterMixed` caches per-chain state on the index case and has descendants inherit it through `parent_id`.
 
+## Adding per-observation metadata
+
+[`ChainSizes`](@ref) already supports two per-observation fields: `seeds`
+(multi-seed clusters) and `concluded` (right-censored ongoing clusters).
+Both are decisions made by the analyst, not properties the framework
+derives — and they show the pattern for any new field.
+
+If your analysis needs different or richer per-cluster information, you
+have two options.
+
+### Stay in `ChainSizes` and pre-compute
+
+If the new information resolves to a flag or a count that the existing
+likelihood already handles, derive it upstream and pass it in. The Endo
+7-day time-censoring rule is an example: it looks like time censoring
+but is just a way to compute `concluded`.
+
+```julia
+using Dates
+is_ongoing(latest_case, cutoff; window_days = 7) =
+    cutoff - latest_case < Day(window_days)
+
+data = ChainSizes(sizes;
+    seeds = imports_per_cluster,
+    concluded = .!is_ongoing.(last_case_dates, cutoff_date))
+```
+
+No new types or methods needed — the decision rule lives wherever it
+belongs in the analysis.
+
+### Define a new data type when the likelihood needs new information
+
+If the likelihood itself needs to use new per-observation data (not just
+collapse it into an existing flag), define a new struct and a
+`loglikelihood` method.
+
+```julia
+struct MultiTypeChainSizes
+    data::Vector{Int}
+    type::Vector{Int}   # which strain/patch/group
+end
+
+# Different offspring distribution per type; pick by observation.
+function Distributions.loglikelihood(data::MultiTypeChainSizes,
+        offsprings::Vector{<:Distribution})
+    total = 0.0
+    for i in eachindex(data.data)
+        d = chain_size_distribution(offsprings[data.type[i]])
+        total += logpdf(d, data.data[i])
+    end
+    return total
+end
+```
+
+The internal `EpiBranch._chain_size_logpdf(d, x, s)` is the reusable
+piece — call it from your method if you need multi-seed support, and
+your new data type inherits the same closed forms for `Borel`,
+`GammaBorel`, `PoissonGammaChainSize` as the built-in `ChainSizes` uses.
+
 ## Summary of extension points
 
 | Extension point | Mechanism | When called |
@@ -432,4 +491,5 @@ See `src/analytical/cluster_mixed.jl` for the full pattern, including how `Clust
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | Custom offspring (type) | Struct + `_draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
 | Observation wrapper | Struct `<: TransmissionModel` + transformed chain size distribution + `chain_size_distribution` method | Analytics / inference |
+| Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
