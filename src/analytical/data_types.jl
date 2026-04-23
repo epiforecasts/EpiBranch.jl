@@ -25,8 +25,10 @@ Observed transmission chain sizes (total number of cases per chain).
 Used with `loglikelihood` and `fit`.
 
 Optional per-observation metadata supports multi-seed and right-censored
-clusters, as in Endo, Abbott, Kucharski & Funk (2020,
-[doi:10.12688/wellcomeopenres.15842.3](https://doi.org/10.12688/wellcomeopenres.15842.3)):
+clusters. Right-censoring is only needed for real-time analyses where
+some clusters are still active at the reporting cutoff, as in Endo,
+Abbott, Kucharski & Funk (2020,
+[doi:10.12688/wellcomeopenres.15842.3](https://doi.org/10.12688/wellcomeopenres.15842.3)).
 
 - `seeds::Vector{Int}` — number of independent index cases per cluster
   (default `1`).

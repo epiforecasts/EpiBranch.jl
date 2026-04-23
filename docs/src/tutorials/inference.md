@@ -183,16 +183,29 @@ case cap truncating large outbreaks.
 
 ## Multi-seed and ongoing outbreaks
 
-[`ChainSizes`](@ref) takes optional `seeds` and `concluded` vectors for
-inference in the style of Endo, Abbott, Kucharski & Funk (2020,
-[Wellcome Open Research 5:67](https://wellcomeopenresearch.org/articles/5-67)):
-some clusters start from more than one imported case, and some are
-still ongoing so the observed size is only a lower bound.
+[`ChainSizes`](@ref) takes optional `seeds` and `concluded` vectors.
+They matter in two situations:
 
-`concluded` is a per-cluster flag; the likelihood takes it at face value
-and doesn't care how it was decided. Endo et al. used a 7-day rule on
-WHO reports — a cluster was treated as ongoing if any case had been
-reported in the last 7 days:
+- **Multi-seed clusters.** Some clusters start from more than one
+  imported case, so the final size is the sum of contributions from
+  multiple independent chains.
+- **Real-time analysis.** If the data is a time-slice of an evolving
+  outbreak (a live situation report, an in-progress study), some
+  clusters are still generating new cases at the reporting cutoff.
+  For those, the observed size is a lower bound and the likelihood
+  needs the right-tail `P(X ≥ x | s)` instead of `P(X = x | s)`.
+  Retrospective analyses of closed outbreaks don't need this.
+
+This is the setup in Endo, Abbott, Kucharski & Funk (2020,
+[Wellcome Open Research 5:67](https://wellcomeopenresearch.org/articles/5-67)),
+where (R₀, k) for SARS-CoV-2 were estimated during the early pandemic
+from the WHO 27 Feb 2020 situation report — most European clusters
+were still active at that cutoff.
+
+`concluded` is a per-cluster flag; the likelihood takes it at face
+value and doesn't care how it was decided. Endo et al. used a 7-day
+rule on WHO reports — a cluster was treated as ongoing if any case
+had been reported in the last 7 days:
 
 ```julia
 using Dates
