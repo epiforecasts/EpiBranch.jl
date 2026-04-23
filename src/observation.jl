@@ -130,7 +130,7 @@ end
 """
     PartiallyObserved(detection_prob) -> m -> PartiallyObserved(m, detection_prob)
 
-Single-argument form: returns a function taking the model, so you can
-write `model |> PartiallyObserved(0.7)`.
+Call with only the detection probability to get a function that wraps
+a model. Enables pipe syntax like `model |> PartiallyObserved(0.7)`.
 """
 PartiallyObserved(detection_prob::Real) = m -> PartiallyObserved(m, detection_prob)
