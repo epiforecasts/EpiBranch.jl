@@ -25,11 +25,14 @@ Simulating 1000 transmission chains to completion, comparing EpiBranch.jl with R
 
 | Scenario | R (epichains) | Julia (EpiBranch) |
 |---|---|---|
-| 1000 chains, Poisson(0.9) | 22.5 ms | 1.6 ms |
-| 1000 chains, NegBin(0.8, 0.5) | 12.6 ms | 1.0 ms |
-| 1000 chains + generation time | 31.0 ms | 1.9 ms |
-| Chain statistics | 0.48 ms | 0.27 ms |
-| Analytical log-likelihood | 0.15 ms | < 0.001 ms |
+| 1000 chains, Poisson(0.9) | 22.4 ms | 1.6 ms |
+| 1000 chains, NegBin(0.8, 0.5) | 11.3 ms | 1.0 ms |
+| 1000 chains + generation time | 30.2 ms | 2.0 ms |
+| Chain statistics | 0.45 ms | 0.26 ms |
+| Log-likelihood (Poisson → Borel) | 151 μs | 0.18 μs |
+| Log-likelihood (Poisson + Gamma mixing → gamma-Borel) | 165 μs | 0.49 μs |
+
+The last row exercises the cluster-level mixing closed form (`ClusterMixed(Poisson, Gamma(k, R/k))` in Julia, `rgborel` in epichains).
 
 ## Intervention scenarios (vs ringbp)
 
@@ -59,4 +62,4 @@ No direct R comparison is included for line list generation (simulist requires e
 - All timings are medians from multiple runs
 - Hardware differences will affect absolute numbers; ratios are more informative
 - Neither implementation is specifically optimised for speed
-- Last run: April 2026
+- Last run: April 2026 (compositional likelihood rows added)

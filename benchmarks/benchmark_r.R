@@ -84,6 +84,22 @@ res <- microbenchmark(
 )
 cat(sprintf("   Median: %.3f ms\n\n", median(res$time) / 1e6))
 
+# ── 5b. Cluster-mixed likelihood (gamma-Borel, epichains rgborel) ────
+
+cat("5b. Chain size log-likelihood (Poisson offspring, Gamma-mixed rate)\n")
+# epichains rgborel: size = Gamma shape (k), mu = Gamma mean (R0).
+res <- microbenchmark(
+  likelihood(
+    chains = observed,
+    statistic = "size",
+    offspring_dist = rgborel,
+    size = 0.5,
+    mu = 0.9
+  ),
+  times = 100
+)
+cat(sprintf("   Median: %.3f ms\n\n", median(res$time) / 1e6))
+
 # ── 6. Line list simulation (simulist) ──────────────────────────────
 
 cat("6. Line list simulation (simulist, ~200 cases)\n")

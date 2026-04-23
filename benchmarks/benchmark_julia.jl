@@ -49,7 +49,16 @@ println("5. Chain size log-likelihood (analytical, Poisson)")
 observed = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 100
 b = @benchmark loglikelihood($observed, $(Poisson(0.9)))
-println("   Median: $(round(median(b.times) / 1e6, digits=3)) ms\n")
+println("   Median: $(round(median(b.times) / 1000, digits=2)) μs\n")
+
+# ── 5b. Cluster-mixed likelihood (closed form via dispatch) ─────────
+
+println("5b. Chain size log-likelihood (Poisson offspring, Gamma-mixed rate)")
+# ClusterMixed(Poisson, Gamma) dispatches to the closed-form
+# PoissonGammaChainSize, matching epichains' gborel likelihood.
+cm = ClusterMixed(Poisson, Gamma(0.5, 0.9 / 0.5))
+b = @benchmark loglikelihood($observed, $cm)
+println("   Median: $(round(median(b.times) / 1000, digits=2)) μs\n")
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 
 # ── 6. Line list simulation ─────────────────────────────────────────
