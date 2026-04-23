@@ -16,22 +16,67 @@ end
     loglikelihood(data::ChainSizes, offspring::Distribution)
 
 Log-likelihood of observed chain sizes under the analytical chain size
-distribution implied by the offspring distribution.
+distribution implied by the offspring distribution. Handles multi-seed
+and right-censored observations when `data.seeds` or `data.concluded`
+are non-default (see [`ChainSizes`](@ref)).
 """
 function loglikelihood(data::ChainSizes, offspring::Distribution)
     dist = chain_size_distribution(offspring)
-    return sum(logpdf(dist, n) for n in data.data)
+    return _chain_size_loglik(dist, data)
 end
 
 # AD-compatible methods: use shared _borel_logpdf / _gammaborel_logpdf
 # which accept any numeric type for parameters (ForwardDiff Dual compatible)
 function loglikelihood(data::ChainSizes, offspring::Poisson{T}) where {T}
     μ = min(mean(offspring), one(mean(offspring)))
-    return sum(n -> _borel_logpdf(μ, n), data.data)
+    _has_default_metadata(data) &&
+        return sum(n -> _borel_logpdf(μ, n), data.data)
+    return _chain_size_loglik(Borel(μ), data)
 end
 
 function loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T}) where {T}
-    return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
+    _has_default_metadata(data) &&
+        return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
+    return _chain_size_loglik(GammaBorel(offspring.r, mean(offspring)), data)
+end
+
+"""True when every observation is single-seed and concluded."""
+_has_default_metadata(data::ChainSizes) = all(==(1), data.seeds) && all(data.concluded)
+
+"""
+    _chain_size_loglik(dist, data::ChainSizes)
+
+Per-observation chain-size log-likelihood. Concluded clusters use
+`_chain_size_logpdf(dist, x, s)`; ongoing clusters use `log P(X ≥ x | s)`
+via the right-tail helper.
+"""
+function _chain_size_loglik(dist, data::ChainSizes)
+    first_val = _chain_size_logpdf(dist, data.data[1], data.seeds[1])
+    total = zero(first_val)
+    for i in eachindex(data.data)
+        x = data.data[i]
+        s = data.seeds[i]
+        total += data.concluded[i] ?
+                 _chain_size_logpdf(dist, x, s) :
+                 _right_tail_logprob(dist, x, s)
+    end
+    return total
+end
+
+"""
+    _right_tail_logprob(dist, x, s)
+
+`log P(X ≥ x | s)` for a chain size distribution. Computed as
+`log(1 - Σ_{m=s}^{x-1} pdf(m | s))`. Returns `0.0` when `x ≤ s`
+(support starts at `s`). Used for ongoing outbreaks (Endo et al. 2020).
+"""
+function _right_tail_logprob(dist, x::Integer, s::Integer)
+    x <= s && return 0.0
+    tail = 1.0
+    for m in s:(x - 1)
+        tail -= exp(_chain_size_logpdf(dist, m, s))
+    end
+    tail > 0 ? log(tail) : -Inf
 end
 
 """
@@ -98,7 +143,7 @@ function loglikelihood(data::ChainSizes, m::PartiallyObserved;
     if isempty(interventions)
         try
             d = chain_size_distribution(m)
-            return sum(logpdf(d, n) for n in data.data)
+            return _chain_size_loglik(d, data)
         catch e
             e isa MethodError || rethrow()
         end

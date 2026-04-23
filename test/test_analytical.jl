@@ -217,6 +217,67 @@
             @test ll_quad ≈ ll_closed atol=0.05
         end
 
+        @testset "Multi-seed and right-censored (Endo et al. 2020)" begin
+            # Default-metadata path matches the direct distribution PMF.
+            d = GammaBorel(0.5, 0.8)
+            data = ChainSizes([1, 1, 2, 3, 1])
+            @test loglikelihood(data, NegBin(0.8, 0.5)) ≈
+                  sum(logpdf(d, n) for n in data.data)
+
+            # Multi-seed s=2 agrees with the single-seed self-convolution
+            # (the PMF from two independent index cases is the convolution
+            # of two single-seed PMFs).
+            function brute_s2(d, x)
+                s = 0.0
+                for m in 1:(x - 1)
+                    s += pdf(d, m) * pdf(d, x - m)
+                end
+                return s
+            end
+            for x in 2:8
+                formula = exp(EpiBranch._chain_size_logpdf(d, x, 2))
+                @test formula≈brute_s2(d, x) atol=1e-10
+            end
+
+            # Right-censored (ongoing) likelihood P(X ≥ x) is monotone:
+            # a higher observed lower bound means a smaller tail mass.
+            ll_ongoing_3 = loglikelihood(
+                ChainSizes([3]; concluded = [false]), NegBin(0.8, 0.5))
+            ll_ongoing_5 = loglikelihood(
+                ChainSizes([5]; concluded = [false]), NegBin(0.8, 0.5))
+            @test ll_ongoing_3 > ll_ongoing_5
+            # P(X ≥ 1) = 1 for any chain that exists at all.
+            ll_tail_1 = loglikelihood(
+                ChainSizes([1]; concluded = [false]), NegBin(0.8, 0.5))
+            @test ll_tail_1 ≈ 0.0 atol=1e-10
+
+            # Mixed Endo-style likelihood is the sum of concluded and
+            # ongoing per-observation contributions.
+            mixed = ChainSizes([3, 5, 10, 2];
+                seeds = [1, 2, 1, 1],
+                concluded = [true, true, false, true])
+            ll_mixed = loglikelihood(mixed, NegBin(0.8, 0.5))
+            ll_parts = logpdf(d, 3) +
+                       EpiBranch._chain_size_logpdf(d, 5, 2) +
+                       loglikelihood(
+                           ChainSizes([10]; concluded = [false]), NegBin(0.8, 0.5)) +
+                       logpdf(d, 2)
+            @test ll_mixed≈ll_parts atol=1e-10
+
+            # Poisson (Borel) and PoissonGammaChainSize also support the
+            # multi-seed formula via _chain_size_logpdf.
+            @test isfinite(loglikelihood(
+                ChainSizes([3, 5]; seeds = [2, 2]), Poisson(0.6)))
+            @test isfinite(loglikelihood(
+                ChainSizes([3, 5]; seeds = [2, 2]),
+                ClusterMixed(Poisson, Gamma(0.5, 0.8 / 0.5))))
+
+            # Constructor validation: seeds must be ≥ 1 and ≤ observed size.
+            @test_throws ArgumentError ChainSizes([3]; seeds = [0])
+            @test_throws ArgumentError ChainSizes([2]; seeds = [3])
+            @test_throws ArgumentError ChainSizes([3]; seeds = [1, 1])
+        end
+
         @testset "Composition: PartiallyObserved(BranchingProcess(ClusterMixed))" begin
             k, R = 0.5, 0.8
             data = ChainSizes([1, 1, 2, 3, 1, 4])

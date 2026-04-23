@@ -102,7 +102,7 @@ end
 
 function loglikelihood(data::ChainSizes, o::ClusterMixed)
     d = chain_size_distribution(o)
-    return sum(logpdf(d, n) for n in data.data)
+    return _chain_size_loglik(d, data)
 end
 
 """

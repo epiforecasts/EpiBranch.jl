@@ -23,9 +23,15 @@ end
 
 Distributions.params(d::Borel) = (d.μ,)
 
-"""Log-PDF of the Borel distribution. Accepts any numeric type for μ (AD-compatible)."""
-function _borel_logpdf(μ, n::Integer)
-    n < 1 ? oftype(float(μ), -Inf) : (n - 1) * log(μ * n) - μ * n - logabsgamma(n + 1)[1]
+"""
+Log-PDF of the Borel distribution. Accepts any numeric type for μ
+(AD-compatible). With `s > 1`, this is the Borel-Tanner generalisation
+for the total chain size starting from `s` independent index cases:
+`P(X = x | s, μ) = (s/x) * (xμ)^(x-s) * exp(-xμ) / (x-s)!`.
+"""
+function _borel_logpdf(μ, x::Integer, s::Integer = 1)
+    (s < 1 || x < s) && return oftype(float(μ), -Inf)
+    return log(s) - log(x) + (x - s) * log(x * μ) - x * μ - logabsgamma(x - s + 1)[1]
 end
 
 Distributions.logpdf(d::Borel, n::Integer) = _borel_logpdf(d.μ, n)
@@ -87,14 +93,22 @@ end
 
 Distributions.params(d::GammaBorel) = (d.k, d.R)
 
-"""Log-PDF of the GammaBorel distribution. Accepts any numeric type for k, R (AD-compatible)."""
-function _gammaborel_logpdf(k, R, n::Integer)
-    n < 1 && return oftype(float(k), -Inf)
-    return (logabsgamma(k * n + n - 1)[1]
-            - logabsgamma(k * n)[1]
-            - logabsgamma(n + 1)[1]
-            + k * n * log(k / (k + R))
-            + (n - 1) * log(R / (k + R)))
+"""
+Log-PDF of the GammaBorel distribution. Accepts any numeric type for
+k, R (AD-compatible). With `s > 1`, this is the multi-seed
+generalisation: the PGF factors as `T(z)^s` and Lagrange inversion
+gives `P(X = x | s) = (s/x) * C(kx + x - s - 1, x - s) *
+k^(kx) * (k+R)^(s - kx - x) * R^(x - s)`.
+"""
+function _gammaborel_logpdf(k, R, x::Integer, s::Integer = 1)
+    (s < 1 || x < s) && return oftype(float(k), -Inf)
+    return (log(s) - log(x)
+            + logabsgamma(k * x + x - s)[1]
+            - logabsgamma(k * x)[1]
+            -
+            logabsgamma(x - s + 1)[1]
+            + k * x * log(k / (k + R))
+            + (x - s) * log(R / (k + R)))
 end
 
 Distributions.logpdf(d::GammaBorel, n::Integer) = _gammaborel_logpdf(d.k, d.R, n)
@@ -136,18 +150,25 @@ end
 
 Distributions.params(d::PoissonGammaChainSize) = (d.k, d.R)
 
-"""Log-PDF of the PoissonGammaChainSize distribution (AD-compatible)."""
-function _poisson_gamma_logpdf(k, R, n::Integer)
-    n < 1 && return oftype(float(k), -Inf)
-    return (logabsgamma(k + n - 1)[1]
-            - logabsgamma(n + 1)[1]
-            - logabsgamma(k)[1]
+"""
+Log-PDF of the PoissonGammaChainSize distribution (AD-compatible).
+With `s > 1`, integrates the multi-seed Borel-Tanner PMF over the
+Gamma mixing rate: the Borel-Tanner kernel gives a Gamma density in λ,
+which integrates in closed form.
+"""
+function _poisson_gamma_logpdf(k, R, x::Integer, s::Integer = 1)
+    (s < 1 || x < s) && return oftype(float(k), -Inf)
+    return (log(s) - log(x)
+            + (x - s) * log(x)
+            - logabsgamma(x - s + 1)[1]
+            +
+            logabsgamma(k + x - s)[1]
+            -
+            logabsgamma(k)[1]
             -
             k * log(R / k)
-            +
-            (n - 1) * log(n)
             -
-            (k + n - 1) * log(n + k / R))
+            (k + x - s) * log(x + k / R))
 end
 
 function Distributions.logpdf(d::PoissonGammaChainSize, n::Integer)
@@ -162,6 +183,29 @@ function Base.rand(rng::AbstractRNG, d::PoissonGammaChainSize)
     d.R >= 1.0 && throw(ArgumentError(
         "rand is not defined for PoissonGammaChainSize with mean R ≥ 1: too much Gamma mass sits above 1 (supercritical rates) and chains are infinite with positive probability"))
     _inverse_cdf_rand(rng, d, "PoissonGammaChainSize")
+end
+
+"""
+    _chain_size_logpdf(d, x, s)
+
+Internal: multi-seed log-PMF of a chain size distribution `d` starting
+from `s` independent index cases. Falls back to the single-seed
+`logpdf(d, x)` when `s == 1`; otherwise requires a dedicated method
+on `d`. Used by `loglikelihood(::ChainSizes, ...)` when the data
+carry non-default seed counts.
+"""
+function _chain_size_logpdf(d, x::Integer, s::Integer)
+    s == 1 && return logpdf(d, x)
+    throw(ArgumentError(
+        "multi-seed chain size likelihood not defined for $(typeof(d))"))
+end
+
+_chain_size_logpdf(d::Borel, x::Integer, s::Integer) = _borel_logpdf(d.μ, x, s)
+function _chain_size_logpdf(d::GammaBorel, x::Integer, s::Integer)
+    _gammaborel_logpdf(d.k, d.R, x, s)
+end
+function _chain_size_logpdf(d::PoissonGammaChainSize, x::Integer, s::Integer)
+    _poisson_gamma_logpdf(d.k, d.R, x, s)
 end
 
 """
