@@ -130,6 +130,7 @@ end
 """
     PartiallyObserved(detection_prob) -> m -> PartiallyObserved(m, detection_prob)
 
-Curried form for pipe composition: `model |> PartiallyObserved(0.7)`.
+Single-argument form: returns a function taking the model, so you can
+write `model |> PartiallyObserved(0.7)`.
 """
 PartiallyObserved(detection_prob::Real) = m -> PartiallyObserved(m, detection_prob)

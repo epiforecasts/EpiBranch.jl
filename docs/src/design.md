@@ -136,7 +136,7 @@ The generic case uses adaptive Gauss-Kronrod quadrature via `ChainSizeMixture`. 
 
 ### Pipe composition
 
-Wrappers have curried constructors so pipes work:
+Each wrapper has a single-argument form that returns a function taking the model, so Julia's pipe works:
 
 ```julia
 model |> PartiallyObserved(0.7)

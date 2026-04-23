@@ -173,5 +173,5 @@ EpiBranch._borel_logpdf
 EpiBranch._gammaborel_logpdf
 EpiBranch._single_type_offspring
 EpiBranch._empirical_ll
-EpiBranch._bisect_min
+EpiBranch._golden_section_min
 ```

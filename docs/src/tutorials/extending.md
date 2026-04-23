@@ -381,7 +381,8 @@ With these three pieces the wrapper composes with anything else that has a `chai
 
 ### Pipe support
 
-Add a curried constructor for pipe composition:
+Add a single-argument constructor that returns a function taking the
+model, so pipes work:
 
 ```julia
 CensoredAtSize(cap::Int) = m -> CensoredAtSize(m, cap)
