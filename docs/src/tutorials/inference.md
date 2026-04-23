@@ -181,6 +181,59 @@ println("Posterior R: $(round(mean(chain[:R]), digits=2)) " *
 The posterior recovers the true R despite the intervention and the
 case cap truncating large outbreaks.
 
+## Multi-seed and ongoing outbreaks
+
+[`ChainSizes`](@ref) takes optional `seeds` and `concluded` vectors for
+inference in the style of Endo, Abbott, Kucharski & Funk (2020,
+[Wellcome Open Research 5:67](https://wellcomeopenresearch.org/articles/5-67)):
+some clusters start from more than one imported case, and some are
+still ongoing so the observed size is only a lower bound.
+
+```@example inference
+# Synthetic data: mixed single- and two-seed imports, some ongoing.
+true_R, true_k = 0.6, 0.2
+d_true = GammaBorel(true_k, true_R)
+
+rng = StableRNG(7)
+n = 50
+seeds = rand(rng, [1, 1, 1, 2], n)
+sizes = Int[]
+concluded = Bool[]
+for s in seeds
+    x = sum(rand(rng, GammaBorel(true_k, true_R)) for _ in 1:s)
+    # Mark about a fifth of clusters as still ongoing; pick a lower
+    # bound below the true final size.
+    ongoing = rand(rng) < 0.2
+    push!(sizes, ongoing ? max(s, x - rand(rng, 0:max(x - s, 1))) : x)
+    push!(concluded, !ongoing)
+end
+
+data = ChainSizes(sizes; seeds = seeds, concluded = concluded)
+println("Clusters: $(length(sizes)) (seeds 1 / 2: $(count(==(1), seeds)) / $(count(==(2), seeds)))")
+println("Ongoing:  $(count(==(false), concluded))")
+
+@model function endo_model(data)
+    R ~ LogNormal(0.0, 1.0)
+    k ~ LogNormal(-1.0, 1.0)
+    Turing.@addlogprob! loglikelihood(data, NegativeBinomial(k, k / (k + R)))
+end
+
+chain = sample(endo_model(data), NUTS(), 1000; progress = false)
+r_post = vec(chain[:R])
+k_post = vec(chain[:k])
+println("True R=$true_R, k=$true_k")
+println("R: $(round(mean(r_post), digits=2)) (95% CI: " *
+        "$(round(quantile(r_post, 0.025), digits=2))–" *
+        "$(round(quantile(r_post, 0.975), digits=2)))")
+println("k: $(round(mean(k_post), digits=2)) (95% CI: " *
+        "$(round(quantile(k_post, 0.025), digits=2))–" *
+        "$(round(quantile(k_post, 0.975), digits=2)))")
+```
+
+The likelihood handles the concluded and ongoing clusters through a
+single call: concluded ones contribute `log P(X = x | s)`, ongoing
+ones contribute `log P(X ≥ x | s)`, summed across observations.
+
 ## When to use `fit` vs Turing
 
 - **`fit`**: MLE point estimate. Use for quick exploration or initial

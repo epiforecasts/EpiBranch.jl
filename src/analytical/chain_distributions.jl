@@ -12,12 +12,12 @@ We keep the PMF defined in the supercritical region so that integrating
 chain size PMFs over a mixing distribution that spans both sides of 1
 works pointwise.
 """
-struct Borel{T <: AbstractFloat} <: DiscreteUnivariateDistribution
+struct Borel{T <: Real} <: DiscreteUnivariateDistribution
     μ::T
 
     function Borel(μ::Real)
         0.0 < μ || throw(ArgumentError("μ must be positive, got $μ"))
-        new{typeof(float(μ))}(float(μ))
+        new{typeof(μ)}(μ)
     end
 end
 
@@ -79,14 +79,14 @@ For `R > 1` (supercritical) the PMF is still valid at each `n`, but its
 total mass is less than 1: chains are infinite with positive
 probability.
 """
-struct GammaBorel{T <: AbstractFloat} <: DiscreteUnivariateDistribution
+struct GammaBorel{T <: Real} <: DiscreteUnivariateDistribution
     k::T
     R::T
 
     function GammaBorel(k::Real, R::Real)
         k > 0 || throw(ArgumentError("k must be positive, got $k"))
         R > 0 || throw(ArgumentError("R must be positive, got $R"))
-        T = float(promote_type(typeof(k), typeof(R)))
+        T = promote_type(typeof(k), typeof(R))
         new{T}(T(k), T(R))
     end
 end
@@ -136,14 +136,14 @@ Note: this is different from `GammaBorel`, which is the chain size
 distribution for `NegativeBinomial` offspring (Gamma-Poisson mixing
 at the individual level).
 """
-struct PoissonGammaChainSize{T <: AbstractFloat} <: DiscreteUnivariateDistribution
+struct PoissonGammaChainSize{T <: Real} <: DiscreteUnivariateDistribution
     k::T
     R::T
 
     function PoissonGammaChainSize(k::Real, R::Real)
         k > 0 || throw(ArgumentError("k must be positive, got $k"))
         R > 0 || throw(ArgumentError("R must be positive, got $R"))
-        T = float(promote_type(typeof(k), typeof(R)))
+        T = promote_type(typeof(k), typeof(R))
         new{T}(T(k), T(R))
     end
 end
