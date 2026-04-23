@@ -40,7 +40,7 @@ clusters, as in Endo, Abbott, Kucharski & Funk (2020,
 # Standard case: all single-seed, all concluded.
 data = ChainSizes([1, 1, 3, 1, 5])
 
-# Endo et al. style: some clusters ongoing, some with multiple imports.
+# Mixed data: some clusters ongoing, some with multiple imports.
 data = ChainSizes([3, 5, 10, 2];
     seeds = [1, 2, 1, 1],
     concluded = [true, true, false, true])

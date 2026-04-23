@@ -197,7 +197,7 @@ reported in the last 7 days:
 ```julia
 using Dates
 # Derive `concluded` from raw case dates and a reporting cutoff.
-endo_concluded(latest_case_dates, cutoff; window_days = 7) =
+concluded_by_window(latest_case_dates, cutoff; window_days = 7) =
     [cutoff - d >= Day(window_days) for d in latest_case_dates]
 ```
 
@@ -229,13 +229,13 @@ data = ChainSizes(sizes; seeds = seeds, concluded = concluded)
 println("Clusters: $(length(sizes)) (seeds 1 / 2: $(count(==(1), seeds)) / $(count(==(2), seeds)))")
 println("Ongoing:  $(count(==(false), concluded))")
 
-@model function endo_model(data)
+@model function cluster_size_model(data)
     R ~ LogNormal(0.0, 1.0)
     k ~ LogNormal(-1.0, 1.0)
     Turing.@addlogprob! loglikelihood(data, NegativeBinomial(k, k / (k + R)))
 end
 
-chain = sample(endo_model(data), NUTS(), 1000; progress = false)
+chain = sample(cluster_size_model(data), NUTS(), 1000; progress = false)
 r_post = vec(chain[:R])
 k_post = vec(chain[:k])
 println("True R=$true_R, k=$true_k")

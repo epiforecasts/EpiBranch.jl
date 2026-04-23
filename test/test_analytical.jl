@@ -217,7 +217,7 @@
             @test ll_quad ≈ ll_closed atol=0.05
         end
 
-        @testset "Multi-seed and right-censored (Endo et al. 2020)" begin
+        @testset "Multi-seed and right-censored chain sizes" begin
             # Default-metadata path matches the direct distribution PMF.
             d = GammaBorel(0.5, 0.8)
             data = ChainSizes([1, 1, 2, 3, 1])
@@ -251,7 +251,7 @@
                 ChainSizes([1]; concluded = [false]), NegBin(0.8, 0.5))
             @test ll_tail_1 ≈ 0.0 atol=1e-10
 
-            # Mixed Endo-style likelihood is the sum of concluded and
+            # Mixed data likelihood is the sum of concluded and
             # ongoing per-observation contributions.
             mixed = ChainSizes([3, 5, 10, 2];
                 seeds = [1, 2, 1, 1],
