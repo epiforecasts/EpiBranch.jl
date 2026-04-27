@@ -53,14 +53,16 @@ already elapsed since the last reported case in a cluster with
 reproduction number `R`, dispersion `k`, generation-time distribution
 `generation_time`, and reporting-delay distribution `reporting_delay`.
 
-This is the cluster-level Nishiura/Parag/Thompson construction: each
-extant active case has an expected number of future offspring; the
-probability that none of those offspring's reports lands within τ is
-the cluster's end-of-outbreak probability.
-
 Computed as `exp(-R * S(τ))` where `S(τ)` is the survival function of
-the convolved generation-time + reporting-delay distribution. Reduces
-to the Nishiura (2016) formulation when offspring are Poisson.
+the convolved generation-time + reporting-delay distribution. This is
+a **single-most-recent-case approximation**: it uses only the time since
+the last reported case and ignores residual hazard from older cases in
+the same cluster. Validation by forward simulation shows the formula
+agrees with the empirical extinction probability for `τ` larger than
+about one generation interval; at smaller `τ` it overestimates
+extinction because clusters with very recent reports tend to contain
+more still-active cases. The exact formulation needs all case times
+and is left for future work.
 """
 function end_of_outbreak_probability(R, k, generation_time, reporting_delay;
         tau::Real)
