@@ -50,6 +50,7 @@ include("analytical/likelihood.jl")
 include("analytical/superspreading.jl")
 include("analytical/fitting.jl")
 include("analytical/cluster_mixed.jl")
+include("analytical/real_time.jl")
 
 # Exports — types
 export TransmissionModel, BranchingProcess
@@ -90,5 +91,6 @@ export probability_contain
 # Exports — unified inference interface
 export OffspringCounts, ChainSizes, ChainLengths
 export ClusterMixed, ChainSizeMixture
+export RealTimeChainSizes, end_of_outbreak_probability
 
 end # module

@@ -278,6 +278,68 @@
             @test_throws ArgumentError ChainSizes([3]; seeds = [1, 1])
         end
 
+        @testset "Real-time cluster-size likelihood" begin
+            R, k = 0.6, 0.3
+            gt = Gamma(2.0, 2.5)
+            model = BranchingProcess(NegBin(R, k), gt)
+
+            # End-of-outbreak probability monotone in τ: longer silence
+            # → higher confidence the outbreak is extinct.
+            π_short = end_of_outbreak_probability(R, k, gt, Dirac(0.0); tau = 1.0)
+            π_med = end_of_outbreak_probability(R, k, gt, Dirac(0.0); tau = 14.0)
+            π_long = end_of_outbreak_probability(R, k, gt, Dirac(0.0); tau = 200.0)
+            @test 0 <= π_short <= π_med <= π_long
+            @test π_long ≈ 1.0 atol=1e-6
+
+            # Reporting delay reduces π for the same τ (recent reports
+            # could still be in the pipeline).
+            π_no_delay = end_of_outbreak_probability(R, k, gt, Dirac(0.0); tau = 5.0)
+            π_with_delay = end_of_outbreak_probability(
+                R, k, gt, LogNormal(1.5, 0.5); tau = 5.0)
+            @test π_with_delay < π_no_delay
+
+            # τ → ∞ should match the all-concluded ChainSizes
+            # likelihood (cluster has clearly extinguished).
+            #
+            # τ = 0 does NOT match all-ongoing: at zero silence the
+            # mixture weight on "concluded" is π(0) = exp(-R · S(0))
+            # = exp(-R), the probability that the just-observed case
+            # has no further offspring. So `ll_zero_tau` lies strictly
+            # between `ll_concluded` and `ll_ongoing`, and increasing τ
+            # moves the mixture monotonically towards concluded.
+            sizes = [3, 5, 10, 2]
+            seeds = [1, 2, 1, 1]
+            ll_concluded = loglikelihood(
+                ChainSizes(sizes; seeds = seeds), NegBin(R, k))
+            ll_ongoing = loglikelihood(
+                ChainSizes(sizes;
+                    seeds = seeds, concluded = falses(length(sizes))),
+                NegBin(R, k))
+
+            ll_long_tau = loglikelihood(
+                RealTimeChainSizes(sizes, fill(500.0, 4); seeds = seeds),
+                model)
+            ll_zero_tau = loglikelihood(
+                RealTimeChainSizes(sizes, zeros(4); seeds = seeds),
+                model)
+            ll_med_tau = loglikelihood(
+                RealTimeChainSizes(sizes, fill(7.0, 4); seeds = seeds),
+                model)
+            @test ll_long_tau≈ll_concluded atol=1e-3
+            @test min(ll_concluded, ll_ongoing) <= ll_zero_tau <=
+                  max(ll_concluded, ll_ongoing)
+            # Monotonic interpolation as τ grows: more silence pulls
+            # the likelihood towards the concluded value.
+            @test abs(ll_long_tau - ll_concluded) <
+                  abs(ll_med_tau - ll_concluded) <
+                  abs(ll_zero_tau - ll_concluded)
+
+            # Constructor validation.
+            @test_throws ArgumentError RealTimeChainSizes([3], [-1.0])
+            @test_throws ArgumentError RealTimeChainSizes([3], [1.0]; seeds = [0])
+            @test_throws ArgumentError RealTimeChainSizes([3, 5], [1.0])
+        end
+
         @testset "Composition: PartiallyObserved(BranchingProcess(ClusterMixed))" begin
             k, R = 0.5, 0.8
             data = ChainSizes([1, 1, 2, 3, 1, 4])
