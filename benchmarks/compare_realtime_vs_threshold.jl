@@ -31,6 +31,7 @@ function simulate_dataset(rng)
     model = BranchingProcess(NegBin(R_TRUTH, K_TRUTH), GT)
     sizes = Int[]
     last_times = Float64[]
+    case_ages = Vector{Vector{Float64}}()
     while length(sizes) < N_CLUSTERS
         state = simulate(model;
             sim_opts = SimOpts(max_cases = 200, max_time = SNAP + 200),
@@ -41,9 +42,10 @@ function simulate_dataset(rng)
         isempty(times) && continue
         push!(sizes, length(times))
         push!(last_times, maximum(times))
+        push!(case_ages, SNAP .- times)
     end
     τ = SNAP .- last_times
-    return sizes, τ
+    return sizes, τ, case_ages
 end
 
 function threshold_loglik(sizes, τ, R, k; window)
@@ -54,6 +56,12 @@ end
 
 function realtime_loglik(sizes, τ, R, k)
     data = RealTimeChainSizes(sizes, τ)
+    model = BranchingProcess(NegBin(R, k), GT)
+    return loglikelihood(data, model)
+end
+
+function realtime_percase_loglik(case_ages, R, k)
+    data = RealTimeChainSizes(case_ages)
     model = BranchingProcess(NegBin(R, k), GT)
     return loglikelihood(data, model)
 end
@@ -72,7 +80,7 @@ end
 
 function main()
     rng = StableRNG(42)
-    sizes, τ = simulate_dataset(rng)
+    sizes, τ, case_ages = simulate_dataset(rng)
     n_concluded_3 = count(>=(3.0), τ)
     n_concluded_7 = count(>=(7.0), τ)
     n_concluded_14 = count(>=(14.0), τ)
@@ -85,12 +93,14 @@ function main()
         "Threshold τ≥3" => (R, k) -> threshold_loglik(sizes, τ, R, k; window = 3.0),
         "Threshold τ≥7" => (R, k) -> threshold_loglik(sizes, τ, R, k; window = 7.0),
         "Threshold τ≥14" => (R, k) -> threshold_loglik(sizes, τ, R, k; window = 14.0),
-        "Real-time" => (R, k) -> realtime_loglik(sizes, τ, R, k))
+        "RT (last-case)" => (R, k) -> realtime_loglik(sizes, τ, R, k),
+        "RT (per-case)" => (R, k) -> realtime_percase_loglik(case_ages, R, k))
 
     println("Method            | MLE R   MLE k   LL@truth   LL@MLE")
     println("―" ^ 60)
-    for name in
-        ["Threshold τ≥3", "Threshold τ≥7", "Threshold τ≥14", "Real-time"]
+    for name in [
+        "Threshold τ≥3", "Threshold τ≥7", "Threshold τ≥14",
+        "RT (last-case)", "RT (per-case)"]
         fn = methods[name]
         mle = grid_mle(fn)
         ll_truth = fn(R_TRUTH, K_TRUTH)

@@ -13,10 +13,16 @@
 # π_i ∈ {0, 1}.
 
 """
-Per-cluster real-time observation: an observed chain size, a number of
-seed cases, and the time elapsed since the last reported case. Used by
-the real-time cluster-size likelihood that replaces threshold-based
-classification with a continuous end-of-outbreak probability.
+Per-cluster real-time observation. Carries cluster size, seed count,
+and timing information: either just the time since the last reported
+case (`tau`), or the full set of per-case ages (`case_ages`).
+
+When per-case ages are supplied, the likelihood uses the exact
+multi-case formula `π = exp(-R · Σ_i S(τ_i))`. With only `tau`,
+it uses the single-most-recent-case approximation
+`π ≈ exp(-R · S(τ))`, which agrees with the exact formula when older
+cases have wound down (large `τ_i` for `i < x`) and biases towards
+extinction when they haven't.
 
 Time units must match the generation-time and reporting-delay
 distributions; days are conventional.
@@ -24,11 +30,13 @@ distributions; days are conventional.
 struct RealTimeChainSizes
     data::Vector{Int}
     seeds::Vector{Int}
-    tau::Vector{Float64}    # time since last reported case in each cluster
+    tau::Vector{Float64}
+    case_ages::Union{Nothing, Vector{Vector{Float64}}}
 
     function RealTimeChainSizes(data::AbstractVector{<:Integer},
             tau::AbstractVector{<:Real};
-            seeds::AbstractVector{<:Integer} = ones(Int, length(data)))
+            seeds::AbstractVector{<:Integer} = ones(Int, length(data)),
+            case_ages::Union{Nothing, AbstractVector} = nothing)
         isempty(data) && throw(ArgumentError("data must be non-empty"))
         length(seeds) == length(data) ||
             throw(ArgumentError("seeds must have the same length as data"))
@@ -39,43 +47,75 @@ struct RealTimeChainSizes
         all(>=(0), tau) || throw(ArgumentError("tau must be ≥ 0"))
         all(i -> data[i] >= seeds[i], eachindex(data)) ||
             throw(ArgumentError("chain size must be ≥ number of seeds"))
+
+        ca = if case_ages === nothing
+            nothing
+        else
+            length(case_ages) == length(data) ||
+                throw(ArgumentError("case_ages must have one entry per cluster"))
+            for i in eachindex(case_ages)
+                length(case_ages[i]) == data[i] || throw(ArgumentError(
+                    "case_ages[$i] has $(length(case_ages[i])) ages but cluster size is $(data[i])"))
+                all(>=(0), case_ages[i]) ||
+                    throw(ArgumentError("case_ages must be ≥ 0"))
+                isapprox(minimum(case_ages[i]), tau[i]; atol = 1e-8) ||
+                    throw(ArgumentError(
+                        "min(case_ages[$i]) = $(minimum(case_ages[i])) must equal tau[$i] = $(tau[i])"))
+            end
+            [convert(Vector{Float64}, c) for c in case_ages]
+        end
+
         new(convert(Vector{Int}, data),
             convert(Vector{Int}, seeds),
-            convert(Vector{Float64}, tau))
+            convert(Vector{Float64}, tau),
+            ca)
     end
+end
+
+"""
+    RealTimeChainSizes(case_ages; seeds = ones(Int, length(case_ages)))
+
+Construct from per-case ages directly. Cluster sizes and `tau` are
+inferred (`size = length(case_ages[i])`, `tau = minimum(case_ages[i])`).
+Each inner vector lists the time-since-each-case at the snapshot for
+one cluster.
+"""
+function RealTimeChainSizes(case_ages::AbstractVector{<:AbstractVector{<:Real}};
+        seeds::AbstractVector{<:Integer} = ones(Int, length(case_ages)))
+    sizes = [length(c) for c in case_ages]
+    tau = [minimum(c) for c in case_ages]
+    return RealTimeChainSizes(sizes, tau; seeds = seeds, case_ages = case_ages)
 end
 
 """
     end_of_outbreak_probability(R, k, generation_time, reporting_delay; tau)
 
-Probability that no further cases will be reported, given `tau` time has
-already elapsed since the last reported case in a cluster with
-reproduction number `R`, dispersion `k`, generation-time distribution
-`generation_time`, and reporting-delay distribution `reporting_delay`.
+Probability that no further cases will be reported in a cluster, given
+`tau` time has elapsed since the last reported case, under a NegBin
+offspring distribution with mean `R` and dispersion `k`. With
+`k → ∞` this reduces to the Poisson form `exp(-R · S(τ))` used by
+Nishiura (2016).
 
-Computed as `exp(-R * S(τ))` where `S(τ)` is the survival function of
-the convolved generation-time + reporting-delay distribution. This is
-a **single-most-recent-case approximation**: it uses only the time since
-the last reported case and ignores residual hazard from older cases in
-the same cluster. Validation by forward simulation shows the formula
-agrees with the empirical extinction probability for `τ` larger than
-about one generation interval; at smaller `τ` it overestimates
-extinction because clusters with very recent reports tend to contain
-more still-active cases. The exact formulation needs all case times
-and is left for future work.
+This is a **single-most-recent-case approximation**: it uses only the
+time since the last reported case and ignores residual hazard from
+older cases in the same cluster. For a multi-case formula that uses
+all case times, supply `case_ages` to `RealTimeChainSizes` and the
+likelihood will use the per-case form
+`∏_i (1 + S(τ_i) · R/k)^(-k)`.
 """
 function end_of_outbreak_probability(R, k, generation_time, reporting_delay;
         tau::Real)
-    # Survival of the convolved (generation-time + reporting-delay)
-    # distribution at time τ. The cluster has gone quiet for τ; we want
-    # P(no further reports ever | already silent for τ). For a Poisson
-    # offspring process this is exp(-R * S(τ)). The negative-binomial
-    # extension uses the same hazard form because the offspring process
-    # is still a Poisson with random rate when conditioned on the
-    # rate-mixing variable.
     S = _convolved_survival(generation_time, reporting_delay, tau)
-    return exp(-R * S)
+    return _negbin_no_more(R, k, S)
 end
+
+"""
+Per-case "no more reports" probability for a negative-binomial offspring
+distribution: marginalise the per-case Poisson rate `λ` over the Gamma
+mixing distribution, giving `(1 + S · R/k)^(-k)`. Reduces to
+`exp(-R · S)` as `k → ∞` (Poisson limit).
+"""
+_negbin_no_more(R, k, S) = (1 + S * R / k)^(-k)
 
 """
 Survival function of the convolved generation-time + reporting-delay
@@ -116,9 +156,13 @@ function loglikelihood(data::RealTimeChainSizes, model::BranchingProcess;
     for i in eachindex(data.data)
         x = data.data[i]
         s = data.seeds[i]
-        τ = data.tau[i]
-        π = end_of_outbreak_probability(R, k,
-            model.generation_time, reporting_delay; tau = τ)
+        π = if data.case_ages === nothing
+            end_of_outbreak_probability(R, k,
+                model.generation_time, reporting_delay; tau = data.tau[i])
+        else
+            _per_case_extinction_probability(R, k, model.generation_time,
+                reporting_delay, data.case_ages[i])
+        end
         log_concluded = _chain_size_logpdf(dist, x, s)
         log_ongoing = _right_tail_logprob(dist, x, s)
         # Numerically stable mixture in log space.
@@ -127,4 +171,28 @@ function loglikelihood(data::RealTimeChainSizes, model::BranchingProcess;
         total += logsumexp((a, b))
     end
     return total
+end
+
+"""
+    _per_case_extinction_probability(R, k, generation_time, reporting_delay, ages)
+
+Multi-case end-of-outbreak probability for one cluster under
+NegBin(R, k) offspring. Each case contributes
+`(1 + S(τ_i) · R/k)^(-k)`; the cluster's probability is the product.
+Reduces to `exp(-R · Σ_i S(τ_i))` as `k → ∞` (Poisson limit).
+
+Marginalises the per-case Poisson rate over its Gamma prior; does not
+condition on the number of offspring of each case observed within the
+cluster (which would require the transmission tree). The marginal
+form is the natural input to a NegBin chain-size likelihood that does
+not condition on ancestry either.
+"""
+function _per_case_extinction_probability(R, k, gt::Distribution,
+        delay::Distribution, ages::AbstractVector{<:Real})
+    log_p = 0.0
+    for τ in ages
+        S = _convolved_survival(gt, delay, τ)
+        log_p += -k * log1p(S * R / k)
+    end
+    return exp(log_p)
 end

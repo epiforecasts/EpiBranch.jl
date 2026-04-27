@@ -29,6 +29,8 @@ function run_validation(rng = StableRNG(42))
     n_quiet = zeros(Int, n_bins)
     n_extinct = zeros(Int, n_bins)
     cluster_sizes = [Int[] for _ in 1:n_bins]
+    # For per-case validation: collect (per-case-ages, extinct?) pairs.
+    per_case_data = Vector{Tuple{Vector{Float64}, Bool}}()
 
     for _ in 1:N_SIMS
         state = simulate(MODEL;
@@ -46,10 +48,11 @@ function run_validation(rng = StableRNG(42))
         n_quiet[bin] += 1
         n_extinct[bin] += !any_future
         push!(cluster_sizes[bin], length(times))
+        push!(per_case_data, (SNAP .- times, !any_future))
     end
 
-    println("Validation of end_of_outbreak_probability(R=$R_TRUTH, k=$K_TRUTH, " *
-            "Gamma(2, 2.5))")
+    println("Single-most-recent-case formula validation")
+    println("Truth: R=$R_TRUTH, k=$K_TRUTH, Gamma(2, 2.5)")
     println()
     println("τ_bin       | n_quiet | mean size | empirical π | formula π | diff")
     println("―" ^ 75)
@@ -67,6 +70,31 @@ function run_validation(rng = StableRNG(42))
                 rpad(string(size), 10) * "| " *
                 rpad(string(round(emp, digits = 3)), 12) * "| " *
                 rpad(string(round(formula, digits = 3)), 10) * "| " *
+                string(diff))
+    end
+
+    println()
+    println("Per-case formula validation")
+    println("(Each case contributes exp(-R · S(τ_i)); cluster prob is the product.)")
+    println()
+    # Bin clusters by their predicted per-case π and check empirical
+    # extinction within each bin.
+    π_pred = [EpiBranch._per_case_extinction_probability(
+                  R_TRUTH, K_TRUTH, GT, Dirac(0.0), ages)
+              for (ages, _) in per_case_data]
+    π_bins = [0.0, 0.2, 0.4, 0.6, 0.8, 0.95, 1.0]
+    println("π predicted bin     | n     | empirical π | mean predicted | diff")
+    println("―" ^ 70)
+    for j in 1:(length(π_bins) - 1)
+        idx = findall(p -> π_bins[j] <= p < π_bins[j + 1], π_pred)
+        length(idx) < 50 && continue
+        emp = sum(per_case_data[i][2] for i in idx) / length(idx)
+        pred = sum(π_pred[i] for i in idx) / length(idx)
+        diff = round(pred - emp, digits = 3)
+        println(rpad("[$(π_bins[j]), $(π_bins[j + 1]))", 20) * "| " *
+                rpad(string(length(idx)), 6) * "| " *
+                rpad(string(round(emp, digits = 3)), 12) * "| " *
+                rpad(string(round(pred, digits = 3)), 15) * "| " *
                 string(diff))
     end
 end
