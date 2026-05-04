@@ -109,6 +109,13 @@ ClusterMixed
 ChainSizeMixture
 ```
 
+### Real-time inference
+
+```@docs
+RealTimeChainSizes
+end_of_outbreak_probability
+```
+
 ### Likelihood and fitting
 
 EpiBranch extends `Distributions.loglikelihood` and `Distributions.fit`
