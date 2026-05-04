@@ -201,67 +201,12 @@ for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
 end
 
 # ── Unified fit interface (extends Distributions.fit) ────────────────
-
-"""
-    fit(::Type{Poisson}, data::OffspringCounts)
-
-Maximum likelihood estimate of a Poisson offspring distribution.
-The MLE is simply the sample mean.
-"""
-function fit(::Type{Poisson}, data::OffspringCounts)
-    λ = mean(data.data)
-    return Poisson(λ)
-end
-
-"""
-    fit(::Type{NegativeBinomial}, data::OffspringCounts; k_range=(0.01, 100.0))
-
-Maximum likelihood estimate of a Negative Binomial offspring distribution.
-The mean `R` is the sample mean; dispersion `k` is found by bisection on
-the score equation.
-"""
-function fit(::Type{NegativeBinomial}, data::OffspringCounts;
-        k_range::Tuple{Float64, Float64} = (0.01, 100.0))
-    d = data.data
-    n = length(d)
-    R = mean(d)
-    R == 0.0 && return NegBin(0.0, 1.0)
-
-    v = var(d)
-    v <= R && return NegBin(R, 1e6)
-
-    function score(k)
-        s = n * (digamma(k) - log(k / (k + R)))
-        val = -s
-        for x in d
-            val += digamma(x + k)
-        end
-        return val
-    end
-
-    k_lo, k_hi = k_range
-    s_lo = score(k_lo)
-    s_hi = score(k_hi)
-
-    if s_lo * s_hi > 0
-        return NegBin(R, s_lo > 0 ? k_hi : k_lo)
-    end
-
-    for _ in 1:100
-        k_mid = (k_lo + k_hi) / 2.0
-        s_mid = score(k_mid)
-        abs(s_mid) < 1e-10 && break
-        (k_hi - k_lo) < 1e-12 && break
-        if s_mid * s_lo > 0
-            k_lo = k_mid
-            s_lo = s_mid
-        else
-            k_hi = k_mid
-        end
-    end
-
-    return NegBin(R, (k_lo + k_hi) / 2.0)
-end
+#
+# For raw offspring counts, `Distributions.fit(Poisson, x)` already gives
+# the MLE; for NegBin offspring counts, plug `loglikelihood(OffspringCounts(x), NegBin(R, k))`
+# into Optim.jl or Turing's `maximum_likelihood`. EpiBranch's `fit` is
+# scoped to data types whose likelihoods are not in Distributions.jl:
+# `ChainSizes` and `ChainLengths`.
 
 """
     fit(::Type{Poisson}, data::ChainSizes; R_range=(0.001, 0.999))
@@ -287,9 +232,8 @@ Only defined for subcritical R < 1.
 """
 function fit(::Type{NegativeBinomial}, data::ChainSizes;
         R_range::Tuple{Float64, Float64} = (0.001, 0.999),
-        k_range::Tuple{Float64, Float64} = (0.01, 100.0),
-        n_grid::Int = 50)
-    _grid_search_negbin(data, R_range, k_range, n_grid)
+        k_range::Tuple{Float64, Float64} = (0.01, 100.0))
+    _coord_descent_negbin(data, R_range, k_range)
 end
 
 """
@@ -315,48 +259,29 @@ Only defined for subcritical R < 1.
 """
 function fit(::Type{NegativeBinomial}, data::ChainLengths;
         R_range::Tuple{Float64, Float64} = (0.001, 0.999),
-        k_range::Tuple{Float64, Float64} = (0.01, 100.0),
-        n_grid::Int = 50)
-    _grid_search_negbin(data, R_range, k_range, n_grid)
+        k_range::Tuple{Float64, Float64} = (0.01, 100.0))
+    _coord_descent_negbin(data, R_range, k_range)
 end
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
-"""Two-pass grid search for NegBin(R, k) MLE given any data type with a loglikelihood method."""
-function _grid_search_negbin(data, R_range, k_range, n_grid)
-    best_ll = -Inf
-    best_R, best_k = 0.5, 1.0
-
-    Rs = range(R_range..., length = n_grid)
-    ks = range(k_range..., length = n_grid)
-
-    for R in Rs, k in ks
-
-        ll = loglikelihood(data, NegBin(R, k))
-        if ll > best_ll
-            best_ll = ll
-            best_R, best_k = R, k
+"""Coordinate descent on NegBin(R, k) MLE, using golden section on each axis."""
+function _coord_descent_negbin(data, R_range, k_range;
+        tol::Float64 = 1e-6, maxiter::Int = 50)
+    R = (R_range[1] + R_range[2]) / 2.0
+    k = sqrt(k_range[1] * k_range[2])
+    R_prev, k_prev = R, k
+    for iter in 1:maxiter
+        R = _golden_section_min(r -> -loglikelihood(data, NegBin(r, k)), R_range...)
+        k = _golden_section_min(κ -> -loglikelihood(data, NegBin(R, κ)), k_range...)
+        if iter > 1 &&
+           abs(R - R_prev) < tol &&
+           abs(k - k_prev) / max(k, 1.0) < tol
+            break
         end
+        R_prev, k_prev = R, k
     end
-
-    # Refine around best point
-    step_R = (Rs[2] - Rs[1]) * 2
-    step_k = (ks[2] - ks[1]) * 2
-    Rs2 = range(max(R_range[1], best_R - step_R),
-        min(R_range[2], best_R + step_R), length = n_grid)
-    ks2 = range(max(k_range[1], best_k - step_k),
-        min(k_range[2], best_k + step_k), length = n_grid)
-
-    for R in Rs2, k in ks2
-
-        ll = loglikelihood(data, NegBin(R, k))
-        if ll > best_ll
-            best_ll = ll
-            best_R, best_k = R, k
-        end
-    end
-
-    return NegBin(best_R, best_k)
+    return NegBin(R, k)
 end
 
 """Golden section search for minimum of a 1D function on [lo, hi]."""

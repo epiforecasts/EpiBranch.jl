@@ -670,36 +670,6 @@
     end
 
     @testset "fit" begin
-        @testset "Poisson from offspring counts" begin
-            rng = StableRNG(42)
-            data = OffspringCounts(rand(rng, Poisson(2.5), 1000))
-            d = fit(Poisson, data)
-            @test d isa Poisson
-            @test mean(d) ≈ 2.5 atol=0.2
-        end
-
-        @testset "NegBin from offspring counts" begin
-            rng = StableRNG(42)
-            d_true = NegBin(2.0, 0.5)
-            raw = rand(rng, Distributions.NegativeBinomial(d_true.r, d_true.p), 2000)
-            d = fit(NegativeBinomial, OffspringCounts(raw))
-            @test mean(d) ≈ 2.0 atol=0.3
-            @test d.r ≈ 0.5 atol=0.2
-        end
-
-        @testset "NegBin with low overdispersion returns high k" begin
-            rng = StableRNG(42)
-            data = OffspringCounts(rand(rng, Poisson(3.0), 500))
-            d = fit(NegativeBinomial, data)
-            @test mean(d) ≈ 3.0 atol=0.3
-            @test d.r > 10.0
-        end
-
-        @testset "All zeros" begin
-            d = fit(Poisson, OffspringCounts(zeros(Int, 100)))
-            @test mean(d) == 0.0
-        end
-
         @testset "Poisson from chain sizes" begin
             rng = StableRNG(42)
             model = BranchingProcess(Poisson(0.5), Exponential(5.0))
@@ -712,6 +682,21 @@
             d = fit(Poisson, ChainSizes(sizes))
             @test d isa Poisson
             @test mean(d) ≈ 0.5 atol=0.2
+        end
+
+        @testset "NegBin from chain sizes" begin
+            rng = StableRNG(42)
+            true_R, true_k = 0.6, 0.5
+            model = BranchingProcess(NegBin(true_R, true_k), Exponential(5.0))
+            states = simulate_batch(model, 500; rng = rng)
+            sizes = Int[]
+            for s in states
+                cs = chain_statistics(s)
+                append!(sizes, cs.size)
+            end
+            d = fit(NegativeBinomial, ChainSizes(sizes))
+            @test d isa NegativeBinomial
+            @test mean(d) ≈ true_R atol=0.3
         end
 
         @testset "NegBin from chain lengths" begin
@@ -729,12 +714,19 @@
             @test mean(d) ≈ true_R atol=0.3
         end
 
-        @testset "MLE maximises likelihood" begin
+        @testset "MLE maximises chain-size likelihood" begin
             rng = StableRNG(42)
-            data = OffspringCounts(rand(rng, Poisson(2.0), 200))
+            model = BranchingProcess(Poisson(0.4), Exponential(5.0))
+            states = simulate_batch(model, 300; rng = rng)
+            sizes = Int[]
+            for s in states
+                cs = chain_statistics(s)
+                append!(sizes, cs.size)
+            end
+            data = ChainSizes(sizes)
             d_mle = fit(Poisson, data)
             ll_mle = loglikelihood(data, d_mle)
-            ll_other = loglikelihood(data, Poisson(5.0))
+            ll_other = loglikelihood(data, Poisson(0.9))
             @test ll_mle >= ll_other
         end
     end

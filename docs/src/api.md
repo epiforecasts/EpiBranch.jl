@@ -118,21 +118,29 @@ end_of_outbreak_probability
 
 ### Likelihood and fitting
 
-EpiBranch extends `Distributions.loglikelihood` and `Distributions.fit`
-with methods that accept the data types above:
+EpiBranch extends `Distributions.loglikelihood` with methods for each
+data wrapper:
 
 ```julia
 loglikelihood(OffspringCounts(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), NegBin(0.8, 0.5))
 loglikelihood(ChainLengths(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), model; interventions=[iso])
+```
 
-fit(Poisson, OffspringCounts(data))
-fit(NegativeBinomial, OffspringCounts(data))
+It also extends `Distributions.fit` with MLE methods for chain-size and
+chain-length data, whose likelihoods are not provided by Distributions.jl:
+
+```julia
 fit(Poisson, ChainSizes(data))
 fit(NegativeBinomial, ChainSizes(data))
 fit(Poisson, ChainLengths(data))
+fit(NegativeBinomial, ChainLengths(data))
 ```
+
+For raw offspring counts, use `Distributions.fit(Poisson, x)` directly,
+or plug `loglikelihood(OffspringCounts(x), NegBin(R, k))` into Optim.jl
+or Turing's `maximum_likelihood`.
 
 See the [chains tutorial](@ref "Chain statistics, likelihood, and fitting")
 for examples.

@@ -29,14 +29,11 @@ data = rand(rng, NegativeBinomial(d_true.r, d_true.p), 50)
 println("Observed offspring counts: mean=$(round(mean(data), digits=2)), var=$(round(var(data), digits=2))")
 ```
 
-### Maximum likelihood
+### Maximum likelihood via Turing
 
-```@example inference
-d_mle = fit(NegativeBinomial, OffspringCounts(data))
-println("MLE: R=$(round(mean(d_mle), digits=2)), k=$(round(d_mle.r, digits=2))")
-```
-
-### Bayesian estimation
+For raw offspring counts EpiBranch does not provide a `fit` wrapper —
+the same Turing model used for the posterior also gives the MLE via
+`maximum_likelihood`:
 
 ```@example inference
 @model function offspring_model(data)
@@ -45,6 +42,13 @@ println("MLE: R=$(round(mean(d_mle), digits=2)), k=$(round(d_mle.r, digits=2))")
     Turing.@addlogprob! loglikelihood(OffspringCounts(data), NegBin(R, k))
 end
 
+mle = maximum_likelihood(offspring_model(data))
+println("MLE: R=$(round(mle.values[:R], digits=2)), k=$(round(mle.values[:k], digits=2))")
+```
+
+### Bayesian estimation
+
+```@example inference
 chain = sample(offspring_model(data), NUTS(), 1000; progress=false)
 println("Posterior R: $(round(mean(chain[:R]), digits=2)) " *
         "(95% CI: $(round(quantile(vec(chain[:R]), 0.025), digits=2))–" *
@@ -117,9 +121,9 @@ for s in states
     append!(size_data, cs.size)
 end
 
-d_offspring = fit(Poisson, OffspringCounts(offspring_data))
+R_offspring = mean(offspring_data)  # Poisson MLE = sample mean
 d_chains = fit(Poisson, ChainSizes(size_data))
-println("From offspring counts: R=$(round(mean(d_offspring), digits=2))")
+println("From offspring counts: R=$(round(R_offspring, digits=2))")
 println("From chain sizes:     R=$(round(mean(d_chains), digits=2))")
 println("True:                 R=$true_R")
 ```
@@ -264,13 +268,24 @@ The likelihood handles the concluded and ongoing clusters in one
 call: concluded ones contribute `log P(X = x | s)`, ongoing ones
 contribute `log P(X ≥ x | s)`, summed across observations.
 
-## When to use `fit` vs Turing
+## Choosing an inference approach
 
-- **`fit`**: MLE point estimate. Use for quick exploration or initial
-  parameter guesses.
-- **Turing + analytical likelihood**: full posterior with NUTS (when
-  the analytical likelihood is available).
-- **Turing + simulation-based likelihood**: when interventions or
-  complex model features make analytical likelihood unavailable. Slower
-  (many simulations per likelihood evaluation) but handles models that
-  have no closed-form likelihood.
+Two largely independent questions:
+
+1. **Point estimate or full posterior?** Turing supports both
+   (`maximum_likelihood`, `maximum_a_posteriori`, or NUTS for the full
+   posterior with quantified uncertainty). `fit` is a convenience
+   wrapper for MLE only, in the `Distributions.fit` style — closed
+   form where possible, score-equation or grid search otherwise.
+   Useful for quick exploration or initialising a sampler.
+2. **Is the analytical likelihood available?** With no interventions
+   and a supported offspring/data combination, the analytical
+   likelihood gives fast, exact evaluations. With interventions or
+   model features that break the analytical form, the simulation-based
+   likelihood takes over — same `loglikelihood` interface, but each
+   call runs many simulations, so sampling is markedly slower.
+
+The `loglikelihood` methods are the shared backend: `fit` minimises
+`-loglikelihood` over a bracket; Turing models call `loglikelihood`
+inside `@addlogprob!`. Switching between MLE, MAP, and posterior is a
+question of which Turing entry point you call, not which package.

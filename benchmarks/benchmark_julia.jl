@@ -87,13 +87,18 @@ b = @benchmark simulate_batch($model_int, 500;
     rng = StableRNG(42))
 println("   Median: $(round(median(b.times) / 1e6, digits=1)) ms\n")
 
-# ── 8. Offspring fitting ─────────────────────────────────────────────
+# ── 8. Chain-size fitting ────────────────────────────────────────────
 
-println("8. Fit NegBin from 1000 offspring counts")
+println("8. Fit NegBin offspring distribution from 1000 chain sizes")
 rng = StableRNG(42)
-d_true = NegBin(2.0, 0.5)
-fit_data = OffspringCounts(rand(rng,
-    Distributions.NegativeBinomial(d_true.r, d_true.p), 1000))
+fit_model = BranchingProcess(NegBin(0.7, 0.5))
+fit_states = simulate_batch(fit_model, 1000; rng = rng)
+fit_sizes = Int[]
+for s in fit_states
+    cs = chain_statistics(s)
+    append!(fit_sizes, cs.size)
+end
+fit_data = ChainSizes(fit_sizes)
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 100
 b = @benchmark fit(NegativeBinomial, $fit_data)
 println("   Median: $(round(median(b.times) / 1e6, digits=3)) ms\n")

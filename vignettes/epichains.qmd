@@ -146,17 +146,10 @@ R **epichains** package.
 
 ## Fitting offspring distributions
 
-Use `fit` to find the maximum likelihood offspring distribution.
-The same interface works for all data types — it extends `Distributions.fit`:
-
-```{julia}
-# From offspring counts (direct secondary case observations)
-offspring_data = OffspringCounts([0, 1, 2, 0, 3, 1, 0, 2, 5, 0])
-d_pois = fit(Poisson, offspring_data)
-d_nb = fit(NegativeBinomial, offspring_data)
-println("Poisson MLE: R = ", round(mean(d_pois), digits = 2))
-println("NegBin MLE:  R = ", round(mean(d_nb), digits = 2), ", k = ", round(d_nb.r, digits = 2))
-```
+EpiBranch's `fit` extends `Distributions.fit` with MLE methods for
+chain-size and chain-length data. For raw offspring counts, use
+`Distributions.fit` directly or combine the `loglikelihood` interface
+with Optim.jl / Turing — see the inference tutorial.
 
 ```{julia}
 # From chain sizes (subcritical only)

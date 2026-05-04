@@ -157,16 +157,21 @@ println("    LL = $(round(ll, digits=4))")
 @test isfinite(ll)
 println()
 
-# ── 12. NegBin offspring fitting from counts ─────────────────────────
-println("12. Fit NegBin from offspring counts")
+# ── 12. NegBin chain-size fitting ────────────────────────────────────
+println("12. Fit NegBin offspring distribution from chain sizes")
 rng = StableRNG(42)
-true_d = NegBin(2.0, 0.5)
-counts = rand(rng, NegativeBinomial(true_d.r, true_d.p), 500)
-d_fit = fit(NegativeBinomial, OffspringCounts(counts))
-println("    True R=2.0, k=0.5")
+true_R, true_k = 0.7, 0.5
+model_nb = BranchingProcess(NegBin(true_R, true_k))
+states_nb = simulate_batch(model_nb, 500; rng = rng)
+nb_sizes = Int[]
+for s in states_nb
+    cs = chain_statistics(s)
+    append!(nb_sizes, cs.size)
+end
+d_fit = fit(NegativeBinomial, ChainSizes(nb_sizes))
+println("    True R=$true_R, k=$true_k")
 println("    Fitted R=$(round(mean(d_fit), digits=2)), k=$(round(d_fit.r, digits=2))")
-@test mean(d_fit) ≈ 2.0 atol=0.4
-@test d_fit.r ≈ 0.5 atol=0.3
+@test mean(d_fit) ≈ true_R atol=0.3
 println()
 
 println("=== All validations passed ===")

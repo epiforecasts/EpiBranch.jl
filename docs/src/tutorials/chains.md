@@ -143,20 +143,11 @@ not possible when simulation and inference are in separate packages.
 
 ## Fitting
 
-Use `fit` to find the maximum likelihood offspring distribution.
-The same interface works for all data types:
-
-```@example chains
-# From offspring counts
-offspring_data = OffspringCounts([0, 1, 2, 0, 3, 1, 0, 2, 5, 0])
-d = fit(Poisson, offspring_data)
-println("Poisson MLE from offspring: R = $(round(mean(d), digits=2))")
-```
-
-```@example chains
-d = fit(NegativeBinomial, offspring_data)
-println("NegBin MLE from offspring: R = $(round(mean(d), digits=2)), k = $(round(d.r, digits=2))")
-```
+EpiBranch provides `fit` MLE wrappers for chain-size and chain-length
+data, whose likelihoods aren't in Distributions.jl. For raw offspring
+counts, use `Distributions.fit` (Poisson) directly, or pair the
+`loglikelihood` interface with Optim.jl or Turing's `maximum_likelihood`
+(NegBin) — see the [inference tutorial](@ref Inference).
 
 ```@example chains
 # From chain sizes (subcritical only)
