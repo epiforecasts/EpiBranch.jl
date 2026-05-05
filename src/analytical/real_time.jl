@@ -142,22 +142,12 @@ probability:
 
     L_i = π_i · P(X = x_i | s_i)  +  (1 - π_i) · P(X ≥ x_i | s_i)
 
-For a non-trivial reporting delay, wrap the model in [`Reported`](@ref)
-and call `loglikelihood(data, Reported(model, delay))`.
+For a non-trivial reporting delay, combine the model with a
+`PerCaseObservation` via [`Surveilled`](@ref) (or use the convenience
+constructor [`Reported`](@ref)).
 """
 function loglikelihood(data::RealTimeChainSizes, model::BranchingProcess)
     _real_time_loglik(data, model, Dirac(0.0))
-end
-
-"""
-    loglikelihood(data::RealTimeChainSizes, model::Reported)
-
-Real-time cluster-size log-likelihood with the reporting delay carried
-by `model`. Equivalent to running the bare `BranchingProcess`
-likelihood with `model.delay` folded into `S(τ)` via convolution.
-"""
-function loglikelihood(data::RealTimeChainSizes, m::Reported{<:BranchingProcess})
-    _real_time_loglik(data, m.model, m.delay)
 end
 
 """
