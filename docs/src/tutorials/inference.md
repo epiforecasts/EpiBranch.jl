@@ -43,7 +43,8 @@ the same Turing model used for the posterior also gives the MLE via
 end
 
 mle = maximum_likelihood(offspring_model(data))
-println("MLE: R=$(round(mle.values[:R], digits=2)), k=$(round(mle.values[:k], digits=2))")
+mle_params = NamedTuple(mle.params)
+println("MLE: R=$(round(mle_params.R, digits=2)), k=$(round(mle_params.k, digits=2))")
 ```
 
 ### Bayesian estimation

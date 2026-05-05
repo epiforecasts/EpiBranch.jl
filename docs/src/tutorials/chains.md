@@ -147,7 +147,7 @@ EpiBranch provides `fit` MLE wrappers for chain-size and chain-length
 data, whose likelihoods aren't in Distributions.jl. For raw offspring
 counts, use `Distributions.fit` (Poisson) directly, or pair the
 `loglikelihood` interface with Optim.jl or Turing's `maximum_likelihood`
-(NegBin) — see the [inference tutorial](@ref Inference).
+(NegBin) — see the [inference tutorial](inference.md).
 
 ```@example chains
 # From chain sizes (subcritical only)
