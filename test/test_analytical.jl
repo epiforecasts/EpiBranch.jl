@@ -334,6 +334,18 @@
                   abs(ll_med_tau - ll_concluded) <
                   abs(ll_zero_tau - ll_concluded)
 
+            # Reported wrapper composes a delay around the model. With
+            # Dirac(0.0) it should match the bare-model likelihood; with
+            # a real delay it pushes the mixture away from extinction
+            # (consistent with the per-τ π_with_delay < π_no_delay test
+            # above).
+            rt_data = RealTimeChainSizes(sizes, fill(7.0, 4); seeds = seeds)
+            ll_no_delay = loglikelihood(rt_data, Reported(model, Dirac(0.0)))
+            @test ll_no_delay ≈ ll_med_tau atol=1e-10
+            ll_with_delay = loglikelihood(rt_data,
+                Reported(model, LogNormal(1.5, 0.5)))
+            @test ll_with_delay != ll_med_tau
+
             # Constructor validation.
             @test_throws ArgumentError RealTimeChainSizes([3], [-1.0])
             @test_throws ArgumentError RealTimeChainSizes([3], [1.0]; seeds = [0])

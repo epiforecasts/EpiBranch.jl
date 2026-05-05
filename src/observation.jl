@@ -49,6 +49,45 @@ n_types(m::PartiallyObserved) = n_types(m.model)
 _single_type_offspring(m::PartiallyObserved) = _single_type_offspring(m.model)
 
 """
+    Reported(model, delay)
+
+Wrap a `TransmissionModel` with a per-case reporting delay. `delay` is
+a `Distribution` over the time between infection and report; combined
+with the model's generation time it determines when secondary cases
+of an observed case can themselves still be reported.
+
+Used by the real-time cluster-size likelihood to fold reporting delay
+into the end-of-outbreak probability `π(τ)`. The bare
+`BranchingProcess` likelihood treats reports as instantaneous; wrap
+with `Reported` to account for delay.
+
+# Examples
+
+```julia
+base = BranchingProcess(NegBin(2.5, 0.1), Gamma(2.0, 2.5))
+model = Reported(base, LogNormal(1.6, 0.4))
+loglikelihood(real_time_data, model)
+```
+"""
+struct Reported{M <: TransmissionModel, D <: Distribution} <: TransmissionModel
+    model::M
+    delay::D
+end
+
+function Base.show(io::IO, m::Reported)
+    print(io, "Reported($(m.model), delay=$(m.delay))")
+end
+
+population_size(m::Reported) = population_size(m.model)
+latent_period(m::Reported) = latent_period(m.model)
+n_types(m::Reported) = n_types(m.model)
+
+# Reporting delay does not change transmission dynamics, so offspring-
+# based analytical helpers (extinction probability, etc.) delegate to
+# the wrapped model.
+_single_type_offspring(m::Reported) = _single_type_offspring(m.model)
+
+"""
     ThinnedChainSize(base, detection_prob)
 
 Distribution of observed chain sizes when each case in a `base` chain

@@ -60,8 +60,18 @@ likelihood will use the exact form.
 
 ```julia
 model = BranchingProcess(NegBin(R, k), generation_time)
-loglikelihood(data, model; reporting_delay = Dirac(0.0))
+loglikelihood(data, model)
 ```
+
+If reports lag infections by some delay distribution `D`, wrap the
+model in [`Reported`](@ref). The likelihood then uses the convolved
+survival `P(G + D > τ)` in `S(τ)`:
+
+```julia
+loglikelihood(data, Reported(model, LogNormal(1.6, 0.4)))
+```
+
+The bare-model likelihood is the special case `D = Dirac(0.0)`.
 
 The single-`τ` approximation underestimates extinction when older
 silent cases haven't wound down. A cluster that is quiet now but had

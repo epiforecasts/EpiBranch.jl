@@ -99,6 +99,7 @@ ChainLengths
 
 ```@docs
 PartiallyObserved
+Reported
 ThinnedChainSize
 ```
 

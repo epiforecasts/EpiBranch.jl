@@ -134,17 +134,34 @@ end
 _convolved_survival(g::Distribution, d::Dirac, t::Real) = ccdf(g, max(t - d.value, 0.0))
 
 """
-    loglikelihood(data::RealTimeChainSizes, model::BranchingProcess; reporting_delay)
+    loglikelihood(data::RealTimeChainSizes, model::BranchingProcess)
 
-Real-time cluster-size log-likelihood. Each cluster contributes a
-mixture weighted by its end-of-outbreak probability:
+Real-time cluster-size log-likelihood with no reporting delay. Each
+cluster contributes a mixture weighted by its end-of-outbreak
+probability:
 
     L_i = π_i · P(X = x_i | s_i)  +  (1 - π_i) · P(X ≥ x_i | s_i)
 
-`reporting_delay` defaults to `Dirac(0.0)` (no delay).
+For a non-trivial reporting delay, wrap the model in [`Reported`](@ref)
+and call `loglikelihood(data, Reported(model, delay))`.
 """
-function loglikelihood(data::RealTimeChainSizes, model::BranchingProcess;
-        reporting_delay::Distribution = Dirac(0.0))
+function loglikelihood(data::RealTimeChainSizes, model::BranchingProcess)
+    _real_time_loglik(data, model, Dirac(0.0))
+end
+
+"""
+    loglikelihood(data::RealTimeChainSizes, model::Reported)
+
+Real-time cluster-size log-likelihood with the reporting delay carried
+by `model`. Equivalent to running the bare `BranchingProcess`
+likelihood with `model.delay` folded into `S(τ)` via convolution.
+"""
+function loglikelihood(data::RealTimeChainSizes, m::Reported{<:BranchingProcess})
+    _real_time_loglik(data, m.model, m.delay)
+end
+
+function _real_time_loglik(data::RealTimeChainSizes,
+        model::BranchingProcess, delay::Distribution)
     offspring = _single_type_offspring(model)
     model.generation_time isa Distribution || throw(ArgumentError(
         "real-time likelihood requires a Distribution generation time"))
@@ -158,10 +175,10 @@ function loglikelihood(data::RealTimeChainSizes, model::BranchingProcess;
         s = data.seeds[i]
         π = if data.case_ages === nothing
             end_of_outbreak_probability(R, k,
-                model.generation_time, reporting_delay; tau = data.tau[i])
+                model.generation_time, delay; tau = data.tau[i])
         else
             _per_case_extinction_probability(R, k, model.generation_time,
-                reporting_delay, data.case_ages[i])
+                delay, data.case_ages[i])
         end
         log_concluded = _chain_size_logpdf(dist, x, s)
         log_ongoing = _right_tail_logprob(dist, x, s)
