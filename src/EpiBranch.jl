@@ -31,6 +31,9 @@ end
 # Transmission models
 include("models/branching_process.jl")
 
+# Observation models (state-space slot)
+include("observation_models.jl")
+
 # Observation models (wrappers around TransmissionModel)
 include("observation.jl")
 
@@ -59,6 +62,7 @@ export SimOpts, DelayOpts, OutcomeOpts, DemographicOpts
 export AbstractIntervention, Isolation, ContactTracing, RingVaccination, Scheduled
 export is_active, intervention_time
 export PartiallyObserved, Reported
+export ObservationModel, PerCaseObservation
 
 # Exports — sentinel types
 export NoPopulation, NoAttributes, NoTypeLabels, NoDelay, NoCFR
