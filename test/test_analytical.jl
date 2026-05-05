@@ -369,9 +369,27 @@
                     Surveilled(model, PerCaseObservation(1.0, delay)))
                 @test ll_wrap ≈ ll_ss atol=1e-12
             end
-            # Under-reporting not yet supported via the state-space form.
-            @test_throws ArgumentError loglikelihood(rt_data,
-                Surveilled(model, PerCaseObservation(0.7, Dirac(0.0))))
+            # Under-reporting (ρ < 1): direct-offspring approximation.
+            # Use single-seed clusters; multi-seed + ThinnedChainSize is
+            # not implemented (pre-existing limitation of the closed-form
+            # path for thinned multi-seed chain sizes).
+            single_seed_data = RealTimeChainSizes(sizes, fill(7.0, 4);
+                seeds = ones(Int, 4))
+            ll_rho1 = loglikelihood(single_seed_data,
+                Surveilled(model, PerCaseObservation(1.0, Dirac(0.0))))
+            ll_bare = loglikelihood(single_seed_data, model)
+            @test ll_rho1 ≈ ll_bare atol=1e-12
+
+            # ρ < 1 changes the answer (reports thinned + π formula uses ρR).
+            ll_rho_low = loglikelihood(single_seed_data,
+                Surveilled(model, PerCaseObservation(0.5, Dirac(0.0))))
+            @test ll_rho_low != ll_bare
+            @test isfinite(ll_rho_low)
+
+            # ρ → 1 limit smoothly approaches the ρ = 1 case.
+            ll_rho_near1 = loglikelihood(single_seed_data,
+                Surveilled(model, PerCaseObservation(0.999, Dirac(0.0))))
+            @test isapprox(ll_rho_near1, ll_rho1; atol = 1e-2)
 
             # Constructor validation.
             @test_throws ArgumentError RealTimeChainSizes([3], [-1.0])

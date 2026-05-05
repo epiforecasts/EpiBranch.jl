@@ -155,19 +155,57 @@ end
                   model::Surveilled{<:BranchingProcess, <:PerCaseObservation})
 
 Real-time cluster-size log-likelihood for a `BranchingProcess`
-combined with `PerCaseObservation`. Currently requires
-`detection_prob = 1.0` (the under-reporting case is handled in a
-follow-up commit). Folds `observation.delay` into `S(τ)` via
-convolution exactly as the `Reported`-targeted method does.
+combined with `PerCaseObservation`. Folds `observation.delay` into
+`S(τ)` via convolution and accounts for the per-case reporting
+probability `ρ = observation.detection_prob` two ways:
+
+- The chain-size PMF in the mixture becomes the observed-size
+  distribution `ThinnedChainSize(chain_size_distribution(NegBin), ρ)`,
+  via the existing `chain_size_distribution(::Surveilled)` route.
+- The end-of-outbreak probability `π(τ)` uses the *direct-offspring
+  approximation*: the per-case report rate is `ρ·R`, so
+
+      π(τ) ≈ (1 + ρ·R·S(τ)/k)^(-k)
+
+  This treats unobserved cases as silent for the purpose of
+  end-of-outbreak inference. For ρ near 1 the approximation is tight;
+  for low ρ it underestimates residual hazard from unobserved
+  descendants. The exact recursive formula (Thompson, Morgan & Jansen
+  2019, Phil Trans B) needs a numerical fixed-point solve and is
+  deliberately not implemented here.
 """
 function loglikelihood(data::RealTimeChainSizes,
         m::Surveilled{<:BranchingProcess, <:PerCaseObservation})
-    m.observation.detection_prob == 1.0 || throw(ArgumentError(
-        "loglikelihood(RealTimeChainSizes, Surveilled{BranchingProcess, " *
-        "PerCaseObservation}) currently only supports detection_prob = 1.0; " *
-        "got $(m.observation.detection_prob). Under-reporting handled in a " *
-        "later commit."))
-    _real_time_loglik(data, m.process, m.observation.delay)
+    process = m.process
+    ρ = m.observation.detection_prob
+    delay = m.observation.delay
+    process.generation_time isa Distribution || throw(ArgumentError(
+        "real-time likelihood requires a Distribution generation time"))
+    offspring = _single_type_offspring(process)
+    R = mean(offspring)
+    k = offspring isa NegativeBinomial ? offspring.r : 1e6  # Poisson-like
+    R_report = ρ * R                # Direct-offspring approximation.
+    dist = chain_size_distribution(m)  # ThinnedChainSize handles ρ.
+
+    total = 0.0
+    for i in eachindex(data.data)
+        x = data.data[i]
+        s = data.seeds[i]
+        π = if data.case_ages === nothing
+            end_of_outbreak_probability(R_report, k,
+                process.generation_time, delay; tau = data.tau[i])
+        else
+            _per_case_extinction_probability(R_report, k,
+                process.generation_time, delay, data.case_ages[i])
+        end
+        log_concluded = _chain_size_logpdf(dist, x, s)
+        log_ongoing = _right_tail_logprob(dist, x, s)
+        # Numerically stable mixture in log space.
+        a = log(π) + log_concluded
+        b = log1p(-π) + log_ongoing
+        total += logsumexp((a, b))
+    end
+    return total
 end
 
 function _real_time_loglik(data::RealTimeChainSizes,

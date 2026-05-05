@@ -138,8 +138,12 @@ inner process. Recurses through any nested wrappers, so e.g.
 nested-thinning likelihood without pairwise dispatch.
 """
 function chain_size_distribution(m::Surveilled{<:Any, <:PerCaseObservation})
-    ThinnedChainSize(chain_size_distribution(m.process),
-        m.observation.detection_prob)
+    p = m.observation.detection_prob
+    base = chain_size_distribution(m.process)
+    # ρ = 1 is a no-op; skip the ThinnedChainSize wrap so multi-seed
+    # likelihoods route directly to the underlying distribution's
+    # multi-seed implementation (which ThinnedChainSize lacks).
+    return p == 1.0 ? base : ThinnedChainSize(base, p)
 end
 
 # Binomial thinning compounds: two rounds with p1, p2 equal one round
