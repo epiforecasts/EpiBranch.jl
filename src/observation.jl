@@ -31,6 +31,32 @@ n_types(m::Surveilled) = n_types(m.process)
 _single_type_offspring(m::Surveilled) = _single_type_offspring(m.process)
 
 """
+    simulate(m::Surveilled; kwargs...)
+
+Run the underlying process simulation, then apply the observation
+model in place. For `PerCaseObservation(ρ, D)`, each individual
+gets:
+
+- `state[:reported] = true` with probability `ρ`, else `false`.
+- `state[:report_time] = infection_time + d` where `d` is an
+  independent draw from `D`.
+
+Downstream output (line list, chain statistics) can then filter on
+`:reported` and read `:report_time`.
+"""
+function simulate(m::Surveilled{<:TransmissionModel, <:PerCaseObservation};
+        rng::AbstractRNG = Random.default_rng(), kwargs...)
+    state = simulate(m.process; rng = rng, kwargs...)
+    ρ = m.observation.detection_prob
+    delay = m.observation.delay
+    for ind in state.individuals
+        ind.state[:reported] = rand(rng) < ρ
+        ind.state[:report_time] = ind.infection_time + rand(rng, delay)
+    end
+    return state
+end
+
+"""
     PartiallyObserved(model, detection_prob)
 
 Convenience constructor that builds

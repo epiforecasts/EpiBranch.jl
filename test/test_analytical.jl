@@ -395,6 +395,18 @@
             @test_throws ArgumentError RealTimeChainSizes([3], [-1.0])
             @test_throws ArgumentError RealTimeChainSizes([3], [1.0]; seeds = [0])
             @test_throws ArgumentError RealTimeChainSizes([3, 5], [1.0])
+
+            # simulate(::Surveilled) decorates each individual with
+            # :reported and :report_time so downstream code can filter
+            # to observed reports.
+            using StableRNGs
+            sim_state = simulate(
+                Surveilled(model, PerCaseObservation(0.6, LogNormal(1.0, 0.4)));
+                rng = StableRNG(42))
+            @test all(haskey(ind.state, :reported) for ind in sim_state.individuals)
+            @test all(haskey(ind.state, :report_time) for ind in sim_state.individuals)
+            @test all(ind.state[:report_time] >= ind.infection_time
+            for ind in sim_state.individuals)
         end
 
         @testset "Composition: PartiallyObserved(BranchingProcess(ClusterMixed))" begin
