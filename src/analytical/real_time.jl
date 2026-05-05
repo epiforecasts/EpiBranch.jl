@@ -160,6 +160,26 @@ function loglikelihood(data::RealTimeChainSizes, m::Reported{<:BranchingProcess}
     _real_time_loglik(data, m.model, m.delay)
 end
 
+"""
+    loglikelihood(data::RealTimeChainSizes,
+                  model::Surveilled{<:BranchingProcess, <:PerCaseObservation})
+
+Real-time cluster-size log-likelihood for a `BranchingProcess`
+combined with `PerCaseObservation`. Currently requires
+`detection_prob = 1.0` (the under-reporting case is handled in a
+follow-up commit). Folds `observation.delay` into `S(τ)` via
+convolution exactly as the `Reported`-targeted method does.
+"""
+function loglikelihood(data::RealTimeChainSizes,
+        m::Surveilled{<:BranchingProcess, <:PerCaseObservation})
+    m.observation.detection_prob == 1.0 || throw(ArgumentError(
+        "loglikelihood(RealTimeChainSizes, Surveilled{BranchingProcess, " *
+        "PerCaseObservation}) currently only supports detection_prob = 1.0; " *
+        "got $(m.observation.detection_prob). Under-reporting handled in a " *
+        "later commit."))
+    _real_time_loglik(data, m.process, m.observation.delay)
+end
+
 function _real_time_loglik(data::RealTimeChainSizes,
         model::BranchingProcess, delay::Distribution)
     offspring = _single_type_offspring(model)

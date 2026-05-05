@@ -362,6 +362,17 @@
                 Reported(model, LogNormal(1.5, 0.5)))
             @test ll_with_delay != ll_med_tau
 
+            # State-space form gives the same answer as the Reported wrapper.
+            for delay in (Dirac(0.0), LogNormal(1.0, 0.4), Gamma(2.0, 1.5))
+                ll_wrap = loglikelihood(rt_data, Reported(model, delay))
+                ll_ss = loglikelihood(rt_data,
+                    Surveilled(model, PerCaseObservation(1.0, delay)))
+                @test ll_wrap ≈ ll_ss atol=1e-12
+            end
+            # Under-reporting not yet supported via the state-space form.
+            @test_throws ArgumentError loglikelihood(rt_data,
+                Surveilled(model, PerCaseObservation(0.7, Dirac(0.0))))
+
             # Constructor validation.
             @test_throws ArgumentError RealTimeChainSizes([3], [-1.0])
             @test_throws ArgumentError RealTimeChainSizes([3], [1.0]; seeds = [0])
