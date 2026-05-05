@@ -62,7 +62,7 @@ export SimOpts, DelayOpts, OutcomeOpts, DemographicOpts
 export AbstractIntervention, Isolation, ContactTracing, RingVaccination, Scheduled
 export is_active, intervention_time
 export PartiallyObserved, Reported
-export ObservationModel, PerCaseObservation
+export ObservationModel, PerCaseObservation, Surveilled
 
 # Exports — sentinel types
 export NoPopulation, NoAttributes, NoTypeLabels, NoDelay, NoCFR

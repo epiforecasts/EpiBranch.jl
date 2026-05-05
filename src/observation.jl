@@ -4,6 +4,33 @@
 # it falls back to simulation.
 
 """
+    Surveilled(process, observation)
+
+State-space combiner: pair a `TransmissionModel` with an
+[`ObservationModel`](@ref). Dispatch on `Surveilled{P, O}` is the
+single surface for likelihoods that need to know about both the
+latent dynamics and how they are observed.
+
+Forwards process-model accessors (`population_size`, `latent_period`,
+`n_types`, `_single_type_offspring`) to `process`, so analytical
+helpers that route through them work transparently on the combined
+model.
+"""
+struct Surveilled{P <: TransmissionModel, O <: ObservationModel} <: TransmissionModel
+    process::P
+    observation::O
+end
+
+function Base.show(io::IO, m::Surveilled)
+    print(io, "Surveilled($(m.process), $(m.observation))")
+end
+
+population_size(m::Surveilled) = population_size(m.process)
+latent_period(m::Surveilled) = latent_period(m.process)
+n_types(m::Surveilled) = n_types(m.process)
+_single_type_offspring(m::Surveilled) = _single_type_offspring(m.process)
+
+"""
     PartiallyObserved(model, detection_prob)
 
 Wrap a `TransmissionModel` with independent per-case detection. Each
