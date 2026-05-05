@@ -5,6 +5,13 @@ generating cases. Mid-outbreak data is a snapshot at some calendar
 time, with some clusters still active. The likelihood needs an
 adjustment.
 
+EpiBranch uses a state-space framing: a *process model* (the latent
+transmission dynamics — `BranchingProcess`) and an *observation
+model* (how the latent state generates data — [`PerCaseObservation`](@ref)
+covers per-case detection probability and reporting delay). The two
+combine via [`Surveilled`](@ref) so the same `loglikelihood(data,
+model)` dispatch handles every combination.
+
 ## The observation model
 
 Cluster `i` was seeded by `s_i` imported cases at some time before
@@ -63,15 +70,33 @@ model = BranchingProcess(NegBin(R, k), generation_time)
 loglikelihood(data, model)
 ```
 
-If reports lag infections by some delay distribution `D`, wrap the
-model in [`Reported`](@ref). The likelihood then uses the convolved
-survival `P(G + D > τ)` in `S(τ)`:
+For a non-trivial reporting delay `D`, combine the process with a
+`PerCaseObservation` via `Surveilled`:
 
 ```julia
-loglikelihood(data, Reported(model, LogNormal(1.6, 0.4)))
+obs = PerCaseObservation(detection_prob = 1.0, delay = LogNormal(1.6, 0.4))
+loglikelihood(data, Surveilled(model, obs))
 ```
 
-The bare-model likelihood is the special case `D = Dirac(0.0)`.
+The convenience constructor [`Reported`](@ref) wraps this:
+`Reported(model, delay)` is exactly `Surveilled(model,
+PerCaseObservation(1.0, delay))`. The bare-model likelihood is the
+special case `D = Dirac(0.0)`.
+
+For under-reporting, set `detection_prob < 1`. The likelihood then
+uses the *direct-offspring approximation* — the per-case report rate
+is `ρ·R` in `π(τ)`, and the chain-size PMF in the mixture becomes
+`ThinnedChainSize` against the underlying chain-size distribution:
+
+```julia
+obs = PerCaseObservation(detection_prob = 0.7, delay = LogNormal(1.6, 0.4))
+loglikelihood(data, Surveilled(model, obs))
+```
+
+The approximation ignores hazard from unobserved descendants. It's
+tight for `ρ` near 1 and underestimates residual hazard at low `ρ`.
+The exact recursive form (Thompson, Morgan & Jansen, *Phil Trans B*
+2019) requires a numerical fixed-point and isn't implemented here.
 
 The single-`τ` approximation underestimates extinction when older
 silent cases haven't wound down. A cluster that is quiet now but had
