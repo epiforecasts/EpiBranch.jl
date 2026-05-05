@@ -184,6 +184,14 @@ function chain_size_distribution(m::PartiallyObserved)
     ThinnedChainSize(chain_size_distribution(m.model), m.detection_prob)
 end
 
+# Same construction routed through Surveilled + PerCaseObservation.
+# Reporting delay does not change cluster sizes for closed-outbreak
+# data, so it is ignored at this stage.
+function chain_size_distribution(m::Surveilled{<:Any, <:PerCaseObservation})
+    ThinnedChainSize(chain_size_distribution(m.process),
+        m.observation.detection_prob)
+end
+
 # Binomial thinning compounds: two rounds with p1, p2 equal one round
 # with p1*p2. We collapse at construction time to avoid a needlessly
 # nested ThinnedChainSize. This is a performance shortcut; without it

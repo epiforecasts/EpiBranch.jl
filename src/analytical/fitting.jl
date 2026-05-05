@@ -178,6 +178,49 @@ function loglikelihood(::ChainLengths, ::PartiallyObserved; kwargs...)
         "loglikelihood(ChainLengths, PartiallyObserved) is not defined: per-case detection does not translate to a well-defined chain length distribution. Evaluate on the wrapped generative model directly, or use ChainSizes."))
 end
 
+# Same routing for the state-space form. ρ < 1 breaks chain-length
+# transformation just as for PartiallyObserved.
+function loglikelihood(data::ChainSizes,
+        m::Surveilled{<:Any, <:PerCaseObservation};
+        interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
+        attributes::Union{Function, NoAttributes} = NoAttributes(),
+        sim_opts::SimOpts = SimOpts(),
+        n_sim::Int = 10_000,
+        rng::AbstractRNG = Random.default_rng())
+    if isempty(interventions)
+        try
+            d = chain_size_distribution(m)
+            return _chain_size_loglik(d, data)
+        catch e
+            e isa MethodError || rethrow()
+        end
+    end
+    p = m.observation.detection_prob
+    states = simulate_batch(m.process, n_sim;
+        interventions, attributes, sim_opts, rng)
+    sim_values = Int[]
+    censored = Bool[]
+    for state in states
+        cs = chain_statistics(state)
+        for true_size in cs.size
+            obs = rand(rng, Binomial(true_size, p))
+            obs >= 1 || continue
+            push!(sim_values, obs)
+            hit_cap = !state.extinct &&
+                      state.cumulative_cases >= sim_opts.max_cases
+            push!(censored, hit_cap)
+        end
+    end
+    return _empirical_ll(data.data, sim_values; min_val = 1, censored,
+        cap = sim_opts.max_cases)
+end
+
+function loglikelihood(::ChainLengths,
+        ::Surveilled{<:Any, <:PerCaseObservation}; kwargs...)
+    throw(ArgumentError(
+        "loglikelihood(ChainLengths, Surveilled{..., PerCaseObservation}) is not defined: per-case detection does not translate to a well-defined chain length distribution. Use ChainSizes or evaluate on the bare process model."))
+end
+
 for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
     @eval function loglikelihood(data::$DT, model::TransmissionModel;
             interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],

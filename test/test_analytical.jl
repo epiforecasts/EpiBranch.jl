@@ -182,6 +182,22 @@
             # Stricter detection should lower the likelihood for these small sizes
             ll_strict = loglikelihood(ChainSizes([1, 1, 2]), PartiallyObserved(base, 0.3))
             @test isfinite(ll_strict)
+
+            # State-space form gives the same answer as the wrapper.
+            for p in (0.3, 0.8, 1.0)
+                ll_wrapper = loglikelihood(ChainSizes([1, 1, 2]),
+                    PartiallyObserved(base, p))
+                ll_ss = loglikelihood(ChainSizes([1, 1, 2]),
+                    Surveilled(base, PerCaseObservation(p, Dirac(0.0))))
+                @test ll_wrapper ≈ ll_ss atol=1e-12
+            end
+            # Reporting delay is irrelevant for closed-outbreak chain
+            # sizes — same answer regardless of delay distribution.
+            ll_with_delay = loglikelihood(ChainSizes([1, 1, 2]),
+                Surveilled(base, PerCaseObservation(0.7, LogNormal(1.0, 0.5))))
+            ll_no_delay = loglikelihood(ChainSizes([1, 1, 2]),
+                Surveilled(base, PerCaseObservation(0.7, Dirac(0.0))))
+            @test ll_with_delay ≈ ll_no_delay atol=1e-12
         end
 
         @testset "Cluster-level heterogeneity" begin
