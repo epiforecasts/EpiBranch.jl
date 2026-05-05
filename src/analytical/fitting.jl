@@ -123,63 +123,14 @@ function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
 end
 
 """
-    loglikelihood(data::ChainSizes, m::PartiallyObserved; kwargs...)
+    loglikelihood(data::ChainSizes, m::Surveilled{<:Any, <:PerCaseObservation}; kwargs...)
 
-Log-likelihood under a partially observed model. With no interventions,
+Log-likelihood under a per-case-observed model. With no interventions,
 routes through the analytical `chain_size_distribution(m)`. When
-interventions are supplied, simulates the wrapped generative model,
+interventions are supplied, simulates the wrapped process model,
 applies per-case Binomial thinning, and compares against the observed
 data via the empirical likelihood.
-
-Merged into a single method so that a call without kwargs still
-resolves unambiguously (kwargs do not participate in dispatch).
 """
-function loglikelihood(data::ChainSizes, m::PartiallyObserved;
-        interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
-        attributes::Union{Function, NoAttributes} = NoAttributes(),
-        sim_opts::SimOpts = SimOpts(),
-        n_sim::Int = 10_000,
-        rng::AbstractRNG = Random.default_rng())
-    if isempty(interventions)
-        try
-            d = chain_size_distribution(m)
-            return _chain_size_loglik(d, data)
-        catch e
-            e isa MethodError || rethrow()
-        end
-    end
-    states = simulate_batch(m.model, n_sim;
-        interventions, attributes, sim_opts, rng)
-    sim_values = Int[]
-    censored = Bool[]
-    for state in states
-        cs = chain_statistics(state)
-        for true_size in cs.size
-            obs = rand(rng, Binomial(true_size, m.detection_prob))
-            # Chains with zero detected cases do not enter the observed
-            # dataset; skip them rather than passing obs=0 through to the
-            # empirical likelihood (which would under-index `counts`).
-            obs >= 1 || continue
-            push!(sim_values, obs)
-            hit_cap = !state.extinct && state.cumulative_cases >= sim_opts.max_cases
-            push!(censored, hit_cap)
-        end
-    end
-    return _empirical_ll(data.data, sim_values; min_val = 1, censored,
-        cap = sim_opts.max_cases)
-end
-
-# Chain length under per-case detection has no clean transformation
-# (observed length depends on which specific cases are detected, not
-# just the true length). Raise a clear error rather than silently
-# simulating the wrapper through an undefined `step!` method.
-function loglikelihood(::ChainLengths, ::PartiallyObserved; kwargs...)
-    throw(ArgumentError(
-        "loglikelihood(ChainLengths, PartiallyObserved) is not defined: per-case detection does not translate to a well-defined chain length distribution. Evaluate on the wrapped generative model directly, or use ChainSizes."))
-end
-
-# Same routing for the state-space form. ρ < 1 breaks chain-length
-# transformation just as for PartiallyObserved.
 function loglikelihood(data::ChainSizes,
         m::Surveilled{<:Any, <:PerCaseObservation};
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],

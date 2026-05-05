@@ -33,13 +33,11 @@ _single_type_offspring(m::Surveilled) = _single_type_offspring(m.process)
 """
     PartiallyObserved(model, detection_prob)
 
-Wrap a `TransmissionModel` with independent per-case detection. Each
-case in a chain is detected with probability `detection_prob`. Chains
-with zero detected cases are unobserved.
-
-Likelihoods marginalise over the true (unobserved) chain sizes. If the
-wrapped model has an analytical chain size distribution, that is used;
-otherwise the likelihood falls back to simulation.
+Convenience constructor that builds
+`Surveilled(model, PerCaseObservation(detection_prob, Dirac(0.0)))`.
+Equivalent to per-case binomial thinning with no reporting delay.
+Each case in a chain is detected with probability `detection_prob`;
+chains with zero detected cases are unobserved.
 
 # Examples
 
@@ -49,31 +47,9 @@ model = PartiallyObserved(base, 0.7)
 loglikelihood(ChainSizes([1, 1, 2, 3]), model)
 ```
 """
-struct PartiallyObserved{M <: TransmissionModel} <: TransmissionModel
-    model::M
-    detection_prob::Float64
-
-    function PartiallyObserved(model::TransmissionModel, detection_prob::Real)
-        0.0 < detection_prob <= 1.0 ||
-            throw(ArgumentError("detection_prob must be in (0, 1], got $detection_prob"))
-        new{typeof(model)}(model, Float64(detection_prob))
-    end
+function PartiallyObserved(model::TransmissionModel, detection_prob::Real)
+    Surveilled(model, PerCaseObservation(detection_prob, Dirac(0.0)))
 end
-
-function Base.show(io::IO, m::PartiallyObserved)
-    print(io, "PartiallyObserved($(m.model), detection_prob=$(m.detection_prob))")
-end
-
-population_size(m::PartiallyObserved) = population_size(m.model)
-latent_period(m::PartiallyObserved) = latent_period(m.model)
-n_types(m::PartiallyObserved) = n_types(m.model)
-
-# Forward offspring extraction so analytical helpers that route through
-# `_single_type_offspring` (extinction_probability, probability_contain,
-# superspreading metrics) work on wrapped models. Per-case detection
-# does not change transmission dynamics, so these helpers delegate to
-# the wrapped model.
-_single_type_offspring(m::PartiallyObserved) = _single_type_offspring(m.model)
 
 """
     Reported(model, delay)
@@ -173,32 +149,28 @@ end
 Distributions.pdf(d::ThinnedChainSize, n::Integer) = exp(logpdf(d, n))
 
 """
-    chain_size_distribution(m::PartiallyObserved)
+    chain_size_distribution(m::Surveilled{<:Any, <:PerCaseObservation})
 
 Return `ThinnedChainSize` wrapping the chain size distribution of the
-inner model. Because the call recurses, a nested `PartiallyObserved`
-produces a nested `ThinnedChainSize`, and `logpdf` on that gives the
-right likelihood without any pairwise dispatch.
+inner process. Recurses through any nested wrappers, so e.g.
+`PartiallyObserved(PartiallyObserved(model, p1), p2)` (which becomes
+`Surveilled(Surveilled(model, ...), ...)` in the type) gives the same
+nested-thinning likelihood without pairwise dispatch.
 """
-function chain_size_distribution(m::PartiallyObserved)
-    ThinnedChainSize(chain_size_distribution(m.model), m.detection_prob)
-end
-
-# Same construction routed through Surveilled + PerCaseObservation.
-# Reporting delay does not change cluster sizes for closed-outbreak
-# data, so it is ignored at this stage.
 function chain_size_distribution(m::Surveilled{<:Any, <:PerCaseObservation})
     ThinnedChainSize(chain_size_distribution(m.process),
         m.observation.detection_prob)
 end
 
 # Binomial thinning compounds: two rounds with p1, p2 equal one round
-# with p1*p2. We collapse at construction time to avoid a needlessly
-# nested ThinnedChainSize. This is a performance shortcut; without it
-# the generic chain_size_distribution dispatch still gives the right
-# likelihood, just via a deeper nested sum.
-function PartiallyObserved(inner::PartiallyObserved, detection_prob::Real)
-    PartiallyObserved(inner.model, detection_prob * inner.detection_prob)
+# with p1·p2. Collapse at construction time to avoid a needlessly
+# nested Surveilled. Performance shortcut; without it the generic
+# chain_size_distribution dispatch still gives the right likelihood,
+# just via a deeper nested sum.
+function PartiallyObserved(inner::Surveilled{<:Any, <:PerCaseObservation},
+        detection_prob::Real)
+    inner_p = inner.observation.detection_prob
+    PartiallyObserved(inner.process, detection_prob * inner_p)
 end
 
 """
