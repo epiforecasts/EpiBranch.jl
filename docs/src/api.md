@@ -100,9 +100,7 @@ ChainLengths
 ```@docs
 ObservationModel
 PerCaseObservation
-Surveilled
-PartiallyObserved
-Reported
+Observed
 ThinnedChainSize
 ```
 

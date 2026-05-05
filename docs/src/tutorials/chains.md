@@ -66,36 +66,28 @@ println("NegBin(R=0.9, k=0.5): LL = $(round(ll, digits=2))")
 
 ### Imperfect observation
 
-Account for incomplete case ascertainment by wrapping a model in
-[`PartiallyObserved`](@ref). Each case in a chain is detected
-independently with the given probability:
+Account for incomplete case ascertainment by combining a process
+model with a [`PerCaseObservation`](@ref) via [`Observed`](@ref).
+Each case is detected independently with the given probability:
 
 ```@example chains
 data = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
 base = BranchingProcess(Poisson(0.9))
-full = PartiallyObserved(base, 1.0)
-partial = PartiallyObserved(base, 0.7)
+full = Observed(base, PerCaseObservation(detection_prob = 1.0))
+partial = Observed(base, PerCaseObservation(detection_prob = 0.7))
 println("Full observation:  $(round(loglikelihood(data, full), digits=2))")
 println("70% observation:   $(round(loglikelihood(data, partial), digits=2))")
 ```
 
-If you call `PartiallyObserved` with only the detection probability,
-you get a function that wraps whatever model you apply it to. Julia's
-pipe then composes:
+Stacking compounds the detection probabilities: two rounds at 0.5
+give the same observed distribution as one round at 0.25.
 
 ```@example chains
-ll_pipe = loglikelihood(data, base |> PartiallyObserved(0.7))
-println("Via pipe: $(round(ll_pipe, digits=2))")
-```
-
-Stacking the same wrapper multiplies the detection probabilities.
-Two stages at 0.5 give the same observed distribution as one stage
-at 0.25:
-
-```@example chains
+inner = Observed(base, PerCaseObservation(detection_prob = 0.5))
 ll_stacked = loglikelihood(data,
-    base |> PartiallyObserved(0.5) |> PartiallyObserved(0.5))
-ll_single = loglikelihood(data, base |> PartiallyObserved(0.25))
+    Observed(inner, PerCaseObservation(detection_prob = 0.5)))
+ll_single = loglikelihood(data,
+    Observed(base, PerCaseObservation(detection_prob = 0.25)))
 println("Stacked: $(round(ll_stacked, digits=2))")
 println("Single:  $(round(ll_single, digits=2))")
 ```

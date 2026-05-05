@@ -123,7 +123,7 @@ function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
 end
 
 """
-    loglikelihood(data::ChainSizes, m::Surveilled{<:Any, <:PerCaseObservation}; kwargs...)
+    loglikelihood(data::ChainSizes, m::Observed{<:Any, <:PerCaseObservation}; kwargs...)
 
 Log-likelihood under a per-case-observed model. With no interventions,
 routes through the analytical `chain_size_distribution(m)`. When
@@ -132,7 +132,7 @@ applies per-case Binomial thinning, and compares against the observed
 data via the empirical likelihood.
 """
 function loglikelihood(data::ChainSizes,
-        m::Surveilled{<:Any, <:PerCaseObservation};
+        m::Observed{<:Any, <:PerCaseObservation};
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
         sim_opts::SimOpts = SimOpts(),
@@ -167,9 +167,9 @@ function loglikelihood(data::ChainSizes,
 end
 
 function loglikelihood(::ChainLengths,
-        ::Surveilled{<:Any, <:PerCaseObservation}; kwargs...)
+        ::Observed{<:Any, <:PerCaseObservation}; kwargs...)
     throw(ArgumentError(
-        "loglikelihood(ChainLengths, Surveilled{..., PerCaseObservation}) is not defined: per-case detection does not translate to a well-defined chain length distribution. Use ChainSizes or evaluate on the bare process model."))
+        "loglikelihood(ChainLengths, Observed{..., PerCaseObservation}) is not defined: per-case detection does not translate to a well-defined chain length distribution. Use ChainSizes or evaluate on the bare process model."))
 end
 
 for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]

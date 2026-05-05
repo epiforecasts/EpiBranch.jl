@@ -17,7 +17,7 @@
 
 """Strip observation wrappers; the generative model is what we simulate from."""
 generative_model(m::TransmissionModel) = m
-generative_model(m::Surveilled) = generative_model(m.process)
+generative_model(m::Observed) = generative_model(m.process)
 
 """
 Transform simulated true chain sizes into the observed sizes matching
@@ -25,7 +25,7 @@ the analytical distribution. Default is identity; wrappers specialise.
 """
 observe_chain_sizes(::TransmissionModel, true_sizes, ::AbstractRNG) = true_sizes
 
-function observe_chain_sizes(m::Surveilled{<:Any, <:PerCaseObservation},
+function observe_chain_sizes(m::Observed{<:Any, <:PerCaseObservation},
         true_sizes, rng::AbstractRNG)
     inner = observe_chain_sizes(m.process, true_sizes, rng)
     p = m.observation.detection_prob

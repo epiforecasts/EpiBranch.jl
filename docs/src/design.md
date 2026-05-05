@@ -112,16 +112,16 @@ Offspring specifications replace what a branching process draws per individual. 
 - `_draw_offspring(rng, offspring_spec, individual, state)` for simulation
 - `chain_size_distribution(offspring_spec)` for analytics (returns a distribution)
 
-Transmission-model wrappers modify how a model is observed. They subtype `TransmissionModel` and hold a wrapped model. `PartiallyObserved(model, detection_prob)` is the current example. They participate via:
+Observation models capture how the latent process generates data. They subtype `ObservationModel` and combine with a process model via `Observed(process, observation)`. `PerCaseObservation(detection_prob, delay)` is the current example. They participate via:
 
-- `chain_size_distribution(wrapper)` returning a distribution that transforms the wrapped model's chain size distribution (e.g. `ThinnedChainSize(chain_size_distribution(m.model), p)`)
-- `loglikelihood(data, wrapper)`, which usually just routes through `chain_size_distribution`
+- `chain_size_distribution(::Observed{<:Any, <:YourObservation})` returning a distribution that transforms the wrapped model's chain size distribution (e.g. `ThinnedChainSize(chain_size_distribution(m.process), ρ)`)
+- `loglikelihood(data, ::Observed)`, which usually just routes through `chain_size_distribution`
 
-### Why wrappers return distributions
+### Why observation models return distributions
 
-`chain_size_distribution(m::PartiallyObserved)` returns `ThinnedChainSize(base, p)`. The result is itself a `DiscreteUnivariateDistribution` with its own `logpdf`, so a future wrapper such as `TimeCensored` can wrap it: `CensoredChainSize(ThinnedChainSize(base, p), p_c)`. Composition is then just nesting the distributions.
+`chain_size_distribution(::Observed{<:Any, <:PerCaseObservation})` returns `ThinnedChainSize(base, ρ)`. The result is itself a `DiscreteUnivariateDistribution` with its own `logpdf`, so a second observation type (e.g. `CensoredAtSize`) can wrap a model already wrapped in another `Observed`, and the chain-size distribution nests through. Composition is then just nesting the distributions.
 
-If instead the thinning were computed inside `loglikelihood(::PartiallyObserved)`, adding a second wrapper would require working out its joint likelihood with `PartiallyObserved` by hand, and every new pair would need the same treatment. Returning a distribution means each wrapper can be written once.
+If instead the thinning were computed inside `loglikelihood(::Observed)`, adding a second observation type would require working out its joint likelihood with `PerCaseObservation` by hand, and every new pair would need the same treatment. Returning a distribution means each observation can be written once.
 
 ### Closed forms as dispatch optimisations
 
@@ -133,17 +133,6 @@ chain_size_distribution(o::ClusterMixed{PoissonFamily, <:Gamma}) = PoissonGammaC
 ```
 
 The generic case uses adaptive Gauss-Kronrod quadrature via `ChainSizeMixture`. When a closed form applies, dispatch uses it without the user having to ask.
-
-### Pipe composition
-
-If you call a wrapper with just its parameters, you get a function that wraps a model, and Julia's pipe chains those together:
-
-```julia
-model |> PartiallyObserved(0.7)
-model |> PartiallyObserved(0.5) |> PartiallyObserved(0.5)   # compounds to 0.25
-```
-
-When the wrappers don't commute, order matters and the pipe reads left to right.
 
 ## Simulation, mutation, and automatic differentiation
 
@@ -164,9 +153,9 @@ Use gradient-free samplers instead: Metropolis-Hastings (`MH()`), particle metho
 An extension with both an analytical chain size distribution and a simulation path should have a regression test confirming they agree. The test suite has a helper at `test/testutils/sim_analytical_consistency.jl`. A new type plugs in by defining two methods:
 
 - `generative_model(m)` strips observation wrappers so `simulate_batch` can run
-- `observe_chain_sizes(m, true_sizes, rng)` transforms simulated true chain sizes into observed ones (defaults to the identity; observation wrappers override it)
+- `observe_chain_sizes(m, true_sizes, rng)` transforms simulated true chain sizes into observed ones (defaults to the identity; observation models override it)
 
-`sim_analytical_consistent(model; n_chains, sizes, rng)` then simulates, applies `observe_chain_sizes`, and compares the empirical PMF against `chain_size_distribution(model)`. The same helper already covers bare offspring, `ClusterMixed`, and `PartiallyObserved`.
+`sim_analytical_consistent(model; n_chains, sizes, rng)` then simulates, applies `observe_chain_sizes`, and compares the empirical PMF against `chain_size_distribution(model)`. The helper already covers bare offspring, `ClusterMixed`, and `Observed{<:Any, <:PerCaseObservation}`.
 
 ## Connection to survival analysis
 

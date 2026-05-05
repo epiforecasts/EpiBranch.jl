@@ -4,10 +4,10 @@
 # it falls back to simulation.
 
 """
-    Surveilled(process, observation)
+    Observed(process, observation)
 
 State-space combiner: pair a `TransmissionModel` with an
-[`ObservationModel`](@ref). Dispatch on `Surveilled{P, O}` is the
+[`ObservationModel`](@ref). Dispatch on `Observed{P, O}` is the
 single surface for likelihoods that need to know about both the
 latent dynamics and how they are observed.
 
@@ -16,22 +16,22 @@ Forwards process-model accessors (`population_size`, `latent_period`,
 helpers that route through them work transparently on the combined
 model.
 """
-struct Surveilled{P <: TransmissionModel, O <: ObservationModel} <: TransmissionModel
+struct Observed{P <: TransmissionModel, O <: ObservationModel} <: TransmissionModel
     process::P
     observation::O
 end
 
-function Base.show(io::IO, m::Surveilled)
-    print(io, "Surveilled($(m.process), $(m.observation))")
+function Base.show(io::IO, m::Observed)
+    print(io, "Observed($(m.process), $(m.observation))")
 end
 
-population_size(m::Surveilled) = population_size(m.process)
-latent_period(m::Surveilled) = latent_period(m.process)
-n_types(m::Surveilled) = n_types(m.process)
-_single_type_offspring(m::Surveilled) = _single_type_offspring(m.process)
+population_size(m::Observed) = population_size(m.process)
+latent_period(m::Observed) = latent_period(m.process)
+n_types(m::Observed) = n_types(m.process)
+_single_type_offspring(m::Observed) = _single_type_offspring(m.process)
 
 """
-    simulate(m::Surveilled; kwargs...)
+    simulate(m::Observed; kwargs...)
 
 Run the underlying process simulation, then apply the observation
 model in place. For `PerCaseObservation(ρ, D)`, each individual
@@ -44,7 +44,7 @@ gets:
 Downstream output (line list, chain statistics) can then filter on
 `:reported` and read `:report_time`.
 """
-function simulate(m::Surveilled{<:TransmissionModel, <:PerCaseObservation};
+function simulate(m::Observed{<:TransmissionModel, <:PerCaseObservation};
         rng::AbstractRNG = Random.default_rng(), kwargs...)
     state = simulate(m.process; rng = rng, kwargs...)
     ρ = m.observation.detection_prob
@@ -54,46 +54,6 @@ function simulate(m::Surveilled{<:TransmissionModel, <:PerCaseObservation};
         ind.state[:report_time] = ind.infection_time + rand(rng, delay)
     end
     return state
-end
-
-"""
-    PartiallyObserved(model, detection_prob)
-
-Convenience constructor that builds
-`Surveilled(model, PerCaseObservation(detection_prob, Dirac(0.0)))`.
-Equivalent to per-case binomial thinning with no reporting delay.
-Each case in a chain is detected with probability `detection_prob`;
-chains with zero detected cases are unobserved.
-
-# Examples
-
-```julia
-base = BranchingProcess(NegBin(0.8, 0.5))
-model = PartiallyObserved(base, 0.7)
-loglikelihood(ChainSizes([1, 1, 2, 3]), model)
-```
-"""
-function PartiallyObserved(model::TransmissionModel, detection_prob::Real)
-    Surveilled(model, PerCaseObservation(detection_prob, Dirac(0.0)))
-end
-
-"""
-    Reported(model, delay)
-
-Convenience constructor that builds
-`Surveilled(model, PerCaseObservation(1.0, delay))`. Equivalent to
-full per-case reporting with the given delay distribution.
-
-# Examples
-
-```julia
-base = BranchingProcess(NegBin(2.5, 0.1), Gamma(2.0, 2.5))
-model = Reported(base, LogNormal(1.6, 0.4))
-loglikelihood(real_time_data, model)
-```
-"""
-function Reported(model::TransmissionModel, delay::Distribution)
-    Surveilled(model, PerCaseObservation(1.0, delay))
 end
 
 """
@@ -155,15 +115,14 @@ end
 Distributions.pdf(d::ThinnedChainSize, n::Integer) = exp(logpdf(d, n))
 
 """
-    chain_size_distribution(m::Surveilled{<:Any, <:PerCaseObservation})
+    chain_size_distribution(m::Observed{<:Any, <:PerCaseObservation})
 
 Return `ThinnedChainSize` wrapping the chain size distribution of the
-inner process. Recurses through any nested wrappers, so e.g.
-`PartiallyObserved(PartiallyObserved(model, p1), p2)` (which becomes
-`Surveilled(Surveilled(model, ...), ...)` in the type) gives the same
-nested-thinning likelihood without pairwise dispatch.
+inner process. Recurses through any nested `Observed` wrappers, so a
+double per-case observation (e.g. surveillance plus a separate audit)
+gives the right nested-thinning likelihood without pairwise dispatch.
 """
-function chain_size_distribution(m::Surveilled{<:Any, <:PerCaseObservation})
+function chain_size_distribution(m::Observed{<:Any, <:PerCaseObservation})
     p = m.observation.detection_prob
     base = chain_size_distribution(m.process)
     # ρ = 1 is a no-op; skip the ThinnedChainSize wrap so multi-seed
@@ -171,22 +130,3 @@ function chain_size_distribution(m::Surveilled{<:Any, <:PerCaseObservation})
     # multi-seed implementation (which ThinnedChainSize lacks).
     return p == 1.0 ? base : ThinnedChainSize(base, p)
 end
-
-# Binomial thinning compounds: two rounds with p1, p2 equal one round
-# with p1·p2. Collapse at construction time to avoid a needlessly
-# nested Surveilled. Performance shortcut; without it the generic
-# chain_size_distribution dispatch still gives the right likelihood,
-# just via a deeper nested sum.
-function PartiallyObserved(inner::Surveilled{<:Any, <:PerCaseObservation},
-        detection_prob::Real)
-    inner_p = inner.observation.detection_prob
-    PartiallyObserved(inner.process, detection_prob * inner_p)
-end
-
-"""
-    PartiallyObserved(detection_prob) -> m -> PartiallyObserved(m, detection_prob)
-
-Call with only the detection probability to get a function that wraps
-a model. Enables pipe syntax like `model |> PartiallyObserved(0.7)`.
-"""
-PartiallyObserved(detection_prob::Real) = m -> PartiallyObserved(m, detection_prob)

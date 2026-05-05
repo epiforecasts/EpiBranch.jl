@@ -9,7 +9,7 @@ EpiBranch uses a state-space framing: a *process model* (the latent
 transmission dynamics — `BranchingProcess`) and an *observation
 model* (how the latent state generates data — [`PerCaseObservation`](@ref)
 covers per-case detection probability and reporting delay). The two
-combine via [`Surveilled`](@ref) so the same `loglikelihood(data,
+combine via [`Observed`](@ref) so the same `loglikelihood(data,
 model)` dispatch handles every combination.
 
 ## The observation model
@@ -71,17 +71,14 @@ loglikelihood(data, model)
 ```
 
 For a non-trivial reporting delay `D`, combine the process with a
-`PerCaseObservation` via `Surveilled`:
+`PerCaseObservation` via `Observed`:
 
 ```julia
 obs = PerCaseObservation(detection_prob = 1.0, delay = LogNormal(1.6, 0.4))
-loglikelihood(data, Surveilled(model, obs))
+loglikelihood(data, Observed(model, obs))
 ```
 
-The convenience constructor [`Reported`](@ref) wraps this:
-`Reported(model, delay)` is exactly `Surveilled(model,
-PerCaseObservation(1.0, delay))`. The bare-model likelihood is the
-special case `D = Dirac(0.0)`.
+The bare-model likelihood is the special case `D = Dirac(0.0)`.
 
 For under-reporting, set `detection_prob < 1`. The likelihood then
 uses the *direct-offspring approximation* — the per-case report rate
@@ -90,7 +87,7 @@ is `ρ·R` in `π(τ)`, and the chain-size PMF in the mixture becomes
 
 ```julia
 obs = PerCaseObservation(detection_prob = 0.7, delay = LogNormal(1.6, 0.4))
-loglikelihood(data, Surveilled(model, obs))
+loglikelihood(data, Observed(model, obs))
 ```
 
 The approximation ignores hazard from unobserved descendants. It's

@@ -143,8 +143,7 @@ probability:
     L_i = π_i · P(X = x_i | s_i)  +  (1 - π_i) · P(X ≥ x_i | s_i)
 
 For a non-trivial reporting delay, combine the model with a
-`PerCaseObservation` via [`Surveilled`](@ref) (or use the convenience
-constructor [`Reported`](@ref)).
+`PerCaseObservation` via [`Observed`](@ref).
 """
 function loglikelihood(data::RealTimeChainSizes, model::BranchingProcess)
     _real_time_loglik(data, model, Dirac(0.0))
@@ -152,7 +151,7 @@ end
 
 """
     loglikelihood(data::RealTimeChainSizes,
-                  model::Surveilled{<:BranchingProcess, <:PerCaseObservation})
+                  model::Observed{<:BranchingProcess, <:PerCaseObservation})
 
 Real-time cluster-size log-likelihood for a `BranchingProcess`
 combined with `PerCaseObservation`. Folds `observation.delay` into
@@ -161,7 +160,7 @@ probability `ρ = observation.detection_prob` two ways:
 
 - The chain-size PMF in the mixture becomes the observed-size
   distribution `ThinnedChainSize(chain_size_distribution(NegBin), ρ)`,
-  via the existing `chain_size_distribution(::Surveilled)` route.
+  via the existing `chain_size_distribution(::Observed)` route.
 - The end-of-outbreak probability `π(τ)` uses the *direct-offspring
   approximation*: the per-case report rate is `ρ·R`, so
 
@@ -175,7 +174,7 @@ probability `ρ = observation.detection_prob` two ways:
   deliberately not implemented here.
 """
 function loglikelihood(data::RealTimeChainSizes,
-        m::Surveilled{<:BranchingProcess, <:PerCaseObservation})
+        m::Observed{<:BranchingProcess, <:PerCaseObservation})
     process = m.process
     ρ = m.observation.detection_prob
     delay = m.observation.delay

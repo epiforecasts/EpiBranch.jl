@@ -49,13 +49,14 @@
             @test q ≈ q2
         end
 
-        @testset "Delegates through PartiallyObserved" begin
+        @testset "Delegates through Observed" begin
             # Regression: extinction_probability goes via
             # _single_type_offspring, which must delegate through
             # observation wrappers. Before the fix it threw FieldError
-            # because PartiallyObserved has no `offspring` field.
+            # because the wrapper has no `offspring` field.
             bp = BranchingProcess(NegBin(0.5, 0.5))
-            @test extinction_probability(PartiallyObserved(bp, 0.7)) ==
+            obs_model = Observed(bp, PerCaseObservation(0.7, Dirac(0.0)))
+            @test extinction_probability(obs_model) ==
                   extinction_probability(bp)
         end
     end
@@ -171,32 +172,26 @@
 
         @testset "With partial observation" begin
             base = BranchingProcess(Poisson(0.5))
-            ll = loglikelihood(ChainSizes([1, 1, 2]), PartiallyObserved(base, 0.8))
+            mk(p) = Observed(base, PerCaseObservation(p, Dirac(0.0)))
+
+            ll = loglikelihood(ChainSizes([1, 1, 2]), mk(0.8))
             @test isfinite(ll)
 
-            # Full observation (detection_prob=1) should agree with bare offspring
-            ll_full = loglikelihood(ChainSizes([1, 1, 2]), PartiallyObserved(base, 1.0))
+            # ρ = 1 should agree with the bare offspring likelihood.
+            ll_full = loglikelihood(ChainSizes([1, 1, 2]), mk(1.0))
             ll_bare = loglikelihood(ChainSizes([1, 1, 2]), Poisson(0.5))
             @test ll_full ≈ ll_bare atol=1e-6
 
-            # Stricter detection should lower the likelihood for these small sizes
-            ll_strict = loglikelihood(ChainSizes([1, 1, 2]), PartiallyObserved(base, 0.3))
+            # Stricter detection should lower the likelihood for small sizes.
+            ll_strict = loglikelihood(ChainSizes([1, 1, 2]), mk(0.3))
             @test isfinite(ll_strict)
 
-            # State-space form gives the same answer as the wrapper.
-            for p in (0.3, 0.8, 1.0)
-                ll_wrapper = loglikelihood(ChainSizes([1, 1, 2]),
-                    PartiallyObserved(base, p))
-                ll_ss = loglikelihood(ChainSizes([1, 1, 2]),
-                    Surveilled(base, PerCaseObservation(p, Dirac(0.0))))
-                @test ll_wrapper ≈ ll_ss atol=1e-12
-            end
             # Reporting delay is irrelevant for closed-outbreak chain
             # sizes — same answer regardless of delay distribution.
             ll_with_delay = loglikelihood(ChainSizes([1, 1, 2]),
-                Surveilled(base, PerCaseObservation(0.7, LogNormal(1.0, 0.5))))
+                Observed(base, PerCaseObservation(0.7, LogNormal(1.0, 0.5))))
             ll_no_delay = loglikelihood(ChainSizes([1, 1, 2]),
-                Surveilled(base, PerCaseObservation(0.7, Dirac(0.0))))
+                Observed(base, PerCaseObservation(0.7, Dirac(0.0))))
             @test ll_with_delay ≈ ll_no_delay atol=1e-12
         end
 
@@ -350,25 +345,18 @@
                   abs(ll_med_tau - ll_concluded) <
                   abs(ll_zero_tau - ll_concluded)
 
-            # Reported wrapper composes a delay around the model. With
-            # Dirac(0.0) it should match the bare-model likelihood; with
-            # a real delay it pushes the mixture away from extinction
-            # (consistent with the per-τ π_with_delay < π_no_delay test
-            # above).
+            # Observed + PerCaseObservation composes a delay around the
+            # model. With Dirac(0.0) it should match the bare-model
+            # likelihood; with a real delay it pushes the mixture away
+            # from extinction (consistent with the per-τ
+            # π_with_delay < π_no_delay test above).
             rt_data = RealTimeChainSizes(sizes, fill(7.0, 4); seeds = seeds)
-            ll_no_delay = loglikelihood(rt_data, Reported(model, Dirac(0.0)))
+            ll_no_delay = loglikelihood(rt_data,
+                Observed(model, PerCaseObservation(1.0, Dirac(0.0))))
             @test ll_no_delay ≈ ll_med_tau atol=1e-10
             ll_with_delay = loglikelihood(rt_data,
-                Reported(model, LogNormal(1.5, 0.5)))
+                Observed(model, PerCaseObservation(1.0, LogNormal(1.5, 0.5))))
             @test ll_with_delay != ll_med_tau
-
-            # State-space form gives the same answer as the Reported wrapper.
-            for delay in (Dirac(0.0), LogNormal(1.0, 0.4), Gamma(2.0, 1.5))
-                ll_wrap = loglikelihood(rt_data, Reported(model, delay))
-                ll_ss = loglikelihood(rt_data,
-                    Surveilled(model, PerCaseObservation(1.0, delay)))
-                @test ll_wrap ≈ ll_ss atol=1e-12
-            end
             # Under-reporting (ρ < 1): direct-offspring approximation.
             # Use single-seed clusters; multi-seed + ThinnedChainSize is
             # not implemented (pre-existing limitation of the closed-form
@@ -376,19 +364,19 @@
             single_seed_data = RealTimeChainSizes(sizes, fill(7.0, 4);
                 seeds = ones(Int, 4))
             ll_rho1 = loglikelihood(single_seed_data,
-                Surveilled(model, PerCaseObservation(1.0, Dirac(0.0))))
+                Observed(model, PerCaseObservation(1.0, Dirac(0.0))))
             ll_bare = loglikelihood(single_seed_data, model)
             @test ll_rho1 ≈ ll_bare atol=1e-12
 
             # ρ < 1 changes the answer (reports thinned + π formula uses ρR).
             ll_rho_low = loglikelihood(single_seed_data,
-                Surveilled(model, PerCaseObservation(0.5, Dirac(0.0))))
+                Observed(model, PerCaseObservation(0.5, Dirac(0.0))))
             @test ll_rho_low != ll_bare
             @test isfinite(ll_rho_low)
 
             # ρ → 1 limit smoothly approaches the ρ = 1 case.
             ll_rho_near1 = loglikelihood(single_seed_data,
-                Surveilled(model, PerCaseObservation(0.999, Dirac(0.0))))
+                Observed(model, PerCaseObservation(0.999, Dirac(0.0))))
             @test isapprox(ll_rho_near1, ll_rho1; atol = 1e-2)
 
             # Constructor validation.
@@ -396,12 +384,12 @@
             @test_throws ArgumentError RealTimeChainSizes([3], [1.0]; seeds = [0])
             @test_throws ArgumentError RealTimeChainSizes([3, 5], [1.0])
 
-            # simulate(::Surveilled) decorates each individual with
+            # simulate(::Observed) decorates each individual with
             # :reported and :report_time so downstream code can filter
             # to observed reports.
             using StableRNGs
             sim_state = simulate(
-                Surveilled(model, PerCaseObservation(0.6, LogNormal(1.0, 0.4)));
+                Observed(model, PerCaseObservation(0.6, LogNormal(1.0, 0.4)));
                 rng = StableRNG(42))
             @test all(haskey(ind.state, :reported) for ind in sim_state.individuals)
             @test all(haskey(ind.state, :report_time) for ind in sim_state.individuals)
@@ -409,45 +397,44 @@
             for ind in sim_state.individuals)
         end
 
-        @testset "Composition: PartiallyObserved(BranchingProcess(ClusterMixed))" begin
+        @testset "Composition: Observed(BranchingProcess(ClusterMixed))" begin
             k, R = 0.5, 0.8
             data = ChainSizes([1, 1, 2, 3, 1, 4])
             cm = ClusterMixed(Poisson, Gamma(k, R / k))
             bp = BranchingProcess(cm)
+            mk(p) = Observed(bp, PerCaseObservation(p, Dirac(0.0)))
 
-            # With detection_prob = 1 should equal the bare likelihood
-            ll_full = loglikelihood(data, PartiallyObserved(bp, 1.0))
+            # ρ = 1 should equal the bare likelihood.
+            ll_full = loglikelihood(data, mk(1.0))
             ll_bare = loglikelihood(data, cm)
             @test ll_full ≈ ll_bare atol=1e-6
 
-            # Partial observation reduces the likelihood for small observed sizes
-            ll_partial = loglikelihood(data, PartiallyObserved(bp, 0.7))
+            # ρ < 1 reduces the likelihood for small observed sizes.
+            ll_partial = loglikelihood(data, mk(0.7))
             @test isfinite(ll_partial)
             @test ll_partial < ll_full
 
-            # Composition also works over the quadrature fallback
+            # Composition also works over the quadrature fallback.
             cm_nb = ClusterMixed(R -> NegBin(R, 0.5), Gamma(2.0, 0.3))
             bp_nb = BranchingProcess(cm_nb)
-            ll_nb_partial = loglikelihood(data, PartiallyObserved(bp_nb, 0.7))
+            ll_nb_partial = loglikelihood(data,
+                Observed(bp_nb, PerCaseObservation(0.7, Dirac(0.0))))
             @test isfinite(ll_nb_partial)
         end
 
-        @testset "Composition via pipe and stacking" begin
+        @testset "Stacking: Observed(Observed(...))" begin
             data = ChainSizes([1, 1, 2, 3, 1, 4])
             model = BranchingProcess(NegBin(0.5, 0.5))
+            mk(p) = Observed(model, PerCaseObservation(p, Dirac(0.0)))
 
-            # Stacking compounds detection probabilities
+            # Two rounds of detection compound multiplicatively: a
+            # nested Observed at (0.5, 0.5) gives the same likelihood
+            # as a single Observed at 0.25, via nested ThinnedChainSize.
+            inner = Observed(model, PerCaseObservation(0.5, Dirac(0.0)))
             ll_nested = loglikelihood(data,
-                PartiallyObserved(PartiallyObserved(model, 0.5), 0.5))
-            ll_single = loglikelihood(data, PartiallyObserved(model, 0.25))
+                Observed(inner, PerCaseObservation(0.5, Dirac(0.0))))
+            ll_single = loglikelihood(data, mk(0.25))
             @test ll_nested ≈ ll_single
-
-            # Julia pipe
-            ll_pipe = loglikelihood(data, model |> PartiallyObserved(0.25))
-            @test ll_pipe ≈ ll_single
-            ll_stacked_pipe = loglikelihood(data,
-                model |> PartiallyObserved(0.5) |> PartiallyObserved(0.5))
-            @test ll_stacked_pipe ≈ ll_single
         end
 
         @testset "Sim ↔ analytical consistency" begin
@@ -471,13 +458,13 @@
                 @test e≈a atol=0.02
             end
 
-            # PartiallyObserved(bp, p): simulate bare, thin per case, compare
-            # against ThinnedChainSize PMF. This is how any new observation
-            # wrapper should be tested — define observe_chain_sizes and
-            # the helper does the rest.
+            # Observed(bp, PerCaseObservation(p, ...)): simulate bare,
+            # thin per case, compare against ThinnedChainSize PMF. This
+            # is how any new observation model should be tested — define
+            # observe_chain_sizes and the helper does the rest.
             emp_po,
             ana_po = sim_analytical_consistent(
-                bp |> PartiallyObserved(0.6);
+                Observed(bp, PerCaseObservation(0.6, Dirac(0.0)));
                 n_chains = 5000, rng = StableRNG(7))
             for (e, a) in zip(emp_po, ana_po)
                 @test e≈a atol=0.02
@@ -544,13 +531,14 @@
             @test_throws ArgumentError loglikelihood(ChainLengths([1, 2]), NegBin(1.5, 0.5))
         end
 
-        @testset "PartiallyObserved rejects ChainLengths" begin
+        @testset "Observed + PerCaseObservation rejects ChainLengths" begin
             # Per-case detection doesn't cleanly transform chain length.
             # Raise a clear error rather than routing through an undefined
             # simulate path.
             bp = BranchingProcess(Poisson(0.5), Exponential(5.0))
             @test_throws ArgumentError loglikelihood(
-                ChainLengths([0, 1]), PartiallyObserved(bp, 0.7))
+                ChainLengths([0, 1]),
+                Observed(bp, PerCaseObservation(0.7, Dirac(0.0))))
         end
     end
 
@@ -594,14 +582,14 @@
             @test isfinite(ll)
         end
 
-        @testset "PartiallyObserved sim path with interventions" begin
+        @testset "Observed sim path with interventions" begin
             # Regression: previously crashed because the generic sim
-            # fallback accessed model.offspring, which PartiallyObserved
-            # does not have. The merged kwarg method now simulates the
-            # wrapped model, thins chain sizes per case, and compares.
+            # fallback accessed model.offspring, which the Observed
+            # wrapper does not have. The intervention path now simulates
+            # the wrapped process, thins chain sizes per case, and compares.
             model = BranchingProcess(Poisson(2.0), Exponential(5.0))
             iso = Isolation(delay = Exponential(1.0))
-            po = PartiallyObserved(model, 0.7)
+            po = Observed(model, PerCaseObservation(0.7, Dirac(0.0)))
             ll = loglikelihood(ChainSizes([1, 1, 2, 1]), po;
                 interventions = [iso],
                 attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),

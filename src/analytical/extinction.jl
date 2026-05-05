@@ -84,7 +84,7 @@ end
 Extinction probability for a single-type transmission model, extracted
 from the model's offspring specification via `_single_type_offspring`.
 Works for `BranchingProcess` and wrappers that delegate that accessor
-(e.g. `PartiallyObserved`).
+(e.g. `Observed`).
 """
 function extinction_probability(model::TransmissionModel; kwargs...)
     return extinction_probability(_single_type_offspring(model); kwargs...)
@@ -168,7 +168,7 @@ end
     probability_contain(model::TransmissionModel; kwargs...)
 
 Containment probability for a single-type transmission model. Delegates
-through `_single_type_offspring`, so wrappers such as `PartiallyObserved`
+through `_single_type_offspring`, so wrappers such as `Observed`
 work too.
 """
 function probability_contain(model::TransmissionModel; kwargs...)

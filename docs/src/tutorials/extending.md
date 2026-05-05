@@ -327,28 +327,24 @@ results = simulate_batch(model_waning, 200;
 println("Waning-R model: $(round(containment_probability(results), digits=3))")
 ```
 
-## Adding an observation wrapper
+## Adding an observation model
 
-Observation wrappers subtype `TransmissionModel` and transform the
-analytical chain size distribution of the model they wrap.
-`PartiallyObserved` is the reference. A new wrapper needs three pieces:
+Observation models subtype `ObservationModel` and combine with a
+process model via [`Observed`](@ref). `PerCaseObservation` (per-case
+detection probability and reporting delay) is the reference. A new
+observation model needs three pieces:
 
-1. A wrapper struct holding the inner model and observation parameters.
-2. A transformed chain size distribution (a new `DiscreteUnivariateDistribution`) whose `logpdf` applies the observation process to a base distribution. This type can wrap any distribution, including one produced by another wrapper, so nesting works.
-3. A `chain_size_distribution` method that pairs the wrapper with its transformed distribution.
+1. A struct holding the observation parameters, subtyping `ObservationModel`.
+2. A transformed chain size distribution (a new `DiscreteUnivariateDistribution`) whose `logpdf` applies the observation process to a base distribution. This type can wrap any distribution, including one produced by another observation, so nesting works.
+3. A `chain_size_distribution` method on `Observed{<:Any, <:YourObservation}` that pairs the wrapped distribution with the new transformed distribution.
 
 ### Minimal sketch
 
 ```julia
-# 1. Wrapper
-struct CensoredAtSize{M <: TransmissionModel} <: TransmissionModel
-    model::M
-    max_observed::Int
+# 1. Observation model
+struct CensoredAtSize <: ObservationModel
+    cap::Int
 end
-
-# Forward TransmissionModel accessors
-EpiBranch.population_size(m::CensoredAtSize) = EpiBranch.population_size(m.model)
-EpiBranch.latent_period(m::CensoredAtSize) = EpiBranch.latent_period(m.model)
 
 # 2. Transformed chain size distribution
 struct TruncatedChainSize{D} <: DiscreteUnivariateDistribution
@@ -361,33 +357,26 @@ Distributions.insupport(d::TruncatedChainSize, n::Integer) = 1 <= n <= d.cap
 
 function Distributions.logpdf(d::TruncatedChainSize, n::Integer)
     1 <= n <= d.cap || return -Inf
-    # Renormalise by mass up to the cap
     Z = sum(pdf(d.base, m) for m in 1:d.cap)
     return logpdf(d.base, n) - log(Z)
 end
 
 # 3. Hook into the dispatch
-function EpiBranch.chain_size_distribution(m::CensoredAtSize)
-    TruncatedChainSize(EpiBranch.chain_size_distribution(m.model), m.max_observed)
+function EpiBranch.chain_size_distribution(m::Observed{<:Any, CensoredAtSize})
+    TruncatedChainSize(
+        EpiBranch.chain_size_distribution(m.process), m.observation.cap)
 end
 
-function Distributions.loglikelihood(data::ChainSizes, m::CensoredAtSize)
+function Distributions.loglikelihood(data::ChainSizes,
+        m::Observed{<:Any, CensoredAtSize})
     d = EpiBranch.chain_size_distribution(m)
     sum(logpdf(d, n) for n in data.data)
 end
 ```
 
-With these three pieces the wrapper composes with anything else that has a `chain_size_distribution` method. Both `CensoredAtSize(PartiallyObserved(m, p), 10)` and `PartiallyObserved(CensoredAtSize(m, 10), p)` work through nested dispatch.
-
-### Pipe support
-
-Add a constructor that only takes the wrapper's parameters and
-returns a function wrapping a model. That makes pipes work:
-
-```julia
-CensoredAtSize(cap::Int) = m -> CensoredAtSize(m, cap)
-# Usage: model |> PartiallyObserved(0.7) |> CensoredAtSize(10)
-```
+Usage: `Observed(model, CensoredAtSize(10))`. Composition with another
+observation type goes through nested `Observed`:
+`Observed(Observed(model, PerCaseObservation(0.7)), CensoredAtSize(10))`.
 
 ### Sim ↔ analytical consistency test
 
@@ -395,18 +384,19 @@ The helper in `test/testutils/sim_analytical_consistency.jl` cross-checks
 simulation against your new distribution once you define two methods:
 
 ```julia
-# Strip the observation wrapper so simulation runs on the base model
-generative_model(m::CensoredAtSize) = generative_model(m.model)
-
 # Transform simulated true sizes into observed ones
-function observe_chain_sizes(m::CensoredAtSize, true_sizes, rng::AbstractRNG)
-    inner = observe_chain_sizes(m.model, true_sizes, rng)
-    # cap-censoring: drop chains above the cap
-    return filter(n -> n <= m.max_observed, inner)
+function observe_chain_sizes(m::Observed{<:Any, CensoredAtSize},
+        true_sizes, rng::AbstractRNG)
+    inner = observe_chain_sizes(m.process, true_sizes, rng)
+    return filter(n -> n <= m.observation.cap, inner)
 end
 ```
 
-With those in place, `sim_analytical_consistent(model; n_chains=5000, rng=StableRNG(1))` returns empirical and analytical PMFs that should agree within sampling error.
+`generative_model(::Observed)` is already defined and strips the
+observation. With your `observe_chain_sizes` method in place,
+`sim_analytical_consistent(model; n_chains=5000, rng=StableRNG(1))`
+returns empirical and analytical PMFs that should agree within
+sampling error.
 
 ## Adding an offspring specification
 

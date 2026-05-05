@@ -65,7 +65,7 @@ that need a `Distribution` specifically should check the return type.
 Throws only for multi-type (function-based) offspring, which this
 accessor cannot sensibly return.
 
-Wrapper models (e.g. `PartiallyObserved`) should specialise this to
+Wrapper models (e.g. `Observed`) should specialise this to
 delegate through to the wrapped model.
 """
 function _single_type_offspring(model::TransmissionModel)
