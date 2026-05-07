@@ -6,6 +6,58 @@ The offspring draw is completely decoupled from timing and interventions. The co
 
 ## Architecture
 
+### Top-level diagram
+
+The package separates into a process side, an observation side, a
+data layer, and an inference dispatch surface. `Observed` combines
+the first two; `loglikelihood(data, model)` is the single inference
+verb.
+
+```
+PROCESS                                OBSERVATION
+─────────                              ─────────
+TransmissionModel (abstract)           ObservationModel (abstract)
+└── BranchingProcess(offspring,        └── PerCaseObservation(
+                     generation_time)        detection_prob, delay)
+└── Observed{P, O}(process, observation) ← combines both
+    (also <: TransmissionModel)
+
+                       │
+                       │ simulate(model)
+                       ▼
+                 SimulationState
+                 (linelist, chain stats, ...)
+
+                       │
+DATA  ─────────────────┴─────────────►  INFERENCE
+─────                                   ─────────
+OffspringCounts                         loglikelihood(data, model)
+ChainSizes(sizes; concluded)
+ChainLengths
+RealTimeChainSizes(sizes, tau;
+                   case_ages, ...)
+
+ORTHOGONAL
+─────────
+AbstractIntervention (Isolation, ContactTracing, RingVaccination, Scheduled)
+    — passed to simulate as a vector; modifies state during step!
+
+EXTENSION POINTS (for users adding their own pieces)
+─────────
+- Custom transmission model: subtype TransmissionModel,
+  define step!, single_type_offspring, chain_size_distribution
+- Custom observation model: subtype ObservationModel,
+  define loglikelihood(::DataType, ::Observed{<:Any, <:YourObs})
+  and chain_size_distribution(::Observed{<:Any, <:YourObs}) if analytical
+- Custom data type: define a struct + a loglikelihood method
+- Custom intervention: subtype AbstractIntervention,
+  define apply_post_transmission!, initialise_individual!, ...
+```
+
+The four design principles are documented separately
+([Design principles](principles.md)) and are the basis on which this
+shape is judged.
+
 ### Three separated stages
 
 #### 1. Offspring draw
