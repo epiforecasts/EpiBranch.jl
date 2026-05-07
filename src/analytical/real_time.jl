@@ -180,7 +180,7 @@ function loglikelihood(data::RealTimeChainSizes,
     delay = m.observation.delay
     process.generation_time isa Distribution || throw(ArgumentError(
         "real-time likelihood requires a Distribution generation time"))
-    offspring = _single_type_offspring(process)
+    offspring = single_type_offspring(process)
     R = mean(offspring)
     k = offspring isa NegativeBinomial ? offspring.r : 1e6  # Poisson-like
     R_report = ρ * R                # Direct-offspring approximation.
@@ -209,7 +209,7 @@ end
 
 function _real_time_loglik(data::RealTimeChainSizes,
         model::BranchingProcess, delay::Distribution)
-    offspring = _single_type_offspring(model)
+    offspring = single_type_offspring(model)
     model.generation_time isa Distribution || throw(ArgumentError(
         "real-time likelihood requires a Distribution generation time"))
     R = mean(offspring)

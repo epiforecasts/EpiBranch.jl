@@ -51,7 +51,7 @@
 
         @testset "Delegates through Observed" begin
             # Regression: extinction_probability goes via
-            # _single_type_offspring, which must delegate through
+            # single_type_offspring, which must delegate through
             # observation wrappers. Before the fix it threw FieldError
             # because the wrapper has no `offspring` field.
             bp = BranchingProcess(NegBin(0.5, 0.5))

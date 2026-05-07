@@ -56,21 +56,28 @@ abstract type TransmissionModel end
 """Interface methods with defaults for any TransmissionModel."""
 population_size(::TransmissionModel) = NoPopulation()
 
-"""Extract the offspring specification from a single-type model.
-
-Returns whatever the model stores in `offspring` (typically a
-`Distribution`, but can also be any type for which
-`chain_size_distribution` is defined — e.g. `ClusterMixed`). Callers
-that need a `Distribution` specifically should check the return type.
-Throws only for multi-type (function-based) offspring, which this
-accessor cannot sensibly return.
-
-Wrapper models (e.g. `Observed`) should specialise this to
-delegate through to the wrapped model.
 """
-function _single_type_offspring(model::TransmissionModel)
+    single_type_offspring(model::TransmissionModel)
+
+Extract the offspring specification from a single-type transmission
+model. Returns whatever the model stores in `offspring` (typically a
+`Distribution`, but can also be any type for which
+`chain_size_distribution` is defined — e.g. `ClusterMixed`).
+
+This is the canonical extension point for custom transmission models:
+analytical helpers (`extinction_probability`, `epidemic_probability`,
+`probability_contain`, `proportion_transmission`,
+`chain_size_distribution`) all route through it. A new
+`<: TransmissionModel` type that defines a method here gets all of
+those helpers for free.
+
+Wrappers (e.g. `Observed`) should specialise this to delegate to the
+wrapped process. Throws for multi-type (function-based) offspring,
+which the single-type accessor cannot sensibly return.
+"""
+function single_type_offspring(model::TransmissionModel)
     hasproperty(model, :offspring) || throw(ArgumentError(
-        "$(typeof(model)) has no `offspring` field — did you forget to specialise _single_type_offspring for it?"))
+        "$(typeof(model)) has no `offspring` field — did you forget to specialise single_type_offspring for it?"))
     off = model.offspring
     off isa Function && throw(ArgumentError(
         "This function only works with single-type models (not multi-type function offspring)"))

@@ -4,6 +4,7 @@
 
 ```@docs
 BranchingProcess
+single_type_offspring
 ```
 
 ## Types
@@ -188,7 +189,6 @@ EpiBranch._enforce_start_time!
 EpiBranch._chain_length_ll_negbin
 EpiBranch._borel_logpdf
 EpiBranch._gammaborel_logpdf
-EpiBranch._single_type_offspring
 EpiBranch._empirical_ll
 EpiBranch._golden_section_min
 ```

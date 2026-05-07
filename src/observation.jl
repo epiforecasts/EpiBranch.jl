@@ -12,7 +12,7 @@ single surface for likelihoods that need to know about both the
 latent dynamics and how they are observed.
 
 Forwards process-model accessors (`population_size`, `latent_period`,
-`n_types`, `_single_type_offspring`) to `process`, so analytical
+`n_types`, `single_type_offspring`) to `process`, so analytical
 helpers that route through them work transparently on the combined
 model.
 """
@@ -28,7 +28,7 @@ end
 population_size(m::Observed) = population_size(m.process)
 latent_period(m::Observed) = latent_period(m.process)
 n_types(m::Observed) = n_types(m.process)
-_single_type_offspring(m::Observed) = _single_type_offspring(m.process)
+single_type_offspring(m::Observed) = single_type_offspring(m.process)
 
 """
     simulate(m::Observed; kwargs...)
