@@ -75,7 +75,10 @@ export individual_type, set_isolated!
 
 # Exports — distributions
 export NegBin, scale_distribution, ringbp_generation_time
-export Borel, GammaBorel, PoissonGammaChainSize, ThinnedChainSize, chain_size_distribution
+# Process-side chain-size distributions (closed forms for offspring specs)
+export Borel, GammaBorel, PoissonGammaChainSize, chain_size_distribution
+# Observation-side chain-size distribution (binomial thinning of any base)
+export ThinnedChainSize
 
 # Exports — attributes functions
 export Disease, clinical_presentation, demographics, compose

@@ -73,6 +73,8 @@ weekly_incidence
 
 ## Analytical
 
+### Helpers
+
 ```@docs
 extinction_probability
 epidemic_probability
@@ -80,6 +82,17 @@ probability_contain
 proportion_transmission
 proportion_cluster_size
 network_R
+```
+
+### Chain-size distributions
+
+`chain_size_distribution(spec)` is the dispatch entry point. The
+distributions below are the process-side outputs — closed forms for
+the cluster-size PMF given an offspring specification. The
+observation-side counterpart (`ThinnedChainSize`) lives with the
+observation models.
+
+```@docs
 chain_size_distribution
 Borel
 GammaBorel
