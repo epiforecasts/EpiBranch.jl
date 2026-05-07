@@ -173,25 +173,6 @@ function clinical_presentation(; incubation_period::Distribution,
 end
 
 """
-    Disease(; incubation_period, prob_asymptomatic=0.0)
-
-Convenience wrapper for specifying disease properties. Can be passed
-directly as the `attributes` argument to [`simulate`](@ref).
-
-Sets `:onset_time` and `:asymptomatic` on each individual. Equivalent
-to `clinical_presentation(; incubation_period, prob_asymptomatic)` but
-with a name that reflects what is being specified.
-
-```julia
-disease = Disease(incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.3)
-simulate(model; attributes = disease, interventions = [iso])
-```
-"""
-function Disease(; incubation_period::Distribution, prob_asymptomatic::Real = 0.0)
-    clinical_presentation(; incubation_period, prob_asymptomatic)
-end
-
-"""
     demographics(; age_distribution=nothing, age_range=(0, 90), prob_female=0.5)
 
 Return an attributes function. `:age` and `:sex` are set on each individual.
@@ -242,8 +223,8 @@ end
 
 function _field_hint(field::Symbol)
     hints = Dict(
-        :onset_time => "Provide attributes = Disease(incubation_period = ...).",
-        :asymptomatic => "Provide attributes = Disease(incubation_period = ...).",
+        :onset_time => "Provide attributes = clinical_presentation(incubation_period = ...).",
+        :asymptomatic => "Provide attributes = clinical_presentation(incubation_period = ...).",
         :age => "Provide attributes = demographics(age_distribution = ...).",
         :sex => "Provide attributes = demographics(...)."
     )

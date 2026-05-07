@@ -81,7 +81,7 @@ export Borel, GammaBorel, PoissonGammaChainSize, chain_size_distribution
 export ThinnedChainSize
 
 # Exports — attributes functions
-export Disease, clinical_presentation, demographics, compose
+export clinical_presentation, demographics, compose
 
 # Exports — simulation
 export simulate, simulate_batch

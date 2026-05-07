@@ -164,7 +164,6 @@ for examples.
 ## Init functions
 
 ```@docs
-Disease
 clinical_presentation
 demographics
 compose

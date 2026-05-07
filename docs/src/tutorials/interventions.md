@@ -37,7 +37,7 @@ With R = 3.0, most outbreaks are not contained. Interventions are needed.
 
 Symptomatic, test-positive individuals are isolated after a delay from
 symptom onset using [`Isolation`](@ref). Clinical state on individuals
-is required, set by [`clinical_presentation`](@ref) or [`Disease`](@ref):
+is required, set by [`clinical_presentation`](@ref):
 
 ```@example interventions
 iso = Isolation(delay = Exponential(2.0))
@@ -110,12 +110,12 @@ println("Isolation + tracing: $(round(containment_probability(results), digits=3
 ## Asymptomatic cases and test sensitivity
 
 Asymptomatic cases escape symptom-based surveillance. The asymptomatic
-fraction is set via [`Disease`](@ref). Imperfect testing is a property
-of isolation — symptomatic cases are missed with probability
-`1 - test_sensitivity`:
+fraction is set via [`clinical_presentation`](@ref). Imperfect testing
+is a property of isolation — symptomatic cases are missed with
+probability `1 - test_sensitivity`:
 
 ```@example interventions
-disease_hard = Disease(
+disease_hard = clinical_presentation(
     incubation_period = LogNormal(1.5, 0.5),
     prob_asymptomatic = 0.3,
 )

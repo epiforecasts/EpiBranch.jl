@@ -2,7 +2,7 @@
 Isolate symptomatic, test-positive individuals after a delay from symptom onset.
 
 Requires `:onset_time` and `:asymptomatic` on individuals (set via
-[`Disease`](@ref) or [`clinical_presentation`](@ref)).
+[`clinical_presentation`](@ref)).
 
 `test_sensitivity` is the probability that a symptomatic individual tests
 positive and is therefore eligible for isolation.

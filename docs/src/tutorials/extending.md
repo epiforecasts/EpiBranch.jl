@@ -231,8 +231,8 @@ println("Isolation + SSE limit: $(round(containment_probability(results), digits
 
 The `attributes` argument to `simulate` is a function `(rng, individual) -> nothing`
 that sets fields on each individual when they are created (before any
-intervention hooks run). The built-in constructors `clinical_presentation`,
-`Disease`, and `demographics` return such functions.
+intervention hooks run). The built-in constructors `clinical_presentation` and
+`demographics` return such functions.
 
 ### Writing your own
 
