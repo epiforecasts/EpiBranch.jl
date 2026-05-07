@@ -327,6 +327,88 @@ results = simulate_batch(model_waning, 200;
 println("Waning-R model: $(round(containment_probability(results), digits=3))")
 ```
 
+## Adding a transmission model
+
+Most use cases stay inside `BranchingProcess` and customise via the
+offspring distribution (function-based, `ClusterMixed`, multi-type).
+But if you need a fundamentally different transmission process — a
+density-dependent model, a network-structured one, a continuous-time
+SEIR-like alternative — you can subtype `TransmissionModel` directly
+and reuse the rest of the framework.
+
+The contract is small. You implement what your model needs and reuse
+defaults for the rest.
+
+### What the framework expects
+
+For **simulation**, define one method:
+
+- `step!(model, state, interventions)` — advance one generation.
+  The default `simulate(::TransmissionModel)` loop calls this until
+  termination.
+
+For **analytical inference helpers** that route through the offspring
+specification (`extinction_probability`, `epidemic_probability`,
+`probability_contain`, `proportion_transmission`,
+`chain_size_distribution`), define one method:
+
+- [`single_type_offspring`](@ref)`(model)` returning the offspring
+  distribution (or any object for which `chain_size_distribution` is
+  defined). Specialise this and you get the analytical helpers for
+  free.
+
+For **likelihoods** on data types that don't go through the offspring
+spec, define methods on `loglikelihood` directly.
+
+For optional **state accessors**, override `population_size`,
+`latent_period`, `n_types` if your model has values for them. The
+defaults (`NoPopulation()`, `0.0`, `1`) are fine if not.
+
+### Minimal sketch
+
+A skeleton for a custom transmission model:
+
+```julia
+struct MyModel{O} <: TransmissionModel
+    offspring::O
+    # ... your model parameters
+end
+
+# Required for simulation: one generation step.
+function EpiBranch.step!(model::MyModel, state::SimulationState, interventions)
+    # advance state.individuals by drawing offspring etc.
+end
+
+# Required for analytical helpers (optional but recommended).
+EpiBranch.single_type_offspring(m::MyModel) = m.offspring
+
+# Optional accessors, with defaults if unset.
+EpiBranch.population_size(m::MyModel) = NoPopulation()
+EpiBranch.latent_period(m::MyModel) = 0.0
+EpiBranch.n_types(m::MyModel) = 1
+```
+
+If `single_type_offspring(m)` returns a NegBin or a `ClusterMixed` or
+anything else with a `chain_size_distribution` method, the analytical
+chain-size likelihood works automatically:
+
+```julia
+loglikelihood(ChainSizes(data), MyModel(NegBin(0.8, 0.5), ...))
+```
+
+### Composing with the observation side
+
+Your model fits into `Observed` without any extra work. Process and
+observation are wired through `Observed{P, O}` and the dispatch only
+asks that `single_type_offspring` delegates correctly through any
+wrappers — which it does for `Observed` automatically. So:
+
+```julia
+Observed(MyModel(...), PerCaseObservation(detection_prob = 0.7))
+```
+
+works the same way as it does for `BranchingProcess`.
+
 ## Adding an observation model
 
 Observation models subtype `ObservationModel` and combine with a
@@ -480,6 +562,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | Custom offspring (type) | Struct + `_draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
-| Observation wrapper | Struct `<: TransmissionModel` + transformed chain size distribution + `chain_size_distribution` method | Analytics / inference |
+| Custom transmission model | Struct `<: TransmissionModel` + `step!`, `single_type_offspring` | Simulation + analytics |
+| Custom observation model | Struct `<: ObservationModel` + `chain_size_distribution(::Observed{...})` and/or `loglikelihood(::DataType, ::Observed{...})` | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
