@@ -4,25 +4,39 @@
 # it falls back to simulation.
 
 """
-    Observed(process, observation)
+    Observed(process, observation, snapshot = nothing)
 
 State-space combiner: pair a `TransmissionModel` with an
-[`ObservationModel`](@ref). Dispatch on `Observed{P, O}` is the
-single surface for likelihoods that need to know about both the
-latent dynamics and how they are observed.
+[`ObservationModel`](@ref) and an optional cluster-level
+[`Snapshot`](@ref). Dispatch on `Observed{P, O, S}` is the single
+surface for likelihoods that need to know about both the latent
+dynamics and how the data was observed.
+
+`snapshot = nothing` (default; omitted in two-argument calls) means
+all clusters are concluded — chain-size PMF only, no π(τ) mixture.
+A `Snapshot` carries per-cluster timing and triggers the
+end-of-outbreak mixture (or right-tail for clusters with empty
+inner vectors).
 
 Forwards process-model accessors (`population_size`, `latent_period`,
-`n_types`, `single_type_offspring`) to `process`, so analytical
-helpers that route through them work transparently on the combined
-model.
+`n_types`, `single_type_offspring`) to `process`.
 """
-struct Observed{P <: TransmissionModel, O <: ObservationModel} <: TransmissionModel
+struct Observed{P <: TransmissionModel, O <: ObservationModel, S} <:
+       TransmissionModel
     process::P
     observation::O
+    snapshot::S
+end
+function Observed(process::TransmissionModel, observation::ObservationModel)
+    Observed(process, observation, nothing)
 end
 
 function Base.show(io::IO, m::Observed)
-    print(io, "Observed($(m.process), $(m.observation))")
+    if m.snapshot === nothing
+        print(io, "Observed($(m.process), $(m.observation))")
+    else
+        print(io, "Observed($(m.process), $(m.observation), $(m.snapshot))")
+    end
 end
 
 population_size(m::Observed) = population_size(m.process)
