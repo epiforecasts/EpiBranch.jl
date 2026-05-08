@@ -166,6 +166,7 @@ for examples.
 ```@docs
 clinical_presentation
 demographics
+transmission_traits
 compose
 ```
 
