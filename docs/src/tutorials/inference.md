@@ -188,43 +188,12 @@ case cap truncating large outbreaks.
 
 ## Multi-seed and ongoing outbreaks
 
-[`ChainSizes`](@ref) takes optional `seeds` and `concluded` vectors.
-They matter in two situations:
-
-- **Multi-seed clusters.** Some clusters start from more than one
-  imported case, so the final size is the sum of contributions from
-  multiple independent chains.
-- **Real-time analysis.** If the data is a time-slice of an evolving
-  outbreak (a live situation report, an in-progress study), some
-  clusters are still generating new cases at the reporting cutoff.
-  For those, the observed size is a lower bound and the likelihood
-  needs the right-tail `P(X ≥ x | s)` instead of `P(X = x | s)`.
-  Retrospective analyses of closed outbreaks don't need this.
-
-This is the setup in Endo, Abbott, Kucharski & Funk (2020,
-[Wellcome Open Research 5:67](https://wellcomeopenresearch.org/articles/5-67)),
-where (R₀, k) for SARS-CoV-2 were estimated during the early pandemic
-from the WHO 27 Feb 2020 situation report — most European clusters
-were still active at that cutoff.
-
-`concluded` is a per-cluster flag; the likelihood takes it at face
-value and doesn't care how it was decided. Endo et al. used a 7-day
-rule on WHO reports — a cluster was treated as ongoing if any case
-had been reported in the last 7 days:
-
-```julia
-using Dates
-# Derive `concluded` from raw case dates and a reporting cutoff.
-concluded_by_window(latest_case_dates, cutoff; window_days = 7) =
-    [cutoff - d >= Day(window_days) for d in latest_case_dates]
-```
-
-Other analyses might base `concluded` on phylogenetic closure, expert
-judgement, negative-test rings, or anything else. The likelihood is
-agnostic about the decision rule.
-
-Synthetic data below uses the same kind of mix (some clusters
-multi-seed, some ongoing):
+[`ChainSizes`](@ref) takes an optional `seeds` vector for multi-seed
+clusters. For mid-outbreak data where some clusters are still
+generating cases at the reporting cutoff, supply a [`Snapshot`](@ref)
+on the model side via [`Observed`](@ref). See the
+[real-time inference tutorial](real_time.md) for the full machinery;
+the example below illustrates the multi-seed plus ongoing case.
 
 ```@example inference
 true_R, true_k = 0.6, 0.2
@@ -233,27 +202,32 @@ rng = StableRNG(7)
 n = 50
 seeds = rand(rng, [1, 1, 1, 2], n)
 sizes = Int[]
-concluded = Bool[]
+ongoing = Bool[]
 for s in seeds
     x = sum(rand(rng, GammaBorel(true_k, true_R)) for _ in 1:s)
-    # Mark about a fifth of clusters as still ongoing; pick a lower
-    # bound below the true final size.
-    ongoing = rand(rng) < 0.2
-    push!(sizes, ongoing ? max(s, x - rand(rng, 0:max(x - s, 1))) : x)
-    push!(concluded, !ongoing)
+    is_ongoing = rand(rng) < 0.2
+    push!(sizes,
+        is_ongoing ? max(s, x - rand(rng, 0:max(x - s, 1))) : x)
+    push!(ongoing, is_ongoing)
 end
 
-data = ChainSizes(sizes; seeds = seeds, concluded = concluded)
+data = ChainSizes(sizes; seeds = seeds)
+# Snapshot encoding: [Inf] for concluded, [] for ongoing.
+snap = Snapshot([o ? Float64[] : [Inf] for o in ongoing])
 println("Clusters: $(length(sizes)) (seeds 1 / 2: $(count(==(1), seeds)) / $(count(==(2), seeds)))")
-println("Ongoing:  $(count(==(false), concluded))")
+println("Ongoing:  $(count(ongoing))")
 
-@model function cluster_size_model(data)
+@model function cluster_size_model(data, snap)
     R ~ LogNormal(0.0, 1.0)
     k ~ LogNormal(-1.0, 1.0)
-    Turing.@addlogprob! loglikelihood(data, NegativeBinomial(k, k / (k + R)))
+    process = BranchingProcess(NegativeBinomial(k, k / (k + R)),
+        Gamma(2.0, 2.5))
+    model = Observed(process, PerCaseObservation(), snap)
+    Turing.@addlogprob! loglikelihood(data, model)
 end
 
-chain = sample(cluster_size_model(data), NUTS(), 1000; progress = false)
+chain = sample(cluster_size_model(data, snap), NUTS(), 1000;
+    progress = false)
 r_post = vec(chain[:R])
 k_post = vec(chain[:k])
 println("True R=$true_R, k=$true_k")

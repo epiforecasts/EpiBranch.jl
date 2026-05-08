@@ -8,116 +8,125 @@ adjustment.
 EpiBranch uses a state-space framing: a *process model* (the latent
 transmission dynamics — `BranchingProcess`) and an *observation
 model* (how the latent state generates data — [`PerCaseObservation`](@ref)
-covers per-case detection probability and reporting delay). The two
-combine via [`Observed`](@ref) so the same `loglikelihood(data,
-model)` dispatch handles every combination.
+covers per-case detection probability and reporting delay), plus an
+optional cluster-level [`Snapshot`](@ref) carrying the per-cluster
+observation timing. All three combine via [`Observed`](@ref) so the
+same `loglikelihood(data, model)` dispatch handles every regime.
 
-## The observation model
+## What you observe per cluster
 
-Cluster `i` was seeded by `s_i` imported cases at some time before
-the snapshot. At the snapshot the observer has two numbers per
-cluster:
+For each cluster you may have:
 
-- `x_i`: cases reported so far,
-- `τ_i`: time since the most recent case.
+- the cluster size `x_i`,
+- the time since the most recent case `τ_i`,
+- or the times since each known case `(τ_{i,1}, …, τ_{i,x_i})`,
+- or only a binary classification "ongoing / concluded" with no
+  timing (the Endo-style threshold rule).
 
-A long `τ_i` means the cluster has likely run its course; a short
-one means more cases are probably coming.
+[`Snapshot`](@ref) encodes all of these in one type:
 
-The data type is [`RealTimeChainSizes`](@ref):
+| Inner vector for cluster `i` | Meaning |
+|---|---|
+| `[Inf]` | concluded — no further reports possible |
+| `[]` (empty) | ongoing, no timing — right-tail likelihood `P(X ≥ x)` |
+| `[τ]` | single most-recent case observed at lag `τ` |
+| `[τ_1, …, τ_x]` | every case observed, exact per-case product |
 
-```julia
-data = RealTimeChainSizes(sizes, taus; seeds = seeds)
-```
+`Snapshot([3.0, 7.0, Inf])` builds a single-most-recent-case snapshot
+of three clusters; the third is concluded. `Snapshot([[3.0], [],
+[Inf]])` does the same with explicit per-cluster vectors and marks
+the second cluster as ongoing-no-timing.
 
 ## The end-of-outbreak mixture
 
-Let `π_i` denote the probability that no further cases will be
-reported, given everything observed so far. Each cluster
-contributes:
+Let `π_i` be the probability that no further cases will be reported.
+Each cluster contributes:
 
 ```
 L_i = π_i · P(X = x_i | s_i, R, k)
     + (1 - π_i) · P(X ≥ x_i | s_i, R, k)
 ```
 
-The chain-size PMF `P(X | s)` comes from
-`chain_size_distribution(NegBin(R, k))`. For a NegBin offspring
-distribution, marginalising the per-case Poisson rate over its Gamma
-mixing prior gives:
+For a NegBin offspring distribution, the per-case "no more reports"
+probability is `(1 + S(τ) · R/k)^(-k)`, where `S(τ) = P(G + D > τ)`
+is the survival of the convolved generation-time + reporting-delay
+distribution. Multi-case clusters use the product:
 
 ```
-π(τ) = (1 + S(τ) · R / k)^(-k)
+π_i = ∏_j (1 + S(τ_{i,j}) · R / k)^(-k)
 ```
 
-where `S(τ) = P(G + D > τ)` is the survival function of the
-convolved generation-time and reporting-delay distributions. As
-`k → ∞` (Poisson limit) this reduces to the form Nishiura (2016)
-used for end-of-outbreak declaration: `π(τ) = exp(-R · S(τ))`.
+`τ = ∞` collapses to π = 1 (chain-PMF only). Empty inner vector
+collapses to π = 0 (right-tail only). Finite `τ` gives the
+continuous mixture.
 
-The single-`τ` form uses only the most recent case. With per-case
-times available, the per-case product is exact:
+## Closed-outbreak case
 
-```
-π = ∏_i (1 + S(τ_i) · R / k)^(-k)
-```
-
-Pass `case_ages = [...]` to [`RealTimeChainSizes`](@ref) and the
-likelihood will use the exact form.
+When all clusters are concluded, no `Snapshot` is needed. The
+two-argument `Observed` form (or just the bare offspring) works:
 
 ```julia
-model = BranchingProcess(NegBin(R, k), generation_time)
-loglikelihood(data, model)
+loglikelihood(ChainSizes(sizes; seeds), NegBin(R, k))
+loglikelihood(
+    ChainSizes(sizes; seeds),
+    Observed(BranchingProcess(NegBin(R, k), gt), PerCaseObservation()))
 ```
 
-For a non-trivial reporting delay `D`, combine the process with a
-`PerCaseObservation` via `Observed`:
+## Mid-outbreak case
+
+Pass per-cluster timing through `Snapshot`:
 
 ```julia
-obs = PerCaseObservation(detection_prob = 1.0, delay = LogNormal(1.6, 0.4))
-loglikelihood(data, Observed(model, obs))
+snap = Snapshot(taus)   # τ_i for each cluster
+loglikelihood(
+    ChainSizes(sizes; seeds),
+    Observed(BranchingProcess(NegBin(R, k), gt), PerCaseObservation(),
+        snap))
 ```
 
-The bare-model likelihood is the special case `D = Dirac(0.0)`.
-
-For under-reporting, set `detection_prob < 1`. The likelihood then
-uses the *direct-offspring approximation* — the per-case report rate
-is `ρ·R` in `π(τ)`, and the chain-size PMF in the mixture becomes
-`ThinnedChainSize` against the underlying chain-size distribution:
+For a non-trivial reporting delay `D`, configure
+`PerCaseObservation`:
 
 ```julia
-obs = PerCaseObservation(detection_prob = 0.7, delay = LogNormal(1.6, 0.4))
-loglikelihood(data, Observed(model, obs))
+loglikelihood(
+    ChainSizes(sizes; seeds),
+    Observed(BranchingProcess(NegBin(R, k), gt),
+        PerCaseObservation(delay = LogNormal(1.6, 0.4)),
+        snap))
 ```
 
-The approximation ignores hazard from unobserved descendants. It's
-tight for `ρ` near 1 and underestimates residual hazard at low `ρ`.
-The exact recursive form (Thompson, Morgan & Jansen, *Phil Trans B*
-2019) requires a numerical fixed-point and isn't implemented here.
+For under-reporting, set `detection_prob < 1`. The chain-size PMF
+becomes `ThinnedChainSize`, and the per-case rate in `π(τ)` becomes
+`ρ·R` (the *direct-offspring approximation*). The approximation is
+tight for `ρ` near 1; for low `ρ` it underestimates residual hazard
+from unobserved descendants. The exact recursive form (Thompson,
+Morgan & Jansen, *Phil Trans B*, 2019) requires a numerical
+fixed-point solver and isn't implemented here.
 
-The single-`τ` approximation underestimates extinction when older
-silent cases haven't wound down. A cluster that is quiet now but had
-several cases recently is treated more optimistically than the
-per-case form would treat it. The per-case product fixes this when
-the data permits.
+## The threshold rule (Endo et al. 2020)
 
-## Comparison with the threshold rule
-
-The threshold rule used in Endo et al. (2020) is the degenerate case
-where `π_i ∈ {0, 1}` from a hard cutoff (e.g. `concluded_i = τ_i ≥ 7`
-days). It's expressed in EpiBranch via the `concluded` flag on
-[`ChainSizes`](@ref):
+The 7-day threshold rule classifies each cluster as concluded
+(silent ≥ 7 days) or ongoing (silent < 7 days), then uses the
+chain-size PMF for concluded and the right-tail for ongoing. Encode
+this directly as a Snapshot:
 
 ```julia
-ChainSizes(sizes; seeds = seeds, concluded = taus .>= 7.0)
+snap = Snapshot([τ >= 7.0 ? [Inf] : Float64[] for τ in taus])
+loglikelihood(
+    ChainSizes(sizes; seeds),
+    Observed(BranchingProcess(NegBin(R, k), gt), PerCaseObservation(),
+        snap))
 ```
 
-The continuous π form is the natural generalisation. The threshold
-rule is the right tool when the classification comes from outside
-the model — official outbreak-end declarations, contact tracing
-exhaustion, lab confirmation of the last case. The continuous form
-is the right tool when you only have the case timing and want the
-likelihood to handle the uncertainty in "is it really over".
+Concluded clusters get `[Inf]` (π=1, chain-PMF). Ongoing clusters
+get `[]` (no timing, right-tail). The likelihood reduces to Endo's
+binary mixture.
+
+The continuous-`τ` version is more rigorous (no ad-hoc cutoff,
+acknowledges that even active clusters may have stopped). The
+threshold rule is the right tool when timing data is unreliable, you
+want robustness to GT distribution choice, or you want to match a
+published threshold-rule analysis.
 
 ## Worked example
 

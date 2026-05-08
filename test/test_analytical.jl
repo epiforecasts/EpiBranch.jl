@@ -252,26 +252,26 @@
 
             # Right-censored (ongoing) likelihood P(X ≥ x) is monotone:
             # a higher observed lower bound means a smaller tail mass.
-            ll_ongoing_3 = loglikelihood(
-                ChainSizes([3]; concluded = [false]), NegBin(0.8, 0.5))
-            ll_ongoing_5 = loglikelihood(
-                ChainSizes([5]; concluded = [false]), NegBin(0.8, 0.5))
+            # Encoding: Snapshot with empty inner vectors → right-tail only.
+            bp = BranchingProcess(NegBin(0.8, 0.5))
+            obs = PerCaseObservation()
+            ongoing(sizes) = Observed(bp, obs,
+                Snapshot([Float64[] for _ in sizes]))
+            ll_ongoing_3 = loglikelihood(ChainSizes([3]), ongoing([3]))
+            ll_ongoing_5 = loglikelihood(ChainSizes([5]), ongoing([5]))
             @test ll_ongoing_3 > ll_ongoing_5
             # P(X ≥ 1) = 1 for any chain that exists at all.
-            ll_tail_1 = loglikelihood(
-                ChainSizes([1]; concluded = [false]), NegBin(0.8, 0.5))
+            ll_tail_1 = loglikelihood(ChainSizes([1]), ongoing([1]))
             @test ll_tail_1 ≈ 0.0 atol=1e-10
 
             # Mixed data likelihood is the sum of concluded and
             # ongoing per-observation contributions.
-            mixed = ChainSizes([3, 5, 10, 2];
-                seeds = [1, 2, 1, 1],
-                concluded = [true, true, false, true])
-            ll_mixed = loglikelihood(mixed, NegBin(0.8, 0.5))
+            mixed_snap = Snapshot([[Inf], [Inf], Float64[], [Inf]])
+            mixed_data = ChainSizes([3, 5, 10, 2]; seeds = [1, 2, 1, 1])
+            ll_mixed = loglikelihood(mixed_data, Observed(bp, obs, mixed_snap))
             ll_parts = logpdf(d, 3) +
                        EpiBranch._chain_size_logpdf(d, 5, 2) +
-                       loglikelihood(
-                           ChainSizes([10]; concluded = [false]), NegBin(0.8, 0.5)) +
+                       loglikelihood(ChainSizes([10]), ongoing([10])) +
                        logpdf(d, 2)
             @test ll_mixed≈ll_parts atol=1e-10
 
@@ -320,23 +320,24 @@
             # moves the mixture monotonically towards concluded.
             sizes = [3, 5, 10, 2]
             seeds = [1, 2, 1, 1]
-            ll_concluded = loglikelihood(
-                ChainSizes(sizes; seeds = seeds), NegBin(R, k))
-            ll_ongoing = loglikelihood(
-                ChainSizes(sizes;
-                    seeds = seeds, concluded = falses(length(sizes))),
-                NegBin(R, k))
+            data = ChainSizes(sizes; seeds = seeds)
+            obs = PerCaseObservation()
 
-            ll_long_tau = loglikelihood(
-                RealTimeChainSizes(sizes, fill(500.0, 4); seeds = seeds),
-                model)
-            ll_zero_tau = loglikelihood(
-                RealTimeChainSizes(sizes, zeros(4); seeds = seeds),
-                model)
-            ll_med_tau = loglikelihood(
-                RealTimeChainSizes(sizes, fill(7.0, 4); seeds = seeds),
-                model)
-            @test ll_long_tau≈ll_concluded atol=1e-3
+            # Reference likelihoods at the boundaries.
+            ll_concluded = loglikelihood(data, NegBin(R, k))
+            ll_ongoing = loglikelihood(data,
+                Observed(model, obs, Snapshot([Float64[] for _ in sizes])))
+
+            # τ → ∞ should match the all-concluded ChainSizes likelihood.
+            ll_long_tau = loglikelihood(data,
+                Observed(model, obs, Snapshot(fill(500.0, 4))))
+            # τ = 0 lies strictly between concluded and ongoing
+            # (π(0) = (1+R/k)^(-k), not 0).
+            ll_zero_tau = loglikelihood(data,
+                Observed(model, obs, Snapshot(zeros(4))))
+            ll_med_tau = loglikelihood(data,
+                Observed(model, obs, Snapshot(fill(7.0, 4))))
+            @test ll_long_tau ≈ ll_concluded atol=1e-3
             @test min(ll_concluded, ll_ongoing) <= ll_zero_tau <=
                   max(ll_concluded, ll_ongoing)
             # Monotonic interpolation as τ grows: more silence pulls
@@ -345,44 +346,43 @@
                   abs(ll_med_tau - ll_concluded) <
                   abs(ll_zero_tau - ll_concluded)
 
-            # Observed + PerCaseObservation composes a delay around the
-            # model. With Dirac(0.0) it should match the bare-model
-            # likelihood; with a real delay it pushes the mixture away
-            # from extinction (consistent with the per-τ
-            # π_with_delay < π_no_delay test above).
-            rt_data = RealTimeChainSizes(sizes, fill(7.0, 4); seeds = seeds)
-            ll_no_delay = loglikelihood(rt_data,
-                Observed(model, PerCaseObservation(1.0, Dirac(0.0))))
-            @test ll_no_delay ≈ ll_med_tau atol=1e-10
-            ll_with_delay = loglikelihood(rt_data,
-                Observed(model, PerCaseObservation(1.0, LogNormal(1.5, 0.5))))
+            # Reporting delay shifts the mixture away from extinction
+            # at fixed τ (consistent with π_with_delay < π_no_delay).
+            ll_with_delay = loglikelihood(data,
+                Observed(model,
+                    PerCaseObservation(1.0, LogNormal(1.5, 0.5)),
+                    Snapshot(fill(7.0, 4))))
             @test ll_with_delay != ll_med_tau
+
             # Under-reporting (ρ < 1): direct-offspring approximation.
             # Use single-seed clusters; multi-seed + ThinnedChainSize is
             # not implemented (pre-existing limitation of the closed-form
             # path for thinned multi-seed chain sizes).
-            single_seed_data = RealTimeChainSizes(sizes, fill(7.0, 4);
-                seeds = ones(Int, 4))
-            ll_rho1 = loglikelihood(single_seed_data,
-                Observed(model, PerCaseObservation(1.0, Dirac(0.0))))
-            ll_bare = loglikelihood(single_seed_data, model)
+            single_seed = ChainSizes(sizes; seeds = ones(Int, 4))
+            ll_rho1 = loglikelihood(single_seed,
+                Observed(model, PerCaseObservation(1.0, Dirac(0.0)),
+                    Snapshot(fill(7.0, 4))))
+            ll_bare = loglikelihood(single_seed,
+                Observed(model, PerCaseObservation(),
+                    Snapshot(fill(7.0, 4))))
             @test ll_rho1 ≈ ll_bare atol=1e-12
 
             # ρ < 1 changes the answer (reports thinned + π formula uses ρR).
-            ll_rho_low = loglikelihood(single_seed_data,
-                Observed(model, PerCaseObservation(0.5, Dirac(0.0))))
+            ll_rho_low = loglikelihood(single_seed,
+                Observed(model, PerCaseObservation(0.5, Dirac(0.0)),
+                    Snapshot(fill(7.0, 4))))
             @test ll_rho_low != ll_bare
             @test isfinite(ll_rho_low)
 
             # ρ → 1 limit smoothly approaches the ρ = 1 case.
-            ll_rho_near1 = loglikelihood(single_seed_data,
-                Observed(model, PerCaseObservation(0.999, Dirac(0.0))))
+            ll_rho_near1 = loglikelihood(single_seed,
+                Observed(model, PerCaseObservation(0.999, Dirac(0.0)),
+                    Snapshot(fill(7.0, 4))))
             @test isapprox(ll_rho_near1, ll_rho1; atol = 1e-2)
 
-            # Constructor validation.
-            @test_throws ArgumentError RealTimeChainSizes([3], [-1.0])
-            @test_throws ArgumentError RealTimeChainSizes([3], [1.0]; seeds = [0])
-            @test_throws ArgumentError RealTimeChainSizes([3, 5], [1.0])
+            # Snapshot constructor validation.
+            @test_throws ArgumentError Snapshot(Float64[])
+            @test_throws ArgumentError Snapshot([[-1.0]])
 
             # simulate(::Observed) decorates each individual with
             # :reported and :report_time so downstream code can filter
@@ -395,49 +395,6 @@
             @test all(haskey(ind.state, :report_time) for ind in sim_state.individuals)
             @test all(ind.state[:report_time] >= ind.infection_time
             for ind in sim_state.individuals)
-
-            # Snapshot encoding parity with existing analytical paths.
-            # All concluded ([Inf]) ↔ ChainSizes default (concluded = trues).
-            ll_concluded_snap = loglikelihood(
-                ChainSizes(sizes; seeds = seeds),
-                Observed(model, PerCaseObservation(),
-                    Snapshot(fill(Inf, length(sizes)))))
-            ll_concluded_chain = loglikelihood(
-                ChainSizes(sizes; seeds = seeds), NegBin(R, k))
-            @test ll_concluded_snap ≈ ll_concluded_chain atol=1e-12
-
-            # All ongoing ([]) ↔ ChainSizes(concluded = falses) right-tail.
-            ll_ongoing_snap = loglikelihood(
-                ChainSizes(sizes; seeds = seeds),
-                Observed(model, PerCaseObservation(),
-                    Snapshot([Float64[] for _ in sizes])))
-            ll_ongoing_chain = loglikelihood(
-                ChainSizes(sizes; seeds = seeds, concluded = falses(length(sizes))),
-                NegBin(R, k))
-            @test ll_ongoing_snap ≈ ll_ongoing_chain atol=1e-12
-
-            # Continuous τ via Snapshot ↔ RealTimeChainSizes(tau = ...) with
-            # Observed(process, PerCaseObservation()).
-            taus_real = fill(7.0, length(sizes))
-            ll_finite_snap = loglikelihood(
-                ChainSizes(sizes; seeds = seeds),
-                Observed(model, PerCaseObservation(), Snapshot(taus_real)))
-            ll_finite_rt = loglikelihood(
-                RealTimeChainSizes(sizes, taus_real; seeds = seeds), model)
-            @test ll_finite_snap ≈ ll_finite_rt atol=1e-12
-
-            # Per-case Snapshot ↔ RealTimeChainSizes(case_ages = ...).
-            ages_real = [[Float64(7 + j) for j in 1:x] for x in sizes]
-            ll_percase_snap = loglikelihood(
-                ChainSizes(sizes; seeds = seeds),
-                Observed(model, PerCaseObservation(),
-                    Snapshot(ages_real)))
-            ll_percase_rt = loglikelihood(
-                RealTimeChainSizes(sizes,
-                    [minimum(a) for a in ages_real];
-                    seeds = seeds, case_ages = ages_real),
-                model)
-            @test ll_percase_snap ≈ ll_percase_rt atol=1e-12
         end
 
         @testset "Composition: Observed(BranchingProcess(ClusterMixed))" begin

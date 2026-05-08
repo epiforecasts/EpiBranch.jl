@@ -68,22 +68,23 @@ of vectors (full per-cluster timing, preserved as-is).
 """
 struct Snapshot{T <: AbstractFloat}
     time_since::Vector{Vector{T}}
+
+    function Snapshot{T}(time_since::Vector{Vector{T}}) where {T <: AbstractFloat}
+        isempty(time_since) && throw(ArgumentError("Snapshot must be non-empty"))
+        for v in time_since
+            all(>=(0), v) ||
+                throw(ArgumentError("times since cases must be non-negative"))
+        end
+        new{T}(time_since)
+    end
 end
 
 # Vector of scalars per cluster (single-most-recent-case mode).
-function Snapshot(τ::AbstractVector{<:Real})
-    isempty(τ) && throw(ArgumentError("Snapshot must be non-empty"))
-    Snapshot([[Float64(t)] for t in τ])
-end
+Snapshot(τ::AbstractVector{<:Real}) = Snapshot{Float64}([[Float64(t)] for t in τ])
 
 # Vector of vectors per cluster (per-case mode, with arbitrary inner
 # lengths — including 0 for ongoing/right-tail clusters).
 function Snapshot(τ::AbstractVector{<:AbstractVector{<:Real}})
-    isempty(τ) && throw(ArgumentError("Snapshot must be non-empty"))
-    for v in τ
-        all(>=(0), v) ||
-            throw(ArgumentError("times since cases must be non-negative"))
-    end
     Snapshot{Float64}([Float64.(v) for v in τ])
 end
 

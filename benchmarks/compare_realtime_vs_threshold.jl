@@ -49,21 +49,22 @@ function simulate_dataset(rng)
 end
 
 function threshold_loglik(sizes, τ, R, k; window)
-    concluded = τ .>= window
-    data = ChainSizes(sizes; concluded = concluded)
-    return loglikelihood(data, NegBin(R, k))
+    snap = Snapshot([t >= window ? [Inf] : Float64[] for t in τ])
+    model = Observed(BranchingProcess(NegBin(R, k), GT),
+        PerCaseObservation(), snap)
+    return loglikelihood(ChainSizes(sizes), model)
 end
 
 function realtime_loglik(sizes, τ, R, k)
-    data = RealTimeChainSizes(sizes, τ)
-    model = BranchingProcess(NegBin(R, k), GT)
-    return loglikelihood(data, model)
+    model = Observed(BranchingProcess(NegBin(R, k), GT),
+        PerCaseObservation(), Snapshot(τ))
+    return loglikelihood(ChainSizes(sizes), model)
 end
 
 function realtime_percase_loglik(case_ages, R, k)
-    data = RealTimeChainSizes(case_ages)
-    model = BranchingProcess(NegBin(R, k), GT)
-    return loglikelihood(data, model)
+    model = Observed(BranchingProcess(NegBin(R, k), GT),
+        PerCaseObservation(), Snapshot(case_ages))
+    return loglikelihood(ChainSizes([length(c) for c in case_ages]), model)
 end
 
 function grid_mle(loglik_fn)

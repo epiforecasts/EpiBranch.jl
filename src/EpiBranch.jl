@@ -98,6 +98,6 @@ export probability_contain
 # Exports — unified inference interface
 export OffspringCounts, ChainSizes, ChainLengths
 export ClusterMixed, ChainSizeMixture
-export RealTimeChainSizes, end_of_outbreak_probability
+export end_of_outbreak_probability
 
 end # module

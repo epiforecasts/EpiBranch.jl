@@ -1,91 +1,15 @@
 # ── Real-time cluster-size likelihood ──────────────────────────────
-# Replaces Endo et al. 2020's threshold rule for classifying clusters
-# as concluded or ongoing with a continuous end-of-outbreak probability,
-# optionally accounting for reporting delay.
-#
-# Each cluster contributes a mixture
+# When some clusters are still active at the reporting cutoff, each
+# cluster contributes a mixture
 #
 #     L_i = π_i · P(X = x_i | s_i, R, k)
 #         + (1 − π_i) · P(X ≥ x_i | s_i, R, k)
 #
 # where π_i = P(extinct by time of last report | τ_i, R, k, generation
-# time, reporting delay). The threshold rule is the degenerate case
-# π_i ∈ {0, 1}.
-
-"""
-Per-cluster real-time observation. Carries cluster size, seed count,
-and timing information: either just the time since the last reported
-case (`tau`), or the full set of per-case ages (`case_ages`).
-
-When per-case ages are supplied, the likelihood uses the exact
-multi-case formula `π = exp(-R · Σ_i S(τ_i))`. With only `tau`,
-it uses the single-most-recent-case approximation
-`π ≈ exp(-R · S(τ))`, which agrees with the exact formula when older
-cases have wound down (large `τ_i` for `i < x`) and biases towards
-extinction when they haven't.
-
-Time units must match the generation-time and reporting-delay
-distributions; days are conventional.
-"""
-struct RealTimeChainSizes
-    data::Vector{Int}
-    seeds::Vector{Int}
-    tau::Vector{Float64}
-    case_ages::Union{Nothing, Vector{Vector{Float64}}}
-
-    function RealTimeChainSizes(data::AbstractVector{<:Integer},
-            tau::AbstractVector{<:Real};
-            seeds::AbstractVector{<:Integer} = ones(Int, length(data)),
-            case_ages::Union{Nothing, AbstractVector} = nothing)
-        isempty(data) && throw(ArgumentError("data must be non-empty"))
-        length(seeds) == length(data) ||
-            throw(ArgumentError("seeds must have the same length as data"))
-        length(tau) == length(data) ||
-            throw(ArgumentError("tau must have the same length as data"))
-        all(>=(1), data) || throw(ArgumentError("chain sizes must be ≥ 1"))
-        all(>=(1), seeds) || throw(ArgumentError("seeds must be ≥ 1"))
-        all(>=(0), tau) || throw(ArgumentError("tau must be ≥ 0"))
-        all(i -> data[i] >= seeds[i], eachindex(data)) ||
-            throw(ArgumentError("chain size must be ≥ number of seeds"))
-
-        ca = if case_ages === nothing
-            nothing
-        else
-            length(case_ages) == length(data) ||
-                throw(ArgumentError("case_ages must have one entry per cluster"))
-            for i in eachindex(case_ages)
-                length(case_ages[i]) == data[i] || throw(ArgumentError(
-                    "case_ages[$i] has $(length(case_ages[i])) ages but cluster size is $(data[i])"))
-                all(>=(0), case_ages[i]) ||
-                    throw(ArgumentError("case_ages must be ≥ 0"))
-                isapprox(minimum(case_ages[i]), tau[i]; atol = 1e-8) ||
-                    throw(ArgumentError(
-                        "min(case_ages[$i]) = $(minimum(case_ages[i])) must equal tau[$i] = $(tau[i])"))
-            end
-            [convert(Vector{Float64}, c) for c in case_ages]
-        end
-
-        new(convert(Vector{Int}, data),
-            convert(Vector{Int}, seeds),
-            convert(Vector{Float64}, tau),
-            ca)
-    end
-end
-
-"""
-    RealTimeChainSizes(case_ages; seeds = ones(Int, length(case_ages)))
-
-Construct from per-case ages directly. Cluster sizes and `tau` are
-inferred (`size = length(case_ages[i])`, `tau = minimum(case_ages[i])`).
-Each inner vector lists the time-since-each-case at the snapshot for
-one cluster.
-"""
-function RealTimeChainSizes(case_ages::AbstractVector{<:AbstractVector{<:Real}};
-        seeds::AbstractVector{<:Integer} = ones(Int, length(case_ages)))
-    sizes = [length(c) for c in case_ages]
-    tau = [minimum(c) for c in case_ages]
-    return RealTimeChainSizes(sizes, tau; seeds = seeds, case_ages = case_ages)
-end
+# time, reporting delay). Per-cluster timing is supplied via a
+# `Snapshot` on `Observed`. The threshold rule is the degenerate case
+# π_i ∈ {0, 1}, encoded as Snapshot entries [Inf] (concluded) and []
+# (ongoing).
 
 """
     end_of_outbreak_probability(R, k, generation_time, reporting_delay; tau)
@@ -132,110 +56,6 @@ end
 # When reporting delay is a point mass at zero (no delay), the survival
 # is just ccdf(generation_time, t).
 _convolved_survival(g::Distribution, d::Dirac, t::Real) = ccdf(g, max(t - d.value, 0.0))
-
-"""
-    loglikelihood(data::RealTimeChainSizes, model::BranchingProcess)
-
-Real-time cluster-size log-likelihood with no reporting delay. Each
-cluster contributes a mixture weighted by its end-of-outbreak
-probability:
-
-    L_i = π_i · P(X = x_i | s_i)  +  (1 - π_i) · P(X ≥ x_i | s_i)
-
-For a non-trivial reporting delay, combine the model with a
-`PerCaseObservation` via [`Observed`](@ref).
-"""
-function loglikelihood(data::RealTimeChainSizes, model::BranchingProcess)
-    _real_time_loglik(data, model, Dirac(0.0))
-end
-
-"""
-    loglikelihood(data::RealTimeChainSizes,
-                  model::Observed{<:BranchingProcess, <:PerCaseObservation})
-
-Real-time cluster-size log-likelihood for a `BranchingProcess`
-combined with `PerCaseObservation`. Folds `observation.delay` into
-`S(τ)` via convolution and accounts for the per-case reporting
-probability `ρ = observation.detection_prob` two ways:
-
-- The chain-size PMF in the mixture becomes the observed-size
-  distribution `ThinnedChainSize(chain_size_distribution(NegBin), ρ)`,
-  via the existing `chain_size_distribution(::Observed)` route.
-- The end-of-outbreak probability `π(τ)` uses the *direct-offspring
-  approximation*: the per-case report rate is `ρ·R`, so
-
-      π(τ) ≈ (1 + ρ·R·S(τ)/k)^(-k)
-
-  This treats unobserved cases as silent for the purpose of
-  end-of-outbreak inference. For ρ near 1 the approximation is tight;
-  for low ρ it underestimates residual hazard from unobserved
-  descendants. The exact recursive formula (Thompson, Morgan & Jansen
-  2019, Phil Trans B) needs a numerical fixed-point solve and is
-  deliberately not implemented here.
-"""
-function loglikelihood(data::RealTimeChainSizes,
-        m::Observed{<:BranchingProcess, <:PerCaseObservation})
-    process = m.process
-    ρ = m.observation.detection_prob
-    delay = m.observation.delay
-    process.generation_time isa Distribution || throw(ArgumentError(
-        "real-time likelihood requires a Distribution generation time"))
-    offspring = single_type_offspring(process)
-    R = mean(offspring)
-    k = offspring isa NegativeBinomial ? offspring.r : 1e6  # Poisson-like
-    R_report = ρ * R                # Direct-offspring approximation.
-    dist = chain_size_distribution(m)  # ThinnedChainSize handles ρ.
-
-    total = 0.0
-    for i in eachindex(data.data)
-        x = data.data[i]
-        s = data.seeds[i]
-        π = if data.case_ages === nothing
-            end_of_outbreak_probability(R_report, k,
-                process.generation_time, delay; tau = data.tau[i])
-        else
-            _per_case_extinction_probability(R_report, k,
-                process.generation_time, delay, data.case_ages[i])
-        end
-        log_concluded = _chain_size_logpdf(dist, x, s)
-        log_ongoing = _right_tail_logprob(dist, x, s)
-        # Numerically stable mixture in log space.
-        a = log(π) + log_concluded
-        b = log1p(-π) + log_ongoing
-        total += logsumexp((a, b))
-    end
-    return total
-end
-
-function _real_time_loglik(data::RealTimeChainSizes,
-        model::BranchingProcess, delay::Distribution)
-    offspring = single_type_offspring(model)
-    model.generation_time isa Distribution || throw(ArgumentError(
-        "real-time likelihood requires a Distribution generation time"))
-    R = mean(offspring)
-    k = offspring isa NegativeBinomial ? offspring.r : 1e6  # Poisson-like
-    dist = chain_size_distribution(offspring)
-
-    total = 0.0
-    for i in eachindex(data.data)
-        x = data.data[i]
-        s = data.seeds[i]
-        π = if data.case_ages === nothing
-            end_of_outbreak_probability(R, k,
-                model.generation_time, delay; tau = data.tau[i])
-        else
-            _per_case_extinction_probability(R, k, model.generation_time,
-                delay, data.case_ages[i])
-        end
-        log_concluded = _chain_size_logpdf(dist, x, s)
-        log_ongoing = _right_tail_logprob(dist, x, s)
-        # Numerically stable mixture in log space.
-        a = log(π) + log_concluded
-        b = log1p(-π) + log_ongoing
-        total += logsumexp((a, b))
-    end
-    return total
-end
 
 """
     _per_case_extinction_probability(R, k, generation_time, reporting_delay, ages)
@@ -288,13 +108,20 @@ function loglikelihood(data::ChainSizes,
     process = m.process
     ρ = m.observation.detection_prob
     delay = m.observation.delay
-    process.generation_time isa Distribution || throw(ArgumentError(
-        "real-time likelihood requires a Distribution generation time"))
     offspring = single_type_offspring(process)
     R = mean(offspring)
     k = offspring isa NegativeBinomial ? offspring.r : 1e6
     R_report = ρ * R
     dist = chain_size_distribution(m)  # ThinnedChainSize when ρ<1, else base.
+
+    # Only the per-case π computation needs a Distribution generation
+    # time. Pure all-concluded ([Inf]) and pure all-ongoing ([])
+    # snapshots don't, so the GT requirement is checked lazily.
+    needs_gt = any(any(isfinite, t) for t in m.snapshot.time_since)
+    if needs_gt && !(process.generation_time isa Distribution)
+        throw(ArgumentError(
+            "Snapshot with finite τ requires a Distribution generation time"))
+    end
 
     total = 0.0
     for i in eachindex(data.data)
@@ -306,6 +133,9 @@ function loglikelihood(data::ChainSizes,
         if isempty(times)
             # Ongoing-only: right-tail likelihood.
             total += log_ongoing
+        elseif all(!isfinite, times)
+            # All-Inf: π → 1, chain-PMF only (no GT needed).
+            total += log_concluded
         else
             π = _per_case_extinction_probability(R_report, k,
                 process.generation_time, delay, times)
