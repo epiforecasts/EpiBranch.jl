@@ -103,7 +103,7 @@ from unobserved descendants. The exact recursive form (Thompson,
 Morgan & Jansen, *Phil Trans B*, 2019) requires a numerical
 fixed-point solver and isn't implemented here.
 
-## The threshold rule (Endo et al. 2020)
+## The threshold rule
 
 The 7-day threshold rule classifies each cluster as concluded
 (silent ≥ 7 days) or ongoing (silent < 7 days), then uses the
