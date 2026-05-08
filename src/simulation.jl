@@ -153,10 +153,46 @@ _apply_attributes!(f::Function, rng, ind) = f(rng, ind)
 # ── Attributes function constructors ─────────────────────────────────
 
 """
-    clinical_presentation(; incubation_period, prob_asymptomatic=0.0)
+    clinical_presentation(; incubation_period, prob_asymptomatic = 0.0)
 
-Return an attributes function. `:onset_time` and `:asymptomatic` are
-set on each individual. Required by [`Isolation`](@ref).
+Return an attributes function that sets `:onset_time` and
+`:asymptomatic` on each individual.
+
+For symptomatic cases, `:onset_time = infection_time + rand(incubation_period)`.
+For asymptomatic cases (drawn with probability `prob_asymptomatic`),
+`:onset_time = NaN` and `:asymptomatic = true`. Required by
+[`Isolation`](@ref) and used by [`linelist`](@ref) to populate
+`date_onset`.
+
+# Examples
+
+Symptomatic-only with a log-normal incubation period:
+
+```julia
+attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+```
+
+With 30% asymptomatic:
+
+```julia
+attributes = clinical_presentation(
+    incubation_period = LogNormal(1.6, 0.5),
+    prob_asymptomatic = 0.3,
+)
+```
+
+Compose with other attributes (e.g. demographics and a per-contact
+infection probability):
+
+```julia
+attributes = compose(
+    clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
+    demographics(age_distribution = Uniform(0, 90)),
+    (rng, ind) -> (ind.susceptibility = 0.3),
+)
+```
+
+See also [`demographics`](@ref), [`compose`](@ref).
 """
 function clinical_presentation(; incubation_period::Distribution,
         prob_asymptomatic::Real = 0.0)
@@ -196,7 +232,43 @@ end
 """
     compose(fs...)
 
-Compose multiple attributes functions into one, called in order.
+Compose multiple attributes functions into one, called in order on each
+individual at creation time.
+
+Each `f` must be a callable `(rng, ind) -> nothing` that mutates
+`ind.state` and/or fields on `ind` (e.g. `ind.susceptibility`).
+EpiBranch provides [`clinical_presentation`](@ref) and
+[`demographics`](@ref) for two common patterns; for other fields, pass
+a plain closure.
+
+# Examples
+
+Combine the standard builders with an inline susceptibility rule:
+
+```julia
+attributes = compose(
+    clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
+    demographics(age_distribution = Uniform(0, 90)),
+    (rng, ind) -> (ind.susceptibility = 0.3),
+)
+```
+
+Correlate susceptibility with age (run after `demographics`):
+
+```julia
+high_risk = (rng, ind) -> if get(ind.state, :age, 0) >= 65
+    ind.susceptibility = 0.8
+end
+
+attributes = compose(
+    demographics(age_distribution = Uniform(0, 90)),
+    (rng, ind) -> (ind.susceptibility = 0.3),  # baseline
+    high_risk,                                  # overrides for ≥ 65
+)
+```
+
+Pass to [`simulate`](@ref) or [`simulate_batch`](@ref) via the
+`attributes` keyword.
 """
 compose(fs...) = (rng, ind) -> for f in fs
     ;
