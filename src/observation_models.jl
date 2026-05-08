@@ -45,3 +45,51 @@ function Base.show(io::IO, o::PerCaseObservation)
     print(io, "PerCaseObservation(detection_prob=$(o.detection_prob), ",
         "delay=$(o.delay))")
 end
+
+"""
+    Snapshot(time_since)
+
+Cluster-level observation timing. For each cluster, an inner vector
+of times since each known reported case (in time units matching the
+generation-time and reporting-delay distributions; days are
+conventional). Encoding:
+
+- `[Inf]` — cluster is concluded; no further reports possible.
+- `[τ]` for finite `τ` — single-most-recent-case approximation.
+- `[τ_1, …, τ_x]` for x finite values — exact per-case product.
+- `[]` (empty) — observational claim that the cluster is ongoing
+  with no timing data; the likelihood uses the chain-size right-tail
+  only. Equivalent to the binary "ongoing" classification in the
+  Endo-style threshold rule.
+
+Convenience constructors accept either a vector of scalars (one
+representative time per cluster, wrapped automatically) or a vector
+of vectors (full per-cluster timing, preserved as-is).
+"""
+struct Snapshot{T <: AbstractFloat}
+    time_since::Vector{Vector{T}}
+end
+
+# Vector of scalars per cluster (single-most-recent-case mode).
+function Snapshot(τ::AbstractVector{<:Real})
+    isempty(τ) && throw(ArgumentError("Snapshot must be non-empty"))
+    Snapshot([[Float64(t)] for t in τ])
+end
+
+# Vector of vectors per cluster (per-case mode, with arbitrary inner
+# lengths — including 0 for ongoing/right-tail clusters).
+function Snapshot(τ::AbstractVector{<:AbstractVector{<:Real}})
+    isempty(τ) && throw(ArgumentError("Snapshot must be non-empty"))
+    for v in τ
+        all(>=(0), v) ||
+            throw(ArgumentError("times since cases must be non-negative"))
+    end
+    Snapshot{Float64}([Float64.(v) for v in τ])
+end
+
+function Base.show(io::IO, s::Snapshot)
+    n = length(s.time_since)
+    print(io, "Snapshot($n cluster$(n == 1 ? "" : "s"))")
+end
+
+Base.length(s::Snapshot) = length(s.time_since)
