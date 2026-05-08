@@ -231,41 +231,46 @@ println("Isolation + SSE limit: $(round(containment_probability(results), digits
 
 The `attributes` argument to `simulate` is a function `(rng, individual) -> nothing`
 that sets fields on each individual when they are created (before any
-intervention hooks run). The built-in constructors `clinical_presentation` and
-`demographics` return such functions.
+intervention hooks run). The built-in constructors `clinical_presentation`,
+`demographics`, and `transmission_traits` return such functions.
 
 ### Writing your own
 
-An attributes function receives the simulation RNG and the individual.
-Set fields in the individual's `state` dict:
+For fields without a dedicated builder — anything in `ind.state` — write a
+plain closure. Below, `:risk_group` is a custom state field, so it needs
+the closure form; `susceptibility` is derived from it via
+`transmission_traits`, which accepts a function:
 
 ```@example extending
-function my_attributes(rng, ind)
-    # Assign a risk group
-    ind.state[:risk_group] = rand(rng) < 0.2 ? :high : :low
-    # High-risk individuals are more susceptible
-    if ind.state[:risk_group] == :high
-        ind.susceptibility = 1.5
-    end
-end
+risk_group = (rng, ind) -> (ind.state[:risk_group] = rand(rng) < 0.2 ? :high : :low)
+
+attrs = compose(
+    risk_group,
+    transmission_traits(
+        susceptibility = (rng, ind) -> ind.state[:risk_group] == :high ? 0.8 : 0.3,
+    ),
+)
 
 rng = StableRNG(42)
-state = simulate(model; attributes = my_attributes, sim_opts = SimOpts(max_cases = 100), rng = rng)
+state = simulate(model; attributes = attrs, sim_opts = SimOpts(max_cases = 100), rng = rng)
 n_high = count(ind -> get(ind.state, :risk_group, :low) == :high, state.individuals)
 println("High-risk individuals: $n_high / $(length(state.individuals))")
 ```
 
 ### Composing attributes functions
 
-Use `compose` to layer multiple attributes functions. They are called in
-order, so later functions can read fields set by earlier ones:
+`compose` calls its arguments in order, so later builders or closures can
+read fields set by earlier ones:
 
 ```@example extending
-clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-demog = demographics(age_distribution = Normal(40, 15))
-
-# Combine clinical, demographics, and custom attributes
-combined = compose(clinical, demog, my_attributes)
+combined = compose(
+    clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    demographics(age_distribution = Normal(40, 15)),
+    risk_group,
+    transmission_traits(
+        susceptibility = (rng, ind) -> ind.state[:risk_group] == :high ? 0.8 : 0.3,
+    ),
+)
 
 rng = StableRNG(42)
 state = simulate(model;
@@ -299,7 +304,7 @@ model_risk = BranchingProcess(risk_offspring, Exponential(5.0); n_types = 1)
 
 rng = StableRNG(42)
 results = simulate_batch(model_risk, 200;
-    attributes = my_attributes,
+    attributes = risk_group,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
