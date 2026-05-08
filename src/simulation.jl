@@ -230,6 +230,77 @@ function _sample_age(rng, dist::Distribution, age_range)
 end
 
 """
+    transmission_traits(; susceptibility = 1.0, infectiousness = 1.0)
+
+Return an attributes function that sets `susceptibility` (per-contact
+probability of infection given exposure) and `infectiousness` (parent-side
+modifier on transmission) on each individual.
+
+Each argument accepts:
+
+- a `Real`: assigned directly to every individual.
+- a `Distribution`: sampled per individual via `rand(rng, dist)`.
+- a `Function` `(rng, ind) -> value`: called per individual; the
+  returned value is assigned. Use this for attribute-dependent rules
+  (e.g. age-conditional susceptibility) — place the builder after
+  `demographics` in `compose` so `ind.state[:age]` is set first.
+
+Both default to `1.0` (no Bernoulli filtering in the transmission model).
+
+# Examples
+
+Constant per-contact infection probability:
+
+```julia
+attributes = transmission_traits(susceptibility = 0.3)
+```
+
+Per-individual heterogeneity:
+
+```julia
+attributes = transmission_traits(
+    susceptibility = Beta(2, 5),
+    infectiousness = Beta(8, 2),
+)
+```
+
+Age-conditional susceptibility (compose after `demographics`):
+
+```julia
+attributes = compose(
+    demographics(age_distribution = Uniform(0, 90)),
+    transmission_traits(
+        susceptibility = (rng, ind) -> ind.state[:age] >= 65 ? 0.8 : 0.3,
+    ),
+)
+```
+
+The closure form `(rng, ind) -> (ind.susceptibility = ...)` inside
+[`compose`](@ref) remains available as an escape hatch for cases this
+builder does not cover.
+
+See also [`clinical_presentation`](@ref), [`demographics`](@ref),
+[`compose`](@ref).
+"""
+function transmission_traits(;
+        susceptibility::Union{Real, Distribution, Function} = 1.0,
+        infectiousness::Union{Real, Distribution, Function} = 1.0)
+    sus = _trait_sampler(susceptibility)
+    inf = _trait_sampler(infectiousness)
+    return function (rng, ind)
+        ind.susceptibility = sus(rng, ind)
+        ind.infectiousness = inf(rng, ind)
+    end
+end
+
+_trait_sampler(x::Real) =
+    let v = float(x)
+        (rng, ind) -> v
+    end
+_trait_sampler(d::Distribution) = (rng, ind) -> float(rand(rng, d))
+_trait_sampler(f::Function) = (rng, ind) -> float(f(rng, ind))
+
+"""
     compose(fs...)
 
 Compose multiple attributes functions into one, called in order on each
@@ -237,33 +308,42 @@ individual at creation time.
 
 Each `f` must be a callable `(rng, ind) -> nothing` that mutates
 `ind.state` and/or fields on `ind` (e.g. `ind.susceptibility`).
-EpiBranch provides [`clinical_presentation`](@ref) and
-[`demographics`](@ref) for two common patterns; for other fields, pass
-a plain closure.
+EpiBranch provides [`clinical_presentation`](@ref), [`demographics`](@ref),
+and [`transmission_traits`](@ref) for the common patterns; for other
+fields, pass a plain closure.
 
 # Examples
 
-Combine the standard builders with an inline susceptibility rule:
+Combine the standard builders:
 
 ```julia
 attributes = compose(
     clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
     demographics(age_distribution = Uniform(0, 90)),
-    (rng, ind) -> (ind.susceptibility = 0.3),
+    transmission_traits(susceptibility = 0.3),
 )
 ```
 
-Correlate susceptibility with age (run after `demographics`):
+Correlate susceptibility with age — `transmission_traits` accepts a
+function, so the rule is part of the builder rather than a follow-up
+closure:
 
 ```julia
-high_risk = (rng, ind) -> if get(ind.state, :age, 0) >= 65
-    ind.susceptibility = 0.8
-end
-
 attributes = compose(
     demographics(age_distribution = Uniform(0, 90)),
-    (rng, ind) -> (ind.susceptibility = 0.3),  # baseline
-    high_risk,                                  # overrides for ≥ 65
+    transmission_traits(
+        susceptibility = (rng, ind) -> ind.state[:age] >= 65 ? 0.8 : 0.3,
+    ),
+)
+```
+
+For fields without a dedicated builder, the inline closure form is the
+escape hatch:
+
+```julia
+attributes = compose(
+    clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
+    (rng, ind) -> (ind.state[:risk_group] = rand(rng, [:low, :high])),
 )
 ```
 

@@ -209,25 +209,22 @@ any user-defined fields.
 
 Pass an `attributes` function to [`simulate`](@ref). It runs on every
 new individual at creation. EpiBranch provides builders for clinical
-presentation and demographics; for `susceptibility`, `infectiousness`,
-or any other field, write your own closure `(rng, ind) -> ...` and
-[`compose`](@ref) it with the others:
+presentation, demographics, and transmission traits, layered with
+[`compose`](@ref):
 
 ```julia
 attributes = compose(
     clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
     demographics(age_distribution = Uniform(0, 90)),
-    (rng, ind) -> (ind.susceptibility = 0.3),  # per-contact infection prob
-    (rng, ind) -> (ind.infectiousness = 0.9),  # parent-side modifier
+    transmission_traits(susceptibility = 0.3, infectiousness = 0.9),
 )
 ```
 
-For per-individual heterogeneity, sample inside the closure (e.g.
-`ind.susceptibility = rand(rng, Beta(2, 5))`). For attribute-dependent
-rules, branch on `ind.state` (e.g. `ind.state[:age]`).
+For fields without a dedicated builder, write your own closure
+`(rng, ind) -> ...` and `compose` it with the others.
 
 See also [`compose`](@ref), [`clinical_presentation`](@ref),
-[`demographics`](@ref).
+[`demographics`](@ref), [`transmission_traits`](@ref).
 """
 mutable struct Individual
     id::Int
