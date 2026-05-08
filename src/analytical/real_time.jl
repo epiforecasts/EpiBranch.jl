@@ -255,8 +255,64 @@ function _per_case_extinction_probability(R, k, gt::Distribution,
         delay::Distribution, ages::AbstractVector{<:Real})
     log_p = 0.0
     for τ in ages
-        S = _convolved_survival(gt, delay, τ)
+        # τ = Inf collapses to S(∞) = 0 → contribution 0; safe via log1p(0).
+        S = isfinite(τ) ? _convolved_survival(gt, delay, τ) : 0.0
         log_p += -k * log1p(S * R / k)
     end
     return exp(log_p)
+end
+
+"""
+    loglikelihood(data::ChainSizes,
+                  model::Observed{<:BranchingProcess, <:PerCaseObservation, <:Snapshot})
+
+Cluster-size log-likelihood with per-cluster observation timing
+supplied via [`Snapshot`](@ref). For each cluster:
+
+- empty inner vector — right-tail only `log P(X ≥ x | s)` (binary
+  "ongoing" claim, equivalent to the threshold rule's ongoing case).
+- `[Inf]` — chain-PMF only `log P(X = x | s)` (concluded).
+- one or more finite values — π-mixture with the per-case product
+  `π = ∏_j (1 + S(τ_j)·ρ·R/k)^(-k)`.
+
+`ρ = observation.detection_prob` enters via the chain-size PMF
+(thinned to `ThinnedChainSize(base, ρ)` when ρ < 1) and via the
+direct-offspring approximation `ρ·R` in `π`. See the no-snapshot
+method docstring for caveats on the approximation at low ρ.
+"""
+function loglikelihood(data::ChainSizes,
+        m::Observed{<:BranchingProcess, <:PerCaseObservation, <:Snapshot})
+    length(m.snapshot) == length(data.data) || throw(ArgumentError(
+        "snapshot has $(length(m.snapshot)) clusters but data has " *
+        "$(length(data.data))"))
+    process = m.process
+    ρ = m.observation.detection_prob
+    delay = m.observation.delay
+    process.generation_time isa Distribution || throw(ArgumentError(
+        "real-time likelihood requires a Distribution generation time"))
+    offspring = single_type_offspring(process)
+    R = mean(offspring)
+    k = offspring isa NegativeBinomial ? offspring.r : 1e6
+    R_report = ρ * R
+    dist = chain_size_distribution(m)  # ThinnedChainSize when ρ<1, else base.
+
+    total = 0.0
+    for i in eachindex(data.data)
+        x = data.data[i]
+        s = data.seeds[i]
+        times = m.snapshot.time_since[i]
+        log_concluded = _chain_size_logpdf(dist, x, s)
+        log_ongoing = _right_tail_logprob(dist, x, s)
+        if isempty(times)
+            # Ongoing-only: right-tail likelihood.
+            total += log_ongoing
+        else
+            π = _per_case_extinction_probability(R_report, k,
+                process.generation_time, delay, times)
+            a = log(π) + log_concluded
+            b = log1p(-π) + log_ongoing
+            total += logsumexp((a, b))
+        end
+    end
+    return total
 end
