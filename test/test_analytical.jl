@@ -395,6 +395,49 @@
             @test all(haskey(ind.state, :report_time) for ind in sim_state.individuals)
             @test all(ind.state[:report_time] >= ind.infection_time
             for ind in sim_state.individuals)
+
+            # Snapshot encoding parity with existing analytical paths.
+            # All concluded ([Inf]) ↔ ChainSizes default (concluded = trues).
+            ll_concluded_snap = loglikelihood(
+                ChainSizes(sizes; seeds = seeds),
+                Observed(model, PerCaseObservation(),
+                    Snapshot(fill(Inf, length(sizes)))))
+            ll_concluded_chain = loglikelihood(
+                ChainSizes(sizes; seeds = seeds), NegBin(R, k))
+            @test ll_concluded_snap ≈ ll_concluded_chain atol=1e-12
+
+            # All ongoing ([]) ↔ ChainSizes(concluded = falses) right-tail.
+            ll_ongoing_snap = loglikelihood(
+                ChainSizes(sizes; seeds = seeds),
+                Observed(model, PerCaseObservation(),
+                    Snapshot([Float64[] for _ in sizes])))
+            ll_ongoing_chain = loglikelihood(
+                ChainSizes(sizes; seeds = seeds, concluded = falses(length(sizes))),
+                NegBin(R, k))
+            @test ll_ongoing_snap ≈ ll_ongoing_chain atol=1e-12
+
+            # Continuous τ via Snapshot ↔ RealTimeChainSizes(tau = ...) with
+            # Observed(process, PerCaseObservation()).
+            taus_real = fill(7.0, length(sizes))
+            ll_finite_snap = loglikelihood(
+                ChainSizes(sizes; seeds = seeds),
+                Observed(model, PerCaseObservation(), Snapshot(taus_real)))
+            ll_finite_rt = loglikelihood(
+                RealTimeChainSizes(sizes, taus_real; seeds = seeds), model)
+            @test ll_finite_snap ≈ ll_finite_rt atol=1e-12
+
+            # Per-case Snapshot ↔ RealTimeChainSizes(case_ages = ...).
+            ages_real = [[Float64(7 + j) for j in 1:x] for x in sizes]
+            ll_percase_snap = loglikelihood(
+                ChainSizes(sizes; seeds = seeds),
+                Observed(model, PerCaseObservation(),
+                    Snapshot(ages_real)))
+            ll_percase_rt = loglikelihood(
+                RealTimeChainSizes(sizes,
+                    [minimum(a) for a in ages_real];
+                    seeds = seeds, case_ages = ages_real),
+                model)
+            @test ll_percase_snap ≈ ll_percase_rt atol=1e-12
         end
 
         @testset "Composition: Observed(BranchingProcess(ClusterMixed))" begin
