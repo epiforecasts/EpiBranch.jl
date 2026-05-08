@@ -6,11 +6,11 @@ time, with some clusters still active. The likelihood needs an
 adjustment.
 
 EpiBranch uses a state-space framing: a *process model* (the latent
-transmission dynamics — `BranchingProcess`) and an *observation
-model* (how the latent state generates data — [`PerCaseObservation`](@ref)
-covers per-case detection probability and reporting delay), plus an
+transmission dynamics, `BranchingProcess`) and an *observation model*
+(how the latent state generates data, with [`PerCaseObservation`](@ref)
+covering per-case detection probability and reporting delay), plus an
 optional cluster-level [`Snapshot`](@ref) carrying the per-cluster
-observation timing. All three combine via [`Observed`](@ref) so the
+observation timing. All three can be combined via [`Observed`](@ref), so the
 same `loglikelihood(data, model)` dispatch handles every regime.
 
 ## What you observe per cluster
@@ -131,7 +131,7 @@ published threshold-rule analysis.
 ## Worked example
 
 `benchmarks/reproduce_endo2020.jl` runs both on the WHO 27-Feb-2020
-situation report data. Threshold (7-day rule) gives R=2.9, k=0.10 —
+situation report data. Threshold (7-day rule) gives R=2.9, k=0.10,
 matching Endo's published joint MLE region. The single-`τ`
 analytical mixture on the same dataset drifts upward in `k` because
 most countries have several recent cases that the
