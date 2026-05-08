@@ -171,16 +171,23 @@ function main()
             "$(maximum(cluster_ages)) days")
     println()
 
-    # Threshold rule: 7-day silence as in Endo.
-    concluded = taus .>= 7.0
-    chain_data = ChainSizes(sizes; seeds = seeds, concluded = concluded)
-    threshold_loglik = (R, k) -> loglikelihood(chain_data, NegBin(R, k))
+    # Threshold rule: 7-day silence, encoded in a Snapshot.
+    # Concluded clusters → [Inf]; ongoing clusters → [] (right-tail only).
+    threshold_snapshot = Snapshot([τ >= 7.0 ? [Inf] : Float64[]
+                                   for τ in taus])
+    chain_data = ChainSizes(sizes; seeds = seeds)
+    threshold_loglik = function (R, k)
+        model = Observed(BranchingProcess(NegBin(R, k), GT),
+            PerCaseObservation(), threshold_snapshot)
+        return loglikelihood(chain_data, model)
+    end
 
     # Analytical real-time likelihood with real per-country τ.
-    rt_data = RealTimeChainSizes(sizes, taus; seeds = seeds)
+    rt_snapshot = Snapshot(taus)
     rt_analytical_loglik = function (R, k)
-        model = BranchingProcess(NegBin(R, k), GT)
-        return loglikelihood(rt_data, model)
+        model = Observed(BranchingProcess(NegBin(R, k), GT),
+            PerCaseObservation(), rt_snapshot)
+        return loglikelihood(chain_data, model)
     end
 
     methods = [
