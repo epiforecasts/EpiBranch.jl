@@ -250,31 +250,6 @@
                 @test formula≈brute_s2(d, x) atol=1e-10
             end
 
-            # Right-censored (ongoing) likelihood P(X ≥ x) is monotone:
-            # a higher observed lower bound means a smaller tail mass.
-            # Encoding: Snapshot with empty inner vectors → right-tail only.
-            bp = BranchingProcess(NegBin(0.8, 0.5))
-            obs = PerCaseObservation()
-            ongoing(sizes) = Observed(bp, obs,
-                Snapshot([Float64[] for _ in sizes]))
-            ll_ongoing_3 = loglikelihood(ChainSizes([3]), ongoing([3]))
-            ll_ongoing_5 = loglikelihood(ChainSizes([5]), ongoing([5]))
-            @test ll_ongoing_3 > ll_ongoing_5
-            # P(X ≥ 1) = 1 for any chain that exists at all.
-            ll_tail_1 = loglikelihood(ChainSizes([1]), ongoing([1]))
-            @test ll_tail_1 ≈ 0.0 atol=1e-10
-
-            # Mixed data likelihood is the sum of concluded and
-            # ongoing per-observation contributions.
-            mixed_snap = Snapshot([[Inf], [Inf], Float64[], [Inf]])
-            mixed_data = ChainSizes([3, 5, 10, 2]; seeds = [1, 2, 1, 1])
-            ll_mixed = loglikelihood(mixed_data, Observed(bp, obs, mixed_snap))
-            ll_parts = logpdf(d, 3) +
-                       EpiBranch._chain_size_logpdf(d, 5, 2) +
-                       loglikelihood(ChainSizes([10]), ongoing([10])) +
-                       logpdf(d, 2)
-            @test ll_mixed≈ll_parts atol=1e-10
-
             # Poisson (Borel) and PoissonGammaChainSize also support the
             # multi-seed formula via _chain_size_logpdf.
             @test isfinite(loglikelihood(
@@ -289,100 +264,10 @@
             @test_throws ArgumentError ChainSizes([3]; seeds = [1, 1])
         end
 
-        @testset "Real-time cluster-size likelihood" begin
+        @testset "Per-case observation: simulation decoration" begin
             R, k = 0.6, 0.3
             gt = Gamma(2.0, 2.5)
             model = BranchingProcess(NegBin(R, k), gt)
-
-            # End-of-outbreak probability monotone in τ: longer silence
-            # → higher confidence the outbreak is extinct.
-            π_short = end_of_outbreak_probability(R, k, gt, Dirac(0.0); tau = 1.0)
-            π_med = end_of_outbreak_probability(R, k, gt, Dirac(0.0); tau = 14.0)
-            π_long = end_of_outbreak_probability(R, k, gt, Dirac(0.0); tau = 200.0)
-            @test 0 <= π_short <= π_med <= π_long
-            @test π_long ≈ 1.0 atol=1e-6
-
-            # Reporting delay reduces π for the same τ (recent reports
-            # could still be in the pipeline).
-            π_no_delay = end_of_outbreak_probability(R, k, gt, Dirac(0.0); tau = 5.0)
-            π_with_delay = end_of_outbreak_probability(
-                R, k, gt, LogNormal(1.5, 0.5); tau = 5.0)
-            @test π_with_delay < π_no_delay
-
-            # τ → ∞ should match the all-concluded ChainSizes
-            # likelihood (cluster has clearly extinguished).
-            #
-            # τ = 0 does NOT match all-ongoing: at zero silence the
-            # mixture weight on "concluded" is π(0) = exp(-R · S(0))
-            # = exp(-R), the probability that the just-observed case
-            # has no further offspring. So `ll_zero_tau` lies strictly
-            # between `ll_concluded` and `ll_ongoing`, and increasing τ
-            # moves the mixture monotonically towards concluded.
-            sizes = [3, 5, 10, 2]
-            seeds = [1, 2, 1, 1]
-            data = ChainSizes(sizes; seeds = seeds)
-            obs = PerCaseObservation()
-
-            # Reference likelihoods at the boundaries.
-            ll_concluded = loglikelihood(data, NegBin(R, k))
-            ll_ongoing = loglikelihood(data,
-                Observed(model, obs, Snapshot([Float64[] for _ in sizes])))
-
-            # τ → ∞ should match the all-concluded ChainSizes likelihood.
-            ll_long_tau = loglikelihood(data,
-                Observed(model, obs, Snapshot(fill(500.0, 4))))
-            # τ = 0 lies strictly between concluded and ongoing
-            # (π(0) = (1+R/k)^(-k), not 0).
-            ll_zero_tau = loglikelihood(data,
-                Observed(model, obs, Snapshot(zeros(4))))
-            ll_med_tau = loglikelihood(data,
-                Observed(model, obs, Snapshot(fill(7.0, 4))))
-            @test ll_long_tau ≈ ll_concluded atol=1e-3
-            @test min(ll_concluded, ll_ongoing) <= ll_zero_tau <=
-                  max(ll_concluded, ll_ongoing)
-            # Monotonic interpolation as τ grows: more silence pulls
-            # the likelihood towards the concluded value.
-            @test abs(ll_long_tau - ll_concluded) <
-                  abs(ll_med_tau - ll_concluded) <
-                  abs(ll_zero_tau - ll_concluded)
-
-            # Reporting delay shifts the mixture away from extinction
-            # at fixed τ (consistent with π_with_delay < π_no_delay).
-            ll_with_delay = loglikelihood(data,
-                Observed(model,
-                    PerCaseObservation(1.0, LogNormal(1.5, 0.5)),
-                    Snapshot(fill(7.0, 4))))
-            @test ll_with_delay != ll_med_tau
-
-            # Under-reporting (ρ < 1): direct-offspring approximation.
-            # Use single-seed clusters; multi-seed + ThinnedChainSize is
-            # not implemented (pre-existing limitation of the closed-form
-            # path for thinned multi-seed chain sizes).
-            single_seed = ChainSizes(sizes; seeds = ones(Int, 4))
-            ll_rho1 = loglikelihood(single_seed,
-                Observed(model, PerCaseObservation(1.0, Dirac(0.0)),
-                    Snapshot(fill(7.0, 4))))
-            ll_bare = loglikelihood(single_seed,
-                Observed(model, PerCaseObservation(),
-                    Snapshot(fill(7.0, 4))))
-            @test ll_rho1 ≈ ll_bare atol=1e-12
-
-            # ρ < 1 changes the answer (reports thinned + π formula uses ρR).
-            ll_rho_low = loglikelihood(single_seed,
-                Observed(model, PerCaseObservation(0.5, Dirac(0.0)),
-                    Snapshot(fill(7.0, 4))))
-            @test ll_rho_low != ll_bare
-            @test isfinite(ll_rho_low)
-
-            # ρ → 1 limit smoothly approaches the ρ = 1 case.
-            ll_rho_near1 = loglikelihood(single_seed,
-                Observed(model, PerCaseObservation(0.999, Dirac(0.0)),
-                    Snapshot(fill(7.0, 4))))
-            @test isapprox(ll_rho_near1, ll_rho1; atol = 1e-2)
-
-            # Snapshot constructor validation.
-            @test_throws ArgumentError Snapshot(Float64[])
-            @test_throws ArgumentError Snapshot([[-1.0]])
 
             # simulate(::Observed) decorates each individual with
             # :reported and :report_time so downstream code can filter

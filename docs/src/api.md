@@ -126,7 +126,6 @@ ChainLengths
 ```@docs
 ObservationModel
 PerCaseObservation
-Snapshot
 Observed
 ThinnedChainSize
 ```
@@ -136,12 +135,6 @@ ThinnedChainSize
 ```@docs
 ClusterMixed
 ChainSizeMixture
-```
-
-### Real-time inference
-
-```@docs
-end_of_outbreak_probability
 ```
 
 ### Likelihood and fitting

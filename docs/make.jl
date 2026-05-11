@@ -23,7 +23,6 @@ makedocs(;
             "Line lists and contacts" => "tutorials/linelist.md",
             "Chain statistics, likelihood, and fitting" => "tutorials/chains.md",
             "Inference" => "tutorials/inference.md",
-            "Real-time inference" => "tutorials/real_time.md",
             "Analytical functions" => "tutorials/analytical.md",
             "Extending EpiBranch" => "tutorials/extending.md"
         ],

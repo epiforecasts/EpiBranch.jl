@@ -17,9 +17,8 @@ end
 
 Log-likelihood of observed chain sizes under the analytical chain size
 distribution implied by the offspring distribution. Multi-seed clusters
-are handled via the `seeds` field of [`ChainSizes`](@ref); for
-right-censored / mid-outbreak observation, supply a [`Snapshot`](@ref)
-on `Observed` and dispatch on that path instead.
+are handled via the `seeds` field of [`ChainSizes`](@ref). All
+clusters are treated as concluded (final-size likelihood).
 """
 function loglikelihood(data::ChainSizes, offspring::Distribution)
     dist = chain_size_distribution(offspring)
@@ -45,8 +44,7 @@ end
     _chain_size_loglik(dist, data::ChainSizes)
 
 Per-observation chain-size log-likelihood (all observations treated as
-concluded). Right-tail / mixture handling for ongoing observations
-goes through `loglikelihood(::ChainSizes, ::Observed{..., <:Snapshot})`.
+concluded).
 """
 function _chain_size_loglik(dist, data::ChainSizes)
     first_val = _chain_size_logpdf(dist, data.data[1], data.seeds[1])
@@ -55,22 +53,6 @@ function _chain_size_loglik(dist, data::ChainSizes)
         total += _chain_size_logpdf(dist, data.data[i], data.seeds[i])
     end
     return total
-end
-
-"""
-    _right_tail_logprob(dist, x, s)
-
-`log P(X ≥ x | s)` for a chain size distribution. Computed as
-`log(1 - Σ_{m=s}^{x-1} pdf(m | s))`. Returns `0.0` when `x ≤ s`
-(support starts at `s`). Used for ongoing outbreaks (Endo et al. 2020).
-"""
-function _right_tail_logprob(dist, x::Integer, s::Integer)
-    x <= s && return 0.0
-    tail = 1.0
-    for m in s:(x - 1)
-        tail -= exp(_chain_size_logpdf(dist, m, s))
-    end
-    tail > 0 ? log(tail) : -Inf
 end
 
 """

@@ -62,7 +62,6 @@ include("analytical/likelihood.jl")
 include("analytical/superspreading.jl")
 include("analytical/fitting.jl")
 include("analytical/cluster_mixed.jl")
-include("analytical/real_time.jl")
 
 # Exports — types
 export TransmissionModel, BranchingProcess
@@ -74,7 +73,7 @@ export Scheduled, Risk
 export is_active, intervention_time
 export AbstractClinicalTransition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event
-export ObservationModel, PerCaseObservation, Observed, Snapshot
+export ObservationModel, PerCaseObservation, Observed
 export single_type_offspring
 
 # Exports — sentinel types
@@ -111,6 +110,5 @@ export probability_contain
 # Exports — unified inference interface
 export OffspringCounts, ChainSizes, ChainLengths
 export ClusterMixed, ChainSizeMixture
-export end_of_outbreak_probability
 
 end # module
