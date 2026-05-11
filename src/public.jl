@@ -8,5 +8,4 @@ public resolve_individual!
 public apply_post_transmission!
 public post_isolation_transmission
 public reset!
-public start_time
 public required_fields

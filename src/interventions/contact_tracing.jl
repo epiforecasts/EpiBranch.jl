@@ -10,11 +10,9 @@ Base.@kwdef struct ContactTracing <: AbstractIntervention
     probability::Float64
     delay::Distribution
     quarantine_on_trace::Bool = true
-    start_time::Float64 = 0.0
 end
 
 required_fields(::ContactTracing) = [:isolated, :asymptomatic]
-start_time(ct::ContactTracing) = ct.start_time
 intervention_time(::ContactTracing, ind::Individual) = isolation_time(ind)
 
 function reset!(::ContactTracing, ind::Individual)

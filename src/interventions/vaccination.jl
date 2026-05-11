@@ -28,6 +28,26 @@ function initialise_individual!(rv::RingVaccination, individual, state)
     return nothing
 end
 
+# For Scheduled start-time enforcement: the action time is the time the
+# individual would be vaccinated, which equals their isolation_time
+# (set upstream by ContactTracing). Reading from existing state means a
+# contact whose trace time falls before policy start is filtered before
+# any irreversible vaccination logic fires.
+intervention_time(::RingVaccination, ind::Individual) = isolation_time(ind)
+
+function reset!(::RingVaccination, ind::Individual)
+    # Best-effort: clear the vaccination flag and time. The susceptibility
+    # multiplier (in :leaky mode) and rand-driven flips of :infected (in
+    # both modes) are not inverted here. This branch is only reached if
+    # the population gate (is_active) lets a contact through but their
+    # action time falls pre-policy, which is impossible when vaccination
+    # uses pre-existing isolation_time as its intervention_time, so the
+    # reset path is effectively unused for RingVaccination today.
+    ind.state[:vaccinated] = false
+    ind.state[:vaccination_time] = Inf
+    return nothing
+end
+
 function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
     for ind in new_contacts
         # Only vaccinate traced contacts

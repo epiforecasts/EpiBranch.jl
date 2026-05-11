@@ -39,7 +39,6 @@ EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
 EpiBranch.intervention_time
 EpiBranch.reset!
-EpiBranch.start_time
 is_active
 ```
 
@@ -197,8 +196,6 @@ EpiBranch.logsumexp
 EpiBranch.required_fields
 EpiBranch._validate_required_fields
 EpiBranch._column_order
-EpiBranch._with_start_time
-EpiBranch._enforce_start_time!
 EpiBranch._chain_length_ll_negbin
 EpiBranch._borel_logpdf
 EpiBranch._gammaborel_logpdf

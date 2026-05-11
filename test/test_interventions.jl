@@ -45,10 +45,10 @@
         end
     end
 
-    @testset "Intervention start_time respected" begin
+    @testset "Scheduled start_time respected" begin
         rng = StableRNG(200)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        iso = Isolation(delay = Exponential(1.0), start_time = 1000.0)
+        iso = Scheduled(Isolation(delay = Exponential(1.0)); start_time = 1000.0)
 
         state = simulate(model;
             interventions = [iso], attributes = clinical,

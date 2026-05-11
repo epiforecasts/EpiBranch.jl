@@ -11,14 +11,12 @@ Initialises: `:isolated`, `:isolation_time`, `:test_positive`.
 """
 Base.@kwdef struct Isolation <: AbstractIntervention
     delay::Distribution
-    start_time::Float64 = 0.0
     post_isolation_transmission::Float64 = 0.0
     test_sensitivity::Float64 = 1.0
 end
 
 required_fields(::Isolation) = [:onset_time, :asymptomatic]
 post_isolation_transmission(iso::Isolation) = iso.post_isolation_transmission
-start_time(iso::Isolation) = iso.start_time
 intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 
 function reset!(::Isolation, ind::Individual)
