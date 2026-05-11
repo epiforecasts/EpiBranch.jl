@@ -194,7 +194,7 @@ println("Containment (30% residual):      ", round(containment_probability(resul
 ## Incubation-linked generation time
 
 ```{julia}
-gt_fn = ringbp_generation_time(presymptomatic_fraction = 0.3)
+gt_fn = incubation_linked_generation_time(presymptomatic_fraction = 0.3)
 model_ringbp = BranchingProcess(NegBin(2.5, 0.16), gt_fn)
 
 rng = Xoshiro(42)

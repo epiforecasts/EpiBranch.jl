@@ -175,7 +175,7 @@ compose
 ```@docs
 NegBin
 scale_distribution
-ringbp_generation_time
+incubation_linked_generation_time
 ```
 
 ## Internals

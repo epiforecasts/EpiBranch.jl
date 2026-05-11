@@ -95,8 +95,8 @@ using Dates
               containment_probability(results_leaky)
     end
 
-    @testset "ringbp_generation_time convenience" begin
-        gt_fn = ringbp_generation_time(presymptomatic_fraction = 0.3)
+    @testset "incubation_linked_generation_time convenience" begin
+        gt_fn = incubation_linked_generation_time(presymptomatic_fraction = 0.3)
         @test gt_fn isa Function
 
         rng = StableRNG(42)

@@ -29,9 +29,9 @@ wuhan_delay = Weibull(2.31, 9.48)
 # Incubation period (Backer et al. 2020)
 incubation = LogNormal(1.57, 0.65)
 
-# Generation time: ringbp-style incubation-linked model
+# Generation time: incubation-linked model
 # 15% presymptomatic transmission
-gt = ringbp_generation_time(presymptomatic_fraction = 0.15)
+gt = incubation_linked_generation_time(presymptomatic_fraction = 0.15)
 
 # Clinical attributes: 10% asymptomatic
 clinical = Disease(

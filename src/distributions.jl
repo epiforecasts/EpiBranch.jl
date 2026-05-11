@@ -20,27 +20,27 @@ function NegBin(R::Real, k::Real)
 end
 
 """
-    ringbp_generation_time(; presymptomatic_fraction=0.3, omega=2.0)
+    incubation_linked_generation_time(; presymptomatic_fraction=0.3, omega=2.0)
 
 Return a function suitable for the `generation_time` field of a
-`BranchingProcess`, implementing ringbp's incubation-linked generation
-time model.
+`BranchingProcess`, in which each individual's generation time is linked
+to their own incubation period.
 
 The returned function takes an incubation period (Float64) and produces a
 truncated skew-normal distribution SN(ξ, ω, α), where ξ = incubation
 period, and α is chosen so that the fraction of generation times shorter
-than the incubation period equals `presymptomatic_fraction`. This matches
-the generation time model in ringbp (Hellewell et al. 2020).
+than the incubation period equals `presymptomatic_fraction`. This is the
+generation time model used in Hellewell et al. (2020).
 
 Usage:
 ```julia
 model = BranchingProcess(
     NegBin(2.5, 0.16),
-    ringbp_generation_time(presymptomatic_fraction=0.3)
+    incubation_linked_generation_time(presymptomatic_fraction=0.3)
 )
 ```
 """
-function ringbp_generation_time(; presymptomatic_fraction::Real = 0.3,
+function incubation_linked_generation_time(; presymptomatic_fraction::Real = 0.3,
         omega::Real = 2.0)
     0.0 < presymptomatic_fraction < 1.0 || throw(ArgumentError(
         "presymptomatic_fraction must be in (0, 1), got $presymptomatic_fraction"))

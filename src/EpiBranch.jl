@@ -74,7 +74,7 @@ export is_vaccinated, is_asymptomatic, is_test_positive, is_infected
 export individual_type, set_isolated!
 
 # Exports — distributions
-export NegBin, scale_distribution, ringbp_generation_time
+export NegBin, scale_distribution, incubation_linked_generation_time
 # Process-side chain-size distributions (closed forms for offspring specs)
 export Borel, GammaBorel, PoissonGammaChainSize, chain_size_distribution
 # Observation-side chain-size distribution (binomial thinning of any base)
