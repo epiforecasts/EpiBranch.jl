@@ -9,10 +9,20 @@ across transitions: `probability` is a `Real` or `Function (rng, ind) -> Real`,
 function form for age-dependent admission rates, capacity-aware delays,
 or anything else that should vary across cases.
 
-If `requires_reporting = true`, only cases that have been reported (as
-set by [`Reporting`](@ref)) are eligible for admission, with the delay
-still measured from onset. This guards composability when admission
-should follow detection.
+For *prerequisite-gated* admission (e.g. admit only cases that have been
+reported, tested, contact-traced, vaccinated, or that satisfy any other
+predicate on `ind.state`), express the gate inside the `probability`
+function — return `0.0` when the gate is closed:
+
+```julia
+Hospitalisation(
+    delay = LogNormal(2.0, 0.5),
+    probability = (rng, ind) -> get(ind.state, :reported, false) ? 0.2 : 0.0
+)
+```
+
+The same idiom covers any composite condition; no per-prerequisite field
+is needed.
 
 Initialises: `:admitted = false`, `:admission_time = Inf`.
 
@@ -21,7 +31,6 @@ Requires `:onset_time` and `:asymptomatic`.
 Base.@kwdef struct Hospitalisation{D, P} <: AbstractClinicalTransition
     delay::D
     probability::P = 0.2
-    requires_reporting::Bool = false
 end
 
 required_fields(::Hospitalisation) = [:onset_time, :asymptomatic]
@@ -36,9 +45,6 @@ function resolve_individual!(h::Hospitalisation, individual, state)
     is_asymptomatic(individual) && return nothing
     ot = onset_time(individual)
     isnan(ot) && return nothing
-    if h.requires_reporting
-        get(individual.state, :reported, false) || return nothing
-    end
     p = _resolve_probability(h.probability, state.rng, individual)
     rand(state.rng) < p || return nothing
     individual.state[:admitted] = true

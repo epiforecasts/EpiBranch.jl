@@ -88,14 +88,18 @@ end
         @test all(ind.state[:admitted] for ind in state1.individuals)
     end
 
-    @testset "Hospitalisation gated on reporting" begin
+    @testset "Hospitalisation gated on reporting via probability closure" begin
         rng = StableRNG(6)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        # Reporting probability 0.5; admission probability 1.0 but gated on
-        # reporting → admitted set ⊆ reported set.
+        # Reporting probability 0.5; admission probability 1.0 if reported,
+        # 0.0 otherwise → admitted set ⊆ reported set. The gate is expressed
+        # inside `probability`; no special field needed.
         rep = Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5)
-        hosp = Hospitalisation(delay = LogNormal(2.0, 0.5),
-            probability = 1.0, requires_reporting = true)
+        hosp = Hospitalisation(
+            delay = LogNormal(2.0, 0.5),
+            probability = (rng, ind) -> get(ind.state, :reported, false) ? 1.0 :
+                                        0.0
+        )
         state = simulate(model; attributes = clinical,
             transitions = [rep, hosp],
             sim_opts = SimOpts(max_cases = 200), rng = rng)
