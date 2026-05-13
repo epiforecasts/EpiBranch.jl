@@ -1,36 +1,35 @@
 """
-    linelist(state::SimulationState; reference_date=Date(2020, 1, 1),
-             delays=DelayOpts(), outcomes=OutcomeOpts(),
-             demographics=nothing, rng=Random.default_rng())
+    linelist(state::SimulationState; reference_date=Date(2020, 1, 1))
 
-Convert simulation output to a line list DataFrame with one row per case
-(infected individuals only).
+Project simulation output to a line list DataFrame with one row per
+infected case. Pure projection of `state` — no RNG draws, no
+probabilistic decisions. Clinical events (reporting, admission, death,
+recovery) and demographics are read from the state keys that
+attributes and clinical transitions have already populated during
+[`simulate`](@ref).
 
 Columns are built dynamically from what is available on each individual:
 
-- `id`, `parent_id`, `generation`, `chain_id`, `case_type` — always present
-- `date_infection` — always present (from `infection_time` + `reference_date`)
-- `date_onset` — if `:onset_time` was set (via `clinical_presentation()`)
-- `age`, `sex` — if set via `demographics()` attributes or multi-type.
-  If not present and `demographics` kwarg is provided, generated post-hoc.
-- `date_reporting`, `date_admission`, `date_outcome`, `outcome` — if
-  `delays` and/or `outcomes` are provided and onset times are available
-- Any other state dict fields are included as additional columns.
+- `id`, `parent_id`, `generation`, `chain_id`, `case_type` — always present.
+- `date_infection` — always present (from `infection_time` + `reference_date`).
+- `date_onset` — if `:onset_time` was set, e.g. via [`clinical_presentation`](@ref).
+- `age`, `sex` — if set via the [`demographics`](@ref) attributes builder.
+- `type` — if the model is multi-type.
+- `date_reporting` — if a [`Reporting`](@ref) transition wrote `:reporting_time`.
+- `date_admission` — if a [`Hospitalisation`](@ref) transition wrote `:admission_time`.
+- `outcome`, `date_outcome` — if [`Death`](@ref) / [`Recovery`](@ref) (or
+  any user-defined terminal transition) wrote `:outcome` / `:outcome_time`.
+- Any present `:asymptomatic` / `:isolated` / `:traced` / `:quarantined` /
+  `:vaccinated` flags.
 
-If a `DemographicOpts` is passed via the `demographics` kwarg, age/sex
-are generated post-hoc for individuals that don't already have them.
+To get reporting, admission, or outcome events in the line list, build
+the corresponding transitions and pass them via `simulate(...; transitions = ...)`.
 """
 function linelist(state::SimulationState;
-        reference_date::Date = Date(2020, 1, 1),
-        delays::DelayOpts = DelayOpts(),
-        outcomes::Union{OutcomeOpts, NoOutcomes} = NoOutcomes(),
-        demographics::Union{DemographicOpts, NoDemographics} = NoDemographics(),
-        rng::AbstractRNG = Random.default_rng())
+        reference_date::Date = Date(2020, 1, 1))
     cases = filter(is_infected, state.individuals)
-    n = length(cases)
-    n == 0 && return DataFrame()
+    isempty(cases) && return DataFrame()
 
-    # Core columns — always present
     cols = Dict{Symbol, Vector}(
         :id => [ind.id for ind in cases],
         :parent_id => [ind.parent_id for ind in cases],
@@ -41,117 +40,33 @@ function linelist(state::SimulationState;
                             for ind in cases]
     )
 
-    # Onset time → date_onset
-    has_onset = any(haskey(ind.state, :onset_time) for ind in cases)
-    if has_onset
-        cols[:date_onset] = Union{Date, Missing}[let ot = onset_time(ind)
-                                                     isnan(ot) ? missing :
-                                                     reference_date + Day(floor(Int, ot))
-                                                 end
-                                                 for ind in cases]
-    end
+    _add_time_column!(cols, :date_onset, cases, :onset_time, reference_date)
+    _add_time_column!(cols, :date_reporting, cases, :reporting_time, reference_date)
+    _add_time_column!(cols, :date_admission, cases, :admission_time, reference_date)
+    _add_time_column!(cols, :date_outcome, cases, :outcome_time, reference_date)
 
-    # Demographics — from state dict or generated post-hoc
-    has_age = any(haskey(ind.state, :age) for ind in cases)
-    has_sex = any(haskey(ind.state, :sex) for ind in cases)
-
-    # Apply post-hoc demographics if not already set on individuals
-    if demographics isa DemographicOpts && (!has_age || !has_sex)
-        demo_fn = EpiBranch.demographics(;
-            age_distribution = demographics.age_distribution,
-            age_range = demographics.age_range,
-            prob_female = demographics.prob_female)
-        for ind in cases
-            haskey(ind.state, :age) || demo_fn(rng, ind)
-        end
-        has_age = true
-        has_sex = true
-    end
-
-    if has_age
+    if any(haskey(ind.state, :age) for ind in cases)
         cols[:age] = [get(ind.state, :age, missing) for ind in cases]
     end
-    if has_sex
+    if any(haskey(ind.state, :sex) for ind in cases)
         cols[:sex] = [string(get(ind.state, :sex, missing)) for ind in cases]
     end
-
-    # Type (from multi-type branching process)
-    has_type = any(haskey(ind.state, :type) for ind in cases)
-    if has_type
+    if any(haskey(ind.state, :type) for ind in cases)
         cols[:type] = [get(ind.state, :type, missing) for ind in cases]
     end
 
-    # Reporting delay
-    if has_onset && delays.onset_to_reporting isa Distribution
-        cols[:date_reporting] = Union{Date, Missing}[let ot = onset_time(ind)
-                                                         if isnan(ot)
-                                                             missing
-                                                         else
-                                                             d = rand(rng, delays.onset_to_reporting)
-                                                             reference_date +
-                                                             Day(floor(Int, ot + d))
-                                                         end
-                                                     end
-                                                     for ind in cases]
+    if any(haskey(ind.state, :outcome) for ind in cases)
+        cols[:outcome] = Union{String, Missing}[haskey(ind.state, :outcome) ?
+                                                string(ind.state[:outcome]) : missing
+                                                for ind in cases]
     end
 
-    # Hospitalisation
-    if has_onset && delays.onset_to_admission isa Distribution
-        prob_hosp = outcomes isa OutcomeOpts ? outcomes.prob_hospitalisation : 0.2
-        cols[:date_admission] = Union{Date, Missing}[let ot = onset_time(ind)
-                                                         if isnan(ot) ||
-                                                            rand(rng) >= prob_hosp
-                                                             missing
-                                                         else
-                                                             d = rand(rng, delays.onset_to_admission)
-                                                             reference_date +
-                                                             Day(floor(Int, ot + d))
-                                                         end
-                                                     end
-                                                     for ind in cases]
-    end
-
-    # Outcomes
-    if outcomes isa OutcomeOpts && has_onset
-        age_col = get(cols, :age, nothing)
-        outcome_strs = Vector{String}(undef, n)
-        date_outcomes = Vector{Union{Date, Missing}}(undef, n)
-
-        for (j, ind) in enumerate(cases)
-            ot = onset_time(ind)
-            if isnan(ot)
-                outcome_strs[j] = "recovered"
-                date_outcomes[j] = missing
-            else
-                prob_death = if age_col !== nothing && !ismissing(age_col[j])
-                    _get_cfr(Int(age_col[j]), outcomes)
-                else
-                    outcomes.prob_death
-                end
-
-                outcome_strs[j] = rand(rng) < prob_death ? "died" : "recovered"
-
-                if delays.onset_to_outcome isa Distribution
-                    d = rand(rng, delays.onset_to_outcome)
-                    date_outcomes[j] = reference_date + Day(floor(Int, ot + d))
-                else
-                    date_outcomes[j] = missing
-                end
-            end
-        end
-
-        cols[:outcome] = outcome_strs
-        cols[:date_outcome] = date_outcomes
-    end
-
-    # Intervention state — include if present
-    for field in [:asymptomatic, :isolated, :traced, :quarantined, :vaccinated]
+    for field in (:asymptomatic, :isolated, :traced, :quarantined, :vaccinated)
         if any(haskey(ind.state, field) for ind in cases)
             cols[field] = [get(ind.state, field, missing) for ind in cases]
         end
     end
 
-    # Build DataFrame with a sensible column order
     ordered_keys = _column_order(keys(cols))
     return DataFrame([k => cols[k] for k in ordered_keys])
 end
@@ -191,13 +106,18 @@ end
 
 # ── Internal helpers ─────────────────────────────────────────────────
 
-_get_cfr(age::Int, opts::OutcomeOpts{NoCFR}) = opts.prob_death
-
-function _get_cfr(age::Int, opts::OutcomeOpts)
-    for ((lo, hi), cfr) in opts.age_specific_cfr
-        lo <= age <= hi && return cfr
-    end
-    return opts.prob_death
+"""Add a date column projected from a Float64 time stored on `ind.state[time_key]`.
+Includes the column iff at least one case has a finite time. Cases with no
+key or a NaN/Inf value get `missing`."""
+function _add_time_column!(cols, col_name, cases, time_key, reference_date)
+    any(haskey(ind.state, time_key) && isfinite(ind.state[time_key]::Float64)
+    for ind in cases) || return nothing
+    cols[col_name] = Union{Date, Missing}[let t = get(ind.state, time_key, NaN)::Float64
+                                              isfinite(t) ?
+                                              reference_date + Day(floor(Int, t)) : missing
+                                          end
+                                          for ind in cases]
+    return nothing
 end
 
 """Sensible column ordering for the linelist DataFrame."""

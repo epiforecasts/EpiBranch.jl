@@ -114,7 +114,7 @@ Simulation state can be converted to DataFrames with several output functions.
 using DataFrames, Dates
 
 # Line list (cases only)
-ll = linelist(state; reference_date = Date(2024, 1, 1), rng = StableRNG(99))
+ll = linelist(state; reference_date = Date(2024, 1, 1))
 println("Line list: $(nrow(ll)) rows, $(ncol(ll)) columns")
 first(ll, 3)
 ```

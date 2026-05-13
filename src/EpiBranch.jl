@@ -67,7 +67,7 @@ include("analytical/real_time.jl")
 # Exports — types
 export TransmissionModel, BranchingProcess
 export Individual, SimulationState
-export SimOpts, DelayOpts, OutcomeOpts, DemographicOpts
+export SimOpts
 export AbstractIntervention, Isolation, ContactTracing, RingVaccination, Scheduled
 export is_active, intervention_time
 export AbstractClinicalTransition, Reporting, Hospitalisation, Death, Recovery
@@ -76,8 +76,8 @@ export ObservationModel, PerCaseObservation, Observed, Snapshot
 export single_type_offspring
 
 # Exports — sentinel types
-export NoPopulation, NoAttributes, NoTypeLabels, NoDelay, NoCFR
-export NoAgeDistribution, NoOutcomes, NoDemographics, NoCases
+export NoPopulation, NoAttributes, NoTypeLabels
+export NoAgeDistribution, NoCases
 
 # Exports — accessors
 export onset_time, is_isolated, isolation_time, is_traced, is_quarantined

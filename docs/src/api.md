@@ -13,9 +13,6 @@ single_type_offspring
 Individual
 SimulationState
 SimOpts
-DelayOpts
-OutcomeOpts
-DemographicOpts
 ```
 
 ## Simulation
