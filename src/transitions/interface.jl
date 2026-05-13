@@ -78,6 +78,24 @@ _resolve_probability(f, rng, ind) = float(f(rng, ind))
 _resolve_delay(d::Distribution, rng, ind) = float(rand(rng, d))
 _resolve_delay(f, rng, ind) = float(f(rng, ind))
 
+# Anchor for a transition's `delay`. A `Symbol` is looked up in
+# `ind.state` (e.g. `:onset_time`, `:test_time`, `:admission_time`); a
+# `Function (ind) -> Real` is called directly (use this for fields on
+# `Individual` itself, e.g. `ind.infection_time`, or for composite
+# anchors). Returning `NaN` signals "no anchor" and the transition is
+# skipped.
+_resolve_anchor(s::Symbol, ind) = get(ind.state, s, NaN)::Float64
+_resolve_anchor(f, ind) = float(f(ind))
+
+# By default each transition's `required_fields` returns `[:onset_time]`
+# so the simulation start-up validator catches missing
+# `clinical_presentation` setup. When the user overrides `from` to
+# anchor on something other than onset, the required field is the
+# user's responsibility — typically a downstream transition's output
+# key (e.g. `:test_time`) that isn't set by attributes anyway.
+_from_required(s::Symbol) = s === :onset_time ? [:onset_time] : Symbol[]
+_from_required(_) = Symbol[]
+
 """
     _finalise_terminal!(individual, transitions)
 

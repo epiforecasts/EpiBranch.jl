@@ -225,6 +225,46 @@ end
         end
     end
 
+    @testset "Anchor on :test_time via `from`" begin
+        # Built-in Reporting anchored on a state key set by a custom
+        # upstream transition. Reporting fires only after Testing wrote
+        # :test_time; the reporting time is test_time + reporting delay,
+        # not onset + reporting delay.
+        rng = StableRNG(14)
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        test_then_report = [
+            # DummyTest uses LogNormal(0.0, 0.5) → :test_time stochastic
+            DummyTest(LogNormal(0.0, 0.5)),
+            # Deterministic 1-day reporting delay so we can assert the
+            # anchor relation exactly.
+            Reporting(delay = (rng, ind) -> 1.0, from = :test_time)
+        ]
+        state = simulate(model; attributes = clinical,
+            transitions = test_then_report,
+            sim_opts = SimOpts(max_cases = 50), rng = rng)
+        for ind in state.individuals
+            @test ind.state[:reported]
+            @test ind.state[:reporting_time] ≈ ind.state[:test_time] + 1.0
+        end
+    end
+
+    @testset "Anchor via function form (infection_time)" begin
+        # Bypass onset entirely: anchor reporting on the Individual's
+        # infection_time field via `from = ind -> ind.infection_time`.
+        # No clinical_presentation needed — `from` is a function, so the
+        # validator does not require :onset_time.
+        rng = StableRNG(15)
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        rep = Reporting(delay = (rng, ind) -> 1.0,
+            from = ind -> ind.infection_time)
+        state = simulate(model; transitions = [rep],
+            sim_opts = SimOpts(max_cases = 30), rng = rng)
+        for ind in state.individuals
+            @test ind.state[:reported]
+            @test ind.state[:reporting_time] ≈ ind.infection_time + 1.0
+        end
+    end
+
     @testset "Custom user-defined transition" begin
         # End-to-end check that the public interface is enough: the
         # struct + methods are defined above this testset (Julia

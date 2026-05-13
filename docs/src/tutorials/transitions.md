@@ -164,6 +164,87 @@ not yet vaccinated, fire a transition only after the case is traced,
 etc. The closure has access to the full `ind.state` dict so any
 combination of upstream events or user-set attributes is reachable.
 
+## Sequential transitions: chaining via `from`
+
+The delay anchor on every built-in transition defaults to
+`:onset_time`, but `from` is a kwarg that accepts any `Symbol` (looked
+up in `ind.state`) or `Function (ind) -> Real`. That makes chained
+timelines first-class: anchor each step on the *previous* event's
+time, not always on onset.
+
+Suppose reporting depends on testing — a positive test is what
+generates the report, and the reporting delay is measured from the
+test, not from symptom onset. Define a `Testing` transition that
+writes `:test_time`, then anchor the built-in `Reporting` on it:
+
+```@example transitions
+struct Testing <: AbstractClinicalTransition
+    delay::Distribution
+    sensitivity::Float64
+end
+
+EpiBranch.required_fields(::Testing) = [:onset_time]
+
+function EpiBranch.initialise_individual!(::Testing, ind, state)
+    ind.state[:tested] = false
+    ind.state[:test_time] = Inf
+    return nothing
+end
+
+function EpiBranch.resolve_individual!(t::Testing, ind, state)
+    ot = onset_time(ind); isnan(ot) && return nothing
+    rand(state.rng) < t.sensitivity || return nothing
+    ind.state[:tested] = true
+    ind.state[:test_time] = ot + rand(state.rng, t.delay)
+    return nothing
+end
+
+testing = Testing(LogNormal(0.5, 0.3), 0.9)
+reporting_post_test = Reporting(
+    delay = LogNormal(0.0, 0.2),
+    from = :test_time,
+)
+
+rng = StableRNG(42)
+state = simulate(model;
+    attributes = clinical,
+    transitions = [testing, reporting_post_test],
+    sim_opts = SimOpts(max_cases = 100),
+    rng = rng,
+)
+
+ind = state.individuals[end]
+println("onset = ", onset_time(ind))
+println("tested = ", ind.state[:tested], " at ", ind.state[:test_time])
+println("reported at ", ind.state[:reporting_time])
+```
+
+`Reporting` skips cases whose anchor (`:test_time`) is still `Inf`
+because `Testing` didn't fire — exactly the same NaN/Inf check that
+gates asymptomatic cases under the default `:onset_time` anchor. The
+ordering of transitions in the vector matters: `resolve_individual!`
+is called in order, so any downstream transition that anchors on an
+upstream key needs the upstream transition to come first.
+
+### Anchoring on infection time (no onset modelled)
+
+For diseases where you don't want to model symptom onset at all,
+anchor on `ind.infection_time` via the function form. No
+`clinical_presentation` is required — `from` as a function bypasses
+the validator's `:onset_time` check entirely:
+
+```julia
+Reporting(
+    delay = LogNormal(2.0, 0.3),
+    from = ind -> ind.infection_time,
+)
+```
+
+The same applies to `Death`, `Recovery`, `Hospitalisation`, and any
+user-defined transition that adopts the same convention. The choice
+of anchor is per-transition, so mixed timelines are fine: hospitalise
+from onset, but draw outcome times from admission.
+
 ## Terminal transitions and competing arbitration
 
 [`Death`](@ref) and [`Recovery`](@ref) are terminal — they end the
