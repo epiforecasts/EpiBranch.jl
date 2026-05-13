@@ -23,6 +23,16 @@ include("interventions/contact_tracing.jl")
 include("interventions/vaccination.jl")
 include("interventions/scheduled.jl")
 
+# Clinical transitions — case-state Markov chain layered on the
+# intervention framework. Same hook shape as interventions; sibling
+# abstract type so the public API can keep `interventions=` and
+# `transitions=` namespaces distinct.
+include("transitions/interface.jl")
+include("transitions/reporting.jl")
+include("transitions/hospitalisation.jl")
+include("transitions/outcome.jl")
+include("transitions/compose.jl")
+
 # Public API declarations (Julia 1.11+)
 @static if VERSION >= v"1.11"
     include("public.jl")
@@ -61,6 +71,8 @@ export Individual, SimulationState
 export SimOpts, DelayOpts, OutcomeOpts, DemographicOpts
 export AbstractIntervention, Isolation, ContactTracing, RingVaccination, Scheduled
 export is_active, intervention_time
+export AbstractClinicalTransition, Reporting, Hospitalisation, Death, Recovery
+export is_terminal, terminal_event, clinical_default
 export ObservationModel, PerCaseObservation, Observed, Snapshot
 export single_type_offspring
 

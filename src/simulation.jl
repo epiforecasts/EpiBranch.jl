@@ -1,9 +1,17 @@
 """
-    simulate(model::TransmissionModel; interventions=[], attributes=nothing,
-             sim_opts=SimOpts(), rng=Random.default_rng(),
+    simulate(model::TransmissionModel; interventions=[], transitions=[],
+             attributes=nothing, sim_opts=SimOpts(),
+             rng=Random.default_rng(),
              condition=nothing, max_attempts=10_000)
 
 Run a single outbreak simulation.
+
+`transitions` is a vector of [`AbstractClinicalTransition`](@ref)s
+(e.g. [`Reporting`](@ref), [`Hospitalisation`](@ref), [`Death`](@ref),
+[`Recovery`](@ref)) that act on each case's clinical timeline after
+attributes and interventions have run. Use [`clinical_default`](@ref)
+for the conventional reporting / hospitalisation / outcome stack, or
+build the vector by hand for non-standard timelines.
 
 If `condition` is provided (a `UnitRange{Int}`), simulations are repeated
 until one produces an outbreak whose cumulative cases fall within the range,
@@ -11,6 +19,7 @@ up to `max_attempts`.
 """
 function simulate(model::TransmissionModel;
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
+        transitions::Vector{<:AbstractClinicalTransition} = AbstractClinicalTransition[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
         sim_opts::SimOpts = SimOpts(),
         rng::AbstractRNG = Random.default_rng(),
@@ -18,7 +27,8 @@ function simulate(model::TransmissionModel;
         max_attempts::Int = 10_000)
     if condition !== nothing
         for _ in 1:max_attempts
-            state = simulate(model; interventions, attributes, sim_opts, rng)
+            state = simulate(model; interventions, transitions,
+                attributes, sim_opts, rng)
             state.cumulative_cases in condition && return state
         end
         throw(ErrorException(
@@ -26,10 +36,12 @@ function simulate(model::TransmissionModel;
         ))
     end
 
-    state = initialise_state(model, sim_opts, interventions, attributes, rng)
+    state = initialise_state(
+        model, sim_opts, interventions, transitions, attributes, rng)
 
     if !isempty(state.individuals)
         _validate_required_fields(state.individuals[1], interventions)
+        _validate_required_fields(state.individuals[1], transitions)
     end
 
     while !should_terminate(state, sim_opts)
@@ -50,6 +62,7 @@ using independent RNG streams derived from the provided `rng`. Use
 """
 function simulate_batch(model::TransmissionModel, n::Int;
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
+        transitions::Vector{<:AbstractClinicalTransition} = AbstractClinicalTransition[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
         sim_opts::SimOpts = SimOpts(),
         rng::AbstractRNG = Random.default_rng(),
@@ -60,19 +73,20 @@ function simulate_batch(model::TransmissionModel, n::Int;
         results = Vector{SimulationState}(undef, n)
         Threads.@threads for i in 1:n
             local_rng = Random.Xoshiro(seeds[i])
-            results[i] = simulate(
-                model; interventions, attributes, sim_opts, rng = local_rng)
+            results[i] = simulate(model; interventions, transitions,
+                attributes, sim_opts, rng = local_rng)
         end
         return results
     else
-        return [simulate(model; interventions, attributes, sim_opts, rng) for _ in 1:n]
+        return [simulate(model; interventions, transitions, attributes,
+                    sim_opts, rng) for _ in 1:n]
     end
 end
 
 # ── Internal helpers ───────────────────────────────────────────────
 
 function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
-        interventions, attributes, rng::AbstractRNG)
+        interventions, transitions, attributes, rng::AbstractRNG)
     individuals = Individual[]
 
     temp_state = SimulationState(
@@ -85,7 +99,8 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         population_size(model),
         latent_period(model),
         0.0,
-        attributes
+        attributes,
+        convert(Vector{AbstractClinicalTransition}, transitions)
     )
 
     nt = n_types(model)
@@ -122,7 +137,13 @@ function _susceptible_fraction(state::SimulationState{<:Any, Int})
     return n_susceptible / state.population_size
 end
 
-"""Create a new Individual with attributes and intervention state."""
+"""Create a new Individual with attributes, intervention, and transition state.
+
+Clinical transitions are read from `state.transitions`; the simulation
+loop sets that field once at `initialise_state` time. This lets contact
+creation deep inside `step!` apply transitions without threading the
+vector through every signature.
+"""
 function _create_individual(state::SimulationState, parent_id::Int,
         chain_id::Int, next_id::Int,
         inf_time::Float64, interventions)
@@ -142,6 +163,15 @@ function _create_individual(state::SimulationState, parent_id::Int,
     for intervention in interventions
         initialise_individual!(intervention, ind, state)
     end
+
+    transitions = state.transitions
+    for transition in transitions
+        initialise_individual!(transition, ind, state)
+    end
+    for transition in transitions
+        resolve_individual!(transition, ind, state)
+    end
+    isempty(transitions) || _finalise_terminal!(ind, transitions)
 
     return ind
 end
@@ -360,12 +390,14 @@ end
 """Fields that an intervention requires on individuals. Default: none."""
 required_fields(::AbstractIntervention) = Symbol[]
 
-"""Check that all required fields are present on an individual."""
-function _validate_required_fields(individual, interventions)
-    for intervention in interventions
-        for field in required_fields(intervention)
+"""Check that all required fields are present on an individual. Works for
+any iterable of items that define `required_fields` — used for both
+interventions and clinical transitions."""
+function _validate_required_fields(individual, items)
+    for item in items
+        for field in required_fields(item)
             if !haskey(individual.state, field)
-                itype = typeof(intervention)
+                itype = typeof(item)
                 hint = _field_hint(field)
                 error("$itype requires field :$field on individuals. $hint")
             end

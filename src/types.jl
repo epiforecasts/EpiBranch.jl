@@ -29,6 +29,12 @@ struct NoDemographics end
 """Sentinel indicating no case cap for extinction/containment checks."""
 struct NoCases end
 
+# Abstract supertype for clinical-state transitions (defined here so
+# `SimulationState` can hold a typed `transitions` vector without
+# forward-reference issues). Implementations live in
+# `src/transitions/`.
+abstract type AbstractClinicalTransition end
+
 # ── Generation time specification ────────────────────────────────────
 
 """
@@ -295,6 +301,11 @@ end
 
 """
 State of a running or completed simulation.
+
+`transitions` is the per-run vector of clinical transitions (set by
+`simulate`). It is held on the state so individual-creation paths
+inside `step!` can apply transitions without threading a parameter
+through every signature.
 """
 mutable struct SimulationState{R <: AbstractRNG, P, A}
     individuals::Vector{Individual}
@@ -307,6 +318,19 @@ mutable struct SimulationState{R <: AbstractRNG, P, A}
     latent_period::Float64
     max_infection_time::Float64
     attributes::A
+    transitions::Vector{AbstractClinicalTransition}
+end
+
+# Backwards-compatible constructor: callers that don't pass transitions
+# (e.g. test helpers that build a minimal state by hand) get an empty
+# vector and behave exactly as before.
+function SimulationState(individuals, active_ids, current_generation, rng,
+        cumulative_cases, extinct, population_size, latent_period,
+        max_infection_time, attributes)
+    SimulationState(individuals, active_ids, current_generation, rng,
+        cumulative_cases, extinct, population_size, latent_period,
+        max_infection_time, attributes,
+        AbstractClinicalTransition[])
 end
 
 function Base.show(io::IO, s::SimulationState)
