@@ -40,11 +40,6 @@ function simulate(model::TransmissionModel;
     state = initialise_state(
         model, sim_opts, interventions, transitions, attributes, rng)
 
-    if !isempty(state.individuals)
-        _validate_required_fields(state.individuals[1], interventions)
-        _validate_required_fields(state.individuals[1], transitions)
-    end
-
     while !should_terminate(state, sim_opts)
         step!(model, state, interventions)
     end
@@ -109,6 +104,15 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         ind = _create_individual(temp_state, 0, i, i, 0.0, interventions)
         if nt > 1
             ind.state[:type] = rand(rng, 1:nt)
+        end
+        # Validate required fields on the first individual, before any
+        # transition resolution runs. Without this, a missing :onset_time
+        # surfaces as an opaque error inside the transition closure rather
+        # than as the engine's friendly "Reporting requires field :onset_time"
+        # message.
+        if i == 1
+            _validate_required_fields(ind, interventions)
+            _validate_required_fields(ind, transitions)
         end
         # Resolve transitions after :type is set so closures can read it.
         _resolve_transitions!(temp_state, ind)
