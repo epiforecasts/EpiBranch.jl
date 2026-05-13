@@ -99,12 +99,18 @@ function _make_one_contact!(new_contacts, new_infected_ids, parent, state,
     contact = _create_individual(state, parent.id, parent.chain_id,
         next_id, inf_time, interventions)
     _set_type!(contact, type_idx)
-    # Transitions resolve after :type is set so closures can read it.
-    _resolve_transitions!(state, contact)
 
     infected = _resolve_infection(state.rng, parent, contact,
         gt, pop_suscept, residual)
     contact.state[:infected] = infected
+
+    # Resolve clinical transitions only for infected contacts: uninfected
+    # contacts are recorded for effort tracking but have no clinical course,
+    # so populating :reporting_time / :outcome on them would be a category
+    # error and would burn RNG draws that change downstream results.
+    if infected
+        _resolve_transitions!(state, contact)
+    end
 
     push!(parent.secondary_case_ids, next_id)
     push!(new_contacts, contact)
