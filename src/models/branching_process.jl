@@ -108,6 +108,11 @@ function _make_one_contact!(new_contacts, new_infected_ids, parent, state,
     # contacts are recorded for effort tracking but have no clinical course,
     # so populating :reporting_time / :outcome on them would be a category
     # error and would burn RNG draws that change downstream results.
+    #
+    # TODO(#57): authors of new TransmissionModel subtypes currently have
+    # to remember to call _resolve_transitions! at this point themselves.
+    # Move it into a hook (e.g. on_new_infection!) so the default
+    # behaviour is automatic.
     if infected
         _resolve_transitions!(state, contact)
     end
