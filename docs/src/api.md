@@ -50,7 +50,6 @@ Reporting
 Hospitalisation
 Death
 Recovery
-clinical_default
 is_terminal
 terminal_event
 ```

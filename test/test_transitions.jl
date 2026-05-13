@@ -146,35 +146,17 @@ end
             prob_asymptomatic = 1.0
         )
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model; attributes = all_asymp,
-            transitions = clinical_default(
-                reporting_delay = LogNormal(1.0, 0.3),
-                admission_delay = LogNormal(2.0, 0.5),
-                outcome_delay = LogNormal(2.5, 0.4)),
+        ts = [Reporting(delay = LogNormal(1.0, 0.3)),
+            Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 1.0),
+            Death(delay = LogNormal(2.5, 0.4), probability = 1.0),
+            Recovery(delay = LogNormal(2.0, 0.4))]
+        state = simulate(model; attributes = all_asymp, transitions = ts,
             sim_opts = SimOpts(max_cases = 50), rng = rng)
         for ind in state.individuals
             @test ind.state[:reported] == false
             @test ind.state[:admitted] == false
             @test !haskey(ind.state, :outcome)
         end
-    end
-
-    @testset "clinical_default builds the expected stack" begin
-        ts = clinical_default(
-            reporting_delay = LogNormal(1.0, 0.3),
-            admission_delay = LogNormal(2.0, 0.5),
-            outcome_delay = LogNormal(2.5, 0.4))
-        @test length(ts) == 4
-        @test ts[1] isa Reporting
-        @test ts[2] isa Hospitalisation
-        @test ts[3] isa Death
-        @test ts[4] isa Recovery
-
-        ts_min = clinical_default(reporting_delay = LogNormal(1.0, 0.3))
-        @test length(ts_min) == 1
-        @test ts_min[1] isa Reporting
-
-        @test isempty(clinical_default())
     end
 
     @testset "Required-field validation catches missing :onset_time" begin
@@ -185,7 +167,7 @@ end
             sim_opts = SimOpts(max_cases = 5), rng = StableRNG(10))
     end
 
-    @testset "Age-specific CFR overrides probability" begin
+    @testset "Heterogeneous probability via function" begin
         rng = StableRNG(11)
         # Demographics + clinical so :age and :onset_time are both set.
         attrs = compose(
@@ -193,10 +175,10 @@ end
             demographics(age_distribution = Uniform(0, 90))
         )
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        # 0% baseline, 100% for 80+. Expect deaths concentrated in 80+ band.
+        # Closure CFR: 0% below 80, 100% at 80 and above. Expect deaths
+        # only in the 80+ band.
         d = Death(delay = LogNormal(2.5, 0.4),
-            probability = 0.0,
-            age_specific_cfr = [(0, 79) => 0.0, (80, 120) => 1.0])
+            probability = (rng, ind) -> ind.state[:age] >= 80 ? 1.0 : 0.0)
         r = Recovery(delay = LogNormal(2.0, 0.4))
         state = simulate(model; attributes = attrs,
             transitions = [d, r],
@@ -209,6 +191,35 @@ end
         end
         @test n_died_under80 == 0
         @test n_died_80plus > 0
+    end
+
+    @testset "Heterogeneous delay via function" begin
+        # Age-conditional admission delay: youngest cases get admitted
+        # faster than older ones. Check the per-case admission times
+        # respect the rule.
+        rng = StableRNG(13)
+        attrs = compose(
+            clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            demographics(age_distribution = Uniform(0, 90))
+        )
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        # Under-30: fixed 1-day delay. 30+: fixed 5-day delay. Comparing
+        # admission_time - onset_time recovers the right band.
+        hosp = Hospitalisation(
+            delay = (rng, ind) -> ind.state[:age] < 30 ? 1.0 : 5.0,
+            probability = 1.0)
+        state = simulate(model; attributes = attrs,
+            transitions = [hosp],
+            sim_opts = SimOpts(max_cases = 100), rng = rng)
+        for ind in state.individuals
+            ind.state[:admitted] || continue
+            d = ind.state[:admission_time] - onset_time(ind)
+            if ind.state[:age] < 30
+                @test d ≈ 1.0
+            else
+                @test d ≈ 5.0
+            end
+        end
     end
 
     @testset "Custom user-defined transition" begin

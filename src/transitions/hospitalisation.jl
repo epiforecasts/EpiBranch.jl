@@ -3,6 +3,12 @@ Symptomatic cases are admitted to hospital with probability `probability`
 after a `delay` drawn per case, measured from `:onset_time`. Asymptomatic
 cases are never admitted.
 
+Both `probability` and `delay` accept the heterogeneity shapes shared
+across transitions: `probability` is a `Real` or `Function (rng, ind) -> Real`,
+`delay` is a `Distribution` or `Function (rng, ind) -> Real`. Use the
+function form for age-dependent admission rates, capacity-aware delays,
+or anything else that should vary across cases.
+
 If `requires_reporting = true`, only cases that have been reported (as
 set by [`Reporting`](@ref)) are eligible for admission, with the delay
 still measured from onset. This guards composability when admission
@@ -12,9 +18,9 @@ Initialises: `:admitted = false`, `:admission_time = Inf`.
 
 Requires `:onset_time` and `:asymptomatic`.
 """
-Base.@kwdef struct Hospitalisation <: AbstractClinicalTransition
-    delay::Distribution
-    probability::Float64 = 0.2
+Base.@kwdef struct Hospitalisation{D, P} <: AbstractClinicalTransition
+    delay::D
+    probability::P = 0.2
     requires_reporting::Bool = false
 end
 
@@ -33,8 +39,11 @@ function resolve_individual!(h::Hospitalisation, individual, state)
     if h.requires_reporting
         get(individual.state, :reported, false) || return nothing
     end
-    rand(state.rng) < h.probability || return nothing
+    p = _resolve_probability(h.probability, state.rng, individual)
+    rand(state.rng) < p || return nothing
     individual.state[:admitted] = true
-    individual.state[:admission_time] = ot + rand(state.rng, h.delay)
+    individual.state[:admission_time] = ot +
+                                        _resolve_delay(h.delay, state.rng,
+        individual)
     return nothing
 end

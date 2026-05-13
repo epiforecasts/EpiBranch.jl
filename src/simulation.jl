@@ -9,9 +9,10 @@ Run a single outbreak simulation.
 `transitions` is a vector of [`AbstractClinicalTransition`](@ref)s
 (e.g. [`Reporting`](@ref), [`Hospitalisation`](@ref), [`Death`](@ref),
 [`Recovery`](@ref)) that act on each case's clinical timeline after
-attributes and interventions have run. Use [`clinical_default`](@ref)
-for the conventional reporting / hospitalisation / outcome stack, or
-build the vector by hand for non-standard timelines.
+attributes and interventions have run. Build the vector explicitly —
+each transition's `probability` and `delay` accept either constants or
+`(rng, ind) -> value` functions, so age- or risk-conditional rates and
+delays are configured per-transition with no special-cased defaults.
 
 If `condition` is provided (a `UnitRange{Int}`), simulations are repeated
 until one produces an outbreak whose cumulative cases fall within the range,

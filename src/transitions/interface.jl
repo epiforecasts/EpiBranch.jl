@@ -49,3 +49,54 @@ terminal_event(::AbstractClinicalTransition, individual) = nothing
 
 """Fields a transition requires on individuals (set by `attributes`). Default: none."""
 required_fields(::AbstractClinicalTransition) = Symbol[]
+
+# ── Heterogeneity helpers ───────────────────────────────────────────
+#
+# Transition fields (`probability`, `delay`) accept three shapes,
+# resolved per individual at `resolve_individual!` time:
+#
+# - a `Real` / `Distribution`: constant across the population.
+# - a `Function (rng, ind) -> value`: arbitrary per-individual rule.
+#   Use this for age-dependent CFRs, vulnerability-conditioned delays,
+#   risk-group-specific reporting, etc. The function is called with the
+#   simulation RNG and the individual; return the probability (as a
+#   `Real`) or the delay (as a `Real` time, typically days).
+#
+# Distribution-valued delays sample from the distribution. Function
+# delays return a sample directly. The pattern matches `transmission_traits`
+# and `clinical_presentation` so heterogeneity is configured the same way
+# across the package.
+_resolve_probability(p::Real, rng, ind) = float(p)
+_resolve_probability(f, rng, ind) = float(f(rng, ind))
+
+_resolve_delay(d::Distribution, rng, ind) = float(rand(rng, d))
+_resolve_delay(f, rng, ind) = float(f(rng, ind))
+
+"""
+    _finalise_terminal!(individual, transitions)
+
+After all `resolve_individual!`s have run, collect terminal candidates
+across all terminal transitions and set `:outcome` and `:outcome_time`
+to the earliest. If no terminal transition fires, neither key is set.
+"""
+function _finalise_terminal!(individual, transitions)
+    best_time = Inf
+    best_label = :none
+    has_any = false
+    for t in transitions
+        is_terminal(t) || continue
+        ev = terminal_event(t, individual)
+        ev === nothing && continue
+        time, label = ev
+        if time < best_time
+            best_time = time
+            best_label = label
+            has_any = true
+        end
+    end
+    if has_any
+        individual.state[:outcome_time] = best_time
+        individual.state[:outcome] = best_label
+    end
+    return nothing
+end
