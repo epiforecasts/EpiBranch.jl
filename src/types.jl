@@ -321,18 +321,6 @@ mutable struct SimulationState{R <: AbstractRNG, P, A}
     transitions::Vector{AbstractClinicalTransition}
 end
 
-# Backwards-compatible constructor: callers that don't pass transitions
-# (e.g. test helpers that build a minimal state by hand) get an empty
-# vector and behave exactly as before.
-function SimulationState(individuals, active_ids, current_generation, rng,
-        cumulative_cases, extinct, population_size, latent_period,
-        max_infection_time, attributes)
-    SimulationState(individuals, active_ids, current_generation, rng,
-        cumulative_cases, extinct, population_size, latent_period,
-        max_infection_time, attributes,
-        AbstractClinicalTransition[])
-end
-
 function Base.show(io::IO, s::SimulationState)
     status = s.extinct ? "extinct" : "active"
     print(io,
