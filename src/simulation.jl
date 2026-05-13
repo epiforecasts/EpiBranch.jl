@@ -110,6 +110,8 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         if nt > 1
             ind.state[:type] = rand(rng, 1:nt)
         end
+        # Resolve transitions after :type is set so closures can read it.
+        _resolve_transitions!(temp_state, ind)
         push!(individuals, ind)
     end
 
@@ -138,12 +140,10 @@ function _susceptible_fraction(state::SimulationState{<:Any, Int})
     return n_susceptible / state.population_size
 end
 
-"""Create a new Individual with attributes, intervention, and transition state.
-
-Clinical transitions are read from `state.transitions`; the simulation
-loop sets that field once at `initialise_state` time. This lets contact
-creation deep inside `step!` apply transitions without threading the
-vector through every signature.
+"""Create a new Individual with attributes and intervention state. Clinical
+transitions are NOT resolved here; callers must invoke
+`_resolve_transitions!` after `:type` has been set on the individual so
+transition closures can read it.
 """
 function _create_individual(state::SimulationState, parent_id::Int,
         chain_id::Int, next_id::Int,
@@ -165,16 +165,25 @@ function _create_individual(state::SimulationState, parent_id::Int,
         initialise_individual!(intervention, ind, state)
     end
 
-    transitions = state.transitions
-    for transition in transitions
-        initialise_individual!(transition, ind, state)
-    end
-    for transition in transitions
-        resolve_individual!(transition, ind, state)
-    end
-    isempty(transitions) || _finalise_terminal!(ind, transitions)
-
     return ind
+end
+
+"""Run init, resolve, and terminal-arbitration for every clinical
+transition on `state.transitions` against `individual`. Called from the
+simulation loop after the individual's `:type` is set (multi-type) and
+after `_create_individual` has set attributes and intervention state.
+"""
+function _resolve_transitions!(state::SimulationState, individual)
+    transitions = state.transitions
+    isempty(transitions) && return nothing
+    for transition in transitions
+        initialise_individual!(transition, individual, state)
+    end
+    for transition in transitions
+        resolve_individual!(transition, individual, state)
+    end
+    _finalise_terminal!(individual, transitions)
+    return nothing
 end
 
 """Apply attributes function to an individual. No-op for NoAttributes."""

@@ -15,7 +15,7 @@ That keeps the public API tidy: `interventions=` for policy,
 
 ## Built-in transitions
 
-Four transitions ship with the package:
+Four transitions are included in the package:
 
 - [`Reporting`](@ref): reports symptomatic cases after a delay from
   onset, with optional probability below 1.
@@ -82,9 +82,8 @@ No `:asymptomatic` flag needed.
 - `Real` / `Distribution`: a constant or one shared distribution.
 - `Function (rng, ind) -> value`: a per-individual rule.
 
-The function form covers what would otherwise be bespoke fields:
-age-conditional CFRs, vulnerability-dependent delays,
-risk-group-specific reporting.
+The function form covers age-conditional CFRs, vulnerability-dependent
+delays, risk-group-specific reporting, and similar cases.
 
 ```@example transitions
 attrs = compose(
@@ -240,6 +239,75 @@ Reporting(
 transition take the same `from` kwarg. The choice is per-transition,
 so mixed timelines are fine: hospitalise from onset but draw outcome
 times from admission.
+
+## Composing with multi-type models and demographics
+
+Transitions only read and write `ind.state`. They don't know about
+model topology. So a multi-type branching process (age strata, risk
+groups, spatial patches) and transitions compose without coordination:
+each closure reads whichever state keys it needs. The engine sets
+`ind.state[:type]` to the type index for multi-type models, and
+[`demographics`](@ref) sets `:age` and `:sex` when included in
+`attributes`. A transition closure can read any of these.
+
+```@example transitions
+# Two-type model with asymmetric mixing between children and adults.
+multitype = BranchingProcess(
+    [2.0 0.5; 0.8 1.5],
+    R -> NegBin(R, 0.5),
+    LogNormal(1.6, 0.5),
+    type_labels = ["children", "adults"],
+)
+
+attrs_age = compose(
+    clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    demographics(age_distribution = Uniform(0, 90)),
+)
+
+# CFR depends on both type and age.
+death_type_age = Death(
+    delay = LogNormal(2.5, 0.4),
+    probability = (rng, ind) -> begin
+        base = ind.state[:age] >= 65 ? 0.15 : 0.01
+        ind.state[:type] == 1 ? 0.5 * base : base  # children: half the CFR
+    end,
+)
+
+# Type-conditional admission delay.
+hosp_type = Hospitalisation(
+    delay = (rng, ind) -> ind.state[:type] == 1 ? 1.0 : 3.0,
+    probability = 0.2,
+)
+
+rng = StableRNG(42)
+state = simulate(multitype;
+    attributes = attrs_age,
+    transitions = [
+        hosp_type,
+        death_type_age,
+        Recovery(delay = LogNormal(2.0, 0.4)),
+    ],
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+
+n_died_kids = count(state.individuals) do ind
+    ind.state[:outcome] == :died && ind.state[:type] == 1
+end
+n_died_adults = count(state.individuals) do ind
+    ind.state[:outcome] == :died && ind.state[:type] == 2
+end
+println("Deaths. Children: $n_died_kids. Adults: $n_died_adults.")
+```
+
+Populations of different vulnerability work the same way:
+[`transmission_traits`](@ref) sets per-individual `susceptibility` and
+`infectiousness`, demographics or a custom builder sets risk
+indicators, and transitions read whatever keys they need. The layers
+stack because they share one state dict; nothing inside the package
+hard-codes which keys mean what beyond a small set used by the
+transmission engine itself (`susceptibility`, `infectiousness`,
+`infection_time`).
 
 ## Terminal transitions and competing arbitration
 

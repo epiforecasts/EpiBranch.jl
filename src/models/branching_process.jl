@@ -99,6 +99,8 @@ function _make_one_contact!(new_contacts, new_infected_ids, parent, state,
     contact = _create_individual(state, parent.id, parent.chain_id,
         next_id, inf_time, interventions)
     _set_type!(contact, type_idx)
+    # Transitions resolve after :type is set so closures can read it.
+    _resolve_transitions!(state, contact)
 
     infected = _resolve_infection(state.rng, parent, contact,
         gt, pop_suscept, residual)
