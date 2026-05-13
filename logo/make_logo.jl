@@ -154,8 +154,16 @@ function draw_title(radius; text = "EpiBranch.jl", font_size = 112)
     textcentred(text, Point(0, y))
 end
 
-function build_logo(path_svg::AbstractString, path_png::AbstractString)
-    tree, seed = pick_tree(1:300)
+"Seed used for the committed logo asset. Pin explicitly so the rendered tree
+stays stable across reruns even if `pick_tree`'s filters or the default
+offspring parameters change. To pick a fresh seed, call `pick_tree(1:300)`
+in the REPL and bake the result back in here."
+const LOGO_SEED = 13
+
+function build_logo(path_svg::AbstractString, path_png::AbstractString;
+        seed::Integer = LOGO_SEED)
+    rng = MersenneTwister(seed)
+    tree = generate_tree(rng = rng)
     @info "Selected branching tree" seed n_nodes=length(tree) max_gen=maximum(n.gen
     for n in tree)
 
