@@ -42,6 +42,19 @@ EpiBranch.reset!
 is_active
 ```
 
+## Clinical transitions
+
+```@docs
+AbstractClinicalTransition
+Reporting
+Hospitalisation
+Death
+Recovery
+clinical_default
+is_terminal
+terminal_event
+```
+
 ## State accessors
 
 ```@docs
