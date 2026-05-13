@@ -9,10 +9,16 @@ from these keys. Transitions are composable: stack them in a vector and
 the engine applies them in order at case-creation time, after attributes
 and interventions have run.
 
-Terminal transitions (those that end the case — `Death`, `Recovery`)
-additionally implement [`terminal_event`](@ref). After all transitions
-resolve for an individual, the engine collects all terminal candidates
-and assigns `:outcome` and `:outcome_time` from the earliest one.
+Terminal transitions — those that end the case — declare themselves by
+returning `true` from [`is_terminal`](@ref) and implement
+[`terminal_event`](@ref). After all transitions resolve for an
+individual, the engine collects every terminal candidate (across every
+transition that declared itself terminal) and assigns `:outcome` and
+`:outcome_time` from the earliest. [`Death`](@ref) and [`Recovery`](@ref)
+are the built-in pair, but the framework is open: a user-defined
+`LostToFollowUp`, `MovedAway`, or disease-specific terminal state plugs
+in by adding the same two methods and dropping the struct into the
+transitions vector. Competing-risks arbitration handles the rest.
 
 See also [`AbstractIntervention`](@ref) — transitions are the clinical
 analogue: where interventions are policy applied to a case, transitions
