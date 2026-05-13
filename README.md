@@ -1,4 +1,6 @@
 
+<img src="docs/src/assets/logo.svg" align="right" width="160" alt="EpiBranch.jl logo" />
+
 # Branching process models for infectious disease epidemiology
 
 <!-- badges: start -->
