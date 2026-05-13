@@ -62,30 +62,26 @@ results = simulate_batch(
 println("With gathering limit (max 5): $(round(containment_probability(results), digits=3))")
 ```
 
-### Supporting `start_time`
+### Making the intervention schedulable
 
-Interventions can be time-dependent: effects should only apply after a
-policy start time. The framework handles this automatically if you implement
-three methods:
+Time-based scheduling is provided uniformly by [`Scheduled`](@ref):
+wrap any intervention with `Scheduled(iv; start_time = ...)` to delay
+its activation. Individual interventions do not carry a `start_time`
+field of their own.
 
-- **`EpiBranch.start_time(intervention)`** — return the policy start time
-  (default `0.0`, meaning always active).
-- **`EpiBranch.intervention_time(intervention, individual)`** — return the
-  time at which this intervention's effect occurs for the individual (e.g.
+For `Scheduled` to perform per-individual reset (the case where the
+population gate has opened but a specific individual's sampled action
+time would fall pre-policy), the intervention declares two methods:
+
+- **`EpiBranch.intervention_time(intervention, individual)`** — the time
+  at which this intervention's effect occurs for the individual (e.g.
   isolation time).
-- **`EpiBranch.reset!(intervention, individual)`** — undo the intervention's
-  effect on the individual.
-
-After each `resolve_individual!` and `apply_post_transmission!` call, the
-framework checks: if `intervention_time(intervention, individual)` is
-earlier than `start_time(intervention)`, it calls `reset!` to undo the
-effect. Individual interventions never need to check `start_time`
-themselves.
+- **`EpiBranch.reset!(intervention, individual)`** — undo the
+  intervention's effect on the individual.
 
 Here is how `Isolation` implements these:
 
 ```julia
-EpiBranch.start_time(iso::Isolation) = iso.start_time
 EpiBranch.intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 
 function EpiBranch.reset!(::Isolation, ind::Individual)
@@ -95,9 +91,7 @@ function EpiBranch.reset!(::Isolation, ind::Individual)
 end
 ```
 
-Alternatively, wrap any intervention with [`Scheduled`](@ref) to add
-time-based or case-count-based activation without modifying the intervention
-itself:
+Then a user schedules the intervention like:
 
 ```julia
 # Activate gathering limit on day 10
@@ -124,15 +118,15 @@ but only after a policy start time.
 
 ```@example extending
 """
-    SuperspreadingLimit(; threshold, start_time=0.0)
+    SuperspreadingLimit(; threshold)
 
 Block transmission beyond `threshold` contacts per individual.
 Models targeted intervention against superspreading events (e.g.
-large-gathering bans). Only active after `start_time`.
+large-gathering bans). Wrap with [`Scheduled`](@ref) for time-based
+activation.
 """
 Base.@kwdef struct SuperspreadingLimit <: AbstractIntervention
     threshold::Int
-    start_time::Float64 = 0.0
 end
 
 # --- Hook 1: initialise fields on each individual ---
@@ -158,9 +152,7 @@ function EpiBranch.apply_post_transmission!(ssl::SuperspreadingLimit, state, new
     end
 end
 
-# --- start_time support ---
-EpiBranch.start_time(ssl::SuperspreadingLimit) = ssl.start_time
-
+# --- Scheduling support: declare action time + how to undo it ---
 function EpiBranch.intervention_time(ssl::SuperspreadingLimit, ind::Individual)
     get(ind.state, :sse_limit_time, Inf)
 end
@@ -196,7 +188,7 @@ with_ssl = simulate_batch(model, 200;
 )
 
 # Superspreading limit starting on day 10
-ssl_delayed = SuperspreadingLimit(threshold = 5, start_time = 10.0)
+ssl_delayed = Scheduled(SuperspreadingLimit(threshold = 5); start_time = 10.0)
 rng = StableRNG(42)
 with_ssl_delayed = simulate_batch(model, 200;
     interventions = [ssl_delayed],
@@ -561,7 +553,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Extension point | Mechanism | When called |
 |---|---|---|
 | Custom intervention | Struct `<: AbstractIntervention` + hook methods | Each generation |
-| Time-dependent intervention | `start_time`, `intervention_time`, `reset!` | After each hook |
+| Time-dependent intervention | `Scheduled(iv; start_time = ...)` + `intervention_time`, `reset!` on `iv` | After each hook |
 | Custom attributes | Function `(rng, ind) -> nothing` | Individual creation |
 | Composed attributes | `compose(f1, f2, ...)` | Individual creation |
 | Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |

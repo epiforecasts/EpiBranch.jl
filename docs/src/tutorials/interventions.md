@@ -233,17 +233,18 @@ In real outbreaks, interventions are not active from the start. Testing
 may begin on day 14, contact tracing may start once cumulative cases
 exceed a threshold.
 
-### The `start_time` field
+### The `Scheduled` wrapper
 
-`Isolation` and `ContactTracing` accept a `start_time` parameter. This
-filters on *action time* — an individual is only isolated if their
-computed isolation time falls after the policy start, regardless of when
-they were infected. This is a competing risk: the testing infrastructure
+[`Scheduled`](@ref) is the single entry point for time-based scheduling.
+Wrapping an intervention with `Scheduled(...; start_time = ...)` filters
+on *action time* — an individual is only isolated if their computed
+isolation time falls after the policy start, regardless of when they
+were infected. This is a competing risk: the testing infrastructure
 must be available at the time the individual would be tested.
 
 ```@example interventions
 # Testing starts on day 10
-iso_delayed = Isolation(delay = Exponential(2.0), start_time = 10.0)
+iso_delayed = Scheduled(Isolation(delay = Exponential(2.0)); start_time = 10.0)
 
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
@@ -260,18 +261,7 @@ isolation time = 11, which is after day 10, so they **are** isolated.
 Someone with isolation time = 9 is **not** isolated — testing was not
 yet available.
 
-### The `Scheduled` wrapper
-
-[`Scheduled`](@ref) wraps any intervention with a population-level
-activation condition. When `start_time` is passed, it is automatically
-forwarded to the inner intervention's own `start_time` field:
-
-```@example interventions
-# Equivalent to the above — Scheduled forwards start_time
-iso_scheduled = Scheduled(Isolation(delay = Exponential(2.0)); start_time = 10.0)
-```
-
-`Scheduled` is most useful for conditions that cannot be expressed as a
+`Scheduled` also handles conditions that cannot be expressed as a
 fixed time, such as case-count triggers:
 
 ```@example interventions
@@ -310,24 +300,17 @@ iso_gen3 = Scheduled(
 )
 ```
 
-### How the framework enforces `start_time`
+### How `Scheduled` enforces `start_time`
 
-Each intervention can define two methods:
-
-- [`intervention_time`](@ref) — returns the time at which the effect
-  occurs for an individual (e.g. isolation time, trace time)
-- [`reset!`](@ref EpiBranch.reset!) — undoes the effect if it falls before `start_time`
-
-After each `resolve_individual!` and `apply_post_transmission!` call,
-the framework checks: if `intervention_time < start_time`, call `reset!`.
-This happens in one place for all interventions — individual interventions
-do not need to check `start_time` themselves. Here is the actual
-implementation:
-
-```@example interventions
-using CodeTracking
-print(@code_string EpiBranch._enforce_start_time!(iso, state.individuals[1]))
-```
+`Scheduled` enforces start times at two levels. The population gate
+(`is_active`) skips the inner `resolve_individual!` and
+`apply_post_transmission!` until the condition turns true. Once active,
+the wrapper also performs individual-level reset: after each per-individual
+hook fires, if [`intervention_time`](@ref) for that individual falls
+before `start_time`, `Scheduled` calls [`reset!`](@ref EpiBranch.reset!)
+to undo the effect. Individual interventions therefore do not need to
+know their own scheduling — they just declare their action time and how
+to undo it.
 
 ## Writing a custom intervention
 
@@ -337,10 +320,10 @@ One or more of the following methods should be implemented:
 - `resolve_individual!` — determine state before transmission
 - `apply_post_transmission!` — act on contacts after creation
 
-To support `start_time` scheduling, also implement:
-- `start_time` — return the intervention's policy start time
+To make the intervention schedulable via `Scheduled(...; start_time = ...)`,
+also implement:
 - `intervention_time` — return the time at which the effect occurs for an individual
-- `reset!` — undo the effect if it falls before `start_time`
+- `reset!` — undo the effect when it falls before `start_time`
 
 ### Reference: the built-in `Isolation` intervention
 
@@ -350,6 +333,7 @@ The source code of [`Isolation`](@ref) is shown below via
 always reflects the current implementation:
 
 ```@example interventions
+using CodeTracking
 print(@code_string EpiBranch.resolve_individual!(iso, state.individuals[1], state))
 ```
 

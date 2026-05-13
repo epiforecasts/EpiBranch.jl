@@ -4,10 +4,24 @@ state is met.  Individuals are always initialised (so fields exist before
 the policy activates), but `resolve_individual!` and
 `apply_post_transmission!` are skipped while the condition returns `false`.
 
-When `start_time` is provided, it is also forwarded to the inner
-intervention's own `start_time` field (if it has one), so that
-individual-level filtering on action time is handled by the framework's
-[`_enforce_start_time!`](@ref) mechanism automatically.
+# Time-based scheduling
+
+`Scheduled` is the single entry point for time-based intervention
+scheduling. It enforces start times at two levels:
+
+- **Population-level gate** — `is_active(::Scheduled, state)` skips
+  `resolve_individual!` and `apply_post_transmission!` until the
+  condition returns `true`.
+- **Individual-level reset** — after each per-individual hook fires,
+  `Scheduled` checks whether the individual's `intervention_time` falls
+  before `start_time` and, if so, calls `reset!` to undo the effect.
+  This handles the case where the population gate has opened but a
+  specific individual's sampled action time would still fall before the
+  policy began (e.g. an isolation date computed from `onset + delay`
+  that lands pre-policy).
+
+Individual interventions therefore no longer carry a `start_time` field
+of their own — wrap them with `Scheduled` to schedule them in time.
 
 # Keyword constructor
 
@@ -27,10 +41,15 @@ Pass any `f(::SimulationState) -> Bool`:
 ```julia
 Scheduled(iso, state -> state.current_generation >= 3)
 ```
+
+The predicate form does not perform per-individual reset (there is no
+`start_time` to compare against). Use the keyword form when you need
+that behaviour.
 """
 struct Scheduled{I <: AbstractIntervention, F} <: AbstractIntervention
     intervention::I
     condition::F
+    start_time::Float64
 end
 
 # ── Keyword convenience constructor ──────────────────────────────────
@@ -39,11 +58,6 @@ function Scheduled(intervention::AbstractIntervention;
         start_time::Union{Float64, Nothing} = nothing,
         end_time::Union{Float64, Nothing} = nothing,
         start_after_cases::Union{Int, Nothing} = nothing)
-    # Forward start_time to inner intervention for individual-level filtering
-    if start_time !== nothing
-        intervention = _with_start_time(intervention, start_time)
-    end
-
     conditions = Function[]
     start_time !== nothing && push!(conditions,
         s -> s.max_infection_time >= start_time)
@@ -59,15 +73,13 @@ function Scheduled(intervention::AbstractIntervention;
     else
         s -> all(c -> c(s), conditions)
     end
-    return Scheduled(intervention, condition)
+    t = start_time === nothing ? 0.0 : start_time
+    return Scheduled(intervention, condition, t)
 end
 
-"""Reconstruct an intervention with `start_time` set, if the type supports it."""
-function _with_start_time(intervention::T, t::Float64) where {T <: AbstractIntervention}
-    hasfield(T, :start_time) || return intervention
-    fields = Dict{Symbol, Any}(fn => getfield(intervention, fn) for fn in fieldnames(T))
-    fields[:start_time] = t
-    return T(; fields...)
+# Predicate constructor: no individual-level reset
+function Scheduled(intervention::AbstractIntervention, condition::Function)
+    Scheduled(intervention, condition, 0.0)
 end
 
 # ── Protocol delegation ──────────────────────────────────────────────
@@ -80,17 +92,30 @@ function initialise_individual!(s::Scheduled, ind, state)
 end
 
 function resolve_individual!(s::Scheduled, ind, state)
-    is_active(s, state) && resolve_individual!(s.intervention, ind, state)
+    is_active(s, state) || return nothing
+    resolve_individual!(s.intervention, ind, state)
+    _maybe_reset!(s, ind)
     return nothing
 end
 
 function apply_post_transmission!(s::Scheduled, state, new_contacts)
-    is_active(s, state) && apply_post_transmission!(s.intervention, state, new_contacts)
+    is_active(s, state) || return nothing
+    apply_post_transmission!(s.intervention, state, new_contacts)
+    for c in new_contacts
+        _maybe_reset!(s, c)
+    end
+    return nothing
+end
+
+# Individual-level reset if the action time falls before policy start.
+@inline function _maybe_reset!(s::Scheduled, ind::Individual)
+    s.start_time <= 0.0 && return nothing
+    intervention_time(s.intervention, ind) < s.start_time &&
+        reset!(s.intervention, ind)
     return nothing
 end
 
 post_isolation_transmission(s::Scheduled) = post_isolation_transmission(s.intervention)
 required_fields(s::Scheduled) = required_fields(s.intervention)
-start_time(s::Scheduled) = start_time(s.intervention)
 intervention_time(s::Scheduled, ind::Individual) = intervention_time(s.intervention, ind)
 reset!(s::Scheduled, ind::Individual) = reset!(s.intervention, ind)
