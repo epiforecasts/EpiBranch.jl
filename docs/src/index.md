@@ -1,5 +1,9 @@
 # EpiBranch.jl
 
+```@raw html
+<img src="assets/logo.svg" align="right" width="180" alt="EpiBranch.jl logo" />
+```
+
 **EpiBranch.jl** is a [Julia](https://julialang.org/) package for stochastic branching process simulation
 of infectious disease outbreaks. Functionality from
 several R packages (cf.
