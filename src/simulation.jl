@@ -1,9 +1,18 @@
 """
-    simulate(model::TransmissionModel; interventions=[], attributes=nothing,
-             sim_opts=SimOpts(), rng=Random.default_rng(),
+    simulate(model::TransmissionModel; interventions=[], transitions=[],
+             attributes=nothing, sim_opts=SimOpts(),
+             rng=Random.default_rng(),
              condition=nothing, max_attempts=10_000)
 
 Run a single outbreak simulation.
+
+`transitions` is a vector of [`AbstractClinicalTransition`](@ref)s
+(e.g. [`Reporting`](@ref), [`Hospitalisation`](@ref), [`Death`](@ref),
+[`Recovery`](@ref)) that act on each case's clinical timeline after
+attributes and interventions have run. Build the vector explicitly —
+each transition's `probability` and `delay` accept either constants or
+`(rng, ind) -> value` functions, so age- or risk-conditional rates and
+delays are configured per-transition with no special-cased defaults.
 
 If `condition` is provided (a `UnitRange{Int}`), simulations are repeated
 until one produces an outbreak whose cumulative cases fall within the range,
@@ -11,6 +20,7 @@ up to `max_attempts`.
 """
 function simulate(model::TransmissionModel;
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
+        transitions::Vector{<:AbstractClinicalTransition} = AbstractClinicalTransition[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
         sim_opts::SimOpts = SimOpts(),
         rng::AbstractRNG = Random.default_rng(),
@@ -18,7 +28,8 @@ function simulate(model::TransmissionModel;
         max_attempts::Int = 10_000)
     if condition !== nothing
         for _ in 1:max_attempts
-            state = simulate(model; interventions, attributes, sim_opts, rng)
+            state = simulate(model; interventions, transitions,
+                attributes, sim_opts, rng)
             state.cumulative_cases in condition && return state
         end
         throw(ErrorException(
@@ -26,11 +37,8 @@ function simulate(model::TransmissionModel;
         ))
     end
 
-    state = initialise_state(model, sim_opts, interventions, attributes, rng)
-
-    if !isempty(state.individuals)
-        _validate_required_fields(state.individuals[1], interventions)
-    end
+    state = initialise_state(
+        model, sim_opts, interventions, transitions, attributes, rng)
 
     while !should_terminate(state, sim_opts)
         step!(model, state, interventions)
@@ -50,6 +58,7 @@ using independent RNG streams derived from the provided `rng`. Use
 """
 function simulate_batch(model::TransmissionModel, n::Int;
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
+        transitions::Vector{<:AbstractClinicalTransition} = AbstractClinicalTransition[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
         sim_opts::SimOpts = SimOpts(),
         rng::AbstractRNG = Random.default_rng(),
@@ -60,19 +69,20 @@ function simulate_batch(model::TransmissionModel, n::Int;
         results = Vector{SimulationState}(undef, n)
         Threads.@threads for i in 1:n
             local_rng = Random.Xoshiro(seeds[i])
-            results[i] = simulate(
-                model; interventions, attributes, sim_opts, rng = local_rng)
+            results[i] = simulate(model; interventions, transitions,
+                attributes, sim_opts, rng = local_rng)
         end
         return results
     else
-        return [simulate(model; interventions, attributes, sim_opts, rng) for _ in 1:n]
+        return [simulate(model; interventions, transitions, attributes,
+                    sim_opts, rng) for _ in 1:n]
     end
 end
 
 # ── Internal helpers ───────────────────────────────────────────────
 
 function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
-        interventions, attributes, rng::AbstractRNG)
+        interventions, transitions, attributes, rng::AbstractRNG)
     individuals = Individual[]
 
     temp_state = SimulationState(
@@ -85,7 +95,8 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         population_size(model),
         latent_period(model),
         0.0,
-        attributes
+        attributes,
+        convert(Vector{AbstractClinicalTransition}, transitions)
     )
 
     nt = n_types(model)
@@ -94,6 +105,17 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         if nt > 1
             ind.state[:type] = rand(rng, 1:nt)
         end
+        # Validate required fields on the first individual, before any
+        # transition resolution runs. Without this, a missing :onset_time
+        # surfaces as an opaque error inside the transition closure rather
+        # than as the engine's friendly "Reporting requires field :onset_time"
+        # message.
+        if i == 1
+            _validate_required_fields(ind, interventions)
+            _validate_required_fields(ind, transitions)
+        end
+        # Resolve transitions after :type is set so closures can read it.
+        _resolve_transitions!(temp_state, ind)
         push!(individuals, ind)
     end
 
@@ -122,7 +144,11 @@ function _susceptible_fraction(state::SimulationState{<:Any, Int})
     return n_susceptible / state.population_size
 end
 
-"""Create a new Individual with attributes and intervention state."""
+"""Create a new Individual with attributes and intervention state. Clinical
+transitions are NOT resolved here; callers must invoke
+`_resolve_transitions!` after `:type` has been set on the individual so
+transition closures can read it.
+"""
 function _create_individual(state::SimulationState, parent_id::Int,
         chain_id::Int, next_id::Int,
         inf_time::Float64, interventions)
@@ -144,6 +170,24 @@ function _create_individual(state::SimulationState, parent_id::Int,
     end
 
     return ind
+end
+
+"""Run init, resolve, and terminal-arbitration for every clinical
+transition on `state.transitions` against `individual`. Called from the
+simulation loop after the individual's `:type` is set (multi-type) and
+after `_create_individual` has set attributes and intervention state.
+"""
+function _resolve_transitions!(state::SimulationState, individual)
+    transitions = state.transitions
+    isempty(transitions) && return nothing
+    for transition in transitions
+        initialise_individual!(transition, individual, state)
+    end
+    for transition in transitions
+        resolve_individual!(transition, individual, state)
+    end
+    _finalise_terminal!(individual, transitions)
+    return nothing
 end
 
 """Apply attributes function to an individual. No-op for NoAttributes."""
@@ -360,12 +404,14 @@ end
 """Fields that an intervention requires on individuals. Default: none."""
 required_fields(::AbstractIntervention) = Symbol[]
 
-"""Check that all required fields are present on an individual."""
-function _validate_required_fields(individual, interventions)
-    for intervention in interventions
-        for field in required_fields(intervention)
+"""Check that all required fields are present on an individual. Works for
+any iterable of items that define `required_fields` — used for both
+interventions and clinical transitions."""
+function _validate_required_fields(individual, items)
+    for item in items
+        for field in required_fields(item)
             if !haskey(individual.state, field)
-                itype = typeof(intervention)
+                itype = typeof(item)
                 hint = _field_hint(field)
                 error("$itype requires field :$field on individuals. $hint")
             end
