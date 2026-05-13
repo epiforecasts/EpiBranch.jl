@@ -18,6 +18,7 @@ makedocs(;
         "Tutorials" => [
             "Getting started" => "tutorials/getting-started.md",
             "Interventions" => "tutorials/interventions.md",
+            "Clinical transitions" => "tutorials/transitions.md",
             "Multi-type models" => "tutorials/multi-type.md",
             "Line lists and contacts" => "tutorials/linelist.md",
             "Chain statistics, likelihood, and fitting" => "tutorials/chains.md",

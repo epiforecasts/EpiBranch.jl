@@ -4,14 +4,13 @@
 struct DummyTest <: AbstractClinicalTransition
     delay::Distribution
 end
-EpiBranch.required_fields(::DummyTest) = [:onset_time, :asymptomatic]
+EpiBranch.required_fields(::DummyTest) = [:onset_time]
 function EpiBranch.initialise_individual!(::DummyTest, ind, state)
     ind.state[:tested] = false
     ind.state[:test_time] = Inf
     return nothing
 end
 function EpiBranch.resolve_individual!(t::DummyTest, ind, state)
-    is_asymptomatic(ind) && return nothing
     ot = onset_time(ind)
     isnan(ot) && return nothing
     ind.state[:tested] = true

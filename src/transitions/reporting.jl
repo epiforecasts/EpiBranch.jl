@@ -1,7 +1,9 @@
 """
-Symptomatic cases are reported with probability `probability` after a
-`delay` drawn per case, measured from `:onset_time`. Asymptomatic cases
-(`:asymptomatic = true`) are never reported.
+Cases with a finite `:onset_time` are reported with probability
+`probability` after a `delay` drawn per case, measured from
+`:onset_time`. Cases without a recorded onset (`isnan(:onset_time)` —
+asymptomatic or pre-symptomatic) are skipped; they were never
+clinically observed.
 
 `probability` is a `Real` or a `Function (rng, ind) -> Real` for
 per-individual heterogeneity (e.g. risk-group-specific detection).
@@ -10,15 +12,18 @@ per-individual heterogeneity (e.g. risk-group-specific detection).
 Initialises: `:reported = false`, `:reporting_time = Inf`.
 On resolve, if the case is reported, sets both to reflect the draw.
 
-Requires `:onset_time` and `:asymptomatic` (set via
-[`clinical_presentation`](@ref)).
+Requires `:onset_time`. For diseases that model asymptomatic cases,
+use [`clinical_presentation`](@ref)`(prob_asymptomatic = ...)` — it
+sets onset to `NaN` for asymptomatic cases, which the transition's
+NaN check handles. For diseases without an asymptomatic concept, a
+minimal attributes function that only sets `:onset_time` is enough.
 """
 Base.@kwdef struct Reporting{D, P} <: AbstractClinicalTransition
     delay::D
     probability::P = 1.0
 end
 
-required_fields(::Reporting) = [:onset_time, :asymptomatic]
+required_fields(::Reporting) = [:onset_time]
 
 function initialise_individual!(::Reporting, individual, state)
     individual.state[:reported] = false
@@ -27,7 +32,6 @@ function initialise_individual!(::Reporting, individual, state)
 end
 
 function resolve_individual!(r::Reporting, individual, state)
-    is_asymptomatic(individual) && return nothing
     ot = onset_time(individual)
     isnan(ot) && return nothing
     p = _resolve_probability(r.probability, state.rng, individual)

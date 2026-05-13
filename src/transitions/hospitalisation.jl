@@ -1,7 +1,8 @@
 """
-Symptomatic cases are admitted to hospital with probability `probability`
-after a `delay` drawn per case, measured from `:onset_time`. Asymptomatic
-cases are never admitted.
+Cases with a finite `:onset_time` are admitted to hospital with
+probability `probability` after a `delay` drawn per case, measured
+from `:onset_time`. Cases without a recorded onset (asymptomatic or
+pre-symptomatic) are skipped.
 
 Both `probability` and `delay` accept the heterogeneity shapes shared
 across transitions: `probability` is a `Real` or `Function (rng, ind) -> Real`,
@@ -26,14 +27,14 @@ is needed.
 
 Initialises: `:admitted = false`, `:admission_time = Inf`.
 
-Requires `:onset_time` and `:asymptomatic`.
+Requires `:onset_time`.
 """
 Base.@kwdef struct Hospitalisation{D, P} <: AbstractClinicalTransition
     delay::D
     probability::P = 0.2
 end
 
-required_fields(::Hospitalisation) = [:onset_time, :asymptomatic]
+required_fields(::Hospitalisation) = [:onset_time]
 
 function initialise_individual!(::Hospitalisation, individual, state)
     individual.state[:admitted] = false
@@ -42,7 +43,6 @@ function initialise_individual!(::Hospitalisation, individual, state)
 end
 
 function resolve_individual!(h::Hospitalisation, individual, state)
-    is_asymptomatic(individual) && return nothing
     ot = onset_time(individual)
     isnan(ot) && return nothing
     p = _resolve_probability(h.probability, state.rng, individual)
