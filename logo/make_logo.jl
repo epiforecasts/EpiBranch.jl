@@ -11,23 +11,23 @@ using Distributions
 using Random
 
 # Julia brand colours
-const JULIA_RED    = "#CB3C33"
-const JULIA_GREEN  = "#389826"
+const JULIA_RED = "#CB3C33"
+const JULIA_GREEN = "#389826"
 const JULIA_PURPLE = "#9558B2"
-const JULIA_BLUE   = "#4063D8"
-const BG_DARK      = "#1A1A2E"
-const RIM_COLOUR   = "#E8E8F0"
-const EDGE_COLOUR  = "#9DA3B4"
+const JULIA_BLUE = "#4063D8"
+const BG_DARK = "#1A1A2E"
+const RIM_COLOUR = "#E8E8F0"
+const EDGE_COLOUR = "#9DA3B4"
 
 # Pointy-top hex sticker. R hexSticker convention: height > width.
 # Scale: width 1200 → height = 1200 * 2/√3 ≈ 1386.
-const HEX_WIDTH  = 1200
+const HEX_WIDTH = 1200
 const HEX_HEIGHT = round(Int, HEX_WIDTH * 2 / sqrt(3))
 const HEX_RADIUS = HEX_HEIGHT / 2  # circumradius
 
 "Generate a branching process realisation. Returns Vector of (id, gen, parent)."
 function generate_tree(; R0 = 1.6, k = 0.7, max_gens = 4, max_nodes = 22,
-                        rng = Random.default_rng())
+        rng = Random.default_rng())
     p = k / (k + R0)
     offspring = NegativeBinomial(k, p)
     nodes = [(id = 1, gen = 0, parent = 0)]
@@ -63,7 +63,7 @@ axis; each internal node is centred above the mean of its children. The
 root ends up at depth 0, descendants at `depth × gen_height` below.
 """
 function layout_dendrogram(nodes, root_id; gen_height, leaf_step)
-    positions = Dict{Int,Tuple{Float64,Float64}}()
+    positions = Dict{Int, Tuple{Float64, Float64}}()
     leaf_x = Ref(0.0)
     function assign!(id, depth)
         children = [n for n in nodes if n.parent == id]
@@ -114,7 +114,7 @@ function node_colour(gen)
 end
 
 function draw_tree(tree, positions; node_radius_root = 34, node_radius = 22,
-                    edge_width = 5.0)
+        edge_width = 5.0)
     setline(edge_width)
     setlinecap("round")
     sethue(EDGE_COLOUR)
@@ -138,7 +138,7 @@ end
 function draw_hex_frame(radius; border_width = 20)
     # Pointy-top hex: first vertex at the top.
     vertices = [Point(radius * cos(π / 2 + i * π / 3),
-                      -radius * sin(π / 2 + i * π / 3)) for i in 0:5]
+                    -radius * sin(π / 2 + i * π / 3)) for i in 0:5]
     sethue(BG_DARK)
     poly(vertices, :fill, close = true)
     sethue(RIM_COLOUR)
@@ -156,7 +156,8 @@ end
 
 function build_logo(path_svg::AbstractString, path_png::AbstractString)
     tree, seed = pick_tree(1:300)
-    @info "Selected branching tree" seed n_nodes=length(tree) max_gen=maximum(n.gen for n in tree)
+    @info "Selected branching tree" seed n_nodes=length(tree) max_gen=maximum(n.gen
+    for n in tree)
 
     # Lay out and then scale to fit a target bounding box inside the hex.
     raw = layout_dendrogram(tree, 1; gen_height = 1.0, leaf_step = 1.0)
@@ -165,7 +166,7 @@ function build_logo(path_svg::AbstractString, path_png::AbstractString)
     x_span = maximum(xs) - minimum(xs)
     y_span = maximum(ys) - minimum(ys)
 
-    target_width  = HEX_WIDTH * 0.72
+    target_width = HEX_WIDTH * 0.72
     target_height = HEX_HEIGHT * 0.40
     sx = x_span > 0 ? target_width / x_span : 1.0
     sy = y_span > 0 ? target_height / y_span : 1.0
@@ -174,7 +175,7 @@ function build_logo(path_svg::AbstractString, path_png::AbstractString)
     # leaving the bottom band of the hex for the wordmark.
     root_y_screen = -HEX_RADIUS * 0.55
     drawables = Dict(k => (v[1] * sx, v[2] * sy + root_y_screen)
-                     for (k, v) in raw)
+    for (k, v) in raw)
 
     function render()
         origin()
