@@ -31,9 +31,8 @@ end
 function resolve_individual!(r::Recovery, individual, state)
     anchor = _resolve_anchor(r.from, individual)
     isnan(anchor) && return nothing
-    individual.state[:recovery_candidate_time] = anchor +
-                                                 _resolve_delay(
-        r.delay, state.rng, individual)
+    delay = _resolve_delay(r.delay, state.rng, individual)
+    individual.state[:recovery_candidate_time] = anchor + delay
     return nothing
 end
 
@@ -83,9 +82,8 @@ function resolve_individual!(d::Death, individual, state)
     isnan(anchor) && return nothing
     p = _resolve_probability(d.probability, state.rng, individual)
     rand(state.rng) < p || return nothing
-    individual.state[:death_candidate_time] = anchor +
-                                              _resolve_delay(
-        d.delay, state.rng, individual)
+    delay = _resolve_delay(d.delay, state.rng, individual)
+    individual.state[:death_candidate_time] = anchor + delay
     return nothing
 end
 

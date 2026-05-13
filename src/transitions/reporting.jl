@@ -40,9 +40,8 @@ function resolve_individual!(r::Reporting, individual, state)
     isnan(anchor) && return nothing
     p = _resolve_probability(r.probability, state.rng, individual)
     rand(state.rng) < p || return nothing
+    delay = _resolve_delay(r.delay, state.rng, individual)
     individual.state[:reported] = true
-    individual.state[:reporting_time] = anchor +
-                                        _resolve_delay(r.delay, state.rng,
-        individual)
+    individual.state[:reporting_time] = anchor + delay
     return nothing
 end

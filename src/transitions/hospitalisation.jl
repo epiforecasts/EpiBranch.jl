@@ -45,9 +45,8 @@ function resolve_individual!(h::Hospitalisation, individual, state)
     isnan(anchor) && return nothing
     p = _resolve_probability(h.probability, state.rng, individual)
     rand(state.rng) < p || return nothing
+    delay = _resolve_delay(h.delay, state.rng, individual)
     individual.state[:admitted] = true
-    individual.state[:admission_time] = anchor +
-                                        _resolve_delay(h.delay, state.rng,
-        individual)
+    individual.state[:admission_time] = anchor + delay
     return nothing
 end
