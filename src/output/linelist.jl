@@ -109,15 +109,20 @@ end
 
 # ── Internal helpers ─────────────────────────────────────────────────
 
-"""Add a date column projected from a Float64 time stored on `ind.state[time_key]`.
-Includes the column iff at least one case has a finite time. Cases with no
-key or a NaN/Inf value get `missing`."""
+"""Add a date column projected from a numeric time stored on
+`ind.state[time_key]`. Includes the column iff at least one case has a finite
+numeric value. Cases with no key, a non-numeric value, `missing`, or a
+NaN/Inf number get `missing`."""
 function _add_time_column!(cols, col_name, cases, time_key, reference_date)
-    any(haskey(ind.state, time_key) && isfinite(ind.state[time_key]::Float64)
-    for ind in cases) || return nothing
-    cols[col_name] = Union{Date, Missing}[let t = get(ind.state, time_key, NaN)::Float64
-                                              isfinite(t) ?
-                                              reference_date + Day(floor(Int, t)) : missing
+    has_finite = any(cases) do ind
+        t = get(ind.state, time_key, missing)
+        t isa Real && isfinite(float(t))
+    end
+    has_finite || return nothing
+    cols[col_name] = Union{Date, Missing}[let t = get(ind.state, time_key, missing)
+                                              (t isa Real && isfinite(float(t))) ?
+                                              reference_date +
+                                              Day(floor(Int, float(t))) : missing
                                           end
                                           for ind in cases]
     return nothing
