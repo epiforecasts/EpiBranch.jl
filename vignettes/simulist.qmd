@@ -96,11 +96,15 @@ state_age = simulate(model;
 
 ll_age_cfr = linelist(state_age; reference_date = Date(2024, 1, 1))
 
-for (lo, hi) in [(0, 14), (15, 64), (65, 90)]
-    group = filter(r -> lo <= r.age <= hi, ll_age_cfr)
+for (label, pred) in [
+    ("0-14",  r -> 0 <= r.age <= 14),
+    ("15-64", r -> 15 <= r.age <= 64),
+    ("65+",   r -> r.age >= 65),
+]
+    group = filter(pred, ll_age_cfr)
     n_died = count(==("died"), group.outcome)
     pct = round(n_died / max(nrow(group), 1) * 100, digits = 1)
-    println("Age $lo-$hi: $(nrow(group)) cases, $n_died deaths ($pct%)")
+    println("Age $label: $(nrow(group)) cases, $n_died deaths ($pct%)")
 end
 ```
 
