@@ -49,7 +49,10 @@ function linelist(state::SimulationState;
         cols[:age] = [get(ind.state, :age, missing) for ind in cases]
     end
     if any(haskey(ind.state, :sex) for ind in cases)
-        cols[:sex] = [string(get(ind.state, :sex, missing)) for ind in cases]
+        cols[:sex] = Union{String, Missing}[let v = get(ind.state, :sex, missing)
+                                                v === missing ? missing : string(v)
+                                            end
+                                            for ind in cases]
     end
     if any(haskey(ind.state, :type) for ind in cases)
         cols[:type] = [get(ind.state, :type, missing) for ind in cases]
