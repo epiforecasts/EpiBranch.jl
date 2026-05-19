@@ -1,4 +1,4 @@
-# ── Thompson "outbreak-over" probability ────────────────────────────
+# ── End-of-outbreak probability ─────────────────────────────────────
 #
 # π(τ; R, k, generation_time) is the probability that no further cases
 # occur in a cluster, given `τ` time has elapsed since the most recent
@@ -12,7 +12,7 @@
 #
 # with `S(τ) = ccdf(generation_time, τ)`. Reduces to the offspring
 # zero-probability `G(0) = (k/(k+R))^k` at `τ = 0` and tends to 1 as
-# `τ → ∞`. Reference: Thompson, Morgan & Jansen, Phil Trans B 2019,
+# `τ → ∞`. Reference: Thompson, Morgan & Jansen, *Phil Trans B* 2019,
 # in the per-case Markov-property reduction at the most recent
 # observed case.
 #
@@ -20,13 +20,13 @@
 # per-case η(τ) and is not implemented here.
 
 """
-    thompson_pi(R, k, generation_time::Distribution, τ::Real)
+    end_of_outbreak_probability(R, k, generation_time::Distribution, τ::Real)
 
 Probability that a cluster has finished, given the most recent case
 was observed `τ` time units ago, under NegBin(R, k) offspring and
 full reporting. Returns a value in `[0, 1]`.
 """
-function thompson_pi(R::Real, k::Real, generation_time::Distribution, τ::Real)
+function end_of_outbreak_probability(R::Real, k::Real, generation_time::Distribution, τ::Real)
     isinf(τ) && return one(float(R))
     τ <= zero(τ) && return (k / (k + R))^k
     S = ccdf(generation_time, τ)
@@ -34,19 +34,20 @@ function thompson_pi(R::Real, k::Real, generation_time::Distribution, τ::Real)
 end
 
 """
-    thompson_pi(offspring::NegativeBinomial, generation_time, τ)
-    thompson_pi(offspring::Poisson, generation_time, τ)
+    end_of_outbreak_probability(offspring::NegativeBinomial, generation_time, τ)
+    end_of_outbreak_probability(offspring::Poisson, generation_time, τ)
 
 Convenience overloads that read `R` (and `k` when applicable) directly
 from a `Distributions` offspring object. The Poisson form uses the
 `k → ∞` limit `π(τ) = exp(−R · S(τ))`.
 """
-function thompson_pi(offspring::NegativeBinomial, generation_time::Distribution,
+function end_of_outbreak_probability(
+        offspring::NegativeBinomial, generation_time::Distribution,
         τ::Real)
-    return thompson_pi(mean(offspring), offspring.r, generation_time, τ)
+    return end_of_outbreak_probability(mean(offspring), offspring.r, generation_time, τ)
 end
 
-function thompson_pi(offspring::Poisson, generation_time::Distribution, τ::Real)
+function end_of_outbreak_probability(offspring::Poisson, generation_time::Distribution, τ::Real)
     R = mean(offspring)
     isinf(τ) && return one(float(R))
     τ <= zero(τ) && return exp(-R)
@@ -55,24 +56,24 @@ function thompson_pi(offspring::Poisson, generation_time::Distribution, τ::Real
 end
 
 """
-    thompson_pi(model::TransmissionModel, τ)
+    end_of_outbreak_probability(model::TransmissionModel, τ)
 
 Convenience that reads the offspring and generation-time distributions
 from a `BranchingProcess` (or any `TransmissionModel` exposing those
 fields).
 """
-function thompson_pi(model::TransmissionModel, τ::Real)
-    return thompson_pi(single_type_offspring(model), model.generation_time, τ)
+function end_of_outbreak_probability(model::TransmissionModel, τ::Real)
+    return end_of_outbreak_probability(single_type_offspring(model), model.generation_time, τ)
 end
 
 """
-    thompson_pi.(R, k, gt, τs::AbstractVector)
+    end_of_outbreak_probability.(R, k, gt, τs::AbstractVector)
 
 Element-wise broadcast for a vector of τ values, returning a `Vector`
 of the same length. Useful for populating the `pi` field of
 [`ChainSizes`](@ref).
 """
-function thompson_pi(R::Real, k::Real, generation_time::Distribution,
+function end_of_outbreak_probability(R::Real, k::Real, generation_time::Distribution,
         τs::AbstractVector{<:Real})
-    return [thompson_pi(R, k, generation_time, τ) for τ in τs]
+    return [end_of_outbreak_probability(R, k, generation_time, τ) for τ in τs]
 end

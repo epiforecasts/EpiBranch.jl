@@ -264,7 +264,7 @@
             @test_throws ArgumentError ChainSizes([3]; seeds = [1, 1])
         end
 
-        @testset "Real-time mixture likelihood and thompson_pi" begin
+        @testset "Real-time mixture likelihood and end_of_outbreak_probability" begin
             # Right-tail helper: P(X ≥ s) = 1 ⇒ logright_tail = 0.
             d = GammaBorel(0.5, 0.8)
             @test EpiBranch._chain_size_right_tail_logprob(d, 1, 1) == 0.0
@@ -306,34 +306,34 @@
             @test_throws ArgumentError ChainSizes([1, 2]; pi = [0.5, 1.1])
             @test_throws ArgumentError ChainSizes([1, 2]; pi = [-0.1, 0.5])
 
-            # Thompson π: G(0) at τ=0, → 1 as τ → ∞, monotone.
+            # end_of_outbreak_probability: G(0) at τ=0, → 1 as τ → ∞, monotone.
             GT = Gamma(2.78, 1.8)
             R, k = 2.5, 0.1
-            @test thompson_pi(R, k, GT, 0.0) ≈ (k / (k + R))^k
-            @test thompson_pi(R, k, GT, Inf) == 1.0
+            @test end_of_outbreak_probability(R, k, GT, 0.0) ≈ (k / (k + R))^k
+            @test end_of_outbreak_probability(R, k, GT, Inf) == 1.0
             taus = 0.0:1.0:30.0
-            πs = [thompson_pi(R, k, GT, τ) for τ in taus]
+            πs = [end_of_outbreak_probability(R, k, GT, τ) for τ in taus]
             @test issorted(πs)
             @test all(0 .<= πs .<= 1)
 
             # Poisson overload: π(τ=0) = exp(-R); → 1 as τ → ∞.
-            @test thompson_pi(Poisson(R), GT, 0.0) ≈ exp(-R)
-            @test thompson_pi(Poisson(R), GT, Inf) == 1.0
+            @test end_of_outbreak_probability(Poisson(R), GT, 0.0) ≈ exp(-R)
+            @test end_of_outbreak_probability(Poisson(R), GT, Inf) == 1.0
 
             # NegBin offspring overload agrees with the (R, k) form.
-            @test thompson_pi(NegBin(R, k), GT, 5.0) ≈
-                  thompson_pi(R, k, GT, 5.0)
+            @test end_of_outbreak_probability(NegBin(R, k), GT, 5.0) ≈
+                  end_of_outbreak_probability(R, k, GT, 5.0)
 
             # Vector-of-τ overload returns same elements.
-            πs_vec = thompson_pi(R, k, GT, collect(taus))
+            πs_vec = end_of_outbreak_probability(R, k, GT, collect(taus))
             @test πs_vec ≈ πs
 
-            # End-to-end: Thompson π populates the ChainSizes pi field
+            # End-to-end: end_of_outbreak_probability populates the ChainSizes pi field
             # and the mixture likelihood evaluates without error.
             sizes = [1, 2, 100, 1766]
             seeds = [1, 1, 3, 17]
             taus_data = [0.0, 7.0, 0.0, 0.0]
-            π_vals = [thompson_pi(R, k, GT, τ) for τ in taus_data]
+            π_vals = [end_of_outbreak_probability(R, k, GT, τ) for τ in taus_data]
             data_endo = ChainSizes(sizes; seeds = seeds, pi = π_vals)
             ll = loglikelihood(data_endo, NegBin(R, k))
             @test isfinite(ll)

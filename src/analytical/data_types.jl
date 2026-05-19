@@ -44,14 +44,14 @@ data = ChainSizes([1, 1, 3, 1, 5])
 # Multi-seed clusters, still all concluded.
 data = ChainSizes([3, 5, 10, 2]; seeds = [1, 2, 1, 1])
 
-# Real-time mixture: per-cluster finished-probabilities (e.g. from a
-# Thompson π applied to time since the most recent case).
+# Real-time mixture: per-cluster finished-probabilities (e.g. from
+# `end_of_outbreak_probability` applied to time since the most recent case).
 data = ChainSizes([1, 1, 1766, 3]; seeds = [1, 1, 17, 3],
                   pi = [1.0, 1.0, 0.0, 0.99])
 ```
 
 See also [`loglikelihood(::ChainSizes, ::Distribution)`](@ref) for the
-mixture-aware likelihood, and `thompson_pi` for a principled `pi`
+mixture-aware likelihood, and `end_of_outbreak_probability` for a principled `pi`
 choice based on the generation-time distribution.
 """
 struct ChainSizes
