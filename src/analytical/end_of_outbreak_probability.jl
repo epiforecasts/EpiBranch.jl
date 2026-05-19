@@ -56,14 +56,32 @@ function end_of_outbreak_probability(offspring::Poisson, generation_time::Distri
 end
 
 """
-    end_of_outbreak_probability(model::TransmissionModel, τ)
+    end_of_outbreak_probability(model::BranchingProcess, τ)
 
 Convenience that reads the offspring and generation-time distributions
-from a `BranchingProcess` (or any `TransmissionModel` exposing those
-fields).
+straight off a bare `BranchingProcess`. Restricted to the un-wrapped
+process: applying this to an `Observed{..., PerCaseObservation}` model
+would mean under-reporting (`ρ < 1`), which needs the Volterra
+recursion of Thompson, Morgan & Jansen (2019) and is not implemented
+here. To compute the full-reporting (`ρ = 1`) value on the underlying
+process, drop the `Observed` wrapper at the call site.
 """
-function end_of_outbreak_probability(model::TransmissionModel, τ::Real)
-    return end_of_outbreak_probability(single_type_offspring(model), model.generation_time, τ)
+function end_of_outbreak_probability(model::BranchingProcess, τ::Real)
+    return end_of_outbreak_probability(
+        single_type_offspring(model), model.generation_time, τ)
+end
+
+# Explicit refusal for the Observed{..., PerCaseObservation} wrapper.
+# Better than a silent extraction of the bare offspring: makes the
+# missing `ρ < 1` case discoverable through a clear error.
+function end_of_outbreak_probability(
+        ::Observed{<:Any, <:PerCaseObservation}, ::Real)
+    throw(ArgumentError(
+        "end_of_outbreak_probability under per-case under-reporting (ρ < 1) " *
+        "is not implemented. The closed form here assumes full reporting; " *
+        "the ρ < 1 case needs the Volterra recursion of Thompson, Morgan & " *
+        "Jansen (2019). Drop the Observed wrapper to compute the ρ = 1 " *
+        "value on the underlying BranchingProcess."))
 end
 
 """

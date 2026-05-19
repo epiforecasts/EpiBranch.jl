@@ -324,6 +324,17 @@
             @test end_of_outbreak_probability(NegBin(R, k), GT, 5.0) ≈
                   end_of_outbreak_probability(R, k, GT, 5.0)
 
+            # BranchingProcess overload agrees with the offspring/gt one.
+            bp = BranchingProcess(NegBin(R, k), GT)
+            @test end_of_outbreak_probability(bp, 5.0) ≈
+                  end_of_outbreak_probability(R, k, GT, 5.0)
+
+            # The Observed{..., PerCaseObservation} wrapper is refused
+            # explicitly: under-reporting (ρ < 1) needs the Volterra
+            # recursion which is not implemented.
+            om = Observed(bp, PerCaseObservation(0.5, Dirac(0.0)))
+            @test_throws ArgumentError end_of_outbreak_probability(om, 5.0)
+
             # Vector-of-τ overload returns same elements.
             πs_vec = end_of_outbreak_probability(R, k, GT, collect(taus))
             @test πs_vec ≈ πs
