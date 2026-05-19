@@ -1,15 +1,14 @@
 # Line lists and contacts
 
-[`linelist`](@ref) returns a DataFrame with one row per infected
-individual. Each individual's typed fields and `state` dictionary become
-columns, in addition to the core simulation columns. Fields whose key
-ends in `_time` are converted to dates using `reference_date` (e.g.
-`:onset_time` becomes `date_onset`); other fields pass through under
-their own name.
+[`linelist`](@ref) gives you a DataFrame with one row per infected
+case. The core columns (`id`, `parent_id`, `generation`, `chain_id`,
+`date_infection`) are always there; anything else on the individual —
+typed fields or `state` dict entries — shows up as a column too. Keys
+ending in `_time` become date columns, so `:onset_time` becomes
+`date_onset`.
 
-To add a column to the line list, write the field during the
-simulation — via an attributes builder, an intervention, or a clinical
-transition. The line list picks it up automatically.
+To get a new column, write the field during the simulation. Whatever
+ends up on `state` ends up in the DataFrame.
 
 ## Line list
 

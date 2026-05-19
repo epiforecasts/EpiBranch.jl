@@ -1,16 +1,13 @@
 """
     linelist(state::SimulationState; reference_date=Date(2020, 1, 1))
 
-Return a DataFrame with one row per infected individual in `state`.
-Each individual's typed fields and `state` dictionary become columns,
-in addition to the core simulation columns (`id`, `parent_id`,
-`generation`, `chain_id`, `date_infection`). Fields whose key ends in
-`_time` are converted to dates as `date_<prefix>` using `reference_date`
-(e.g. `:onset_time` becomes `date_onset`); other fields pass through
-under their own name.
+Return a DataFrame with one row per infected case. The core columns
+(`id`, `parent_id`, `generation`, `chain_id`, `date_infection`) are
+always present; any other typed field or `state` entry becomes a
+column too. Keys ending in `_time` are converted to dates using
+`reference_date`, so `:onset_time` ends up as `date_onset`.
 
-To add a column to the line list, write the field during the simulation
-— via attributes, interventions, or clinical transitions. `linelist`
+To add a column, write the field during the simulation. `linelist`
 reads whatever is on `state`.
 """
 function linelist(state::SimulationState;
