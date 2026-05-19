@@ -24,8 +24,8 @@ using Random: Xoshiro
 ## Basic line list
 
 Simulate an outbreak with demographics and clinical transitions, then
-project to a line list. `linelist` itself is a pure projection — all
-randomness lives in `attributes` and `transitions`:
+read off the line list. Any state field set by `attributes` or
+`transitions` appears as a column:
 
 ```{julia}
 model = BranchingProcess(Poisson(1.5), LogNormal(1.6, 0.5))

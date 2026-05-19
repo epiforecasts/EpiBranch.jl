@@ -1,10 +1,15 @@
 # Line lists and contacts
 
-`linelist(state)` is a pure projection of `state` into a DataFrame.
-All randomness (reporting timing, hospitalisation probability, outcome
-draws, demographic sampling) happens during [`simulate`](@ref) via
-attributes and [`AbstractClinicalTransition`](@ref)s. The line list
-just reads what's there.
+[`linelist`](@ref) returns a DataFrame with one row per infected
+individual. Each individual's typed fields and `state` dictionary become
+columns, in addition to the core simulation columns. Fields whose key
+ends in `_time` are converted to dates using `reference_date` (e.g.
+`:onset_time` becomes `date_onset`); other fields pass through under
+their own name.
+
+To add a column to the line list, write the field during the
+simulation — via an attributes builder, an intervention, or a clinical
+transition. The line list picks it up automatically.
 
 ## Line list
 
