@@ -17,8 +17,12 @@ end
 
 Log-likelihood of observed chain sizes under the analytical chain size
 distribution implied by the offspring distribution. Multi-seed clusters
-are handled via the `seeds` field of [`ChainSizes`](@ref). All
-clusters are treated as concluded (final-size likelihood).
+are handled via the `seeds` field of [`ChainSizes`](@ref). Per-cluster
+"is this finished?" weights are supplied via the `pi` field: with the
+default `pi == ones(n)` every cluster contributes its final-size
+PMF; with `pi[i] < 1` cluster `i` contributes the real-time mixture
+`π · P(X = x | seeds) + (1 − π) · P(X ≥ x | seeds)` (see
+[`ChainSizes`](@ref)).
 """
 function loglikelihood(data::ChainSizes, offspring::Distribution)
     dist = chain_size_distribution(offspring)
@@ -29,30 +33,54 @@ end
 # which accept any numeric type for parameters (ForwardDiff Dual compatible)
 function loglikelihood(data::ChainSizes, offspring::Poisson{T}) where {T}
     μ = min(mean(offspring), one(mean(offspring)))
-    all(==(1), data.seeds) &&
+    if all(==(1), data.seeds) && all(==(1.0), data.pi)
         return sum(n -> _borel_logpdf(μ, n), data.data)
+    end
     return _chain_size_loglik(Borel(μ), data)
 end
 
 function loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T}) where {T}
-    all(==(1), data.seeds) &&
+    if all(==(1), data.seeds) && all(==(1.0), data.pi)
         return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
+    end
     return _chain_size_loglik(GammaBorel(offspring.r, mean(offspring)), data)
 end
 
 """
     _chain_size_loglik(dist, data::ChainSizes)
 
-Per-observation chain-size log-likelihood (all observations treated as
-concluded).
+Per-cluster chain-size log-likelihood with the real-time mixture
+
+    L_i = π_i · P(X = x_i | seeds_i) + (1 − π_i) · P(X ≥ x_i | seeds_i)
+
+evaluated cluster by cluster and summed. With `data.pi == ones(n)`
+this reduces to the final-size likelihood (every cluster treated as
+concluded); with `data.pi[i] == 0` cluster `i` contributes only the
+right-tail (still-ongoing) factor.
 """
 function _chain_size_loglik(dist, data::ChainSizes)
     first_val = _chain_size_logpdf(dist, data.data[1], data.seeds[1])
     total = zero(first_val)
     for i in eachindex(data.data)
-        total += _chain_size_logpdf(dist, data.data[i], data.seeds[i])
+        π = data.pi[i]
+        lc = _chain_size_logpdf(dist, data.data[i], data.seeds[i])
+        if π >= one(π)
+            total += lc
+        elseif π <= zero(π)
+            total += _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+        else
+            lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+            total += _logsumexp2(log(π) + lc, log1p(-π) + lo)
+        end
     end
     return total
+end
+
+"""AD-compatible binary log-sum-exp."""
+function _logsumexp2(a, b)
+    m = max(a, b)
+    isinf(m) && return m
+    return m + log(exp(a - m) + exp(b - m))
 end
 
 """

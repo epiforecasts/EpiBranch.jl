@@ -264,6 +264,81 @@
             @test_throws ArgumentError ChainSizes([3]; seeds = [1, 1])
         end
 
+        @testset "Real-time mixture likelihood and thompson_pi" begin
+            # Right-tail helper: P(X ≥ s) = 1 ⇒ logright_tail = 0.
+            d = GammaBorel(0.5, 0.8)
+            @test EpiBranch._chain_size_right_tail_logprob(d, 1, 1) == 0.0
+            @test EpiBranch._chain_size_right_tail_logprob(d, 2, 2) == 0.0
+
+            # log P(X = x) + log P(X ≥ x + 1) sums consistently with the
+            # PMF: P(X = x) + P(X ≥ x + 1) = P(X ≥ x).
+            for x in 2:8
+                pmf = exp(EpiBranch._chain_size_logpdf(d, x, 1))
+                tail_below = exp(EpiBranch._chain_size_right_tail_logprob(d, x, 1))
+                tail_above = exp(EpiBranch._chain_size_right_tail_logprob(d, x + 1, 1))
+                @test tail_below≈pmf + tail_above atol=1e-9
+            end
+
+            # π = 1 (default) reproduces the concluded-only likelihood.
+            data_default = ChainSizes([1, 1, 2, 3])
+            data_pi1 = ChainSizes([1, 1, 2, 3]; pi = [1.0, 1.0, 1.0, 1.0])
+            @test loglikelihood(data_default, NegBin(0.8, 0.5)) ≈
+                  loglikelihood(data_pi1, NegBin(0.8, 0.5))
+
+            # π = 0 ⇒ all clusters treated as ongoing (right-tail only).
+            data_ongoing = ChainSizes([1, 1, 2, 3]; pi = [0.0, 0.0, 0.0, 0.0])
+            ll_ongoing = loglikelihood(data_ongoing, NegBin(0.8, 0.5))
+            d = GammaBorel(0.5, 0.8)
+            ll_expected = sum(
+                EpiBranch._chain_size_right_tail_logprob(d, x, 1)
+            for x in data_ongoing.data)
+            @test ll_ongoing ≈ ll_expected
+
+            # Mixture: ll bounded between π=1 and π=0 ends for π in (0, 1).
+            data_mid = ChainSizes([1, 1, 2, 3]; pi = [0.5, 0.5, 0.5, 0.5])
+            ll_mid = loglikelihood(data_mid, NegBin(0.8, 0.5))
+            ll_concluded = loglikelihood(data_pi1, NegBin(0.8, 0.5))
+            @test min(ll_concluded, ll_ongoing) <= ll_mid <=
+                  max(ll_concluded, ll_ongoing)
+
+            # Constructor validation: pi must be in [0, 1] and same length.
+            @test_throws ArgumentError ChainSizes([1, 2]; pi = [0.5])
+            @test_throws ArgumentError ChainSizes([1, 2]; pi = [0.5, 1.1])
+            @test_throws ArgumentError ChainSizes([1, 2]; pi = [-0.1, 0.5])
+
+            # Thompson π: G(0) at τ=0, → 1 as τ → ∞, monotone.
+            GT = Gamma(2.78, 1.8)
+            R, k = 2.5, 0.1
+            @test thompson_pi(R, k, GT, 0.0) ≈ (k / (k + R))^k
+            @test thompson_pi(R, k, GT, Inf) == 1.0
+            taus = 0.0:1.0:30.0
+            πs = [thompson_pi(R, k, GT, τ) for τ in taus]
+            @test issorted(πs)
+            @test all(0 .<= πs .<= 1)
+
+            # Poisson overload: π(τ=0) = exp(-R); → 1 as τ → ∞.
+            @test thompson_pi(Poisson(R), GT, 0.0) ≈ exp(-R)
+            @test thompson_pi(Poisson(R), GT, Inf) == 1.0
+
+            # NegBin offspring overload agrees with the (R, k) form.
+            @test thompson_pi(NegBin(R, k), GT, 5.0) ≈
+                  thompson_pi(R, k, GT, 5.0)
+
+            # Vector-of-τ overload returns same elements.
+            πs_vec = thompson_pi(R, k, GT, collect(taus))
+            @test πs_vec ≈ πs
+
+            # End-to-end: Thompson π populates the ChainSizes pi field
+            # and the mixture likelihood evaluates without error.
+            sizes = [1, 2, 100, 1766]
+            seeds = [1, 1, 3, 17]
+            taus_data = [0.0, 7.0, 0.0, 0.0]
+            π_vals = [thompson_pi(R, k, GT, τ) for τ in taus_data]
+            data_endo = ChainSizes(sizes; seeds = seeds, pi = π_vals)
+            ll = loglikelihood(data_endo, NegBin(R, k))
+            @test isfinite(ll)
+        end
+
         @testset "Per-case observation: simulation decoration" begin
             R, k = 0.6, 0.3
             gt = Gamma(2.0, 2.5)
