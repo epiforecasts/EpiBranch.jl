@@ -18,23 +18,17 @@ function EpiBranch.resolve_individual!(t::DummyTest, ind, state)
     return nothing
 end
 
-# Minimal custom TransmissionModel used to verify the engine resolves
-# clinical transitions on newly added infected individuals without the
-# model's step! invoking transitions explicitly. A single deterministic
-# infection per call.
+# Minimal custom TransmissionModel used to verify the engine handles
+# both bookkeeping (counters, active_ids, extinct) and clinical
+# transitions for new individuals, leaving step! to just describe the
+# transmission decision. A single deterministic infection per call.
 struct SingleSpawnModel <: EpiBranch.TransmissionModel end
 function EpiBranch.step!(::SingleSpawnModel, state::EpiBranch.SimulationState, interventions)
-    next_id = length(state.individuals) + 1
     parent = state.individuals[state.active_ids[1]]
     contact = EpiBranch._create_individual(state, parent.id, parent.chain_id,
-        next_id, parent.infection_time + 1.0, interventions)
+        length(state.individuals) + 1, parent.infection_time + 1.0, interventions)
     contact.state[:infected] = true
-    push!(state.individuals, contact)
-    state.cumulative_cases += 1
-    state.current_generation += 1
-    state.max_infection_time = max(state.max_infection_time, contact.infection_time)
-    state.active_ids = [next_id]
-    return state
+    return [contact]
 end
 
 @testset "Clinical transitions" begin

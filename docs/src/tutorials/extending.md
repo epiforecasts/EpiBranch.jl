@@ -340,9 +340,13 @@ defaults for the rest.
 
 For **simulation**, define one method:
 
-- `step!(model, state, interventions)` — advance one generation.
-  The default `simulate(::TransmissionModel)` loop calls this until
-  termination.
+- `step!(model, state, interventions)` — process one generation and
+  return a `Vector{Individual}` of the new individuals (both infected
+  and uninfected). The engine appends them to `state.individuals` and
+  updates `cumulative_cases`, `current_generation`,
+  `max_infection_time`, `active_ids`, and `extinct`. Mark infected
+  contacts with `ind.state[:infected] = true`; the engine reads that
+  to derive the rest. Return an empty vector to signal extinction.
 
 For **analytical inference helpers** that route through the offspring
 specification (`extinction_probability`, `epidemic_probability`,
@@ -363,12 +367,11 @@ defaults (`NoPopulation()`, `0.0`, `1`) are fine if not.
 
 ### Clinical transitions
 
-You do not need to handle clinical transitions inside `step!`. Append
-new infected individuals to `state.individuals` with
-`ind.state[:infected] = true` and the engine runs every transition on
-`state.transitions` against them after `step!` returns. Transitions
-added by the user via `simulate(...; transitions = ...)` take effect
-automatically.
+You do not need to handle clinical transitions inside `step!`. Return
+new infected individuals with `ind.state[:infected] = true` and the
+engine runs every transition on `state.transitions` against them
+after `step!` returns. Transitions added by the user via
+`simulate(...; transitions = ...)` take effect automatically.
 
 ### Minimal sketch
 
@@ -380,12 +383,12 @@ struct MyModel{O} <: TransmissionModel
     # ... your model parameters
 end
 
-# Required for simulation: one generation step.
+# Required for simulation: produce this generation's new individuals.
 function EpiBranch.step!(model::MyModel, state::SimulationState, interventions)
-    # advance state.individuals by drawing offspring etc.
-    # Set ind.state[:infected] = true on every newly infected
-    # individual; the engine resolves transitions on them after step!
-    # returns.
+    new_individuals = Individual[]
+    # ... build new individuals, setting `ind.state[:infected]` to
+    # true or false on each. The engine handles bookkeeping.
+    return new_individuals
 end
 
 # Required for analytical helpers (optional but recommended).

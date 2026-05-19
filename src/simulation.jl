@@ -43,7 +43,8 @@ function simulate(model::TransmissionModel;
 
     while !should_terminate(state, sim_opts)
         pre = length(state.individuals)
-        step!(model, state, interventions)
+        new_individuals = step!(model, state, interventions)
+        _register_step!(state, new_individuals)
         _resolve_new_transitions!(state, pre)
     end
 
@@ -187,6 +188,33 @@ function _resolve_transitions!(state::SimulationState, individual)
         resolve_individual!(transition, individual, state)
     end
     _finalise_terminal!(individual, transitions)
+    return nothing
+end
+
+"""Append the new individuals returned by `step!` to `state.individuals`
+and update the bookkeeping fields the engine cares about:
+`cumulative_cases`, `current_generation`, `max_infection_time`,
+`active_ids`, `extinct`. Called by [`simulate`](@ref) so that authors
+of custom [`TransmissionModel`](@ref) subtypes do not need to touch
+these fields from inside their `step!`."""
+function _register_step!(state::SimulationState, new_individuals)
+    append!(state.individuals, new_individuals)
+    new_infected_ids = Int[]
+    for ind in new_individuals
+        is_infected(ind) || continue
+        push!(new_infected_ids, ind.id)
+        if ind.infection_time > state.max_infection_time
+            state.max_infection_time = ind.infection_time
+        end
+    end
+    state.cumulative_cases += length(new_infected_ids)
+    state.current_generation += 1
+    if isempty(new_infected_ids)
+        state.extinct = true
+        state.active_ids = Int[]
+    else
+        state.active_ids = new_infected_ids
+    end
     return nothing
 end
 
