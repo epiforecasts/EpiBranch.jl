@@ -361,6 +361,15 @@ For optional **state accessors**, override `population_size`,
 `latent_period`, `n_types` if your model has values for them. The
 defaults (`NoPopulation()`, `0.0`, `1`) are fine if not.
 
+### Clinical transitions
+
+You do not need to handle clinical transitions inside `step!`. Append
+new infected individuals to `state.individuals` with
+`ind.state[:infected] = true` and the engine runs every transition on
+`state.transitions` against them after `step!` returns. Transitions
+added by the user via `simulate(...; transitions = ...)` take effect
+automatically.
+
 ### Minimal sketch
 
 A skeleton for a custom transmission model:
@@ -374,6 +383,9 @@ end
 # Required for simulation: one generation step.
 function EpiBranch.step!(model::MyModel, state::SimulationState, interventions)
     # advance state.individuals by drawing offspring etc.
+    # Set ind.state[:infected] = true on every newly infected
+    # individual; the engine resolves transitions on them after step!
+    # returns.
 end
 
 # Required for analytical helpers (optional but recommended).
