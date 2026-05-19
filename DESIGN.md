@@ -42,6 +42,21 @@ The generation time CDF evaluated at the intervention time *is* the survival fun
 
 All contacts are stored, not just successful infections. This gives the **simulist**-style contacts table (with `was_case` flag) and intervention effort tracking, without any additional bookkeeping.
 
+## Extension model
+
+New behaviour is added by defining a new type and a method, not by growing options on an existing struct. A user wanting a variant of an existing component should be able to write a small struct plus one or two methods, with no edits to the package source and no copy-pasting of existing function bodies.
+
+When a field on a public struct is `Union{T, U}` whose union members trigger different runtime branches, or a `Symbol` that switches behaviour inside a function body, or a `Bool` that selects between policies, that is a signal the seam is in the wrong place — turn it into a dispatched-on type instead.
+
+This applies on every extension axis:
+
+- **Transmission models**: spatial structure, network structure, and immunity dynamics enter through new `TransmissionModel` subtypes (or composable wrappers around existing ones), not flags on `BranchingProcess`.
+- **Interventions are orchestrators of smaller dispatched pieces**. An intervention struct (e.g. `ContactTracing`, `Isolation`) is a thin shell that wires together independently dispatched components — eligibility, fire-rate, delay, effect. Each component is itself a type with a defined method (e.g. `is_eligible(scope, parent, contact, state)`). Users extend behaviour by writing new component types. The intervention body itself contains no hardcoded policy branching.
+- **Composition works at two levels**: between interventions (the stack passed to `simulate`) and within each intervention (its dispatched pieces).
+- **Output, observation, and outcome rules** follow the same shape: mortality, hospitalisation, reporting probability, stopping conditions, line-list columns are typed objects with methods, not closed sets of fields.
+
+The test of correctness for any component is: can a plausible new variant be added without editing the component's source? If not, the component is doing too much; lift the varying part into a dispatched-on trait.
+
 ## Individual state
 
 ```
