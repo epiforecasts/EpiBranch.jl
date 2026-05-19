@@ -18,6 +18,44 @@ function EpiBranch.resolve_individual!(t::DummyTest, ind, state)
     return nothing
 end
 
+# Minimal custom TransmissionModel used to verify the on_new_infection!
+# default hook fires without the model's step! invoking transitions
+# explicitly. A single deterministic infection per call.
+struct SingleSpawnModel <: EpiBranch.TransmissionModel end
+function EpiBranch.step!(::SingleSpawnModel, state::EpiBranch.SimulationState, interventions)
+    next_id = length(state.individuals) + 1
+    parent = state.individuals[state.active_ids[1]]
+    contact = EpiBranch._create_individual(state, parent.id, parent.chain_id,
+        next_id, parent.infection_time + 1.0, interventions)
+    contact.state[:infected] = true
+    EpiBranch.on_new_infection!(SingleSpawnModel(), state, contact)
+    push!(state.individuals, contact)
+    state.cumulative_cases += 1
+    state.current_generation += 1
+    state.max_infection_time = max(state.max_infection_time, contact.infection_time)
+    state.active_ids = [next_id]
+    return state
+end
+
+# Same model but with the hook suppressed — used to verify the override
+# path works.
+struct NoHookModel <: EpiBranch.TransmissionModel end
+function EpiBranch.step!(::NoHookModel, state::EpiBranch.SimulationState, interventions)
+    next_id = length(state.individuals) + 1
+    parent = state.individuals[state.active_ids[1]]
+    contact = EpiBranch._create_individual(state, parent.id, parent.chain_id,
+        next_id, parent.infection_time + 1.0, interventions)
+    contact.state[:infected] = true
+    EpiBranch.on_new_infection!(NoHookModel(), state, contact)
+    push!(state.individuals, contact)
+    state.cumulative_cases += 1
+    state.current_generation += 1
+    state.max_infection_time = max(state.max_infection_time, contact.infection_time)
+    state.active_ids = [next_id]
+    return state
+end
+EpiBranch.on_new_infection!(::NoHookModel, ::EpiBranch.SimulationState, _) = nothing
+
 @testset "Clinical transitions" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
@@ -276,5 +314,29 @@ end
             sim_opts = SimOpts(max_cases = 30), rng = rng)
         @test all(ind.state[:tested] for ind in state.individuals)
         @test all(isfinite(ind.state[:test_time]) for ind in state.individuals)
+    end
+
+    @testset "Custom TransmissionModel — default on_new_infection! runs transitions" begin
+        # SingleSpawnModel's step! calls on_new_infection! without doing
+        # anything special. With the default hook, every new infected case
+        # should have its DummyTest fields set automatically.
+        rng = StableRNG(7)
+        state = simulate(SingleSpawnModel(); attributes = clinical,
+            transitions = [DummyTest(LogNormal(0.5, 0.2))],
+            sim_opts = SimOpts(max_cases = 5), rng = rng)
+        @test all(ind.state[:tested] for ind in state.individuals)
+        @test all(isfinite(ind.state[:test_time]) for ind in state.individuals)
+    end
+
+    @testset "Custom TransmissionModel — overriding on_new_infection! suppresses transitions" begin
+        # NoHookModel overrides on_new_infection! to a no-op. Transition
+        # fields should never be populated even though `transitions = ...`
+        # is passed.
+        rng = StableRNG(7)
+        state = simulate(NoHookModel(); attributes = clinical,
+            transitions = [DummyTest(LogNormal(0.5, 0.2))],
+            sim_opts = SimOpts(max_cases = 5), rng = rng)
+        @test all(!haskey(ind.state, :tested) for ind in state.individuals)
+        @test all(!haskey(ind.state, :test_time) for ind in state.individuals)
     end
 end

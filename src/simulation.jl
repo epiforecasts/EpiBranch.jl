@@ -115,7 +115,7 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
             _validate_required_fields(ind, transitions)
         end
         # Resolve transitions after :type is set so closures can read it.
-        _resolve_transitions!(temp_state, ind)
+        on_new_infection!(model, temp_state, ind)
         push!(individuals, ind)
     end
 
@@ -144,10 +144,10 @@ function _susceptible_fraction(state::SimulationState{<:Any, Int})
     return n_susceptible / state.population_size
 end
 
-"""Create a new Individual with attributes and intervention state. Clinical
-transitions are NOT resolved here; callers must invoke
-`_resolve_transitions!` after `:type` has been set on the individual so
-transition closures can read it.
+"""Create a new Individual with attributes and intervention state.
+Clinical transitions are resolved separately via
+[`on_new_infection!`](@ref), called by the engine once the individual's
+`:type` (multi-type) and `:infected` flag are set.
 """
 function _create_individual(state::SimulationState, parent_id::Int,
         chain_id::Int, next_id::Int,
@@ -187,6 +187,26 @@ function _resolve_transitions!(state::SimulationState, individual)
         resolve_individual!(transition, individual, state)
     end
     _finalise_terminal!(individual, transitions)
+    return nothing
+end
+
+"""
+    on_new_infection!(model::TransmissionModel, state, individual)
+
+Called by the engine after each new infected individual has been
+created and had its `:type` (multi-type) and `:infected = true` set.
+The default runs every clinical transition on `state.transitions`
+against the new individual, so authors of new `TransmissionModel`
+subtypes do not need to invoke transitions themselves from `step!`.
+
+Override only to suppress or extend this behaviour, e.g.:
+
+```julia
+EpiBranch.on_new_infection!(::MyModel, state, ind) = nothing
+```
+"""
+function on_new_infection!(::TransmissionModel, state::SimulationState, individual)
+    _resolve_transitions!(state, individual)
     return nothing
 end
 

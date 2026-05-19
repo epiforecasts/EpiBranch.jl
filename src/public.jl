@@ -9,3 +9,4 @@ public apply_post_transmission!
 public post_isolation_transmission
 public reset!
 public required_fields
+public on_new_infection!
