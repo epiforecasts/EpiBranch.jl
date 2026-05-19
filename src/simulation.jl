@@ -39,9 +39,12 @@ function simulate(model::TransmissionModel;
 
     state = initialise_state(
         model, sim_opts, interventions, transitions, attributes, rng)
+    _resolve_new_transitions!(state, 0)
 
     while !should_terminate(state, sim_opts)
+        pre = length(state.individuals)
         step!(model, state, interventions)
+        _resolve_new_transitions!(state, pre)
     end
 
     return state
@@ -114,8 +117,6 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
             _validate_required_fields(ind, interventions)
             _validate_required_fields(ind, transitions)
         end
-        # Resolve transitions after :type is set so closures can read it.
-        on_new_infection!(model, temp_state, ind)
         push!(individuals, ind)
     end
 
@@ -145,9 +146,8 @@ function _susceptible_fraction(state::SimulationState{<:Any, Int})
 end
 
 """Create a new Individual with attributes and intervention state.
-Clinical transitions are resolved separately via
-[`on_new_infection!`](@ref), called by the engine once the individual's
-`:type` (multi-type) and `:infected` flag are set.
+Clinical transitions are resolved separately by the engine, which
+sweeps newly added individuals after each `step!` returns.
 """
 function _create_individual(state::SimulationState, parent_id::Int,
         chain_id::Int, next_id::Int,
@@ -190,23 +190,19 @@ function _resolve_transitions!(state::SimulationState, individual)
     return nothing
 end
 
-"""
-    on_new_infection!(model::TransmissionModel, state, individual)
-
-Called by the engine after each new infected individual has been
-created and had its `:type` (multi-type) and `:infected = true` set.
-The default runs every clinical transition on `state.transitions`
-against the new individual, so authors of new `TransmissionModel`
-subtypes do not need to invoke transitions themselves from `step!`.
-
-Override only to suppress or extend this behaviour, e.g.:
-
-```julia
-EpiBranch.on_new_infection!(::MyModel, state, ind) = nothing
-```
-"""
-function on_new_infection!(::TransmissionModel, state::SimulationState, individual)
-    _resolve_transitions!(state, individual)
+"""Sweep newly added infected individuals (those at indices
+`from_index+1:end`) and run clinical transitions on each. Called by
+[`simulate`](@ref) after `initialise_state` and after each `step!` so
+that authors of custom [`TransmissionModel`](@ref) subtypes do not
+need to invoke transition resolution from inside their `step!`."""
+function _resolve_new_transitions!(state::SimulationState, from_index::Int)
+    isempty(state.transitions) && return nothing
+    @inbounds for i in (from_index + 1):length(state.individuals)
+        ind = state.individuals[i]
+        if get(ind.state, :infected, false)
+            _resolve_transitions!(state, ind)
+        end
+    end
     return nothing
 end
 

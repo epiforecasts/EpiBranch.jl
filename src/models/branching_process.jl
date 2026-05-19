@@ -36,7 +36,7 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
         residual = _post_isolation_transmission(interventions)
 
         next_id = _create_contacts!(new_contacts, new_infected_ids,
-            offspring_result, individual, state, model,
+            offspring_result, individual, state,
             gt_dist, pop_suscept, residual,
             interventions, next_id)
     end
@@ -83,7 +83,7 @@ end
 
 # ── Contact creation ─────────────────────────────────────────────────
 
-function _make_one_contact!(new_contacts, new_infected_ids, parent, state, model,
+function _make_one_contact!(new_contacts, new_infected_ids, parent, state,
         gt_dist, pop_suscept, residual,
         interventions, next_id;
         type_idx::Union{Int, NoTypeLabels} = NoTypeLabels())
@@ -104,13 +104,8 @@ function _make_one_contact!(new_contacts, new_infected_ids, parent, state, model
         gt, pop_suscept, residual)
     contact.state[:infected] = infected
 
-    # Resolve clinical transitions only for infected contacts: uninfected
-    # contacts are recorded for effort tracking but have no clinical course,
-    # so populating :reporting_time / :outcome on them would be a category
-    # error and would burn RNG draws that change downstream results.
-    if infected
-        on_new_infection!(model, state, contact)
-    end
+    # Clinical transitions are resolved by the engine after step!
+    # returns (see _resolve_new_transitions! in simulation.jl).
 
     push!(parent.secondary_case_ids, next_id)
     push!(new_contacts, contact)
@@ -123,11 +118,11 @@ _set_type!(contact, idx::Int) = (contact.state[:type] = idx)
 
 """Single-type contacts."""
 function _create_contacts!(new_contacts, new_infected_ids,
-        n_contacts::Int, parent, state, model,
+        n_contacts::Int, parent, state,
         gt_dist, pop_suscept, residual,
         interventions, next_id)
     for _ in 1:n_contacts
-        next_id = _make_one_contact!(new_contacts, new_infected_ids, parent, state, model,
+        next_id = _make_one_contact!(new_contacts, new_infected_ids, parent, state,
             gt_dist, pop_suscept, residual,
             interventions, next_id)
     end
@@ -136,13 +131,12 @@ end
 
 """Multi-type contacts."""
 function _create_contacts!(new_contacts, new_infected_ids,
-        counts::Vector{Int}, parent, state, model,
+        counts::Vector{Int}, parent, state,
         gt_dist, pop_suscept, residual,
         interventions, next_id)
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
             next_id = _make_one_contact!(new_contacts, new_infected_ids, parent, state,
-                model,
                 gt_dist, pop_suscept, residual,
                 interventions, next_id; type_idx)
         end

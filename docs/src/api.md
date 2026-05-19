@@ -49,7 +49,6 @@ Death
 Recovery
 is_terminal
 terminal_event
-EpiBranch.on_new_infection!
 ```
 
 ## State accessors
