@@ -15,7 +15,7 @@ using Dates
         @test df isa DataFrame
         @test nrow(df) == state.cumulative_cases
         @test "id" in names(df)
-        @test "case_type" in names(df)
+        @test "parent_id" in names(df)
         @test "date_infection" in names(df)
         @test "date_onset" in names(df)
     end
@@ -137,17 +137,34 @@ using Dates
         @test df isa DataFrame
         @test "from" in names(df)
         @test "to" in names(df)
-        @test "was_case" in names(df)
+        @test "infected" in names(df)
     end
 
-    @testset "index cases labelled correctly" begin
+    @testset "index cases identifiable via parent_id" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         state = simulate(model; attributes = clinical,
             sim_opts = SimOpts(max_cases = 20, n_initial = 3), rng = rng)
 
         df = linelist(state)
-        n_index = count(df.case_type .== "index")
+        n_index = count(df.parent_id .== 0)
         @test n_index == 3
+    end
+
+    @testset "linelist picks up custom state fields generically" begin
+        rng = StableRNG(42)
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        risk_group = (rng, ind) -> (ind.state[:risk_group] = rand(rng) < 0.3 ? :high : :low)
+        custom_time = (
+            rng, ind) -> (ind.state[:vaccination_time] = ind.infection_time + 7.0)
+        attrs = compose(clinical, risk_group, custom_time)
+        state = simulate(model; attributes = attrs,
+            sim_opts = SimOpts(max_cases = 30), rng = rng)
+
+        df = linelist(state)
+        @test "risk_group" in names(df)             # pass-through, symbol → string
+        @test "date_vaccination" in names(df)       # `_time` → `date_` convention
+        @test eltype(df.risk_group) <: Union{Missing, AbstractString}
+        @test eltype(df.date_vaccination) <: Union{Missing, Date}
     end
 end

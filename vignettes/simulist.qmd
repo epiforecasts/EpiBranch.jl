@@ -111,13 +111,13 @@ end
 ## Contacts table
 
 Both infected and non-infected contacts are included in the contacts
-table, with a `was_case` flag:
+table, with an `infected` flag:
 
 ```{julia}
 ct = contacts(state; reference_date = Date(2024, 1, 1))
 println("Total contacts: ", nrow(ct))
-println("Infected contacts (was_case=true): ", count(ct.was_case))
-println("Non-infected contacts: ", count(.!ct.was_case))
+println("Infected contacts: ", count(ct.infected))
+println("Non-infected contacts: ", count(.!ct.infected))
 first(ct, 5)
 ```
 
@@ -158,7 +158,7 @@ ct = contacts(state; reference_date = ref_date)
 cs = chain_statistics(state)
 
 println("Line list: $(nrow(ll)) cases")
-println("Contacts: $(nrow(ct)) contact events ($(count(ct.was_case)) infected)")
+println("Contacts: $(nrow(ct)) contact events ($(count(ct.infected)) infected)")
 println("Chains: $(nrow(cs)) chains")
 println("Chain sizes: ", cs.size)
 ```

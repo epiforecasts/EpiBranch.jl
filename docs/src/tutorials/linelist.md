@@ -122,12 +122,11 @@ state field set by your attributes function. See the
 ## Contacts table
 
 All contacts (infected and non-infected) are returned by
-[`contacts`](@ref), with a `was_case` flag matching the **simulist** R
-package output format:
+[`contacts`](@ref), with an `infected` flag:
 
 ```@example linelist
 ct = contacts(state; reference_date = Date(2024, 1, 1))
-println("Total: $(nrow(ct)), Infected: $(count(ct.was_case)), Not infected: $(count(.!ct.was_case))")
+println("Total: $(nrow(ct)), Infected: $(count(ct.infected)), Not infected: $(count(.!ct.infected))")
 first(ct, 5)
 ```
 

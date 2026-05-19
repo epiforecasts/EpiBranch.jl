@@ -1,29 +1,17 @@
 """
     linelist(state::SimulationState; reference_date=Date(2020, 1, 1))
 
-Project simulation output to a line list DataFrame with one row per
-infected case. Pure projection of `state` — no RNG draws, no
-probabilistic decisions. Clinical events (reporting, admission, death,
-recovery) and demographics are read from the state keys that
-attributes and clinical transitions have already populated during
-[`simulate`](@ref).
+Return a DataFrame with one row per infected individual in `state`.
+Each individual's typed fields and `state` dictionary become columns,
+in addition to the core simulation columns (`id`, `parent_id`,
+`generation`, `chain_id`, `date_infection`). Fields whose key ends in
+`_time` are converted to dates as `date_<prefix>` using `reference_date`
+(e.g. `:onset_time` becomes `date_onset`); other fields pass through
+under their own name.
 
-Columns are built dynamically from what is available on each individual:
-
-- `id`, `parent_id`, `generation`, `chain_id`, `case_type` — always present.
-- `date_infection` — always present (from `infection_time` + `reference_date`).
-- `date_onset` — if `:onset_time` was set, e.g. via [`clinical_presentation`](@ref).
-- `age`, `sex` — if set via the [`demographics`](@ref) attributes builder.
-- `type` — if the model is multi-type.
-- `date_reporting` — if a [`Reporting`](@ref) transition wrote `:reporting_time`.
-- `date_admission` — if a [`Hospitalisation`](@ref) transition wrote `:admission_time`.
-- `outcome`, `date_outcome` — if [`Death`](@ref) / [`Recovery`](@ref) (or
-  any user-defined terminal transition) wrote `:outcome` / `:outcome_time`.
-- Any present `:asymptomatic` / `:isolated` / `:traced` / `:quarantined` /
-  `:vaccinated` flags.
-
-To get reporting, admission, or outcome events in the line list, build
-the corresponding transitions and pass them via `simulate(...; transitions = ...)`.
+To add a column to the line list, write the field during the simulation
+— via attributes, interventions, or clinical transitions. `linelist`
+reads whatever is on `state`.
 """
 function linelist(state::SimulationState;
         reference_date::Date = Date(2020, 1, 1))
@@ -35,39 +23,18 @@ function linelist(state::SimulationState;
         :parent_id => [ind.parent_id for ind in cases],
         :generation => [ind.generation for ind in cases],
         :chain_id => [ind.chain_id for ind in cases],
-        :case_type => [ind.parent_id == 0 ? "index" : "secondary" for ind in cases],
         :date_infection => [reference_date + Day(floor(Int, ind.infection_time))
                             for ind in cases]
     )
 
-    _add_time_column!(cols, :date_onset, cases, :onset_time, reference_date)
-    _add_time_column!(cols, :date_reporting, cases, :reporting_time, reference_date)
-    _add_time_column!(cols, :date_admission, cases, :admission_time, reference_date)
-    _add_time_column!(cols, :date_outcome, cases, :outcome_time, reference_date)
+    state_keys = Set{Symbol}()
+    for ind in cases
+        union!(state_keys, keys(ind.state))
+    end
+    delete!(state_keys, :infected)  # encoded by the row's existence
 
-    if any(haskey(ind.state, :age) for ind in cases)
-        cols[:age] = [get(ind.state, :age, missing) for ind in cases]
-    end
-    if any(haskey(ind.state, :sex) for ind in cases)
-        cols[:sex] = Union{String, Missing}[let v = get(ind.state, :sex, missing)
-                                                v === missing ? missing : string(v)
-                                            end
-                                            for ind in cases]
-    end
-    if any(haskey(ind.state, :type) for ind in cases)
-        cols[:type] = [get(ind.state, :type, missing) for ind in cases]
-    end
-
-    if any(haskey(ind.state, :outcome) for ind in cases)
-        cols[:outcome] = Union{String, Missing}[haskey(ind.state, :outcome) ?
-                                                string(ind.state[:outcome]) : missing
-                                                for ind in cases]
-    end
-
-    for field in (:asymptomatic, :isolated, :traced, :quarantined, :vaccinated)
-        if any(haskey(ind.state, field) for ind in cases)
-            cols[field] = [get(ind.state, field, missing) for ind in cases]
-        end
+    for key in state_keys
+        _add_state_column!(cols, cases, key, reference_date)
     end
 
     ordered_keys = _column_order(keys(cols))
@@ -77,13 +44,15 @@ end
 """
     contacts(state::SimulationState; reference_date=Date(2020, 1, 1))
 
-Generate a contacts DataFrame with one row per contact (infected and non-infected).
+Return a DataFrame with one row per contact event (infected and
+non-infected), with columns `from`, `to`, `infected`, `generation`,
+`infection_time`, `date_infection`.
 """
 function contacts(state::SimulationState;
         reference_date::Date = Date(2020, 1, 1))
     froms = Int[]
     tos = Int[]
-    was_cases = Bool[]
+    infecteds = Bool[]
     generations = Int[]
     infection_times = Float64[]
     date_infections = Date[]
@@ -94,7 +63,7 @@ function contacts(state::SimulationState;
             child = state.individuals[child_id]
             push!(froms, ind.id)
             push!(tos, child.id)
-            push!(was_cases, is_infected(child))
+            push!(infecteds, is_infected(child))
             push!(generations, child.generation)
             push!(infection_times, child.infection_time)
             push!(date_infections, reference_date + Day(floor(Int, child.infection_time)))
@@ -102,46 +71,66 @@ function contacts(state::SimulationState;
     end
 
     DataFrame(
-        from = froms, to = tos, was_case = was_cases, generation = generations,
+        from = froms, to = tos, infected = infecteds, generation = generations,
         infection_time = infection_times, date_infection = date_infections
     )
 end
 
 # ── Internal helpers ─────────────────────────────────────────────────
 
-"""Add a date column projected from a numeric time stored on
-`ind.state[time_key]`. Includes the column iff at least one case has a finite
-numeric value. Cases with no key, a non-numeric value, `missing`, or a
-NaN/Inf number get `missing`."""
-function _add_time_column!(cols, col_name, cases, time_key, reference_date)
-    has_finite = any(cases) do ind
-        t = get(ind.state, time_key, missing)
-        t isa Real && isfinite(float(t))
+"""Add a column for a single state key, applying the `_time` → `date_`
+convention for keys whose name ends in `_time` and which carry numeric
+values. Other keys pass through. Columns are omitted only if every
+case's value is `missing` (or, for `_time` keys, every value is
+non-finite/non-numeric)."""
+function _add_state_column!(cols, cases, key::Symbol, reference_date)
+    key_name = String(key)
+    if endswith(key_name, "_time")
+        prefix = key_name[1:(end - length("_time"))]
+        col_name = Symbol("date_" * prefix)
+        col_name in keys(cols) && return nothing  # don't shadow core columns
+        any_finite = false
+        values = Vector{Union{Date, Missing}}(undef, length(cases))
+        for (i, ind) in pairs(cases)
+            t = get(ind.state, key, missing)
+            if t isa Real && isfinite(float(t))
+                values[i] = reference_date + Day(floor(Int, float(t)))
+                any_finite = true
+            else
+                values[i] = missing
+            end
+        end
+        any_finite || return nothing
+        cols[col_name] = values
+    else
+        key in keys(cols) && return nothing
+        raw = [get(ind.state, key, missing) for ind in cases]
+        all(ismissing, raw) && return nothing
+        cols[key] = _normalise_column(raw)
     end
-    has_finite || return nothing
-    cols[col_name] = Union{Date, Missing}[let t = get(ind.state, time_key, missing)
-                                              (t isa Real && isfinite(float(t))) ?
-                                              reference_date +
-                                              Day(floor(Int, float(t))) : missing
-                                          end
-                                          for ind in cases]
     return nothing
 end
 
-"""Sensible column ordering for the linelist DataFrame."""
+"""Convert `Symbol` entries to `String` so DataFrames serialises cleanly;
+otherwise leave the column untouched."""
+function _normalise_column(values)
+    if any(v -> v isa Symbol, values)
+        return Union{String, Missing}[v isa Symbol ? String(v) : v for v in values]
+    end
+    return values
+end
+
+"""Sensible column ordering for the linelist DataFrame: core simulation
+columns first, then date columns (alphabetical), then the rest
+(alphabetical)."""
 function _column_order(ks)
-    priority = [
-        :id, :parent_id, :generation, :chain_id, :case_type, :type,
-        :age, :sex, :date_infection, :date_onset, :date_reporting,
-        :date_admission, :outcome, :date_outcome,
-        :asymptomatic, :isolated, :traced, :quarantined, :vaccinated
-    ]
-    ordered = Symbol[]
-    for k in priority
-        k in ks && push!(ordered, k)
-    end
-    for k in sort(collect(ks))
-        k in ordered || push!(ordered, k)
-    end
+    core = [:id, :parent_id, :generation, :chain_id, :date_infection]
+    keyset = Set(ks)
+    ordered = Symbol[k for k in core if k in keyset]
+    remaining = [k for k in ks if !(k in ordered)]
+    dates = sort!([k for k in remaining if startswith(String(k), "date_")])
+    others = sort!([k for k in remaining if !startswith(String(k), "date_")])
+    append!(ordered, dates)
+    append!(ordered, others)
     return ordered
 end

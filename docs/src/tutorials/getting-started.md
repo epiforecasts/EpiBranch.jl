@@ -120,9 +120,9 @@ first(ll, 3)
 ```
 
 ```@example gettingstarted
-# Contacts table (all contacts, with was_case flag)
+# Contacts table (all contacts, with infected flag)
 ct_df = contacts(state; reference_date = Date(2024, 1, 1))
-println("Contacts: $(nrow(ct_df)) ($(count(ct_df.was_case)) infected)")
+println("Contacts: $(nrow(ct_df)) ($(count(ct_df.infected)) infected)")
 ```
 
 ```@example gettingstarted

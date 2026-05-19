@@ -92,7 +92,7 @@ At the intervention stage, the timing layer is modified, not the offspring layer
 
 The generation time CDF evaluated at the intervention time *is* the survival function. The same mathematical objects appear in simulation and in Kenah's pairwise likelihood framework. Intervention effectiveness can be estimated from observed generation times using the same quantities used in simulation.
 
-All contacts are stored, not just successful infections. This gives the **simulist**-style contacts table (with `was_case` flag) and intervention effort tracking, without any additional bookkeeping.
+All contacts are stored, not just successful infections. This gives the contacts table (with `infected` flag) and intervention effort tracking, without any additional bookkeeping.
 
 ## Individual state
 
