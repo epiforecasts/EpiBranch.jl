@@ -65,7 +65,7 @@ using Dates
             sim_opts = SimOpts(max_cases = 100, n_initial = 3),
             rng = rng)
 
-        ll = linelist(state; reference_date = Date(2024, 1, 1), rng = StableRNG(99))
+        ll = linelist(state; reference_date = Date(2024, 1, 1))
         @test nrow(ll) == state.cumulative_cases
 
         ct = contacts(state; reference_date = Date(2024, 1, 1))

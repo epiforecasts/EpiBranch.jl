@@ -11,20 +11,8 @@ struct NoAttributes end
 """Sentinel indicating no type labels for multi-type models."""
 struct NoTypeLabels end
 
-"""Sentinel indicating no delay distribution is provided."""
-struct NoDelay end
-
-"""Sentinel indicating no age-specific case fatality rate is provided."""
-struct NoCFR end
-
 """Sentinel indicating no age distribution is provided."""
 struct NoAgeDistribution end
-
-"""Sentinel indicating no outcome options are provided."""
-struct NoOutcomes end
-
-"""Sentinel indicating no demographic options are provided."""
-struct NoDemographics end
 
 """Sentinel indicating no case cap for extinction/containment checks."""
 struct NoCases end

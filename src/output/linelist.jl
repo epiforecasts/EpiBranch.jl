@@ -1,157 +1,39 @@
 """
-    linelist(state::SimulationState; reference_date=Date(2020, 1, 1),
-             delays=DelayOpts(), outcomes=OutcomeOpts(),
-             demographics=nothing, rng=Random.default_rng())
+    linelist(state::SimulationState; reference_date=Date(2020, 1, 1))
 
-Convert simulation output to a line list DataFrame with one row per case
-(infected individuals only).
+Return a DataFrame with one row per infected case. The core columns
+(`id`, `parent_id`, `generation`, `chain_id`, `date_infection`) are
+always present; any other typed field or `state` entry becomes a
+column too. Keys ending in `_time` are converted to dates using
+`reference_date`, so `:onset_time` ends up as `date_onset`.
 
-Columns are built dynamically from what is available on each individual:
-
-- `id`, `parent_id`, `generation`, `chain_id`, `case_type` — always present
-- `date_infection` — always present (from `infection_time` + `reference_date`)
-- `date_onset` — if `:onset_time` was set (via `clinical_presentation()`)
-- `age`, `sex` — if set via `demographics()` attributes or multi-type.
-  If not present and `demographics` kwarg is provided, generated post-hoc.
-- `date_reporting`, `date_admission`, `date_outcome`, `outcome` — if
-  `delays` and/or `outcomes` are provided and onset times are available
-- Any other state dict fields are included as additional columns.
-
-If a `DemographicOpts` is passed via the `demographics` kwarg, age/sex
-are generated post-hoc for individuals that don't already have them.
+To add a column, write the field during the simulation. `linelist`
+reads whatever is on `state`.
 """
 function linelist(state::SimulationState;
-        reference_date::Date = Date(2020, 1, 1),
-        delays::DelayOpts = DelayOpts(),
-        outcomes::Union{OutcomeOpts, NoOutcomes} = NoOutcomes(),
-        demographics::Union{DemographicOpts, NoDemographics} = NoDemographics(),
-        rng::AbstractRNG = Random.default_rng())
+        reference_date::Date = Date(2020, 1, 1))
     cases = filter(is_infected, state.individuals)
-    n = length(cases)
-    n == 0 && return DataFrame()
+    isempty(cases) && return DataFrame()
 
-    # Core columns — always present
     cols = Dict{Symbol, Vector}(
         :id => [ind.id for ind in cases],
         :parent_id => [ind.parent_id for ind in cases],
         :generation => [ind.generation for ind in cases],
         :chain_id => [ind.chain_id for ind in cases],
-        :case_type => [ind.parent_id == 0 ? "index" : "secondary" for ind in cases],
         :date_infection => [reference_date + Day(floor(Int, ind.infection_time))
                             for ind in cases]
     )
 
-    # Onset time → date_onset
-    has_onset = any(haskey(ind.state, :onset_time) for ind in cases)
-    if has_onset
-        cols[:date_onset] = Union{Date, Missing}[let ot = onset_time(ind)
-                                                     isnan(ot) ? missing :
-                                                     reference_date + Day(floor(Int, ot))
-                                                 end
-                                                 for ind in cases]
+    state_keys = Set{Symbol}()
+    for ind in cases
+        union!(state_keys, keys(ind.state))
+    end
+    delete!(state_keys, :infected)  # encoded by the row's existence
+
+    for key in state_keys
+        _add_state_column!(cols, cases, key, reference_date)
     end
 
-    # Demographics — from state dict or generated post-hoc
-    has_age = any(haskey(ind.state, :age) for ind in cases)
-    has_sex = any(haskey(ind.state, :sex) for ind in cases)
-
-    # Apply post-hoc demographics if not already set on individuals
-    if demographics isa DemographicOpts && (!has_age || !has_sex)
-        demo_fn = EpiBranch.demographics(;
-            age_distribution = demographics.age_distribution,
-            age_range = demographics.age_range,
-            prob_female = demographics.prob_female)
-        for ind in cases
-            haskey(ind.state, :age) || demo_fn(rng, ind)
-        end
-        has_age = true
-        has_sex = true
-    end
-
-    if has_age
-        cols[:age] = [get(ind.state, :age, missing) for ind in cases]
-    end
-    if has_sex
-        cols[:sex] = [string(get(ind.state, :sex, missing)) for ind in cases]
-    end
-
-    # Type (from multi-type branching process)
-    has_type = any(haskey(ind.state, :type) for ind in cases)
-    if has_type
-        cols[:type] = [get(ind.state, :type, missing) for ind in cases]
-    end
-
-    # Reporting delay
-    if has_onset && delays.onset_to_reporting isa Distribution
-        cols[:date_reporting] = Union{Date, Missing}[let ot = onset_time(ind)
-                                                         if isnan(ot)
-                                                             missing
-                                                         else
-                                                             d = rand(rng, delays.onset_to_reporting)
-                                                             reference_date +
-                                                             Day(floor(Int, ot + d))
-                                                         end
-                                                     end
-                                                     for ind in cases]
-    end
-
-    # Hospitalisation
-    if has_onset && delays.onset_to_admission isa Distribution
-        prob_hosp = outcomes isa OutcomeOpts ? outcomes.prob_hospitalisation : 0.2
-        cols[:date_admission] = Union{Date, Missing}[let ot = onset_time(ind)
-                                                         if isnan(ot) ||
-                                                            rand(rng) >= prob_hosp
-                                                             missing
-                                                         else
-                                                             d = rand(rng, delays.onset_to_admission)
-                                                             reference_date +
-                                                             Day(floor(Int, ot + d))
-                                                         end
-                                                     end
-                                                     for ind in cases]
-    end
-
-    # Outcomes
-    if outcomes isa OutcomeOpts && has_onset
-        age_col = get(cols, :age, nothing)
-        outcome_strs = Vector{String}(undef, n)
-        date_outcomes = Vector{Union{Date, Missing}}(undef, n)
-
-        for (j, ind) in enumerate(cases)
-            ot = onset_time(ind)
-            if isnan(ot)
-                outcome_strs[j] = "recovered"
-                date_outcomes[j] = missing
-            else
-                prob_death = if age_col !== nothing && !ismissing(age_col[j])
-                    _get_cfr(Int(age_col[j]), outcomes)
-                else
-                    outcomes.prob_death
-                end
-
-                outcome_strs[j] = rand(rng) < prob_death ? "died" : "recovered"
-
-                if delays.onset_to_outcome isa Distribution
-                    d = rand(rng, delays.onset_to_outcome)
-                    date_outcomes[j] = reference_date + Day(floor(Int, ot + d))
-                else
-                    date_outcomes[j] = missing
-                end
-            end
-        end
-
-        cols[:outcome] = outcome_strs
-        cols[:date_outcome] = date_outcomes
-    end
-
-    # Intervention state — include if present
-    for field in [:asymptomatic, :isolated, :traced, :quarantined, :vaccinated]
-        if any(haskey(ind.state, field) for ind in cases)
-            cols[field] = [get(ind.state, field, missing) for ind in cases]
-        end
-    end
-
-    # Build DataFrame with a sensible column order
     ordered_keys = _column_order(keys(cols))
     return DataFrame([k => cols[k] for k in ordered_keys])
 end
@@ -159,13 +41,15 @@ end
 """
     contacts(state::SimulationState; reference_date=Date(2020, 1, 1))
 
-Generate a contacts DataFrame with one row per contact (infected and non-infected).
+Return a DataFrame with one row per contact event (infected and
+non-infected), with columns `from`, `to`, `infected`, `generation`,
+`infection_time`, `date_infection`.
 """
 function contacts(state::SimulationState;
         reference_date::Date = Date(2020, 1, 1))
     froms = Int[]
     tos = Int[]
-    was_cases = Bool[]
+    infecteds = Bool[]
     generations = Int[]
     infection_times = Float64[]
     date_infections = Date[]
@@ -176,7 +60,7 @@ function contacts(state::SimulationState;
             child = state.individuals[child_id]
             push!(froms, ind.id)
             push!(tos, child.id)
-            push!(was_cases, is_infected(child))
+            push!(infecteds, is_infected(child))
             push!(generations, child.generation)
             push!(infection_times, child.infection_time)
             push!(date_infections, reference_date + Day(floor(Int, child.infection_time)))
@@ -184,36 +68,66 @@ function contacts(state::SimulationState;
     end
 
     DataFrame(
-        from = froms, to = tos, was_case = was_cases, generation = generations,
+        from = froms, to = tos, infected = infecteds, generation = generations,
         infection_time = infection_times, date_infection = date_infections
     )
 end
 
 # ── Internal helpers ─────────────────────────────────────────────────
 
-_get_cfr(age::Int, opts::OutcomeOpts{NoCFR}) = opts.prob_death
-
-function _get_cfr(age::Int, opts::OutcomeOpts)
-    for ((lo, hi), cfr) in opts.age_specific_cfr
-        lo <= age <= hi && return cfr
+"""Add a column for a single state key, applying the `_time` → `date_`
+convention for keys whose name ends in `_time` and which carry numeric
+values. Other keys pass through. Columns are omitted only if every
+case's value is `missing` (or, for `_time` keys, every value is
+non-finite/non-numeric)."""
+function _add_state_column!(cols, cases, key::Symbol, reference_date)
+    key_name = String(key)
+    if endswith(key_name, "_time")
+        prefix = key_name[1:(end - length("_time"))]
+        col_name = Symbol("date_" * prefix)
+        col_name in keys(cols) && return nothing  # don't shadow core columns
+        any_finite = false
+        values = Vector{Union{Date, Missing}}(undef, length(cases))
+        for (i, ind) in pairs(cases)
+            t = get(ind.state, key, missing)
+            if t isa Real && isfinite(float(t))
+                values[i] = reference_date + Day(floor(Int, float(t)))
+                any_finite = true
+            else
+                values[i] = missing
+            end
+        end
+        any_finite || return nothing
+        cols[col_name] = values
+    else
+        key in keys(cols) && return nothing
+        raw = [get(ind.state, key, missing) for ind in cases]
+        all(ismissing, raw) && return nothing
+        cols[key] = _normalise_column(raw)
     end
-    return opts.prob_death
+    return nothing
 end
 
-"""Sensible column ordering for the linelist DataFrame."""
+"""Convert `Symbol` entries to `String` so DataFrames serialises cleanly;
+otherwise leave the column untouched."""
+function _normalise_column(values)
+    if any(v -> v isa Symbol, values)
+        return Union{String, Missing}[v isa Symbol ? String(v) : v for v in values]
+    end
+    return values
+end
+
+"""Sensible column ordering for the linelist DataFrame: core simulation
+columns first, then date columns (alphabetical), then the rest
+(alphabetical)."""
 function _column_order(ks)
-    priority = [
-        :id, :parent_id, :generation, :chain_id, :case_type, :type,
-        :age, :sex, :date_infection, :date_onset, :date_reporting,
-        :date_admission, :outcome, :date_outcome,
-        :asymptomatic, :isolated, :traced, :quarantined, :vaccinated
-    ]
-    ordered = Symbol[]
-    for k in priority
-        k in ks && push!(ordered, k)
-    end
-    for k in sort(collect(ks))
-        k in ordered || push!(ordered, k)
-    end
+    core = [:id, :parent_id, :generation, :chain_id, :date_infection]
+    keyset = Set(ks)
+    ordered = Symbol[k for k in core if k in keyset]
+    remaining = [k for k in ks if !(k in ordered)]
+    dates = sort!([k for k in remaining if startswith(String(k), "date_")])
+    others = sort!([k for k in remaining if !startswith(String(k), "date_")])
+    append!(ordered, dates)
+    append!(ordered, others)
     return ordered
 end
