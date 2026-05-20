@@ -89,7 +89,7 @@ function SimOpts(;
         max_cases::Union{Int, Nothing} = 10_000,
         max_generations::Union{Int, Nothing} = 100,
         max_time::Union{Real, Nothing} = nothing,
-        stopping_rules::Union{Vector, Nothing} = nothing)
+        stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing)
     if stopping_rules !== nothing
         return SimOpts(n_initial,
             convert(Vector{AbstractStoppingRule}, stopping_rules))
