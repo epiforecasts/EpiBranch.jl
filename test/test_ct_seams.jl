@@ -13,8 +13,8 @@ end
     @testset "Default constructor lowers kwargs to trait form" begin
         ct = ContactTracing(probability = 0.5, delay = Exponential(1.0))
         @test ct.eligibility isa SymptomaticParent
-        @test ct.fire_rate isa ConstantRate
-        @test ct.fire_rate.p == 0.5
+        @test ct.trace_rate isa ConstantRate
+        @test ct.trace_rate.p == 0.5
         @test ct.delay isa ConstantDelay
         @test ct.action isa Quarantine
     end

@@ -31,24 +31,24 @@ function is_eligible(::SymptomaticParent, parent, contact, state)
 end
 
 """
-    FireRate
+    TraceRate
 
-Trait deciding whether tracing actually fires for an eligible
+Trait deciding whether tracing happens for an eligible
 contact. Implementations override
-[`draw_fires(rate, parent, contact, state, rng)`](@ref).
+[`traces(rate, parent, contact, state, rng)`](@ref).
 """
-abstract type FireRate end
+abstract type TraceRate end
 
 """
-    draw_fires(rate, parent, contact, state, rng) -> Bool
+    traces(rate, parent, contact, state, rng) -> Bool
 """
-draw_fires(::FireRate, parent, contact, state, rng) = false
+traces(::TraceRate, parent, contact, state, rng) = false
 
-"""Bernoulli firing with constant probability `p`."""
-struct ConstantRate <: FireRate
+"""Bernoulli with constant probability `p`."""
+struct ConstantRate <: TraceRate
     p::Float64
 end
-draw_fires(r::ConstantRate, parent, contact, state, rng) = rand(rng) < r.p
+traces(r::ConstantRate, parent, contact, state, rng) = rand(rng) < r.p
 
 """
     TraceDelay
@@ -73,7 +73,7 @@ draw_trace_delay(d::ConstantDelay, parent, contact, state, rng) = float(rand(rng
 """
     TraceAction
 
-Trait describing what happens to a contact once tracing fires.
+Trait describing what happens to a contact once tracing happens.
 Implementations override
 [`apply_trace!(action, contact, state, trace_time, rng)`](@ref).
 """
@@ -123,12 +123,12 @@ thin orchestrator over four traits:
 
 - [`Eligibility`](@ref): who is eligible to be traced (default:
   [`SymptomaticParent`](@ref)).
-- [`FireRate`](@ref): whether tracing actually fires for an eligible
+- [`TraceRate`](@ref): whether tracing happens for an eligible
   contact (default: [`ConstantRate`](@ref)).
 - [`TraceDelay`](@ref): the delay from parent isolation to the trace
   event (default: [`ConstantDelay`](@ref)).
 - [`TraceAction`](@ref): what happens to the contact when tracing
-  fires (default: [`Quarantine`](@ref); set
+  happens (default: [`Quarantine`](@ref); set
   `quarantine_on_trace = false` for [`FlagOnly`](@ref)).
 
 Each trait is independently overridable. The convenience keyword
@@ -141,10 +141,11 @@ Requires fields set by [`Isolation`](@ref): `:isolated`,
 
 Initialises: `:traced`, `:quarantined`.
 """
-struct ContactTracing{E <: Eligibility, F <: FireRate, D <: TraceDelay, A <: TraceAction} <:
+struct ContactTracing{
+    E <: Eligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction} <:
        AbstractIntervention
     eligibility::E
-    fire_rate::F
+    trace_rate::F
     delay::D
     action::A
 end
@@ -189,7 +190,7 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
         parent = state.individuals[ind.parent_id]
 
         is_eligible(ct.eligibility, parent, ind, state) || continue
-        draw_fires(ct.fire_rate, parent, ind, state, rng) || continue
+        traces(ct.trace_rate, parent, ind, state, rng) || continue
 
         trace_delay = draw_trace_delay(ct.delay, parent, ind, state, rng)
         trace_time = isolation_time(parent) + trace_delay

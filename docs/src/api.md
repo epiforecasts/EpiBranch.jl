@@ -32,7 +32,7 @@ ContactTracing
 Eligibility
 AlwaysEligible
 SymptomaticParent
-FireRate
+TraceRate
 ConstantRate
 TraceDelay
 ConstantDelay
@@ -40,7 +40,7 @@ TraceAction
 Quarantine
 FlagOnly
 EpiBranch.is_eligible
-EpiBranch.draw_fires
+EpiBranch.traces
 EpiBranch.draw_trace_delay
 EpiBranch.apply_trace!
 AbstractVaccination

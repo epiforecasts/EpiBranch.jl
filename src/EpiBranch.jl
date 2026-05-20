@@ -70,7 +70,7 @@ export Individual, SimulationState
 export SimOpts
 export AbstractIntervention, Isolation, ContactTracing
 export Eligibility, AlwaysEligible, SymptomaticParent
-export FireRate, ConstantRate
+export TraceRate, ConstantRate
 export TraceDelay, ConstantDelay
 export TraceAction, Quarantine, FlagOnly
 export AbstractVaccination, RingVaccination, MassVaccination
