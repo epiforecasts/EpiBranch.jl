@@ -69,6 +69,10 @@ export TransmissionModel, BranchingProcess
 export Individual, SimulationState
 export SimOpts
 export AbstractIntervention, Isolation, ContactTracing
+export Eligibility, AlwaysEligible, SymptomaticParent
+export FireRate, ConstantRate
+export TraceDelay, ConstantDelay
+export TraceAction, Quarantine, FlagOnly
 export AbstractVaccination, RingVaccination, MassVaccination
 export Scheduled, Risk
 export is_active, intervention_time

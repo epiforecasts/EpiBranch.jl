@@ -1,15 +1,165 @@
-"""
-Trace contacts of isolated symptomatic cases with given probability and delay.
+# ── Trait protocol for contact tracing ──────────────────────────────
+#
+# Contact tracing factors into four independent points of variation,
+# each a dispatched seam. The default built-ins reproduce the original
+# `ContactTracing(probability, delay, quarantine_on_trace)` behaviour;
+# user-defined subtypes slot in via a single method.
 
-Requires fields set by [`Isolation`](@ref): `:isolated`, `:isolation_time`.
-Also requires `:asymptomatic` and `:onset_time` (from `clinical_presentation()`).
+"""
+    Eligibility
+
+Trait deciding whether a parent → contact pair is eligible to be
+traced. Implementations override
+[`is_eligible(eligibility, parent, contact, state)`](@ref).
+"""
+abstract type Eligibility end
+
+"""
+    is_eligible(eligibility, parent, contact, state) -> Bool
+"""
+is_eligible(::Eligibility, parent, contact, state) = true
+
+"""Every contact is eligible."""
+struct AlwaysEligible <: Eligibility end
+is_eligible(::AlwaysEligible, parent, contact, state) = true
+
+"""Eligible only when the parent is symptomatic and has been isolated.
+Reproduces the original `ContactTracing` gate."""
+struct SymptomaticParent <: Eligibility end
+function is_eligible(::SymptomaticParent, parent, contact, state)
+    !is_asymptomatic(parent) && is_isolated(parent)
+end
+
+"""
+    FireRate
+
+Trait deciding whether tracing actually fires for an eligible
+contact. Implementations override
+[`draw_fires(rate, parent, contact, state, rng)`](@ref).
+"""
+abstract type FireRate end
+
+"""
+    draw_fires(rate, parent, contact, state, rng) -> Bool
+"""
+draw_fires(::FireRate, parent, contact, state, rng) = false
+
+"""Bernoulli firing with constant probability `p`."""
+struct ConstantRate <: FireRate
+    p::Float64
+end
+draw_fires(r::ConstantRate, parent, contact, state, rng) = rand(rng) < r.p
+
+"""
+    TraceDelay
+
+Trait giving the delay between the parent's isolation and the
+contact being traced. Implementations override
+[`draw_trace_delay(delay, parent, contact, state, rng)`](@ref).
+"""
+abstract type TraceDelay end
+
+"""
+    draw_trace_delay(delay, parent, contact, state, rng) -> Float64
+"""
+draw_trace_delay(::TraceDelay, parent, contact, state, rng) = 0.0
+
+"""Delay drawn from a fixed distribution."""
+struct ConstantDelay{D <: Distribution} <: TraceDelay
+    dist::D
+end
+draw_trace_delay(d::ConstantDelay, parent, contact, state, rng) = float(rand(rng, d.dist))
+
+"""
+    TraceAction
+
+Trait describing what happens to a contact once tracing fires.
+Implementations override
+[`apply_trace!(action, contact, state, trace_time, rng)`](@ref).
+"""
+abstract type TraceAction end
+
+"""
+    apply_trace!(action, contact, state, trace_time, rng)
+"""
+apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
+
+"""Quarantine the traced contact: set `:traced`, `:quarantined`, and
+isolate them at the trace time (or the earlier of the trace time and
+any pre-existing self-reporting isolation time)."""
+struct Quarantine <: TraceAction end
+function apply_trace!(::Quarantine, contact, state, trace_time, rng)
+    contact.state[:traced] = true
+    contact.state[:quarantined] = true
+    if is_isolated(contact)
+        set_isolated!(contact, min(isolation_time(contact), trace_time))
+    else
+        set_isolated!(contact, trace_time)
+    end
+    return nothing
+end
+
+"""Flag the contact as traced without quarantining them. If the
+contact has a known onset time, record a `:traced_isolation_time` so
+[`Isolation`](@ref) can later pick the earlier of self-reporting and
+tracing."""
+struct FlagOnly <: TraceAction end
+function apply_trace!(::FlagOnly, contact, state, trace_time, rng)
+    contact.state[:traced] = true
+    contact.state[:quarantined] = false
+    ind_onset = onset_time(contact)
+    if !isnan(ind_onset)
+        traced_iso = max(ind_onset, trace_time)
+        contact.state[:traced_isolation_time] = traced_iso
+    end
+    return nothing
+end
+
+# ── ContactTracing intervention ──────────────────────────────────────
+
+"""
+Trace contacts of isolated symptomatic cases. The intervention is a
+thin orchestrator over four traits:
+
+- [`Eligibility`](@ref): who is eligible to be traced (default:
+  [`SymptomaticParent`](@ref)).
+- [`FireRate`](@ref): whether tracing actually fires for an eligible
+  contact (default: [`ConstantRate`](@ref)).
+- [`TraceDelay`](@ref): the delay from parent isolation to the trace
+  event (default: [`ConstantDelay`](@ref)).
+- [`TraceAction`](@ref): what happens to the contact when tracing
+  fires (default: [`Quarantine`](@ref); set
+  `quarantine_on_trace = false` for [`FlagOnly`](@ref)).
+
+Each trait is independently overridable. The convenience keyword
+constructor preserves the original terse form
+(`ContactTracing(probability = 0.8, delay = LogNormal(...))`).
+
+Requires fields set by [`Isolation`](@ref): `:isolated`,
+`:isolation_time`. Also requires `:asymptomatic` and `:onset_time`
+(from `clinical_presentation()`).
 
 Initialises: `:traced`, `:quarantined`.
 """
-Base.@kwdef struct ContactTracing <: AbstractIntervention
-    probability::Float64
-    delay::Distribution
-    quarantine_on_trace::Bool = true
+struct ContactTracing{E <: Eligibility, F <: FireRate, D <: TraceDelay, A <: TraceAction} <:
+       AbstractIntervention
+    eligibility::E
+    fire_rate::F
+    delay::D
+    action::A
+end
+
+function ContactTracing(;
+        probability::Float64,
+        delay::Distribution,
+        quarantine_on_trace::Bool = true,
+        eligibility::Eligibility = SymptomaticParent())
+    return ContactTracing(
+        eligibility,
+        ConstantRate(probability),
+        ConstantDelay(delay),
+        quarantine_on_trace ? Quarantine() : FlagOnly()
+    )
 end
 
 required_fields(::ContactTracing) = [:isolated, :asymptomatic]
@@ -25,49 +175,25 @@ function reset!(::ContactTracing, ind::Individual)
     return nothing
 end
 
-function initialise_individual!(ct::ContactTracing, individual, state)
+function initialise_individual!(::ContactTracing, individual, state)
     individual.state[:traced] = false
     individual.state[:quarantined] = false
     return nothing
 end
 
 function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
+    rng = state.rng
     for ind in new_contacts
-        # O(1) parent lookup: id == 1-based index into individuals
         ind.parent_id == 0 && continue
         ind.parent_id > length(state.individuals) && continue
         parent = state.individuals[ind.parent_id]
 
-        # Contact tracing only triggers from symptomatic, isolated parents
-        is_asymptomatic(parent) && continue
-        !is_isolated(parent) && continue
+        is_eligible(ct.eligibility, parent, ind, state) || continue
+        draw_fires(ct.fire_rate, parent, ind, state, rng) || continue
 
-        # Trace with given probability
-        if rand(state.rng) < ct.probability
-            trace_delay = rand(state.rng, ct.delay)
-            trace_time = isolation_time(parent) + trace_delay
-
-            ind.state[:traced] = true
-
-            if ct.quarantine_on_trace
-                ind.state[:quarantined] = true
-                # Quarantine: isolate at trace time (can be before onset)
-                if is_isolated(ind)
-                    # Already isolated via self-reporting — keep earlier time
-                    set_isolated!(ind, min(isolation_time(ind), trace_time))
-                else
-                    set_isolated!(ind, trace_time)
-                end
-            else
-                ind_onset = onset_time(ind)
-                if !isnan(ind_onset)
-                    # No quarantine: store traced isolation time.
-                    # Isolation will later compute self-reporting time and
-                    # take the minimum of the two.
-                    traced_iso = max(ind_onset, trace_time)
-                    ind.state[:traced_isolation_time] = traced_iso
-                end
-            end
-        end
+        trace_delay = draw_trace_delay(ct.delay, parent, ind, state, rng)
+        trace_time = isolation_time(parent) + trace_delay
+        apply_trace!(ct.action, ind, state, trace_time, rng)
     end
+    return nothing
 end
