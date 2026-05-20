@@ -69,10 +69,9 @@ function _make_one_contact!(new_contacts, parent, state,
         next_id, inf_time, interventions)
     _set_type!(contact, type_idx)
 
-    # `:infected` is provisionally set by `_create_individual`'s default.
-    # Clear it here so `apply_post_transmission!` does not observe a
-    # final-state flag that is still pending competing-risks resolution.
-    contact.state[:infected] = false
+    # `:infected` defaults to false in `_create_individual` and is
+    # set to true (if applicable) by the engine's competing-risks
+    # resolution after `step!` returns.
 
     push!(parent.secondary_case_ids, next_id)
     push!(new_contacts, contact)
