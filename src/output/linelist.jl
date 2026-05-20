@@ -20,7 +20,7 @@ function linelist(state::SimulationState;
         :parent_id => [ind.parent_id for ind in cases],
         :generation => [ind.generation for ind in cases],
         :chain_id => [ind.chain_id for ind in cases],
-        :date_infection => [reference_date + Day(floor(Int, ind.infection_time))
+        :date_infection => [_to_date(reference_date, ind.infection_time)
                             for ind in cases]
     )
 
@@ -47,33 +47,35 @@ non-infected), with columns `from`, `to`, `infected`, `generation`,
 """
 function contacts(state::SimulationState;
         reference_date::Date = Date(2020, 1, 1))
-    froms = Int[]
-    tos = Int[]
-    infecteds = Bool[]
-    generations = Int[]
-    infection_times = Float64[]
-    date_infections = Date[]
-
+    df = DataFrame(from = Int[], to = Int[], infected = Bool[],
+        generation = Int[], infection_time = Float64[],
+        date_infection = Date[])
     for ind in state.individuals
         for child_id in ind.secondary_case_ids
             child_id > length(state.individuals) && continue
             child = state.individuals[child_id]
-            push!(froms, ind.id)
-            push!(tos, child.id)
-            push!(infecteds, is_infected(child))
-            push!(generations, child.generation)
-            push!(infection_times, child.infection_time)
-            push!(date_infections, reference_date + Day(floor(Int, child.infection_time)))
+            push!(df,
+                (
+                    from = ind.id,
+                    to = child.id,
+                    infected = is_infected(child),
+                    generation = child.generation,
+                    infection_time = child.infection_time,
+                    date_infection = _to_date(reference_date, child.infection_time)
+                ))
         end
     end
-
-    DataFrame(
-        from = froms, to = tos, infected = infecteds, generation = generations,
-        infection_time = infection_times, date_infection = date_infections
-    )
+    return df
 end
 
 # ── Internal helpers ─────────────────────────────────────────────────
+
+"""Convert a simulation time (real number) to a `Date` offset from
+`reference_date`. Non-finite or non-numeric inputs return `missing`."""
+function _to_date(reference_date::Date, t::Real)
+    isfinite(t) ? reference_date + Day(floor(Int, t)) : missing
+end
+_to_date(::Date, _) = missing
 
 """Add a column for a single state key, applying the `_time` → `date_`
 convention for keys whose name ends in `_time` and which carry numeric
@@ -86,16 +88,13 @@ function _add_state_column!(cols, cases, key::Symbol, reference_date)
         prefix = key_name[1:(end - length("_time"))]
         col_name = Symbol("date_" * prefix)
         col_name in keys(cols) && return nothing  # don't shadow core columns
-        any_finite = false
         values = Vector{Union{Date, Missing}}(undef, length(cases))
+        any_finite = false
         for (i, ind) in pairs(cases)
             t = get(ind.state, key, missing)
-            if t isa Real && isfinite(float(t))
-                values[i] = reference_date + Day(floor(Int, float(t)))
-                any_finite = true
-            else
-                values[i] = missing
-            end
+            d = t isa Real ? _to_date(reference_date, t) : missing
+            values[i] = d
+            d === missing || (any_finite = true)
         end
         any_finite || return nothing
         cols[col_name] = values
