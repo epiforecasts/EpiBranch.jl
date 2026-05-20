@@ -44,6 +44,9 @@ function simulate(model::TransmissionModel;
     while !should_terminate(state, sim_opts)
         pre = length(state.individuals)
         new_contacts = step!(model, state, interventions)
+        for intervention in interventions
+            apply_post_transmission!(intervention, state, new_contacts)
+        end
         _resolve_competing_risks!(state, new_contacts, interventions)
         _register_step!(state, new_contacts)
         _resolve_new_transitions!(state, pre)

@@ -29,10 +29,6 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
             gt_dist, interventions, next_id)
     end
 
-    for intervention in interventions
-        apply_post_transmission!(intervention, state, new_contacts)
-    end
-
     return new_contacts
 end
 
@@ -73,8 +69,10 @@ function _make_one_contact!(new_contacts, parent, state,
         next_id, inf_time, interventions)
     _set_type!(contact, type_idx)
 
-    # `:infected` is decided by the engine's competing-risks resolution
-    # after `step!` returns.
+    # `:infected` is provisionally set by `_create_individual`'s default.
+    # Clear it here so `apply_post_transmission!` does not observe a
+    # final-state flag that is still pending competing-risks resolution.
+    contact.state[:infected] = false
 
     push!(parent.secondary_case_ids, next_id)
     push!(new_contacts, contact)

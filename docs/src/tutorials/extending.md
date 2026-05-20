@@ -35,7 +35,7 @@ Tree-shaping changes — capping offspring per parent, gathering-size
 limits, anything that's really "this parent produces fewer contacts
 than its natural offspring distribution would say" — belong in the
 offspring distribution itself, not in the intervention protocol. See
-[Tree-shaping via the offspring distribution](#Tree-shaping-via-the-offspring-distribution)
+[Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution)
 below.
 
 ### Minimal example: a custom competing risk
@@ -177,7 +177,7 @@ distribution that reads `ind.infection_time`:
 ```@example extending
 r_at_time(t) = max(1.0, 3.0 - 2.0 * t / 50.0)
 time_varying = (rng, ind) -> rand(rng, Poisson(r_at_time(ind.infection_time)))
-model_rt = BranchingProcess(time_varying, Exponential(5.0); n_types = 1)
+model_rt = BranchingProcess(time_varying, Exponential(5.0))
 ```
 
 Use `ind.infection_time` when R varies with each parent's own

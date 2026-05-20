@@ -130,7 +130,7 @@ end
 
 # Multi-type with explicit offspring function
 function BranchingProcess(offspring::Function, gt::Union{Distribution, Function};
-        n_types::Int, population_size::Union{Int, NoPopulation} = NoPopulation(),
+        n_types::Int = 1, population_size::Union{Int, NoPopulation} = NoPopulation(),
         latent_period::Real = 0.0,
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
     BranchingProcess(

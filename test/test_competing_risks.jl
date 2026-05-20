@@ -15,15 +15,15 @@
         end
     end
 
-    @testset "Tree-shaping via function-form offspring (state-aware)" begin
-        # Express a "gathering limit" as a state-aware offspring
-        # distribution rather than an intervention. The engine already
-        # supports this via the (rng, ind, state) form.
+    @testset "State-aware offspring caps per-parent contact count" begin
+        # A gathering-limit-style cap expressed as a state-aware
+        # offspring distribution. The (rng, ind, state) form lets it
+        # depend on cumulative_cases.
         cap_after_20 = function (rng, ind, state)
             n = rand(rng, Poisson(5.0))
             return state.cumulative_cases >= 20 ? min(n, 2) : n
         end
-        model_cap = BranchingProcess(cap_after_20, Exponential(5.0); n_types = 1)
+        model_cap = BranchingProcess(cap_after_20, Exponential(5.0))
 
         rng = StableRNG(42)
         state = simulate(model_cap; attributes = clinical,
@@ -36,11 +36,9 @@
         end
     end
 
-    @testset "MassVaccination blocks every secondary infection at full efficacy from t=0" begin
-        # With eligibility at t=0, no delay, and efficacy=1, every
-        # contact's vaccination has immunity by their transmission
-        # time, so every secondary transmission is blocked. The
-        # outbreak should never get past the index case.
+    @testset "MassVaccination at t=0 with full efficacy stops the outbreak at the index" begin
+        # Every contact's immunity is in place by their transmission
+        # time, so the engine blocks every secondary transmission.
         mv = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
             delay_to_immunity = 0.0)
         for seed in 1:5

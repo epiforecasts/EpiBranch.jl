@@ -16,7 +16,14 @@ exposures per individual.
 """
 abstract type AbstractVaccination <: AbstractIntervention end
 
+"""Per-exposure probability that vaccination blocks transmission once
+immunity is in place. Read by the shared [`competing_risk`](@ref)
+method on `AbstractVaccination`."""
 efficacy(v::AbstractVaccination) = v.efficacy
+
+"""Time between vaccination and the onset of protective immunity. Added
+to `:vaccination_time` to give the event time of vaccination's
+competing risk."""
 delay_to_immunity(v::AbstractVaccination) = v.delay_to_immunity
 
 function initialise_individual!(::AbstractVaccination, individual, state)
