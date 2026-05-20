@@ -13,6 +13,12 @@ single_type_offspring
 Individual
 SimulationState
 SimOpts
+AbstractStoppingRule
+Extinction
+MaxCases
+MaxGenerations
+MaxTime
+should_stop
 ```
 
 ## Simulation

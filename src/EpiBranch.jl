@@ -68,6 +68,7 @@ include("analytical/real_time.jl")
 export TransmissionModel, BranchingProcess
 export Individual, SimulationState
 export SimOpts
+export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
 export AbstractIntervention, Isolation, ContactTracing
 export AbstractVaccination, RingVaccination, MassVaccination
 export Scheduled, Risk

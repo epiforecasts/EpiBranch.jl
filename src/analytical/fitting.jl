@@ -109,11 +109,12 @@ function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
         cs = chain_statistics(state)
         vals = getproperty(cs, column)
         append!(sim_values, vals)
-        hit_cap = !state.extinct && state.cumulative_cases >= sim_opts.max_cases
+        cap = max_cases(sim_opts)
+        hit_cap = !state.extinct && state.cumulative_cases >= cap
         append!(censored, fill(hit_cap, length(vals)))
     end
     return _empirical_ll(observed, sim_values; min_val, censored,
-        cap = sim_opts.max_cases)
+        cap = max_cases(sim_opts))
 end
 
 """
@@ -151,13 +152,14 @@ function loglikelihood(data::ChainSizes,
             obs = rand(rng, Binomial(true_size, p))
             obs >= 1 || continue
             push!(sim_values, obs)
+            cap = max_cases(sim_opts)
             hit_cap = !state.extinct &&
-                      state.cumulative_cases >= sim_opts.max_cases
+                      state.cumulative_cases >= cap
             push!(censored, hit_cap)
         end
     end
     return _empirical_ll(data.data, sim_values; min_val = 1, censored,
-        cap = sim_opts.max_cases)
+        cap = max_cases(sim_opts))
 end
 
 function loglikelihood(::ChainLengths,
