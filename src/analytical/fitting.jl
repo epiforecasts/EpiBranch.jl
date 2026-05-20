@@ -105,16 +105,15 @@ function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
     sim_values = Int[]
     # Track which simulations hit the case cap (right-censored)
     censored = Bool[]
+    cap = max_cases(sim_opts)
     for state in states
         cs = chain_statistics(state)
         vals = getproperty(cs, column)
         append!(sim_values, vals)
-        cap = max_cases(sim_opts)
         hit_cap = !state.extinct && state.cumulative_cases >= cap
         append!(censored, fill(hit_cap, length(vals)))
     end
-    return _empirical_ll(observed, sim_values; min_val, censored,
-        cap = max_cases(sim_opts))
+    return _empirical_ll(observed, sim_values; min_val, censored, cap)
 end
 
 """
