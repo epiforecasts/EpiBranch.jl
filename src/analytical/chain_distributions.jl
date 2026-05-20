@@ -209,6 +209,31 @@ function _chain_size_logpdf(d::PoissonGammaChainSize, x::Integer, s::Integer)
 end
 
 """
+    _chain_size_right_tail_logprob(d, x, s)
+
+Internal: multi-seed log-survival of a chain size distribution `d`,
+`log P(X ≥ x | s)`, computed as `log(1 − Σ_{j=s}^{x-1} P(X = j | s))`.
+For super-critical processes the missing mass `1 − Σ_{j ≥ s} P(X = j)`
+is the "chain takes off" probability and is included automatically.
+
+Returns `0.0` when `x ≤ s` (trivially `P(X ≥ s) = 1`) and `-Inf` when
+the partial sum reaches or exceeds 1 (numerical underflow of the tail).
+Used by the real-time mixture likelihood in
+`loglikelihood(::ChainSizes, ...)`.
+"""
+function _chain_size_right_tail_logprob(d, x::Integer, s::Integer)
+    (s < 1 || x < 1) && return -Inf
+    x <= s && return zero(_chain_size_logpdf(d, s, s))
+    cum = zero(exp(_chain_size_logpdf(d, s, s)))
+    for j in s:(x - 1)
+        cum += exp(_chain_size_logpdf(d, j, s))
+        cum >= one(cum) && return oftype(cum, -Inf)
+    end
+    p = one(cum) - cum
+    return p > zero(p) ? log(p) : oftype(cum, -Inf)
+end
+
+"""
     chain_size_distribution(offspring::Poisson)
 
 Analytical chain size distribution for Poisson offspring.

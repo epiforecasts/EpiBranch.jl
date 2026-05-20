@@ -264,6 +264,93 @@
             @test_throws ArgumentError ChainSizes([3]; seeds = [1, 1])
         end
 
+        @testset "Real-time mixture likelihood and end_of_outbreak_probability" begin
+            # Right-tail helper: P(X ≥ s) = 1 ⇒ logright_tail = 0.
+            d = GammaBorel(0.5, 0.8)
+            @test EpiBranch._chain_size_right_tail_logprob(d, 1, 1) == 0.0
+            @test EpiBranch._chain_size_right_tail_logprob(d, 2, 2) == 0.0
+
+            # log P(X = x) + log P(X ≥ x + 1) sums consistently with the
+            # PMF: P(X = x) + P(X ≥ x + 1) = P(X ≥ x).
+            for x in 2:8
+                pmf = exp(EpiBranch._chain_size_logpdf(d, x, 1))
+                tail_below = exp(EpiBranch._chain_size_right_tail_logprob(d, x, 1))
+                tail_above = exp(EpiBranch._chain_size_right_tail_logprob(d, x + 1, 1))
+                @test tail_below≈pmf + tail_above atol=1e-9
+            end
+
+            # pi == ones reproduces the concluded-only likelihood.
+            data = ChainSizes([1, 1, 2, 3])
+            @test loglikelihood(data, NegBin(0.8, 0.5)) ≈
+                  loglikelihood(data, NegBin(0.8, 0.5); pi = [1.0, 1.0, 1.0, 1.0])
+
+            # pi == zeros ⇒ all clusters treated as ongoing (right-tail only).
+            ll_ongoing = loglikelihood(data, NegBin(0.8, 0.5);
+                pi = [0.0, 0.0, 0.0, 0.0])
+            d = GammaBorel(0.5, 0.8)
+            ll_expected = sum(
+                EpiBranch._chain_size_right_tail_logprob(d, x, 1)
+            for x in data.data)
+            @test ll_ongoing ≈ ll_expected
+
+            # Mixture: ll bounded between pi=1 and pi=0 ends for pi in (0, 1).
+            ll_mid = loglikelihood(data, NegBin(0.8, 0.5); pi = [0.5, 0.5, 0.5, 0.5])
+            ll_concluded = loglikelihood(data, NegBin(0.8, 0.5))
+            @test min(ll_concluded, ll_ongoing) <= ll_mid <=
+                  max(ll_concluded, ll_ongoing)
+
+            # Likelihood-time validation of `pi`.
+            @test_throws ArgumentError loglikelihood(
+                data, NegBin(0.8, 0.5); pi = [0.5, 0.5])     # wrong length
+            @test_throws ArgumentError loglikelihood(
+                data, NegBin(0.8, 0.5); pi = [0.5, 0.5, 0.5, 1.1])  # out of [0, 1]
+            @test_throws ArgumentError loglikelihood(
+                data, NegBin(0.8, 0.5); pi = [-0.1, 0.5, 0.5, 0.5])
+
+            # end_of_outbreak_probability: G(0) at τ=0, → 1 as τ → ∞, monotone.
+            GT = Gamma(2.78, 1.8)
+            R, k = 2.5, 0.1
+            @test end_of_outbreak_probability(R, k, GT, 0.0) ≈ (k / (k + R))^k
+            @test end_of_outbreak_probability(R, k, GT, Inf) == 1.0
+            taus = 0.0:1.0:30.0
+            πs = [end_of_outbreak_probability(R, k, GT, τ) for τ in taus]
+            @test issorted(πs)
+            @test all(0 .<= πs .<= 1)
+
+            # Poisson overload: π(τ=0) = exp(-R); → 1 as τ → ∞.
+            @test end_of_outbreak_probability(Poisson(R), GT, 0.0) ≈ exp(-R)
+            @test end_of_outbreak_probability(Poisson(R), GT, Inf) == 1.0
+
+            # NegBin offspring overload agrees with the (R, k) form.
+            @test end_of_outbreak_probability(NegBin(R, k), GT, 5.0) ≈
+                  end_of_outbreak_probability(R, k, GT, 5.0)
+
+            # BranchingProcess overload agrees with the offspring/gt one.
+            bp = BranchingProcess(NegBin(R, k), GT)
+            @test end_of_outbreak_probability(bp, 5.0) ≈
+                  end_of_outbreak_probability(R, k, GT, 5.0)
+
+            # The Observed{..., PerCaseObservation} wrapper is refused
+            # explicitly: under-reporting (ρ < 1) needs the Volterra
+            # recursion which is not implemented.
+            om = Observed(bp, PerCaseObservation(0.5, Dirac(0.0)))
+            @test_throws ArgumentError end_of_outbreak_probability(om, 5.0)
+
+            # Vector-of-τ overload returns same elements.
+            πs_vec = end_of_outbreak_probability(R, k, GT, collect(taus))
+            @test πs_vec ≈ πs
+
+            # End-to-end: end_of_outbreak_probability feeds the pi kwarg
+            # and the mixture likelihood evaluates without error.
+            sizes = [1, 2, 100, 1766]
+            seeds = [1, 1, 3, 17]
+            taus_data = [0.0, 7.0, 0.0, 0.0]
+            π_vals = [end_of_outbreak_probability(R, k, GT, τ) for τ in taus_data]
+            data_endo = ChainSizes(sizes; seeds = seeds)
+            ll = loglikelihood(data_endo, NegBin(R, k); pi = π_vals)
+            @test isfinite(ll)
+        end
+
         @testset "Per-case observation: simulation decoration" begin
             R, k = 0.6, 0.3
             gt = Gamma(2.0, 2.5)

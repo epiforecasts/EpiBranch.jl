@@ -22,13 +22,18 @@ end
 
 """
 Observed transmission chain sizes (total number of cases per chain).
-Used with `loglikelihood` and `fit`. All clusters are treated as
-concluded (final-size likelihood). EpiBranch does not currently
-provide a real-time likelihood for clusters still active at the
-reporting cutoff.
+Used with `loglikelihood` and `fit`.
 
+Fields:
+
+- `data::Vector{Int}` — observed cluster sizes.
 - `seeds::Vector{Int}` — number of independent index cases per cluster
   (default `1`).
+
+By default every cluster is treated as concluded (final-size
+likelihood). For real-time data with still-active clusters, pass a
+per-cluster `pi` vector of "is finished" probabilities to
+`loglikelihood`; see the `pi` kwarg on `loglikelihood(::ChainSizes, ::Distribution)`.
 
 # Examples
 
