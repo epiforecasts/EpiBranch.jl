@@ -185,8 +185,8 @@ Core fields (used by the engine):
   invariant is relied on for O(1) parent lookups.
 - `infection_time::Float64` — time at which this contact was exposed.
 - `susceptibility::Float64` ∈ `[0, 1]` — per-contact probability of
-  being infected given exposure. Checked in
-  [`EpiBranch._resolve_infection`](@ref).
+  being infected given exposure. Applied as a built-in competing risk
+  by the engine during infection resolution.
 - `infectiousness::Float64` ∈ `[0, 1]` — multiplicative modifier on
   this individual's onward transmission, applied when they become a
   parent.
