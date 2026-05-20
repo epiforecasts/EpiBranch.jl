@@ -161,7 +161,7 @@ end
 `:infected` is left at `false` so that any contact returned from a
 model's `step!` carries a not-yet-decided flag — only the engine's
 competing-risks resolution may set it to `true`. Initial individuals
-(created in [`initialise_state`](@ref)) are explicitly marked infected
+(created in `initialise_state`) are explicitly marked infected
 after construction; clinical transitions are resolved separately by
 the engine after each `step!` returns.
 """
