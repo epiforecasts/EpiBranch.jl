@@ -239,9 +239,9 @@ function _decide_infected(state::SimulationState, contact::Individual,
     for intervention in interventions
         risk = competing_risk(intervention, parent, contact, state)
         risk === nothing && continue
-        event_t = _resolve_risk_value(risk.event_time, rng, parent, contact, state)
+        event_t = _sample_value(risk.event_time, rng, parent, contact, state)
         event_t > transmission_time && continue
-        prob = _resolve_risk_value(risk.block_probability, rng, parent, contact, state)
+        prob = _sample_value(risk.block_probability, rng, parent, contact, state)
         prob <= 0.0 && continue
         prob >= 1.0 && return false
         rand(rng) < prob && return false

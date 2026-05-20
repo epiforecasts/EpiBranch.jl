@@ -88,9 +88,3 @@ Undo the effect of an intervention on an individual. Called by
 Default: no-op.
 """
 reset!(::AbstractIntervention, ::Individual) = nothing
-
-# ── Internal helpers ─────────────────────────────────────────────────
-
-"""Resolve a Risk field that may be a Real or a callable."""
-_resolve_risk_value(x::Real, rng, parent, contact, state) = float(x)
-_resolve_risk_value(f, rng, parent, contact, state) = float(f(rng, parent, contact, state))

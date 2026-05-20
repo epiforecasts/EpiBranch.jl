@@ -19,6 +19,12 @@ abstract type AbstractVaccination <: AbstractIntervention end
 efficacy(v::AbstractVaccination) = v.efficacy
 delay_to_immunity(v::AbstractVaccination) = v.delay_to_immunity
 
+function initialise_individual!(::AbstractVaccination, individual, state)
+    individual.state[:vaccinated] = false
+    individual.state[:vaccination_time] = Inf
+    return nothing
+end
+
 """Vaccination's competing risk: blocks the parent → contact
 transmission iff the contact has been vaccinated and immunity has
 developed by their transmission time."""
@@ -53,12 +59,6 @@ Base.@kwdef struct RingVaccination <: AbstractVaccination
 end
 
 required_fields(::RingVaccination) = [:traced]
-
-function initialise_individual!(::RingVaccination, individual, state)
-    individual.state[:vaccinated] = false
-    individual.state[:vaccination_time] = Inf
-    return nothing
-end
 
 function apply_post_transmission!(::RingVaccination, state, new_contacts)
     for ind in new_contacts
@@ -129,23 +129,13 @@ end
 
 required_fields(::MassVaccination) = Symbol[]
 
-function initialise_individual!(::MassVaccination, individual, state)
-    individual.state[:vaccinated] = false
-    individual.state[:vaccination_time] = Inf
-    return nothing
-end
-
 function apply_post_transmission!(mv::MassVaccination, state, new_contacts)
     for ind in new_contacts
         is_vaccinated(ind) && continue
-        vacc_t = _draw_eligibility_time(mv.eligibility_time, state.rng, ind)
+        vacc_t = _sample_value(mv.eligibility_time, state.rng, ind)
         isfinite(vacc_t) || continue
         ind.state[:vaccinated] = true
         ind.state[:vaccination_time] = vacc_t
     end
     return nothing
 end
-
-_draw_eligibility_time(t::Real, rng, ind) = float(t)
-_draw_eligibility_time(d::Distribution, rng, ind) = float(rand(rng, d))
-_draw_eligibility_time(f, rng, ind) = float(f(rng, ind))
