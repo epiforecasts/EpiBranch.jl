@@ -15,16 +15,23 @@
         end
     end
 
-    @testset "cap_offspring tightens the offspring count" begin
-        struct CapTwo <: AbstractIntervention end
-        EpiBranch.cap_offspring(::CapTwo, parent, state) = 2
+    @testset "Tree-shaping via function-form offspring (state-aware)" begin
+        # Express a "gathering limit" as a state-aware offspring
+        # distribution rather than an intervention. The engine already
+        # supports this via the (rng, ind, state) form.
+        cap_after_20 = function (rng, ind, state)
+            n = rand(rng, Poisson(5.0))
+            return state.cumulative_cases >= 20 ? min(n, 2) : n
+        end
+        model_cap = BranchingProcess(cap_after_20, Exponential(5.0); n_types = 1)
 
         rng = StableRNG(42)
-        state = simulate(BranchingProcess(Poisson(10.0), Exponential(5.0));
-            interventions = [CapTwo()], attributes = clinical,
-            sim_opts = SimOpts(max_cases = 100), rng = rng)
-        # Every parent emits at most 2 contacts (infected or not).
+        state = simulate(model_cap; attributes = clinical,
+            sim_opts = SimOpts(max_cases = 200), rng = rng)
+        # After the cap kicks in (cumulative_cases >= 20), every parent
+        # should emit at most 2 contacts.
         for ind in state.individuals
+            ind.id < 20 && continue
             @test length(ind.secondary_case_ids) <= 2
         end
     end

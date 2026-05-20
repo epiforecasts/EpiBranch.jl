@@ -9,8 +9,8 @@ EpiBranch.jl is designed for user extension. This guide covers:
 ## Custom interventions
 
 Every intervention is a struct that subtypes `AbstractIntervention`. The
-engine calls five hooks on each intervention; you implement only the ones
-your intervention needs (all default to no-ops).
+engine calls four hooks on each intervention; you implement only the
+ones your intervention needs (all default to no-ops).
 
 1. **`initialise_individual!(intervention, individual, state)`** — called
    once when each individual is created. Use this to set up
@@ -19,50 +19,24 @@ your intervention needs (all default to no-ops).
    once per active individual at the start of each generation, before
    offspring are drawn. Use this to determine the individual's
    intervention status (e.g. compute isolation time on the parent).
-3. **`cap_offspring(intervention, parent, state)`** — called per active
-   parent during tree generation. Return an `Int` to cap the number of
-   offspring this parent produces (or `nothing` for no cap). Use this
-   for tree-shaping interventions like gathering-size limits.
-4. **`apply_post_transmission!(intervention, state, new_contacts)`** —
+3. **`apply_post_transmission!(intervention, state, new_contacts)`** —
    called once per generation after all offspring have been created.
    Use this to write per-contact state that downstream observers or
    competing risks will read (e.g. tracing writes `:traced`,
    vaccination writes `:vaccination_time`).
-5. **`competing_risk(intervention, parent, contact, state)`** — called
+4. **`competing_risk(intervention, parent, contact, state)`** — called
    per (parent, contact) pair during infection resolution. Return a
    [`Risk`](@ref) with `event_time` and `block_probability`, or
    `nothing` if the intervention does not gate this transmission. Use
    this for anything that probabilistically blocks a specific
    transmission event.
 
-### Minimal example: gathering limit
-
-A simple intervention that caps the number of contacts per parent in
-each generation:
-
-```@example extending
-using EpiBranch
-using Distributions
-using StableRNGs
-
-struct GatheringLimit <: AbstractIntervention
-    max_contacts::Int
-end
-
-EpiBranch.cap_offspring(gl::GatheringLimit, parent, state) = gl.max_contacts
-
-gl = GatheringLimit(5)
-rng = StableRNG(42)
-results = simulate_batch(
-    BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)), 200;
-    interventions = [gl],
-    sim_opts = SimOpts(max_cases = 500),
-    rng = rng,
-)
-println("With gathering limit (max 5): $(round(containment_probability(results), digits=3))")
-```
-
-When several interventions return caps, the engine applies the tightest.
+Tree-shaping changes — capping offspring per parent, gathering-size
+limits, anything that's really "this parent produces fewer contacts
+than its natural offspring distribution would say" — belong in the
+offspring distribution itself, not in the intervention protocol. See
+[Tree-shaping via the offspring distribution](#Tree-shaping-via-the-offspring-distribution)
+below.
 
 ### Minimal example: a custom competing risk
 
@@ -73,6 +47,10 @@ carries `:region` as a custom attribute; the intervention's
 a blocking risk when they differ.
 
 ```@example extending
+using EpiBranch
+using Distributions
+using StableRNGs
+
 struct BorderClosure <: AbstractIntervention
     start_time::Float64
     leakage::Float64   # residual cross-border transmission probability
@@ -121,8 +99,8 @@ end
 Then a user schedules the intervention like:
 
 ```julia
-# Activate gathering limit on day 10
-Scheduled(GatheringLimit(5); start_time = 10.0)
+# Activate border closure on day 10
+Scheduled(BorderClosure(0.0, 0.05); start_time = 10.0)
 ```
 
 ### Requiring fields on individuals
@@ -138,22 +116,74 @@ EpiBranch.required_fields(::MyIntervention) = [:onset_time, :asymptomatic]
 ### Composing with built-in interventions
 
 Custom interventions compose naturally with the built-in ones. The
-engine applies all interventions in order each generation:
+engine applies all interventions in order each generation. Building on
+the `BorderClosure` above (interpreted here as everyone being in one
+region so closure does nothing — illustrative only):
 
 ```@example extending
 model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
-clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+clinical_with_region = compose(
+    clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    (rng, ind) -> (ind.state[:region] = :only),
+)
 iso = Isolation(delay = Exponential(2.0))
-gl = GatheringLimit(5)
+bc = BorderClosure(10.0, 0.05)
 
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
-    interventions = [iso, gl],
-    attributes = clinical,
+    interventions = [iso, bc],
+    attributes = clinical_with_region,
     sim_opts = SimOpts(max_cases = 500), rng = rng,
 )
-println("Isolation + gathering limit: $(round(containment_probability(results), digits=3))")
+println("Isolation + border closure: $(round(containment_probability(results), digits=3))")
 ```
+
+## Tree-shaping via the offspring distribution
+
+Some interventions don't filter individual transmissions — they change
+*how many* contacts a parent makes. Gathering limits, event-size caps,
+and superspreading-event surveillance all fit this pattern. They are
+genuinely modifications to the offspring distribution, not per-contact
+risks, and EpiBranch handles them by accepting a function-form
+offspring distribution to [`BranchingProcess`](@ref).
+
+A hard cap on offspring per parent:
+
+```@example extending
+capped_offspring(rng, ind) = min(rand(rng, NegBin(2.5, 0.16)), 5)
+model_capped = BranchingProcess(capped_offspring, Exponential(5.0))
+```
+
+A state-aware cap that only kicks in once the outbreak crosses 20
+cases (mirroring what `Scheduled` does for risk-based interventions,
+but for a tree-shape change):
+
+```@example extending
+function policy_offspring(rng, ind, state)
+    n = rand(rng, NegBin(2.5, 0.16))
+    return state.cumulative_cases >= 20 ? min(n, 5) : n
+end
+model_policy = BranchingProcess(policy_offspring, Exponential(5.0))
+```
+
+The function form supports either two or three arguments — `(rng, ind)`
+when the offspring rule only needs the individual, `(rng, ind, state)`
+when it also reads simulation state.
+
+Time-varying R falls out of the same mechanism. If `R(t)` is a
+function of (say) the parent's infection time, pass an offspring
+distribution that reads `ind.infection_time`:
+
+```@example extending
+r_at_time(t) = max(1.0, 3.0 - 2.0 * t / 50.0)
+time_varying = (rng, ind) -> rand(rng, Poisson(r_at_time(ind.infection_time)))
+model_rt = BranchingProcess(time_varying, Exponential(5.0); n_types = 1)
+```
+
+Use `ind.infection_time` when R varies with each parent's own
+infection timing, or `state.max_infection_time` (via the
+three-argument form) when R varies with the population-level outbreak
+clock.
 
 ## Custom attributes functions
 

@@ -20,8 +20,6 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
         end
 
         offspring_result = _draw_offspring(state.rng, model.offspring, individual, state)
-        offspring_result = _apply_offspring_caps(offspring_result, individual,
-            interventions, state)
 
         gt_dist = model.generation_time === nothing ? nothing :
                   get_generation_time(model.generation_time, individual)
@@ -38,17 +36,6 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
     return new_contacts
 end
 
-"""Apply any `cap_offspring` hooks from the intervention stack to a
-freshly drawn offspring count or per-type vector."""
-function _apply_offspring_caps(offspring, individual, interventions, state)
-    for intervention in interventions
-        cap = cap_offspring(intervention, individual, state)
-        cap === nothing && continue
-        offspring = _apply_cap(offspring, cap)
-    end
-    return offspring
-end
-
 # ── Offspring drawing ────────────────────────────────────────────────
 
 """Single-type offspring draw."""
@@ -57,9 +44,15 @@ function _draw_offspring(rng::AbstractRNG, offspring::Distribution,
     rand(rng, offspring)
 end
 
-"""Function-based offspring draw. The function receives the RNG and individual."""
+"""Function-based offspring draw. The function may be called as
+`(rng, individual)` or `(rng, individual, state)`; the latter form lets
+the offspring rule read population-level state (e.g. cumulative cases
+for time- or policy-dependent caps)."""
 function _draw_offspring(rng::AbstractRNG, offspring::Function,
         individual, state::SimulationState)
+    if applicable(offspring, rng, individual, state)
+        return offspring(rng, individual, state)
+    end
     return offspring(rng, individual)
 end
 

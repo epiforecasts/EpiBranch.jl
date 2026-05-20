@@ -1,12 +1,18 @@
 """
 Base type for all interventions. Subtypes implement one or more of:
 `initialise_individual!`, `resolve_individual!`, `apply_post_transmission!`,
-`competing_risk`, `cap_offspring`.
+`competing_risk`.
 
 To support time-based scheduling (`Scheduled(iv; start_time=...)`), also
 implement [`intervention_time`](@ref) and [`reset!`](@ref). The default
 implementations return `-Inf` and a no-op respectively, which is correct
 for interventions whose effect time is always considered "now".
+
+Tree-shaping interventions (a hard cap on offspring per parent,
+gathering-size limits, etc.) are expressed by passing a state-aware
+function-form offspring distribution to [`BranchingProcess`](@ref) —
+not via the intervention protocol. See the
+[Extending guide](@ref "Extending EpiBranch") for an example.
 """
 abstract type AbstractIntervention end
 
@@ -62,20 +68,6 @@ read state that other interventions have written on the contact
 competing_risk(::AbstractIntervention, parent, contact, state) = nothing
 
 """
-    cap_offspring(intervention, parent, state) -> Union{Nothing, Int}
-
-Return a hard cap on the number of offspring this parent may produce
-this generation, or `nothing` for no cap. When multiple interventions
-return a cap, the engine applies the tightest. Used for tree-shaping
-interventions (e.g. gathering-size limits) that are not naturally
-expressed as per-contact competing risks.
-
-Applied during tree generation in `step!`, before contacts are
-created.
-"""
-cap_offspring(::AbstractIntervention, parent, state) = nothing
-
-"""
     intervention_time(intervention, individual)
 
 Time at which this intervention's effect occurs for an individual. Used
@@ -102,21 +94,3 @@ reset!(::AbstractIntervention, ::Individual) = nothing
 """Resolve a Risk field that may be a Real or a callable."""
 _resolve_risk_value(x::Real, rng, parent, contact, state) = float(x)
 _resolve_risk_value(f, rng, parent, contact, state) = float(f(rng, parent, contact, state))
-
-"""Apply an offspring cap to either a single-type count or a per-type vector."""
-_apply_cap(count::Int, cap::Int) = min(count, cap)
-function _apply_cap(counts::Vector{Int}, cap::Int)
-    total = sum(counts)
-    total <= cap && return counts
-    # Trim proportionally, keeping at least the original ratio.
-    scaled = [floor(Int, c * cap / total) for c in counts]
-    # Distribute any rounding shortfall to the highest-count types first.
-    deficit = cap - sum(scaled)
-    if deficit > 0
-        order = sortperm(counts, rev = true)
-        for i in 1:deficit
-            scaled[order[((i - 1) % length(order)) + 1]] += 1
-        end
-    end
-    return scaled
-end

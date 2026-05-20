@@ -7,6 +7,5 @@ public initialise_individual!
 public resolve_individual!
 public apply_post_transmission!
 public competing_risk
-public cap_offspring
 public reset!
 public required_fields

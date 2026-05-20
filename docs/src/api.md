@@ -38,7 +38,6 @@ EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
 EpiBranch.competing_risk
-EpiBranch.cap_offspring
 EpiBranch.intervention_time
 EpiBranch.reset!
 is_active

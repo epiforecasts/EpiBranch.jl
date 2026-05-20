@@ -121,6 +121,3 @@ reset!(s::Scheduled, ind::Individual) = reset!(s.intervention, ind)
 function competing_risk(s::Scheduled, parent, contact, state)
     is_active(s, state) ? competing_risk(s.intervention, parent, contact, state) : nothing
 end
-function cap_offspring(s::Scheduled, parent, state)
-    is_active(s, state) ? cap_offspring(s.intervention, parent, state) : nothing
-end
