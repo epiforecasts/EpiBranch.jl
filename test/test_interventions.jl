@@ -156,7 +156,7 @@
             ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
 
             rng1 = StableRNG(42)
-            rv = RingVaccination(efficacy = 0.9, mode = :leaky)
+            rv = RingVaccination(efficacy = 0.9, mode = LeakyMode())
             results_vacc = simulate_batch(model, 100;
                 interventions = [iso, ct, rv], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng1)
@@ -174,7 +174,7 @@
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
             iso = Isolation(delay = Exponential(1.0))
             ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
-            rv = RingVaccination(efficacy = 0.8, mode = :all_or_nothing)
+            rv = RingVaccination(efficacy = 0.8, mode = AllOrNothingMode())
 
             state = simulate(model;
                 interventions = [iso, ct, rv], attributes = clinical,

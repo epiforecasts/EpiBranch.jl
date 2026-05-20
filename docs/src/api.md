@@ -32,6 +32,9 @@ ContactTracing
 AbstractVaccination
 RingVaccination
 MassVaccination
+AbstractEffectMode
+LeakyMode
+AllOrNothingMode
 Scheduled
 Risk
 EpiBranch.initialise_individual!
