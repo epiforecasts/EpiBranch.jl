@@ -89,6 +89,67 @@
         end
     end
 
+    @testset "MassVaccination with distributional efficacy" begin
+        # Efficacy drawn from Beta(8,2) per individual. Use a far-future
+        # eligibility so vaccination doesn't actually block any contacts
+        # — we just want to check the per-contact sampling mechanism.
+        mv = MassVaccination(efficacy = Beta(8, 2),
+            eligibility_time = 1.0e6, delay_to_immunity = 0.0)
+        state = simulate(BranchingProcess(Poisson(2.0), Exponential(5.0));
+            condition = 50:500,
+            interventions = [mv], attributes = clinical,
+            sim_opts = SimOpts(max_cases = 500), rng = StableRNG(1))
+        effs = [ind.state[:vaccine_efficacy]
+                for ind in state.individuals if ind.parent_id != 0]
+        @test !isempty(effs)
+        @test all(0 .<= effs .<= 1)
+        # Variation confirms per-individual sampling rather than a
+        # single sample reused across all contacts.
+        @test length(unique(effs)) > 10
+    end
+
+    @testset "MassVaccination with callable efficacy reads contact state" begin
+        # Age-conditional efficacy: high in <65, low in 65+.
+        attrs = compose(clinical, demographics(age_distribution = Uniform(0, 90)))
+        mv = MassVaccination(
+            efficacy = (rng, ind) -> ind.state[:age] >= 65 ? 0.3 : 0.95,
+            eligibility_time = 0.0, delay_to_immunity = 0.0
+        )
+        state = simulate(BranchingProcess(Poisson(2.0), Exponential(5.0));
+            interventions = [mv], attributes = attrs,
+            sim_opts = SimOpts(max_cases = 100), rng = StableRNG(2))
+        for ind in state.individuals
+            ind.parent_id == 0 && continue
+            expected = ind.state[:age] >= 65 ? 0.3 : 0.95
+            @test ind.state[:vaccine_efficacy] == expected
+        end
+    end
+
+    @testset "Multi-dose MassVaccination composes via dose_label" begin
+        # Two doses with different state namespaces. State keys are
+        # suffixed; both doses contribute independent competing risks.
+        prime = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
+            delay_to_immunity = 0.0, dose_label = :prime)
+        boost = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
+            delay_to_immunity = 0.0, dose_label = :boost)
+        state = simulate(BranchingProcess(Poisson(3.0), Exponential(5.0));
+            interventions = [prime, boost], attributes = clinical,
+            sim_opts = SimOpts(max_cases = 200), rng = StableRNG(3))
+        # The default :vaccinated key is untouched; dose-labelled
+        # keys carry the state.
+        for ind in state.individuals
+            ind.parent_id == 0 && continue
+            @test !haskey(ind.state, :vaccinated)
+            @test ind.state[:vaccinated_prime] == true
+            @test ind.state[:vaccinated_boost] == true
+            @test ind.state[:vaccination_time_prime] == 0.0
+            @test ind.state[:vaccination_time_boost] == 0.0
+        end
+        # Both doses block transmission with probability 1 from t=0,
+        # so the outbreak should stop at the index.
+        @test state.cumulative_cases == 1
+    end
+
     @testset "Risk with callable block_probability sees parent and contact" begin
         struct AgeConditionalBlock <: AbstractIntervention
             threshold::Int

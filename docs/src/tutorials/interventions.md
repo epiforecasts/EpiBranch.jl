@@ -262,6 +262,52 @@ results = simulate_batch(model, 200;
 println("Age-stratified rollout: $(round(containment_probability(results), digits=3))")
 ```
 
+### Per-individual efficacy
+
+`efficacy` accepts the same `Real | Distribution | Function` set as
+`eligibility_time`. A distribution gives independent per-individual
+draws (heterogeneous immune response); a function lets efficacy depend
+on individual state. Age-conditional efficacy alongside the
+age-stratified rollout:
+
+```@example interventions
+mv_heterogeneous = MassVaccination(
+    efficacy = (rng, ind) -> ind.state[:age] >= 65 ? 0.7 : 0.9,
+    eligibility_time = (rng, ind) -> ind.state[:age] >= 65 ? 30.0 : 90.0,
+    delay_to_immunity = 14.0,
+)
+```
+
+### Multi-dose schedules
+
+For prime-and-boost (or longer) schedules, pass multiple
+`MassVaccination` (or [`RingVaccination`](@ref)) instances with
+different `dose_label`s. Each dose namespaces its per-contact state
+(`:vaccinated_prime`, `:vaccinated_boost`, etc.) and contributes its
+own competing risk; the engine composes them via the standard
+independent-Bernoulli product. Whichever dose's immunity has developed
+by the contact's transmission time contributes its blocking
+probability.
+
+```@example interventions
+prime = MassVaccination(efficacy = 0.6, eligibility_time = 30.0,
+    delay_to_immunity = 14.0, dose_label = :prime)
+boost = MassVaccination(efficacy = 0.9, eligibility_time = 60.0,
+    delay_to_immunity = 14.0, dose_label = :boost)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [prime, boost], attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500), rng = rng,
+)
+println("Two-dose rollout: $(round(containment_probability(results), digits=3))")
+```
+
+Both single-dose and multi-dose state can be queried via the
+dose-suffixed keys: `ind.state[:vaccinated_prime]`,
+`ind.state[:vaccination_time_boost]`, `ind.state[:vaccine_efficacy_prime]`,
+and so on.
+
 ## Effort tracking
 
 Because all contacts are stored (infected and non-infected), intervention

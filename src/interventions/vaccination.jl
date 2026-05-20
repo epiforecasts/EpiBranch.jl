@@ -8,39 +8,82 @@ when. They share the [`competing_risk`](@ref) machinery: a vaccinated
 contact whose immunity has developed by their transmission time has
 their infection blocked with probability `efficacy`.
 
+`efficacy` accepts a `Real`, a `Distribution`, or a function
+`(rng, ind) -> Real`. The function/distribution forms sample once per
+vaccinated individual at vaccination time and store the result on the
+contact; the competing risk reads the stored value.
+
 `mode` (`:leaky` or `:all_or_nothing`) is recorded for completeness
 but does not change the per-contact infection probability in a pure
 branching tree, where every contact is a unique exposure. The
 distinction starts to matter once network models permit multiple
 exposures per individual.
+
+# Multi-dose vaccination
+
+A `dose_label::Symbol` (default `:default`) namespaces the per-contact
+state so multiple vaccinations can stack without colliding. Two
+`MassVaccination`s with `dose_label = :prime` and `dose_label = :boost`
+write to `:vaccinated_prime` / `:vaccinated_boost` and contribute
+independent competing risks. Each dose's protection is composed by
+the engine via the standard competing-risks product.
+
+When `dose_label = :default` (single-dose, the common case), state is
+written to plain `:vaccinated` / `:vaccination_time` for backwards
+compatibility with the `is_vaccinated` accessor.
 """
 abstract type AbstractVaccination <: AbstractIntervention end
 
-"""Per-exposure probability that vaccination blocks transmission once
-immunity is in place. Read by the shared [`competing_risk`](@ref)
-method on `AbstractVaccination`."""
-efficacy(v::AbstractVaccination) = v.efficacy
-
 """Time between vaccination and the onset of protective immunity. Added
-to `:vaccination_time` to give the event time of vaccination's
-competing risk."""
+to the vaccination time to give the event time of the competing risk."""
 delay_to_immunity(v::AbstractVaccination) = v.delay_to_immunity
 
-function initialise_individual!(::AbstractVaccination, individual, state)
-    individual.state[:vaccinated] = false
-    individual.state[:vaccination_time] = Inf
+"""Label namespacing the vaccination's per-contact state (`:vaccinated`,
+`:vaccination_time`, `:vaccine_efficacy`). `:default` writes to the
+unsuffixed keys for backwards compatibility; other labels write to
+`:vaccinated_<label>` etc."""
+dose_label(v::AbstractVaccination) = v.dose_label
+
+function _vaccinated_key(label::Symbol)
+    label === :default ? :vaccinated : Symbol("vaccinated_", label)
+end
+function _vaccination_time_key(label::Symbol)
+    label === :default ? :vaccination_time : Symbol("vaccination_time_", label)
+end
+function _vaccine_efficacy_key(label::Symbol)
+    label === :default ? :vaccine_efficacy : Symbol("vaccine_efficacy_", label)
+end
+
+function initialise_individual!(v::AbstractVaccination, individual, state)
+    label = dose_label(v)
+    individual.state[_vaccinated_key(label)] = false
+    individual.state[_vaccination_time_key(label)] = Inf
     return nothing
 end
 
 """Vaccination's competing risk: blocks the parent → contact
-transmission iff the contact has been vaccinated and immunity has
-developed by their transmission time."""
+transmission iff this dose has been administered to the contact and
+immunity has developed by their transmission time."""
 function competing_risk(v::AbstractVaccination, parent, contact, state)
-    is_vaccinated(contact) || return nothing
-    vacc_t = get(contact.state, :vaccination_time, Inf)::Float64
+    label = dose_label(v)
+    get(contact.state, _vaccinated_key(label), false) || return nothing
+    vacc_t = get(contact.state, _vaccination_time_key(label), Inf)::Float64
     isfinite(vacc_t) || return nothing
+    eff = get(contact.state, _vaccine_efficacy_key(label), nothing)
+    eff === nothing && return nothing
     return Risk(event_time = vacc_t + delay_to_immunity(v),
-        block_probability = efficacy(v))
+        block_probability = eff)
+end
+
+# Helper for concrete subtypes: write per-dose state on a contact at
+# vaccination time. Samples efficacy via `_sample_value` so scalar,
+# distribution, and function forms all work.
+function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
+    label = dose_label(v)
+    contact.state[_vaccinated_key(label)] = true
+    contact.state[_vaccination_time_key(label)] = vacc_t
+    contact.state[_vaccine_efficacy_key(label)] = _sample_value(v.efficacy, rng, contact)
+    return nothing
 end
 
 # ── RingVaccination ──────────────────────────────────────────────────
@@ -57,24 +100,28 @@ to the appropriate delay.
 
 Requires `:traced` (set by [`ContactTracing`](@ref)).
 
-Initialises: `:vaccinated`, `:vaccination_time`.
+Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
+`:vaccine_efficacy` for the default dose label. With a non-default
+`dose_label`, the keys carry the label as a suffix.
 """
-Base.@kwdef struct RingVaccination <: AbstractVaccination
-    efficacy::Float64
+Base.@kwdef struct RingVaccination{E} <: AbstractVaccination
+    efficacy::E
     delay_to_immunity::Float64 = 0.0
     mode::Symbol = :leaky
+    dose_label::Symbol = :default
 end
 
 required_fields(::RingVaccination) = [:traced]
 
-function apply_post_transmission!(::RingVaccination, state, new_contacts)
+function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
+    label = dose_label(rv)
+    vacc_key = _vaccinated_key(label)
     for ind in new_contacts
         is_traced(ind) || continue
-        is_vaccinated(ind) && continue
+        get(ind.state, vacc_key, false) && continue
         vacc_t = isolation_time(ind)
         isfinite(vacc_t) || continue
-        ind.state[:vaccinated] = true
-        ind.state[:vaccination_time] = vacc_t
+        _record_vaccination!(rv, ind, vacc_t, state.rng)
     end
     return nothing
 end
@@ -99,7 +146,14 @@ own transmission time.
   age-stratified rollout or any other state-dependent schedule.
   Return `Inf` for individuals who never become eligible.
 
-Initialises: `:vaccinated`, `:vaccination_time`.
+`efficacy` accepts the same `Real | Distribution | Function` set,
+sampled once per vaccinated contact. Per-individual heterogeneous
+efficacy (e.g. age-dependent) is set via the function form.
+
+Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
+`:vaccine_efficacy` for the default dose label. With a non-default
+`dose_label`, the keys carry the label as a suffix — pass two
+`MassVaccination`s with different labels for a multi-dose rollout.
 
 # Examples
 
@@ -117,32 +171,46 @@ MassVaccination(efficacy = 0.85,
     delay_to_immunity = 14.0)
 ```
 
-Age-stratified rollout (65+ on day 30, younger on day 90):
+Age-stratified rollout (65+ on day 30, younger on day 90), with
+age-dependent efficacy:
 
 ```julia
 MassVaccination(
-    efficacy = 0.85,
+    efficacy = (rng, ind) -> ind.state[:age] >= 65 ? 0.7 : 0.9,
     eligibility_time = (rng, ind) -> ind.state[:age] >= 65 ? 30.0 : 90.0,
     delay_to_immunity = 14.0,
 )
 ```
+
+Prime-and-boost schedule (compose two instances with different labels):
+
+```julia
+[
+    MassVaccination(efficacy = 0.6,  eligibility_time = 30.0,
+        delay_to_immunity = 14.0, dose_label = :prime),
+    MassVaccination(efficacy = 0.9,  eligibility_time = 60.0,
+        delay_to_immunity = 14.0, dose_label = :boost),
+]
+```
 """
-Base.@kwdef struct MassVaccination{E} <: AbstractVaccination
-    efficacy::Float64
-    eligibility_time::E
+Base.@kwdef struct MassVaccination{E, T} <: AbstractVaccination
+    efficacy::E
+    eligibility_time::T
     delay_to_immunity::Float64 = 0.0
     mode::Symbol = :leaky
+    dose_label::Symbol = :default
 end
 
 required_fields(::MassVaccination) = Symbol[]
 
 function apply_post_transmission!(mv::MassVaccination, state, new_contacts)
+    label = dose_label(mv)
+    vacc_key = _vaccinated_key(label)
     for ind in new_contacts
-        is_vaccinated(ind) && continue
+        get(ind.state, vacc_key, false) && continue
         vacc_t = _sample_value(mv.eligibility_time, state.rng, ind)
         isfinite(vacc_t) || continue
-        ind.state[:vaccinated] = true
-        ind.state[:vaccination_time] = vacc_t
+        _record_vaccination!(mv, ind, vacc_t, state.rng)
     end
     return nothing
 end
