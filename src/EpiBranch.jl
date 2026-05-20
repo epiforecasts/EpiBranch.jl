@@ -70,6 +70,10 @@ export Individual, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
 export AbstractIntervention, Isolation, ContactTracing
+export Eligibility, AlwaysEligible, SymptomaticParent
+export TraceRate, ConstantRate
+export TraceDelay, ConstantDelay
+export TraceAction, Quarantine, FlagOnly
 export AbstractVaccination, RingVaccination, MassVaccination
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
