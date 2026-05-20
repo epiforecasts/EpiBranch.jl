@@ -110,6 +110,7 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
     nt = n_types(model)
     for i in 1:sim_opts.n_initial
         ind = _create_individual(temp_state, 0, i, i, 0.0, interventions)
+        ind.state[:infected] = true  # index cases are infected by definition
         if nt > 1
             ind.state[:type] = rand(rng, 1:nt)
         end
@@ -157,13 +158,17 @@ function _susceptible_fraction(state::SimulationState{<:Any, Int},
 end
 
 """Create a new Individual with attributes and intervention state.
-Clinical transitions are resolved separately by the engine, which
-sweeps newly added individuals after each `step!` returns.
+`:infected` is left at `false` so that any contact returned from a
+model's `step!` carries a not-yet-decided flag — only the engine's
+competing-risks resolution may set it to `true`. Initial individuals
+(created in [`initialise_state`](@ref)) are explicitly marked infected
+after construction; clinical transitions are resolved separately by
+the engine after each `step!` returns.
 """
 function _create_individual(state::SimulationState, parent_id::Int,
         chain_id::Int, next_id::Int,
         inf_time::Float64, interventions)
-    s = Dict{Symbol, Any}(:infected => true)
+    s = Dict{Symbol, Any}(:infected => false)
 
     ind = Individual(;
         id = next_id,
