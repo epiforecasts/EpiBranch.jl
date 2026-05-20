@@ -186,14 +186,12 @@ println("Posterior R: $(round(mean(chain[:R]), digits=2)) " *
 The posterior recovers the true R despite the intervention and the
 case cap truncating large outbreaks.
 
-## Multi-seed and ongoing outbreaks
+## Multi-seed clusters
 
-[`ChainSizes`](@ref) takes an optional `seeds` vector for multi-seed
-clusters. For mid-outbreak data where some clusters are still
-generating cases at the reporting cutoff, supply a [`Snapshot`](@ref)
-on the model side via [`Observed`](@ref). See the
-[real-time inference tutorial](real_time.md) for the full machinery;
-the example below illustrates the multi-seed plus ongoing case.
+[`ChainSizes`](@ref) takes an optional `seeds` vector for clusters
+with multiple independent index cases. All clusters are treated as
+concluded; the analytical multi-seed chain-size PMF handles them in
+one call.
 
 ```@example inference
 true_R, true_k = 0.6, 0.2
@@ -201,33 +199,19 @@ true_R, true_k = 0.6, 0.2
 rng = StableRNG(7)
 n = 50
 seeds = rand(rng, [1, 1, 1, 2], n)
-sizes = Int[]
-ongoing = Bool[]
-for s in seeds
-    x = sum(rand(rng, GammaBorel(true_k, true_R)) for _ in 1:s)
-    is_ongoing = rand(rng) < 0.2
-    push!(sizes,
-        is_ongoing ? max(s, x - rand(rng, 0:max(x - s, 1))) : x)
-    push!(ongoing, is_ongoing)
-end
+sizes = [sum(rand(rng, GammaBorel(true_k, true_R)) for _ in 1:s) for s in seeds]
 
 data = ChainSizes(sizes; seeds = seeds)
-# Snapshot encoding: [Inf] for concluded, [] for ongoing.
-snap = Snapshot([o ? Float64[] : [Inf] for o in ongoing])
-println("Clusters: $(length(sizes)) (seeds 1 / 2: $(count(==(1), seeds)) / $(count(==(2), seeds)))")
-println("Ongoing:  $(count(ongoing))")
+println("Clusters: $(length(sizes)) (seeds 1 / 2: " *
+        "$(count(==(1), seeds)) / $(count(==(2), seeds)))")
 
-@model function cluster_size_model(data, snap)
+@model function cluster_size_model(data)
     R ~ LogNormal(0.0, 1.0)
     k ~ LogNormal(-1.0, 1.0)
-    process = BranchingProcess(NegativeBinomial(k, k / (k + R)),
-        Gamma(2.0, 2.5))
-    model = Observed(process, PerCaseObservation(), snap)
-    Turing.@addlogprob! loglikelihood(data, model)
+    Turing.@addlogprob! loglikelihood(data, NegativeBinomial(k, k / (k + R)))
 end
 
-chain = sample(cluster_size_model(data, snap), NUTS(), 1000;
-    progress = false)
+chain = sample(cluster_size_model(data), NUTS(), 1000; progress = false)
 r_post = vec(chain[:R])
 k_post = vec(chain[:k])
 println("True R=$true_R, k=$true_k")
@@ -238,10 +222,6 @@ println("k: $(round(mean(k_post), digits=2)) (95% CI: " *
         "$(round(quantile(k_post, 0.025), digits=2))–" *
         "$(round(quantile(k_post, 0.975), digits=2)))")
 ```
-
-The likelihood handles the concluded and ongoing clusters in one
-call: concluded ones contribute `log P(X = x | s)`, ongoing ones
-contribute `log P(X ≥ x | s)`, summed across observations.
 
 ## Choosing an inference approach
 

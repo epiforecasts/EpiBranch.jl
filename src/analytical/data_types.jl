@@ -24,13 +24,16 @@ end
 Observed transmission chain sizes (total number of cases per chain).
 Used with `loglikelihood` and `fit`.
 
+Fields:
+
+- `data::Vector{Int}` — observed cluster sizes.
 - `seeds::Vector{Int}` — number of independent index cases per cluster
   (default `1`).
 
-For real-time analyses where some clusters are still active at the
-reporting cutoff (e.g. the Endo et al. 2020 setup), supply a
-[`Snapshot`](@ref) on `Observed` rather than encoding the regime in
-the data type. See the real-time inference tutorial for examples.
+By default every cluster is treated as concluded (final-size
+likelihood). For real-time data with still-active clusters, pass a
+per-cluster `pi` vector of "is finished" probabilities to
+`loglikelihood`; see the `pi` kwarg on `loglikelihood(::ChainSizes, ::Distribution)`.
 
 # Examples
 

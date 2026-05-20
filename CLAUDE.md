@@ -57,11 +57,11 @@ The superspreading R package (https://github.com/epiverse-trace/superspreading) 
 
 ## Key design principles
 
-1. **Multiple dispatch for transmission models**: define an abstract `TransmissionModel` type with concrete subtypes (`BranchingProcess`, `DensityDependent`, etc.). The `simulate` function dispatches on this type
-2. **Distributions from Distributions.jl**: use standard `Distributions.jl` types for offspring distributions, delay distributions, etc. No custom distribution wrappers
-3. **DataFrames output**: line lists and chain statistics returned as DataFrames, matching epidemiological conventions (one row per case or per contact pair)
-4. **Composable interventions**: interventions are callable structs or functions with a standard signature. Stack them in a vector; the engine applies them in order each timestep
-5. **Reproducibility**: explicit RNG threading for reproducible parallel simulations
+The architectural principles for this package live in [`DESIGN.md`](DESIGN.md). Read that first — in particular the "Extension model" section, which governs how new transmission models, interventions, and output rules should be added. The points below are package-level coding conventions that sit on top of the design.
+
+1. **Distributions from Distributions.jl**: use standard `Distributions.jl` types for offspring distributions, delay distributions, etc. No custom distribution wrappers.
+2. **DataFrames output**: line lists and chain statistics returned as DataFrames, matching epidemiological conventions (one row per case or per contact pair).
+3. **Reproducibility**: explicit RNG threading for reproducible parallel simulations.
 
 ## Research before coding
 

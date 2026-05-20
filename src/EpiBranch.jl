@@ -62,23 +62,25 @@ include("analytical/likelihood.jl")
 include("analytical/superspreading.jl")
 include("analytical/fitting.jl")
 include("analytical/cluster_mixed.jl")
-include("analytical/real_time.jl")
+include("analytical/end_of_outbreak_probability.jl")
 
 # Exports — types
 export TransmissionModel, BranchingProcess
 export Individual, SimulationState
 export SimOpts
+export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
 export AbstractIntervention, Isolation, ContactTracing
 export Eligibility, AlwaysEligible, SymptomaticParent
 export TraceRate, ConstantRate
 export TraceDelay, ConstantDelay
 export TraceAction, Quarantine, FlagOnly
 export AbstractVaccination, RingVaccination, MassVaccination
+export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
 export is_active, intervention_time
 export AbstractClinicalTransition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event
-export ObservationModel, PerCaseObservation, Observed, Snapshot
+export ObservationModel, PerCaseObservation, Observed
 export single_type_offspring
 
 # Exports — sentinel types
@@ -115,6 +117,7 @@ export probability_contain
 # Exports — unified inference interface
 export OffspringCounts, ChainSizes, ChainLengths
 export ClusterMixed, ChainSizeMixture
+# Real-time mixture: per-cluster "is finished?" weight
 export end_of_outbreak_probability
 
 end # module

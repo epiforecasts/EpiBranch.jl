@@ -13,64 +13,92 @@ function loglikelihood(data::OffspringCounts, offspring::Distribution)
 end
 
 """
-    loglikelihood(data::ChainSizes, offspring::Distribution)
+    loglikelihood(data::ChainSizes, offspring::Distribution; pi = nothing)
 
 Log-likelihood of observed chain sizes under the analytical chain size
 distribution implied by the offspring distribution. Multi-seed clusters
-are handled via the `seeds` field of [`ChainSizes`](@ref); for
-right-censored / mid-outbreak observation, supply a [`Snapshot`](@ref)
-on `Observed` and dispatch on that path instead.
+are handled via the `seeds` field of [`ChainSizes`](@ref).
+
+With `pi === nothing` (default), every cluster is treated as concluded
+and the likelihood is the standard final-size sum
+`Σ_i log P(X = x_i | seeds_i)`.
+
+With `pi::AbstractVector` (length `length(data.data)`, values in `[0, 1]`),
+cluster `i` contributes the real-time mixture
+
+    L_i = pi[i] · P(X = x_i | seeds_i) + (1 − pi[i]) · P(X ≥ x_i | seeds_i)
+
+i.e. `pi[i]` is the probability that cluster `i` is finished
+(observed size = final size). See `end_of_outbreak_probability` for a
+principled `pi` based on the generation-time distribution.
 """
-function loglikelihood(data::ChainSizes, offspring::Distribution)
+function loglikelihood(data::ChainSizes, offspring::Distribution;
+        pi::Union{Nothing, AbstractVector{<:Real}} = nothing)
     dist = chain_size_distribution(offspring)
-    return _chain_size_loglik(dist, data)
+    return _chain_size_loglik(dist, data; pi)
 end
 
 # AD-compatible methods: use shared _borel_logpdf / _gammaborel_logpdf
 # which accept any numeric type for parameters (ForwardDiff Dual compatible)
-function loglikelihood(data::ChainSizes, offspring::Poisson{T}) where {T}
+function loglikelihood(data::ChainSizes, offspring::Poisson{T};
+        pi::Union{Nothing, AbstractVector{<:Real}} = nothing) where {T}
     μ = min(mean(offspring), one(mean(offspring)))
-    all(==(1), data.seeds) &&
+    if pi === nothing && all(==(1), data.seeds)
         return sum(n -> _borel_logpdf(μ, n), data.data)
-    return _chain_size_loglik(Borel(μ), data)
+    end
+    return _chain_size_loglik(Borel(μ), data; pi)
 end
 
-function loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T}) where {T}
-    all(==(1), data.seeds) &&
+function loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T};
+        pi::Union{Nothing, AbstractVector{<:Real}} = nothing) where {T}
+    if pi === nothing && all(==(1), data.seeds)
         return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
-    return _chain_size_loglik(GammaBorel(offspring.r, mean(offspring)), data)
+    end
+    return _chain_size_loglik(GammaBorel(offspring.r, mean(offspring)), data; pi)
 end
 
 """
-    _chain_size_loglik(dist, data::ChainSizes)
+    _chain_size_loglik(dist, data::ChainSizes; pi = nothing)
 
-Per-observation chain-size log-likelihood (all observations treated as
-concluded). Right-tail / mixture handling for ongoing observations
-goes through `loglikelihood(::ChainSizes, ::Observed{..., <:Snapshot})`.
+Per-cluster chain-size log-likelihood. With `pi === nothing` every
+cluster contributes its concluded PMF
+`log P(X = x_i | seeds_i)`; with `pi::AbstractVector` the mixture
+`pi[i] · P(X = x_i) + (1 − pi[i]) · P(X ≥ x_i)` is summed.
 """
-function _chain_size_loglik(dist, data::ChainSizes)
+function _chain_size_loglik(dist, data::ChainSizes;
+        pi::Union{Nothing, AbstractVector{<:Real}} = nothing)
+    if pi !== nothing && length(pi) != length(data.data)
+        throw(ArgumentError(
+            "pi must have the same length as data ($(length(data.data))); got $(length(pi))"))
+    end
     first_val = _chain_size_logpdf(dist, data.data[1], data.seeds[1])
     total = zero(first_val)
     for i in eachindex(data.data)
-        total += _chain_size_logpdf(dist, data.data[i], data.seeds[i])
+        lc = _chain_size_logpdf(dist, data.data[i], data.seeds[i])
+        if pi === nothing
+            total += lc
+            continue
+        end
+        π_i = pi[i]
+        (0 <= π_i <= 1) ||
+            throw(ArgumentError("pi[$i] = $(π_i) is not in [0, 1]"))
+        if π_i >= one(π_i)
+            total += lc
+        elseif π_i <= zero(π_i)
+            total += _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+        else
+            lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+            total += _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
+        end
     end
     return total
 end
 
-"""
-    _right_tail_logprob(dist, x, s)
-
-`log P(X ≥ x | s)` for a chain size distribution. Computed as
-`log(1 - Σ_{m=s}^{x-1} pdf(m | s))`. Returns `0.0` when `x ≤ s`
-(support starts at `s`). Used for ongoing outbreaks (Endo et al. 2020).
-"""
-function _right_tail_logprob(dist, x::Integer, s::Integer)
-    x <= s && return 0.0
-    tail = 1.0
-    for m in s:(x - 1)
-        tail -= exp(_chain_size_logpdf(dist, m, s))
-    end
-    tail > 0 ? log(tail) : -Inf
+"""AD-compatible binary log-sum-exp."""
+function _logsumexp2(a, b)
+    m = max(a, b)
+    isinf(m) && return m
+    return m + log(exp(a - m) + exp(b - m))
 end
 
 """
@@ -105,15 +133,15 @@ function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
     sim_values = Int[]
     # Track which simulations hit the case cap (right-censored)
     censored = Bool[]
+    cap = max_cases(sim_opts)
     for state in states
         cs = chain_statistics(state)
         vals = getproperty(cs, column)
         append!(sim_values, vals)
-        hit_cap = !state.extinct && state.cumulative_cases >= sim_opts.max_cases
+        hit_cap = !state.extinct && state.cumulative_cases >= cap
         append!(censored, fill(hit_cap, length(vals)))
     end
-    return _empirical_ll(observed, sim_values; min_val, censored,
-        cap = sim_opts.max_cases)
+    return _empirical_ll(observed, sim_values; min_val, censored, cap)
 end
 
 """
@@ -145,19 +173,18 @@ function loglikelihood(data::ChainSizes,
         interventions, attributes, sim_opts, rng)
     sim_values = Int[]
     censored = Bool[]
+    cap = max_cases(sim_opts)
     for state in states
         cs = chain_statistics(state)
         for true_size in cs.size
             obs = rand(rng, Binomial(true_size, p))
             obs >= 1 || continue
             push!(sim_values, obs)
-            hit_cap = !state.extinct &&
-                      state.cumulative_cases >= sim_opts.max_cases
+            hit_cap = !state.extinct && state.cumulative_cases >= cap
             push!(censored, hit_cap)
         end
     end
-    return _empirical_ll(data.data, sim_values; min_val = 1, censored,
-        cap = sim_opts.max_cases)
+    return _empirical_ll(data.data, sim_values; min_val = 1, censored, cap)
 end
 
 function loglikelihood(::ChainLengths,

@@ -32,10 +32,8 @@ TransmissionModel (abstract)           ObservationModel (abstract)
 DATA  ─────────────────┴─────────────►  INFERENCE
 ─────                                   ─────────
 OffspringCounts                         loglikelihood(data, model)
-ChainSizes(sizes; concluded)
+ChainSizes
 ChainLengths
-RealTimeChainSizes(sizes, tau;
-                   case_ages, ...)
 
 ORTHOGONAL
 ─────────

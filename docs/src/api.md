@@ -13,6 +13,12 @@ single_type_offspring
 Individual
 SimulationState
 SimOpts
+AbstractStoppingRule
+Extinction
+MaxCases
+MaxGenerations
+MaxTime
+should_stop
 ```
 
 ## Simulation
@@ -46,6 +52,9 @@ EpiBranch.apply_trace!
 AbstractVaccination
 RingVaccination
 MassVaccination
+AbstractEffectMode
+LeakyMode
+AllOrNothingMode
 Scheduled
 Risk
 EpiBranch.initialise_individual!
@@ -140,7 +149,6 @@ ChainLengths
 ```@docs
 ObservationModel
 PerCaseObservation
-Snapshot
 Observed
 ThinnedChainSize
 ```
@@ -150,12 +158,6 @@ ThinnedChainSize
 ```@docs
 ClusterMixed
 ChainSizeMixture
-```
-
-### Real-time inference
-
-```@docs
-end_of_outbreak_probability
 ```
 
 ### Likelihood and fitting

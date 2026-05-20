@@ -240,13 +240,65 @@ ind = state.individuals[1]
 println("Individual 1: age=$(ind.state[:age]), sex=$(ind.state[:sex]), risk=$(ind.state[:risk_group])")
 ```
 
-## Function-based offspring models
+## Custom offspring distributions
 
-By default, `BranchingProcess` takes a `Distribution` for the offspring
-distribution. For more complex transmission models, pass a **function**
-instead. The function receives `(rng, individual)` and returns the number
-of offspring (an `Int` for single-type models, or a `Vector{Int}` for
-multi-type).
+`BranchingProcess` takes anything its sampling path can use. Two paths
+are supported, with different trade-offs:
+
+- A **`Distribution` subtype** (a struct `<: Distribution` from
+  Distributions.jl). Full Distributions.jl interop — `rand`, `logpdf`,
+  fitting, mixtures all work — and the analytical helpers
+  (`extinction_probability`, `chain_size_distribution`, etc.) compose
+  cleanly via [`single_type_offspring`](@ref).
+- A **function** `(rng, individual)` or `(rng, individual, state)`
+  returning the offspring count. Escape hatch for state-dependent
+  rules that don't fit a single fixed Distribution (time-varying R,
+  policy-dependent caps, etc.).
+
+### `Distribution` subtype
+
+For an offspring rule that's a proper probability distribution,
+subtype `Distribution` and implement `Distributions.rand`. The
+branching process picks it up via the standard constructor:
+
+```julia
+using Distributions
+using Random: AbstractRNG
+
+struct MyOffspring <: Distribution{Univariate, Discrete}
+    # ... your parameters
+end
+
+function Distributions.rand(rng::AbstractRNG, d::MyOffspring)
+    # ... return an integer offspring count
+end
+
+model = BranchingProcess(MyOffspring(...), Exponential(5.0))
+```
+
+The simulation loop calls `rand(rng, offspring)`, so any Distribution
+subtype with a `rand` method works.
+
+To enable the analytical helpers (`extinction_probability`,
+`chain_size_distribution`, `proportion_transmission`), also specialise
+`chain_size_distribution` for your type:
+
+```julia
+function EpiBranch.chain_size_distribution(d::MyOffspring)
+    # return a Distribution over chain sizes — e.g. via numerical
+    # iteration of the offspring PGF.
+end
+```
+
+Simulation works without this specialisation; only the closed-form
+analytics require it.
+
+### Function-based offspring
+
+For state-dependent rules that don't fit a single fixed Distribution,
+pass a function. It receives `(rng, individual)` or `(rng, individual,
+state)` and returns the number of offspring (an `Int` for single-type
+models, or a `Vector{Int}` for multi-type).
 
 ### Example: context-dependent transmission
 
