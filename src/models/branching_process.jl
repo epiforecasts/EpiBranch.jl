@@ -20,9 +20,7 @@ function step!(model::BranchingProcess, state::SimulationState, interventions)
         end
 
         offspring_result = _draw_offspring(state.rng, model.offspring, individual, state)
-
-        gt_dist = model.generation_time === nothing ? nothing :
-                  get_generation_time(model.generation_time, individual)
+        gt_dist = get_generation_time(model.generation_time, individual)
 
         next_id = _create_contacts!(new_contacts,
             offspring_result, individual, state,
@@ -57,13 +55,7 @@ end
 function _make_one_contact!(new_contacts, parent, state,
         gt_dist, interventions, next_id;
         type_idx::Union{Int, NoTypeLabels} = NoTypeLabels())
-    if gt_dist === nothing
-        inf_time = parent.infection_time
-    else
-        gt = rand(state.rng, gt_dist)
-        gt = max(gt, state.latent_period)
-        inf_time = parent.infection_time + gt
-    end
+    inf_time = _infection_time(gt_dist, parent, state)
 
     contact = _create_individual(state, parent.id, parent.chain_id,
         next_id, inf_time, interventions)
@@ -80,6 +72,16 @@ end
 
 _set_type!(contact, ::NoTypeLabels) = nothing
 _set_type!(contact, idx::Int) = (contact.state[:type] = idx)
+
+"""Compute a contact's infection time from the parent's infection time
+and the generation-time draw. Dispatches on the generation-time spec:
+[`NoGenerationTime`](@ref) (no timing) returns the parent's time;
+otherwise samples and adds, clamped to `state.latent_period`."""
+_infection_time(::NoGenerationTime, parent, state) = parent.infection_time
+function _infection_time(gt_dist::Distribution, parent, state)
+    gt = max(rand(state.rng, gt_dist), state.latent_period)
+    return parent.infection_time + gt
+end
 
 """Single-type contacts."""
 function _create_contacts!(new_contacts,

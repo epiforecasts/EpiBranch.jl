@@ -17,6 +17,11 @@ struct NoAgeDistribution end
 """Sentinel indicating no case cap for extinction/containment checks."""
 struct NoCases end
 
+"""Sentinel indicating no generation time distribution. Used by
+[`BranchingProcess`](@ref) for pure chain-statistics models where
+timing is irrelevant."""
+struct NoGenerationTime end
+
 # Abstract supertype for clinical-state transitions (defined here so
 # `SimulationState` can hold a typed `transitions` vector without
 # forward-reference issues). Implementations live in
@@ -33,6 +38,7 @@ For a `Distribution`, the distribution is returned unchanged. For a `Function`,
 it is called with the individual's incubation period.
 """
 get_generation_time(gt::Distribution, individual) = gt
+get_generation_time(ngt::NoGenerationTime, individual) = ngt
 
 function get_generation_time(gt::Function, individual)
     onset = get(individual.state, :onset_time, NaN)
@@ -106,7 +112,7 @@ n_types(m::BranchingProcess) = m.n_types
 
 function Base.show(io::IO, m::BranchingProcess)
     off_str = m.offspring isa Distribution ? string(typeof(m.offspring)) : "Function"
-    gt_str = m.generation_time === nothing ? "nothing" :
+    gt_str = m.generation_time isa NoGenerationTime ? "none" :
              m.generation_time isa Distribution ? string(typeof(m.generation_time)) :
              "Function"
     pop_str = m.population_size isa NoPopulation ? "unlimited" : string(m.population_size)
@@ -125,7 +131,8 @@ end
 # Single-type without generation time (pure chain statistics)
 function BranchingProcess(offspring::Distribution;
         population_size::Union{Int, NoPopulation} = NoPopulation())
-    BranchingProcess(offspring, nothing, population_size, 0.0, 1, NoTypeLabels())
+    BranchingProcess(offspring, NoGenerationTime(), population_size,
+        0.0, 1, NoTypeLabels())
 end
 
 # Multi-type with explicit offspring function
