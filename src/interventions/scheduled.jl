@@ -115,7 +115,9 @@ end
     return nothing
 end
 
-post_isolation_transmission(s::Scheduled) = post_isolation_transmission(s.intervention)
 required_fields(s::Scheduled) = required_fields(s.intervention)
 intervention_time(s::Scheduled, ind::Individual) = intervention_time(s.intervention, ind)
 reset!(s::Scheduled, ind::Individual) = reset!(s.intervention, ind)
+function competing_risk(s::Scheduled, parent, contact, state)
+    is_active(s, state) ? competing_risk(s.intervention, parent, contact, state) : nothing
+end

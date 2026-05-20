@@ -16,8 +16,18 @@ Base.@kwdef struct Isolation <: AbstractIntervention
 end
 
 required_fields(::Isolation) = [:onset_time, :asymptomatic]
-post_isolation_transmission(iso::Isolation) = iso.post_isolation_transmission
 intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
+
+"""Isolation blocks the parent → contact transmission when the parent's
+isolation time is earlier than the contact's transmission time.
+Residual transmission is governed by `post_isolation_transmission`:
+`block_probability = 1 - post_isolation_transmission`."""
+function competing_risk(iso::Isolation, parent, contact, state)
+    iso_t = isolation_time(parent)
+    isfinite(iso_t) || return nothing
+    return Risk(event_time = iso_t,
+        block_probability = 1.0 - iso.post_isolation_transmission)
+end
 
 function reset!(::Isolation, ind::Individual)
     ind.state[:isolated] = false

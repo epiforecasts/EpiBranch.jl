@@ -43,7 +43,12 @@ function simulate(model::TransmissionModel;
 
     while !should_terminate(state, sim_opts)
         pre = length(state.individuals)
-        step!(model, state, interventions)
+        new_contacts = step!(model, state, interventions)
+        for intervention in interventions
+            apply_post_transmission!(intervention, state, new_contacts)
+        end
+        _resolve_competing_risks!(state, new_contacts, interventions)
+        _register_step!(state, new_contacts)
         _resolve_new_transitions!(state, pre)
     end
 
@@ -136,11 +141,17 @@ function should_terminate(state::SimulationState, sim_opts::SimOpts)
     return false
 end
 
-"""Fraction of the population still susceptible (1.0 for infinite population)."""
-_susceptible_fraction(state::SimulationState{<:Any, NoPopulation}) = 1.0
+"""Fraction of the population still susceptible (1.0 for infinite
+population). The optional `extra_infected` accounts for contacts
+already infected within the current step but not yet registered."""
+function _susceptible_fraction(state::SimulationState{<:Any, NoPopulation},
+        extra_infected::Int = 0)
+    1.0
+end
 
-function _susceptible_fraction(state::SimulationState{<:Any, Int})
-    n_susceptible = state.population_size - state.cumulative_cases
+function _susceptible_fraction(state::SimulationState{<:Any, Int},
+        extra_infected::Int = 0)
+    n_susceptible = state.population_size - state.cumulative_cases - extra_infected
     n_susceptible <= 0 && return 0.0
     return n_susceptible / state.population_size
 end
@@ -187,6 +198,81 @@ function _resolve_transitions!(state::SimulationState, individual)
         resolve_individual!(transition, individual, state)
     end
     _finalise_terminal!(individual, transitions)
+    return nothing
+end
+
+"""Decide `:infected` for each newly produced contact by composing
+competing risks. Built-in risks (per-individual susceptibility,
+parent infectiousness, population-level susceptibility for
+finite-population models) are applied first; any [`competing_risk`](@ref)
+contributed by an intervention is then applied in stack order. A risk
+that has fired by transmission time blocks transmission with its
+`block_probability`; transmission succeeds iff no risk blocks it.
+
+Population susceptibility is recomputed per contact so that, as
+contacts within the same step get infected, the susceptible pool
+shrinks accordingly. This prevents the cumulative case count from
+overshooting a finite `population_size`."""
+function _resolve_competing_risks!(state::SimulationState, new_contacts, interventions)
+    infected_so_far = 0
+    for contact in new_contacts
+        infected = _decide_infected(state, contact, interventions, infected_so_far)
+        contact.state[:infected] = infected
+        infected && (infected_so_far += 1)
+    end
+    return nothing
+end
+
+function _decide_infected(state::SimulationState, contact::Individual,
+        interventions, infected_so_far::Int)
+    contact.parent_id == 0 && return true
+    rng = state.rng
+    parent = state.individuals[contact.parent_id]
+    transmission_time = contact.infection_time
+
+    # Built-in risks (time-agnostic Bernoulli draws). Population
+    # susceptibility reflects infections accumulated this step.
+    pop_suscept = _susceptible_fraction(state, infected_so_far)
+    pop_suscept <= 0.0 && return false
+    pop_suscept < 1.0 && rand(rng) > pop_suscept && return false
+    contact.susceptibility < 1.0 && rand(rng) > contact.susceptibility && return false
+    parent.infectiousness < 1.0 && rand(rng) > parent.infectiousness && return false
+
+    # Intervention-contributed risks.
+    for intervention in interventions
+        risk = competing_risk(intervention, parent, contact, state)
+        risk === nothing && continue
+        event_t = _sample_value(risk.event_time, rng, parent, contact, state)
+        event_t > transmission_time && continue
+        prob = _sample_value(risk.block_probability, rng, parent, contact, state)
+        prob <= 0.0 && continue
+        prob >= 1.0 && return false
+        rand(rng) < prob && return false
+    end
+    return true
+end
+
+"""Append the new contacts returned by `step!` to `state.individuals`
+and update the bookkeeping fields: `cumulative_cases`,
+`current_generation`, `max_infection_time`, `active_ids`, `extinct`."""
+function _register_step!(state::SimulationState, new_contacts)
+    append!(state.individuals, new_contacts)
+    new_infected_ids = Int[]
+    for ind in new_contacts
+        is_infected(ind) || continue
+        push!(new_infected_ids, ind.id)
+        if ind.infection_time > state.max_infection_time
+            state.max_infection_time = ind.infection_time
+        end
+    end
+    state.cumulative_cases += length(new_infected_ids)
+    state.current_generation += 1
+    if isempty(new_infected_ids)
+        state.extinct = true
+        state.active_ids = Int[]
+    else
+        state.active_ids = new_infected_ids
+    end
     return nothing
 end
 

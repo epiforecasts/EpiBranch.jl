@@ -79,3 +79,21 @@ function Base.rand(rng::AbstractRNG, d::_TruncatedSkewNormal)
 end
 
 Distributions.logpdf(d::_TruncatedSkewNormal, x::Real) = x < 0.0 ? -Inf : logpdf(d.inner, x)
+
+"""
+    _sample_value(x, rng, args...) -> Float64
+
+Resolve a value that can be a `Real`, a `Distribution`, or a callable.
+The callable is invoked as `f(rng, args...)` — callers choose the
+signature by what they pass after `rng`. The return is always
+converted to `Float64`.
+
+Used throughout the package for parameters that accept the same
+"scalar | distribution | function" trio: attribute builders
+([`transmission_traits`](@ref), [`clinical_presentation`](@ref)),
+intervention parameters (vaccination eligibility, isolation delays),
+and competing-risk fields ([`Risk`](@ref)).
+"""
+_sample_value(x::Real, rng, args...) = float(x)
+_sample_value(d::Distribution, rng, args...) = float(rand(rng, d))
+_sample_value(f, rng, args...) = float(f(rng, args...))

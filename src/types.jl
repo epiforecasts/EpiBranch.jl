@@ -130,7 +130,7 @@ end
 
 # Multi-type with explicit offspring function
 function BranchingProcess(offspring::Function, gt::Union{Distribution, Function};
-        n_types::Int, population_size::Union{Int, NoPopulation} = NoPopulation(),
+        n_types::Int = 1, population_size::Union{Int, NoPopulation} = NoPopulation(),
         latent_period::Real = 0.0,
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
     BranchingProcess(
@@ -185,8 +185,8 @@ Core fields (used by the engine):
   invariant is relied on for O(1) parent lookups.
 - `infection_time::Float64` — time at which this contact was exposed.
 - `susceptibility::Float64` ∈ `[0, 1]` — per-contact probability of
-  being infected given exposure. Checked in
-  [`EpiBranch._resolve_infection`](@ref).
+  being infected given exposure. Applied as a built-in competing risk
+  by the engine during infection resolution.
 - `infectiousness::Float64` ∈ `[0, 1]` — multiplicative modifier on
   this individual's onward transmission, applied when they become a
   parent.

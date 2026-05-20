@@ -133,17 +133,17 @@ println("30% asymptomatic, 80% test sensitivity: $(round(containment_probability
 
 ### Ring vaccination
 
-Traced contacts are vaccinated using [`RingVaccination`](@ref), reducing their
-susceptibility. This is applied after contact tracing has identified contacts,
-so [`ContactTracing`](@ref) must be in the intervention stack.
-
-The vaccine can be leaky (everyone's susceptibility reduced) or
-all-or-nothing (a fraction are fully protected):
+Traced contacts are vaccinated using [`RingVaccination`](@ref). The
+vaccination acts as a competing risk against the contact's transmission:
+if the vaccination has had time to confer immunity by the contact's
+transmission time, it blocks transmission with probability `efficacy`.
+Requires [`ContactTracing`](@ref) in the intervention stack so contacts
+are identified.
 
 ```@example interventions
 iso = Isolation(delay = Exponential(2.0))
 ct = ContactTracing(probability = 0.7, delay = Exponential(1.0))
-rv = RingVaccination(efficacy = 0.8, mode = :leaky)
+rv = RingVaccination(efficacy = 0.8)
 
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
@@ -190,7 +190,10 @@ println("Vaccinated: $n_vaccinated, Infected: $n_infected")
 ### Post-exposure prophylaxis
 
 For PEP (antivirals or antibiotics given to traced contacts), use
-`RingVaccination` with `delay_to_immunity = 0.0` (the default):
+`RingVaccination` with `delay_to_immunity = 0.0` (the default). PEP
+only blocks transmission for contacts whose trace time falls before
+their would-be transmission time — the engine's competing-risks
+resolution handles this automatically:
 
 ```@example interventions
 pep = RingVaccination(efficacy = 0.9)  # delay_to_immunity defaults to 0
@@ -203,6 +206,60 @@ results = simulate_batch(model, 200;
     rng = rng,
 )
 println("Iso + tracing + PEP: $(round(containment_probability(results), digits=3))")
+```
+
+### Mass vaccination
+
+[`MassVaccination`](@ref) vaccinates contacts on a rolling schedule
+independent of tracing. Each contact becomes eligible at a time set
+by the `eligibility_time` argument; whether vaccination actually blocks
+their infection then depends on whether eligibility plus
+`delay_to_immunity` falls before their transmission time.
+
+Whole population eligible on day 30 with a 14-day delay to immunity:
+
+```@example interventions
+mv = MassVaccination(efficacy = 0.85, eligibility_time = 30.0,
+    delay_to_immunity = 14.0)
+
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [mv], attributes = clinical,
+    sim_opts = SimOpts(max_cases = 500), rng = rng,
+)
+println("Mass vaccination from day 30: $(round(containment_probability(results), digits=3))")
+```
+
+For a rollout where individuals draw their eligibility independently
+(slow random rollout over weeks/months), pass a distribution:
+
+```@example interventions
+mv_random = MassVaccination(efficacy = 0.85,
+    eligibility_time = Exponential(60.0),
+    delay_to_immunity = 14.0)
+```
+
+For an age-stratified rollout (older first), pass a function:
+
+```@example interventions
+mv_age = MassVaccination(
+    efficacy = 0.85,
+    eligibility_time = (rng, ind) -> ind.state[:age] >= 65 ? 30.0 : 90.0,
+    delay_to_immunity = 14.0,
+)
+```
+
+This requires the `:age` attribute, so compose `demographics` into
+the attributes:
+
+```@example interventions
+attrs = compose(clinical, demographics(age_distribution = Uniform(0, 90)))
+rng = StableRNG(42)
+results = simulate_batch(model, 200;
+    interventions = [mv_age], attributes = attrs,
+    sim_opts = SimOpts(max_cases = 500), rng = rng,
+)
+println("Age-stratified rollout: $(round(containment_probability(results), digits=3))")
 ```
 
 ## Effort tracking

@@ -9,58 +9,63 @@ EpiBranch.jl is designed for user extension. This guide covers:
 ## Custom interventions
 
 Every intervention is a struct that subtypes `AbstractIntervention`. The
-simulation engine calls three hooks on each intervention, in order:
+engine calls four hooks on each intervention; you implement only the
+ones your intervention needs (all default to no-ops).
 
-1. **`initialise_individual!(intervention, individual, state)`** — called once
-   when each individual is created. Use this to set up intervention-specific
-   fields in the individual's `state` dict.
-2. **`resolve_individual!(intervention, individual, state)`** — called once per
-   active individual at the start of each generation, before offspring are
-   drawn. Use this to determine the individual's intervention status (e.g.
-   compute isolation time).
-3. **`apply_post_transmission!(intervention, state, new_contacts)`** — called
-   once per generation after all offspring have been created. Receives the full
-   vector of new contacts. Use this for interventions that act on contacts
-   (e.g. contact tracing, gathering limits).
+1. **`initialise_individual!(intervention, individual, state)`** — called
+   once when each individual is created. Use this to set up
+   intervention-specific fields in the individual's `state` dict.
+2. **`resolve_individual!(intervention, individual, state)`** — called
+   once per active individual at the start of each generation, before
+   offspring are drawn. Use this to determine the individual's
+   intervention status (e.g. compute isolation time on the parent).
+3. **`apply_post_transmission!(intervention, state, new_contacts)`** —
+   called once per generation after all offspring have been created.
+   Use this to write per-contact state that downstream observers or
+   competing risks will read (e.g. tracing writes `:traced`,
+   vaccination writes `:vaccination_time`).
+4. **`competing_risk(intervention, parent, contact, state)`** — called
+   per (parent, contact) pair during infection resolution. Return a
+   [`Risk`](@ref) with `event_time` and `block_probability`, or
+   `nothing` if the intervention does not gate this transmission. Use
+   this for anything that probabilistically blocks a specific
+   transmission event.
 
-All three default to no-ops, so you only need to implement the ones your
-intervention uses.
+Tree-shaping changes — capping offspring per parent, gathering-size
+limits, anything that's really "this parent produces fewer contacts
+than its natural offspring distribution would say" — belong in the
+offspring distribution itself, not in the intervention protocol. See
+[Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution)
+below.
 
-### Minimal example: gathering limit
+### Minimal example: a custom competing risk
 
-A simple intervention that caps the number of successful infections per
-parent in each generation:
+A "border closure" intervention that blocks transmission between
+contacts in different regions after a given date. Each individual
+carries `:region` as a custom attribute; the intervention's
+`competing_risk` reads both parent and contact regions and contributes
+a blocking risk when they differ.
 
 ```@example extending
 using EpiBranch
 using Distributions
 using StableRNGs
 
-struct GatheringLimit <: AbstractIntervention
-    max_contacts::Int
+struct BorderClosure <: AbstractIntervention
+    start_time::Float64
+    leakage::Float64   # residual cross-border transmission probability
 end
 
-function EpiBranch.apply_post_transmission!(gl::GatheringLimit, state, new_contacts)
-    parent_counts = Dict{Int, Int}()
-    for c in new_contacts
-        count = get(parent_counts, c.parent_id, 0) + 1
-        parent_counts[c.parent_id] = count
-        if count > gl.max_contacts
-            c.state[:infected] = false
-        end
-    end
+function EpiBranch.competing_risk(bc::BorderClosure, parent, contact, state)
+    parent.state[:region] == contact.state[:region] && return nothing
+    return Risk(event_time = bc.start_time,
+        block_probability = 1.0 - bc.leakage)
 end
-
-gl = GatheringLimit(5)
-rng = StableRNG(42)
-results = simulate_batch(
-    BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)), 200;
-    interventions = [gl],
-    sim_opts = SimOpts(max_cases = 500),
-    rng = rng,
-)
-println("With gathering limit (max 5): $(round(containment_probability(results), digits=3))")
 ```
+
+`event_time = bc.start_time` means the risk only fires for contacts
+whose transmission time is on or after the closure date; cross-border
+transmissions before the closure are unaffected.
 
 ### Making the intervention schedulable
 
@@ -94,8 +99,8 @@ end
 Then a user schedules the intervention like:
 
 ```julia
-# Activate gathering limit on day 10
-Scheduled(GatheringLimit(5); start_time = 10.0)
+# Activate border closure on day 10
+Scheduled(BorderClosure(0.0, 0.05); start_time = 10.0)
 ```
 
 ### Requiring fields on individuals
@@ -108,116 +113,77 @@ at simulation start:
 EpiBranch.required_fields(::MyIntervention) = [:onset_time, :asymptomatic]
 ```
 
-## Complete worked example: superspreading limit
+### Composing with built-in interventions
 
-Some interventions need all three hooks. Here we build a
-`SuperspreadingLimit` that models targeted surveillance of superspreading
-events: individuals who would generate more than a threshold number of
-cases have their excess contacts blocked (e.g. via event cancellation),
-but only after a policy start time.
-
-```@example extending
-"""
-    SuperspreadingLimit(; threshold)
-
-Block transmission beyond `threshold` contacts per individual.
-Models targeted intervention against superspreading events (e.g.
-large-gathering bans). Wrap with [`Scheduled`](@ref) for time-based
-activation.
-"""
-Base.@kwdef struct SuperspreadingLimit <: AbstractIntervention
-    threshold::Int
-end
-
-# --- Hook 1: initialise fields on each individual ---
-function EpiBranch.initialise_individual!(ssl::SuperspreadingLimit, individual, state)
-    individual.state[:sse_limited] = false
-    individual.state[:sse_limit_time] = Inf
-end
-
-# --- Hook 2: mark individual before transmission ---
-# (not needed here — we act on contacts, not parents)
-
-# --- Hook 3: act on contacts after creation ---
-function EpiBranch.apply_post_transmission!(ssl::SuperspreadingLimit, state, new_contacts)
-    parent_counts = Dict{Int, Int}()
-    for c in new_contacts
-        count = get(parent_counts, c.parent_id, 0) + 1
-        parent_counts[c.parent_id] = count
-        if count > ssl.threshold && is_infected(c)
-            c.state[:infected] = false
-            c.state[:sse_limited] = true
-            c.state[:sse_limit_time] = c.infection_time
-        end
-    end
-end
-
-# --- Scheduling support: declare action time + how to undo it ---
-function EpiBranch.intervention_time(ssl::SuperspreadingLimit, ind::Individual)
-    get(ind.state, :sse_limit_time, Inf)
-end
-
-function EpiBranch.reset!(ssl::SuperspreadingLimit, ind::Individual)
-    if get(ind.state, :sse_limited, false)
-        ind.state[:infected] = true
-        ind.state[:sse_limited] = false
-        ind.state[:sse_limit_time] = Inf
-    end
-    return nothing
-end
-```
-
-Now test it — a highly overdispersed offspring distribution (low `k`) with
-and without the superspreading limit:
+Custom interventions compose naturally with the built-in ones. The
+engine applies all interventions in order each generation. Building on
+the `BorderClosure` above (interpreted here as everyone being in one
+region so closure does nothing — illustrative only):
 
 ```@example extending
 model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
-
-# No intervention
-rng = StableRNG(42)
-baseline = simulate_batch(model, 200;
-    sim_opts = SimOpts(max_cases = 500), rng = rng,
+clinical_with_region = compose(
+    clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    (rng, ind) -> (ind.state[:region] = :only),
 )
-
-# Superspreading limit from the start
-ssl = SuperspreadingLimit(threshold = 5)
-rng = StableRNG(42)
-with_ssl = simulate_batch(model, 200;
-    interventions = [ssl],
-    sim_opts = SimOpts(max_cases = 500), rng = rng,
-)
-
-# Superspreading limit starting on day 10
-ssl_delayed = Scheduled(SuperspreadingLimit(threshold = 5); start_time = 10.0)
-rng = StableRNG(42)
-with_ssl_delayed = simulate_batch(model, 200;
-    interventions = [ssl_delayed],
-    sim_opts = SimOpts(max_cases = 500), rng = rng,
-)
-
-println("Baseline:              $(round(containment_probability(baseline), digits=3))")
-println("SSE limit (always):    $(round(containment_probability(with_ssl), digits=3))")
-println("SSE limit (from day 10): $(round(containment_probability(with_ssl_delayed), digits=3))")
-```
-
-### Composing with built-in interventions
-
-Custom interventions compose naturally with the built-in ones. The engine
-applies all interventions in order each generation:
-
-```@example extending
-clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 iso = Isolation(delay = Exponential(2.0))
-ssl = SuperspreadingLimit(threshold = 5)
+bc = BorderClosure(10.0, 0.05)
 
 rng = StableRNG(42)
 results = simulate_batch(model, 200;
-    interventions = [iso, ssl],
-    attributes = clinical,
+    interventions = [iso, bc],
+    attributes = clinical_with_region,
     sim_opts = SimOpts(max_cases = 500), rng = rng,
 )
-println("Isolation + SSE limit: $(round(containment_probability(results), digits=3))")
+println("Isolation + border closure: $(round(containment_probability(results), digits=3))")
 ```
+
+## Tree-shaping via the offspring distribution
+
+Some interventions don't filter individual transmissions — they change
+*how many* contacts a parent makes. Gathering limits, event-size caps,
+and superspreading-event surveillance all fit this pattern. They are
+genuinely modifications to the offspring distribution, not per-contact
+risks, and EpiBranch handles them by accepting a function-form
+offspring distribution to [`BranchingProcess`](@ref).
+
+A hard cap on offspring per parent:
+
+```@example extending
+capped_offspring(rng, ind) = min(rand(rng, NegBin(2.5, 0.16)), 5)
+model_capped = BranchingProcess(capped_offspring, Exponential(5.0))
+```
+
+A state-aware cap that only kicks in once the outbreak crosses 20
+cases (mirroring what `Scheduled` does for risk-based interventions,
+but for a tree-shape change):
+
+```@example extending
+function policy_offspring(rng, ind, state)
+    n = rand(rng, NegBin(2.5, 0.16))
+    return state.cumulative_cases >= 20 ? min(n, 5) : n
+end
+model_policy = BranchingProcess(policy_offspring, Exponential(5.0))
+```
+
+The function form supports either two or three arguments — `(rng, ind)`
+when the offspring rule only needs the individual, `(rng, ind, state)`
+when it also reads simulation state.
+
+Time-varying R falls out of the same mechanism. If `R(t)` is a
+function of (say) the parent's infection time, pass an offspring
+distribution that reads `ind.infection_time`:
+
+```@example extending
+r_at_time(t) = max(1.0, 3.0 - 2.0 * t / 50.0)
+time_varying = (rng, ind) -> rand(rng, Poisson(r_at_time(ind.infection_time)))
+model_rt = BranchingProcess(time_varying, Exponential(5.0))
+```
+
+Use `ind.infection_time` when R varies with each parent's own
+infection timing, or `state.max_infection_time` (via the
+three-argument form) when R varies with the population-level outbreak
+clock.
 
 ## Custom attributes functions
 
