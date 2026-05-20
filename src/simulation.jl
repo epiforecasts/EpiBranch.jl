@@ -132,13 +132,10 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
     return temp_state
 end
 
-# track max_infection_time incrementally instead of scanning
 function should_terminate(state::SimulationState, sim_opts::SimOpts)
-    state.extinct && return true
-    state.cumulative_cases >= sim_opts.max_cases && return true
-    state.current_generation >= sim_opts.max_generations && return true
-    isfinite(sim_opts.max_time) && state.max_infection_time >= sim_opts.max_time &&
-        return true
+    for rule in sim_opts.stopping_rules
+        should_stop(rule, state) && return true
+    end
     return false
 end
 

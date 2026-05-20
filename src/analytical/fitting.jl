@@ -133,15 +133,15 @@ function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
     sim_values = Int[]
     # Track which simulations hit the case cap (right-censored)
     censored = Bool[]
+    cap = max_cases(sim_opts)
     for state in states
         cs = chain_statistics(state)
         vals = getproperty(cs, column)
         append!(sim_values, vals)
-        hit_cap = !state.extinct && state.cumulative_cases >= sim_opts.max_cases
+        hit_cap = !state.extinct && state.cumulative_cases >= cap
         append!(censored, fill(hit_cap, length(vals)))
     end
-    return _empirical_ll(observed, sim_values; min_val, censored,
-        cap = sim_opts.max_cases)
+    return _empirical_ll(observed, sim_values; min_val, censored, cap)
 end
 
 """
@@ -173,19 +173,18 @@ function loglikelihood(data::ChainSizes,
         interventions, attributes, sim_opts, rng)
     sim_values = Int[]
     censored = Bool[]
+    cap = max_cases(sim_opts)
     for state in states
         cs = chain_statistics(state)
         for true_size in cs.size
             obs = rand(rng, Binomial(true_size, p))
             obs >= 1 || continue
             push!(sim_values, obs)
-            hit_cap = !state.extinct &&
-                      state.cumulative_cases >= sim_opts.max_cases
+            hit_cap = !state.extinct && state.cumulative_cases >= cap
             push!(censored, hit_cap)
         end
     end
-    return _empirical_ll(data.data, sim_values; min_val = 1, censored,
-        cap = sim_opts.max_cases)
+    return _empirical_ll(data.data, sim_values; min_val = 1, censored, cap)
 end
 
 function loglikelihood(::ChainLengths,

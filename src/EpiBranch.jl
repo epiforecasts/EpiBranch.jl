@@ -68,6 +68,7 @@ include("analytical/end_of_outbreak_probability.jl")
 export TransmissionModel, BranchingProcess
 export Individual, SimulationState
 export SimOpts
+export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
 export AbstractIntervention, Isolation, ContactTracing
 export AbstractVaccination, RingVaccination, MassVaccination
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
