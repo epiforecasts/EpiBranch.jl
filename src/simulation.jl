@@ -315,6 +315,10 @@ For asymptomatic cases (drawn with probability `prob_asymptomatic`),
 [`Isolation`](@ref) and used by [`linelist`](@ref) to populate
 `date_onset`.
 
+`prob_asymptomatic` accepts a `Real`, a `Distribution`, or a function
+`(rng, ind) -> Real`. Use the function form for age- or
+state-conditional asymptomatic fractions.
+
 # Examples
 
 Symptomatic-only with a log-normal incubation period:
@@ -332,23 +336,34 @@ attributes = clinical_presentation(
 )
 ```
 
-Compose with other attributes (e.g. demographics and a per-contact
-infection probability):
+Per-individual asymptomatic probability drawn from a Beta:
+
+```julia
+attributes = clinical_presentation(
+    incubation_period = LogNormal(1.6, 0.5),
+    prob_asymptomatic = Beta(2, 8),
+)
+```
+
+Age-conditional (children much more likely to be asymptomatic; compose
+after `demographics`):
 
 ```julia
 attributes = compose(
-    clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
     demographics(age_distribution = Uniform(0, 90)),
-    (rng, ind) -> (ind.susceptibility = 0.3),
+    clinical_presentation(
+        incubation_period = LogNormal(1.6, 0.5),
+        prob_asymptomatic = (rng, ind) -> ind.state[:age] < 18 ? 0.6 : 0.2,
+    ),
 )
 ```
 
 See also [`demographics`](@ref), [`compose`](@ref).
 """
 function clinical_presentation(; incubation_period::Distribution,
-        prob_asymptomatic::Real = 0.0)
-    pa = float(prob_asymptomatic)
+        prob_asymptomatic::Union{Real, Distribution, Function} = 0.0)
     return function (rng, ind)
+        pa = _sample_value(prob_asymptomatic, rng, ind)
         is_asymp = rand(rng) < pa
         ind.state[:asymptomatic] = is_asymp
         ind.state[:onset_time] = if !is_asymp
