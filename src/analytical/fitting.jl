@@ -145,20 +145,18 @@ function loglikelihood(data::ChainSizes,
         interventions, attributes, sim_opts, rng)
     sim_values = Int[]
     censored = Bool[]
+    cap = max_cases(sim_opts)
     for state in states
         cs = chain_statistics(state)
         for true_size in cs.size
             obs = rand(rng, Binomial(true_size, p))
             obs >= 1 || continue
             push!(sim_values, obs)
-            cap = max_cases(sim_opts)
-            hit_cap = !state.extinct &&
-                      state.cumulative_cases >= cap
+            hit_cap = !state.extinct && state.cumulative_cases >= cap
             push!(censored, hit_cap)
         end
     end
-    return _empirical_ll(data.data, sim_values; min_val = 1, censored,
-        cap = max_cases(sim_opts))
+    return _empirical_ll(data.data, sim_values; min_val = 1, censored, cap)
 end
 
 function loglikelihood(::ChainLengths,
