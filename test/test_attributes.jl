@@ -71,4 +71,51 @@
             @test all(ind.infectiousness == 0.8 for ind in state.individuals)
         end
     end
+
+    @testset "clinical_presentation prob_asymptomatic accepts distribution and function" begin
+        @testset "scalar (default behaviour)" begin
+            attrs = clinical_presentation(
+                incubation_period = LogNormal(1.5, 0.5),
+                prob_asymptomatic = 0.0)
+            ind = Individual(id = 1)
+            attrs(StableRNG(1), ind)
+            @test ind.state[:asymptomatic] == false
+            @test !isnan(ind.state[:onset_time])
+        end
+
+        @testset "function: age-conditional asymptomatic fraction" begin
+            attrs = compose(
+                demographics(age_distribution = Uniform(0, 90)),
+                clinical_presentation(
+                    incubation_period = LogNormal(1.5, 0.5),
+                    prob_asymptomatic = (rng, ind) -> ind.state[:age] < 18 ? 1.0 : 0.0
+                )
+            )
+            rng = StableRNG(7)
+            for _ in 1:200
+                ind = Individual(id = 1)
+                attrs(rng, ind)
+                expected = ind.state[:age] < 18
+                @test ind.state[:asymptomatic] == expected
+            end
+        end
+
+        @testset "distribution: per-individual probability" begin
+            # Beta(2, 8) has mean 0.2 — most individuals draw a low
+            # probability of being asymptomatic.
+            attrs = clinical_presentation(
+                incubation_period = LogNormal(1.5, 0.5),
+                prob_asymptomatic = Beta(2, 8)
+            )
+            rng = StableRNG(11)
+            asymp_count = 0
+            for _ in 1:500
+                ind = Individual(id = 1)
+                attrs(rng, ind)
+                ind.state[:asymptomatic] && (asymp_count += 1)
+            end
+            # Expected ~100/500 = 0.2. Allow generous bounds.
+            @test 50 <= asymp_count <= 150
+        end
+    end
 end
