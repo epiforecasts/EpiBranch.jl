@@ -70,6 +70,7 @@ export Individual, SimulationState
 export SimOpts
 export AbstractIntervention, Isolation, ContactTracing
 export AbstractVaccination, RingVaccination, MassVaccination
+export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
 export is_active, intervention_time
 export AbstractClinicalTransition, Reporting, Hospitalisation, Death, Recovery

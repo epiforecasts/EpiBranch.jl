@@ -13,11 +13,14 @@ their infection blocked with probability `efficacy`.
 vaccinated individual at vaccination time and store the result on the
 contact; the competing risk reads the stored value.
 
-`mode` (`:leaky` or `:all_or_nothing`) is recorded for completeness
-but does not change the per-contact infection probability in a pure
-branching tree, where every contact is a unique exposure. The
-distinction starts to matter once network models permit multiple
-exposures per individual.
+`mode` is an [`AbstractEffectMode`](@ref): [`LeakyMode`](@ref) (the
+default) reduces each exposure's success probability by `efficacy`,
+while [`AllOrNothingMode`](@ref) fully protects a fraction `efficacy`
+of vaccinated individuals and leaves the rest unaffected. In a pure
+branching tree the two modes give the same per-contact infection
+probability — every contact is a unique exposure, so per-exposure and
+per-individual semantics coincide. The distinction starts to matter
+once network models permit multiple exposures per individual.
 
 # Multi-dose vaccination
 
@@ -33,6 +36,29 @@ written to plain `:vaccinated` / `:vaccination_time` for backwards
 compatibility with the `is_vaccinated` accessor.
 """
 abstract type AbstractVaccination <: AbstractIntervention end
+
+"""
+Effect mode for a vaccination: how `efficacy` translates into
+per-exposure infection probability.
+
+Concrete subtypes:
+
+- [`LeakyMode`](@ref): every exposure of a vaccinated individual is
+  reduced by `efficacy` (per-exposure semantics).
+- [`AllOrNothingMode`](@ref): a fraction `efficacy` of vaccinated
+  individuals are fully protected for all exposures; the rest gain
+  no protection (per-individual semantics).
+"""
+abstract type AbstractEffectMode end
+
+"""Per-exposure efficacy: each exposure's transmission is blocked
+independently with probability `efficacy`. Default mode."""
+struct LeakyMode <: AbstractEffectMode end
+
+"""Per-individual efficacy: a fraction `efficacy` of vaccinated
+individuals are fully protected (susceptibility = 0); the rest gain
+no protection."""
+struct AllOrNothingMode <: AbstractEffectMode end
 
 """Time between vaccination and the onset of protective immunity. Added
 to the vaccination time to give the event time of the competing risk."""
@@ -104,10 +130,10 @@ Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
 `:vaccine_efficacy` for the default dose label. With a non-default
 `dose_label`, the keys carry the label as a suffix.
 """
-Base.@kwdef struct RingVaccination{E} <: AbstractVaccination
+Base.@kwdef struct RingVaccination{E, M <: AbstractEffectMode} <: AbstractVaccination
     efficacy::E
     delay_to_immunity::Float64 = 0.0
-    mode::Symbol = :leaky
+    mode::M = LeakyMode()
     dose_label::Symbol = :default
 end
 
@@ -193,11 +219,11 @@ Prime-and-boost schedule (compose two instances with different labels):
 ]
 ```
 """
-Base.@kwdef struct MassVaccination{E, T} <: AbstractVaccination
+Base.@kwdef struct MassVaccination{E, T, M <: AbstractEffectMode} <: AbstractVaccination
     efficacy::E
     eligibility_time::T
     delay_to_immunity::Float64 = 0.0
-    mode::Symbol = :leaky
+    mode::M = LeakyMode()
     dose_label::Symbol = :default
 end
 
