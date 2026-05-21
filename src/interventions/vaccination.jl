@@ -124,20 +124,50 @@ For post-exposure prophylaxis (PEP, cf.
 vaccine that takes time to confer protection, set `delay_to_immunity`
 to the appropriate delay.
 
+`coverage` is the per-contact probability that a traced contact
+actually receives the vaccine, capturing programme reach (consent
+refusal, absence, exclusion criteria, logistical gaps). Defaults to
+`1.0`. Accepts a `Real`, `Distribution`, or `Function`
+`(rng, contact) -> Real` for per-individual coverage (e.g.
+age-dependent).
+
+`eligibility_window` skips vaccination when the time since the
+contact's exposure exceeds the window — typical of filovirus-type
+protocols where post-exposure vaccination beyond ~21 days is
+operationally pointless. Defaults to `Inf` (no window). Accepts a
+`Real` or `Function` `(rng, contact) -> Real`. Eligibility is checked
+at vaccination time, not at immunity-onset time, so a contact
+vaccinated near the window's end with a long `delay_to_immunity` is
+still recorded as vaccinated (whether immunity arrives before that
+contact's own transmission time is then decided by competing risks).
+
 Requires `:traced` (set by [`ContactTracing`](@ref)).
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
 `:vaccine_efficacy` for the default dose label. With a non-default
 `dose_label`, the keys carry the label as a suffix.
 """
-Base.@kwdef struct RingVaccination{E, M <: AbstractEffectMode} <: AbstractVaccination
+Base.@kwdef struct RingVaccination{E, C, W, M <: AbstractEffectMode} <: AbstractVaccination
     efficacy::E
+    coverage::C = 1.0
     delay_to_immunity::Float64 = 0.0
+    eligibility_window::W = Inf
     mode::M = LeakyMode()
     dose_label::Symbol = :default
 end
 
 required_fields(::RingVaccination) = [:traced]
+
+# Scalar defaults short-circuit without drawing from the rng so that
+# coverage = 1.0 and eligibility_window = Inf reproduce the previous
+# deterministic behaviour exactly.
+_within_eligibility_window(w::Real, ind, vacc_t, rng) = vacc_t - ind.infection_time <= w
+function _within_eligibility_window(w, ind, vacc_t, rng)
+    vacc_t - ind.infection_time <= _sample_value(w, rng, ind)
+end
+
+_covers(p::Real, ind, rng) = p >= 1.0 || rand(rng) < p
+_covers(p, ind, rng) = rand(rng) < _sample_value(p, rng, ind)
 
 function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
     label = dose_label(rv)
@@ -147,6 +177,9 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
         get(ind.state, vacc_key, false) && continue
         vacc_t = isolation_time(ind)
         isfinite(vacc_t) || continue
+        _within_eligibility_window(rv.eligibility_window, ind, vacc_t, state.rng) ||
+            continue
+        _covers(rv.coverage, ind, state.rng) || continue
         _record_vaccination!(rv, ind, vacc_t, state.rng)
     end
     return nothing
