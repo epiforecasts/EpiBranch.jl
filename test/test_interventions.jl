@@ -210,6 +210,94 @@
             @test containment_probability(results_instant) >=
                   containment_probability(results_delayed) - 0.05
         end
+
+        @testset "Coverage thins vaccinations" begin
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            iso = Isolation(delay = Exponential(1.0))
+            ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
+
+            # Coverage = 0 means nobody gets vaccinated, even though traced.
+            rv_zero = RingVaccination(efficacy = 0.9, coverage = 0.0)
+            state = simulate(model;
+                interventions = [iso, ct, rv_zero], attributes = clinical,
+                sim_opts = SimOpts(max_cases = 100), rng = StableRNG(42))
+            @test count(is_vaccinated, state.individuals) == 0
+            @test count(is_traced, state.individuals) > 0
+
+            # Coverage = 1 reproduces the previous behaviour: every eligible
+            # traced contact is vaccinated.
+            rv_full = RingVaccination(efficacy = 0.9, coverage = 1.0)
+            state_full = simulate(model;
+                interventions = [iso, ct, rv_full], attributes = clinical,
+                sim_opts = SimOpts(max_cases = 100), rng = StableRNG(42))
+            n_vacc_full = count(is_vaccinated, state_full.individuals)
+            @test n_vacc_full > 0
+
+            # Partial coverage gives strictly fewer vaccinations than full
+            # coverage (over enough simulations).
+            rv_partial = RingVaccination(efficacy = 0.9, coverage = 0.3)
+            n_vacc_partial = sum(
+                count(is_vaccinated, s.individuals)
+            for s in simulate_batch(model, 30;
+                interventions = [iso, ct, rv_partial], attributes = clinical,
+                sim_opts = SimOpts(max_cases = 100), rng = StableRNG(7)))
+            n_vacc_full_batch = sum(
+                count(is_vaccinated, s.individuals)
+            for s in simulate_batch(model, 30;
+                interventions = [iso, ct, rv_full], attributes = clinical,
+                sim_opts = SimOpts(max_cases = 100), rng = StableRNG(7)))
+            @test n_vacc_partial < n_vacc_full_batch
+        end
+
+        @testset "Coverage accepts a function" begin
+            # Age-conditional coverage: 50+ always vaccinated, under-50 never.
+            attrs = compose(clinical,
+                demographics(age_distribution = Uniform(0, 90)))
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            iso = Isolation(delay = Exponential(0.5))
+            ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
+            rv = RingVaccination(efficacy = 0.9,
+                coverage = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0)
+            state = simulate(model;
+                interventions = [iso, ct, rv], attributes = attrs,
+                sim_opts = SimOpts(max_cases = 200), rng = StableRNG(101))
+            for ind in state.individuals
+                is_vaccinated(ind) && @test ind.state[:age] >= 50
+            end
+        end
+
+        @testset "Eligibility window skips late vaccinations" begin
+            # With a long isolation delay, only some traced contacts are
+            # within a tight window. A short window should produce strictly
+            # fewer vaccinations than an infinite one.
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            iso = Isolation(delay = Exponential(5.0))
+            ct = ContactTracing(probability = 1.0, delay = Exponential(1.0))
+
+            rv_inf = RingVaccination(efficacy = 0.9, eligibility_window = Inf)
+            n_inf = sum(
+                count(is_vaccinated, s.individuals)
+            for s in simulate_batch(model, 50;
+                interventions = [iso, ct, rv_inf], attributes = clinical,
+                sim_opts = SimOpts(max_cases = 100), rng = StableRNG(3)))
+
+            rv_narrow = RingVaccination(efficacy = 0.9, eligibility_window = 1.0)
+            states_narrow = simulate_batch(model, 50;
+                interventions = [iso, ct, rv_narrow], attributes = clinical,
+                sim_opts = SimOpts(max_cases = 100), rng = StableRNG(3))
+            n_narrow = sum(
+                count(is_vaccinated, s.individuals) for s in states_narrow)
+            @test n_narrow < n_inf
+
+            # Every vaccinated contact must satisfy the window.
+            for state in states_narrow
+                for ind in state.individuals
+                    if is_vaccinated(ind)
+                        @test isolation_time(ind) - ind.infection_time <= 1.0
+                    end
+                end
+            end
+        end
     end
 
     @testset "Contact tracing without quarantine" begin
