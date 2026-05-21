@@ -12,31 +12,32 @@ Every intervention is a struct that subtypes `AbstractIntervention`. The
 engine calls four hooks on each intervention; you implement only the
 ones your intervention needs (all default to no-ops).
 
-1. **`initialise_individual!(intervention, individual, state)`** — called
-   once when each individual is created. Use this to set up
-   intervention-specific fields in the individual's `state` dict.
-2. **`resolve_individual!(intervention, individual, state)`** — called
-   once per active individual at the start of each generation, before
-   offspring are drawn. Use this to determine the individual's
-   intervention status (e.g. compute isolation time on the parent).
-3. **`apply_post_transmission!(intervention, state, new_contacts)`** —
-   called once per generation after all offspring have been created.
-   Use this to write per-contact state that downstream observers or
-   competing risks will read (e.g. tracing writes `:traced`,
-   vaccination writes `:vaccination_time`).
-4. **`competing_risk(intervention, parent, contact, state)`** — called
-   per (parent, contact) pair during infection resolution. Return a
-   [`Risk`](@ref) with `event_time` and `block_probability`, or
-   `nothing` if the intervention does not gate this transmission. Use
-   this for anything that probabilistically blocks a specific
-   transmission event.
+### Hook contract
 
-Tree-shaping changes — capping offspring per parent, gathering-size
-limits, anything that's really "this parent produces fewer contacts
-than its natural offspring distribution would say" — belong in the
-offspring distribution itself, not in the intervention protocol. See
-[Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution)
-below.
+| Hook | Called | Receives | Must return |
+|---|---|---|---|
+| `initialise_individual!(iv, individual, state)` | Once when each individual is created | An `Individual` whose typed fields are set but whose `state` dict is empty | `nothing` (mutate `individual.state` in place) |
+| `resolve_individual!(iv, individual, state)` | Once per active individual at the start of each generation, before offspring are drawn | The parent for the upcoming step | `nothing` (mutate `individual.state` in place) |
+| `apply_post_transmission!(iv, state, new_contacts)` | Once per generation after all contacts for that generation have been created (across every active parent) | A `Vector{Individual}` of the new contacts | `nothing` (mutate any of the contacts' `state` in place) |
+| `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair during infection resolution, after `apply_post_transmission!` has run | The parent and a single new contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
+
+Ordering guarantees:
+
+- `resolve_individual!` runs strictly before any `competing_risk` call for that generation, so a competing risk can read whatever `resolve_individual!` wrote on the parent.
+- `apply_post_transmission!` runs strictly before any `competing_risk` call, so a competing risk can read whatever post-transmission hook wrote on the contact (e.g. `:vaccination_time`).
+- Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
+
+A `Risk` fires for a contact iff `event_time <= contact.infection_time`; when it fires, transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms — `RingVaccination` returns both a susceptibility risk on the contact and an onward-infectiousness risk on the parent.
+
+Tree-shaping changes — capping offspring per parent, gathering-size limits, anything that's really "this parent produces fewer contacts than its natural offspring distribution would say" — belong in the offspring distribution itself, not in the intervention protocol. See [Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution) below.
+
+### Verifying your intervention
+
+The engine never errors when a hook is missing — every hook has a no-op default. That is convenient for partial implementations but means that *forgotten* hooks fail silently. Quick checks:
+
+- Run a tiny simulation (`SimOpts(max_cases = 50)`) with and without your intervention in the stack. If the outcome doesn't change in either direction it should, your `competing_risk` or `apply_post_transmission!` is probably not being called for the cases you think.
+- Override `required_fields` (see below) so the engine fails at simulation start when an upstream attributes function hasn't set a field your intervention needs.
+- Inspect `state.individuals[1].state` after a small run to confirm your hook actually wrote the keys downstream code reads.
 
 ### Minimal example: a custom competing risk
 
