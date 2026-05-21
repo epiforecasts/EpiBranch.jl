@@ -29,7 +29,7 @@ ct = ContactTracing(probability = 0.5, delay = Exponential(1.5))
 
 results = simulate_batch(model, 500;
     interventions = [iso, ct],
-    attributes = Disease(incubation_period = LogNormal(1.5, 0.5)),
+    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     sim_opts = SimOpts(max_cases = 5000),
 )
 

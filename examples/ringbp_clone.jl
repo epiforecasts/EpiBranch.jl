@@ -34,7 +34,7 @@ incubation = LogNormal(1.57, 0.65)
 gt = incubation_linked_generation_time(presymptomatic_fraction = 0.15)
 
 # Clinical attributes: 10% asymptomatic
-clinical = Disease(
+clinical = clinical_presentation(
     incubation_period = incubation,
     prob_asymptomatic = 0.1
 )

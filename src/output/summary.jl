@@ -143,14 +143,12 @@ function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
         vals = Dict(k => v for (k, v) in zip(keys_ordered, combo))
 
         offspring = vals[:offspring]
-        gt = get(vals, :generation_time, nothing)
+        gt = get(vals, :generation_time, NoGenerationTime())
         interventions = get(vals, :interventions, AbstractIntervention[])
         attributes = get(vals, :attributes, NoAttributes())
         pop_size = get(vals, :population_size, NoPopulation())
 
-        model = gt === nothing ?
-                BranchingProcess(offspring; population_size = pop_size) :
-                BranchingProcess(offspring, gt; population_size = pop_size)
+        model = BranchingProcess(offspring, gt; population_size = pop_size)
 
         results = simulate_batch(model, n_sim;
             interventions = interventions isa Vector ? interventions : [interventions],

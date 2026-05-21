@@ -34,6 +34,10 @@ EpiBranch.step!
 ```@docs
 AbstractIntervention
 Isolation
+IsolationEligibility
+SymptomaticOnly
+AllCases
+EpiBranch.is_eligible_for_isolation
 ContactTracing
 Eligibility
 AlwaysEligible
