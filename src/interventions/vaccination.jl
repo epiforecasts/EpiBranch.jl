@@ -87,18 +87,21 @@ function initialise_individual!(v::AbstractVaccination, individual, state)
     return nothing
 end
 
-"""Vaccination's competing risk: blocks the parent → contact
-transmission iff this dose has been administered to the contact and
-immunity has developed by their transmission time."""
-function competing_risk(v::AbstractVaccination, parent, contact, state)
+"""Susceptibility-side risk: blocks the parent → contact transmission
+iff this dose has been administered to the contact and the contact's
+vaccine-induced immunity has developed by their transmission time."""
+function _susceptibility_risk(v::AbstractVaccination, contact)
     label = dose_label(v)
     get(contact.state, _vaccinated_key(label), false) || return nothing
     vacc_t = get(contact.state, _vaccination_time_key(label), Inf)::Float64
     isfinite(vacc_t) || return nothing
     eff = get(contact.state, _vaccine_efficacy_key(label), nothing)
     eff === nothing && return nothing
-    return Risk(event_time = vacc_t + delay_to_immunity(v),
-        block_probability = eff)
+    return Risk(event_time = vacc_t + delay_to_immunity(v), block_probability = eff)
+end
+
+function competing_risk(v::AbstractVaccination, parent, contact, state)
+    _susceptibility_risk(v, contact)
 end
 
 # Helper for concrete subtypes: write per-dose state on a contact at
@@ -141,6 +144,17 @@ vaccinated near the window's end with a long `delay_to_immunity` is
 still recorded as vaccinated (whether immunity arrives before that
 contact's own transmission time is then decided by competing risks).
 
+`onward_efficacy` is the per-exposure probability that a *vaccinated
+parent's* onward transmission is blocked once the parent's
+vaccine-induced immunity has developed — the post-exposure
+prophylaxis mechanism by which ring vaccination averts onward cases
+even for contacts who were already exposed at the time of
+vaccination. Defaults to `0.0` (no onward effect). `efficacy` (the
+susceptibility-side block applied when the *contact* is vaccinated)
+still applies independently; setting both to the same value gives a
+vaccine that acts symmetrically on susceptibility and infectiousness,
+setting only `onward_efficacy` gives a pure PEP effect.
+
 Requires `:traced` (set by [`ContactTracing`](@ref)).
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
@@ -152,11 +166,39 @@ Base.@kwdef struct RingVaccination{E, C, W, M <: AbstractEffectMode} <: Abstract
     coverage::C = 1.0
     delay_to_immunity::Float64 = 0.0
     eligibility_window::W = Inf
+    onward_efficacy::Float64 = 0.0
     mode::M = LeakyMode()
     dose_label::Symbol = :default
 end
 
 required_fields(::RingVaccination) = [:traced]
+
+# Onward-infectiousness risk: blocks the parent → contact transmission
+# iff this dose has been administered to the *parent* and the parent's
+# immunity has developed by their (the parent's) transmission time. The
+# parent's `:vaccination_time` is set by ring vaccination at the parent's
+# isolation time; the onward immunity comes online at that time plus
+# `delay_to_immunity`, exactly as for the susceptibility side.
+function _onward_risk(rv::RingVaccination, parent)
+    rv.onward_efficacy > 0.0 || return nothing
+    label = dose_label(rv)
+    get(parent.state, _vaccinated_key(label), false) || return nothing
+    vacc_t = get(parent.state, _vaccination_time_key(label), Inf)::Float64
+    isfinite(vacc_t) || return nothing
+    return Risk(event_time = vacc_t + delay_to_immunity(rv),
+        block_probability = rv.onward_efficacy)
+end
+
+# Combine the susceptibility risk (acting on the contact) with the
+# optional onward-infectiousness risk (acting on the parent). Returning
+# a tuple of risks is supported by the engine's `_iter_risks` helper.
+function competing_risk(rv::RingVaccination, parent, contact, state)
+    susceptibility = _susceptibility_risk(rv, contact)
+    onward = _onward_risk(rv, parent)
+    susceptibility === nothing && return onward
+    onward === nothing && return susceptibility
+    return (susceptibility, onward)
+end
 
 # Scalar defaults short-circuit without drawing from the rng so that
 # coverage = 1.0 and eligibility_window = Inf reproduce the previous

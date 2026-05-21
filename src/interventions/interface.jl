@@ -55,11 +55,18 @@ end
 Risk(; event_time = -Inf, block_probability) = Risk(event_time, block_probability)
 
 """
-    competing_risk(intervention, parent, contact, state) -> Union{Nothing, Risk}
+    competing_risk(intervention, parent, contact, state)
+        -> Union{Nothing, Risk, NTuple{N, Risk}}
 
-Return the [`Risk`](@ref) this intervention contributes against the
+Return the [`Risk`](@ref)(s) this intervention contributes against the
 parent → contact transmission, or `nothing` if the intervention does
 not gate this transmission. Default: `nothing`.
+
+Most interventions gate transmission through a single mechanism and
+return one `Risk`. Interventions that gate it through more than one
+mechanism — e.g. ring vaccination's susceptibility reduction on the
+contact *and* its onward-infectiousness reduction on the parent — may
+return a tuple of risks instead; the engine applies each independently.
 
 Resolution happens after `apply_post_transmission!` so that risks can
 read state that other interventions have written on the contact
