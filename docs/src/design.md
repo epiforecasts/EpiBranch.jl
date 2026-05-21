@@ -92,6 +92,30 @@ The generation time CDF evaluated at the intervention time *is* the survival fun
 
 All contacts are stored, not just successful infections. This gives the contacts table (with `infected` flag) and intervention effort tracking, without any additional bookkeeping.
 
+## Extension model
+
+New behaviour is added by defining a new type and a method, not by growing options on an existing struct. A user wanting a variant of an existing component should be able to write a small struct plus one or two methods, with no edits to the package source and no copy-pasting of existing function bodies.
+
+When a field on a public struct is `Union{T, U}` whose union members trigger different runtime branches, or a `Symbol` that switches behaviour inside a function body, or a `Bool` that selects between policies, that is a signal the seam is in the wrong place — turn it into a dispatched-on type instead.
+
+This applies on every extension axis:
+
+- **Transmission models**: spatial structure, network structure, and immunity dynamics enter through new `TransmissionModel` subtypes (or composable wrappers around existing ones), not flags on `BranchingProcess`.
+- **Interventions are orchestrators of smaller dispatched pieces**. An intervention struct (e.g. `ContactTracing`, `Isolation`) is a thin shell that wires together independently dispatched components — eligibility, fire-rate, delay, effect. Each component is itself a type with a defined method (e.g. `is_eligible(scope, parent, contact, state)`). Users extend behaviour by writing new component types. The intervention body itself contains no hardcoded policy branching.
+- **Composition works at two levels**: between interventions (the stack passed to `simulate`) and within each intervention (its dispatched pieces).
+- **Output, observation, and outcome rules** follow the same shape: mortality, hospitalisation, reporting probability, stopping conditions, line-list columns are typed objects with methods, not closed sets of fields.
+
+The test of correctness for any component is: can a plausible new variant be added without editing the component's source? If not, the component is doing too much; lift the varying part into a dispatched-on trait.
+
+### Naming convention for abstract types
+
+The package follows the same role-vs-thing split that `Base` and `Distributions.jl` use:
+
+- **Prefix with `Abstract`** when the type names *what's being abstracted* and the bare noun would read as a concrete value. The main-axis abstractions a user composes between fall here: `AbstractIntervention`, `AbstractVaccination`, `AbstractEffectMode`, `AbstractClinicalTransition`, `AbstractStoppingRule`. Same convention as `AbstractFloat`, `AbstractArray`, `AbstractDict`.
+- **Drop the prefix** when the type already names a *role* or *concept*: `TransmissionModel`, `ObservationModel`, and the per-intervention seam traits (`IsolationEligibility`, `TraceEligibility`, `TraceRate`, `TraceDelay`, `TraceAction`). Same convention as `Number`, `Function`, `Distribution`.
+
+Per-intervention seam traits should be qualified with the intervention's name (e.g. `TraceEligibility`, not `Eligibility`) so the type reads unambiguously in user code and doesn't collide with other interventions' versions of the same trait.
+
 ## Individual state
 
 ```
@@ -103,22 +127,61 @@ Individual (struct)
 │   └── secondary_case_ids                      # filled during simulation
 │
 └── state::Dict{Symbol, Any}                    # everything else
-    ├── :onset_time, :asymptomatic, :test_positive   # clinical (set by init)
-    ├── :isolated, :isolation_time                     # set by Isolation
-    ├── :traced, :quarantined                          # set by ContactTracing
-    ├── :infected                                      # set by competing risk resolution
-    └── :age, :sex, :risk_group, ...                   # user-defined
 ```
 
-Only `susceptibility`, `infectiousness`, and `infection_time` are read by the engine. Everything else is owned by interventions, attributes functions, or the user. Fields are initialised via `initialise_individual!` and accessed through accessor functions with safe defaults.
+Only `susceptibility`, `infectiousness`, and `infection_time` are read by the engine. The dict carries everything else and is the deliberate extension hatch — interventions, attributes builders, transitions, and observation models each own a small set of keys. The engine never inspects them.
+
+Why a dict instead of typed slots on `Individual`: a typed core would couple the struct to every intervention's state shape, and would break `RingVaccination` / `MassVaccination`'s dose-label namespacing (the keys are `:vaccinated_<label>`, so they cannot collapse to a single typed field). The dict keeps `Individual` independent of which interventions a user composes.
+
+### Accessor convention
+
+Read via a one-line wrapper that pins the result type and supplies the safe default — `onset_time(ind) = get(ind.state, :onset_time, NaN)::Float64`. New code should not call `get(ind.state, …)` directly; add an accessor in `src/state_accessors.jl` instead.
+
+### Reserved keys
+
+The keys below are reserved by the package. Custom interventions should pick names that do not collide.
+
+| Key | Type | Default | Owner | When set |
+|---|---|---|---|---|
+| `:infected` | `Bool` | `true` | Engine | Competing-risks resolution |
+| `:type` | `Int` | `1` | Engine (multi-type) | Contact creation |
+| `:onset_time` | `Float64` | `NaN` | `clinical_presentation` | Init |
+| `:asymptomatic` | `Bool` | `false` | `clinical_presentation` | Init |
+| `:age` | `Real` | — | `demographics` | Init |
+| `:sex` | `Symbol` | — | `demographics` | Init |
+| `:risk_group` | `Symbol` | — | `demographics` | Init |
+| `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
+| `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
+| `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
+| `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
+| `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
+| `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff |
+| `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
+| `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
+| `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
+| `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
+| `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
+| `:death_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
+| `:recovery_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
+| `:outcome` | `Symbol` | — | `Outcome` transition | `resolve_individual!` (terminal) |
+| `:outcome_time` | `Float64` | — | `Outcome` transition | `resolve_individual!` (terminal) |
+| `:reported` | `Bool` | `false` | `PerCaseObservation` *or* `Reporting` transition | Post-simulation projection / `resolve_individual!` |
+| `:report_time` | `Float64` | — | `PerCaseObservation` | Post-simulation projection |
+| `:cluster_theta` | `Float64` | — | `ClusterMixed` analytics | First simulation read |
+
+The vaccination keys are namespaced by `dose_label` — the default label writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy`; any other label suffixes the key (so `dose_label = :boost` writes to `:vaccinated_boost` etc.). This lets multi-dose schedules compose without colliding.
+
+`:reported` is shared between the `Reporting` clinical transition (which sets it from a probability gate) and `PerCaseObservation` (which sets it post-simulation from a detection-probability draw). Composing both in the same simulation is not supported — they will overwrite each other.
 
 ## Intervention interface
 
-Three hooks, all optional:
+Four hooks, all optional. See the [Extending guide](@ref "Extending EpiBranch") for the full input/output contract, ordering guarantees, and a `BorderClosure` worked example.
 
 - `initialise_individual!(intervention, individual, state)` — set up fields on a new contact
 - `resolve_individual!(intervention, individual, state)` — determine intervention state before transmission (e.g. compute isolation time from onset + delay)
 - `apply_post_transmission!(intervention, state, new_contacts)` — act on contacts after creation (e.g. contact tracing, ring vaccination). All contacts, infected and non-infected, are passed.
+- `competing_risk(intervention, parent, contact, state)` — return the `Risk` (or `NTuple{N, Risk}`) this intervention contributes against the parent → contact transmission, or `nothing`.
 
 Interventions are stacked in a vector and applied in order. Each intervention has its own fields on the individual and declares what fields it requires.
 
