@@ -12,6 +12,7 @@ include("docstrings.jl")
 
 # Core types
 include("types.jl")
+include("state_accessors.jl")
 include("options.jl")
 include("distributions.jl")
 include("utils.jl")
