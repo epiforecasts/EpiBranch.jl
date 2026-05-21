@@ -240,19 +240,26 @@ function _decide_infected(state::SimulationState, contact::Individual,
     contact.susceptibility < 1.0 && rand(rng) > contact.susceptibility && return false
     parent.infectiousness < 1.0 && rand(rng) > parent.infectiousness && return false
 
-    # Intervention-contributed risks.
+    # Intervention-contributed risks. Each intervention returns nothing,
+    # a single `Risk`, or an iterable of `Risk`s (for interventions that
+    # gate transmission through more than one mechanism — e.g. ring
+    # vaccination's susceptibility and onward-infectiousness effects).
     for intervention in interventions
-        risk = competing_risk(intervention, parent, contact, state)
-        risk === nothing && continue
-        event_t = _sample_value(risk.event_time, rng, parent, contact, state)
-        event_t > transmission_time && continue
-        prob = _sample_value(risk.block_probability, rng, parent, contact, state)
-        prob <= 0.0 && continue
-        prob >= 1.0 && return false
-        rand(rng) < prob && return false
+        for risk in _iter_risks(competing_risk(intervention, parent, contact, state))
+            event_t = _sample_value(risk.event_time, rng, parent, contact, state)
+            event_t > transmission_time && continue
+            prob = _sample_value(risk.block_probability, rng, parent, contact, state)
+            prob <= 0.0 && continue
+            prob >= 1.0 && return false
+            rand(rng) < prob && return false
+        end
     end
     return true
 end
+
+_iter_risks(::Nothing) = ()
+_iter_risks(r::Risk) = (r,)
+_iter_risks(rs) = rs
 
 """Append the new contacts returned by `step!` to `state.individuals`
 and update the bookkeeping fields: `cumulative_cases`,

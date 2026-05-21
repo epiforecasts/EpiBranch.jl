@@ -298,6 +298,67 @@
                 end
             end
         end
+
+        @testset "Onward efficacy blocks next-generation transmission" begin
+            # With onward_efficacy = 1.0 and delay_to_immunity = 0.0,
+            # any infected child of a vaccinated parent must have been
+            # infected strictly before the parent's vaccination time
+            # (i.e. before the parent was even traced/isolated) — once
+            # the parent's immunity is in place the onward risk is
+            # certain to block.
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            iso = Isolation(delay = Exponential(0.5))
+            ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
+            rv = RingVaccination(efficacy = 0.0, onward_efficacy = 1.0,
+                delay_to_immunity = 0.0)
+
+            saw_blocked_chain = false
+            for seed in 1:5
+                state = simulate(model;
+                    interventions = [iso, ct, rv], attributes = clinical,
+                    sim_opts = SimOpts(max_cases = 500), rng = StableRNG(seed))
+                by_id = Dict(ind.id => ind for ind in state.individuals)
+                for child in state.individuals
+                    child.parent_id == 0 && continue
+                    is_infected(child) || continue
+                    parent = by_id[child.parent_id]
+                    if is_vaccinated(parent)
+                        saw_blocked_chain = true
+                        @test child.infection_time < parent.state[:vaccination_time]
+                    end
+                end
+            end
+            @test saw_blocked_chain  # otherwise the test is vacuous
+        end
+
+        @testset "Onward efficacy default is no-op" begin
+            # onward_efficacy = 0.0 (the default) returns no onward risk,
+            # so a parent's vaccination state cannot affect their onward
+            # transmission. Compare against a deterministic baseline:
+            # with only the susceptibility risk in play, the simulation
+            # should be bit-identical to the previous behaviour for the
+            # same seed.
+            model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            iso = Isolation(delay = Exponential(1.0))
+            ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
+            rv = RingVaccination(efficacy = 0.9)  # default onward_efficacy
+
+            rng1 = StableRNG(42)
+            results_default = simulate_batch(model, 100;
+                interventions = [iso, ct, rv], attributes = clinical,
+                sim_opts = SimOpts(max_cases = 200), rng = rng1)
+
+            # Explicit onward_efficacy = 0.0 should reproduce the same
+            # outcome with the same seed (no extra rng draws).
+            rv_explicit = RingVaccination(efficacy = 0.9, onward_efficacy = 0.0)
+            rng2 = StableRNG(42)
+            results_explicit = simulate_batch(model, 100;
+                interventions = [iso, ct, rv_explicit], attributes = clinical,
+                sim_opts = SimOpts(max_cases = 200), rng = rng2)
+
+            @test [s.cumulative_cases for s in results_default] ==
+                  [s.cumulative_cases for s in results_explicit]
+        end
     end
 
     @testset "Contact tracing without quarantine" begin
