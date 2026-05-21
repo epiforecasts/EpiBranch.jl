@@ -57,6 +57,15 @@ This applies on every extension axis:
 
 The test of correctness for any component is: can a plausible new variant be added without editing the component's source? If not, the component is doing too much; lift the varying part into a dispatched-on trait.
 
+### Naming convention for abstract types
+
+The package follows the same role-vs-thing split that `Base` and `Distributions.jl` use:
+
+- **Prefix with `Abstract`** when the type names *what's being abstracted* and the bare noun would read as a concrete value. The main-axis abstractions a user composes between fall here: `AbstractIntervention`, `AbstractVaccination`, `AbstractEffectMode`, `AbstractClinicalTransition`, `AbstractStoppingRule`. Same convention as `AbstractFloat`, `AbstractArray`, `AbstractDict`.
+- **Drop the prefix** when the type already names a *role* or *concept*: `TransmissionModel`, `ObservationModel`, and the per-intervention seam traits (`IsolationEligibility`, `TraceEligibility`, `TraceRate`, `TraceDelay`, `TraceAction`). Same convention as `Number`, `Function`, `Distribution`.
+
+Per-intervention seam traits should be qualified with the intervention's name (e.g. `TraceEligibility`, not `Eligibility`) so the type reads unambiguously in user code and doesn't collide with other interventions' versions of the same trait.
+
 ## Individual state
 
 ```
