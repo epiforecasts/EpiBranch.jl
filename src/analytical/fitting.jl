@@ -168,7 +168,7 @@ function loglikelihood(data::ChainSizes,
             e isa MethodError || rethrow()
         end
     end
-    p = m.observation.detection_prob
+    p = scalar_detection_prob(m.observation)
     states = simulate_batch(m.process, n_sim;
         interventions, attributes, sim_opts, rng)
     sim_values = Int[]

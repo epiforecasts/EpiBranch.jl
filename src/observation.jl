@@ -46,11 +46,11 @@ Downstream output (line list, chain statistics) can then filter on
 function simulate(m::Observed{<:TransmissionModel, <:PerCaseObservation};
         rng::AbstractRNG = Random.default_rng(), kwargs...)
     state = simulate(m.process; rng = rng, kwargs...)
-    ρ = m.observation.detection_prob
-    delay = m.observation.delay
     for ind in state.individuals
+        ρ = _sample_value(m.observation.detection_prob, rng, ind)
+        d = _sample_value(m.observation.delay, rng, ind)
         ind.state[:reported] = rand(rng) < ρ
-        ind.state[:report_time] = ind.infection_time + rand(rng, delay)
+        ind.state[:report_time] = ind.infection_time + d
     end
     return state
 end
@@ -122,7 +122,7 @@ double per-case observation (e.g. surveillance plus a separate audit)
 gives the right nested-thinning likelihood without pairwise dispatch.
 """
 function chain_size_distribution(m::Observed{<:Any, <:PerCaseObservation})
-    p = m.observation.detection_prob
+    p = scalar_detection_prob(m.observation)
     base = chain_size_distribution(m.process)
     # ρ = 1 is a no-op; skip the ThinnedChainSize wrap so multi-seed
     # likelihoods route directly to the underlying distribution's
