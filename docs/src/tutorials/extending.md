@@ -27,7 +27,7 @@ Ordering guarantees:
 - `apply_post_transmission!` runs strictly before any `competing_risk` call, so a competing risk can read whatever post-transmission hook wrote on the contact (e.g. `:vaccination_time`).
 - Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
 
-A `Risk` fires for a contact iff `event_time <= contact.infection_time`; when it fires, transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms — `RingVaccination` returns both a susceptibility risk on the contact and an onward-infectiousness risk on the parent.
+A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms — `RingVaccination` returns both a susceptibility risk on the contact and an onward-infectiousness risk on the parent.
 
 Tree-shaping changes — capping offspring per parent, gathering-size limits, anything that's really "this parent produces fewer contacts than its natural offspring distribution would say" — belong in the offspring distribution itself, not in the intervention protocol. See [Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution) below.
 
@@ -64,7 +64,7 @@ function EpiBranch.competing_risk(bc::BorderClosure, parent, contact, state)
 end
 ```
 
-`event_time = bc.start_time` means the risk only fires for contacts
+`event_time = bc.start_time` means the risk only applies to contacts
 whose transmission time is on or after the closure date; cross-border
 transmissions before the closure are unaffected.
 
@@ -155,7 +155,7 @@ capped_offspring(rng, ind) = min(rand(rng, NegBin(2.5, 0.16)), 5)
 model_capped = BranchingProcess(capped_offspring, Exponential(5.0))
 ```
 
-A state-aware cap that only kicks in once the outbreak crosses 20
+A state-aware cap that takes effect once the outbreak crosses 20
 cases (mirroring what `Scheduled` does for risk-based interventions,
 but for a tree-shape change):
 
@@ -427,7 +427,7 @@ loglikelihood(ChainSizes(data), MyModel(NegBin(0.8, 0.5), ...))
 ### Composing with the observation side
 
 Your model fits into `Observed` without any extra work. Process and
-observation are wired through `Observed{P, O}` and the dispatch only
+observation are combined through `Observed{P, O}` and the dispatch only
 asks that `single_type_offspring` delegates correctly through any
 wrappers — which it does for `Observed` automatically. So:
 
