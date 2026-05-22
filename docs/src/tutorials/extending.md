@@ -12,31 +12,82 @@ Every intervention is a struct that subtypes `AbstractIntervention`. The
 engine calls four hooks on each intervention; you implement only the
 ones your intervention needs (all default to no-ops).
 
-1. **`initialise_individual!(intervention, individual, state)`** — called
-   once when each individual is created. Use this to set up
-   intervention-specific fields in the individual's `state` dict.
-2. **`resolve_individual!(intervention, individual, state)`** — called
-   once per active individual at the start of each generation, before
-   offspring are drawn. Use this to determine the individual's
-   intervention status (e.g. compute isolation time on the parent).
-3. **`apply_post_transmission!(intervention, state, new_contacts)`** —
-   called once per generation after all offspring have been created.
-   Use this to write per-contact state that downstream observers or
-   competing risks will read (e.g. tracing writes `:traced`,
-   vaccination writes `:vaccination_time`).
-4. **`competing_risk(intervention, parent, contact, state)`** — called
-   per (parent, contact) pair during infection resolution. Return a
-   [`Risk`](@ref) with `event_time` and `block_probability`, or
-   `nothing` if the intervention does not gate this transmission. Use
-   this for anything that probabilistically blocks a specific
-   transmission event.
+### Hook contract
 
-Tree-shaping changes — capping offspring per parent, gathering-size
-limits, anything that's really "this parent produces fewer contacts
-than its natural offspring distribution would say" — belong in the
-offspring distribution itself, not in the intervention protocol. See
-[Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution)
-below.
+| Hook | Called | Receives | Must return |
+|---|---|---|---|
+| `initialise_individual!(iv, individual, state)` | Once when each individual is created | An `Individual` whose typed fields are set but whose `state` dict is empty | `nothing` (mutate `individual.state` in place) |
+| `resolve_individual!(iv, individual, state)` | Once per active individual at the start of each generation, before offspring are drawn | The parent for the upcoming step | `nothing` (mutate `individual.state` in place) |
+| `apply_post_transmission!(iv, state, new_contacts)` | Once per generation after all contacts for that generation have been created (across every active parent) | A `Vector{Individual}` of the new contacts | `nothing` (mutate any of the contacts' `state` in place) |
+| `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair during infection resolution, after `apply_post_transmission!` has run | The parent and a single new contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
+
+Ordering guarantees:
+
+- `resolve_individual!` runs strictly before any `competing_risk` call for that generation, so a competing risk can read whatever `resolve_individual!` wrote on the parent.
+- `apply_post_transmission!` runs strictly before any `competing_risk` call, so a competing risk can read whatever post-transmission hook wrote on the contact (e.g. `:vaccination_time`).
+- Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
+
+A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms — `RingVaccination` returns both a susceptibility risk on the contact and an onward-infectiousness risk on the parent.
+
+Tree-shaping changes — capping offspring per parent, gathering-size limits, anything that's really "this parent produces fewer contacts than its natural offspring distribution would say" — belong in the offspring distribution itself, not in the intervention protocol. See [Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution) below.
+
+### What each hook looks like in practice
+
+Short snippets from the built-in interventions, one per hook, to anchor the contract above. The full source lives in `src/interventions/`.
+
+**`initialise_individual!`** — `ContactTracing` initialises the two flags it owns on every new individual so accessors elsewhere get a defined value:
+
+```julia
+function initialise_individual!(::ContactTracing, individual, state)
+    individual.state[:traced] = false
+    individual.state[:quarantined] = false
+    return nothing
+end
+```
+
+**`resolve_individual!`** — `Isolation` computes the isolation time for the upcoming generation's parent from the individual's onset time plus a sampled delay, and folds in any earlier trace-driven isolation time that `ContactTracing` may have written on a previous generation:
+
+```julia
+function resolve_individual!(iso::Isolation, individual, state)
+    is_isolated(individual) && return nothing
+    is_test_positive(individual) || return nothing
+
+    iso_delay = rand(state.rng, iso.delay)
+    iso_time = onset_time(individual) + iso_delay
+
+    traced_time = get(individual.state, :traced_isolation_time, Inf)
+    set_isolated!(individual, min(iso_time, traced_time))
+    return nothing
+end
+```
+
+**`apply_post_transmission!`** — `ContactTracing` walks the new contacts, looks up each contact's parent, and applies the configured trace action (`Quarantine` or `FlagOnly`) when the eligibility and rate traits both pass:
+
+```julia
+function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
+    rng = state.rng
+    for ind in new_contacts
+        ind.parent_id == 0 && continue
+        parent = state.individuals[ind.parent_id]
+        is_eligible(ct.eligibility, parent, ind, state) || continue
+        traces(ct.trace_rate, parent, ind, state, rng) || continue
+        trace_delay = draw_trace_delay(ct.delay, parent, ind, state, rng)
+        trace_time = isolation_time(parent) + trace_delay
+        apply_trace!(ct.action, ind, state, trace_time, rng)
+    end
+    return nothing
+end
+```
+
+**`competing_risk`** — see the [`BorderClosure` minimal example](#minimal-example-a-custom-competing-risk) below for a complete worked custom intervention.
+
+### Verifying your intervention
+
+The engine never errors when a hook is missing — every hook has a no-op default. That is convenient for partial implementations but means that *forgotten* hooks fail silently. Quick checks:
+
+- Run a tiny simulation (`SimOpts(max_cases = 50)`) with and without your intervention in the stack. If the outcome looks the same in both, your `competing_risk` or `apply_post_transmission!` is probably not being called for the cases you think.
+- Override `required_fields` (see below) so the engine fails at simulation start when an upstream attributes function hasn't set a field your intervention needs.
+- Inspect `state.individuals[1].state` after a small run to confirm your hook actually wrote the keys downstream code reads.
 
 ### Minimal example: a custom competing risk
 
@@ -63,7 +114,7 @@ function EpiBranch.competing_risk(bc::BorderClosure, parent, contact, state)
 end
 ```
 
-`event_time = bc.start_time` means the risk only fires for contacts
+`event_time = bc.start_time` means the risk only applies to contacts
 whose transmission time is on or after the closure date; cross-border
 transmissions before the closure are unaffected.
 
@@ -154,7 +205,7 @@ capped_offspring(rng, ind) = min(rand(rng, NegBin(2.5, 0.16)), 5)
 model_capped = BranchingProcess(capped_offspring, Exponential(5.0))
 ```
 
-A state-aware cap that only kicks in once the outbreak crosses 20
+A state-aware cap that takes effect once the outbreak crosses 20
 cases (mirroring what `Scheduled` does for risk-based interventions,
 but for a tree-shape change):
 
@@ -426,7 +477,7 @@ loglikelihood(ChainSizes(data), MyModel(NegBin(0.8, 0.5), ...))
 ### Composing with the observation side
 
 Your model fits into `Observed` without any extra work. Process and
-observation are wired through `Observed{P, O}` and the dispatch only
+observation are combined through `Observed{P, O}` and the dispatch only
 asks that `single_type_offspring` delegates correctly through any
 wrappers — which it does for `Observed` automatically. So:
 
