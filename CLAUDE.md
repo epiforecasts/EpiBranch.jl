@@ -57,7 +57,7 @@ The superspreading R package (https://github.com/epiverse-trace/superspreading) 
 
 ## Key design principles
 
-The architectural principles for this package live in [`DESIGN.md`](DESIGN.md). Read that first — in particular the "Extension model" section, which governs how new transmission models, interventions, and output rules should be added. The points below are package-level coding conventions that sit on top of the design.
+The architectural design lives in [`docs/src/design.md`](docs/src/design.md). Read that first — in particular the "Extension model" section, which governs how new transmission models, interventions, and output rules should be added, and the "Reserved keys" table for `Individual.state`. The points below are package-level coding conventions that sit on top of the design.
 
 1. **Distributions from Distributions.jl**: use standard `Distributions.jl` types for offspring distributions, delay distributions, etc. No custom distribution wrappers.
 2. **DataFrames output**: line lists and chain statistics returned as DataFrames, matching epidemiological conventions (one row per case or per contact pair).
