@@ -27,6 +27,7 @@ should_stop
 simulate
 simulate_batch
 EpiBranch.step!
+make_contact!
 ```
 
 ## Interventions
