@@ -85,7 +85,7 @@ end
 
 The engine never errors when a hook is missing — every hook has a no-op default. That is convenient for partial implementations but means that *forgotten* hooks fail silently. Quick checks:
 
-- Run a tiny simulation (`SimOpts(max_cases = 50)`) with and without your intervention in the stack. If the outcome doesn't change in either direction it should, your `competing_risk` or `apply_post_transmission!` is probably not being called for the cases you think.
+- Run a tiny simulation (`SimOpts(max_cases = 50)`) with and without your intervention in the stack. If the outcome looks the same in both, your `competing_risk` or `apply_post_transmission!` is probably not being called for the cases you think.
 - Override `required_fields` (see below) so the engine fails at simulation start when an upstream attributes function hasn't set a field your intervention needs.
 - Inspect `state.individuals[1].state` after a small run to confirm your hook actually wrote the keys downstream code reads.
 
