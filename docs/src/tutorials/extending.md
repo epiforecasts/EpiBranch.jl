@@ -31,6 +31,56 @@ A `Risk` applies to a contact when `event_time <= contact.infection_time`; in th
 
 Tree-shaping changes — capping offspring per parent, gathering-size limits, anything that's really "this parent produces fewer contacts than its natural offspring distribution would say" — belong in the offspring distribution itself, not in the intervention protocol. See [Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution) below.
 
+### What each hook looks like in practice
+
+Short snippets from the built-in interventions, one per hook, to anchor the contract above. The full source lives in `src/interventions/`.
+
+**`initialise_individual!`** — `ContactTracing` initialises the two flags it owns on every new individual so accessors elsewhere get a defined value:
+
+```julia
+function initialise_individual!(::ContactTracing, individual, state)
+    individual.state[:traced] = false
+    individual.state[:quarantined] = false
+    return nothing
+end
+```
+
+**`resolve_individual!`** — `Isolation` computes the isolation time for the upcoming generation's parent from the individual's onset time plus a sampled delay, and folds in any earlier trace-driven isolation time that `ContactTracing` may have written on a previous generation:
+
+```julia
+function resolve_individual!(iso::Isolation, individual, state)
+    is_isolated(individual) && return nothing
+    is_test_positive(individual) || return nothing
+
+    iso_delay = rand(state.rng, iso.delay)
+    iso_time = onset_time(individual) + iso_delay
+
+    traced_time = get(individual.state, :traced_isolation_time, Inf)
+    set_isolated!(individual, min(iso_time, traced_time))
+    return nothing
+end
+```
+
+**`apply_post_transmission!`** — `ContactTracing` walks the new contacts, looks up each contact's parent, and applies the configured trace action (`Quarantine` or `FlagOnly`) when the eligibility and rate traits both pass:
+
+```julia
+function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
+    rng = state.rng
+    for ind in new_contacts
+        ind.parent_id == 0 && continue
+        parent = state.individuals[ind.parent_id]
+        is_eligible(ct.eligibility, parent, ind, state) || continue
+        traces(ct.trace_rate, parent, ind, state, rng) || continue
+        trace_delay = draw_trace_delay(ct.delay, parent, ind, state, rng)
+        trace_time = isolation_time(parent) + trace_delay
+        apply_trace!(ct.action, ind, state, trace_time, rng)
+    end
+    return nothing
+end
+```
+
+**`competing_risk`** — see the [`BorderClosure` minimal example](#minimal-example-a-custom-competing-risk) below for a complete worked custom intervention.
+
 ### Verifying your intervention
 
 The engine never errors when a hook is missing — every hook has a no-op default. That is convenient for partial implementations but means that *forgotten* hooks fail silently. Quick checks:
