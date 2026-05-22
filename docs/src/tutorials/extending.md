@@ -409,9 +409,21 @@ defaults for the rest.
 
 For **simulation**, define one method:
 
-- `step!(model, state, interventions)` — advance one generation.
-  The default `simulate(::TransmissionModel)` loop calls this until
-  termination.
+- `step!(model, state, interventions)` — advance one generation. The
+  default `simulate(::TransmissionModel)` loop calls this until
+  termination. It must return a `Vector{Individual}` of the new
+  contacts for this generation. Build each contact with
+  [`make_contact!`](@ref); do not push to `state.individuals` or set
+  `:infected` yourself.
+
+The engine handles everything around it: `resolve_individual!` runs on
+each active parent *before* your `step!` is called, so any
+intervention state you read off the parent inside `step!` is already
+up to date. After `step!` returns, the engine runs
+`apply_post_transmission!` on the new contacts, resolves competing
+risks to set `:infected`, runs clinical transitions, and updates the
+bookkeeping fields (`cumulative_cases`, `current_generation`,
+`active_ids`, `extinct`, `max_infection_time`).
 
 For **analytical inference helpers** that route through the offspring
 specification (`extinction_probability`, `epidemic_probability`,
@@ -430,31 +442,30 @@ For optional **state accessors**, override `population_size`,
 `latent_period`, `n_types` if your model has values for them. The
 defaults (`NoPopulation()`, `0.0`, `1`) are fine if not.
 
-### Clinical transitions
-
-You do not need to handle clinical transitions inside `step!`. Append
-new infected individuals to `state.individuals` with
-`ind.state[:infected] = true` and the engine runs every transition on
-`state.transitions` against them after `step!` returns. Transitions
-added by the user via `simulate(...; transitions = ...)` take effect
-automatically.
-
 ### Minimal sketch
 
 A skeleton for a custom transmission model:
 
 ```julia
-struct MyModel{O} <: TransmissionModel
+struct MyModel{O, G} <: TransmissionModel
     offspring::O
+    generation_time::G
     # ... your model parameters
 end
 
-# Required for simulation: one generation step.
+# Required for simulation: one generation step. Build contacts with
+# `make_contact!` and return the vector; the engine handles
+# `:infected`, post-transmission hooks, transitions, and bookkeeping.
 function EpiBranch.step!(model::MyModel, state::SimulationState, interventions)
-    # advance state.individuals by drawing offspring etc.
-    # Set ind.state[:infected] = true on every newly infected
-    # individual; the engine resolves transitions on them after step!
-    # returns.
+    new_contacts = Individual[]
+    for idx in state.active_ids
+        parent = state.individuals[idx]
+        for _ in 1:rand(state.rng, model.offspring)
+            t = parent.infection_time + rand(state.rng, model.generation_time)
+            make_contact!(new_contacts, state, parent, t; interventions)
+        end
+    end
+    return new_contacts
 end
 
 # Required for analytical helpers (optional but recommended).

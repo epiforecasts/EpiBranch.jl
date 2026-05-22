@@ -43,6 +43,16 @@ function simulate(model::TransmissionModel;
 
     while !should_terminate(state, sim_opts)
         pre = length(state.individuals)
+        # Run resolve_individual! on every active parent before step! draws
+        # offspring, so a custom `step!` doesn't have to. The built-in
+        # `BranchingProcess.step!` and all custom `TransmissionModel`
+        # subtypes get this for free.
+        for idx in state.active_ids
+            individual = state.individuals[idx]
+            for intervention in interventions
+                resolve_individual!(intervention, individual, state)
+            end
+        end
         new_contacts = step!(model, state, interventions)
         for intervention in interventions
             apply_post_transmission!(intervention, state, new_contacts)
@@ -183,6 +193,55 @@ function _create_individual(state::SimulationState, parent_id::Int,
     end
 
     return ind
+end
+
+_set_type!(contact, ::NoTypeLabels) = nothing
+_set_type!(contact, idx::Int) = (contact.state[:type] = idx)
+
+"""
+    make_contact!(new_contacts, state, parent, infection_time;
+                  interventions = AbstractIntervention[],
+                  type_idx = NoTypeLabels())
+
+Construct a new contact of `parent` at `infection_time`, append it to
+`new_contacts`, and register it in `parent.secondary_case_ids`. Returns
+the constructed `Individual`.
+
+Use this from a custom `TransmissionModel`'s `step!`:
+
+```julia
+function step!(m::MyModel, state, interventions)
+    new_contacts = Individual[]
+    for idx in state.active_ids
+        parent = state.individuals[idx]
+        for _ in 1:rand(state.rng, m.offspring)
+            t = parent.infection_time + rand(state.rng, m.generation_time)
+            make_contact!(new_contacts, state, parent, t; interventions)
+        end
+    end
+    return new_contacts
+end
+```
+
+The engine handles every other side effect: `resolve_individual!` on
+each parent before `step!` runs, `apply_post_transmission!` on the new
+contacts after, competing-risks resolution that sets `:infected`,
+clinical transitions, and per-step bookkeeping (`cumulative_cases`,
+`active_ids`, `max_infection_time`, …). A custom `step!` only owns the
+model-specific draw.
+"""
+function make_contact!(new_contacts::Vector{Individual},
+        state::SimulationState, parent::Individual,
+        infection_time::Real;
+        interventions = AbstractIntervention[],
+        type_idx::Union{Int, NoTypeLabels} = NoTypeLabels())
+    next_id = length(state.individuals) + length(new_contacts) + 1
+    contact = _create_individual(state, parent.id, parent.chain_id,
+        next_id, float(infection_time), interventions)
+    _set_type!(contact, type_idx)
+    push!(parent.secondary_case_ids, next_id)
+    push!(new_contacts, contact)
+    return contact
 end
 
 """Run init, resolve, and terminal-arbitration for every clinical
