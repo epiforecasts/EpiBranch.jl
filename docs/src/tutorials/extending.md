@@ -417,15 +417,22 @@ For **simulation**, define one method:
 
 The signature has no `interventions` argument: a custom `step!` is
 strictly the model's offspring-and-timing layer and cannot couple to
-interventions. The engine handles everything around it —
-`resolve_individual!` runs on each active parent *before* `step!`, so
-any intervention state you read off the parent (e.g. the parent's
-`:isolation_time` to decide which offspring survive) is already up to
-date. After `step!` returns, the engine runs `initialise_individual!`
-and `apply_post_transmission!` on the new contacts, resolves competing
-risks to set `:infected`, runs clinical transitions, and updates the
-bookkeeping fields (`cumulative_cases`, `current_generation`,
-`active_ids`, `extinct`, `max_infection_time`).
+interventions. Produce every potential contact your model generates —
+do not pre-filter by parent intervention state (`:isolated`,
+`:vaccinated`, …). Whether each contact is actually infected is then
+decided by the engine's competing-risks resolution after `step!`
+returns; that is the only place intervention effects on transmission
+outcomes apply.
+
+The engine handles everything around `step!`: `resolve_individual!`
+runs on each active parent before `step!`, so by the time your `step!`
+is called every parent's intervention state for this generation is
+already up to date. After `step!` returns, the engine runs
+`initialise_individual!` and `apply_post_transmission!` on the new
+contacts, resolves competing risks to set `:infected`, runs clinical
+transitions, and updates the bookkeeping fields
+(`cumulative_cases`, `current_generation`, `active_ids`, `extinct`,
+`max_infection_time`).
 
 For **analytical inference helpers** that route through the offspring
 specification (`extinction_probability`, `epidemic_probability`,
