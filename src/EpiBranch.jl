@@ -72,7 +72,7 @@ export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, shou
 export AbstractIntervention, Isolation, ContactTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
 export is_eligible_for_isolation
-export Eligibility, AlwaysEligible, SymptomaticParent
+export TraceEligibility, AlwaysEligible, SymptomaticParent
 export TraceRate, ConstantRate
 export TraceDelay, ConstantDelay
 export TraceAction, Quarantine, FlagOnly

@@ -6,26 +6,26 @@
 # user-defined subtypes slot in via a single method.
 
 """
-    Eligibility
+    TraceEligibility
 
 Trait deciding whether a parent → contact pair is eligible to be
 traced. Implementations override
 [`is_eligible(eligibility, parent, contact, state)`](@ref).
 """
-abstract type Eligibility end
+abstract type TraceEligibility end
 
 """
     is_eligible(eligibility, parent, contact, state) -> Bool
 """
-is_eligible(::Eligibility, parent, contact, state) = true
+is_eligible(::TraceEligibility, parent, contact, state) = true
 
 """Every contact is eligible."""
-struct AlwaysEligible <: Eligibility end
+struct AlwaysEligible <: TraceEligibility end
 is_eligible(::AlwaysEligible, parent, contact, state) = true
 
 """Eligible only when the parent is symptomatic and has been isolated.
 Reproduces the original `ContactTracing` gate."""
-struct SymptomaticParent <: Eligibility end
+struct SymptomaticParent <: TraceEligibility end
 function is_eligible(::SymptomaticParent, parent, contact, state)
     !is_asymptomatic(parent) && is_isolated(parent)
 end
@@ -121,7 +121,7 @@ end
 Trace contacts of isolated symptomatic cases. The intervention is a
 thin orchestrator over four traits:
 
-- [`Eligibility`](@ref): who is eligible to be traced (default:
+- [`TraceEligibility`](@ref): who is eligible to be traced (default:
   [`SymptomaticParent`](@ref)).
 - [`TraceRate`](@ref): whether tracing happens for an eligible
   contact (default: [`ConstantRate`](@ref)).
@@ -142,7 +142,7 @@ Requires fields set by [`Isolation`](@ref): `:isolated`,
 Initialises: `:traced`, `:quarantined`.
 """
 struct ContactTracing{
-    E <: Eligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction} <:
+    E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction} <:
        AbstractIntervention
     eligibility::E
     trace_rate::F
@@ -154,7 +154,7 @@ function ContactTracing(;
         probability::Float64,
         delay::Distribution,
         quarantine_on_trace::Bool = true,
-        eligibility::Eligibility = SymptomaticParent())
+        eligibility::TraceEligibility = SymptomaticParent())
     return ContactTracing(
         eligibility,
         ConstantRate(probability),
@@ -171,7 +171,7 @@ intervention_time(::ContactTracing, ind::Individual) = isolation_time(ind)
 # validator.
 _required_for_ct_eligibility(::SymptomaticParent) = [:isolated, :asymptomatic]
 _required_for_ct_eligibility(::AlwaysEligible) = Symbol[]
-_required_for_ct_eligibility(::Eligibility) = Symbol[]
+_required_for_ct_eligibility(::TraceEligibility) = Symbol[]
 
 function reset!(::ContactTracing, ind::Individual)
     ind.state[:traced] = false

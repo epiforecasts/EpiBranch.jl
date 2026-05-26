@@ -40,7 +40,7 @@ SymptomaticOnly
 AllCases
 EpiBranch.is_eligible_for_isolation
 ContactTracing
-Eligibility
+TraceEligibility
 AlwaysEligible
 SymptomaticParent
 TraceRate

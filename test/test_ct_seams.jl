@@ -1,5 +1,5 @@
-# Custom Eligibility used by the user-extension test below.
-struct WithinChain <: EpiBranch.Eligibility end
+# Custom TraceEligibility used by the user-extension test below.
+struct WithinChain <: EpiBranch.TraceEligibility end
 function EpiBranch.is_eligible(::WithinChain, parent, contact, state)
     parent.chain_id == contact.chain_id
 end
@@ -38,7 +38,7 @@ end
         @test any(get(ind.state, :quarantined, false) for ind in state.individuals)
     end
 
-    @testset "Custom Eligibility trait integrates via constructor" begin
+    @testset "Custom TraceEligibility trait integrates via constructor" begin
         # User-defined eligibility slots in by type. We check the
         # struct accepts the custom trait and exposes it on the
         # intervention without any further hook changes.
