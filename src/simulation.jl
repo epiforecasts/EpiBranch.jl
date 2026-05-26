@@ -128,13 +128,17 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
     nt = n_types(model)
     for i in 1:sim_opts.n_initial
         ind = _create_individual(temp_state, 0, i, i, 0.0)
+        # Match the new-contact path's ordering (`make_contact!` sets
+        # `:type` before the engine calls `initialise_individual!`) so an
+        # intervention that reads `:type` at init sees the same state
+        # for seed cases and downstream contacts.
+        if nt > 1
+            ind.state[:type] = rand(rng, 1:nt)
+        end
         for intervention in interventions
             initialise_individual!(intervention, ind, temp_state)
         end
         ind.state[:infected] = true  # index cases are infected by definition
-        if nt > 1
-            ind.state[:type] = rand(rng, 1:nt)
-        end
         # Validate required fields on the first individual, before any
         # transition resolution runs. Without this, a missing :onset_time
         # surfaces as an opaque error inside the transition closure rather
