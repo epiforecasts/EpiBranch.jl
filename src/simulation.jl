@@ -43,17 +43,25 @@ function simulate(model::TransmissionModel;
 
     while !should_terminate(state, sim_opts)
         pre = length(state.individuals)
-        # Run resolve_individual! on every active parent before step! draws
-        # offspring, so a custom `step!` doesn't have to. The built-in
-        # `BranchingProcess.step!` and all custom `TransmissionModel`
-        # subtypes get this for free.
+        # Engine owns every intervention-aware step so a custom `step!`
+        # only touches the model dynamics (offspring + timing). Order:
+        #   1. resolve_individual! on each active parent
+        #   2. step! produces new contacts (offspring + timing only)
+        #   3. initialise_individual! on each new contact
+        #   4. apply_post_transmission! on the new contacts
+        #   5. competing-risks resolution
         for idx in state.active_ids
             individual = state.individuals[idx]
             for intervention in interventions
                 resolve_individual!(intervention, individual, state)
             end
         end
-        new_contacts = step!(model, state, interventions)
+        new_contacts = step!(model, state)
+        for contact in new_contacts
+            for intervention in interventions
+                initialise_individual!(intervention, contact, state)
+            end
+        end
         for intervention in interventions
             apply_post_transmission!(intervention, state, new_contacts)
         end
@@ -119,7 +127,10 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
 
     nt = n_types(model)
     for i in 1:sim_opts.n_initial
-        ind = _create_individual(temp_state, 0, i, i, 0.0, interventions)
+        ind = _create_individual(temp_state, 0, i, i, 0.0)
+        for intervention in interventions
+            initialise_individual!(intervention, ind, temp_state)
+        end
         ind.state[:infected] = true  # index cases are infected by definition
         if nt > 1
             ind.state[:type] = rand(rng, 1:nt)
@@ -164,17 +175,15 @@ function _susceptible_fraction(state::SimulationState{<:Any, Int},
     return n_susceptible / state.population_size
 end
 
-"""Create a new Individual with attributes and intervention state.
-`:infected` is left at `false` so that any contact returned from a
-model's `step!` carries a not-yet-decided flag — only the engine's
-competing-risks resolution may set it to `true`. Initial individuals
-(created in `initialise_state`) are explicitly marked infected
-after construction; clinical transitions are resolved separately by
-the engine after each `step!` returns.
+"""Create a new Individual with attributes applied. `:infected` is left
+at `false` so that any contact returned from a model's `step!` carries
+a not-yet-decided flag — only the engine's competing-risks resolution
+may set it to `true`. Intervention `initialise_individual!` is called
+by the engine after `step!` returns, not here; this keeps `step!` and
+its helpers (`make_contact!`) intervention-free.
 """
 function _create_individual(state::SimulationState, parent_id::Int,
-        chain_id::Int, next_id::Int,
-        inf_time::Float64, interventions)
+        chain_id::Int, next_id::Int, inf_time::Float64)
     s = Dict{Symbol, Any}(:infected => false)
 
     ind = Individual(;
@@ -188,10 +197,6 @@ function _create_individual(state::SimulationState, parent_id::Int,
 
     _apply_attributes!(state.attributes, state.rng, ind)
 
-    for intervention in interventions
-        initialise_individual!(intervention, ind, state)
-    end
-
     return ind
 end
 
@@ -200,23 +205,24 @@ _set_type!(contact, idx::Int) = (contact.state[:type] = idx)
 
 """
     make_contact!(new_contacts, state, parent, infection_time;
-                  interventions = AbstractIntervention[],
                   type_idx = NoTypeLabels())
 
 Construct a new contact of `parent` at `infection_time`, append it to
 `new_contacts`, and register it in `parent.secondary_case_ids`. Returns
-the constructed `Individual`.
+the constructed `Individual`. Attributes are applied to the new contact
+at construction; intervention state is initialised by the engine after
+`step!` returns, not here.
 
 Use this from a custom `TransmissionModel`'s `step!`:
 
 ```julia
-function step!(m::MyModel, state, interventions)
+function step!(m::MyModel, state)
     new_contacts = Individual[]
     for idx in state.active_ids
         parent = state.individuals[idx]
         for _ in 1:rand(state.rng, m.offspring)
             t = parent.infection_time + rand(state.rng, m.generation_time)
-            make_contact!(new_contacts, state, parent, t; interventions)
+            make_contact!(new_contacts, state, parent, t)
         end
     end
     return new_contacts
@@ -224,20 +230,19 @@ end
 ```
 
 The engine handles every other side effect: `resolve_individual!` on
-each parent before `step!` runs, `apply_post_transmission!` on the new
-contacts after, competing-risks resolution that sets `:infected`,
-clinical transitions, and per-step bookkeeping (`cumulative_cases`,
-`active_ids`, `max_infection_time`, …). A custom `step!` only owns the
-model-specific draw.
+each parent before `step!`, `initialise_individual!` and
+`apply_post_transmission!` on the new contacts after, competing-risks
+resolution that sets `:infected`, clinical transitions, and per-step
+bookkeeping (`cumulative_cases`, `active_ids`, `max_infection_time`,
+…). A custom `step!` only owns the model-specific draw.
 """
 function make_contact!(new_contacts::Vector{Individual},
         state::SimulationState, parent::Individual,
         infection_time::Real;
-        interventions = AbstractIntervention[],
         type_idx::Union{Int, NoTypeLabels} = NoTypeLabels())
     next_id = length(state.individuals) + length(new_contacts) + 1
     contact = _create_individual(state, parent.id, parent.chain_id,
-        next_id, float(infection_time), interventions)
+        next_id, float(infection_time))
     _set_type!(contact, type_idx)
     push!(parent.secondary_case_ids, next_id)
     push!(new_contacts, contact)

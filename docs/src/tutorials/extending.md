@@ -409,18 +409,20 @@ defaults for the rest.
 
 For **simulation**, define one method:
 
-- `step!(model, state, interventions)` — advance one generation. The
-  default `simulate(::TransmissionModel)` loop calls this until
-  termination. It must return a `Vector{Individual}` of the new
-  contacts for this generation. Build each contact with
-  [`make_contact!`](@ref); do not push to `state.individuals` or set
-  `:infected` yourself.
+- `step!(model, state)` — advance one generation. The default
+  `simulate(::TransmissionModel)` loop calls this until termination.
+  It must return a `Vector{Individual}` of the new contacts for this
+  generation. Build each contact with [`make_contact!`](@ref); do not
+  push to `state.individuals` or set `:infected` yourself.
 
-The engine handles everything around it: `resolve_individual!` runs on
-each active parent *before* your `step!` is called, so any
-intervention state you read off the parent inside `step!` is already
-up to date. After `step!` returns, the engine runs
-`apply_post_transmission!` on the new contacts, resolves competing
+The signature has no `interventions` argument: a custom `step!` is
+strictly the model's offspring-and-timing layer and cannot couple to
+interventions. The engine handles everything around it —
+`resolve_individual!` runs on each active parent *before* `step!`, so
+any intervention state you read off the parent (e.g. the parent's
+`:isolation_time` to decide which offspring survive) is already up to
+date. After `step!` returns, the engine runs `initialise_individual!`
+and `apply_post_transmission!` on the new contacts, resolves competing
 risks to set `:infected`, runs clinical transitions, and updates the
 bookkeeping fields (`cumulative_cases`, `current_generation`,
 `active_ids`, `extinct`, `max_infection_time`).
@@ -456,13 +458,13 @@ end
 # Required for simulation: one generation step. Build contacts with
 # `make_contact!` and return the vector; the engine handles
 # `:infected`, post-transmission hooks, transitions, and bookkeeping.
-function EpiBranch.step!(model::MyModel, state::SimulationState, interventions)
+function EpiBranch.step!(model::MyModel, state::SimulationState)
     new_contacts = Individual[]
     for idx in state.active_ids
         parent = state.individuals[idx]
         for _ in 1:rand(state.rng, model.offspring)
             t = parent.infection_time + rand(state.rng, model.generation_time)
-            make_contact!(new_contacts, state, parent, t; interventions)
+            make_contact!(new_contacts, state, parent, t)
         end
     end
     return new_contacts

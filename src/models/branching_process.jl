@@ -1,5 +1,5 @@
 """
-    step!(model::BranchingProcess, state::SimulationState, interventions)
+    step!(model::BranchingProcess, state::SimulationState)
 
 Process one generation of the branching process. Produces the new
 contacts (both eventual infections and contacts whose transmission
@@ -8,14 +8,13 @@ that via [`competing_risk`](@ref) after `step!` returns. See the
 [Design](@ref "Simulation, mutation, and automatic differentiation")
 section for implications on automatic differentiation.
 """
-function step!(model::BranchingProcess, state::SimulationState, interventions)
+function step!(model::BranchingProcess, state::SimulationState)
     new_contacts = Individual[]
     for idx in state.active_ids
         individual = state.individuals[idx]
         offspring_result = _draw_offspring(state.rng, model.offspring, individual, state)
         gt_dist = get_generation_time(model.generation_time, individual)
-        _create_contacts!(new_contacts, offspring_result, individual, state,
-            gt_dist, interventions)
+        _create_contacts!(new_contacts, offspring_result, individual, state, gt_dist)
     end
     return new_contacts
 end
@@ -54,22 +53,21 @@ end
 
 """Single-type contacts."""
 function _create_contacts!(new_contacts,
-        n_contacts::Int, parent, state, gt_dist, interventions)
+        n_contacts::Int, parent, state, gt_dist)
     for _ in 1:n_contacts
         inf_time = _infection_time(gt_dist, parent, state)
-        make_contact!(new_contacts, state, parent, inf_time; interventions)
+        make_contact!(new_contacts, state, parent, inf_time)
     end
     return nothing
 end
 
 """Multi-type contacts."""
 function _create_contacts!(new_contacts,
-        counts::Vector{Int}, parent, state, gt_dist, interventions)
+        counts::Vector{Int}, parent, state, gt_dist)
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
             inf_time = _infection_time(gt_dist, parent, state)
-            make_contact!(new_contacts, state, parent, inf_time;
-                interventions, type_idx)
+            make_contact!(new_contacts, state, parent, inf_time; type_idx)
         end
     end
     return nothing
