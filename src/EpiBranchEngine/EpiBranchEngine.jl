@@ -16,7 +16,8 @@ using ..EpiBranchBase: _sample_value, _finalise_terminal!
 # Generics from Base that we add methods to.
 import ..EpiBranchBase: population_size, latent_period, n_types,
                         required_fields, initialise_individual!,
-                        resolve_individual!, apply_post_transmission!, competing_risk
+                        resolve_individual!, apply_post_transmission!,
+                        competing_risk, step!
 
 # Models
 export BranchingProcess

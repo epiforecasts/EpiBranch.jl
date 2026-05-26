@@ -16,12 +16,14 @@ using ..EpiBranchBase: _sample_value
 # Generics from Base that we add methods to.
 import ..EpiBranchBase: initialise_individual!, resolve_individual!,
                         apply_post_transmission!, competing_risk, is_active,
-                        intervention_time, reset!, required_fields
+                        intervention_time, reset!, required_fields,
+                        is_eligible, is_eligible_for_isolation,
+                        traces, draw_trace_delay, apply_trace!,
+                        required_for_eligibility, required_for_ct_eligibility
 
 # Intervention types
 export Isolation, ContactTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
-export is_eligible_for_isolation
 export TraceEligibility, AlwaysEligible, SymptomaticParent
 export TraceRate, ConstantRate
 export TraceDelay, ConstantDelay

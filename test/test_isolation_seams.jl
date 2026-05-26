@@ -2,10 +2,10 @@
 struct OnlyOlder <: EpiBranch.IsolationEligibility
     age_threshold::Int
 end
-function EpiBranch.EpiBranchInterventions.is_eligible_for_isolation(e::OnlyOlder, ind, state)
+function EpiBranch.is_eligible_for_isolation(e::OnlyOlder, ind, state)
     !is_asymptomatic(ind) && get(ind.state, :age, 0) >= e.age_threshold
 end
-function EpiBranch.EpiBranchInterventions._required_for_eligibility(::OnlyOlder)
+function EpiBranch.required_for_eligibility(::OnlyOlder)
     [:onset_time, :asymptomatic, :age]
 end
 

@@ -11,7 +11,8 @@ using Random
 using ..EpiBranchBase
 using ..EpiBranchEngine
 import ..EpiBranchBase: chain_size_distribution, single_type_offspring,
-                        population_size, latent_period, n_types
+                        population_size, latent_period, n_types,
+                        scalar_detection_prob
 import ..EpiBranchEngine: simulate
 
 # Internal helpers from Base
@@ -19,7 +20,6 @@ using ..EpiBranchBase: _sample_value
 
 export PerCaseObservation, Observed
 export ThinnedChainSize
-export scalar_detection_prob
 
 include("observation_models.jl")
 include("observation.jl")

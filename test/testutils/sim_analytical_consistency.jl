@@ -28,7 +28,7 @@ observe_chain_sizes(::TransmissionModel, true_sizes, ::AbstractRNG) = true_sizes
 function observe_chain_sizes(m::Observed{<:Any, <:PerCaseObservation},
         true_sizes, rng::AbstractRNG)
     inner = observe_chain_sizes(m.process, true_sizes, rng)
-    p = EpiBranch.EpiBranchObservation.scalar_detection_prob(m.observation)
+    p = EpiBranch.scalar_detection_prob(m.observation)
     # Keep zero-detection outcomes in the output so the empirical marginal
     # matches the unconditional PMF returned by chain_size_distribution.
     return [rand(rng, Binomial(n, p)) for n in inner]

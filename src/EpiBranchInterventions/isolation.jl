@@ -42,9 +42,9 @@ is_eligible_for_isolation(::AllCases, ind, state) = true
 # Required-field validation dispatches on the eligibility trait so a
 # custom eligibility that doesn't read `:asymptomatic` doesn't trip
 # the validator.
-_required_for_eligibility(::SymptomaticOnly) = [:onset_time, :asymptomatic]
-_required_for_eligibility(::AllCases) = [:onset_time]
-_required_for_eligibility(::IsolationEligibility) = [:onset_time]
+required_for_eligibility(::SymptomaticOnly) = [:onset_time, :asymptomatic]
+required_for_eligibility(::AllCases) = [:onset_time]
+required_for_eligibility(::IsolationEligibility) = [:onset_time]
 
 # ── Isolation intervention ──────────────────────────────────────────
 
@@ -86,7 +86,7 @@ function Isolation(;
         Float64(post_isolation_transmission))
 end
 
-required_fields(iso::Isolation) = _required_for_eligibility(iso.eligibility)
+required_fields(iso::Isolation) = required_for_eligibility(iso.eligibility)
 intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 
 """Isolation blocks the parent → contact transmission when the parent's

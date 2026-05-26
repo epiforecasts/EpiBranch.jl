@@ -26,7 +26,7 @@ should_stop
 ```@docs
 simulate
 simulate_batch
-EpiBranch.EpiBranchEngine.step!
+EpiBranch.step!
 make_contact!
 ```
 
@@ -38,7 +38,7 @@ Isolation
 IsolationEligibility
 SymptomaticOnly
 AllCases
-EpiBranch.EpiBranchInterventions.is_eligible_for_isolation
+EpiBranch.is_eligible_for_isolation
 ContactTracing
 TraceEligibility
 AlwaysEligible
@@ -50,10 +50,10 @@ ConstantDelay
 TraceAction
 Quarantine
 FlagOnly
-EpiBranch.EpiBranchInterventions.is_eligible
-EpiBranch.EpiBranchInterventions.traces
-EpiBranch.EpiBranchInterventions.draw_trace_delay
-EpiBranch.EpiBranchInterventions.apply_trace!
+EpiBranch.is_eligible
+EpiBranch.traces
+EpiBranch.draw_trace_delay
+EpiBranch.apply_trace!
 AbstractVaccination
 RingVaccination
 MassVaccination

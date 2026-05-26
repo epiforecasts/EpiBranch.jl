@@ -163,15 +163,15 @@ function ContactTracing(;
     )
 end
 
-required_fields(ct::ContactTracing) = _required_for_ct_eligibility(ct.eligibility)
+required_fields(ct::ContactTracing) = required_for_ct_eligibility(ct.eligibility)
 intervention_time(::ContactTracing, ind::Individual) = isolation_time(ind)
 
 # Required-field validation dispatches on the eligibility trait so a
 # custom eligibility that doesn't read these fields doesn't trip the
 # validator.
-_required_for_ct_eligibility(::SymptomaticParent) = [:isolated, :asymptomatic]
-_required_for_ct_eligibility(::AlwaysEligible) = Symbol[]
-_required_for_ct_eligibility(::TraceEligibility) = Symbol[]
+required_for_ct_eligibility(::SymptomaticParent) = [:isolated, :asymptomatic]
+required_for_ct_eligibility(::AlwaysEligible) = Symbol[]
+required_for_ct_eligibility(::TraceEligibility) = Symbol[]
 
 function reset!(::ContactTracing, ind::Individual)
     ind.state[:traced] = false

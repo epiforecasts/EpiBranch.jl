@@ -10,11 +10,20 @@ using Random
 using SpecialFunctions
 
 # Cross-submodule generic functions: declared here as empty multimethods
-# so that any downstream submodule can extend them via `import
-# ..EpiBranchBase: <name>` without re-declaring. These are *not* exported
-# (the engine/observation/analytics modules export the user-facing
-# names).
+# so that downstream submodules add methods via `import ..EpiBranchBase:
+# <name>` rather than creating namespace-local stand-ins. Each is also
+# exported below, which means `EpiBranch.x(::MyType) = …` from user code
+# extends the canonical method table.
 function chain_size_distribution end
+function step! end
+function is_eligible end
+function is_eligible_for_isolation end
+function traces end
+function draw_trace_delay end
+function apply_trace! end
+function required_for_eligibility end
+function required_for_ct_eligibility end
+function scalar_detection_prob end
 
 # Core types and sentinels
 export Individual, SimulationState, TransmissionModel
@@ -42,6 +51,20 @@ export NegBin, scale_distribution, incubation_linked_generation_time
 export AbstractIntervention, Risk
 export initialise_individual!, resolve_individual!, apply_post_transmission!
 export competing_risk, is_active, intervention_time, reset!, required_fields
+
+# Intervention extension points (seam traits)
+export is_eligible, is_eligible_for_isolation
+export traces, draw_trace_delay, apply_trace!
+export required_for_eligibility, required_for_ct_eligibility
+
+# Engine extension point
+export step!
+
+# Observation extension point
+export scalar_detection_prob
+
+# Chain-size distribution generic (extended in Observation and Analytics)
+export chain_size_distribution
 
 # Transition interface
 export is_terminal, terminal_event
