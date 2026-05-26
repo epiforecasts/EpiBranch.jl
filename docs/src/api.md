@@ -26,7 +26,7 @@ should_stop
 ```@docs
 simulate
 simulate_batch
-EpiBranch.step!
+EpiBranch.EpiBranchEngine.step!
 make_contact!
 ```
 
@@ -38,7 +38,7 @@ Isolation
 IsolationEligibility
 SymptomaticOnly
 AllCases
-EpiBranch.is_eligible_for_isolation
+EpiBranch.EpiBranchInterventions.is_eligible_for_isolation
 ContactTracing
 TraceEligibility
 AlwaysEligible
@@ -50,10 +50,10 @@ ConstantDelay
 TraceAction
 Quarantine
 FlagOnly
-EpiBranch.is_eligible
-EpiBranch.traces
-EpiBranch.draw_trace_delay
-EpiBranch.apply_trace!
+EpiBranch.EpiBranchInterventions.is_eligible
+EpiBranch.EpiBranchInterventions.traces
+EpiBranch.EpiBranchInterventions.draw_trace_delay
+EpiBranch.EpiBranchInterventions.apply_trace!
 AbstractVaccination
 RingVaccination
 MassVaccination
@@ -217,21 +217,21 @@ These functions are not part of the public API but are documented for
 developers extending the package.
 
 ```@docs
-EpiBranch.get_generation_time
-EpiBranch._draw_offspring
-EpiBranch._create_contacts!
-EpiBranch._resolve_competing_risks!
-EpiBranch._susceptible_fraction
-EpiBranch._register_step!
+EpiBranch.EpiBranchEngine.get_generation_time
+EpiBranch.EpiBranchEngine._draw_offspring
+EpiBranch.EpiBranchEngine._create_contacts!
+EpiBranch.EpiBranchEngine._resolve_competing_risks!
+EpiBranch.EpiBranchEngine._susceptible_fraction
+EpiBranch.EpiBranchEngine._register_step!
 EpiBranch.population_size
-EpiBranch._create_individual
-EpiBranch.logsumexp
+EpiBranch.EpiBranchEngine._create_individual
+EpiBranch.EpiBranchAnalytics.logsumexp
 EpiBranch.required_fields
-EpiBranch._validate_required_fields
-EpiBranch._column_order
-EpiBranch._chain_length_ll_negbin
-EpiBranch._borel_logpdf
-EpiBranch._gammaborel_logpdf
-EpiBranch._empirical_ll
-EpiBranch._golden_section_min
+EpiBranch.EpiBranchEngine._validate_required_fields
+EpiBranch.EpiBranchOutput._column_order
+EpiBranch.EpiBranchAnalytics._chain_length_ll_negbin
+EpiBranch.EpiBranchAnalytics._borel_logpdf
+EpiBranch.EpiBranchAnalytics._gammaborel_logpdf
+EpiBranch.EpiBranchAnalytics._empirical_ll
+EpiBranch.EpiBranchAnalytics._golden_section_min
 ```

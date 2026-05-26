@@ -1,76 +1,75 @@
+"""
+EpiBranch.jl — branching-process simulation and inference for
+infectious-disease outbreaks.
+
+The package is organised into seven submodules. `using EpiBranch` brings
+the public surface of all of them into scope so most users do not need
+to import submodules directly.
+
+- [`EpiBranchBase`](@ref EpiBranch.EpiBranchBase): types, sentinels,
+  state accessors, options, the intervention / transition / observation
+  interfaces.
+- [`EpiBranchInterventions`](@ref EpiBranch.EpiBranchInterventions):
+  `Isolation`, `ContactTracing`, vaccination, `Scheduled`.
+- [`EpiBranchTransitions`](@ref EpiBranch.EpiBranchTransitions):
+  `Reporting`, `Hospitalisation`, `Death`, `Recovery`.
+- [`EpiBranchEngine`](@ref EpiBranch.EpiBranchEngine): the simulation
+  engine and the canonical `BranchingProcess` model.
+- [`EpiBranchObservation`](@ref EpiBranch.EpiBranchObservation):
+  observation models and the `Observed` wrapper.
+- [`EpiBranchOutput`](@ref EpiBranch.EpiBranchOutput): DataFrame
+  projections (line list, contacts, chain statistics).
+- [`EpiBranchAnalytics`](@ref EpiBranch.EpiBranchAnalytics): chain-size
+  distributions, likelihoods, fitting, end-of-outbreak probability.
+"""
 module EpiBranch
 
-using DataFrames
-using Dates
-using Distributions
-using QuadGK
-using Random
-using SpecialFunctions
-
-# Docstring templates (must come before any docstrings)
 include("docstrings.jl")
 
-# Core types
-include("types.jl")
-include("state_accessors.jl")
-include("options.jl")
-include("distributions.jl")
-include("utils.jl")
+# Submodules — include in dependency order.
+include("EpiBranchBase/EpiBranchBase.jl")
+include("EpiBranchInterventions/EpiBranchInterventions.jl")
+include("EpiBranchTransitions/EpiBranchTransitions.jl")
+include("EpiBranchEngine/EpiBranchEngine.jl")
+include("EpiBranchObservation/EpiBranchObservation.jl")
+include("EpiBranchOutput/EpiBranchOutput.jl")
+include("EpiBranchAnalytics/EpiBranchAnalytics.jl")
 
-# Intervention interface (must come before models that use it)
-include("interventions/interface.jl")
-include("interventions/isolation.jl")
-include("interventions/contact_tracing.jl")
-include("interventions/vaccination.jl")
-include("interventions/scheduled.jl")
+# Bring each submodule's public surface into the top-level namespace.
+using .EpiBranchBase
+using .EpiBranchInterventions
+using .EpiBranchTransitions
+using .EpiBranchEngine
+using .EpiBranchObservation
+using .EpiBranchOutput
+using .EpiBranchAnalytics
 
-# Clinical transitions — case-state Markov chain layered on the
-# intervention framework. Same hook shape as interventions; sibling
-# abstract type so the public API can keep `interventions=` and
-# `transitions=` namespaces distinct.
-include("transitions/interface.jl")
-include("transitions/reporting.jl")
-include("transitions/hospitalisation.jl")
-include("transitions/outcome.jl")
+# ── Re-export the public surface ────────────────────────────────────
+# Mirror of each submodule's `export` block so `using EpiBranch` is a
+# drop-in replacement for the previous flat module.
 
-# Public API declarations (Julia 1.11+)
-@static if VERSION >= v"1.11"
-    include("public.jl")
-end
-
-# Transmission models
-include("models/branching_process.jl")
-
-# Observation models (state-space slot)
-include("observation_models.jl")
-
-# Observation models (wrappers around TransmissionModel)
-include("observation.jl")
-
-# Simulation engine
-include("simulation.jl")
-
-# Output
-include("output/linelist.jl")
-include("output/chains.jl")
-include("output/summary.jl")
-
-# Analytical
-include("analytical/extinction.jl")
-include("analytical/chain_distributions.jl")
-include("analytical/data_types.jl")
-include("analytical/likelihood.jl")
-include("analytical/superspreading.jl")
-include("analytical/fitting.jl")
-include("analytical/cluster_mixed.jl")
-include("analytical/end_of_outbreak_probability.jl")
-
-# Exports — types
-export TransmissionModel, BranchingProcess
+# Base
+export TransmissionModel
 export Individual, SimulationState
+export NoPopulation, NoAttributes, NoTypeLabels
+export NoAgeDistribution, NoCases, NoGenerationTime
+export AbstractClinicalTransition
+export onset_time, is_isolated, isolation_time, is_traced, is_quarantined
+export is_vaccinated, is_asymptomatic, is_test_positive, is_infected
+export individual_type, set_isolated!
+export population_size, latent_period, n_types, single_type_offspring
 export SimOpts
-export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
-export AbstractIntervention, Isolation, ContactTracing
+export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime
+export should_stop
+export NegBin, scale_distribution, incubation_linked_generation_time
+export AbstractIntervention, Risk
+export initialise_individual!, resolve_individual!, apply_post_transmission!
+export competing_risk, is_active, intervention_time, reset!, required_fields
+export is_terminal, terminal_event
+export ObservationModel
+
+# Interventions
+export Isolation, ContactTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
 export is_eligible_for_isolation
 export TraceEligibility, AlwaysEligible, SymptomaticParent
@@ -79,48 +78,31 @@ export TraceDelay, ConstantDelay
 export TraceAction, Quarantine, FlagOnly
 export AbstractVaccination, RingVaccination, MassVaccination
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
-export Scheduled, Risk
-export is_active, intervention_time
-export AbstractClinicalTransition, Reporting, Hospitalisation, Death, Recovery
-export is_terminal, terminal_event
-export ObservationModel, PerCaseObservation, Observed
-export single_type_offspring
+export Scheduled
 
-# Exports — sentinel types
-export NoPopulation, NoAttributes, NoTypeLabels
-export NoAgeDistribution, NoCases
+# Transitions
+export Reporting, Hospitalisation, Death, Recovery
 
-# Exports — accessors
-export onset_time, is_isolated, isolation_time, is_traced, is_quarantined
-export is_vaccinated, is_asymptomatic, is_test_positive, is_infected
-export individual_type, set_isolated!
-
-# Exports — distributions
-export NegBin, scale_distribution, incubation_linked_generation_time
-# Process-side chain-size distributions (closed forms for offspring specs)
-export Borel, GammaBorel, PoissonGammaChainSize, chain_size_distribution
-# Observation-side chain-size distribution (binomial thinning of any base)
-export ThinnedChainSize
-
-# Exports — attributes functions
+# Engine
+export BranchingProcess
+export simulate, simulate_batch, make_contact!
 export clinical_presentation, demographics, transmission_traits, compose
 
-# Exports — simulation
-export simulate, simulate_batch, make_contact!
+# Observation
+export PerCaseObservation, Observed, ThinnedChainSize
 
-# Exports — output
+# Output
 export linelist, contacts, chain_statistics
-export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
+export containment_probability, is_extinct, generation_R, weekly_incidence
+export scenario_sweep
 
-# Exports — analytical
+# Analytics
+export Borel, GammaBorel, PoissonGammaChainSize, chain_size_distribution
+export OffspringCounts, ChainSizes, ChainLengths
+export ClusterMixed, ChainSizeMixture
 export extinction_probability, epidemic_probability
 export proportion_transmission, proportion_cluster_size, network_R
 export probability_contain
-
-# Exports — unified inference interface
-export OffspringCounts, ChainSizes, ChainLengths
-export ClusterMixed, ChainSizeMixture
-# Real-time mixture: per-cluster "is finished?" weight
 export end_of_outbreak_probability
 
 end # module

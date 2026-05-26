@@ -64,14 +64,14 @@
 
     @testset "scalar_detection_prob rejects non-scalar fields" begin
         scalar = PerCaseObservation(detection_prob = 0.7)
-        @test EpiBranch.scalar_detection_prob(scalar) == 0.7
+        @test EpiBranch.EpiBranchObservation.scalar_detection_prob(scalar) == 0.7
 
         fn = PerCaseObservation(
             detection_prob = (rng, ind) -> 0.5)
-        @test_throws ArgumentError EpiBranch.scalar_detection_prob(fn)
+        @test_throws ArgumentError EpiBranch.EpiBranchObservation.scalar_detection_prob(fn)
 
         dist = PerCaseObservation(detection_prob = Beta(2.0, 2.0))
-        @test_throws ArgumentError EpiBranch.scalar_detection_prob(dist)
+        @test_throws ArgumentError EpiBranch.EpiBranchObservation.scalar_detection_prob(dist)
     end
 
     @testset "Closed-form chain_size_distribution refuses non-scalar" begin

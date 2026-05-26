@@ -1,18 +1,8 @@
-# ── Observation models ─────────────────────────────────────────────
-# State-space framework: the process model (TransmissionModel)
-# describes the latent epidemiological dynamics; an ObservationModel
-# describes how the latent state generates observed data. The two are
-# combined by `Observed(process, observation)` so that a single
-# `loglikelihood(data, model)` dispatch covers any process /
-# observation pairing for which a method is defined.
-
-"""
-Abstract supertype for observation models. Subtypes describe how
-underlying transmission events generate observable data — per-case
-detection, reporting delays, aggregation, multi-stream surveillance,
-etc. Composed with a `TransmissionModel` via [`Observed`](@ref).
-"""
-abstract type ObservationModel end
+# ── Concrete observation models ─────────────────────────────────────
+# The abstract `ObservationModel` type lives in `EpiBranchBase`; this
+# file defines per-case detection-and-delay observation, which is the
+# canonical implementation. Composed with a `TransmissionModel` via
+# `Observed(process, observation)`.
 
 """
     PerCaseObservation(; detection_prob = 1.0, delay = Dirac(0.0))

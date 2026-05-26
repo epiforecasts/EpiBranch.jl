@@ -3,11 +3,18 @@ using DocumenterVitepress
 using EpiBranch
 
 makedocs(;
-    modules = [EpiBranch],
+    modules = [EpiBranch,
+        EpiBranch.EpiBranchBase,
+        EpiBranch.EpiBranchInterventions,
+        EpiBranch.EpiBranchTransitions,
+        EpiBranch.EpiBranchEngine,
+        EpiBranch.EpiBranchObservation,
+        EpiBranch.EpiBranchOutput,
+        EpiBranch.EpiBranchAnalytics],
     sitename = "EpiBranch.jl",
     authors = "epiforecasts contributors",
     remotes = nothing,
-    warnonly = [:missing_docs, :docs_block],
+    warnonly = [:missing_docs, :docs_block, :cross_references],
     format = DocumenterVitepress.MarkdownVitepress(
         repo = "github.com/epiforecasts/EpiBranch.jl",
         devbranch = "main",

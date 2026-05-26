@@ -10,7 +10,7 @@ for interventions whose effect time is always considered "now".
 
 Tree-shaping interventions (a hard cap on offspring per parent,
 gathering-size limits, etc.) are expressed by passing a state-aware
-function-form offspring distribution to [`BranchingProcess`](@ref) —
+function-form offspring distribution to [`BranchingProcess`](@ref EpiBranch.EpiBranchEngine.BranchingProcess) —
 not via the intervention protocol. See the
 [Extending guide](@ref "Extending EpiBranch") for an example.
 """
@@ -78,7 +78,7 @@ competing_risk(::AbstractIntervention, parent, contact, state) = nothing
     intervention_time(intervention, individual)
 
 Time at which this intervention's effect occurs for an individual. Used
-by [`Scheduled`](@ref) to enforce `start_time`: if the intervention time
+by [`Scheduled`](@ref EpiBranch.EpiBranchInterventions.Scheduled) to enforce `start_time`: if the intervention time
 is earlier than `Scheduled`'s `start_time`, the effect is undone via
 [`reset!`](@ref).
 
@@ -90,7 +90,7 @@ intervention_time(::AbstractIntervention, ::Individual) = -Inf
     reset!(intervention, individual)
 
 Undo the effect of an intervention on an individual. Called by
-[`Scheduled`](@ref) when `intervention_time` falls before `start_time`.
+[`Scheduled`](@ref EpiBranch.EpiBranchInterventions.Scheduled) when `intervention_time` falls before `start_time`.
 
 Default: no-op.
 """

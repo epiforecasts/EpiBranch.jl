@@ -6,7 +6,7 @@ but can be any `Symbol` (looked up in `ind.state`, e.g. `:test_time`,
 fields like `ind.infection_time` that live on the `Individual` rather
 than `ind.state`). If the anchor evaluates to `NaN`, the transition is
 skipped — the most common case being asymptomatic cases under
-[`clinical_presentation`](@ref) whose `:onset_time` is `NaN`.
+[`clinical_presentation`](@ref EpiBranch.EpiBranchEngine.clinical_presentation) whose `:onset_time` is `NaN`.
 
 `probability` is a `Real` or a `Function (rng, ind) -> Real` for
 per-individual heterogeneity (e.g. risk-group-specific detection).
