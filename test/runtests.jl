@@ -4,25 +4,19 @@ using Distributions
 using Random
 using StableRNGs
 
+# Sim ↔ analytical consistency helper is needed by EpiBranchAnalytics.
+# Include it at the top level so both the orchestrated run and any
+# per-submodule runtests pick it up.
 include("testutils/sim_analytical_consistency.jl")
 
 @testset "EpiBranch" begin
     include("test_quality.jl")
-    include("test_types.jl")
-    include("test_branching_process.jl")
-    include("test_attributes.jl")
-    include("test_interventions.jl")
-    include("test_competing_risks.jl")
-    include("test_ct_seams.jl")
-    include("test_isolation_seams.jl")
-    include("test_pc_observation.jl")
-    include("test_stopping_rules.jl")
-    include("test_transitions.jl")
-    include("test_density_dependent.jl")
-    include("test_linelist.jl")
-    include("test_chains.jl")
-    include("test_analytical.jl")
-    include("test_multitype.jl")
+    include("EpiBranchBase/runtests.jl")
+    include("EpiBranchInterventions/runtests.jl")
+    include("EpiBranchTransitions/runtests.jl")
+    include("EpiBranchEngine/runtests.jl")
+    include("EpiBranchObservation/runtests.jl")
+    include("EpiBranchOutput/runtests.jl")
+    include("EpiBranchAnalytics/runtests.jl")
     include("test_integration.jl")
-    include("test_r_targets.jl")
 end
