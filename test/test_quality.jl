@@ -15,6 +15,11 @@ end
     if VERSION >= v"1.11"
         using ExplicitImports
         @test check_no_stale_explicit_imports(EpiBranch) === nothing
+        # Catches qualified accesses to the wrong module — e.g.
+        # `Distributions.minimum(::MyDist) = …` for a method that
+        # actually owns `Base.minimum`. Found two real bugs at first
+        # introduction. Cheap, high-signal.
+        @test check_all_qualified_accesses_via_owners(EpiBranch) === nothing
     else
         @info "Skipping ExplicitImports on Julia $VERSION"
         @test_skip true

@@ -74,8 +74,8 @@ struct ThinnedChainSize{D <: DiscreteUnivariateDistribution} <:
     detection_prob::Float64
 end
 
-Distributions.minimum(::ThinnedChainSize) = 1
-Distributions.maximum(::ThinnedChainSize) = Inf
+Base.minimum(::ThinnedChainSize) = 1
+Base.maximum(::ThinnedChainSize) = Inf
 Distributions.insupport(::ThinnedChainSize, n::Integer) = n >= 1
 
 function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)

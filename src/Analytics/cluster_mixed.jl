@@ -67,8 +67,8 @@ struct ChainSizeMixture{F, D <: Distribution} <: DiscreteUnivariateDistribution
     mixing::D
 end
 
-Distributions.minimum(::ChainSizeMixture) = 1
-Distributions.maximum(::ChainSizeMixture) = Inf
+Base.minimum(::ChainSizeMixture) = 1
+Base.maximum(::ChainSizeMixture) = Inf
 Distributions.insupport(::ChainSizeMixture, n::Integer) = n >= 1
 
 function Distributions.logpdf(d::ChainSizeMixture, n::Integer)

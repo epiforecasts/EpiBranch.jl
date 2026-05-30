@@ -37,8 +37,8 @@ end
 Distributions.logpdf(d::Borel, n::Integer) = _borel_logpdf(d.μ, n)
 
 Distributions.pdf(d::Borel, n::Integer) = exp(logpdf(d, n))
-Distributions.minimum(::Borel) = 1
-Distributions.maximum(::Borel) = Inf
+Base.minimum(::Borel) = 1
+Base.maximum(::Borel) = Inf
 Distributions.insupport(::Borel, n::Integer) = n >= 1
 
 function Distributions.mean(d::Borel)
@@ -114,8 +114,8 @@ end
 Distributions.logpdf(d::GammaBorel, n::Integer) = _gammaborel_logpdf(d.k, d.R, n)
 
 Distributions.pdf(d::GammaBorel, n::Integer) = exp(logpdf(d, n))
-Distributions.minimum(::GammaBorel) = 1
-Distributions.maximum(::GammaBorel) = Inf
+Base.minimum(::GammaBorel) = 1
+Base.maximum(::GammaBorel) = Inf
 Distributions.insupport(::GammaBorel, n::Integer) = n >= 1
 
 function Base.rand(rng::AbstractRNG, d::GammaBorel)
@@ -175,8 +175,8 @@ function Distributions.logpdf(d::PoissonGammaChainSize, n::Integer)
     _poisson_gamma_logpdf(d.k, d.R, n)
 end
 Distributions.pdf(d::PoissonGammaChainSize, n::Integer) = exp(logpdf(d, n))
-Distributions.minimum(::PoissonGammaChainSize) = 1
-Distributions.maximum(::PoissonGammaChainSize) = Inf
+Base.minimum(::PoissonGammaChainSize) = 1
+Base.maximum(::PoissonGammaChainSize) = Inf
 Distributions.insupport(::PoissonGammaChainSize, n::Integer) = n >= 1
 
 function Base.rand(rng::AbstractRNG, d::PoissonGammaChainSize)
