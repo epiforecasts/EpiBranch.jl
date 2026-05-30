@@ -18,7 +18,7 @@ struct NoAgeDistribution end
 struct NoCases end
 
 """Sentinel indicating no generation time distribution. Used by
-[`BranchingProcess`](@ref EpiBranch.EpiBranchEngine.BranchingProcess) for pure chain-statistics models where
+[`BranchingProcess`](@ref EpiBranch.Engine.BranchingProcess) for pure chain-statistics models where
 timing is irrelevant."""
 struct NoGenerationTime end
 
@@ -99,10 +99,10 @@ any user-defined fields.
 
 # Setting fields at simulation time
 
-Pass an `attributes` function to [`simulate`](@ref EpiBranch.EpiBranchEngine.simulate). It runs on every
+Pass an `attributes` function to [`simulate`](@ref EpiBranch.Engine.simulate). It runs on every
 new individual at creation. EpiBranch provides builders for clinical
 presentation, demographics, and transmission traits, layered with
-[`compose`](@ref EpiBranch.EpiBranchEngine.compose):
+[`compose`](@ref EpiBranch.Engine.compose):
 
 ```julia
 attributes = compose(
@@ -115,8 +115,8 @@ attributes = compose(
 For fields without a dedicated builder, write your own closure
 `(rng, ind) -> ...` and `compose` it with the others.
 
-See also [`compose`](@ref EpiBranch.EpiBranchEngine.compose), [`clinical_presentation`](@ref EpiBranch.EpiBranchEngine.clinical_presentation),
-[`demographics`](@ref EpiBranch.EpiBranchEngine.demographics), [`transmission_traits`](@ref EpiBranch.EpiBranchEngine.transmission_traits).
+See also [`compose`](@ref EpiBranch.Engine.compose), [`clinical_presentation`](@ref EpiBranch.Engine.clinical_presentation),
+[`demographics`](@ref EpiBranch.Engine.demographics), [`transmission_traits`](@ref EpiBranch.Engine.transmission_traits).
 """
 mutable struct Individual
     id::Int

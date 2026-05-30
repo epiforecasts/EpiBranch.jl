@@ -1,84 +1,7 @@
-"""
-    NegBin(R, k)
-
-Convenience constructor for a Negative Binomial offspring distribution
-parameterised by mean reproduction number `R` and dispersion parameter `k`.
-
-A `NegativeBinomial` from Distributions.jl is returned, with mean `R` and
-variance `R + R²/k`.
-
-_Note:_ `NegativeBinomial(r, p)` from Distributions.jl uses a different
-parameterisation (number of successes and success probability). Using it
-directly as an offspring distribution will produce silently wrong results.
-Always use `NegBin(R, k)` for epidemiological parameterisation.
-"""
-function NegBin(R::Real, k::Real)
-    R > 0 || throw(ArgumentError("R must be positive, got $R"))
-    k > 0 || throw(ArgumentError("k must be positive, got $k"))
-    p = k / (k + R)
-    return NegativeBinomial(k, p)
-end
-
-"""
-    incubation_linked_generation_time(; presymptomatic_fraction=0.3, omega=2.0)
-
-Return a function suitable for the `generation_time` field of a
-`BranchingProcess`, in which each individual's generation time is linked
-to their own incubation period.
-
-The returned function takes an incubation period (Float64) and produces a
-truncated skew-normal distribution SN(ξ, ω, α), where ξ = incubation
-period, and α is chosen so that the fraction of generation times shorter
-than the incubation period equals `presymptomatic_fraction`. This is the
-generation time model used in Hellewell et al. (2020).
-
-Usage:
-```julia
-model = BranchingProcess(
-    NegBin(2.5, 0.16),
-    incubation_linked_generation_time(presymptomatic_fraction=0.3)
-)
-```
-"""
-function incubation_linked_generation_time(; presymptomatic_fraction::Real = 0.3,
-        omega::Real = 2.0)
-    0.0 < presymptomatic_fraction < 1.0 || throw(ArgumentError(
-        "presymptomatic_fraction must be in (0, 1), got $presymptomatic_fraction"))
-    omega > 0.0 || throw(ArgumentError("omega must be positive, got $omega"))
-
-    # Compute skew-normal alpha from presymptomatic fraction
-    # For SN(xi, omega, alpha): P(X < xi) = 0.5 - arctan(alpha)/π
-    # => alpha = tan(π(0.5 - presymp_frac))
-    alpha = tan(float(π) * (0.5 - float(presymptomatic_fraction)))
-    om = float(omega)
-
-    return function (inc_period)
-        _TruncatedSkewNormal(inc_period, om, alpha)
-    end
-end
-
-"""Skew-normal truncated to [0, ∞) via rejection sampling (cdf not available)."""
-struct _TruncatedSkewNormal{T <: AbstractFloat} <: ContinuousUnivariateDistribution
-    ξ::T
-    ω::T
-    α::T
-    inner::SkewNormal{T}
-    function _TruncatedSkewNormal(ξ::Real, ω::Real, α::Real)
-        T = float(promote_type(typeof(ξ), typeof(ω), typeof(α)))
-        new{T}(T(ξ), T(ω), T(α), SkewNormal(T(ξ), T(ω), T(α)))
-    end
-end
-
-function Base.rand(rng::AbstractRNG, d::_TruncatedSkewNormal)
-    for _ in 1:10_000
-        x = rand(rng, d.inner)
-        x >= 0.0 && return x
-    end
-    @warn "rejection sampling for TruncatedSkewNormal failed after 10,000 attempts, returning 0.0"
-    return 0.0
-end
-
-Distributions.logpdf(d::_TruncatedSkewNormal, x::Real) = x < 0.0 ? -Inf : logpdf(d.inner, x)
+# ── Trio-dispatch helper ────────────────────────────────────────────
+# `_sample_value` is the only distribution-related thing the protocol
+# layer needs. Concrete distribution helpers (NegBin, scaled
+# distributions, generation-time builders) live in `Engine`.
 
 """
     _sample_value(x, rng, args...) -> Float64
@@ -89,10 +12,8 @@ signature by what they pass after `rng`. The return is always
 converted to `Float64`.
 
 Used throughout the package for parameters that accept the same
-"scalar | distribution | function" trio: attribute builders
-([`transmission_traits`](@ref EpiBranch.EpiBranchEngine.transmission_traits), [`clinical_presentation`](@ref EpiBranch.EpiBranchEngine.clinical_presentation)),
-intervention parameters (vaccination eligibility, isolation delays),
-and competing-risk fields ([`Risk`](@ref)).
+"scalar | distribution | function" trio: attribute builders,
+intervention parameters, and competing-risk fields ([`Risk`](@ref)).
 """
 _sample_value(x::Real, rng, args...) = float(x)
 _sample_value(d::Distribution, rng, args...) = float(rand(rng, d))

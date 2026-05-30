@@ -217,21 +217,21 @@ These functions are not part of the public API but are documented for
 developers extending the package.
 
 ```@docs
-EpiBranch.EpiBranchEngine.get_generation_time
-EpiBranch.EpiBranchEngine._draw_offspring
-EpiBranch.EpiBranchEngine._create_contacts!
-EpiBranch.EpiBranchEngine._resolve_competing_risks!
-EpiBranch.EpiBranchEngine._susceptible_fraction
-EpiBranch.EpiBranchEngine._register_step!
+EpiBranch.Engine.get_generation_time
+EpiBranch.Engine._draw_offspring
+EpiBranch.Engine._create_contacts!
+EpiBranch.Engine._resolve_competing_risks!
+EpiBranch.Engine._susceptible_fraction
+EpiBranch.Engine._register_step!
 EpiBranch.population_size
-EpiBranch.EpiBranchEngine._create_individual
-EpiBranch.EpiBranchAnalytics.logsumexp
+EpiBranch.Engine._create_individual
+EpiBranch.Analytics.logsumexp
 EpiBranch.required_fields
-EpiBranch.EpiBranchEngine._validate_required_fields
-EpiBranch.EpiBranchOutput._column_order
-EpiBranch.EpiBranchAnalytics._chain_length_ll_negbin
-EpiBranch.EpiBranchAnalytics._borel_logpdf
-EpiBranch.EpiBranchAnalytics._gammaborel_logpdf
-EpiBranch.EpiBranchAnalytics._empirical_ll
-EpiBranch.EpiBranchAnalytics._golden_section_min
+EpiBranch.Engine._validate_required_fields
+EpiBranch.Output._column_order
+EpiBranch.Analytics._chain_length_ll_negbin
+EpiBranch.Analytics._borel_logpdf
+EpiBranch.Analytics._gammaborel_logpdf
+EpiBranch.Analytics._empirical_ll
+EpiBranch.Analytics._golden_section_min
 ```
