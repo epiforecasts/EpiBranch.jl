@@ -23,11 +23,10 @@ end
 # resolution for new individuals, leaving step! to just describe the
 # transmission decision. A single deterministic infection per call.
 struct SingleSpawnModel <: EpiBranch.TransmissionModel end
-function EpiBranch.step!(::SingleSpawnModel, state::EpiBranch.SimulationState, interventions)
+function EpiBranch.step!(::SingleSpawnModel, state::EpiBranch.SimulationState)
     new_contacts = EpiBranch.Individual[]
     parent = state.individuals[state.active_ids[1]]
-    make_contact!(new_contacts, state, parent, parent.infection_time + 1.0;
-        interventions)
+    make_contact!(new_contacts, state, parent, parent.infection_time + 1.0)
     return new_contacts
 end
 
