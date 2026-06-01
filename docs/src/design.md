@@ -222,7 +222,7 @@ The simulation side is extended by implementing the intervention protocol. The a
 
 Offspring specifications replace what a branching process draws per individual. An example is `ClusterMixed(build, mixing)`, which lets the offspring distribution's parameters vary from chain to chain. These are stored in `BranchingProcess.offspring` and participate via:
 
-- `_draw_offspring(rng, offspring_spec, individual, state)` for simulation
+- `draw_offspring(rng, offspring_spec, individual, state)` for simulation
 - `chain_size_distribution(offspring_spec)` for analytics (returns a distribution)
 
 Observation models capture how the latent process generates data. They subtype `ObservationModel` and combine with a process model via `Observed(process, observation)`. `PerCaseObservation(detection_prob, delay)` is the current example. They participate via:

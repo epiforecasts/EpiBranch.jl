@@ -218,7 +218,7 @@ developers extending the package.
 
 ```@docs
 EpiBranch.get_generation_time
-EpiBranch._draw_offspring
+EpiBranch.draw_offspring
 EpiBranch._create_contacts!
 EpiBranch._resolve_competing_risks!
 EpiBranch._susceptible_fraction

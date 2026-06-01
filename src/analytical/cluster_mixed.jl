@@ -127,13 +127,13 @@ function BranchingProcess(offspring::ClusterMixed;
 end
 
 """
-    _draw_offspring(rng, offspring::ClusterMixed, individual, state)
+    draw_offspring(rng, offspring::ClusterMixed, individual, state)
 
 Draw offspring under a cluster-mixed specification. Samples `θ ~ mixing`
 once per chain, caches it on the index case, and looks it up via
 `parent_id` for every descendant so all members of a chain share `θ`.
 """
-function _draw_offspring(rng::AbstractRNG, offspring::ClusterMixed,
+function draw_offspring(rng::AbstractRNG, offspring::ClusterMixed,
         individual, state::SimulationState)
     θ = get!(individual.state, :cluster_theta) do
         if individual.parent_id == 0
