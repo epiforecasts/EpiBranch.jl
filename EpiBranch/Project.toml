@@ -1,0 +1,25 @@
+name = "EpiBranch"
+uuid = "d1aa5d78-c683-4158-9743-7109392647a5"
+authors = ["Sebastian Funk <sebastian.funk@lshtm.ac.uk>"]
+version = "0.1.0-DEV"
+
+[deps]
+EpiAnalytics = "31006bbe-cc5a-4763-ad4a-8e166b3d6415"
+EpiBranchCore = "ac2df735-54f9-4232-9dda-e19804976489"
+EpiInterventions = "889f65bd-5a05-423b-81b3-8b1d266c594f"
+EpiObservation = "06ff82f1-bfb8-4b7d-9ffa-d03ef1fa1c6d"
+EpiOutput = "d85986ee-d624-4d8b-b240-bdd45cacc2fe"
+EpiTransitions = "747663d2-2756-43f3-a1bc-514b08854665"
+Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
+
+[sources]
+EpiAnalytics = {path = "../EpiAnalytics"}
+EpiBranchCore = {path = "../EpiBranchCore"}
+EpiInterventions = {path = "../EpiInterventions"}
+EpiObservation = {path = "../EpiObservation"}
+EpiOutput = {path = "../EpiOutput"}
+EpiTransitions = {path = "../EpiTransitions"}
+
+[compat]
+Reexport = "1"
+julia = "1.10"

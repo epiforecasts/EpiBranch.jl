@@ -1,0 +1,18 @@
+name = "EpiTransitions"
+uuid = "747663d2-2756-43f3-a1bc-514b08854665"
+authors = ["Sebastian Funk <sebastian.funk@lshtm.ac.uk>"]
+version = "0.1.0-DEV"
+
+[deps]
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
+EpiBranchCore = "ac2df735-54f9-4232-9dda-e19804976489"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
+[sources]
+EpiBranchCore = {path = "../EpiBranchCore"}
+
+[compat]
+Distributions = "0.25"
+DocStringExtensions = "0.9.5"
+julia = "1.10"
