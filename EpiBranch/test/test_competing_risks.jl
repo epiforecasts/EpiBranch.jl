@@ -154,7 +154,7 @@
         struct AgeConditionalBlock <: AbstractIntervention
             threshold::Int
         end
-        function EpiBranch.competing_risk(b::AgeConditionalBlock, parent, contact, state)
+        function EpiBranchCore.competing_risk(b::AgeConditionalBlock, parent, contact, state)
             Risk(event_time = -Inf,
                 block_probability = (rng, parent, contact,
                     state) -> contact.state[:age] >= b.threshold ? 1.0 : 0.0)

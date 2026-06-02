@@ -215,23 +215,24 @@ incubation_linked_generation_time
 ## Internals
 
 These functions are not part of the public API but are documented for
-developers extending the package.
+developers extending the package. Each is qualified with its owning
+package so the right module is targeted by `@docs`.
 
 ```@docs
-EpiBranch.get_generation_time
-EpiBranch._create_contacts!
-EpiBranch._resolve_competing_risks!
-EpiBranch._susceptible_fraction
-EpiBranch._register_step!
-EpiBranch.population_size
-EpiBranch._create_individual
-EpiBranch.logsumexp
-EpiBranch.required_fields
-EpiBranch._validate_required_fields
-EpiBranch._column_order
-EpiBranch._chain_length_ll_negbin
-EpiBranch._borel_logpdf
-EpiBranch._gammaborel_logpdf
-EpiBranch._empirical_ll
-EpiBranch._golden_section_min
+EpiBranchCore.population_size
+EpiBranchCore.required_fields
+EpiBranchProcess.get_generation_time
+EpiBranchProcess._create_contacts!
+EpiBranchProcess._resolve_competing_risks!
+EpiBranchProcess._susceptible_fraction
+EpiBranchProcess._register_step!
+EpiBranchProcess._create_individual
+EpiBranchProcess._validate_required_fields
+EpiOutput._column_order
+EpiAnalytics.logsumexp
+EpiAnalytics._chain_length_ll_negbin
+EpiAnalytics._borel_logpdf
+EpiAnalytics._gammaborel_logpdf
+EpiAnalytics._empirical_ll
+EpiAnalytics._golden_section_min
 ```

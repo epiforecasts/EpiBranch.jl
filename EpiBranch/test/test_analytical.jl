@@ -246,7 +246,7 @@
                 return s
             end
             for x in 2:8
-                formula = exp(EpiBranch._chain_size_logpdf(d, x, 2))
+                formula = exp(EpiAnalytics._chain_size_logpdf(d, x, 2))
                 @test formula≈brute_s2(d, x) atol=1e-10
             end
 
@@ -267,15 +267,15 @@
         @testset "Real-time mixture likelihood and end_of_outbreak_probability" begin
             # Right-tail helper: P(X ≥ s) = 1 ⇒ logright_tail = 0.
             d = GammaBorel(0.5, 0.8)
-            @test EpiBranch._chain_size_right_tail_logprob(d, 1, 1) == 0.0
-            @test EpiBranch._chain_size_right_tail_logprob(d, 2, 2) == 0.0
+            @test EpiAnalytics._chain_size_right_tail_logprob(d, 1, 1) == 0.0
+            @test EpiAnalytics._chain_size_right_tail_logprob(d, 2, 2) == 0.0
 
             # log P(X = x) + log P(X ≥ x + 1) sums consistently with the
             # PMF: P(X = x) + P(X ≥ x + 1) = P(X ≥ x).
             for x in 2:8
-                pmf = exp(EpiBranch._chain_size_logpdf(d, x, 1))
-                tail_below = exp(EpiBranch._chain_size_right_tail_logprob(d, x, 1))
-                tail_above = exp(EpiBranch._chain_size_right_tail_logprob(d, x + 1, 1))
+                pmf = exp(EpiAnalytics._chain_size_logpdf(d, x, 1))
+                tail_below = exp(EpiAnalytics._chain_size_right_tail_logprob(d, x, 1))
+                tail_above = exp(EpiAnalytics._chain_size_right_tail_logprob(d, x + 1, 1))
                 @test tail_below≈pmf + tail_above atol=1e-9
             end
 
@@ -289,7 +289,7 @@
                 pi = [0.0, 0.0, 0.0, 0.0])
             d = GammaBorel(0.5, 0.8)
             ll_expected = sum(
-                EpiBranch._chain_size_right_tail_logprob(d, x, 1)
+                EpiAnalytics._chain_size_right_tail_logprob(d, x, 1)
             for x in data.data)
             @test ll_ongoing ≈ ll_expected
 

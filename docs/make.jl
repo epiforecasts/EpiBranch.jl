@@ -1,9 +1,25 @@
 using Documenter
 using DocumenterVitepress
 using EpiBranch
+using EpiBranchCore
+using EpiBranchProcess
+using EpiInterventions
+using EpiTransitions
+using EpiObservation
+using EpiOutput
+using EpiAnalytics
 
 makedocs(;
-    modules = [EpiBranch],
+    modules = [
+        EpiBranch,
+        EpiBranchCore,
+        EpiBranchProcess,
+        EpiInterventions,
+        EpiTransitions,
+        EpiObservation,
+        EpiOutput,
+        EpiAnalytics
+    ],
     sitename = "EpiBranch.jl",
     authors = "epiforecasts contributors",
     remotes = nothing,

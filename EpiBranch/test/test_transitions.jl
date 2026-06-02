@@ -4,13 +4,13 @@
 struct DummyTest <: AbstractClinicalTransition
     delay::Distribution
 end
-EpiBranch.required_fields(::DummyTest) = [:onset_time]
-function EpiBranch.initialise_individual!(::DummyTest, ind, state)
+EpiBranchCore.required_fields(::DummyTest) = [:onset_time]
+function EpiBranchCore.initialise_individual!(::DummyTest, ind, state)
     ind.state[:tested] = false
     ind.state[:test_time] = Inf
     return nothing
 end
-function EpiBranch.resolve_individual!(t::DummyTest, ind, state)
+function EpiBranchCore.resolve_individual!(t::DummyTest, ind, state)
     ot = onset_time(ind)
     isnan(ot) && return nothing
     ind.state[:tested] = true
@@ -22,9 +22,9 @@ end
 # bookkeeping, competing-risks resolution, and clinical-transition
 # resolution for new individuals, leaving step! to just describe the
 # transmission decision. A single deterministic infection per call.
-struct SingleSpawnModel <: EpiBranch.TransmissionModel end
-function EpiBranch.step!(::SingleSpawnModel, state::EpiBranch.SimulationState)
-    new_contacts = EpiBranch.Individual[]
+struct SingleSpawnModel <: EpiBranchCore.TransmissionModel end
+function EpiBranchCore.step!(::SingleSpawnModel, state::EpiBranchCore.SimulationState)
+    new_contacts = EpiBranchCore.Individual[]
     parent = state.individuals[state.active_ids[1]]
     make_contact!(new_contacts, state, parent, parent.infection_time + 1.0)
     return new_contacts

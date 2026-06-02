@@ -1,6 +1,6 @@
 # Custom TraceEligibility used by the user-extension test below.
-struct WithinChain <: EpiBranch.TraceEligibility end
-function EpiBranch.is_eligible(::WithinChain, parent, contact, state)
+struct WithinChain <: EpiInterventions.TraceEligibility end
+function EpiInterventions.is_eligible(::WithinChain, parent, contact, state)
     parent.chain_id == contact.chain_id
 end
 
@@ -45,11 +45,11 @@ end
         ct = ContactTracing(WithinChain(), ConstantRate(0.5),
             ConstantDelay(Exponential(1.0)), Quarantine())
         @test ct.eligibility isa WithinChain
-        @test EpiBranch.is_eligible(ct.eligibility,
+        @test EpiInterventions.is_eligible(ct.eligibility,
             Individual(id = 1, chain_id = 7),
             Individual(id = 2, chain_id = 7, parent_id = 1),
             nothing)
-        @test !EpiBranch.is_eligible(ct.eligibility,
+        @test !EpiInterventions.is_eligible(ct.eligibility,
             Individual(id = 1, chain_id = 7),
             Individual(id = 2, chain_id = 8, parent_id = 1),
             nothing)

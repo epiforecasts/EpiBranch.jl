@@ -25,7 +25,9 @@ using SpecialFunctions
 using EpiBranchCore
 using EpiBranchCore: _sample_value
 using EpiBranchProcess
+using EpiBranchProcess: max_cases
 using EpiObservation
+using EpiOutput: chain_statistics
 
 include("data_types.jl")
 include("chain_distributions.jl")

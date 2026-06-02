@@ -3,7 +3,7 @@
 struct MaxChainLengthRule <: AbstractStoppingRule
     n::Int
 end
-function EpiBranch.should_stop(r::MaxChainLengthRule, state::SimulationState)
+function EpiBranchProcess.should_stop(r::MaxChainLengthRule, state::SimulationState)
     isempty(state.individuals) && return false
     return maximum(ind.generation for ind in state.individuals) >= r.n
 end

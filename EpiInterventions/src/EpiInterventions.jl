@@ -39,6 +39,7 @@ export TraceEligibility, AlwaysEligible, SymptomaticParent
 export TraceRate, ConstantRate
 export TraceDelay, ConstantDelay
 export TraceAction, Quarantine, FlagOnly
+export is_eligible, traces, draw_trace_delay, apply_trace!
 
 # Vaccination
 export AbstractVaccination, RingVaccination, MassVaccination

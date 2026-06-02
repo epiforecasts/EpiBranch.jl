@@ -23,5 +23,12 @@ EpiOutput = {path = "../EpiOutput"}
 EpiTransitions = {path = "../EpiTransitions"}
 
 [compat]
+EpiAnalytics = "0.1"
+EpiBranchCore = "0.1"
+EpiBranchProcess = "0.1"
+EpiInterventions = "0.1"
+EpiObservation = "0.1"
+EpiOutput = "0.1"
+EpiTransitions = "0.1"
 Reexport = "1"
 julia = "1.10"

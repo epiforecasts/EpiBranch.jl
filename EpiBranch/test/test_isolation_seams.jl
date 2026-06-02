@@ -1,11 +1,11 @@
 # Custom IsolationEligibility used by the user-extension test below.
-struct OnlyOlder <: EpiBranch.IsolationEligibility
+struct OnlyOlder <: EpiInterventions.IsolationEligibility
     age_threshold::Int
 end
-function EpiBranch.is_eligible_for_isolation(e::OnlyOlder, ind, state)
+function EpiInterventions.is_eligible_for_isolation(e::OnlyOlder, ind, state)
     !is_asymptomatic(ind) && get(ind.state, :age, 0) >= e.age_threshold
 end
-EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, :age]
+EpiInterventions._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, :age]
 
 @testset "Isolation trait seams" begin
     clinical = clinical_presentation(
@@ -55,13 +55,13 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
 
     @testset "required_fields dispatches on eligibility" begin
         # Default SymptomaticOnly requires :asymptomatic.
-        @test :asymptomatic in EpiBranch.required_fields(
+        @test :asymptomatic in EpiBranchCore.required_fields(
             Isolation(delay = Exponential(1.0)))
         # AllCases doesn't.
-        @test :asymptomatic ∉ EpiBranch.required_fields(
+        @test :asymptomatic ∉ EpiBranchCore.required_fields(
             Isolation(delay = Exponential(1.0), eligibility = AllCases()))
         # Custom eligibility declares its own required fields.
-        @test :age in EpiBranch.required_fields(
+        @test :age in EpiBranchCore.required_fields(
             Isolation(delay = Exponential(1.0), eligibility = OnlyOlder(50)))
     end
 
