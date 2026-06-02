@@ -38,7 +38,7 @@ containment_probability(results)
 
 ## Why Julia?
 
-The R packages this draws on (ringbp for simulation, epichains for chain statistics, superspreading for offspring fitting) don't share any code, so a couple of useful analyses turn into engineering jobs rather than analyses. Two examples people often want and can't easily do: evaluating a likelihood under intervention scenarios, and fitting a Bayesian model with interventions inside the loop.
+The R packages this draws on (ringbp, epichains, superspreading, and others) each do their own part well. The friction is in combining them: they don't share any code, so an analysis that needs more than one package means writing the bridge between them yourself. Two examples that come up often: evaluating a likelihood under intervention scenarios, and fitting a Bayesian model with interventions inside the loop.
 
 Putting the pieces in one package lets you:
 
