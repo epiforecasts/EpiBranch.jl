@@ -8,13 +8,12 @@ DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 EpiBranchCore = "ac2df735-54f9-4232-9dda-e19804976489"
-EpiObservation = "06ff82f1-bfb8-4b7d-9ffa-d03ef1fa1c6d"
-EpiTransitions = "747663d2-2756-43f3-a1bc-514b08854665"
+EpiBranchProcess = "d9fd2b8d-b079-47e7-b743-af11fd56a5e2"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [sources]
 EpiBranchCore = {path = "../EpiBranchCore"}
-EpiObservation = {path = "../EpiObservation"}
-EpiTransitions = {path = "../EpiTransitions"}
+EpiBranchProcess = {path = "../EpiBranchProcess"}
 
 [compat]
 DataFrames = "1"
