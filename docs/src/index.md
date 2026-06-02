@@ -41,9 +41,16 @@ containment_probability(results)
 
 ## Installation
 
-**EpiBranch.jl** is not yet registered. It can be installed from the repository:
+**EpiBranch.jl** is not yet registered. The repository is a monorepo of
+seven sub-packages plus an `EpiBranch` umbrella that re-exports
+everything. Install the umbrella with:
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/epiforecasts/EpiBranch.jl")
+Pkg.add(url = "https://github.com/epiforecasts/EpiBranch.jl", subdir = "EpiBranch")
 ```
+
+The sub-packages (`EpiBranchCore`, `EpiBranchProcess`,
+`EpiInterventions`, `EpiTransitions`, `EpiObservation`, `EpiOutput`,
+`EpiAnalytics`) can be installed individually with the same `subdir`
+pattern when you only need part of the surface.
