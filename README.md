@@ -38,15 +38,13 @@ containment_probability(results)
 
 ## Why Julia?
 
-In R, branching process simulation, chain statistics, line list generation, intervention modelling, and offspring fitting live in separate CRAN packages with separate codebases. This means, for example, that likelihoods cannot be evaluated under interventions because the simulation engine and the likelihood code don't share a common interface.
+EpiBranch.jl unifies a set of R packages that share the same underlying branching-process model. ringbp, epichains, superspreading, simulist, and pepbp each re-implement that model — offspring distribution, generation time, often interventions — for whichever analysis they're built around. EpiBranch.jl has one model that all the analyses run on.
 
-Julia's multiple dispatch makes it natural to unify these into a single package where components compose freely:
+On top of that, the unification gives you:
 
-- **Same `loglikelihood` function** works with offspring counts, chain sizes, or chain lengths — dispatch on the data type selects the right method
-- **Same `fit` function** estimates offspring distribution parameters from any of those data types
-- **Same simulation engine** runs with or without interventions, and the simulation-based likelihood reuses it directly — enabling likelihood evaluation under interventions
-- **Stack interventions freely**: isolation, contact tracing, ring vaccination, and time-dependent scheduling all go in a vector and interact through competing risks on individual state
-- **AD-compatible likelihoods** work with [Turing.jl](https://turinglang.org) for Bayesian inference — including parameter estimation under interventions, which is not possible when simulation and inference live in separate packages
+- One `loglikelihood` call that works for offspring counts, chain sizes, or chain lengths, picking the right method for whichever shape of data you give it.
+- Interventions you can stack in any combination (isolation, contact tracing, ring vaccination, time-varying policies), interacting correctly through competing risks on individual cases.
+- A model that drops straight into [Turing.jl](https://turinglang.org) for Bayesian inference over R, k, and any other parameters, including under whichever interventions you've stacked.
 
 ### Performance
 
