@@ -38,14 +38,13 @@ containment_probability(results)
 
 ## Why Julia?
 
-The R packages this draws on (ringbp, epichains, superspreading, and others) each do their own part well. The friction is in combining them: they don't share any code, so an analysis that needs more than one package means writing the bridge between them yourself. Two examples that come up often: evaluating a likelihood under intervention scenarios, and fitting a Bayesian model with interventions inside the loop.
+EpiBranch.jl unifies a set of R packages that share the same underlying branching-process model. ringbp, epichains, superspreading, simulist, and pepbp each re-implement that model — offspring distribution, generation time, often interventions — for whichever analysis they're built around. EpiBranch.jl has one model that all the analyses run on.
 
-Putting the pieces in one package lets you:
+On top of that, the unification gives you:
 
-- Fit offspring distributions, chain sizes, or chain lengths with one `loglikelihood` call. The function picks the right method for whichever shape of data you give it.
-- Estimate R and k under whichever intervention scenarios you care about. The likelihood comes from running the same simulator you'd use to generate forward outbreaks.
-- Stack interventions in any combination (isolation, contact tracing, ring vaccination, time-varying policies) and have them interact correctly through competing risks on individual cases.
-- Pass a model with interventions straight into [Turing.jl](https://turinglang.org) for a posterior over R, k, and any other parameters you're fitting, under whatever intervention scenario you specified.
+- One `loglikelihood` call that works for offspring counts, chain sizes, or chain lengths, picking the right method for whichever shape of data you give it.
+- Interventions you can stack in any combination (isolation, contact tracing, ring vaccination, time-varying policies), interacting correctly through competing risks on individual cases.
+- A model that drops straight into [Turing.jl](https://turinglang.org) for Bayesian inference over R, k, and any other parameters, including under whichever interventions you've stacked.
 
 ### Performance
 
