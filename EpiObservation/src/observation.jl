@@ -24,10 +24,10 @@ function Base.show(io::IO, m::Observed)
     print(io, "Observed($(m.process), $(m.observation))")
 end
 
-population_size(m::Observed) = population_size(m.process)
-latent_period(m::Observed) = latent_period(m.process)
-n_types(m::Observed) = n_types(m.process)
-single_type_offspring(m::Observed) = single_type_offspring(m.process)
+EpiBranchCore.population_size(m::Observed) = population_size(m.process)
+EpiBranchCore.latent_period(m::Observed) = latent_period(m.process)
+EpiBranchCore.n_types(m::Observed) = n_types(m.process)
+EpiBranchCore.single_type_offspring(m::Observed) = single_type_offspring(m.process)
 
 """
     simulate(m::Observed; kwargs...)
@@ -43,7 +43,7 @@ gets:
 Downstream output (line list, chain statistics) can then filter on
 `:reported` and read `:report_time`.
 """
-function simulate(m::Observed{<:TransmissionModel, <:PerCaseObservation};
+function EpiBranchCore.simulate(m::Observed{<:TransmissionModel, <:PerCaseObservation};
         rng::AbstractRNG = Random.default_rng(), kwargs...)
     state = simulate(m.process; rng = rng, kwargs...)
     for ind in state.individuals
@@ -121,7 +121,7 @@ inner process. Recurses through any nested `Observed` wrappers, so a
 double per-case observation (e.g. surveillance plus a separate audit)
 gives the right nested-thinning likelihood without pairwise dispatch.
 """
-function chain_size_distribution(m::Observed{<:Any, <:PerCaseObservation})
+function EpiBranchCore.chain_size_distribution(m::Observed{<:Any, <:PerCaseObservation})
     p = scalar_detection_prob(m.observation)
     base = chain_size_distribution(m.process)
     # ρ = 1 is a no-op; skip the ThinnedChainSize wrap so multi-seed
