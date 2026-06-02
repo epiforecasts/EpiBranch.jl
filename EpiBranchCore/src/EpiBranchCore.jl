@@ -78,6 +78,6 @@ export NegBin, scale_distribution, incubation_linked_generation_time
 
 # Engine and analytics seams (concrete methods in downstream packages)
 export simulate, simulate_batch, step!, make_contact!, draw_offspring
-export chain_size_distribution
+export chain_size_distribution, susceptible_fraction
 
 end # module

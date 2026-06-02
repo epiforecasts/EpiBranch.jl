@@ -29,6 +29,7 @@ simulate
 simulate_batch
 EpiBranch.step!
 make_contact!
+EpiBranchCore.susceptible_fraction
 ```
 
 ## Interventions
@@ -224,7 +225,6 @@ EpiBranchCore.required_fields
 EpiBranchProcess.get_generation_time
 EpiBranchProcess._create_contacts!
 EpiBranchProcess._resolve_competing_risks!
-EpiBranchProcess._susceptible_fraction
 EpiBranchProcess._register_step!
 EpiBranchProcess._create_individual
 EpiBranchProcess._validate_required_fields

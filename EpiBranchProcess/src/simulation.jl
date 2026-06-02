@@ -164,16 +164,20 @@ function should_terminate(state::SimulationState, sim_opts::SimOpts)
     return false
 end
 
-"""Fraction of the population still susceptible (1.0 for infinite
-population). The optional `extra_infected` accounts for contacts
-already infected within the current step but not yet registered."""
-function _susceptible_fraction(state::SimulationState{<:Any, NoPopulation},
-        extra_infected::Int = 0)
+"""Default `susceptible_fraction` method for the unbounded population
+sentinel — always 1.0. See `EpiBranchCore.susceptible_fraction` for
+the generic."""
+function EpiBranchCore.susceptible_fraction(
+        state::SimulationState{<:Any, NoPopulation}, extra_infected::Int = 0)
     1.0
 end
 
-function _susceptible_fraction(state::SimulationState{<:Any, Int},
-        extra_infected::Int = 0)
+"""Default `susceptible_fraction` method for a single global pool of
+size `state.population_size::Int`. Downstream packages can introduce
+their own population-size types (e.g. `PartitionedPopulation` for
+households) and provide methods here instead."""
+function EpiBranchCore.susceptible_fraction(
+        state::SimulationState{<:Any, Int}, extra_infected::Int = 0)
     n_susceptible = state.population_size - state.cumulative_cases - extra_infected
     n_susceptible <= 0 && return 0.0
     return n_susceptible / state.population_size
@@ -302,7 +306,7 @@ function _decide_infected(state::SimulationState, contact::Individual,
 
     # Built-in risks (time-agnostic Bernoulli draws). Population
     # susceptibility reflects infections accumulated this step.
-    pop_suscept = _susceptible_fraction(state, infected_so_far)
+    pop_suscept = susceptible_fraction(state, infected_so_far)
     pop_suscept <= 0.0 && return false
     pop_suscept < 1.0 && rand(rng) > pop_suscept && return false
     contact.susceptibility < 1.0 && rand(rng) > contact.susceptibility && return false

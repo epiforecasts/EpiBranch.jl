@@ -8,10 +8,19 @@
 #
 # Concrete methods live in:
 #   - `EpiBranchProcess`: `simulate`, `simulate_batch`, `step!`,
-#     `make_contact!`, `draw_offspring` (default and BranchingProcess
-#     methods).
+#     `make_contact!`, `draw_offspring`, `susceptible_fraction`
+#     (default and BranchingProcess methods).
 #   - `EpiBranchObservation`: `simulate(::Observed{...})`.
-#   - `EpiBranchAnalytics`: `chain_size_distribution` for offspring specs.
+#   - `EpiBranchAnalytics`: `chain_size_distribution` for offspring
+#     specs.
+#
+# Note: likelihoods and offspring-distribution fitting are NOT
+# declared here. EpiBranchAnalytics extends `Distributions.loglikelihood`
+# and `Distributions.fit` (originally `StatsAPI.loglikelihood` /
+# `StatsAPI.fit`) directly — those are the cross-package seams for
+# analytics. A downstream package adding a new data type or model
+# adds methods to the Distributions.jl generics, not to anything
+# declared in this file.
 # ─────────────────────────────────────────────────────────────────────
 
 """
@@ -70,3 +79,20 @@ for the standard offspring distributions (`Poisson`, `NegativeBinomial`,
 `Observed{<:Any, <:PerCaseObservation}`.
 """
 function chain_size_distribution end
+
+"""
+    susceptible_fraction(state::SimulationState, extra_infected::Int = 0) -> Float64
+
+Fraction of the population still susceptible at this point in the
+simulation. Dispatched on the `population_size` type carried by
+`SimulationState{<:Any, P}`, so downstream packages can introduce
+structured populations (households, contact networks, age-stratified
+pools) by defining a new population-size type and a method here.
+
+`extra_infected` accounts for contacts already infected within the
+current step but not yet registered in `state.cumulative_cases`.
+
+Default methods for `NoPopulation` (infinite, always 1.0) and `Int`
+(global pool of that size) live in `EpiBranchProcess`.
+"""
+function susceptible_fraction end
