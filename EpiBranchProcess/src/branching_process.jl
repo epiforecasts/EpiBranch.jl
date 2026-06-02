@@ -20,9 +20,9 @@ struct BranchingProcess{O, G, P, L} <: TransmissionModel
     type_labels::L
 end
 
-population_size(m::BranchingProcess) = m.population_size
-latent_period(m::BranchingProcess) = m.latent_period
-n_types(m::BranchingProcess) = m.n_types
+EpiBranchCore.population_size(m::BranchingProcess) = m.population_size
+EpiBranchCore.latent_period(m::BranchingProcess) = m.latent_period
+EpiBranchCore.n_types(m::BranchingProcess) = m.n_types
 
 function Base.show(io::IO, m::BranchingProcess)
     off_str = m.offspring isa Distribution ? string(typeof(m.offspring)) : "Function"
@@ -128,7 +128,7 @@ that via [`competing_risk`](@ref) after `step!` returns. See the
 [Design](@ref "Simulation, mutation, and automatic differentiation")
 section for implications on automatic differentiation.
 """
-function step!(model::BranchingProcess, state::SimulationState)
+function EpiBranchCore.step!(model::BranchingProcess, state::SimulationState)
     new_contacts = Individual[]
     for idx in state.active_ids
         individual = state.individuals[idx]
@@ -142,7 +142,7 @@ end
 # ── Offspring drawing ────────────────────────────────────────────────
 
 """Single-type offspring draw."""
-function draw_offspring(rng::AbstractRNG, offspring::Distribution,
+function EpiBranchCore.draw_offspring(rng::AbstractRNG, offspring::Distribution,
         individual, state::SimulationState)
     rand(rng, offspring)
 end
@@ -151,7 +151,7 @@ end
 `(rng, individual)` or `(rng, individual, state)`; the latter form lets
 the offspring rule read population-level state (e.g. cumulative cases
 for time- or policy-dependent caps)."""
-function draw_offspring(rng::AbstractRNG, offspring::Function,
+function EpiBranchCore.draw_offspring(rng::AbstractRNG, offspring::Function,
         individual, state::SimulationState)
     if applicable(offspring, rng, individual, state)
         return offspring(rng, individual, state)

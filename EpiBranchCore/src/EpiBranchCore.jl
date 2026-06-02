@@ -3,14 +3,14 @@ EpiBranchCore — protocol layer for the EpiBranch.jl ecosystem.
 
 Owns the data types, abstract types, hook protocols, distribution
 helpers, and state accessors that every slot-in package depends on.
-Deliberately thin: the simulator lives in `EpiBranchDynamics`;
+Deliberately thin: the simulator lives in `EpiBranchProcess`;
 concrete interventions, transitions, observations, output, and
 analytics each live in their own package and add methods to the
 generics declared here.
 
 A downstream package adding a new intervention, transition,
 observation model, or transmission model depends only on this
-package plus the engine (`EpiBranchDynamics`) if it needs to run
+package plus the engine (`EpiBranchProcess`) if it needs to run
 simulations.
 """
 module EpiBranchCore
@@ -37,6 +37,10 @@ include("utils.jl")
 include("intervention_interface.jl")
 include("transition_interface.jl")
 include("observation_interface.jl")
+
+# Cross-package extension contract — empty generics that more than one
+# slot-in package extends.
+include("extension_contract.jl")
 
 # ── Exports ─────────────────────────────────────────────────────────
 
@@ -71,5 +75,9 @@ export is_traced, is_quarantined, is_vaccinated, is_test_positive
 
 # Distribution helpers
 export NegBin, scale_distribution, incubation_linked_generation_time
+
+# Engine and analytics seams (concrete methods in downstream packages)
+export simulate, simulate_batch, step!, make_contact!, draw_offspring
+export chain_size_distribution
 
 end # module

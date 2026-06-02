@@ -1,4 +1,4 @@
-name = "EpiBranchDynamics"
+name = "EpiBranchProcess"
 uuid = "d9fd2b8d-b079-47e7-b743-af11fd56a5e2"
 authors = ["Sebastian Funk <sebastian.funk@lshtm.ac.uk>"]
 version = "0.1.0-DEV"

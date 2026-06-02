@@ -18,7 +18,7 @@ If `condition` is provided (a `UnitRange{Int}`), simulations are repeated
 until one produces an outbreak whose cumulative cases fall within the range,
 up to `max_attempts`.
 """
-function simulate(model::TransmissionModel;
+function EpiBranchCore.simulate(model::TransmissionModel;
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
         transitions::Vector{<:AbstractClinicalTransition} = AbstractClinicalTransition[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
@@ -82,7 +82,7 @@ When `parallel=true`, simulations are distributed across available threads
 using independent RNG streams derived from the provided `rng`. Use
 `julia --threads N` to enable multi-threading.
 """
-function simulate_batch(model::TransmissionModel, n::Int;
+function EpiBranchCore.simulate_batch(model::TransmissionModel, n::Int;
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
         transitions::Vector{<:AbstractClinicalTransition} = AbstractClinicalTransition[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
@@ -240,7 +240,7 @@ resolution that sets `:infected`, clinical transitions, and per-step
 bookkeeping (`cumulative_cases`, `active_ids`, `max_infection_time`,
 …). A custom `step!` only owns the model-specific draw.
 """
-function make_contact!(new_contacts::Vector{Individual},
+function EpiBranchCore.make_contact!(new_contacts::Vector{Individual},
         state::SimulationState, parent::Individual,
         infection_time::Real;
         type_idx::Union{Int, NoTypeLabels} = NoTypeLabels())
@@ -596,7 +596,7 @@ end
 # ── Intervention field validation ────────────────────────────────────
 
 """Fields that an intervention requires on individuals. Default: none."""
-required_fields(::AbstractIntervention) = Symbol[]
+EpiBranchCore.required_fields(::AbstractIntervention) = Symbol[]
 
 """Check that all required fields are present on an individual. Works for
 any iterable of items that define `required_fields` — used for both
