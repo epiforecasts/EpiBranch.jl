@@ -595,8 +595,9 @@ end
 
 # ── Intervention field validation ────────────────────────────────────
 
-"""Fields that an intervention requires on individuals. Default: none."""
-EpiBranchCore.required_fields(::AbstractIntervention) = Symbol[]
+# `required_fields(::AbstractIntervention)` default lives in
+# `EpiBranchCore` so packages that only depend on Core see it without
+# pulling in the engine.
 
 """Check that all required fields are present on an individual. Works for
 any iterable of items that define `required_fields` — used for both

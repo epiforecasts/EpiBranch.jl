@@ -95,3 +95,8 @@ Undo the effect of an intervention on an individual. Called by
 Default: no-op.
 """
 reset!(::AbstractIntervention, ::Individual) = nothing
+
+"""Fields that an intervention requires on individuals. Default: none.
+Concrete interventions override this to declare the
+`Individual.state` keys they read (e.g. `:onset_time`)."""
+required_fields(::AbstractIntervention) = Symbol[]
