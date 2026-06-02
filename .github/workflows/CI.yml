@@ -16,8 +16,10 @@ jobs:
       fail-fast: false
       matrix:
         version:
+          # 'lts' is currently Julia 1.10; we use the [sources] feature
+          # (Julia 1.11+) for in-tree dev across the monorepo. Add 'lts'
+          # back when the LTS cycle catches up.
           - '1'
-          - 'lts'
     steps:
       - uses: actions/checkout@v6
       - uses: julia-actions/setup-julia@v3
