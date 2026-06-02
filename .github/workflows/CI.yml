@@ -25,8 +25,11 @@ jobs:
           version: ${{ matrix.version }}
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@v1
+        with:
+          project: EpiBranch
       - uses: julia-actions/julia-runtest@v1
         with:
+          project: EpiBranch
           coverage: false
 
   docs:
@@ -46,11 +49,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
-      - run: |
-          julia --project=docs -e '
-            using Pkg
-            Pkg.develop(PackageSpec(path=pwd()))
-            Pkg.instantiate()'
+      - run: julia --project=docs -e 'using Pkg; Pkg.instantiate()'
       - run: julia --project=docs docs/make.jl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
