@@ -584,7 +584,7 @@ Offspring specifications replace what `BranchingProcess` draws per
 individual. `ClusterMixed(build, mixing)` (per-chain parameter
 variation) is the reference. A new offspring type needs:
 
-1. Simulation dispatch: `_draw_offspring(rng, offspring, individual, state)` returning the number of offspring.
+1. Simulation dispatch: `draw_offspring(rng, offspring, individual, state)` returning the number of offspring.
 2. Analytical dispatch (optional but recommended): `chain_size_distribution(offspring)` returning the analytical PMF. Without it, the likelihood falls back to simulation.
 3. A `BranchingProcess` constructor so the type can be stored in the `offspring` field.
 
@@ -659,7 +659,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Composed attributes | `compose(f1, f2, ...)` | Individual creation |
 | Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
-| Custom offspring (type) | Struct + `_draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
+| Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
 | Custom transmission model | Struct `<: TransmissionModel` + `step!`, `single_type_offspring` | Simulation + analytics |
 | Custom observation model | Struct `<: ObservationModel` + `chain_size_distribution(::Observed{...})` and/or `loglikelihood(::DataType, ::Observed{...})` | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |

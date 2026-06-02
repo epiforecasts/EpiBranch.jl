@@ -132,7 +132,7 @@ function step!(model::BranchingProcess, state::SimulationState)
     new_contacts = Individual[]
     for idx in state.active_ids
         individual = state.individuals[idx]
-        offspring_result = _draw_offspring(state.rng, model.offspring, individual, state)
+        offspring_result = draw_offspring(state.rng, model.offspring, individual, state)
         gt_dist = get_generation_time(model.generation_time, individual)
         _create_contacts!(new_contacts, offspring_result, individual, state, gt_dist)
     end
@@ -142,7 +142,7 @@ end
 # ── Offspring drawing ────────────────────────────────────────────────
 
 """Single-type offspring draw."""
-function _draw_offspring(rng::AbstractRNG, offspring::Distribution,
+function draw_offspring(rng::AbstractRNG, offspring::Distribution,
         individual, state::SimulationState)
     rand(rng, offspring)
 end
@@ -151,7 +151,7 @@ end
 `(rng, individual)` or `(rng, individual, state)`; the latter form lets
 the offspring rule read population-level state (e.g. cumulative cases
 for time- or policy-dependent caps)."""
-function _draw_offspring(rng::AbstractRNG, offspring::Function,
+function draw_offspring(rng::AbstractRNG, offspring::Function,
         individual, state::SimulationState)
     if applicable(offspring, rng, individual, state)
         return offspring(rng, individual, state)
