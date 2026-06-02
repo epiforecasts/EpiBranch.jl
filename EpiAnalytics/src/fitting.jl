@@ -8,7 +8,7 @@ import Distributions: fit, loglikelihood
 Log-likelihood of observed secondary case counts under a given
 offspring distribution.
 """
-function loglikelihood(data::OffspringCounts, offspring::Distribution)
+function Distributions.loglikelihood(data::OffspringCounts, offspring::Distribution)
     sum(logpdf(offspring, x) for x in data.data)
 end
 
@@ -32,7 +32,7 @@ i.e. `pi[i]` is the probability that cluster `i` is finished
 (observed size = final size). See `end_of_outbreak_probability` for a
 principled `pi` based on the generation-time distribution.
 """
-function loglikelihood(data::ChainSizes, offspring::Distribution;
+function Distributions.loglikelihood(data::ChainSizes, offspring::Distribution;
         pi::Union{Nothing, AbstractVector{<:Real}} = nothing)
     dist = chain_size_distribution(offspring)
     return _chain_size_loglik(dist, data; pi)
@@ -40,7 +40,7 @@ end
 
 # AD-compatible methods: use shared _borel_logpdf / _gammaborel_logpdf
 # which accept any numeric type for parameters (ForwardDiff Dual compatible)
-function loglikelihood(data::ChainSizes, offspring::Poisson{T};
+function Distributions.loglikelihood(data::ChainSizes, offspring::Poisson{T};
         pi::Union{Nothing, AbstractVector{<:Real}} = nothing) where {T}
     μ = min(mean(offspring), one(mean(offspring)))
     if pi === nothing && all(==(1), data.seeds)
@@ -49,7 +49,7 @@ function loglikelihood(data::ChainSizes, offspring::Poisson{T};
     return _chain_size_loglik(Borel(μ), data; pi)
 end
 
-function loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T};
+function Distributions.loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T};
         pi::Union{Nothing, AbstractVector{<:Real}} = nothing) where {T}
     if pi === nothing && all(==(1), data.seeds)
         return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
@@ -108,7 +108,7 @@ Analytical log-likelihood of observed chain lengths. Only defined for
 subcritical processes (R < 1).
 """
 # AD-compatible chain length: Poisson — P(length=n) = (1-λ)λ^n for subcritical
-function loglikelihood(data::ChainLengths, offspring::Poisson{T}) where {T}
+function Distributions.loglikelihood(data::ChainLengths, offspring::Poisson{T}) where {T}
     λ = mean(offspring)
     λ < 1 ||
         throw(ArgumentError("chain length distribution only defined for subcritical process (λ < 1)"))
@@ -116,7 +116,7 @@ function loglikelihood(data::ChainLengths, offspring::Poisson{T}) where {T}
 end
 
 # AD-compatible chain length: NegBin — PGF iteration
-function loglikelihood(data::ChainLengths, offspring::NegativeBinomial{T}) where {T}
+function Distributions.loglikelihood(data::ChainLengths, offspring::NegativeBinomial{T}) where {T}
     _chain_length_ll_negbin(data.data, offspring)
 end
 
@@ -153,7 +153,7 @@ interventions are supplied, simulates the wrapped process model,
 applies per-case Binomial thinning, and compares against the observed
 data via the empirical likelihood.
 """
-function loglikelihood(data::ChainSizes,
+function Distributions.loglikelihood(data::ChainSizes,
         m::Observed{<:Any, <:PerCaseObservation};
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
@@ -187,14 +187,14 @@ function loglikelihood(data::ChainSizes,
     return _empirical_ll(data.data, sim_values; min_val = 1, censored, cap)
 end
 
-function loglikelihood(::ChainLengths,
+function Distributions.loglikelihood(::ChainLengths,
         ::Observed{<:Any, <:PerCaseObservation}; kwargs...)
     throw(ArgumentError(
         "loglikelihood(ChainLengths, Observed{..., PerCaseObservation}) is not defined: per-case detection does not translate to a well-defined chain length distribution. Use ChainSizes or evaluate on the bare process model."))
 end
 
 for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
-    @eval function loglikelihood(data::$DT, model::TransmissionModel;
+    @eval function Distributions.loglikelihood(data::$DT, model::TransmissionModel;
             interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
             attributes::Union{Function, NoAttributes} = NoAttributes(),
             sim_opts::SimOpts = SimOpts(),

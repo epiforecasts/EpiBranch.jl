@@ -238,14 +238,14 @@ end
 
 Analytical chain size distribution for Poisson offspring.
 """
-chain_size_distribution(d::Poisson) = Borel(mean(d))
+EpiBranchCore.chain_size_distribution(d::Poisson) = Borel(mean(d))
 
 """
     chain_size_distribution(offspring::NegativeBinomial)
 
 Analytical chain size distribution for NegativeBinomial offspring.
 """
-chain_size_distribution(d::NegativeBinomial) = GammaBorel(d.r, mean(d))
+EpiBranchCore.chain_size_distribution(d::NegativeBinomial) = GammaBorel(d.r, mean(d))
 
 """
     chain_size_distribution(model::TransmissionModel)
@@ -256,6 +256,6 @@ and any wrapper that delegates that accessor (e.g.
 `Observed{<:Any, <:PerCaseObservation}` delegates before applying its
 own transformed distribution).
 """
-function chain_size_distribution(model::TransmissionModel)
+function EpiBranchCore.chain_size_distribution(model::TransmissionModel)
     return chain_size_distribution(single_type_offspring(model))
 end

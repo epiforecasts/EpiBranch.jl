@@ -91,16 +91,16 @@ the closed form when one is known (e.g. Poisson + Gamma returns
 [`ChainSizeMixture`](@ref), which evaluates the PMF pointwise by
 numerical quadrature.
 """
-chain_size_distribution(o::ClusterMixed) = ChainSizeMixture(o.build, o.mixing)
+EpiBranchCore.chain_size_distribution(o::ClusterMixed) = ChainSizeMixture(o.build, o.mixing)
 
 # Closed form: Poisson offspring with Gamma-mixed rate
-function chain_size_distribution(o::ClusterMixed{PoissonFamily, <:Gamma})
+function EpiBranchCore.chain_size_distribution(o::ClusterMixed{PoissonFamily, <:Gamma})
     k = shape(o.mixing)
     R = k * scale(o.mixing)  # mean of Gamma(shape=k, scale=θ)
     return PoissonGammaChainSize(k, R)
 end
 
-function loglikelihood(data::ChainSizes, o::ClusterMixed)
+function Distributions.loglikelihood(data::ChainSizes, o::ClusterMixed)
     d = chain_size_distribution(o)
     return _chain_size_loglik(d, data)
 end
@@ -114,14 +114,14 @@ samples `θ` once per chain at the index case and reuses it for every
 descendant via `parent_id` lookup. The per-individual draw is
 `rand(build(θ))`.
 """
-function BranchingProcess(offspring::ClusterMixed, gt::Union{Distribution, Function};
+function EpiBranchProcess.BranchingProcess(offspring::ClusterMixed, gt::Union{Distribution, Function};
         population_size::Union{Int, NoPopulation} = NoPopulation(),
         latent_period::Real = 0.0)
     BranchingProcess(
         offspring, gt, population_size, Float64(latent_period), 1, NoTypeLabels())
 end
 
-function BranchingProcess(offspring::ClusterMixed;
+function EpiBranchProcess.BranchingProcess(offspring::ClusterMixed;
         population_size::Union{Int, NoPopulation} = NoPopulation())
     BranchingProcess(offspring, nothing, population_size, 0.0, 1, NoTypeLabels())
 end
@@ -133,7 +133,7 @@ Draw offspring under a cluster-mixed specification. Samples `θ ~ mixing`
 once per chain, caches it on the index case, and looks it up via
 `parent_id` for every descendant so all members of a chain share `θ`.
 """
-function draw_offspring(rng::AbstractRNG, offspring::ClusterMixed,
+function EpiBranchCore.draw_offspring(rng::AbstractRNG, offspring::ClusterMixed,
         individual, state::SimulationState)
     θ = get!(individual.state, :cluster_theta) do
         if individual.parent_id == 0
