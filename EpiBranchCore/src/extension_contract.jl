@@ -10,8 +10,8 @@
 #   - `EpiBranchProcess`: `simulate`, `simulate_batch`, `step!`,
 #     `make_contact!`, `draw_offspring` (default and BranchingProcess
 #     methods).
-#   - `EpiObservation`: `simulate(::Observed{...})`.
-#   - `EpiAnalytics`: `chain_size_distribution` for offspring specs.
+#   - `EpiBranchObservation`: `simulate(::Observed{...})`.
+#   - `EpiBranchAnalytics`: `chain_size_distribution` for offspring specs.
 # ─────────────────────────────────────────────────────────────────────
 
 # Engine seam

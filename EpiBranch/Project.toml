@@ -4,31 +4,31 @@ authors = ["Sebastian Funk <sebastian.funk@lshtm.ac.uk>"]
 version = "0.1.0-DEV"
 
 [deps]
-EpiAnalytics = "31006bbe-cc5a-4763-ad4a-8e166b3d6415"
+EpiBranchAnalytics = "31006bbe-cc5a-4763-ad4a-8e166b3d6415"
 EpiBranchCore = "ac2df735-54f9-4232-9dda-e19804976489"
 EpiBranchProcess = "d9fd2b8d-b079-47e7-b743-af11fd56a5e2"
-EpiInterventions = "889f65bd-5a05-423b-81b3-8b1d266c594f"
-EpiObservation = "06ff82f1-bfb8-4b7d-9ffa-d03ef1fa1c6d"
-EpiOutput = "d85986ee-d624-4d8b-b240-bdd45cacc2fe"
-EpiTransitions = "747663d2-2756-43f3-a1bc-514b08854665"
+EpiBranchInterventions = "889f65bd-5a05-423b-81b3-8b1d266c594f"
+EpiBranchObservation = "06ff82f1-bfb8-4b7d-9ffa-d03ef1fa1c6d"
+EpiBranchOutput = "d85986ee-d624-4d8b-b240-bdd45cacc2fe"
+EpiBranchTransitions = "747663d2-2756-43f3-a1bc-514b08854665"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 
 [sources]
-EpiAnalytics = {path = "../EpiAnalytics"}
+EpiBranchAnalytics = {path = "../EpiBranchAnalytics"}
 EpiBranchCore = {path = "../EpiBranchCore"}
 EpiBranchProcess = {path = "../EpiBranchProcess"}
-EpiInterventions = {path = "../EpiInterventions"}
-EpiObservation = {path = "../EpiObservation"}
-EpiOutput = {path = "../EpiOutput"}
-EpiTransitions = {path = "../EpiTransitions"}
+EpiBranchInterventions = {path = "../EpiBranchInterventions"}
+EpiBranchObservation = {path = "../EpiBranchObservation"}
+EpiBranchOutput = {path = "../EpiBranchOutput"}
+EpiBranchTransitions = {path = "../EpiBranchTransitions"}
 
 [compat]
-EpiAnalytics = "0.1"
+EpiBranchAnalytics = "0.1"
 EpiBranchCore = "0.1"
 EpiBranchProcess = "0.1"
-EpiInterventions = "0.1"
-EpiObservation = "0.1"
-EpiOutput = "0.1"
-EpiTransitions = "0.1"
+EpiBranchInterventions = "0.1"
+EpiBranchObservation = "0.1"
+EpiBranchOutput = "0.1"
+EpiBranchTransitions = "0.1"
 Reexport = "1"
 julia = "1.10"

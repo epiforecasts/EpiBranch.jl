@@ -8,23 +8,23 @@ Reference layout: SpeedyWeather.jl (5 packages in one repo). End state per issue
 |---|---|---|
 | `EpiBranchCore` | Types, abstract types, hook generics, accessors, distribution helpers, attribute builders | (no internal deps) |
 | `EpiBranchProcess` | Engine (`simulate`, `simulate_batch`, `step!(::BranchingProcess)`, `make_contact!`), `BranchingProcess`, stopping rules | `EpiBranchCore` |
-| `EpiInterventions` | `Isolation`, `ContactTracing`, vaccinations, `Scheduled`, intervention seam traits | `EpiBranchCore` |
-| `EpiTransitions` | `Reporting`, `Hospitalisation`, `Death`, `Recovery` | `EpiBranchCore` |
-| `EpiObservation` | `PerCaseObservation`, `Observed`, `ThinnedChainSize` | `EpiBranchCore` |
-| `EpiOutput` | `linelist`, `contacts`, `chain_statistics`, summary helpers | `EpiBranchCore`, `EpiTransitions`, `EpiObservation` |
-| `EpiAnalytics` | Chain-size distributions, likelihoods, fitting, EOO, `ClusterMixed`, superspreading | `EpiBranchCore`, `EpiBranchProcess` (for `_sim_loglikelihood` running simulations), `EpiObservation` |
+| `EpiBranchInterventions` | `Isolation`, `ContactTracing`, vaccinations, `Scheduled`, intervention seam traits | `EpiBranchCore` |
+| `EpiBranchTransitions` | `Reporting`, `Hospitalisation`, `Death`, `Recovery` | `EpiBranchCore` |
+| `EpiBranchObservation` | `PerCaseObservation`, `Observed`, `ThinnedChainSize` | `EpiBranchCore` |
+| `EpiBranchOutput` | `linelist`, `contacts`, `chain_statistics`, summary helpers | `EpiBranchCore`, `EpiBranchTransitions`, `EpiBranchObservation` |
+| `EpiBranchAnalytics` | Chain-size distributions, likelihoods, fitting, EOO, `ClusterMixed`, superspreading | `EpiBranchCore`, `EpiBranchProcess` (for `_sim_loglikelihood` running simulations), `EpiBranchObservation` |
 | `EpiBranch` (umbrella) | Re-exports everything; nothing else | All of the above |
 
 **Why Core / Process split**: keeps the protocol layer (types + hook generics + helpers) genuinely thin and separate from the simulator. Cleaner conceptual layering. Leaves room for an alternative engine (e.g. continuous-time SSA) to plug in against the same protocol as a swap for `EpiBranchProcess`. The cost is one extra package's overhead (Project.toml, version line, CI workflow).
 
-Users who want everything: `using EpiBranch`. Users who want only one slot-in: `using EpiAnalytics` etc.
+Users who want everything: `using EpiBranch`. Users who want only one slot-in: `using EpiBranchAnalytics` etc.
 
 ## Cross-package extension contract
 
 Every cross-package generic is declared in `EpiBranchCore`. Slot-in packages extend them by qualified definition: `function EpiBranchCore.foo(...)`. The Julia package system enforces that no slot-in can reach into another slot-in's internals.
 
 Cross-package generics (declared in `EpiBranchCore` as `function f end` stubs):
-- Engine seam: `simulate`, `simulate_batch`, `step!`, `make_contact!`, `draw_offspring`. Default methods in `EpiBranchProcess`; observation models extend `simulate` for `Observed{...}` from `EpiObservation`.
+- Engine seam: `simulate`, `simulate_batch`, `step!`, `make_contact!`, `draw_offspring`. Default methods in `EpiBranchProcess`; observation models extend `simulate` for `Observed{...}` from `EpiBranchObservation`.
 - `TransmissionModel` interface: `population_size`, `latent_period`, `n_types`, `single_type_offspring`
 - Intervention protocol: `initialise_individual!`, `resolve_individual!`, `apply_post_transmission!`, `competing_risk`, `is_active`, `intervention_time`, `reset!`, `required_fields`
 - Transition protocol: `is_terminal`, `terminal_event`
@@ -39,11 +39,11 @@ EpiBranch.jl/
 │   ├── src/
 │   └── test/
 ├── EpiBranchProcess/
-├── EpiInterventions/
-├── EpiTransitions/
-├── EpiObservation/
-├── EpiOutput/
-├── EpiAnalytics/
+├── EpiBranchInterventions/
+├── EpiBranchTransitions/
+├── EpiBranchObservation/
+├── EpiBranchOutput/
+├── EpiBranchAnalytics/
 ├── EpiBranch/            # umbrella
 └── docs/
 ```
@@ -87,5 +87,5 @@ The umbrella keeps the name `EpiBranch` so `using EpiBranch` still works as user
 ## Open questions
 
 - Where does `compose` and the attribute builders (`clinical_presentation`, `demographics`, `transmission_traits`) live? Currently in `simulation.jl`. Probably stay in `EpiBranchCore` because they're engine-adjacent and the umbrella user expects them.
-- `Scheduled` wrapper — its `apply_post_transmission!` reads `intervention_time`, declared on `EpiBranchCore.AbstractIntervention`. `Scheduled` lives in `EpiInterventions`. Should work.
-- The `:reported` key is shared between `Reporting` transition (`EpiTransitions`) and `PerCaseObservation` (`EpiObservation`). They're separate packages but read/write the same key. The shared key is fine; the doc note saying "don't compose both" carries over.
+- `Scheduled` wrapper — its `apply_post_transmission!` reads `intervention_time`, declared on `EpiBranchCore.AbstractIntervention`. `Scheduled` lives in `EpiBranchInterventions`. Should work.
+- The `:reported` key is shared between `Reporting` transition (`EpiBranchTransitions`) and `PerCaseObservation` (`EpiBranchObservation`). They're separate packages but read/write the same key. The shared key is fine; the doc note saying "don't compose both" carries over.

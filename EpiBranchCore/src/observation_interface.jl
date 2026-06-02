@@ -6,7 +6,7 @@
 # `loglikelihood(data, model)` dispatch covers any process /
 # observation pairing for which a method is defined.
 #
-# Concrete observation models live in `EpiObservation`. The abstract
+# Concrete observation models live in `EpiBranchObservation`. The abstract
 # type is declared here so any package that needs to subtype it can
 # depend on `EpiBranchCore` alone.
 

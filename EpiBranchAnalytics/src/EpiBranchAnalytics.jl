@@ -1,5 +1,5 @@
 """
-EpiAnalytics — chain-size distributions, likelihoods, fitting, and
+EpiBranchAnalytics — chain-size distributions, likelihoods, fitting, and
 end-of-outbreak probability for `EpiBranch`.
 
 Owns the closed-form chain-size distributions (`Borel`, `GammaBorel`,
@@ -15,7 +15,7 @@ offspring spec), `EpiBranchCore.draw_offspring` (sampling
 `ClusterMixed` chains), and `Distributions.loglikelihood` (analytical
 and simulation-based likelihoods).
 """
-module EpiAnalytics
+module EpiBranchAnalytics
 
 using Distributions
 using DocStringExtensions
@@ -26,8 +26,8 @@ using EpiBranchCore
 using EpiBranchCore: _sample_value
 using EpiBranchProcess
 using EpiBranchProcess: max_cases
-using EpiObservation
-using EpiOutput: chain_statistics
+using EpiBranchObservation
+using EpiBranchOutput: chain_statistics
 
 include("data_types.jl")
 include("chain_distributions.jl")

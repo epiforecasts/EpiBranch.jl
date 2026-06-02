@@ -2,7 +2,7 @@
 Cases are admitted to hospital with probability `probability` after a
 `delay` drawn per case, measured from `from`. `from` defaults to
 `:onset_time` but accepts any `Symbol` (state-dict key) or
-`Function (ind) -> Real` — see [`Reporting`](@ref EpiTransitions.Reporting) for the anchor
+`Function (ind) -> Real` — see [`Reporting`](@ref EpiBranchTransitions.Reporting) for the anchor
 semantics. If the anchor is `NaN`, the case is skipped.
 
 Both `probability` and `delay` accept the heterogeneity shapes shared

@@ -8,15 +8,15 @@ of every constituent package:
 - [`EpiBranchCore`](https://github.com/epiforecasts/EpiBranch.jl/tree/main/EpiBranchCore) — types, abstract types, hook protocols, helpers.
 - [`EpiBranchProcess`](https://github.com/epiforecasts/EpiBranch.jl/tree/main/EpiBranchProcess) — engine, `BranchingProcess`, stopping rules,
   attribute builders.
-- [`EpiInterventions`](https://github.com/epiforecasts/EpiBranch.jl/tree/main/EpiInterventions) — `Isolation`, `ContactTracing`, vaccinations,
+- [`EpiBranchInterventions`](https://github.com/epiforecasts/EpiBranch.jl/tree/main/EpiBranchInterventions) — `Isolation`, `ContactTracing`, vaccinations,
   `Scheduled`.
-- [`EpiTransitions`](https://github.com/epiforecasts/EpiBranch.jl/tree/main/EpiTransitions) — `Reporting`, `Hospitalisation`, `Death`,
+- [`EpiBranchTransitions`](https://github.com/epiforecasts/EpiBranch.jl/tree/main/EpiBranchTransitions) — `Reporting`, `Hospitalisation`, `Death`,
   `Recovery`.
-- [`EpiObservation`](https://github.com/epiforecasts/EpiBranch.jl/tree/main/EpiObservation) — `PerCaseObservation`, `Observed`,
+- [`EpiBranchObservation`](https://github.com/epiforecasts/EpiBranch.jl/tree/main/EpiBranchObservation) — `PerCaseObservation`, `Observed`,
   `ThinnedChainSize`.
-- [`EpiOutput`](https://github.com/epiforecasts/EpiBranch.jl/tree/main/EpiOutput) — `linelist`, `contacts`, `chain_statistics`,
+- [`EpiBranchOutput`](https://github.com/epiforecasts/EpiBranch.jl/tree/main/EpiBranchOutput) — `linelist`, `contacts`, `chain_statistics`,
   summary helpers.
-- [`EpiAnalytics`](https://github.com/epiforecasts/EpiBranch.jl/tree/main/EpiAnalytics) — chain-size distributions, likelihoods, fitting,
+- [`EpiBranchAnalytics`](https://github.com/epiforecasts/EpiBranch.jl/tree/main/EpiBranchAnalytics) — chain-size distributions, likelihoods, fitting,
   end-of-outbreak probability.
 
 Users who want only a subset (e.g. just adding a custom intervention
@@ -29,10 +29,10 @@ using Reexport
 
 @reexport using EpiBranchCore
 @reexport using EpiBranchProcess
-@reexport using EpiInterventions
-@reexport using EpiTransitions
-@reexport using EpiObservation
-@reexport using EpiOutput
-@reexport using EpiAnalytics
+@reexport using EpiBranchInterventions
+@reexport using EpiBranchTransitions
+@reexport using EpiBranchObservation
+@reexport using EpiBranchOutput
+@reexport using EpiBranchAnalytics
 
 end # module

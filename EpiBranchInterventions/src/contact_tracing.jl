@@ -101,7 +101,7 @@ end
 
 """Flag the contact as traced without quarantining them. If the
 contact has a known onset time, record a `:traced_isolation_time` so
-[`Isolation`](@ref EpiInterventions.Isolation) can later pick the earlier of self-reporting and
+[`Isolation`](@ref EpiBranchInterventions.Isolation) can later pick the earlier of self-reporting and
 tracing."""
 struct FlagOnly <: TraceAction end
 function apply_trace!(::FlagOnly, contact, state, trace_time, rng)
@@ -135,7 +135,7 @@ Each trait is independently overridable. The convenience keyword
 constructor preserves the original terse form
 (`ContactTracing(probability = 0.8, delay = LogNormal(...))`).
 
-Requires fields set by [`Isolation`](@ref EpiInterventions.Isolation): `:isolated`,
+Requires fields set by [`Isolation`](@ref EpiBranchInterventions.Isolation): `:isolated`,
 `:isolation_time`. Also requires `:asymptomatic` and `:onset_time`
 (from `clinical_presentation()`).
 
@@ -163,7 +163,9 @@ function ContactTracing(;
     )
 end
 
-EpiBranchCore.required_fields(ct::ContactTracing) = _required_for_ct_eligibility(ct.eligibility)
+function EpiBranchCore.required_fields(ct::ContactTracing)
+    _required_for_ct_eligibility(ct.eligibility)
+end
 EpiBranchCore.intervention_time(::ContactTracing, ind::Individual) = isolation_time(ind)
 
 # Required-field validation dispatches on the eligibility trait so a

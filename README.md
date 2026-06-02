@@ -18,7 +18,7 @@ Pkg.add(url = "https://github.com/epiforecasts/EpiBranch.jl", subdir = "EpiBranc
 
 The `subdir = "EpiBranch"` argument tells Pkg which sub-folder of the repository holds the package, and is needed only while the package is unregistered. Once `EpiBranch` is on the Julia General Registry, the install command becomes the usual `Pkg.add("EpiBranch")` with no `subdir`.
 
-If you only need part of the functionality — for example, just the closed-form likelihoods without the simulator, or just the intervention types — you can install one of the smaller packages on its own with the same `subdir = "..."` pattern. The available packages are `EpiBranchCore`, `EpiBranchProcess`, `EpiInterventions`, `EpiTransitions`, `EpiObservation`, `EpiOutput`, and `EpiAnalytics`.
+If you only need part of the functionality — for example, just the closed-form likelihoods without the simulator, or just the intervention types — you can install one of the smaller packages on its own with the same `subdir = "..."` pattern. The available packages are `EpiBranchCore`, `EpiBranchProcess`, `EpiBranchInterventions`, `EpiBranchTransitions`, `EpiBranchObservation`, `EpiBranchOutput`, and `EpiBranchAnalytics`.
 
 ## Quick start
 

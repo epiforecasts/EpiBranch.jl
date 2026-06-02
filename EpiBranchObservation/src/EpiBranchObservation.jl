@@ -1,5 +1,5 @@
 """
-EpiObservation — observation models for `EpiBranch`.
+EpiBranchObservation — observation models for `EpiBranch`.
 
 Owns `PerCaseObservation`, the `Observed{P, O}` wrapper that
 combines a `TransmissionModel` with an `ObservationModel`, and
@@ -9,7 +9,7 @@ Extends `simulate` and `chain_size_distribution` from `EpiBranchCore`
 so that an `Observed` model plugs straight into the engine and into
 the analytical chain-size machinery.
 """
-module EpiObservation
+module EpiBranchObservation
 
 using Distributions
 using DocStringExtensions

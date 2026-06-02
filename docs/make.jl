@@ -3,22 +3,22 @@ using DocumenterVitepress
 using EpiBranch
 using EpiBranchCore
 using EpiBranchProcess
-using EpiInterventions
-using EpiTransitions
-using EpiObservation
-using EpiOutput
-using EpiAnalytics
+using EpiBranchInterventions
+using EpiBranchTransitions
+using EpiBranchObservation
+using EpiBranchOutput
+using EpiBranchAnalytics
 
 makedocs(;
     modules = [
         EpiBranch,
         EpiBranchCore,
         EpiBranchProcess,
-        EpiInterventions,
-        EpiTransitions,
-        EpiObservation,
-        EpiOutput,
-        EpiAnalytics
+        EpiBranchInterventions,
+        EpiBranchTransitions,
+        EpiBranchObservation,
+        EpiBranchOutput,
+        EpiBranchAnalytics
     ],
     sitename = "EpiBranch.jl",
     authors = "epiforecasts contributors",

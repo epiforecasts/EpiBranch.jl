@@ -1,5 +1,5 @@
 """
-EpiTransitions — clinical-state transitions for `EpiBranch`.
+EpiBranchTransitions — clinical-state transitions for `EpiBranch`.
 
 Owns the built-in [`Reporting`], [`Hospitalisation`], [`Death`], and
 [`Recovery`] transitions. Concrete transition types here extend the
@@ -7,7 +7,7 @@ protocol generics declared in `EpiBranchCore`
 (`initialise_individual!`, `resolve_individual!`, `is_terminal`,
 `terminal_event`, `required_fields`).
 """
-module EpiTransitions
+module EpiBranchTransitions
 
 using Distributions
 using DocStringExtensions

@@ -2,7 +2,7 @@
 Terminal transition: the case recovers. A candidate recovery time is
 drawn from `delay` and added to the value of `from`. `from` defaults
 to `:onset_time` but accepts any `Symbol` (state-dict key) or
-`Function (ind) -> Real` — see [`Reporting`](@ref EpiTransitions.Reporting) for the anchor
+`Function (ind) -> Real` — see [`Reporting`](@ref EpiBranchTransitions.Reporting) for the anchor
 semantics. If the anchor is `NaN`, no recovery candidate is produced.
 
 `delay` is a `Distribution` or a `Function (rng, ind) -> Real` for
@@ -10,7 +10,7 @@ per-individual heterogeneity (e.g. age-conditional recovery delay).
 
 Initialises `:recovery_candidate_time = Inf`.
 
-`Recovery` and [`Death`](@ref EpiTransitions.Death) compose as competing terminal events:
+`Recovery` and [`Death`](@ref EpiBranchTransitions.Death) compose as competing terminal events:
 whichever has the earliest candidate time becomes the case's `:outcome`.
 Other user-defined terminal transitions (with `is_terminal = true` and
 a `terminal_event` method) participate in the same arbitration.
@@ -45,7 +45,7 @@ end
 Terminal transition: the case dies. When death is drawn, a candidate
 death time is produced by adding a sample from `delay` to the value of
 `from`. `from` defaults to `:onset_time` but accepts any `Symbol` or
-`Function (ind) -> Real` — see [`Reporting`](@ref EpiTransitions.Reporting) for the anchor
+`Function (ind) -> Real` — see [`Reporting`](@ref EpiBranchTransitions.Reporting) for the anchor
 semantics.
 
 `probability` is a `Real` or a `Function (rng, ind) -> Real`. Use the
@@ -61,7 +61,7 @@ making time-to-death heterogeneity available the same way.
 
 Initialises `:death_candidate_time = Inf`.
 
-`Death` and [`Recovery`](@ref EpiTransitions.Recovery) compose as competing terminal events.
+`Death` and [`Recovery`](@ref EpiBranchTransitions.Recovery) compose as competing terminal events.
 """
 Base.@kwdef struct Death{D, P, F} <: AbstractClinicalTransition
     delay::D

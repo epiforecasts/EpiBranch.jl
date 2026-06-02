@@ -1,5 +1,5 @@
-name = "EpiTransitions"
-uuid = "747663d2-2756-43f3-a1bc-514b08854665"
+name = "EpiBranchInterventions"
+uuid = "889f65bd-5a05-423b-81b3-8b1d266c594f"
 authors = ["Sebastian Funk <sebastian.funk@lshtm.ac.uk>"]
 version = "0.1.0-DEV"
 

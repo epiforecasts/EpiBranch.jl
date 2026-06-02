@@ -1,4 +1,4 @@
-name = "EpiObservation"
+name = "EpiBranchObservation"
 uuid = "06ff82f1-bfb8-4b7d-9ffa-d03ef1fa1c6d"
 authors = ["Sebastian Funk <sebastian.funk@lshtm.ac.uk>"]
 version = "0.1.0-DEV"

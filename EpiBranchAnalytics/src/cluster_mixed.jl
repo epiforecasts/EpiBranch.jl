@@ -114,7 +114,8 @@ samples `θ` once per chain at the index case and reuses it for every
 descendant via `parent_id` lookup. The per-individual draw is
 `rand(build(θ))`.
 """
-function EpiBranchProcess.BranchingProcess(offspring::ClusterMixed, gt::Union{Distribution, Function};
+function EpiBranchProcess.BranchingProcess(
+        offspring::ClusterMixed, gt::Union{Distribution, Function};
         population_size::Union{Int, NoPopulation} = NoPopulation(),
         latent_period::Real = 0.0)
     BranchingProcess(

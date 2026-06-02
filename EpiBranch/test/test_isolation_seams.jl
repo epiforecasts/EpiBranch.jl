@@ -1,11 +1,13 @@
 # Custom IsolationEligibility used by the user-extension test below.
-struct OnlyOlder <: EpiInterventions.IsolationEligibility
+struct OnlyOlder <: EpiBranchInterventions.IsolationEligibility
     age_threshold::Int
 end
-function EpiInterventions.is_eligible_for_isolation(e::OnlyOlder, ind, state)
+function EpiBranchInterventions.is_eligible_for_isolation(e::OnlyOlder, ind, state)
     !is_asymptomatic(ind) && get(ind.state, :age, 0) >= e.age_threshold
 end
-EpiInterventions._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, :age]
+function EpiBranchInterventions._required_for_eligibility(::OnlyOlder)
+    [:onset_time, :asymptomatic, :age]
+end
 
 @testset "Isolation trait seams" begin
     clinical = clinical_presentation(

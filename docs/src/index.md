@@ -61,5 +61,5 @@ If you only need part of the functionality — for example, just the
 closed-form likelihoods without the simulator, or just the intervention
 types — you can install one of the smaller packages on its own with
 the same `subdir = "..."` pattern. The available packages are
-`EpiBranchCore`, `EpiBranchProcess`, `EpiInterventions`,
-`EpiTransitions`, `EpiObservation`, `EpiOutput`, and `EpiAnalytics`.
+`EpiBranchCore`, `EpiBranchProcess`, `EpiBranchInterventions`,
+`EpiBranchTransitions`, `EpiBranchObservation`, `EpiBranchOutput`, and `EpiBranchAnalytics`.

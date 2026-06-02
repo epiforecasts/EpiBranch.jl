@@ -116,7 +116,9 @@ end
 end
 
 EpiBranchCore.required_fields(s::Scheduled) = required_fields(s.intervention)
-EpiBranchCore.intervention_time(s::Scheduled, ind::Individual) = intervention_time(s.intervention, ind)
+function EpiBranchCore.intervention_time(s::Scheduled, ind::Individual)
+    intervention_time(s.intervention, ind)
+end
 EpiBranchCore.reset!(s::Scheduled, ind::Individual) = reset!(s.intervention, ind)
 function EpiBranchCore.competing_risk(s::Scheduled, parent, contact, state)
     is_active(s, state) ? competing_risk(s.intervention, parent, contact, state) : nothing

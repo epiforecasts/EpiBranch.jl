@@ -1,5 +1,5 @@
 """
-EpiInterventions — the standard library of non-pharmaceutical and
+EpiBranchInterventions — the standard library of non-pharmaceutical and
 pharmaceutical interventions for `EpiBranch`.
 
 Owns `Isolation`, `ContactTracing`, the vaccination types
@@ -13,7 +13,7 @@ declared in `EpiBranchCore` (`initialise_individual!`,
 `resolve_individual!`, `apply_post_transmission!`, `competing_risk`,
 `is_active`, `intervention_time`, `reset!`, `required_fields`).
 """
-module EpiInterventions
+module EpiBranchInterventions
 
 using Distributions
 using DocStringExtensions

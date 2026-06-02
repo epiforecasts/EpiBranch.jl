@@ -1,5 +1,5 @@
 """
-EpiOutput — extract analyses, line lists, and summaries from
+EpiBranchOutput — extract analyses, line lists, and summaries from
 completed `EpiBranch` simulations.
 
 Owns `linelist`, `contacts`, `chain_statistics`, plus the summary
@@ -10,7 +10,7 @@ Operates on `SimulationState` (from `EpiBranchCore`) and reads
 intervention/transition/observation keys written into
 `Individual.state` by the relevant slot-in packages.
 """
-module EpiOutput
+module EpiBranchOutput
 
 using DataFrames
 using Dates

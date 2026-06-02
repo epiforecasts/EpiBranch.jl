@@ -7,8 +7,8 @@
 Run a single outbreak simulation.
 
 `transitions` is a vector of [`AbstractClinicalTransition`](@ref)s
-(e.g. [`Reporting`](@ref EpiTransitions.Reporting), [`Hospitalisation`](@ref EpiTransitions.Hospitalisation), [`Death`](@ref EpiTransitions.Death),
-[`Recovery`](@ref EpiTransitions.Recovery)) that act on each case's clinical timeline after
+(e.g. [`Reporting`](@ref EpiBranchTransitions.Reporting), [`Hospitalisation`](@ref EpiBranchTransitions.Hospitalisation), [`Death`](@ref EpiBranchTransitions.Death),
+[`Recovery`](@ref EpiBranchTransitions.Recovery)) that act on each case's clinical timeline after
 attributes and interventions have run. Build the vector explicitly —
 each transition's `probability` and `delay` accept either constants or
 `(rng, ind) -> value` functions, so age- or risk-conditional rates and
@@ -384,7 +384,7 @@ Return an attributes function that sets `:onset_time` and
 For symptomatic cases, `:onset_time = infection_time + rand(incubation_period)`.
 For asymptomatic cases (drawn with probability `prob_asymptomatic`),
 `:onset_time = NaN` and `:asymptomatic = true`. Required by
-[`Isolation`](@ref EpiInterventions.Isolation) and used by [`linelist`](@ref EpiOutput.linelist) to populate
+[`Isolation`](@ref EpiBranchInterventions.Isolation) and used by [`linelist`](@ref EpiBranchOutput.linelist) to populate
 `date_onset`.
 
 `prob_asymptomatic` accepts a `Real`, a `Distribution`, or a function
