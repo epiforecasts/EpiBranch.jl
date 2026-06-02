@@ -86,27 +86,27 @@ function Isolation(;
         Float64(post_isolation_transmission))
 end
 
-required_fields(iso::Isolation) = _required_for_eligibility(iso.eligibility)
-intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
+EpiBranchCore.required_fields(iso::Isolation) = _required_for_eligibility(iso.eligibility)
+EpiBranchCore.intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 
 """Isolation blocks the parent → contact transmission when the parent's
 isolation time is earlier than the contact's transmission time.
 Residual transmission is governed by `post_isolation_transmission`:
 `block_probability = 1 - post_isolation_transmission`."""
-function competing_risk(iso::Isolation, parent, contact, state)
+function EpiBranchCore.competing_risk(iso::Isolation, parent, contact, state)
     iso_t = isolation_time(parent)
     isfinite(iso_t) || return nothing
     return Risk(event_time = iso_t,
         block_probability = 1.0 - iso.post_isolation_transmission)
 end
 
-function reset!(::Isolation, ind::Individual)
+function EpiBranchCore.reset!(::Isolation, ind::Individual)
     ind.state[:isolated] = false
     ind.state[:isolation_time] = Inf
     return nothing
 end
 
-function initialise_individual!(iso::Isolation, individual, state)
+function EpiBranchCore.initialise_individual!(iso::Isolation, individual, state)
     individual.state[:isolated] = false
     individual.state[:isolation_time] = Inf
     if is_eligible_for_isolation(iso.eligibility, individual, state)
@@ -118,7 +118,7 @@ function initialise_individual!(iso::Isolation, individual, state)
     return nothing
 end
 
-function resolve_individual!(iso::Isolation, individual, state)
+function EpiBranchCore.resolve_individual!(iso::Isolation, individual, state)
     is_isolated(individual) && return nothing
 
     # Three isolation pathways, each independent:

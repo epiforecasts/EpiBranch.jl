@@ -84,21 +84,21 @@ end
 
 # ── Protocol delegation ──────────────────────────────────────────────
 
-is_active(s::Scheduled, state::SimulationState) = s.condition(state)
+EpiBranchCore.is_active(s::Scheduled, state::SimulationState) = s.condition(state)
 
 # Always initialise — fields must exist before the policy activates.
-function initialise_individual!(s::Scheduled, ind, state)
+function EpiBranchCore.initialise_individual!(s::Scheduled, ind, state)
     initialise_individual!(s.intervention, ind, state)
 end
 
-function resolve_individual!(s::Scheduled, ind, state)
+function EpiBranchCore.resolve_individual!(s::Scheduled, ind, state)
     is_active(s, state) || return nothing
     resolve_individual!(s.intervention, ind, state)
     _maybe_reset!(s, ind)
     return nothing
 end
 
-function apply_post_transmission!(s::Scheduled, state, new_contacts)
+function EpiBranchCore.apply_post_transmission!(s::Scheduled, state, new_contacts)
     is_active(s, state) || return nothing
     apply_post_transmission!(s.intervention, state, new_contacts)
     for c in new_contacts
@@ -115,9 +115,9 @@ end
     return nothing
 end
 
-required_fields(s::Scheduled) = required_fields(s.intervention)
-intervention_time(s::Scheduled, ind::Individual) = intervention_time(s.intervention, ind)
-reset!(s::Scheduled, ind::Individual) = reset!(s.intervention, ind)
-function competing_risk(s::Scheduled, parent, contact, state)
+EpiBranchCore.required_fields(s::Scheduled) = required_fields(s.intervention)
+EpiBranchCore.intervention_time(s::Scheduled, ind::Individual) = intervention_time(s.intervention, ind)
+EpiBranchCore.reset!(s::Scheduled, ind::Individual) = reset!(s.intervention, ind)
+function EpiBranchCore.competing_risk(s::Scheduled, parent, contact, state)
     is_active(s, state) ? competing_risk(s.intervention, parent, contact, state) : nothing
 end

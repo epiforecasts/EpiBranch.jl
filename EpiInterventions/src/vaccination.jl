@@ -80,7 +80,7 @@ function _vaccine_efficacy_key(label::Symbol)
     label === :default ? :vaccine_efficacy : Symbol("vaccine_efficacy_", label)
 end
 
-function initialise_individual!(v::AbstractVaccination, individual, state)
+function EpiBranchCore.initialise_individual!(v::AbstractVaccination, individual, state)
     label = dose_label(v)
     individual.state[_vaccinated_key(label)] = false
     individual.state[_vaccination_time_key(label)] = Inf
@@ -100,7 +100,7 @@ function _susceptibility_risk(v::AbstractVaccination, contact)
     return Risk(event_time = vacc_t + delay_to_immunity(v), block_probability = eff)
 end
 
-function competing_risk(v::AbstractVaccination, parent, contact, state)
+function EpiBranchCore.competing_risk(v::AbstractVaccination, parent, contact, state)
     _susceptibility_risk(v, contact)
 end
 
@@ -171,7 +171,7 @@ Base.@kwdef struct RingVaccination{E, C, W, M <: AbstractEffectMode} <: Abstract
     dose_label::Symbol = :default
 end
 
-required_fields(::RingVaccination) = [:traced]
+EpiBranchCore.required_fields(::RingVaccination) = [:traced]
 
 # Onward-infectiousness risk: blocks the parent → contact transmission
 # iff this dose has been administered to the *parent* and the parent's
@@ -192,7 +192,7 @@ end
 # Combine the susceptibility risk (acting on the contact) with the
 # optional onward-infectiousness risk (acting on the parent). Returning
 # a tuple of risks is supported by the engine's `_iter_risks` helper.
-function competing_risk(rv::RingVaccination, parent, contact, state)
+function EpiBranchCore.competing_risk(rv::RingVaccination, parent, contact, state)
     susceptibility = _susceptibility_risk(rv, contact)
     onward = _onward_risk(rv, parent)
     susceptibility === nothing && return onward
@@ -211,7 +211,7 @@ end
 _covers(p::Real, ind, rng) = p >= 1.0 || rand(rng) < p
 _covers(p, ind, rng) = rand(rng) < _sample_value(p, rng, ind)
 
-function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
+function EpiBranchCore.apply_post_transmission!(rv::RingVaccination, state, new_contacts)
     label = dose_label(rv)
     vacc_key = _vaccinated_key(label)
     for ind in new_contacts
@@ -302,9 +302,9 @@ Base.@kwdef struct MassVaccination{E, T, M <: AbstractEffectMode} <: AbstractVac
     dose_label::Symbol = :default
 end
 
-required_fields(::MassVaccination) = Symbol[]
+EpiBranchCore.required_fields(::MassVaccination) = Symbol[]
 
-function apply_post_transmission!(mv::MassVaccination, state, new_contacts)
+function EpiBranchCore.apply_post_transmission!(mv::MassVaccination, state, new_contacts)
     label = dose_label(mv)
     vacc_key = _vaccinated_key(label)
     for ind in new_contacts

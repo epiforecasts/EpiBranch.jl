@@ -163,8 +163,8 @@ function ContactTracing(;
     )
 end
 
-required_fields(ct::ContactTracing) = _required_for_ct_eligibility(ct.eligibility)
-intervention_time(::ContactTracing, ind::Individual) = isolation_time(ind)
+EpiBranchCore.required_fields(ct::ContactTracing) = _required_for_ct_eligibility(ct.eligibility)
+EpiBranchCore.intervention_time(::ContactTracing, ind::Individual) = isolation_time(ind)
 
 # Required-field validation dispatches on the eligibility trait so a
 # custom eligibility that doesn't read these fields doesn't trip the
@@ -173,7 +173,7 @@ _required_for_ct_eligibility(::SymptomaticParent) = [:isolated, :asymptomatic]
 _required_for_ct_eligibility(::AlwaysEligible) = Symbol[]
 _required_for_ct_eligibility(::TraceEligibility) = Symbol[]
 
-function reset!(::ContactTracing, ind::Individual)
+function EpiBranchCore.reset!(::ContactTracing, ind::Individual)
     ind.state[:traced] = false
     ind.state[:quarantined] = false
     if is_isolated(ind)
@@ -183,13 +183,13 @@ function reset!(::ContactTracing, ind::Individual)
     return nothing
 end
 
-function initialise_individual!(::ContactTracing, individual, state)
+function EpiBranchCore.initialise_individual!(::ContactTracing, individual, state)
     individual.state[:traced] = false
     individual.state[:quarantined] = false
     return nothing
 end
 
-function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
+function EpiBranchCore.apply_post_transmission!(ct::ContactTracing, state, new_contacts)
     rng = state.rng
     for ind in new_contacts
         ind.parent_id == 0 && continue
