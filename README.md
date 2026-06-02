@@ -38,15 +38,14 @@ containment_probability(results)
 
 ## Why Julia?
 
-In R, branching process simulation, chain statistics, line list generation, intervention modelling, and offspring fitting live in separate CRAN packages with separate codebases. This means, for example, that likelihoods cannot be evaluated under interventions because the simulation engine and the likelihood code don't share a common interface.
+The R packages this draws on (ringbp for simulation, epichains for chain statistics, superspreading for offspring fitting) don't talk to each other, so a couple of useful analyses turn into engineering jobs rather than analyses. Two examples people often want and can't easily do: evaluating a likelihood under intervention scenarios, and fitting a Bayesian model with interventions inside the loop.
 
-Julia's multiple dispatch makes it natural to unify these into a single package where components compose freely:
+Putting the pieces in one package lets you:
 
-- **Same `loglikelihood` function** works with offspring counts, chain sizes, or chain lengths — dispatch on the data type selects the right method
-- **Same `fit` function** estimates offspring distribution parameters from any of those data types
-- **Same simulation engine** runs with or without interventions, and the simulation-based likelihood reuses it directly — enabling likelihood evaluation under interventions
-- **Stack interventions freely**: isolation, contact tracing, ring vaccination, and time-dependent scheduling all go in a vector and interact through competing risks on individual state
-- **AD-compatible likelihoods** work with [Turing.jl](https://turinglang.org) for Bayesian inference — including parameter estimation under interventions, which is not possible when simulation and inference live in separate packages
+- Fit offspring distributions, chain sizes, or chain lengths with one `loglikelihood` call. The function picks the right method for whichever shape of data you give it.
+- Estimate R and k under whichever intervention scenarios you care about. The likelihood comes from running the same simulator you'd use to generate forward outbreaks.
+- Stack interventions in any combination (isolation, contact tracing, ring vaccination, time-varying policies) and have them interact correctly through competing risks on individual cases.
+- Pass a model with interventions straight into [Turing.jl](https://turinglang.org) for a posterior over R, k, and any other parameters you're fitting, under whatever intervention scenario you specified.
 
 ### Performance
 
