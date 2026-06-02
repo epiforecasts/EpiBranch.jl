@@ -78,7 +78,7 @@ Single docs site (`docs/`) builds against all packages. Documenter.jl handles cr
 
 ## Notes on naming
 
-Going with `EpiBranchCore` for the protocol+engine package rather than `EpiBranchBase` because:
+Going with `EpiBranchCore` for the protocol package rather than `EpiBranchBase` because:
 - "Base" collides with Julia's `Base` and reads awkwardly
 - "Core" matches Julia community precedent (SciMLBase aside, most packages use `Core` or domain-specific names)
 
