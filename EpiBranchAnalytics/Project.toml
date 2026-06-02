@@ -23,6 +23,10 @@ EpiBranchOutput = {path = "../EpiBranchOutput"}
 [compat]
 Distributions = "0.25"
 DocStringExtensions = "0.9.5"
+EpiBranchCore = "0.1"
+EpiBranchObservation = "0.1"
+EpiBranchOutput = "0.1"
+EpiBranchProcess = "0.1"
 QuadGK = "2"
 SpecialFunctions = "2"
 julia = "1.11"
