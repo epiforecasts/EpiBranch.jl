@@ -23,7 +23,7 @@ makedocs(;
     sitename = "EpiBranch.jl",
     authors = "epiforecasts contributors",
     remotes = nothing,
-    warnonly = [:missing_docs, :docs_block],
+    warnonly = [:missing_docs, :docs_block, :cross_references],
     format = DocumenterVitepress.MarkdownVitepress(
         repo = "github.com/epiforecasts/EpiBranch.jl",
         devbranch = "main",

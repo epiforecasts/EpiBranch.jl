@@ -14,7 +14,7 @@ returning `true` from [`is_terminal`](@ref) and implement
 [`terminal_event`](@ref). After all transitions resolve for an
 individual, the engine collects every terminal candidate (across every
 transition that declared itself terminal) and assigns `:outcome` and
-`:outcome_time` from the earliest. [`Death`](@ref) and [`Recovery`](@ref)
+`:outcome_time` from the earliest. [`Death`](@ref EpiTransitions.Death) and [`Recovery`](@ref EpiTransitions.Recovery)
 are the built-in pair, but the framework is open: a user-defined
 `LostToFollowUp`, `MovedAway`, or disease-specific terminal state plugs
 in by adding the same two methods and dropping the struct into the

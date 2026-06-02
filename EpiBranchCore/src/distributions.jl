@@ -90,7 +90,7 @@ converted to `Float64`.
 
 Used throughout the package for parameters that accept the same
 "scalar | distribution | function" trio: attribute builders
-([`transmission_traits`](@ref), [`clinical_presentation`](@ref)),
+([`transmission_traits`](@ref EpiBranchProcess.transmission_traits), [`clinical_presentation`](@ref EpiBranchProcess.clinical_presentation)),
 intervention parameters (vaccination eligibility, isolation delays),
 and competing-risk fields ([`Risk`](@ref)).
 """

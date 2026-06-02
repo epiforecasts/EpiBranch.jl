@@ -101,7 +101,7 @@ end
 
 """Flag the contact as traced without quarantining them. If the
 contact has a known onset time, record a `:traced_isolation_time` so
-[`Isolation`](@ref) can later pick the earlier of self-reporting and
+[`Isolation`](@ref EpiInterventions.Isolation) can later pick the earlier of self-reporting and
 tracing."""
 struct FlagOnly <: TraceAction end
 function apply_trace!(::FlagOnly, contact, state, trace_time, rng)
@@ -135,7 +135,7 @@ Each trait is independently overridable. The convenience keyword
 constructor preserves the original terse form
 (`ContactTracing(probability = 0.8, delay = LogNormal(...))`).
 
-Requires fields set by [`Isolation`](@ref): `:isolated`,
+Requires fields set by [`Isolation`](@ref EpiInterventions.Isolation): `:isolated`,
 `:isolation_time`. Also requires `:asymptomatic` and `:onset_time`
 (from `clinical_presentation()`).
 

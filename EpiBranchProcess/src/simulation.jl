@@ -7,8 +7,8 @@
 Run a single outbreak simulation.
 
 `transitions` is a vector of [`AbstractClinicalTransition`](@ref)s
-(e.g. [`Reporting`](@ref), [`Hospitalisation`](@ref), [`Death`](@ref),
-[`Recovery`](@ref)) that act on each case's clinical timeline after
+(e.g. [`Reporting`](@ref EpiTransitions.Reporting), [`Hospitalisation`](@ref EpiTransitions.Hospitalisation), [`Death`](@ref EpiTransitions.Death),
+[`Recovery`](@ref EpiTransitions.Recovery)) that act on each case's clinical timeline after
 attributes and interventions have run. Build the vector explicitly —
 each transition's `probability` and `delay` accept either constants or
 `(rng, ind) -> value` functions, so age- or risk-conditional rates and
@@ -355,7 +355,7 @@ end
 
 """Sweep newly added infected individuals (those at indices
 `from_index+1:end`) and run clinical transitions on each. Called by
-[`simulate`](@ref) after `initialise_state` and after each `step!` so
+[`simulate`](@ref EpiBranchCore.simulate) after `initialise_state` and after each `step!` so
 that authors of custom [`TransmissionModel`](@ref) subtypes do not
 need to invoke transition resolution from inside their `step!`."""
 function _resolve_new_transitions!(state::SimulationState, from_index::Int)
@@ -384,7 +384,7 @@ Return an attributes function that sets `:onset_time` and
 For symptomatic cases, `:onset_time = infection_time + rand(incubation_period)`.
 For asymptomatic cases (drawn with probability `prob_asymptomatic`),
 `:onset_time = NaN` and `:asymptomatic = true`. Required by
-[`Isolation`](@ref) and used by [`linelist`](@ref) to populate
+[`Isolation`](@ref EpiInterventions.Isolation) and used by [`linelist`](@ref EpiOutput.linelist) to populate
 `date_onset`.
 
 `prob_asymptomatic` accepts a `Real`, a `Distribution`, or a function
@@ -585,7 +585,7 @@ attributes = compose(
 )
 ```
 
-Pass to [`simulate`](@ref) or [`simulate_batch`](@ref) via the
+Pass to [`simulate`](@ref EpiBranchCore.simulate) or [`simulate_batch`](@ref EpiBranchCore.simulate_batch) via the
 `attributes` keyword.
 """
 compose(fs...) = (rng, ind) -> for f in fs
