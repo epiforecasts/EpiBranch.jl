@@ -1,3 +1,4 @@
+using Pkg
 using Documenter
 using DocumenterVitepress
 using EpiBranch
@@ -27,7 +28,12 @@ makedocs(;
     format = DocumenterVitepress.MarkdownVitepress(
         repo = "github.com/epiforecasts/EpiBranch.jl",
         devbranch = "main",
-        devurl = "dev"
+        devurl = "dev",
+        # The repo root no longer has a Project.toml since the monorepo
+        # split; read the version from the umbrella package instead.
+        inventory_version = string(
+            Pkg.TOML.parsefile(joinpath(@__DIR__, "..", "EpiBranch", "Project.toml"))["version"]
+        )
     ),
     pages = [
         "Home" => "index.md",
