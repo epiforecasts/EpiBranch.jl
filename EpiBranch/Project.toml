@@ -6,6 +6,7 @@ version = "0.1.0-DEV"
 [deps]
 EpiAnalytics = "31006bbe-cc5a-4763-ad4a-8e166b3d6415"
 EpiBranchCore = "ac2df735-54f9-4232-9dda-e19804976489"
+EpiBranchDynamics = "d9fd2b8d-b079-47e7-b743-af11fd56a5e2"
 EpiInterventions = "889f65bd-5a05-423b-81b3-8b1d266c594f"
 EpiObservation = "06ff82f1-bfb8-4b7d-9ffa-d03ef1fa1c6d"
 EpiOutput = "d85986ee-d624-4d8b-b240-bdd45cacc2fe"
@@ -15,6 +16,7 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 [sources]
 EpiAnalytics = {path = "../EpiAnalytics"}
 EpiBranchCore = {path = "../EpiBranchCore"}
+EpiBranchDynamics = {path = "../EpiBranchDynamics"}
 EpiInterventions = {path = "../EpiInterventions"}
 EpiObservation = {path = "../EpiObservation"}
 EpiOutput = {path = "../EpiOutput"}

@@ -6,13 +6,16 @@ Reference layout: SpeedyWeather.jl (5 packages in one repo). End state per issue
 
 | Package | Owns | Depends on |
 |---|---|---|
-| `EpiBranchCore` | Types, abstract types, hook generics, accessors, distributions helpers, attributes builders, engine (`simulate`, `step!`, `make_contact!`), `BranchingProcess`, stopping rules | (no internal deps) |
+| `EpiBranchCore` | Types, abstract types, hook generics, accessors, distribution helpers, attribute builders | (no internal deps) |
+| `EpiBranchDynamics` | Engine (`simulate`, `simulate_batch`, `step!(::BranchingProcess)`, `make_contact!`), `BranchingProcess`, stopping rules | `EpiBranchCore` |
 | `EpiInterventions` | `Isolation`, `ContactTracing`, vaccinations, `Scheduled`, intervention seam traits | `EpiBranchCore` |
 | `EpiTransitions` | `Reporting`, `Hospitalisation`, `Death`, `Recovery` | `EpiBranchCore` |
 | `EpiObservation` | `PerCaseObservation`, `Observed`, `ThinnedChainSize` | `EpiBranchCore` |
-| `EpiOutput` | `linelist`, `contacts`, `chain_statistics`, summary helpers | `EpiBranchCore`, `EpiTransitions` (for terminal-event keys), `EpiObservation` (for `:reported`) |
-| `EpiAnalytics` | Chain-size distributions, likelihoods, fitting, EOO, `ClusterMixed`, superspreading | `EpiBranchCore`, `EpiObservation` (for `Observed` wrapper) |
+| `EpiOutput` | `linelist`, `contacts`, `chain_statistics`, summary helpers | `EpiBranchCore`, `EpiTransitions`, `EpiObservation` |
+| `EpiAnalytics` | Chain-size distributions, likelihoods, fitting, EOO, `ClusterMixed`, superspreading | `EpiBranchCore`, `EpiBranchDynamics` (for `_sim_loglikelihood` running simulations), `EpiObservation` |
 | `EpiBranch` (umbrella) | Re-exports everything; nothing else | All of the above |
+
+**Why Core / Dynamics split**: keeps the protocol layer (types + hook generics + helpers) genuinely thin and separate from the simulator. Cleaner conceptual layering. Leaves room for an alternative engine (e.g. continuous-time SSA) to plug in against the same protocol as a swap for `EpiBranchDynamics`. The cost is one extra package's overhead (Project.toml, version line, CI workflow).
 
 Users who want everything: `using EpiBranch`. Users who want only one slot-in: `using EpiAnalytics` etc.
 
@@ -20,8 +23,8 @@ Users who want everything: `using EpiBranch`. Users who want only one slot-in: `
 
 Every cross-package generic is declared in `EpiBranchCore`. Slot-in packages extend them by qualified definition: `function EpiBranchCore.foo(...)`. The Julia package system enforces that no slot-in can reach into another slot-in's internals.
 
-Cross-package generics (declared in `EpiBranchCore`):
-- Engine: `step!`, `make_contact!`, `draw_offspring`, `simulate`
+Cross-package generics (declared in `EpiBranchCore` as `function f end` stubs):
+- Engine seam: `simulate`, `simulate_batch`, `step!`, `make_contact!`, `draw_offspring`. Default methods in `EpiBranchDynamics`; observation models extend `simulate` for `Observed{...}` from `EpiObservation`.
 - `TransmissionModel` interface: `population_size`, `latent_period`, `n_types`, `single_type_offspring`
 - Intervention protocol: `initialise_individual!`, `resolve_individual!`, `apply_post_transmission!`, `competing_risk`, `is_active`, `intervention_time`, `reset!`, `required_fields`
 - Transition protocol: `is_terminal`, `terminal_event`
@@ -35,10 +38,8 @@ EpiBranch.jl/
 │   ├── Project.toml
 │   ├── src/
 │   └── test/
+├── EpiBranchDynamics/
 ├── EpiInterventions/
-│   ├── Project.toml
-│   ├── src/
-│   └── test/
 ├── EpiTransitions/
 ├── EpiObservation/
 ├── EpiOutput/
