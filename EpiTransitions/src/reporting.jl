@@ -27,15 +27,15 @@ Base.@kwdef struct Reporting{D, P, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
-required_fields(r::Reporting) = _from_required(r.from)
+EpiBranchCore.required_fields(r::Reporting) = _from_required(r.from)
 
-function initialise_individual!(::Reporting, individual, state)
+function EpiBranchCore.initialise_individual!(::Reporting, individual, state)
     individual.state[:reported] = false
     individual.state[:reporting_time] = Inf
     return nothing
 end
 
-function resolve_individual!(r::Reporting, individual, state)
+function EpiBranchCore.resolve_individual!(r::Reporting, individual, state)
     anchor = _resolve_anchor(r.from, individual)
     isnan(anchor) && return nothing
     p = _resolve_probability(r.probability, state.rng, individual)

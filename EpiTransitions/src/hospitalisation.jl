@@ -32,15 +32,15 @@ Base.@kwdef struct Hospitalisation{D, P, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
-required_fields(h::Hospitalisation) = _from_required(h.from)
+EpiBranchCore.required_fields(h::Hospitalisation) = _from_required(h.from)
 
-function initialise_individual!(::Hospitalisation, individual, state)
+function EpiBranchCore.initialise_individual!(::Hospitalisation, individual, state)
     individual.state[:admitted] = false
     individual.state[:admission_time] = Inf
     return nothing
 end
 
-function resolve_individual!(h::Hospitalisation, individual, state)
+function EpiBranchCore.resolve_individual!(h::Hospitalisation, individual, state)
     anchor = _resolve_anchor(h.from, individual)
     isnan(anchor) && return nothing
     p = _resolve_probability(h.probability, state.rng, individual)

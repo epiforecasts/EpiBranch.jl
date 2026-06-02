@@ -20,15 +20,15 @@ Base.@kwdef struct Recovery{D, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
-required_fields(r::Recovery) = _from_required(r.from)
-is_terminal(::Recovery) = true
+EpiBranchCore.required_fields(r::Recovery) = _from_required(r.from)
+EpiBranchCore.is_terminal(::Recovery) = true
 
-function initialise_individual!(::Recovery, individual, state)
+function EpiBranchCore.initialise_individual!(::Recovery, individual, state)
     individual.state[:recovery_candidate_time] = Inf
     return nothing
 end
 
-function resolve_individual!(r::Recovery, individual, state)
+function EpiBranchCore.resolve_individual!(r::Recovery, individual, state)
     anchor = _resolve_anchor(r.from, individual)
     isnan(anchor) && return nothing
     delay = _resolve_delay(r.delay, state.rng, individual)
@@ -36,7 +36,7 @@ function resolve_individual!(r::Recovery, individual, state)
     return nothing
 end
 
-function terminal_event(::Recovery, individual)
+function EpiBranchCore.terminal_event(::Recovery, individual)
     t = get(individual.state, :recovery_candidate_time, Inf)::Float64
     return isfinite(t) ? (t, :recovered) : nothing
 end
@@ -69,15 +69,15 @@ Base.@kwdef struct Death{D, P, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
-required_fields(d::Death) = _from_required(d.from)
-is_terminal(::Death) = true
+EpiBranchCore.required_fields(d::Death) = _from_required(d.from)
+EpiBranchCore.is_terminal(::Death) = true
 
-function initialise_individual!(::Death, individual, state)
+function EpiBranchCore.initialise_individual!(::Death, individual, state)
     individual.state[:death_candidate_time] = Inf
     return nothing
 end
 
-function resolve_individual!(d::Death, individual, state)
+function EpiBranchCore.resolve_individual!(d::Death, individual, state)
     anchor = _resolve_anchor(d.from, individual)
     isnan(anchor) && return nothing
     p = _resolve_probability(d.probability, state.rng, individual)
@@ -87,7 +87,7 @@ function resolve_individual!(d::Death, individual, state)
     return nothing
 end
 
-function terminal_event(::Death, individual)
+function EpiBranchCore.terminal_event(::Death, individual)
     t = get(individual.state, :death_candidate_time, Inf)::Float64
     return isfinite(t) ? (t, :died) : nothing
 end
