@@ -9,14 +9,16 @@
 
 ## Installation
 
-EpiBranch.jl is laid out as a monorepo of seven Julia packages plus an umbrella `EpiBranch` that re-exports everything. Most users want the umbrella:
+EpiBranch.jl is organised as one repository holding seven Julia packages plus a main `EpiBranch` package that re-exports everything they contain. For most users, the main package is what you want:
 
 ```julia
 using Pkg
 Pkg.add(url = "https://github.com/epiforecasts/EpiBranch.jl", subdir = "EpiBranch")
 ```
 
-If you only need part of the surface — say a closed-form likelihood without the simulator, or just the intervention types — you can install the relevant sub-package directly with the same `subdir = "..."` pattern (`EpiBranchCore`, `EpiBranchProcess`, `EpiInterventions`, `EpiTransitions`, `EpiObservation`, `EpiOutput`, `EpiAnalytics`).
+The `subdir = "EpiBranch"` argument tells Pkg which sub-folder of the repository holds the package, and is needed only while the package is unregistered. Once `EpiBranch` is on the Julia General Registry, the install command becomes the usual `Pkg.add("EpiBranch")` with no `subdir`.
+
+If you only need part of the functionality — for example, just the closed-form likelihoods without the simulator, or just the intervention types — you can install one of the smaller packages on its own with the same `subdir = "..."` pattern. The available packages are `EpiBranchCore`, `EpiBranchProcess`, `EpiInterventions`, `EpiTransitions`, `EpiObservation`, `EpiOutput`, and `EpiAnalytics`.
 
 ## Quick start
 

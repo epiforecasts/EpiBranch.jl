@@ -41,16 +41,25 @@ containment_probability(results)
 
 ## Installation
 
-**EpiBranch.jl** is not yet registered. The repository is a monorepo of
-seven sub-packages plus an `EpiBranch` umbrella that re-exports
-everything. Install the umbrella with:
+**EpiBranch.jl** is not yet registered. The repository holds seven
+Julia packages plus a main `EpiBranch` package that re-exports
+everything they contain. For most users, the main package is what you
+want:
 
 ```julia
 using Pkg
 Pkg.add(url = "https://github.com/epiforecasts/EpiBranch.jl", subdir = "EpiBranch")
 ```
 
-The sub-packages (`EpiBranchCore`, `EpiBranchProcess`,
-`EpiInterventions`, `EpiTransitions`, `EpiObservation`, `EpiOutput`,
-`EpiAnalytics`) can be installed individually with the same `subdir`
-pattern when you only need part of the surface.
+The `subdir = "EpiBranch"` argument tells Pkg which sub-folder of the
+repository holds the package, and is needed only while the package is
+unregistered. Once `EpiBranch` is on the Julia General Registry, the
+install command becomes the usual `Pkg.add("EpiBranch")` with no
+`subdir`.
+
+If you only need part of the functionality — for example, just the
+closed-form likelihoods without the simulator, or just the intervention
+types — you can install one of the smaller packages on its own with
+the same `subdir = "..."` pattern. The available packages are
+`EpiBranchCore`, `EpiBranchProcess`, `EpiInterventions`,
+`EpiTransitions`, `EpiObservation`, `EpiOutput`, and `EpiAnalytics`.
