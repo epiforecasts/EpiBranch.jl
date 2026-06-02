@@ -120,14 +120,21 @@ end
 
 function resolve_individual!(iso::Isolation, individual, state)
     is_isolated(individual) && return nothing
-    is_test_positive(individual) || return nothing
 
-    iso_delay = rand(state.rng, iso.delay)
-    iso_time = onset_time(individual) + iso_delay
-
-    # If contact tracing has already computed a traced isolation time,
-    # take the earlier of self-reporting and tracing.
-    traced_time = get(individual.state, :traced_isolation_time, Inf)
-    set_isolated!(individual, min(iso_time, traced_time))
+    # Three isolation pathways, each independent:
+    #   - test_isolation_time:  onset + delay, fires iff test_positive
+    #   - traced_isolation_time: set by ContactTracing's FlagOnly action
+    #     (for symptomatic traced contacts), fires iff contact was traced
+    # Isolation fires at the earlier of any active pathway. A
+    # test-negative-but-traced contact is still isolated via tracing.
+    traced_time = get(individual.state, :traced_isolation_time, Inf)::Float64
+    test_time = if is_test_positive(individual)
+        onset_time(individual) + rand(state.rng, iso.delay)
+    else
+        Inf
+    end
+    final = min(test_time, traced_time)
+    isfinite(final) || return nothing
+    set_isolated!(individual, final)
     return nothing
 end

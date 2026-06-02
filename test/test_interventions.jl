@@ -380,6 +380,48 @@
         end
     end
 
+    @testset "Traced test-negative contacts isolate via tracing pathway" begin
+        # Regression test: with test_sensitivity < 1 and FlagOnly tracing,
+        # test-negative contacts must still be isolated via the tracing
+        # pathway. Previously a `is_test_positive || return` gate in
+        # Isolation::resolve_individual discarded traced_isolation_time for
+        # test-negative contacts, so 1 − test_sensitivity of cases never
+        # isolated even when traced.
+        #
+        # Filter to cases that ran through resolve_individual at least once
+        # (those that became parents — they have non-empty
+        # secondary_case_ids — or those who are themselves index cases).
+        # Final-generation contacts created in the last step never resolve
+        # because the engine stops before they would be active.
+        rng = StableRNG(20260601)
+        model = BranchingProcess(Poisson(3.0), Exponential(5.0))
+        iso = Isolation(delay = Exponential(1.0), test_sensitivity = 0.4)
+        ct = ContactTracing(probability = 1.0, delay = Exponential(1.0),
+            quarantine_on_trace = false)
+
+        state = simulate(model;
+            interventions = [iso, ct], attributes = clinical,
+            sim_opts = SimOpts(max_cases = 500), rng = rng)
+
+        resolved = filter(
+            ind -> !isempty(ind.secondary_case_ids) ||
+                   ind.parent_id == 0,
+            state.individuals
+        )
+        traced_symptomatic = filter(
+            ind -> is_traced(ind) && !is_asymptomatic(ind),
+            resolved
+        )
+        @test !isempty(traced_symptomatic)
+        @test all(is_isolated, traced_symptomatic)
+
+        traced_test_negative = filter(
+            ind -> !is_test_positive(ind), traced_symptomatic
+        )
+        @test !isempty(traced_test_negative)
+        @test all(is_isolated, traced_test_negative)
+    end
+
     @testset "Scheduled interventions" begin
         @testset "start_time delays activation" begin
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
