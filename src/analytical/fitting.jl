@@ -215,6 +215,28 @@ for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
     end
 end
 
+# ── ModelSpec dispatch for likelihoods ───────────────────────────────
+# Single-object form. Pulls slots out of the spec and calls the
+# kwarg-form method above so the analytical fast paths and simulation
+# fallbacks are reused.
+
+for DT in (:ChainSizes, :ChainLengths)
+    @eval function loglikelihood(data::$DT, spec::ModelSpec;
+            n_sim::Int = 10_000,
+            rng::AbstractRNG = Random.default_rng(),
+            kwargs...)
+        return loglikelihood(data, _simulation_model(spec);
+            interventions = spec.interventions,
+            attributes = spec.attributes,
+            sim_opts = spec.sim_opts,
+            n_sim, rng, kwargs...)
+    end
+end
+
+function loglikelihood(data::OffspringCounts, spec::ModelSpec)
+    return loglikelihood(data, single_type_offspring(spec.process))
+end
+
 # ── Unified fit interface (extends Distributions.fit) ────────────────
 #
 # For raw offspring counts, `Distributions.fit(Poisson, x)` already gives

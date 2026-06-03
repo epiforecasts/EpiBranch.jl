@@ -47,6 +47,11 @@ include("observation_models.jl")
 # Observation models (wrappers around TransmissionModel)
 include("observation.jl")
 
+# Single-object configuration that bundles process + interventions +
+# transitions + attributes + observation + sim_opts. Functions either
+# take a ModelSpec or take the kwargs and assemble one internally.
+include("model_spec.jl")
+
 # Simulation engine
 include("simulation.jl")
 
@@ -85,6 +90,7 @@ export AbstractClinicalTransition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event
 export ObservationModel, PerCaseObservation, Observed
 export single_type_offspring
+export ModelSpec, NoObservation
 
 # Exports — sentinel types
 export NoPopulation, NoAttributes, NoTypeLabels

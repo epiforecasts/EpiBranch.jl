@@ -113,19 +113,20 @@ println("Chain length LL: $(round(ll, digits=2))")
 
 ## Simulation-based likelihood
 
-For models with interventions, use the simulation-based likelihood by
-passing a [`BranchingProcess`](@ref) model instead of a distribution:
+Bundle everything that defines the run — process, interventions,
+attributes, observation, options — into a [`ModelSpec`](@ref) and pass
+that. `loglikelihood` (and `simulate`) accept either a `ModelSpec` or
+the unpacked kwargs:
 
 ```@example chains
-model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-iso = Isolation(delay = Exponential(2.0))
-
-ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2]), model;
-    interventions = [iso],
+spec = ModelSpec(
+    process = BranchingProcess(Poisson(2.0), Exponential(5.0)),
+    interventions = [Isolation(delay = Exponential(2.0))],
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-    n_sim = 1000,
-    rng = StableRNG(42),
 )
+
+ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2]), spec;
+    n_sim = 1000, rng = StableRNG(42))
 println("LL with interventions: $(round(ll, digits=2))")
 ```
 

@@ -105,6 +105,58 @@ function simulate_batch(model::TransmissionModel, n::Int;
     end
 end
 
+# ── ModelSpec dispatch ─────────────────────────────────────────────
+# `simulate(spec)` and `simulate(spec, n)` unpack the spec and call the
+# kwarg-form methods above. The kwarg form is the implementation; the
+# spec form is a single-object surface that bundles every knob.
+
+"""
+    simulate(spec::ModelSpec; rng=Random.default_rng(),
+             condition=nothing, max_attempts=10_000)
+
+Run a single outbreak simulation from a [`ModelSpec`](@ref).
+"""
+function simulate(spec::ModelSpec;
+        rng::AbstractRNG = Random.default_rng(),
+        condition::Union{UnitRange{Int}, Nothing} = nothing,
+        max_attempts::Int = 10_000)
+    return simulate(_simulation_model(spec);
+        interventions = spec.interventions,
+        transitions = spec.transitions,
+        attributes = spec.attributes,
+        sim_opts = spec.sim_opts,
+        rng, condition, max_attempts)
+end
+
+"""
+    simulate(spec::ModelSpec, n::Int; parallel=false, rng=...)
+
+Run `n` independent outbreak simulations from a [`ModelSpec`](@ref).
+"""
+function simulate(spec::ModelSpec, n::Int;
+        rng::AbstractRNG = Random.default_rng(),
+        parallel::Bool = false)
+    return simulate_batch(_simulation_model(spec), n;
+        interventions = spec.interventions,
+        transitions = spec.transitions,
+        attributes = spec.attributes,
+        sim_opts = spec.sim_opts,
+        rng, parallel)
+end
+
+# Also accept the (model, n) positional form as the public surface for
+# multi-simulation runs, matching #42.
+function simulate(model::TransmissionModel, n::Int;
+        interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
+        transitions::Vector{<:AbstractClinicalTransition} = AbstractClinicalTransition[],
+        attributes::Union{Function, NoAttributes} = NoAttributes(),
+        sim_opts::SimOpts = SimOpts(),
+        rng::AbstractRNG = Random.default_rng(),
+        parallel::Bool = false)
+    return simulate_batch(model, n;
+        interventions, transitions, attributes, sim_opts, rng, parallel)
+end
+
 # ── Internal helpers ───────────────────────────────────────────────
 
 function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
