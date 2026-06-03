@@ -174,6 +174,12 @@ The vaccination keys are namespaced by `dose_label` — the default label writes
 
 `:reported` is shared between the `Reporting` clinical transition (which sets it from a probability gate) and `PerCaseObservation` (which sets it post-simulation from a detection-probability draw). Composing both in the same simulation is not supported — they will overwrite each other.
 
+### Naming convention for downstream packages
+
+Built-in keys keep short clean names (`:isolated`, `:traced`, `:age`, …) because they're reserved up front. Third-party packages adding their own keys should prefix with a short package token to avoid collisions with each other or with future built-ins. A package called, say, `EpiHouseholds` would use `:eh_household_id`, `:eh_household_size`, etc. (`eh_` for EpiHouseholds), so two unrelated extensions can be composed in the same simulation without their dict entries trampling each other.
+
+The prefix is a convention rather than a mechanism — nothing in the engine enforces it — but it scales better than ad-hoc collision avoidance once more than one downstream package is in use.
+
 ## Intervention interface
 
 Four hooks, all optional. See the [Extending guide](@ref "Extending EpiBranch") for the full input/output contract, ordering guarantees, and a `BorderClosure` worked example.
