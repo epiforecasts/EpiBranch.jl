@@ -59,9 +59,9 @@
         end
     end
 
-    @testset "Latent period enforces minimum generation time" begin
+    @testset "Truncated generation time enforces minimum" begin
         rng = StableRNG(42)
-        model = BranchingProcess(Poisson(3.0), Exponential(5.0); latent_period = 3.0)
+        model = BranchingProcess(Poisson(3.0), truncated(Exponential(5.0), 3.0, Inf))
         state = simulate(model;
             condition = 20:500, sim_opts = SimOpts(max_cases = 500), rng = rng)
 

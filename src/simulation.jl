@@ -119,7 +119,6 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         0,
         false,
         population_size(model),
-        latent_period(model),
         0.0,
         attributes,
         convert(Vector{AbstractClinicalTransition}, transitions)

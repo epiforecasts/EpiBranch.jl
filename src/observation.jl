@@ -11,8 +11,8 @@ State-space combiner: pair a `TransmissionModel` with an
 surface for likelihoods that need to know about both the latent
 dynamics and how the data was observed.
 
-Forwards process-model accessors (`population_size`, `latent_period`,
-`n_types`, `single_type_offspring`) to `process`.
+Forwards process-model accessors (`population_size`, `n_types`,
+`single_type_offspring`) to `process`.
 """
 struct Observed{P <: TransmissionModel, O <: ObservationModel} <:
        TransmissionModel
@@ -25,7 +25,6 @@ function Base.show(io::IO, m::Observed)
 end
 
 population_size(m::Observed) = population_size(m.process)
-latent_period(m::Observed) = latent_period(m.process)
 n_types(m::Observed) = n_types(m.process)
 single_type_offspring(m::Observed) = single_type_offspring(m.process)
 
@@ -33,12 +32,14 @@ single_type_offspring(m::Observed) = single_type_offspring(m.process)
     simulate(m::Observed; kwargs...)
 
 Run the underlying process simulation, then apply the observation
-model in place. For `PerCaseObservation(ρ, D)`, each individual
+model in place. For `PerCaseObservation(ρ, D, from)`, each individual
 gets:
 
 - `state[:reported] = true` with probability `ρ`, else `false`.
-- `state[:report_time] = infection_time + d` where `d` is an
-  independent draw from `D`.
+- `state[:report_time] = anchor + d` where `anchor` is resolved from
+  `from` (defaults to `:onset_time`, falling back to
+  `infection_time` if the anchor is `NaN`), and `d` is an independent
+  draw from `D`.
 
 Downstream output (line list, chain statistics) can then filter on
 `:reported` and read `:report_time`.
@@ -49,11 +50,21 @@ function simulate(m::Observed{<:TransmissionModel, <:PerCaseObservation};
     for ind in state.individuals
         ρ = _sample_value(m.observation.detection_prob, rng, ind)
         d = _sample_value(m.observation.delay, rng, ind)
+        anchor = _percase_anchor(m.observation.from, ind)
         ind.state[:reported] = rand(rng) < ρ
-        ind.state[:report_time] = ind.infection_time + d
+        ind.state[:report_time] = anchor + d
     end
     return state
 end
+
+_percase_anchor(s::Symbol, ind) =
+    let v = get(ind.state, s, NaN)
+        isnan(v) ? ind.infection_time : v
+    end
+_percase_anchor(f, ind) =
+    let v = float(f(ind))
+        isnan(v) ? ind.infection_time : v
+    end
 
 """
     ThinnedChainSize(base, detection_prob)

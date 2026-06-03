@@ -141,7 +141,7 @@ sampler like `MH()` instead of `NUTS()`:
 rng = StableRNG(42)
 true_R = 2.0
 true_model = BranchingProcess(Poisson(true_R), Exponential(5.0))
-iso = Isolation(delay=Exponential(2.0))
+iso = Isolation(onset_to_isolation_delay=Exponential(2.0))
 clinical = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
 
 observed_states = simulate_batch(true_model, 100;

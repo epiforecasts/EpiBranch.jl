@@ -79,8 +79,8 @@ BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 
 println("7. Intervention scenario (500 sims, isolation + CT)")
 model_int = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
-iso = Isolation(delay = LogNormal(1.0, 0.5))
-ct = ContactTracing(probability = 0.5, delay = Exponential(2.0))
+iso = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5))
+ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(2.0))
 b = @benchmark simulate_batch($model_int, 500;
     interventions = [$iso, $ct], attributes = $clinical,
     sim_opts = SimOpts(max_cases = 5000, max_generations = 50),

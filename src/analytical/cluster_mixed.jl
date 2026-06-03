@@ -106,7 +106,7 @@ function loglikelihood(data::ChainSizes, o::ClusterMixed)
 end
 
 """
-    BranchingProcess(offspring::ClusterMixed, gt; population_size=NoPopulation(), latent_period=0.0)
+    BranchingProcess(offspring::ClusterMixed, gt; population_size=NoPopulation())
     BranchingProcess(offspring::ClusterMixed; population_size=NoPopulation())
 
 Wrap a cluster-mixed offspring in a `BranchingProcess`. Simulation
@@ -115,15 +115,14 @@ descendant via `parent_id` lookup. The per-individual draw is
 `rand(build(θ))`.
 """
 function BranchingProcess(offspring::ClusterMixed, gt::Union{Distribution, Function};
-        population_size::Union{Int, NoPopulation} = NoPopulation(),
-        latent_period::Real = 0.0)
+        population_size::Union{Int, NoPopulation} = NoPopulation())
     BranchingProcess(
-        offspring, gt, population_size, Float64(latent_period), 1, NoTypeLabels())
+        offspring, gt, population_size, 1, NoTypeLabels())
 end
 
 function BranchingProcess(offspring::ClusterMixed;
         population_size::Union{Int, NoPopulation} = NoPopulation())
-    BranchingProcess(offspring, nothing, population_size, 0.0, 1, NoTypeLabels())
+    BranchingProcess(offspring, nothing, population_size, 1, NoTypeLabels())
 end
 
 """

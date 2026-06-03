@@ -118,7 +118,7 @@ using DataFrames
         M = [1.5 0.3;
              0.3 1.0]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
-        iso = Isolation(delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
         rng = StableRNG(42)
