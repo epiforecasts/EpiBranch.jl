@@ -244,3 +244,61 @@ The `loglikelihood` methods are the shared backend: `fit` minimises
 `-loglikelihood` over a bracket; Turing models call `loglikelihood`
 inside `@addlogprob!`. Switching between MLE, MAP, and posterior is a
 question of which Turing entry point you call, not which package.
+
+## Live diagnostics during long fits
+
+Branching-process models with stacked interventions or near-critical
+dynamics can produce chains that get stuck or split across modes. The
+pathology often only surfaces once a long fit has finished. Streaming
+per-iteration diagnostics lets you catch it in the first few hundred
+steps.
+
+Turing's `sample(...)` goes through AbstractMCMC, which has a
+`callback=` keyword that fires once per chain per step:
+
+```julia
+callback(rng, model, sampler, transition, state, iteration; kwargs...)
+```
+
+A short file-logger callback you can `tail -f` while the fit runs:
+
+```julia
+function live_log_callback(path; flush_every::Int = 10)
+    io = open(path, "w")
+    println(io, "iter\tlp\tdivergent")
+    flush(io)
+    n = Ref(0)
+    return function (rng, model, sampler, transition, state, iter; kwargs...)
+        lp = try
+            transition.lp
+        catch
+            NaN
+        end
+        div = try
+            transition.stat.numerical_error
+        catch
+            false
+        end
+        println(io, "$iter\t$lp\t$div")
+        n[] += 1
+        if n[] % flush_every == 0
+            flush(io)
+        end
+    end
+end
+
+chain = sample(my_model(data), NUTS(), 2000;
+    progress = false,
+    callback = live_log_callback("fit_log.tsv"))
+```
+
+The callback only writes a row per step; the cost is negligible
+compared to a typical NUTS step. For richer diagnostics — per-chain
+log-density traces over warmup, divergence rates, treedepth
+saturation — log to [TensorBoardLogger.jl](https://github.com/JuliaLogging/TensorBoardLogger.jl)
+from the callback. That avoids a hard dependency: TensorBoardLogger
+only needs to be loaded if you use it.
+
+This is a recipe, not part of EpiBranch's API. The
+AbstractMCMC `callback=` hook is the seam; EpiBranch's contribution
+is just dropping straight into Turing so the seam is available.
