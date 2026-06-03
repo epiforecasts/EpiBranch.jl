@@ -150,6 +150,16 @@ ChainSizes
 ChainLengths
 ```
 
+### Distribution wrappers
+
+These let an EpiBranch model sit on the right-hand side of Turing's `~`.
+
+```@docs
+ChainSizeLikelihood
+ChainLengthLikelihood
+OffspringCountLikelihood
+```
+
 ### Observation models
 
 ```@docs

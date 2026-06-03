@@ -158,14 +158,24 @@ println("Poisson MLE from chain sizes: R = $(round(mean(d), digits=2))")
 
 ### Bayesian inference with Turing.jl
 
-The `loglikelihood` functions work directly with
-[Turing.jl](https://turinglang.org) via `@addlogprob!`:
+Wrap the model in [`ChainSizeLikelihood`](@ref) (or
+[`ChainLengthLikelihood`](@ref), [`OffspringCountLikelihood`](@ref)) so
+the data appears directly on the right-hand side of `~`:
 
 ```julia
 using Turing
 
 @model function chain_model(data)
     R ~ LogNormal(-0.5, 1.0)
-    Turing.@addlogprob! loglikelihood(ChainSizes(data), Poisson(R))
+    data ~ ChainSizeLikelihood(Poisson(R))
 end
+```
+
+The wrappers delegate to the same `loglikelihood` methods used in the
+MLE path, so the analytical fast paths and simulation fallbacks apply
+unchanged. If you have multi-seed clusters or a real-time finished-mass
+vector, pass them on construction:
+
+```julia
+data ~ ChainSizeLikelihood(Poisson(R); seeds = seeds, pi = pi)
 ```

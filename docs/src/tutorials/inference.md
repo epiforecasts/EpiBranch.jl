@@ -1,9 +1,13 @@
 # Inference
 
-EpiBranch.jl's `loglikelihood` functions are compatible with automatic
-differentiation, so they work directly with [Turing.jl](https://turinglang.org)
-for Bayesian inference. This tutorial shows end-to-end parameter estimation
-from different data types.
+For each `loglikelihood` method EpiBranch provides a matching
+`Distribution` wrapper — [`ChainSizeLikelihood`](@ref),
+[`ChainLengthLikelihood`](@ref), [`OffspringCountLikelihood`](@ref) —
+so an EpiBranch model sits on the right-hand side of [Turing.jl](https://turinglang.org)'s
+`~` like any other distribution. The wrappers delegate to the same
+`loglikelihood` methods used for MLE, so the analytical fast paths and
+simulation fallbacks apply unchanged. The likelihoods are also
+AD-compatible, so NUTS works wherever the underlying method does.
 
 !!! note
     Turing.jl is not a dependency of EpiBranch.jl. Install it separately
@@ -39,7 +43,7 @@ the same Turing model used for the posterior also gives the MLE via
 @model function offspring_model(data)
     R ~ LogNormal(0.0, 1.0)
     k ~ Exponential(1.0)
-    Turing.@addlogprob! loglikelihood(OffspringCounts(data), NegBin(R, k))
+    data ~ OffspringCountLikelihood(NegBin(R, k))
 end
 
 mle = maximum_likelihood(offspring_model(data))
@@ -89,7 +93,7 @@ println("MLE: R=$(round(mean(d_mle), digits=2))")
 ```@example inference
 @model function chain_size_model(data)
     R ~ Beta(2, 2)  # prior on (0, 1) for subcritical
-    Turing.@addlogprob! loglikelihood(ChainSizes(data), Poisson(R))
+    data ~ ChainSizeLikelihood(Poisson(R))
 end
 
 chain = sample(chain_size_model(sizes), NUTS(), 1000; progress=false)
@@ -165,12 +169,10 @@ P(size = cap).
 @model function intervention_model(data, iso, clinical)
     R ~ LogNormal(0.5, 0.5)
     model = BranchingProcess(Poisson(R), Exponential(5.0))
-    Turing.@addlogprob! loglikelihood(
-        ChainSizes(data), model;
-        interventions=[iso], attributes=clinical,
-        sim_opts=SimOpts(max_cases=500),
-        n_sim=500, rng=StableRNG(hash(R))
-    )
+    data ~ ChainSizeLikelihood(model;
+        interventions = [iso], attributes = clinical,
+        sim_opts = SimOpts(max_cases = 500),
+        n_sim = 500, rng = StableRNG(hash(R)))
 end
 
 chain = sample(
@@ -205,13 +207,13 @@ data = ChainSizes(sizes; seeds = seeds)
 println("Clusters: $(length(sizes)) (seeds 1 / 2: " *
         "$(count(==(1), seeds)) / $(count(==(2), seeds)))")
 
-@model function cluster_size_model(data)
+@model function cluster_size_model(sizes, seeds)
     R ~ LogNormal(0.0, 1.0)
     k ~ LogNormal(-1.0, 1.0)
-    Turing.@addlogprob! loglikelihood(data, NegativeBinomial(k, k / (k + R)))
+    sizes ~ ChainSizeLikelihood(NegativeBinomial(k, k / (k + R)); seeds = seeds)
 end
 
-chain = sample(cluster_size_model(data), NUTS(), 1000; progress = false)
+chain = sample(cluster_size_model(sizes, seeds), NUTS(), 1000; progress = false)
 r_post = vec(chain[:R])
 k_post = vec(chain[:k])
 println("True R=$true_R, k=$true_k")
@@ -241,6 +243,7 @@ Two largely independent questions:
    call runs many simulations, so sampling is markedly slower.
 
 The `loglikelihood` methods are the shared backend: `fit` minimises
-`-loglikelihood` over a bracket; Turing models call `loglikelihood`
-inside `@addlogprob!`. Switching between MLE, MAP, and posterior is a
-question of which Turing entry point you call, not which package.
+`-loglikelihood` over a bracket; Turing models route through the
+`Likelihood` wrappers, which call the same methods. Switching between
+MLE, MAP, and posterior is a question of which Turing entry point you
+call, not which package.
