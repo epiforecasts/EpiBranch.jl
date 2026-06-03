@@ -150,7 +150,7 @@ function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
 
         model = BranchingProcess(offspring, gt; population_size = pop_size)
 
-        results = simulate_batch(model, n_sim;
+        results = simulate(model, n_sim;
             interventions = interventions isa Vector ? interventions : [interventions],
             attributes = attributes,
             sim_opts = sim_opts,

@@ -181,7 +181,7 @@ iso = Isolation(delay = Exponential(2.0))
 bc = BorderClosure(10.0, 0.05)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso, bc],
     attributes = clinical_with_region,
     sim_opts = SimOpts(max_cases = 500), rng = rng,
@@ -364,7 +364,7 @@ end
 model_risk = BranchingProcess(risk_offspring, Exponential(5.0); n_types = 1)
 
 rng = StableRNG(42)
-results = simulate_batch(model_risk, 200;
+results = simulate(model_risk, 200;
     attributes = risk_group,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
@@ -386,7 +386,7 @@ end
 model_waning = BranchingProcess(waning_offspring, Exponential(5.0); n_types = 1)
 
 rng = StableRNG(42)
-results = simulate_batch(model_waning, 200;
+results = simulate(model_waning, 200;
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
