@@ -176,9 +176,7 @@ The vaccination keys are namespaced by `dose_label` — the default label writes
 
 ### Naming convention for downstream packages
 
-Built-in keys keep short clean names (`:isolated`, `:traced`, `:age`, …) because they're reserved up front. Third-party packages adding their own keys should prefix with a short package token to avoid collisions with each other or with future built-ins. A package called, say, `EpiHouseholds` would use `:eh_household_id`, `:eh_household_size`, etc. (`eh_` for EpiHouseholds), so two unrelated extensions can be composed in the same simulation without their dict entries trampling each other.
-
-The prefix is a convention rather than a mechanism — nothing in the engine enforces it — but it scales better than ad-hoc collision avoidance once more than one downstream package is in use.
+Built-in keys use short bare names like `:isolated`, `:traced`, `:age`. Those names are reserved. If you're adding keys from another package, prefix them with a short tag for your package so they don't collide with built-ins or with keys other packages might add.
 
 ## Intervention interface
 
