@@ -145,12 +145,13 @@ end
 function _weekly_time(by::Symbol, ind)
     if by === :onset
         v = get(ind.state, :onset_time, NaN)
-        return isnan(v) ? ind.infection_time : v
+        return v isa Real && !isnan(v) ? float(v) : ind.infection_time
     elseif by === :infection
         return ind.infection_time
     elseif by === :reporting
         # No fallback: a case without a reporting time has not been observed.
-        return get(ind.state, :reporting_time, NaN)
+        v = get(ind.state, :reporting_time, NaN)
+        return v isa Real ? float(v) : NaN
     else
         v = get(ind.state, by, NaN)
         return v isa Real ? float(v) : NaN
