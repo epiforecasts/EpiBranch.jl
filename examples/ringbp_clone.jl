@@ -61,12 +61,12 @@ for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan
             for initial_cases in [5, 20]
                 k = 0.16
                 model = BranchingProcess(NegBin(R0, k), gt)
-                iso = Isolation(delay = delay_dist, test_sensitivity = 1.0)
+                iso = Isolation(onset_to_isolation_delay = delay_dist, test_sensitivity = 1.0)
 
                 interventions = if tracing_prob > 0
                     ct = ContactTracing(
                         probability = tracing_prob,
-                        delay = Exponential(1.0),
+                        isolation_to_trace_delay = Exponential(1.0),
                         quarantine_on_trace = false
                     )
                     [iso, ct]

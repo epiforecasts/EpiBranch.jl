@@ -23,7 +23,7 @@
     @testset "Interventions work with finite population" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0); population_size = 500)
-        iso = Isolation(delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
         state = simulate(model;

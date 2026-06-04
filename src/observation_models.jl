@@ -15,12 +15,19 @@ etc. Composed with a `TransmissionModel` via [`Observed`](@ref).
 abstract type ObservationModel end
 
 """
-    PerCaseObservation(; detection_prob = 1.0, delay = Dirac(0.0))
+    PerCaseObservation(; detection_prob = 1.0, delay = Dirac(0.0),
+                       from = :onset_time)
 
 Independent per-case observation: each case is reported with
-probability `detection_prob`, and reports lag the underlying
-transmission event by an independent draw from `delay`. The
-defaults reproduce instantaneous full reporting.
+probability `detection_prob`, and reports lag the anchor time given by
+`from` by an independent draw from `delay`. `from` defaults to
+`:onset_time` because real surveillance lags symptom onset, not
+infection. Set `from = ind -> ind.infection_time` to anchor on
+infection time instead.
+
+If the anchor evaluates to `NaN` (e.g. an asymptomatic case under
+`clinical_presentation`), reporting falls back to the infection time so
+the report time is still well-defined.
 
 `detection_prob` and `delay` both accept the standard
 `Real | Distribution | Function` trio:
@@ -41,24 +48,33 @@ to the simulation likelihood for per-individual reporting.
 `detection_prob = 1.0, delay = D` ↔ full reporting with delay `D`.
 `detection_prob = ρ, delay = Dirac(0.0)` ↔ binomial thinning, no delay.
 """
-struct PerCaseObservation{P, D} <: ObservationModel
+struct PerCaseObservation{P, D, F} <: ObservationModel
     detection_prob::P
     delay::D
+    from::F
 end
 
 function PerCaseObservation(;
         detection_prob::Union{Real, Distribution, Function} = 1.0,
-        delay::Union{Real, Distribution, Function} = Dirac(0.0))
+        delay::Union{Real, Distribution, Function} = Dirac(0.0),
+        from::Union{Symbol, Function} = :onset_time)
     if detection_prob isa Real
         0.0 < detection_prob <= 1.0 || throw(ArgumentError(
             "detection_prob must be in (0, 1], got $detection_prob"))
     end
-    PerCaseObservation(detection_prob, delay)
+    PerCaseObservation(detection_prob, delay, from)
+end
+
+# Two-argument positional form preserved for terse callers — uses the
+# default :onset_time anchor.
+function PerCaseObservation(detection_prob::Union{Real, Distribution, Function},
+        delay::Union{Real, Distribution, Function})
+    PerCaseObservation(; detection_prob, delay)
 end
 
 function Base.show(io::IO, o::PerCaseObservation)
     print(io, "PerCaseObservation(detection_prob=$(o.detection_prob), ",
-        "delay=$(o.delay))")
+        "delay=$(o.delay), from=$(o.from))")
 end
 
 """Extract a scalar `detection_prob` for analytical paths that need it

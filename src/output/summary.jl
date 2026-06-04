@@ -53,8 +53,17 @@ end
 """
     generation_R(state::SimulationState)
 
-Compute effective reproduction number per generation.
-A DataFrame with columns `generation` and `R_eff` is returned.
+Realised per-generation offspring ratio: for each generation `g`,
+the number of cases in generation `g+1` divided by the number of cases
+in generation `g`. A DataFrame with columns `generation` and
+`offspring_ratio` is returned.
+
+This is not the time-varying effective reproduction number `Rt`
+typically estimated from an incidence time series — it is a
+generation-indexed average that only coincides with `Rt` under
+strong assumptions. Use it as a within-simulation diagnostic of
+how transmission is being reduced generation-by-generation
+(e.g. by depletion or by interventions), not as an `Rt` proxy.
 """
 function generation_R(state::SimulationState)
     # Single-pass: count infected individuals per generation
@@ -65,38 +74,64 @@ function generation_R(state::SimulationState)
         gen_counts[g] = get(gen_counts, g, 0) + 1
     end
 
-    isempty(gen_counts) && return DataFrame(generation = Int[], R_eff = Float64[])
+    isempty(gen_counts) && return DataFrame(
+        generation = Int[], offspring_ratio = Float64[])
     max_gen = maximum(keys(gen_counts))
 
     generations = Int[]
-    r_effs = Float64[]
+    ratios = Float64[]
     for g in 0:(max_gen - 1)
         n_parents = get(gen_counts, g, 0)
         n_parents == 0 && continue
         n_children = get(gen_counts, g + 1, 0)
         push!(generations, g)
-        push!(r_effs, n_children / n_parents)
+        push!(ratios, n_children / n_parents)
     end
 
-    DataFrame(generation = generations, R_eff = r_effs)
+    DataFrame(generation = generations, offspring_ratio = ratios)
 end
 
 """
-    weekly_incidence(state::SimulationState; reference_date::Date=Date(2020, 1, 1))
+    weekly_incidence(state::SimulationState; by=:onset,
+                     reference_date::Date=Date(2020, 1, 1))
 
 Compute weekly case counts from a single simulation.
 A DataFrame with columns `week` (Date) and `cases` (Int) is returned.
+
+`by` selects the timing field to bin on:
+
+- `:onset` (default) — uses `:onset_time` from individual state, which is
+  what a surveillance epicurve plots. Falls back to `:infection_time`
+  for any case whose `:onset_time` is missing or `NaN` (e.g.
+  asymptomatic cases under `clinical_presentation`).
+- `:infection` — uses `infection_time` directly. This is what was
+  previously the only behaviour, but it is not directly observable in
+  real surveillance and produces an epicurve that is shifted earlier
+  by roughly one incubation period.
+- `:reporting` — uses `:reporting_time` (set by the `Reporting`
+  transition or `PerCaseObservation`); cases without a reporting time
+  are excluded.
+
+Pass a `Symbol` from `ind.state` to bin on any other field
+(e.g. `:admission_time`).
 """
 function weekly_incidence(state::SimulationState;
+        by::Symbol = :onset,
         reference_date::Date = Date(2020, 1, 1))
     infected = filter(is_infected, state.individuals)
     isempty(infected) && return DataFrame(week = Date[], cases = Int[])
 
-    inf_days = [floor(Int, ind.infection_time) for ind in infected]
+    times = Float64[]
+    for ind in infected
+        t = _weekly_time(by, ind)
+        isnan(t) && continue
+        push!(times, t)
+    end
+    isempty(times) && return DataFrame(week = Date[], cases = Int[])
 
     weeks = Dict{Date, Int}()
-    for d in inf_days
-        date = reference_date + Day(d)
+    for t in times
+        date = reference_date + Day(floor(Int, t))
         week_start = date - Day(dayofweek(date) - 1)
         weeks[week_start] = get(weeks, week_start, 0) + 1
     end
@@ -104,6 +139,23 @@ function weekly_incidence(state::SimulationState;
     df = DataFrame(week = collect(keys(weeks)), cases = collect(values(weeks)))
     sort!(df, :week)
     return df
+end
+
+# Onset with infection-time fallback for cases without a recorded onset.
+function _weekly_time(by::Symbol, ind)
+    if by === :onset
+        v = get(ind.state, :onset_time, NaN)
+        return v isa Real && !isnan(v) ? float(v) : ind.infection_time
+    elseif by === :infection
+        return ind.infection_time
+    elseif by === :reporting
+        # No fallback: a case without a reporting time has not been observed.
+        v = get(ind.state, :reporting_time, NaN)
+        return v isa Real ? float(v) : NaN
+    else
+        v = get(ind.state, by, NaN)
+        return v isa Real ? float(v) : NaN
+    end
 end
 
 """
@@ -121,7 +173,7 @@ intervention stacks (each element is a `Vector{<:AbstractIntervention}`).
 ```julia
 results = scenario_sweep(Dict(
     :offspring => [NegBin(2.5, 0.16), NegBin(1.5, 0.5)],
-    :interventions => [[Isolation(delay=Exponential(d))] for d in [1.0, 2.0, 5.0]],
+    :interventions => [[Isolation(onset_to_isolation_delay=Exponential(d))] for d in [1.0, 2.0, 5.0]],
     :generation_time => [LogNormal(1.6, 0.5)],
 ))
 ```

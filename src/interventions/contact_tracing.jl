@@ -2,8 +2,8 @@
 #
 # Contact tracing factors into four independent points of variation,
 # each a dispatched seam. The default built-ins reproduce the original
-# `ContactTracing(probability, delay, quarantine_on_trace)` behaviour;
-# user-defined subtypes slot in via a single method.
+# `ContactTracing(probability, isolation_to_trace_delay, quarantine_on_trace)`
+# behaviour; user-defined subtypes slot in via a single method.
 
 """
     TraceEligibility
@@ -126,14 +126,15 @@ thin orchestrator over four traits:
 - [`TraceRate`](@ref): whether tracing happens for an eligible
   contact (default: [`ConstantRate`](@ref)).
 - [`TraceDelay`](@ref): the delay from parent isolation to the trace
-  event (default: [`ConstantDelay`](@ref)).
+  event (default: [`ConstantDelay`](@ref)). Passed via the
+  `isolation_to_trace_delay` keyword on the convenience constructor.
 - [`TraceAction`](@ref): what happens to the contact when tracing
   happens (default: [`Quarantine`](@ref); set
   `quarantine_on_trace = false` for [`FlagOnly`](@ref)).
 
 Each trait is independently overridable. The convenience keyword
 constructor preserves the original terse form
-(`ContactTracing(probability = 0.8, delay = LogNormal(...))`).
+(`ContactTracing(probability = 0.8, isolation_to_trace_delay = LogNormal(...))`).
 
 Requires fields set by [`Isolation`](@ref): `:isolated`,
 `:isolation_time`. Also requires `:asymptomatic` and `:onset_time`
@@ -146,19 +147,19 @@ struct ContactTracing{
        AbstractIntervention
     eligibility::E
     trace_rate::F
-    delay::D
+    isolation_to_trace_delay::D
     action::A
 end
 
 function ContactTracing(;
         probability::Float64,
-        delay::Distribution,
+        isolation_to_trace_delay::Distribution,
         quarantine_on_trace::Bool = true,
         eligibility::TraceEligibility = SymptomaticParent())
     return ContactTracing(
         eligibility,
         ConstantRate(probability),
-        ConstantDelay(delay),
+        ConstantDelay(isolation_to_trace_delay),
         quarantine_on_trace ? Quarantine() : FlagOnly()
     )
 end
@@ -199,7 +200,7 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
         is_eligible(ct.eligibility, parent, ind, state) || continue
         traces(ct.trace_rate, parent, ind, state, rng) || continue
 
-        trace_delay = draw_trace_delay(ct.delay, parent, ind, state, rng)
+        trace_delay = draw_trace_delay(ct.isolation_to_trace_delay, parent, ind, state, rng)
         trace_time = isolation_time(parent) + trace_delay
         apply_trace!(ct.action, ind, state, trace_time, rng)
     end

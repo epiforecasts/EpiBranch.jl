@@ -45,8 +45,8 @@ using Dates
     @testset "ringbp-style scenario" begin
         rng = StableRNG(314)
         model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
-        iso = Isolation(delay = LogNormal(1.0, 0.5))
-        ct = ContactTracing(probability = 0.5, delay = Exponential(2.0))
+        iso = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5))
+        ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(2.0))
 
         results = simulate_batch(model, 500;
             interventions = [iso, ct], attributes = clinical,
@@ -80,13 +80,13 @@ using Dates
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
 
         rng1 = StableRNG(42)
-        iso_perfect = Isolation(delay = Exponential(1.0), post_isolation_transmission = 0.0)
+        iso_perfect = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.0)
         results_perfect = simulate_batch(model, 200;
             interventions = [iso_perfect], attributes = clinical,
             sim_opts = SimOpts(max_cases = 200), rng = rng1)
 
         rng2 = StableRNG(42)
-        iso_leaky = Isolation(delay = Exponential(1.0), post_isolation_transmission = 0.5)
+        iso_leaky = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.5)
         results_leaky = simulate_batch(model, 200;
             interventions = [iso_leaky], attributes = clinical,
             sim_opts = SimOpts(max_cases = 200), rng = rng2)
@@ -115,7 +115,7 @@ using Dates
         df = generation_R(state)
         @test df isa DataFrame
         @test nrow(df) > 0
-        @test df.R_eff[1] > 0
+        @test df.offspring_ratio[1] > 0
     end
 
     @testset "containment_probability with max_cases" begin

@@ -29,8 +29,8 @@ Any combination of `start_time`, `end_time`, and `start_after_cases` is
 accepted.  They are combined with `&&`:
 
 ```julia
-Scheduled(Isolation(delay=Exponential(2.0)); start_time=14.0)
-Scheduled(ContactTracing(probability=0.5); start_after_cases=50)
+Scheduled(Isolation(onset_to_isolation_delay=Exponential(2.0)); start_time=14.0)
+Scheduled(ContactTracing(probability=0.5, isolation_to_trace_delay=Exponential(1.0)); start_after_cases=50)
 Scheduled(iso; start_time=10.0, end_time=30.0)
 ```
 
