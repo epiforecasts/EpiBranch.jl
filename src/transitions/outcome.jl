@@ -48,10 +48,11 @@ death time is produced by adding a sample from `delay` to the value of
 `Function (ind) -> Real` — see [`Reporting`](@ref) for the anchor
 semantics.
 
-`probability` is required (no default) and accepts a `Real` or a
-`Function (rng, ind) -> Real`. The probability is too pathogen-specific
-for a sensible default — pass an explicit value, even if it is
-`0.0`. Use the function form for age- or risk-conditional CFRs:
+`probability` is required (no default) and accepts a `Real`, a
+`Distribution`, or a `Function (rng, ind) -> Real`. The probability is
+too pathogen-specific for a sensible default — pass an explicit value,
+even if it is `0.0`. Use the function form for age- or risk-conditional
+CFRs:
 
 ```julia
 Death(delay = LogNormal(2.5, 0.4),
