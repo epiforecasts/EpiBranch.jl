@@ -122,7 +122,7 @@ end
 
 function BranchingProcess(offspring::ClusterMixed;
         population_size::Union{Int, NoPopulation} = NoPopulation())
-    BranchingProcess(offspring, nothing, population_size, 1, NoTypeLabels())
+    BranchingProcess(offspring, NoGenerationTime(), population_size, 1, NoTypeLabels())
 end
 
 """
