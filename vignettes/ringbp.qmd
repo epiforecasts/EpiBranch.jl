@@ -168,8 +168,8 @@ println("Contact-to-case ratio: ", round(n_total_contacts / n_infected, digits =
 ## Leaky isolation
 
 ```{julia}
-iso_perfect = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5), residual_transmission = 0.0)
-iso_leaky = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5), residual_transmission = 0.3)
+iso_perfect = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5), post_isolation_transmission = 0.0)
+iso_leaky = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5), post_isolation_transmission = 0.3)
 
 rng1 = Xoshiro(42)
 results_perfect = simulate_batch(model, 500;
