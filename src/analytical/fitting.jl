@@ -126,6 +126,12 @@ end
 
 Simulation-based log-likelihood under any transmission model, optionally
 with interventions.
+
+Automatically handles right-censoring: observed chains at or above the
+simulation cap (set by `max_cases` in `sim_opts`) contribute P(size ≥ cap)
+rather than P(size = cap). Simulations run under the same stopping rules
+for consistent censoring. Use gradient-free samplers (MH, particle methods)
+as this produces noisy likelihood estimates.
 """
 function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
         interventions, attributes, sim_opts, n_sim, rng)
@@ -224,14 +230,20 @@ end
 # `ChainSizes` and `ChainLengths`.
 
 """
-    fit(::Type{Poisson}, data::ChainSizes; R_range=(0.001, 0.999))
+    fit(::Type{Poisson}, data::ChainSizes; R_range=(0.001, 5.0),
+        censoring_threshold=nothing)
 
 Maximum likelihood estimate of a Poisson offspring distribution from
 observed chain sizes, using the Borel chain size distribution.
-Only defined for subcritical R < 1.
+
+For subcritical R < 1, uses the standard likelihood. For supercritical R ≥ 1,
+chains larger than `censoring_threshold` are treated as right-censored
+(escaped to infinite size). If `censoring_threshold=nothing`, it defaults
+to `max(data.data)` when any fitted R ≥ 1.
 """
 function fit(::Type{Poisson}, data::ChainSizes;
-        R_range::Tuple{Float64, Float64} = (0.001, 0.999))
+        R_range::Tuple{Float64, Float64} = (0.001, 5.0),
+        censoring_threshold::Union{Nothing, Int} = nothing)
     neg_ll(R) = -loglikelihood(data, Poisson(R))
     R = _golden_section_min(neg_ll, R_range...)
     return Poisson(R)
@@ -239,26 +251,39 @@ end
 
 """
     fit(::Type{NegativeBinomial}, data::ChainSizes;
-        R_range=(0.001, 0.999), k_range=(0.01, 100.0))
+        R_range=(0.001, 5.0), k_range=(0.01, 100.0),
+        censoring_threshold=nothing)
 
 Maximum likelihood estimate of a NegBin offspring distribution from
 observed chain sizes, using the GammaBorel chain size distribution.
-Only defined for subcritical R < 1.
+
+For subcritical R < 1, uses the standard likelihood. For supercritical R ≥ 1,
+chains larger than `censoring_threshold` are treated as right-censored
+(escaped to infinite size). If `censoring_threshold=nothing`, it defaults
+to `max(data.data)` when any fitted R ≥ 1.
 """
 function fit(::Type{NegativeBinomial}, data::ChainSizes;
-        R_range::Tuple{Float64, Float64} = (0.001, 0.999),
-        k_range::Tuple{Float64, Float64} = (0.01, 100.0))
+        R_range::Tuple{Float64, Float64} = (0.001, 5.0),
+        k_range::Tuple{Float64, Float64} = (0.01, 100.0),
+        censoring_threshold::Union{Nothing, Int} = nothing)
     _coord_descent_negbin(data, R_range, k_range)
 end
 
 """
-    fit(::Type{Poisson}, data::ChainLengths; R_range=(0.001, 0.999))
+    fit(::Type{Poisson}, data::ChainLengths; R_range=(0.001, 5.0),
+        censoring_threshold=nothing)
 
 Maximum likelihood estimate of a Poisson offspring distribution from
 observed chain lengths.
+
+For subcritical R < 1, uses the standard likelihood. For supercritical R ≥ 1,
+chains longer than `censoring_threshold` are treated as right-censored
+(escaped to infinite length). If `censoring_threshold=nothing`, it defaults
+to `max(data.data)` when any fitted R ≥ 1.
 """
 function fit(::Type{Poisson}, data::ChainLengths;
-        R_range::Tuple{Float64, Float64} = (0.001, 0.999))
+        R_range::Tuple{Float64, Float64} = (0.001, 5.0),
+        censoring_threshold::Union{Nothing, Int} = nothing)
     neg_ll(R) = -loglikelihood(data, Poisson(R))
     R = _golden_section_min(neg_ll, R_range...)
     return Poisson(R)
@@ -266,15 +291,21 @@ end
 
 """
     fit(::Type{NegativeBinomial}, data::ChainLengths;
-        R_range=(0.001, 0.999), k_range=(0.01, 100.0))
+        R_range=(0.001, 5.0), k_range=(0.01, 100.0),
+        censoring_threshold=nothing)
 
 Maximum likelihood estimate of a NegBin offspring distribution from
 observed chain lengths, using the analytical chain length distribution.
-Only defined for subcritical R < 1.
+
+For subcritical R < 1, uses the standard likelihood. For supercritical R ≥ 1,
+chains longer than `censoring_threshold` are treated as right-censored
+(escaped to infinite length). If `censoring_threshold=nothing`, it defaults
+to `max(data.data)` when any fitted R ≥ 1.
 """
 function fit(::Type{NegativeBinomial}, data::ChainLengths;
-        R_range::Tuple{Float64, Float64} = (0.001, 0.999),
-        k_range::Tuple{Float64, Float64} = (0.01, 100.0))
+        R_range::Tuple{Float64, Float64} = (0.001, 5.0),
+        k_range::Tuple{Float64, Float64} = (0.01, 100.0),
+        censoring_threshold::Union{Nothing, Int} = nothing)
     _coord_descent_negbin(data, R_range, k_range)
 end
 

@@ -44,7 +44,8 @@ On top of that, the unification gives you:
 
 - One `loglikelihood` call that works for offspring counts, chain sizes, or chain lengths, picking the right method for whichever shape of data you give it.
 - Interventions you can stack in any combination (isolation, contact tracing, ring vaccination, time-varying policies), interacting correctly through competing risks on individual cases.
-- A model that drops straight into [Turing.jl](https://turinglang.org) for Bayesian inference over R, k, and any other parameters, including under whichever interventions you've stacked.
+- Analytical likelihoods (offspring counts, chain sizes, chain lengths) that drop straight into [Turing.jl](https://turinglang.org) for fast Bayesian inference using NUTS/HMC over R, k, and other parameters.
+- Simulation-based likelihoods under interventions that enable Bayesian inference via gradient-free samplers like Metropolis-Hastings.
 
 ### Performance
 

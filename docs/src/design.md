@@ -261,6 +261,10 @@ The simulation engine works in place, generation by generation. Per generation, 
 
 Use gradient-free samplers instead: Metropolis-Hastings (`MH()`), particle methods, or similar. The inference tutorial demonstrates this with `MH()`.
 
+#### Automatic right-censoring
+
+The simulation-based likelihood automatically handles right-censoring at the simulation stopping threshold. The censoring threshold X is set by `max_cases` in `SimOpts` (default 10,000 cases). When a simulated chain hits this cap before going extinct, it's flagged as censored. Any observed chain size or length ≥ X contributes `P(size ≥ X)` to the likelihood rather than `P(size = X)`. This ensures like-for-like comparison between simulated and observed data when chains may escape to infinite size (supercritical R ≥ 1). See `_empirical_ll` in `src/analytical/fitting.jl` for implementation details.
+
 ### Sim ↔ analytical consistency
 
 An extension with both an analytical chain size distribution and a simulation path should have a regression test confirming they agree. The test suite has a helper at `test/testutils/sim_analytical_consistency.jl`. A new type plugs in by defining two methods:
