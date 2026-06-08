@@ -244,3 +244,10 @@ The `loglikelihood` methods are the shared backend: `fit` minimises
 `-loglikelihood` over a bracket; Turing models call `loglikelihood`
 inside `@addlogprob!`. Switching between MLE, MAP, and posterior is a
 question of which Turing entry point you call, not which package.
+
+## Live diagnostics during long fits
+
+`sample(...)` accepts a `callback=` kwarg (from AbstractMCMC) that
+fires once per chain per step. Use it with
+[TensorBoardLogger.jl](https://github.com/JuliaLogging/TensorBoardLogger.jl)
+or any logger to stream per-iteration diagnostics while the fit runs.
