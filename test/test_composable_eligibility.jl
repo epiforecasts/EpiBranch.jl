@@ -1,7 +1,7 @@
 using Test
 using EpiBranch
-using EpiBranch: OnSymptomOnset, OnCaseDetection, NoTracing, Any, All, Unless,
-                 is_eligible, required_fields
+using EpiBranch: OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody,
+                 Any, All, Unless, is_eligible, required_fields
 
 # Mock individual and state for testing
 struct MockIndividual
@@ -36,17 +36,6 @@ is_isolated(ind) = get(ind.state, :isolated, false)
         @test is_eligible(policy, symptomatic_isolated, contact, state) == true
     end
 
-    @testset "OnCaseDetection" begin
-        policy = OnCaseDetection()
-        contact = MockIndividual(Dict())
-
-        # Any parent should be eligible
-        symptomatic = MockIndividual(Dict(:asymptomatic => false))
-        asymptomatic = MockIndividual(Dict(:asymptomatic => true))
-
-        @test is_eligible(policy, symptomatic, contact, state) == true
-        @test is_eligible(policy, asymptomatic, contact, state) == true
-    end
 
     @testset "NoTracing" begin
         policy = NoTracing()
@@ -133,17 +122,52 @@ end
     @test is_eligible(complex_policy, asymptomatic, contact, state) == true
 end
 
+@testset "Additional Eligibility Types" begin
+    state = MockState(nothing)
+    contact = MockIndividual(Dict())
+
+    @testset "OnLabConfirmation" begin
+        policy = OnLabConfirmation()
+
+        # Symptomatic and test positive
+        positive_parent = MockIndividual(Dict(:asymptomatic => false, :test_positive => true))
+        @test is_eligible(policy, positive_parent, contact, state) == true
+
+        # Symptomatic but test negative
+        negative_parent = MockIndividual(Dict(:asymptomatic => false, :test_positive => false))
+        @test is_eligible(policy, negative_parent, contact, state) == false
+
+        # Asymptomatic
+        asymptomatic_parent = MockIndividual(Dict(:asymptomatic => true, :test_positive => true))
+        @test is_eligible(policy, asymptomatic_parent, contact, state) == false
+    end
+
+    @testset "TraceEveryone" begin
+        policy = TraceEveryone()
+        any_parent = MockIndividual(Dict(:asymptomatic => true))
+        @test is_eligible(policy, any_parent, contact, state) == true
+    end
+
+    @testset "TraceNobody" begin
+        policy = TraceNobody()
+        any_parent = MockIndividual(Dict(:asymptomatic => false, :isolated => true))
+        @test is_eligible(policy, any_parent, contact, state) == false
+    end
+end
+
 @testset "Required Fields Validation" begin
     @test required_fields(OnSymptomOnset()) == [:asymptomatic]
-    @test required_fields(OnCaseDetection()) == Symbol[]
-    @test required_fields(NoTracing()) == Symbol[]
+    @test required_fields(OnLabConfirmation()) == [:asymptomatic, :test_positive]
+    @test required_fields(OnIsolation()) == [:asymptomatic, :isolated]
+    @test required_fields(TraceEveryone()) == Symbol[]
+    @test required_fields(TraceNobody()) == Symbol[]
 
     # Composition should union requirements
-    any_policy = Any(OnSymptomOnset(), SymptomaticParent())
-    expected = union([:asymptomatic], [:isolated, :asymptomatic])
+    any_policy = Any(OnSymptomOnset(), OnIsolation())
+    expected = union([:asymptomatic], [:asymptomatic, :isolated])
     @test Set(required_fields(any_policy)) == Set(expected)
 
-    all_policy = All(OnSymptomOnset(), OnCaseDetection())
+    all_policy = All(OnSymptomOnset(), TraceEveryone())
     @test required_fields(all_policy) == [:asymptomatic]
 end
 
@@ -175,4 +199,31 @@ end
         eligibility = OnSymptomOnset()
     )
     @test ct3.eligibility isa OnSymptomOnset
+end
+
+@testset "Custom Eligibility Example" begin
+    # Example of how users can extend the system
+    struct AgeBasedEligibility <: TraceEligibility
+        min_age::Int
+    end
+
+    function is_eligible(e::AgeBasedEligibility, parent, contact, state)
+        !is_asymptomatic(parent) && get(parent.state, :age, 0) >= e.min_age
+    end
+
+    state = MockState(nothing)
+    contact = MockIndividual(Dict())
+    policy = AgeBasedEligibility(65)
+
+    # Symptomatic elderly parent should be eligible
+    elderly_parent = MockIndividual(Dict(:asymptomatic => false, :age => 70))
+    @test is_eligible(policy, elderly_parent, contact, state) == true
+
+    # Symptomatic young parent should not be eligible
+    young_parent = MockIndividual(Dict(:asymptomatic => false, :age => 30))
+    @test is_eligible(policy, young_parent, contact, state) == false
+
+    # Asymptomatic elderly parent should not be eligible
+    asymptomatic_elderly = MockIndividual(Dict(:asymptomatic => true, :age => 70))
+    @test is_eligible(policy, asymptomatic_elderly, contact, state) == false
 end
