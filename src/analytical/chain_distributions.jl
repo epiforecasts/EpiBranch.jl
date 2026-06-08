@@ -250,4 +250,3 @@ chain_size_distribution(d::NegativeBinomial) = GammaBorel(d.r, mean(d))
 # `chain_size_distribution(model::TransmissionModel; ...)` lives in
 # `src/likelihood_dists.jl` so the kwargs-bearing wrapper path and the
 # analytical fallback share a single definition.
-
