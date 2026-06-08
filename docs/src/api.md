@@ -43,8 +43,16 @@ AllCases
 EpiBranch.is_eligible_for_isolation
 ContactTracing
 TraceEligibility
+OnSymptomOnset
+OnLabConfirmation
+OnIsolation
+TraceEveryone
+TraceNobody
 AlwaysEligible
 SymptomaticParent
+Any
+All
+Unless
 TraceRate
 ConstantRate
 TraceDelay
