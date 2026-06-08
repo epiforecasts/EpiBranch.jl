@@ -85,7 +85,7 @@
         obs = PerCaseObservation(detection_prob = Beta(2.0, 2.0))
         m = Observed(BranchingProcess(Poisson(2.0), Exponential(5.0)), obs)
         rng = StableRNG(31)
-        states = simulate_batch(m, 50; sim_opts = SimOpts(max_cases = 50),
+        states = simulate(m, 50; sim_opts = SimOpts(max_cases = 50),
             rng = rng)
         reported = [ind.state[:reported]
                     for s in states for ind in s.individuals]

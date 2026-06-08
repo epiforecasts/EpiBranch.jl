@@ -26,7 +26,6 @@ should_stop
 
 ```@docs
 simulate
-simulate_batch
 EpiBranch.step!
 make_contact!
 susceptible_fraction

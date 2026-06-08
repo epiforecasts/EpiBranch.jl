@@ -8,12 +8,12 @@
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
 
         rng1 = StableRNG(42)
-        results_no_iso = simulate_batch(model, 100;
+        results_no_iso = simulate(model, 100;
             attributes = clinical, sim_opts = SimOpts(max_cases = 200), rng = rng1)
 
         rng2 = StableRNG(42)
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
-        results_iso = simulate_batch(model, 100;
+        results_iso = simulate(model, 100;
             interventions = [iso], attributes = clinical,
             sim_opts = SimOpts(max_cases = 200), rng = rng2)
 
@@ -95,13 +95,13 @@
 
         rng1 = StableRNG(42)
         iso_fast = Isolation(onset_to_isolation_delay = Exponential(0.5))
-        results_fast = simulate_batch(model, 200;
+        results_fast = simulate(model, 200;
             interventions = [iso_fast], attributes = clinical,
             sim_opts = SimOpts(max_cases = 200), rng = rng1)
 
         rng2 = StableRNG(42)
         iso_slow = Isolation(onset_to_isolation_delay = Exponential(10.0))
-        results_slow = simulate_batch(model, 200;
+        results_slow = simulate(model, 200;
             interventions = [iso_slow], attributes = clinical,
             sim_opts = SimOpts(max_cases = 200), rng = rng2)
 
@@ -157,12 +157,12 @@
 
             rng1 = StableRNG(42)
             rv = RingVaccination(efficacy = 0.9, mode = LeakyMode())
-            results_vacc = simulate_batch(model, 100;
+            results_vacc = simulate(model, 100;
                 interventions = [iso, ct, rv], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng1)
 
             rng2 = StableRNG(42)
-            results_no_vacc = simulate_batch(model, 100;
+            results_no_vacc = simulate(model, 100;
                 interventions = [iso, ct], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng2)
 
@@ -196,13 +196,13 @@
 
             rng1 = StableRNG(42)
             rv_instant = RingVaccination(efficacy = 0.9, delay_to_immunity = 0.0)
-            results_instant = simulate_batch(model, 200;
+            results_instant = simulate(model, 200;
                 interventions = [iso, ct, rv_instant], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng1)
 
             rng2 = StableRNG(42)
             rv_delayed = RingVaccination(efficacy = 0.9, delay_to_immunity = 14.0)
-            results_delayed = simulate_batch(model, 200;
+            results_delayed = simulate(model, 200;
                 interventions = [iso, ct, rv_delayed], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng2)
 
@@ -238,12 +238,12 @@
             rv_partial = RingVaccination(efficacy = 0.9, coverage = 0.3)
             n_vacc_partial = sum(
                 count(is_vaccinated, s.individuals)
-            for s in simulate_batch(model, 30;
+            for s in simulate(model, 30;
                 interventions = [iso, ct, rv_partial], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 100), rng = StableRNG(7)))
             n_vacc_full_batch = sum(
                 count(is_vaccinated, s.individuals)
-            for s in simulate_batch(model, 30;
+            for s in simulate(model, 30;
                 interventions = [iso, ct, rv_full], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 100), rng = StableRNG(7)))
             @test n_vacc_partial < n_vacc_full_batch
@@ -277,12 +277,12 @@
             rv_inf = RingVaccination(efficacy = 0.9, eligibility_window = Inf)
             n_inf = sum(
                 count(is_vaccinated, s.individuals)
-            for s in simulate_batch(model, 50;
+            for s in simulate(model, 50;
                 interventions = [iso, ct, rv_inf], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 100), rng = StableRNG(3)))
 
             rv_narrow = RingVaccination(efficacy = 0.9, eligibility_window = 1.0)
-            states_narrow = simulate_batch(model, 50;
+            states_narrow = simulate(model, 50;
                 interventions = [iso, ct, rv_narrow], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 100), rng = StableRNG(3))
             n_narrow = sum(
@@ -344,7 +344,7 @@
             rv = RingVaccination(efficacy = 0.9)  # default onward_efficacy
 
             rng1 = StableRNG(42)
-            results_default = simulate_batch(model, 100;
+            results_default = simulate(model, 100;
                 interventions = [iso, ct, rv], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng1)
 
@@ -352,7 +352,7 @@
             # outcome with the same seed (no extra rng draws).
             rv_explicit = RingVaccination(efficacy = 0.9, onward_efficacy = 0.0)
             rng2 = StableRNG(42)
-            results_explicit = simulate_batch(model, 100;
+            results_explicit = simulate(model, 100;
                 interventions = [iso, ct, rv_explicit], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng2)
 
@@ -429,13 +429,13 @@
             # Compare scheduled (late start) vs always-on — scheduled should contain less
             rng1 = StableRNG(42)
             iso_late = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0)); start_time = 20.0)
-            results_late = simulate_batch(model, 100;
+            results_late = simulate(model, 100;
                 interventions = [iso_late], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng1)
 
             rng2 = StableRNG(42)
             iso_always = Isolation(onset_to_isolation_delay = Exponential(1.0))
-            results_always = simulate_batch(model, 100;
+            results_always = simulate(model, 100;
                 interventions = [iso_always], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng2)
 
@@ -456,14 +456,14 @@
             iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(0.5)); start_after_cases = 20)
 
             rng1 = StableRNG(42)
-            results_scheduled = simulate_batch(model, 100;
+            results_scheduled = simulate(model, 100;
                 interventions = [iso], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng1)
 
             # Compare with always-on isolation — scheduled should contain less
             rng2 = StableRNG(42)
             iso_always = Isolation(onset_to_isolation_delay = Exponential(0.5))
-            results_always = simulate_batch(model, 100;
+            results_always = simulate(model, 100;
                 interventions = [iso_always], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng2)
 

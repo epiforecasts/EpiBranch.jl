@@ -21,7 +21,7 @@ model = BranchingProcess(Poisson(3.0), Exponential(5.0))
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
 rng = StableRNG(42)
-results_baseline = simulate_batch(model, 200;
+results_baseline = simulate(model, 200;
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
@@ -43,7 +43,7 @@ is required, set by [`clinical_presentation`](@ref):
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -59,7 +59,7 @@ generation time. Faster isolation truncates more of the infectious period:
 for d in [0.5, 2.0, 10.0]
     let iso = Isolation(onset_to_isolation_delay = Exponential(d)),
         rng = StableRNG(42)
-        results = simulate_batch(model, 200;
+        results = simulate(model, 200;
             interventions = [iso],
             attributes = clinical,
             sim_opts = SimOpts(max_cases = 500),
@@ -79,7 +79,7 @@ a reduced rate (e.g. household contacts):
 iso_leaky = Isolation(onset_to_isolation_delay = Exponential(2.0), post_isolation_transmission = 0.3)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso_leaky],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -98,7 +98,7 @@ iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = true)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso, ct],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -122,7 +122,7 @@ disease_hard = clinical_presentation(
 iso_imperfect = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.8)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso_imperfect, ct],
     attributes = disease_hard,
     sim_opts = SimOpts(max_cases = 500),
@@ -146,7 +146,7 @@ ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.
 rv = RingVaccination(efficacy = 0.8)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso, ct, rv],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -162,7 +162,7 @@ If transmission occurs before immunity develops, there is no protection:
 rv_delayed = RingVaccination(efficacy = 0.9, delay_to_immunity = 7.0)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso, ct, rv_delayed],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -199,7 +199,7 @@ resolution handles this automatically:
 pep = RingVaccination(efficacy = 0.9)  # delay_to_immunity defaults to 0
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso, ct, pep],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -223,7 +223,7 @@ mv = MassVaccination(efficacy = 0.85, eligibility_time = 30.0,
     delay_to_immunity = 14.0)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [mv], attributes = clinical,
     sim_opts = SimOpts(max_cases = 500), rng = rng,
 )
@@ -255,7 +255,7 @@ the attributes:
 ```@example interventions
 attrs = compose(clinical, demographics(age_distribution = Uniform(0, 90)))
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [mv_age], attributes = attrs,
     sim_opts = SimOpts(max_cases = 500), rng = rng,
 )
@@ -296,7 +296,7 @@ boost = MassVaccination(efficacy = 0.9, eligibility_time = 60.0,
     delay_to_immunity = 14.0, dose_label = :boost)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [prime, boost], attributes = clinical,
     sim_opts = SimOpts(max_cases = 500), rng = rng,
 )
@@ -350,7 +350,7 @@ must be available at the time the individual would be tested.
 iso_delayed = Scheduled(Isolation(onset_to_isolation_delay = Exponential(2.0)); start_time = 10.0)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso_delayed],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -376,7 +376,7 @@ ct_triggered = Scheduled(
 )
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso, ct_triggered],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -461,7 +461,7 @@ end
 # Test it
 gl = GatheringLimit(5)
 rng = StableRNG(42)
-results_gl = simulate_batch(
+results_gl = simulate(
     BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)), 200;
     interventions = [gl],
     sim_opts = SimOpts(max_cases = 500),

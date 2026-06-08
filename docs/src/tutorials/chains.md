@@ -145,7 +145,7 @@ counts, use `Distributions.fit` (Poisson) directly, or pair the
 # From chain sizes (subcritical only)
 rng = StableRNG(42)
 model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-states = simulate_batch(model, 500; rng = rng)
+states = simulate(model, 500; rng = rng)
 sizes = Int[]
 for s in states
     cs = chain_statistics(s)

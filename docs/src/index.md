@@ -29,7 +29,7 @@ iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.5))
 
 rng = StableRNG(42)
-results = simulate_batch(model, 500;
+results = simulate(model, 500;
     interventions = [iso, ct],
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     sim_opts = SimOpts(max_cases = 5000),

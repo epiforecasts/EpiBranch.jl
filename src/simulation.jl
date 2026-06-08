@@ -74,15 +74,16 @@ function simulate(model::TransmissionModel;
 end
 
 """
-    simulate_batch(model, n; parallel=false, kwargs...)
+    simulate(model, n::Int; parallel=false, kwargs...)
 
-Run `n` independent outbreak simulations.
+Run `n` independent outbreak simulations. Returns a
+`Vector{SimulationState}`.
 
 When `parallel=true`, simulations are distributed across available threads
 using independent RNG streams derived from the provided `rng`. Use
 `julia --threads N` to enable multi-threading.
 """
-function simulate_batch(model::TransmissionModel, n::Int;
+function simulate(model::TransmissionModel, n::Int;
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
         transitions::Vector{<:AbstractClinicalTransition} = AbstractClinicalTransition[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
@@ -90,7 +91,6 @@ function simulate_batch(model::TransmissionModel, n::Int;
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false)
     if parallel && Threads.nthreads() > 1
-        # Derive independent RNG streams for each simulation
         seeds = [rand(rng, UInt64) for _ in 1:n]
         results = Vector{SimulationState}(undef, n)
         Threads.@threads for i in 1:n
@@ -599,8 +599,7 @@ attributes = compose(
 )
 ```
 
-Pass to [`simulate`](@ref) or [`simulate_batch`](@ref) via the
-`attributes` keyword.
+Pass to [`simulate`](@ref) via the `attributes` keyword.
 """
 compose(fs...) = (rng, ind) -> for f in fs
     ;

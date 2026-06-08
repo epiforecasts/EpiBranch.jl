@@ -106,7 +106,7 @@ export ThinnedChainSize
 export clinical_presentation, demographics, transmission_traits, compose
 
 # Exports — simulation
-export simulate, simulate_batch, make_contact!, susceptible_fraction
+export simulate, make_contact!, susceptible_fraction
 
 # Exports — output
 export linelist, contacts, chain_statistics

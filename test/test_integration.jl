@@ -4,17 +4,17 @@ using Dates
 @testset "Integration" begin
     clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
-    @testset "simulate_batch returns correct count" begin
+    @testset "simulate(model, n) returns correct count" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(0.8), Exponential(5.0))
-        results = simulate_batch(model, 50; rng = rng)
+        results = simulate(model, 50; rng = rng)
         @test length(results) == 50
     end
 
     @testset "containment_probability" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(0.8), Exponential(5.0))
-        results = simulate_batch(model, 200; rng = rng)
+        results = simulate(model, 200; rng = rng)
         cp = containment_probability(results)
         @test cp > 0.5
     end
@@ -48,7 +48,7 @@ using Dates
         iso = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5))
         ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(2.0))
 
-        results = simulate_batch(model, 500;
+        results = simulate(model, 500;
             interventions = [iso, ct], attributes = clinical,
             sim_opts = SimOpts(max_cases = 5000, max_generations = 50),
             rng = rng)
@@ -81,13 +81,13 @@ using Dates
 
         rng1 = StableRNG(42)
         iso_perfect = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.0)
-        results_perfect = simulate_batch(model, 200;
+        results_perfect = simulate(model, 200;
             interventions = [iso_perfect], attributes = clinical,
             sim_opts = SimOpts(max_cases = 200), rng = rng1)
 
         rng2 = StableRNG(42)
         iso_leaky = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.5)
-        results_leaky = simulate_batch(model, 200;
+        results_leaky = simulate(model, 200;
             interventions = [iso_leaky], attributes = clinical,
             sim_opts = SimOpts(max_cases = 200), rng = rng2)
 
@@ -121,7 +121,7 @@ using Dates
     @testset "containment_probability with max_cases" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        results = simulate_batch(model, 100;
+        results = simulate(model, 100;
             sim_opts = SimOpts(max_cases = 50), rng = rng)
 
         cp_naive = containment_probability(results)
@@ -148,7 +148,7 @@ using Dates
 
         rng = StableRNG(42)
         model = BranchingProcess(NegBin(R, k), Exponential(5.0))
-        results = simulate_batch(model, 500;
+        results = simulate(model, 500;
             sim_opts = SimOpts(max_cases = 5000, max_generations = 200), rng = rng)
         q_simulated = containment_probability(results)
 

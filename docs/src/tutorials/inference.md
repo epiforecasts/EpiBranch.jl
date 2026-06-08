@@ -68,7 +68,7 @@ When you observe final outbreak sizes but not who-infected-whom:
 rng = StableRNG(42)
 true_R = 0.7
 model = BranchingProcess(Poisson(true_R))
-states = simulate_batch(model, 200; rng=rng)
+states = simulate(model, 200; rng=rng)
 sizes = Int[]
 for s in states
     cs = chain_statistics(s)
@@ -115,7 +115,7 @@ offspring_data = rand(rng, Poisson(true_R), 100)
 
 # Chain size observations
 model = BranchingProcess(Poisson(true_R))
-states = simulate_batch(model, 200; rng=StableRNG(99))
+states = simulate(model, 200; rng=StableRNG(99))
 size_data = Int[]
 for s in states
     cs = chain_statistics(s)
@@ -144,7 +144,7 @@ true_model = BranchingProcess(Poisson(true_R), Exponential(5.0))
 iso = Isolation(onset_to_isolation_delay=Exponential(2.0))
 clinical = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
 
-observed_states = simulate_batch(true_model, 100;
+observed_states = simulate(true_model, 100;
     interventions=[iso], attributes=clinical,
     sim_opts=SimOpts(max_cases=500), rng=rng)
 observed_sizes = Int[]

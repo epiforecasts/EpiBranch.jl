@@ -82,7 +82,7 @@ Run many replicates to estimate containment probability:
 
 ```@example gettingstarted
 rng = StableRNG(42)
-results = simulate_batch(model, 500;
+results = simulate(model, 500;
     interventions = [iso, ct],
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     sim_opts = SimOpts(max_cases = 5000),

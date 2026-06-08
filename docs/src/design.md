@@ -269,7 +269,7 @@ Use gradient-free samplers instead: Metropolis-Hastings (`MH()`), particle metho
 
 An extension with both an analytical chain size distribution and a simulation path should have a regression test confirming they agree. The test suite has a helper at `test/testutils/sim_analytical_consistency.jl`. A new type plugs in by defining two methods:
 
-- `generative_model(m)` strips observation wrappers so `simulate_batch` can run
+- `generative_model(m)` strips observation wrappers so `simulate(model, n)` can run
 - `observe_chain_sizes(m, true_sizes, rng)` transforms simulated true chain sizes into observed ones (defaults to the identity; observation models override it)
 
 `sim_analytical_consistent(model; n_chains, sizes, rng)` then simulates, applies `observe_chain_sizes`, and compares the empirical PMF against `chain_size_distribution(model)`. The helper already covers bare offspring, `ClusterMixed`, and `Observed{<:Any, <:PerCaseObservation}`.

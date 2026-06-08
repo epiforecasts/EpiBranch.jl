@@ -129,7 +129,7 @@ with interventions.
 """
 function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
         interventions, attributes, sim_opts, n_sim, rng)
-    states = simulate_batch(model, n_sim; interventions, attributes, sim_opts, rng)
+    states = simulate(model, n_sim; interventions, attributes, sim_opts, rng)
     sim_values = Int[]
     # Track which simulations hit the case cap (right-censored)
     censored = Bool[]
@@ -169,7 +169,7 @@ function loglikelihood(data::ChainSizes,
         end
     end
     p = scalar_detection_prob(m.observation)
-    states = simulate_batch(m.process, n_sim;
+    states = simulate(m.process, n_sim;
         interventions, attributes, sim_opts, rng)
     sim_values = Int[]
     censored = Bool[]
