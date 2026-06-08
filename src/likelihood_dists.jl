@@ -46,7 +46,12 @@ end
 # `rand(::AbstractRNG, ::Sampleable{Multivariate}, ::Int64)`.
 function Base.rand(rng::AbstractRNG, d::_ChainSizeLaw, n::Int)
     states = simulate_batch(_underlying_model(d), n; d.kwargs..., rng)
-    return [chain_statistics(s).size[1] for s in states]
+    # Each simulation is one cluster of `sim_opts.n_initial` seeds; its
+    # observed size is the total infected across all seed chains, so a
+    # multi-seed cluster is summed rather than having every chain but the
+    # first silently dropped. `seeds`/`pi` describe the grouping of
+    # *observed* data and have no role in generating new draws.
+    return [sum(chain_statistics(s).size) for s in states]
 end
 
 _underlying_model(d::_ChainSizeLaw) = d.model
@@ -69,7 +74,10 @@ end
 
 function Base.rand(rng::AbstractRNG, d::_ChainLengthLaw, n::Int)
     states = simulate_batch(d.model, n; d.kwargs..., rng)
-    return [chain_statistics(s).length[1] for s in states]
+    # Cluster length is the deepest generation reached across the
+    # cluster's seed chains, so multi-seed clusters take the maximum
+    # rather than dropping all but the first chain.
+    return [maximum(chain_statistics(s).length) for s in states]
 end
 
 # ── Public constructors ─────────────────────────────────────────────

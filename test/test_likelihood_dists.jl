@@ -60,4 +60,21 @@
         @test length(samples) == 50
         @test all(s -> s >= 1, samples)
     end
+
+    @testset "rand sums multi-seed clusters rather than dropping chains" begin
+        bp = BranchingProcess(Poisson(0.5), Exponential(5.0))
+        # Three seeds per cluster: each draw is the total infected across
+        # all three seed chains, so every cluster size is at least 3.
+        d = chain_size_distribution(bp; sim_opts = SimOpts(n_initial = 3))
+        samples = rand(StableRNG(7), d, 50)
+        @test length(samples) == 50
+        @test all(s -> s >= 3, samples)
+
+        # Chain length aggregates with `maximum`, so deeper seed chains
+        # are not lost.
+        dl = chain_length_distribution(bp; sim_opts = SimOpts(n_initial = 3))
+        lengths = rand(StableRNG(7), dl, 50)
+        @test length(lengths) == 50
+        @test all(l -> l >= 0, lengths)
+    end
 end
