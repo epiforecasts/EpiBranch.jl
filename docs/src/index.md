@@ -25,11 +25,11 @@ using StableRNGs
 
 model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
 
-iso = Isolation(delay = Exponential(2.0))
-ct = ContactTracing(probability = 0.5, delay = Exponential(1.5))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+ct = ContactTracing(OnSymptomOnset(), 0.5, Exponential(1.5), Quarantine())
 
 rng = StableRNG(42)
-results = simulate_batch(model, 500;
+results = simulate(model, 500;
     interventions = [iso, ct],
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     sim_opts = SimOpts(max_cases = 5000),

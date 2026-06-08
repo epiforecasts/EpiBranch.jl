@@ -52,7 +52,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     is_isolated(individual) && return nothing
     is_test_positive(individual) || return nothing
 
-    iso_delay = rand(state.rng, iso.delay)
+    iso_delay = rand(state.rng, iso.onset_to_isolation_delay)
     iso_time = onset_time(individual) + iso_delay
 
     traced_time = get(individual.state, :traced_isolation_time, Inf)
@@ -71,7 +71,7 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
         parent = state.individuals[ind.parent_id]
         is_eligible(ct.eligibility, parent, ind, state) || continue
         traces(ct.trace_rate, parent, ind, state, rng) || continue
-        trace_delay = draw_trace_delay(ct.delay, parent, ind, state, rng)
+        trace_delay = draw_trace_delay(ct.isolation_to_trace_delay, parent, ind, state, rng)
         trace_time = isolation_time(parent) + trace_delay
         apply_trace!(ct.action, ind, state, trace_time, rng)
     end
@@ -177,11 +177,11 @@ clinical_with_region = compose(
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     (rng, ind) -> (ind.state[:region] = :only),
 )
-iso = Isolation(delay = Exponential(2.0))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 bc = BorderClosure(10.0, 0.05)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso, bc],
     attributes = clinical_with_region,
     sim_opts = SimOpts(max_cases = 500), rng = rng,
@@ -364,7 +364,7 @@ end
 model_risk = BranchingProcess(risk_offspring, Exponential(5.0); n_types = 1)
 
 rng = StableRNG(42)
-results = simulate_batch(model_risk, 200;
+results = simulate(model_risk, 200;
     attributes = risk_group,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
@@ -386,7 +386,7 @@ end
 model_waning = BranchingProcess(waning_offspring, Exponential(5.0); n_types = 1)
 
 rng = StableRNG(42)
-results = simulate_batch(model_waning, 200;
+results = simulate(model_waning, 200;
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
@@ -448,8 +448,8 @@ For **likelihoods** on data types that don't go through the offspring
 spec, define methods on `loglikelihood` directly.
 
 For optional **state accessors**, override `population_size`,
-`latent_period`, `n_types` if your model has values for them. The
-defaults (`NoPopulation()`, `0.0`, `1`) are fine if not.
+`n_types` if your model has values for them. The defaults
+(`NoPopulation()`, `1`) are fine if not.
 
 ### Minimal sketch
 
@@ -482,7 +482,6 @@ EpiBranch.single_type_offspring(m::MyModel) = m.offspring
 
 # Optional accessors, with defaults if unset.
 EpiBranch.population_size(m::MyModel) = NoPopulation()
-EpiBranch.latent_period(m::MyModel) = 0.0
 EpiBranch.n_types(m::MyModel) = 1
 ```
 

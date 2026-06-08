@@ -447,7 +447,7 @@
             # chain_id get independent θ draws (including the
             # n_initial > 1 case where multiple index cases exist).
             model = BranchingProcess(cm, Exponential(5.0))
-            states = simulate_batch(model, 500;
+            states = simulate(model, 500;
                 sim_opts = SimOpts(max_cases = 200), rng = StableRNG(3))
             all_consistent = true
             for s in states
@@ -469,7 +469,7 @@
             # and samples an independent θ. Collect θs across runs and
             # check they are not all identical (which would indicate
             # incorrect inheritance).
-            states_multi = simulate_batch(model, 200;
+            states_multi = simulate(model, 200;
                 sim_opts = SimOpts(max_cases = 50, n_initial = 3),
                 rng = StableRNG(5))
             thetas = Float64[]
@@ -545,7 +545,7 @@
 
         @testset "With interventions" begin
             model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(1.0))
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             ll = loglikelihood(ChainSizes([1, 1, 2, 1]), model;
                 interventions = [iso],
                 attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
@@ -560,7 +560,7 @@
             # wrapper does not have. The intervention path now simulates
             # the wrapped process, thins chain sizes per case, and compares.
             model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(1.0))
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             po = Observed(model, PerCaseObservation(0.7, Dirac(0.0)))
             ll = loglikelihood(ChainSizes([1, 1, 2, 1]), po;
                 interventions = [iso],
@@ -702,7 +702,7 @@
         @testset "Poisson from chain sizes" begin
             rng = StableRNG(42)
             model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-            states = simulate_batch(model, 500; rng = rng)
+            states = simulate(model, 500; rng = rng)
             sizes = Int[]
             for s in states
                 cs = chain_statistics(s)
@@ -717,7 +717,7 @@
             rng = StableRNG(42)
             true_R, true_k = 0.6, 0.5
             model = BranchingProcess(NegBin(true_R, true_k), Exponential(5.0))
-            states = simulate_batch(model, 500; rng = rng)
+            states = simulate(model, 500; rng = rng)
             sizes = Int[]
             for s in states
                 cs = chain_statistics(s)
@@ -732,7 +732,7 @@
             rng = StableRNG(42)
             true_R, true_k = 0.6, 0.5
             model = BranchingProcess(NegBin(true_R, true_k), Exponential(5.0))
-            states = simulate_batch(model, 500; rng = rng)
+            states = simulate(model, 500; rng = rng)
             lengths = Int[]
             for s in states
                 cs = chain_statistics(s)
@@ -746,7 +746,7 @@
         @testset "MLE maximises chain-size likelihood" begin
             rng = StableRNG(42)
             model = BranchingProcess(Poisson(0.4), Exponential(5.0))
-            states = simulate_batch(model, 300; rng = rng)
+            states = simulate(model, 300; rng = rng)
             sizes = Int[]
             for s in states
                 cs = chain_statistics(s)

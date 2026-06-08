@@ -45,7 +45,7 @@ end
 # `::Int` rather than `::Integer` to disambiguate against
 # `rand(::AbstractRNG, ::Sampleable{Multivariate}, ::Int64)`.
 function Base.rand(rng::AbstractRNG, d::_ChainSizeLaw, n::Int)
-    states = simulate_batch(_underlying_model(d), n; d.kwargs..., rng)
+    states = simulate(_underlying_model(d), n; d.kwargs..., rng)
     # Each simulation is one cluster of `sim_opts.n_initial` seeds; its
     # observed size is the total infected across all seed chains, so a
     # multi-seed cluster is summed rather than having every chain but the
@@ -73,7 +73,7 @@ function Distributions.loglikelihood(
 end
 
 function Base.rand(rng::AbstractRNG, d::_ChainLengthLaw, n::Int)
-    states = simulate_batch(d.model, n; d.kwargs..., rng)
+    states = simulate(d.model, n; d.kwargs..., rng)
     # Cluster length is the deepest generation reached across the
     # cluster's seed chains, so multi-seed clusters take the maximum
     # rather than dropping all but the first chain.

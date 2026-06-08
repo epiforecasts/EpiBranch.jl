@@ -36,7 +36,7 @@ using DataFrames
     @testset "Batch chain statistics" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(0.8), Exponential(5.0))
-        states = simulate_batch(model, 10; rng = rng)
+        states = simulate(model, 10; rng = rng)
 
         df = chain_statistics(states)
         @test "sim_id" in names(df)

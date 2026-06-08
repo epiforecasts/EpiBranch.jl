@@ -21,7 +21,7 @@ model = BranchingProcess(Poisson(3.0), Exponential(5.0))
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
 rng = StableRNG(42)
-results_baseline = simulate_batch(model, 200;
+results_baseline = simulate(model, 200;
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
@@ -40,10 +40,10 @@ symptom onset using [`Isolation`](@ref). Clinical state on individuals
 is required, set by [`clinical_presentation`](@ref):
 
 ```@example interventions
-iso = Isolation(delay = Exponential(2.0))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -57,9 +57,9 @@ generation time. Faster isolation truncates more of the infectious period:
 
 ```@example interventions
 for d in [0.5, 2.0, 10.0]
-    let iso = Isolation(delay = Exponential(d)),
+    let iso = Isolation(onset_to_isolation_delay = Exponential(d)),
         rng = StableRNG(42)
-        results = simulate_batch(model, 200;
+        results = simulate(model, 200;
             interventions = [iso],
             attributes = clinical,
             sim_opts = SimOpts(max_cases = 500),
@@ -76,10 +76,10 @@ With `post_isolation_transmission > 0`, isolated individuals still transmit at
 a reduced rate (e.g. household contacts):
 
 ```@example interventions
-iso_leaky = Isolation(delay = Exponential(2.0), post_isolation_transmission = 0.3)
+iso_leaky = Isolation(onset_to_isolation_delay = Exponential(2.0), post_isolation_transmission = 0.3)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso_leaky],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -94,17 +94,69 @@ Contacts of isolated cases are identified using [`ContactTracing`](@ref).
 With quarantine, traced contacts are isolated before symptom onset:
 
 ```@example interventions
-iso = Isolation(delay = Exponential(2.0))
-ct = ContactTracing(probability = 0.7, delay = Exponential(1.0), quarantine_on_trace = true)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = true)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso, ct],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
 println("Isolation + tracing: $(round(containment_probability(results), digits=3))")
+```
+
+#### Who gets traced: eligibility policies
+
+The keyword form above uses the default policy: a contact is traced
+once its infector is both symptomatic and isolated. Real programmes start
+tracing on different events, so the infector's eligibility is set
+separately. Each built-in policy tests one thing about the infector:
+
+| Policy | Traces when the infector… |
+|---|---|
+| [`OnSymptomOnset`](@ref) | is symptomatic |
+| [`OnLabConfirmation`](@ref) | has tested positive |
+| [`OnIsolation`](@ref) | has been isolated |
+| [`TraceEveryone`](@ref) / [`TraceNobody`](@ref) | always / never |
+
+Pass a policy with the positional constructor (an eligibility policy, a
+trace probability, and a delay distribution):
+
+```@example interventions
+# Begin tracing as soon as the infector shows symptoms, without waiting
+# for a positive test.
+ct_fast = ContactTracing(OnSymptomOnset(), 0.7, Exponential(1.0))
+nothing # hide
+```
+
+Combine policies with the ordinary boolean operators `&`, `|`, `!`:
+
+```@example interventions
+# Trace suspected OR lab-confirmed cases.
+elig = OnSymptomOnset() | OnLabConfirmation()
+
+# Trace symptomatic infectors who have not yet been isolated.
+elig_gap = OnSymptomOnset() & !OnIsolation()
+
+ct_combined = ContactTracing(elig, 0.7, Exponential(1.0))
+nothing # hide
+```
+
+For logic beyond the built-ins, define a policy type and one
+`is_eligible` method. It then composes with the operators like any
+built-in. Per-individual attributes live in `infector.state`:
+
+```@example interventions
+struct SymptomaticOver65 <: EpiBranch.TraceEligibility end
+
+function EpiBranch.is_eligible(::SymptomaticOver65, infector, contact, state)
+    !EpiBranch.is_asymptomatic(infector) && get(infector.state, :age, 0) >= 65
+end
+
+elig_age = SymptomaticOver65() | OnLabConfirmation()
+nothing # hide
 ```
 
 ## Asymptomatic cases and test sensitivity
@@ -119,10 +171,10 @@ disease_hard = clinical_presentation(
     incubation_period = LogNormal(1.5, 0.5),
     prob_asymptomatic = 0.3,
 )
-iso_imperfect = Isolation(delay = Exponential(2.0), test_sensitivity = 0.8)
+iso_imperfect = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.8)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso_imperfect, ct],
     attributes = disease_hard,
     sim_opts = SimOpts(max_cases = 500),
@@ -141,12 +193,12 @@ Requires [`ContactTracing`](@ref) in the intervention stack so contacts
 are identified.
 
 ```@example interventions
-iso = Isolation(delay = Exponential(2.0))
-ct = ContactTracing(probability = 0.7, delay = Exponential(1.0))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0))
 rv = RingVaccination(efficacy = 0.8)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso, ct, rv],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -162,7 +214,7 @@ If transmission occurs before immunity develops, there is no protection:
 rv_delayed = RingVaccination(efficacy = 0.9, delay_to_immunity = 7.0)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso, ct, rv_delayed],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -199,7 +251,7 @@ resolution handles this automatically:
 pep = RingVaccination(efficacy = 0.9)  # delay_to_immunity defaults to 0
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso, ct, pep],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -223,7 +275,7 @@ mv = MassVaccination(efficacy = 0.85, eligibility_time = 30.0,
     delay_to_immunity = 14.0)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [mv], attributes = clinical,
     sim_opts = SimOpts(max_cases = 500), rng = rng,
 )
@@ -255,7 +307,7 @@ the attributes:
 ```@example interventions
 attrs = compose(clinical, demographics(age_distribution = Uniform(0, 90)))
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [mv_age], attributes = attrs,
     sim_opts = SimOpts(max_cases = 500), rng = rng,
 )
@@ -296,7 +348,7 @@ boost = MassVaccination(efficacy = 0.9, eligibility_time = 60.0,
     delay_to_immunity = 14.0, dose_label = :boost)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [prime, boost], attributes = clinical,
     sim_opts = SimOpts(max_cases = 500), rng = rng,
 )
@@ -347,10 +399,10 @@ must be available at the time the individual would be tested.
 
 ```@example interventions
 # Testing starts on day 10
-iso_delayed = Scheduled(Isolation(delay = Exponential(2.0)); start_time = 10.0)
+iso_delayed = Scheduled(Isolation(onset_to_isolation_delay = Exponential(2.0)); start_time = 10.0)
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso_delayed],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -369,14 +421,14 @@ fixed time, such as case-count triggers:
 
 ```@example interventions
 # Start contact tracing after 20 cumulative cases
-iso = Isolation(delay = Exponential(2.0))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 ct_triggered = Scheduled(
-    ContactTracing(probability = 0.7, delay = Exponential(1.0));
+    ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0));
     start_after_cases = 20,
 )
 
 rng = StableRNG(42)
-results = simulate_batch(model, 200;
+results = simulate(model, 200;
     interventions = [iso, ct_triggered],
     attributes = clinical,
     sim_opts = SimOpts(max_cases = 500),
@@ -389,7 +441,7 @@ Conditions can be combined:
 
 ```@example interventions
 # Active only between day 5 and day 30
-iso_window = Scheduled(Isolation(delay = Exponential(1.0));
+iso_window = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0));
     start_time = 5.0, end_time = 30.0)
 ```
 
@@ -398,7 +450,7 @@ For full flexibility, pass a predicate on [`SimulationState`](@ref):
 ```@example interventions
 # Start isolation from generation 3 onwards
 iso_gen3 = Scheduled(
-    Isolation(delay = Exponential(2.0)),
+    Isolation(onset_to_isolation_delay = Exponential(2.0)),
     state -> state.current_generation >= 3,
 )
 ```
@@ -461,7 +513,7 @@ end
 # Test it
 gl = GatheringLimit(5)
 rng = StableRNG(42)
-results_gl = simulate_batch(
+results_gl = simulate(
     BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)), 200;
     interventions = [gl],
     sim_opts = SimOpts(max_cases = 500),

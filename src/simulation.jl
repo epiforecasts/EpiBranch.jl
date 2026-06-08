@@ -74,15 +74,16 @@ function simulate(model::TransmissionModel;
 end
 
 """
-    simulate_batch(model, n; parallel=false, kwargs...)
+    simulate(model, n::Int; parallel=false, kwargs...)
 
-Run `n` independent outbreak simulations.
+Run `n` independent outbreak simulations. Returns a
+`Vector{SimulationState}`.
 
 When `parallel=true`, simulations are distributed across available threads
 using independent RNG streams derived from the provided `rng`. Use
 `julia --threads N` to enable multi-threading.
 """
-function simulate_batch(model::TransmissionModel, n::Int;
+function simulate(model::TransmissionModel, n::Int;
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
         transitions::Vector{<:AbstractClinicalTransition} = AbstractClinicalTransition[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
@@ -90,7 +91,6 @@ function simulate_batch(model::TransmissionModel, n::Int;
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false)
     if parallel && Threads.nthreads() > 1
-        # Derive independent RNG streams for each simulation
         seeds = [rand(rng, UInt64) for _ in 1:n]
         results = Vector{SimulationState}(undef, n)
         Threads.@threads for i in 1:n
@@ -119,7 +119,6 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         0,
         false,
         population_size(model),
-        latent_period(model),
         0.0,
         attributes,
         convert(Vector{AbstractClinicalTransition}, transitions)
@@ -164,15 +163,30 @@ function should_terminate(state::SimulationState, sim_opts::SimOpts)
     return false
 end
 
-"""Fraction of the population still susceptible (1.0 for infinite
-population). The optional `extra_infected` accounts for contacts
-already infected within the current step but not yet registered."""
-function _susceptible_fraction(state::SimulationState{<:Any, NoPopulation},
+"""
+    susceptible_fraction(state::SimulationState, extra_infected::Int = 0) -> Float64
+
+Fraction of the population still susceptible at this point in the
+simulation. Dispatched on the `population_size` type carried by
+`SimulationState{<:Any, P}`, so downstream packages can introduce
+structured populations (households, contact networks, age-stratified
+pools) by defining a new population-size type and adding a method
+here.
+
+`extra_infected` accounts for contacts already infected within the
+current step but not yet registered in `state.cumulative_cases`.
+
+Built-in methods:
+
+- `NoPopulation` — unbounded, always `1.0`.
+- `Int` — single global pool of that size; depletion is global.
+"""
+function susceptible_fraction(state::SimulationState{<:Any, NoPopulation},
         extra_infected::Int = 0)
     1.0
 end
 
-function _susceptible_fraction(state::SimulationState{<:Any, Int},
+function susceptible_fraction(state::SimulationState{<:Any, Int},
         extra_infected::Int = 0)
     n_susceptible = state.population_size - state.cumulative_cases - extra_infected
     n_susceptible <= 0 && return 0.0
@@ -302,7 +316,7 @@ function _decide_infected(state::SimulationState, contact::Individual,
 
     # Built-in risks (time-agnostic Bernoulli draws). Population
     # susceptibility reflects infections accumulated this step.
-    pop_suscept = _susceptible_fraction(state, infected_so_far)
+    pop_suscept = susceptible_fraction(state, infected_so_far)
     pop_suscept <= 0.0 && return false
     pop_suscept < 1.0 && rand(rng) > pop_suscept && return false
     contact.susceptibility < 1.0 && rand(rng) > contact.susceptibility && return false
@@ -585,8 +599,7 @@ attributes = compose(
 )
 ```
 
-Pass to [`simulate`](@ref) or [`simulate_batch`](@ref) via the
-`attributes` keyword.
+Pass to [`simulate`](@ref) via the `attributes` keyword.
 """
 compose(fs...) = (rng, ind) -> for f in fs
     ;

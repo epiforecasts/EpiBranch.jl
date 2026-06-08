@@ -174,6 +174,10 @@ The vaccination keys are namespaced by `dose_label` — the default label writes
 
 `:reported` is shared between the `Reporting` clinical transition (which sets it from a probability gate) and `PerCaseObservation` (which sets it post-simulation from a detection-probability draw). Composing both in the same simulation is not supported — they will overwrite each other.
 
+### Naming convention for downstream packages
+
+Built-in keys use short bare names like `:isolated`, `:traced`, `:age`. Those names are reserved. If you're adding keys from another package, prefix them with a short tag for your package so they don't collide with built-ins or with keys other packages might add.
+
 ## Intervention interface
 
 Four hooks, all optional. See the [Extending guide](@ref "Extending EpiBranch") for the full input/output contract, ordering guarantees, and a `BorderClosure` worked example.
@@ -265,7 +269,7 @@ Use gradient-free samplers instead: Metropolis-Hastings (`MH()`), particle metho
 
 An extension with both an analytical chain size distribution and a simulation path should have a regression test confirming they agree. The test suite has a helper at `test/testutils/sim_analytical_consistency.jl`. A new type plugs in by defining two methods:
 
-- `generative_model(m)` strips observation wrappers so `simulate_batch` can run
+- `generative_model(m)` strips observation wrappers so `simulate(model, n)` can run
 - `observe_chain_sizes(m, true_sizes, rng)` transforms simulated true chain sizes into observed ones (defaults to the identity; observation models override it)
 
 `sim_analytical_consistent(model; n_chains, sizes, rng)` then simulates, applies `observe_chain_sizes`, and compares the empirical PMF against `chain_size_distribution(model)`. The helper already covers bare offspring, `ClusterMixed`, and `Observed{<:Any, <:PerCaseObservation}`.

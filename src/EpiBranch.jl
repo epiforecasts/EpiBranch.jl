@@ -77,6 +77,8 @@ export AbstractIntervention, Isolation, ContactTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
 export is_eligible_for_isolation
 export TraceEligibility, AlwaysEligible, SymptomaticParent
+export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody, NoTracing
+export AnyOf, AllOf, NoneOf
 export TraceRate, ConstantRate
 export TraceDelay, ConstantDelay
 export TraceAction, Quarantine, FlagOnly
@@ -109,7 +111,7 @@ export ThinnedChainSize
 export clinical_presentation, demographics, transmission_traits, compose
 
 # Exports — simulation
-export simulate, simulate_batch, make_contact!
+export simulate, make_contact!, susceptible_fraction
 
 # Exports — output
 export linelist, contacts, chain_statistics

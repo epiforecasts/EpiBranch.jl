@@ -68,7 +68,6 @@ function single_type_offspring(model::TransmissionModel)
         "This function only works with single-type models (not multi-type function offspring)"))
     return off
 end
-latent_period(::TransmissionModel) = 0.0
 n_types(::TransmissionModel) = 1
 
 # ── Individual state ────────────────────────────────────────────────
@@ -156,7 +155,6 @@ mutable struct SimulationState{R <: AbstractRNG, P, A}
     cumulative_cases::Int
     extinct::Bool
     population_size::P
-    latent_period::Float64
     max_infection_time::Float64
     attributes::A
     transitions::Vector{AbstractClinicalTransition}

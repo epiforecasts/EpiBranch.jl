@@ -26,9 +26,9 @@ should_stop
 
 ```@docs
 simulate
-simulate_batch
 EpiBranch.step!
 make_contact!
+susceptible_fraction
 ```
 
 ## Interventions
@@ -42,8 +42,17 @@ AllCases
 EpiBranch.is_eligible_for_isolation
 ContactTracing
 TraceEligibility
+OnSymptomOnset
+OnLabConfirmation
+OnIsolation
+TraceEveryone
+TraceNobody
 AlwaysEligible
 SymptomaticParent
+NoTracing
+AnyOf
+AllOf
+NoneOf
 TraceRate
 ConstantRate
 TraceDelay
@@ -233,7 +242,6 @@ developers extending the package.
 EpiBranch.get_generation_time
 EpiBranch._create_contacts!
 EpiBranch._resolve_competing_risks!
-EpiBranch._susceptible_fraction
 EpiBranch._register_step!
 EpiBranch.population_size
 EpiBranch._create_individual

@@ -7,7 +7,7 @@
 # Protocol a new model type must define to participate:
 #
 #   generative_model(m)  — strip any observation wrappers; returns
-#                          a model that `simulate_batch` can run.
+#                          a model that `simulate(model, n)` can run.
 #   observe_chain_sizes(m, true_sizes, rng) — transform simulated
 #                          chain sizes into the observed form the
 #                          likelihood expects. Default: identity.
@@ -51,7 +51,7 @@ function sim_analytical_consistent(model::TransmissionModel;
         rng::AbstractRNG = Random.default_rng(),
         max_cases::Int = 500)
     gen = generative_model(model)
-    states = simulate_batch(gen, n_chains;
+    states = simulate(gen, n_chains;
         sim_opts = SimOpts(max_cases = max_cases), rng = rng)
     true_sizes = Int[]
     for s in states
