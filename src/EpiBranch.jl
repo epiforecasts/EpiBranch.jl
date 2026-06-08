@@ -58,6 +58,7 @@ include("models/network_simulate.jl")
 # Output
 include("output/linelist.jl")
 include("output/chains.jl")
+include("output/generation_intervals.jl")
 include("output/summary.jl")
 
 # Analytical
@@ -117,6 +118,7 @@ export simulate, make_contact!, susceptible_fraction
 
 # Exports — output
 export linelist, contacts, chain_statistics
+export generation_interval, realised_generation_intervals
 export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
 
 # Exports — analytical
