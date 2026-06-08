@@ -1,7 +1,7 @@
 # Custom TraceEligibility used by the user-extension test below.
 struct WithinChain <: EpiBranch.TraceEligibility end
-function EpiBranch.is_eligible(::WithinChain, parent, contact, state)
-    parent.chain_id == contact.chain_id
+function EpiBranch.is_eligible(::WithinChain, infector, contact, state)
+    infector.chain_id == contact.chain_id
 end
 
 @testset "ContactTracing trait seams" begin
