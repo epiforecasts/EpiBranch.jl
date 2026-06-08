@@ -20,6 +20,7 @@ makedocs(;
             "Interventions" => "tutorials/interventions.md",
             "Clinical transitions" => "tutorials/transitions.md",
             "Multi-type models" => "tutorials/multi-type.md",
+            "Network models" => "tutorials/networks.md",
             "Line lists and contacts" => "tutorials/linelist.md",
             "Chain statistics, likelihood, and fitting" => "tutorials/chains.md",
             "Inference" => "tutorials/inference.md",

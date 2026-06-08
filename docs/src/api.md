@@ -4,6 +4,7 @@
 
 ```@docs
 BranchingProcess
+NetworkProcess
 single_type_offspring
 EpiBranch.draw_offspring
 ```
