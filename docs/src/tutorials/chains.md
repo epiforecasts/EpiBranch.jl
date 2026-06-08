@@ -171,7 +171,7 @@ using Turing
 end
 ```
 
-With no extra arguments these return the analytical distribution
+With no extra arguments, these return the analytical distribution
 (`Borel`, `GammaBorel`, …) where one exists; with `seeds`, `pi`,
 interventions, or other kwargs they return a wrapper that routes
 through `loglikelihood` the same way as the MLE path.
