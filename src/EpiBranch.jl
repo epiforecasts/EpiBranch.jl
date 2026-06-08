@@ -40,6 +40,7 @@ end
 
 # Transmission models
 include("models/branching_process.jl")
+include("models/network_process.jl")
 
 # Observation models (state-space slot)
 include("observation_models.jl")
@@ -49,6 +50,10 @@ include("observation.jl")
 
 # Simulation engine
 include("simulation.jl")
+
+# Network process needs the engine helpers (_decide_infected,
+# _resolve_transitions!, …), so its simulate loop is included after.
+include("models/network_simulate.jl")
 
 # Output
 include("output/linelist.jl")
@@ -66,7 +71,7 @@ include("analytical/cluster_mixed.jl")
 include("analytical/end_of_outbreak_probability.jl")
 
 # Exports — types
-export TransmissionModel, BranchingProcess
+export TransmissionModel, BranchingProcess, NetworkProcess
 export Individual, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop

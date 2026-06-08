@@ -125,7 +125,7 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
     )
 
     nt = n_types(model)
-    for i in 1:sim_opts.n_initial
+    for i in 1:(sim_opts.n_initial)
         ind = _create_individual(temp_state, 0, i, i, 0.0)
         # Match the new-contact path's ordering (`make_contact!` sets
         # `:type` before the engine calls `initialise_individual!`) so an
@@ -151,7 +151,7 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
     end
 
     temp_state.cumulative_cases = sim_opts.n_initial
-    temp_state.active_ids = collect(1:sim_opts.n_initial)
+    temp_state.active_ids = collect(1:(sim_opts.n_initial))
 
     return temp_state
 end
@@ -452,12 +452,26 @@ function clinical_presentation(; incubation_period::Distribution,
         pa = _sample_value(prob_asymptomatic, rng, ind)
         is_asymp = rand(rng) < pa
         ind.state[:asymptomatic] = is_asymp
-        ind.state[:onset_time] = if !is_asymp
-            ind.infection_time + rand(rng, incubation_period)
-        else
-            NaN
-        end
+        # Incubation period is a host property; :onset_time follows from
+        # it and the infection time via `_set_onset_from_incubation!`.
+        ind.state[:incubation_period] = is_asymp ? NaN : rand(rng, incubation_period)
+        _set_onset_from_incubation!(ind)
     end
+end
+
+"""
+    _set_onset_from_incubation!(ind)
+
+Set `:onset_time` to `infection_time + :incubation_period` from the
+stored host incubation period. Asymptomatic individuals (`NaN`
+incubation) get a `NaN` onset. Applies when `:incubation_period` is
+present on the individual.
+"""
+function _set_onset_from_incubation!(ind::Individual)
+    haskey(ind.state, :incubation_period) || return nothing
+    inc = ind.state[:incubation_period]::Float64
+    ind.state[:onset_time] = isnan(inc) ? NaN : ind.infection_time + inc
+    return nothing
 end
 
 """
@@ -602,8 +616,7 @@ attributes = compose(
 Pass to [`simulate`](@ref) via the `attributes` keyword.
 """
 compose(fs...) = (rng, ind) -> for f in fs
-    ;
-    f(rng, ind);
+    f(rng, ind)
 end
 
 # ── Intervention field validation ────────────────────────────────────
