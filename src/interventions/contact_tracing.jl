@@ -19,92 +19,108 @@ abstract type TraceEligibility end
 """
 is_eligible(::TraceEligibility, parent, contact, state) = true
 
-"""Every contact is eligible."""
-struct AlwaysEligible <: TraceEligibility end
-is_eligible(::AlwaysEligible, parent, contact, state) = true
+# ── Built-in eligibility policies ─────────────────────────────────
+#
+# Each built-in is an *atomic* predicate — it tests one thing about the
+# parent. Compose them with the boolean operators `&`, `|`, `!` (see
+# below): e.g. `OnSymptomOnset() & !OnIsolation()` for "symptomatic but
+# not yet isolated". Keeping predicates atomic is what makes that
+# composition read correctly.
 
-"""Eligible only when the parent is symptomatic and has been isolated.
-Reproduces the original `ContactTracing` gate."""
+"""Trace when the parent is symptomatic (clinical suspicion)."""
+struct OnSymptomOnset <: TraceEligibility end
+is_eligible(::OnSymptomOnset, parent, contact, state) = !is_asymptomatic(parent)
+
+"""Trace when the parent has tested positive (lab confirmation)."""
+struct OnLabConfirmation <: TraceEligibility end
+function is_eligible(::OnLabConfirmation, parent, contact, state)
+    get(parent.state, :test_positive, false)
+end
+
+"""Trace when the parent has been isolated."""
+struct OnIsolation <: TraceEligibility end
+is_eligible(::OnIsolation, parent, contact, state) = is_isolated(parent)
+
+"""Trace every contact, regardless of parent status."""
+struct TraceEveryone <: TraceEligibility end
+is_eligible(::TraceEveryone, parent, contact, state) = true
+
+"""Never trace any contacts."""
+struct TraceNobody <: TraceEligibility end
+is_eligible(::TraceNobody, parent, contact, state) = false
+
+"""Original default gate: parent symptomatic *and* isolated. Equivalent
+to `OnSymptomOnset() & OnIsolation()`; kept as a named type for
+backwards compatibility (it is the default `eligibility`)."""
 struct SymptomaticParent <: TraceEligibility end
 function is_eligible(::SymptomaticParent, parent, contact, state)
     !is_asymptomatic(parent) && is_isolated(parent)
 end
 
-# ── Built-in eligibility policies ─────────────────────────────────
-
-"""Trace when parent develops symptoms (clinical suspicion)."""
-struct OnSymptomOnset <: TraceEligibility end
-function is_eligible(::OnSymptomOnset, parent, contact, state)
-    !is_asymptomatic(parent)
-end
-
-"""Trace when parent tests positive (lab confirmation)."""
-struct OnLabConfirmation <: TraceEligibility end
-function is_eligible(::OnLabConfirmation, parent, contact, state)
-    !is_asymptomatic(parent) && get(parent.state, :test_positive, false)
-end
-
-"""Trace when parent is isolated."""
-struct OnIsolation <: TraceEligibility end
-function is_eligible(::OnIsolation, parent, contact, state)
-    !is_asymptomatic(parent) && is_isolated(parent)
-end
-
-"""Trace all contacts regardless of parent status."""
-struct TraceEveryone <: TraceEligibility end
-function is_eligible(::TraceEveryone, parent, contact, state)
-    true
-end
-
-"""Never trace any contacts."""
-struct TraceNobody <: TraceEligibility end
-function is_eligible(::TraceNobody, parent, contact, state)
-    false
-end
-
-# Backwards compatibility aliases
-const SymptomaticParent = OnIsolation  # Original behavior
+# `AlwaysEligible` and `NoTracing` were the previous names for tracing
+# everyone / no-one; their semantics are identical to the new policies,
+# so they are aliases.
+"""Alias for [`TraceEveryone`](@ref): every contact is eligible."""
 const AlwaysEligible = TraceEveryone
+
+"""Alias for [`TraceNobody`](@ref): no contact is eligible."""
 const NoTracing = TraceNobody
 
-# ── Composition operators ──────────────────────────────────────────
+# ── Composition ────────────────────────────────────────────────────
+#
+# Policies form a boolean algebra over the parent predicate. The
+# wrapper types below are normally built through the operators `&`, `|`,
+# `!` rather than by name, so user code reads as ordinary boolean logic:
+#
+#     OnSymptomOnset() | OnLabConfirmation()    # suspected or confirmed
+#     OnSymptomOnset() & !OnIsolation()         # symptomatic, not isolated
 
-"""Trace if ANY of the eligibility conditions are met (logical OR)."""
-struct Any{T <: Tuple} <: TraceEligibility
+"""Eligible if **any** wrapped policy is. Build with `|`."""
+struct AnyOf{T <: Tuple} <: TraceEligibility
     conditions::T
-    Any(conditions...) = new{typeof(conditions)}(conditions)
+    AnyOf(conditions...) = new{typeof(conditions)}(conditions)
 end
 
-function is_eligible(eligibility::Any, parent, contact, state)
-    for condition in eligibility.conditions
+function is_eligible(e::AnyOf, parent, contact, state)
+    for condition in e.conditions
         is_eligible(condition, parent, contact, state) && return true
     end
     return false
 end
 
-"""Trace only if ALL eligibility conditions are met (logical AND)."""
-struct All{T <: Tuple} <: TraceEligibility
+"""Eligible only if **all** wrapped policies are. Build with `&`."""
+struct AllOf{T <: Tuple} <: TraceEligibility
     conditions::T
-    All(conditions...) = new{typeof(conditions)}(conditions)
+    AllOf(conditions...) = new{typeof(conditions)}(conditions)
 end
 
-function is_eligible(eligibility::All, parent, contact, state)
-    for condition in eligibility.conditions
+function is_eligible(e::AllOf, parent, contact, state)
+    for condition in e.conditions
         is_eligible(condition, parent, contact, state) || return false
     end
     return true
 end
 
-"""Trace if primary condition is met, unless exclusion condition is also met."""
-struct Unless{P <: TraceEligibility, E <: TraceEligibility} <: TraceEligibility
-    primary::P
-    exclusion::E
+"""Eligible only if **none** of the wrapped policies are. `!policy` is
+the single-policy shorthand. (Named `NoneOf` to parallel `AnyOf`/`AllOf`
+and to avoid colliding with `DataFrames.Not`.)"""
+struct NoneOf{T <: Tuple} <: TraceEligibility
+    conditions::T
+    NoneOf(conditions...) = new{typeof(conditions)}(conditions)
 end
 
-function is_eligible(eligibility::Unless, parent, contact, state)
-    is_eligible(eligibility.primary, parent, contact, state) &&
-    !is_eligible(eligibility.exclusion, parent, contact, state)
+function is_eligible(e::NoneOf, parent, contact, state)
+    for condition in e.conditions
+        is_eligible(condition, parent, contact, state) && return false
+    end
+    return true
 end
+
+# Boolean operators on policies. These only *construct* the wrappers
+# above; evaluation happens later in `is_eligible`.
+Base.:|(a::TraceEligibility, b::TraceEligibility) = AnyOf(a, b)
+Base.:&(a::TraceEligibility, b::TraceEligibility) = AllOf(a, b)
+Base.:!(a::TraceEligibility) = NoneOf(a)
 
 """
     TraceRate
@@ -198,42 +214,55 @@ Trace contacts based on when the parent becomes eligible for tracing.
 
 ## Eligibility policies
 
-- `OnSymptomOnset()` - trace when parent develops symptoms
-- `OnLabConfirmation()` - trace when parent tests positive
-- `OnIsolation()` - trace when parent is isolated (default behavior)
-- `TraceEveryone()` - trace all contacts regardless of parent status
-- `TraceNobody()` - never trace any contacts
+Atomic predicates on the parent:
 
-## Composition operators
+- `OnSymptomOnset()` — parent is symptomatic
+- `OnLabConfirmation()` — parent has tested positive
+- `OnIsolation()` — parent has been isolated
+- `TraceEveryone()` / `TraceNobody()` — trace all / none
 
-- `Any(...)` - trace if any condition is met (logical OR)
-- `All(...)` - trace only if all conditions are met (logical AND)
-- `Unless(primary, exclusion)` - trace if primary is met unless exclusion is also met
+Combine them with the boolean operators `&`, `|`, `!`:
+
+```julia
+OnSymptomOnset() | OnLabConfirmation()    # suspected or confirmed
+OnSymptomOnset() & !OnIsolation()         # symptomatic, not yet isolated
+```
 
 ## Examples
 
+The terse positional form takes an eligibility policy, a trace
+probability, a delay distribution, and (optionally) an action:
+
 ```julia
-# Trace on symptoms (Guinea trial expansion)
-ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine())
+# Trace on symptoms (no wait for confirmation)
+ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0))
 
 # Standard protocol (wait for lab confirmation)
-ContactTracing(OnLabConfirmation(), 0.6, Exponential(2.0), Quarantine())
+ContactTracing(OnLabConfirmation(), 0.6, Exponential(2.0))
 
 # Belt and braces (trace suspected OR confirmed)
-ContactTracing(Any(OnSymptomOnset(), OnLabConfirmation()), 0.7, Exponential(1.5), Quarantine())
+ContactTracing(OnSymptomOnset() | OnLabConfirmation(), 0.7, Exponential(1.5))
+```
+
+The keyword form keeps the original default (`SymptomaticParent`,
+i.e. symptomatic and isolated) and is convenient when only the
+probability and delay vary:
+
+```julia
+ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0))
 ```
 
 ## Custom eligibility
 
-Users can define custom eligibility types:
+Users can define custom eligibility types. Per-individual attributes
+live in `parent.state` (see [`clinical_presentation`](@ref) /
+[`demographics`](@ref)), so read them with `get`:
 
 ```julia
-struct OnAgeSymptomOnset <: TraceEligibility
-    min_age::Int
-end
+struct SymptomaticOver65 <: TraceEligibility end
 
-function is_eligible(e::OnAgeSymptomOnset, parent, contact, state)
-    !is_asymptomatic(parent) && parent.age >= e.min_age
+function is_eligible(::SymptomaticOver65, parent, contact, state)
+    !is_asymptomatic(parent) && get(parent.state, :age, 0) >= 65
 end
 ```
 
@@ -263,30 +292,42 @@ function ContactTracing(;
     )
 end
 
+# Terse positional form: an eligibility policy with a constant trace
+# probability and a constant delay distribution. The fully-typed inner
+# constructor (taking `TraceRate`/`TraceDelay` objects) is unaffected —
+# `probability::Real` and `delay::Distribution` do not match those.
+function ContactTracing(eligibility::TraceEligibility, probability::Real,
+        isolation_to_trace_delay::Distribution, action::TraceAction = Quarantine())
+    return ContactTracing(
+        eligibility,
+        ConstantRate(probability),
+        ConstantDelay(isolation_to_trace_delay),
+        action
+    )
+end
+
 required_fields(ct::ContactTracing) = required_fields(ct.eligibility)
 intervention_time(::ContactTracing, ind::Individual) = isolation_time(ind)
 
-# Required-field validation dispatches on the eligibility trait
+# Required-field validation dispatches on the eligibility trait. Each
+# atomic predicate declares only the state key it reads.
 required_fields(::OnSymptomOnset) = [:asymptomatic]
-required_fields(::OnLabConfirmation) = [:asymptomatic, :test_positive]
-required_fields(::OnIsolation) = [:asymptomatic, :isolated]
+required_fields(::OnLabConfirmation) = [:test_positive]
+required_fields(::OnIsolation) = [:isolated]
 required_fields(::TraceEveryone) = Symbol[]
 required_fields(::TraceNobody) = Symbol[]
-required_fields(::AlwaysEligible) = Symbol[]  # Backward compatibility
-required_fields(::SymptomaticParent) = [:asymptomatic, :isolated]  # Backward compatibility
+required_fields(::SymptomaticParent) = [:asymptomatic, :isolated]
 required_fields(::TraceEligibility) = Symbol[]  # Default for custom types
 
-# Composition operators inherit requirements from their components
-function required_fields(eligibility::Any)
-    reduce(union, [required_fields(c) for c in eligibility.conditions]; init=Symbol[])
+# Combinators inherit requirements from the policies they wrap.
+function required_fields(e::AnyOf)
+    reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
 end
-
-function required_fields(eligibility::All)
-    reduce(union, [required_fields(c) for c in eligibility.conditions]; init=Symbol[])
+function required_fields(e::AllOf)
+    reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
 end
-
-function required_fields(eligibility::Unless)
-    union(required_fields(eligibility.primary), required_fields(eligibility.exclusion))
+function required_fields(e::NoneOf)
+    reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
 end
 
 function reset!(::ContactTracing, ind::Individual)

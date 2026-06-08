@@ -107,6 +107,58 @@ results = simulate_batch(model, 200;
 println("Isolation + tracing: $(round(containment_probability(results), digits=3))")
 ```
 
+#### Who gets traced: eligibility policies
+
+The keyword form above uses the default policy: a contact is traced
+once its parent is both symptomatic and isolated. Real programmes start
+tracing on different events, so the parent's eligibility is set
+separately. Each built-in policy tests one thing about the parent:
+
+| Policy | Traces when the parent… |
+|---|---|
+| [`OnSymptomOnset`](@ref) | is symptomatic |
+| [`OnLabConfirmation`](@ref) | has tested positive |
+| [`OnIsolation`](@ref) | has been isolated |
+| [`TraceEveryone`](@ref) / [`TraceNobody`](@ref) | always / never |
+
+Pass a policy with the positional constructor (an eligibility policy, a
+trace probability, and a delay distribution):
+
+```@example interventions
+# Begin tracing as soon as the parent shows symptoms, without waiting
+# for a positive test.
+ct_fast = ContactTracing(OnSymptomOnset(), 0.7, Exponential(1.0))
+nothing # hide
+```
+
+Combine policies with the ordinary boolean operators `&`, `|`, `!`:
+
+```@example interventions
+# Trace suspected OR lab-confirmed cases.
+elig = OnSymptomOnset() | OnLabConfirmation()
+
+# Trace symptomatic parents who have not yet been isolated.
+elig_gap = OnSymptomOnset() & !OnIsolation()
+
+ct_combined = ContactTracing(elig, 0.7, Exponential(1.0))
+nothing # hide
+```
+
+For logic beyond the built-ins, define a policy type and one
+`is_eligible` method. It then composes with the operators like any
+built-in. Per-individual attributes live in `parent.state`:
+
+```@example interventions
+struct SymptomaticOver65 <: EpiBranch.TraceEligibility end
+
+function EpiBranch.is_eligible(::SymptomaticOver65, parent, contact, state)
+    !EpiBranch.is_asymptomatic(parent) && get(parent.state, :age, 0) >= 65
+end
+
+elig_age = SymptomaticOver65() | OnLabConfirmation()
+nothing # hide
+```
+
 ## Asymptomatic cases and test sensitivity
 
 Asymptomatic cases escape symptom-based surveillance. The asymptomatic

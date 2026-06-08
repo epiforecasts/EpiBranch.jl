@@ -50,9 +50,10 @@ TraceEveryone
 TraceNobody
 AlwaysEligible
 SymptomaticParent
-Any
-All
-Unless
+NoTracing
+AnyOf
+AllOf
+NoneOf
 TraceRate
 ConstantRate
 TraceDelay
