@@ -30,6 +30,68 @@ function is_eligible(::SymptomaticParent, parent, contact, state)
     !is_asymptomatic(parent) && is_isolated(parent)
 end
 
+# ── Additional eligibility policies ─────────────────────────────────
+
+"""Trace when parent is isolated (lab-confirmed cases)."""
+const OnIsolation = SymptomaticParent  # Alias for backwards compatibility
+
+"""Trace when parent develops symptoms (clinical suspicion, pre-lab)."""
+struct OnSymptomOnset <: TraceEligibility end
+function is_eligible(::OnSymptomOnset, parent, contact, state)
+    !is_asymptomatic(parent)
+end
+
+"""Trace any detected case, even if asymptomatic."""
+struct OnCaseDetection <: TraceEligibility end
+function is_eligible(::OnCaseDetection, parent, contact, state)
+    true  # Any detected case can trigger tracing
+end
+
+"""Never trace (explicit no-tracing policy)."""
+struct NoTracing <: TraceEligibility end
+function is_eligible(::NoTracing, parent, contact, state)
+    false
+end
+
+# ── Composition operators ──────────────────────────────────────────
+
+"""Trace if ANY of the eligibility conditions are met (logical OR)."""
+struct Any{T <: Tuple} <: TraceEligibility
+    conditions::T
+    Any(conditions...) = new{typeof(conditions)}(conditions)
+end
+
+function is_eligible(eligibility::Any, parent, contact, state)
+    for condition in eligibility.conditions
+        is_eligible(condition, parent, contact, state) && return true
+    end
+    return false
+end
+
+"""Trace only if ALL eligibility conditions are met (logical AND)."""
+struct All{T <: Tuple} <: TraceEligibility
+    conditions::T
+    All(conditions...) = new{typeof(conditions)}(conditions)
+end
+
+function is_eligible(eligibility::All, parent, contact, state)
+    for condition in eligibility.conditions
+        is_eligible(condition, parent, contact, state) || return false
+    end
+    return true
+end
+
+"""Trace if primary condition is met, unless exclusion condition is also met."""
+struct Unless{P <: TraceEligibility, E <: TraceEligibility} <: TraceEligibility
+    primary::P
+    exclusion::E
+end
+
+function is_eligible(eligibility::Unless, parent, contact, state)
+    is_eligible(eligibility.primary, parent, contact, state) &&
+    !is_eligible(eligibility.exclusion, parent, contact, state)
+end
+
 """
     TraceRate
 
@@ -118,29 +180,30 @@ end
 # ── ContactTracing intervention ──────────────────────────────────────
 
 """
-Trace contacts of isolated symptomatic cases. The intervention is a
-thin orchestrator over four traits:
+Trace contacts. You can set different rules for when tracing happens.
 
-- [`TraceEligibility`](@ref): who is eligible to be traced (default:
-  [`SymptomaticParent`](@ref)).
-- [`TraceRate`](@ref): whether tracing happens for an eligible
-  contact (default: [`ConstantRate`](@ref)).
-- [`TraceDelay`](@ref): the delay from parent isolation to the trace
-  event (default: [`ConstantDelay`](@ref)). Passed via the
-  `isolation_to_trace_delay` keyword on the convenience constructor.
-- [`TraceAction`](@ref): what happens to the contact when tracing
-  happens (default: [`Quarantine`](@ref); set
-  `quarantine_on_trace = false` for [`FlagOnly`](@ref)).
+## Options
 
-Each trait is independently overridable. The convenience keyword
-constructor preserves the original terse form
-(`ContactTracing(probability = 0.8, isolation_to_trace_delay = LogNormal(...))`).
+- `OnSymptomOnset()` - trace when someone gets sick
+- `OnIsolation()` - wait for lab confirmation (default)
+- `OnCaseDetection()` - trace any detected case
+- `Any(...)`, `All(...)`, `Unless(...)` - combine rules
 
-Requires fields set by [`Isolation`](@ref): `:isolated`,
-`:isolation_time`. Also requires `:asymptomatic` and `:onset_time`
-(from `clinical_presentation()`).
+## Examples
 
-Initialises: `:traced`, `:quarantined`.
+```julia
+# Trace on symptoms (faster but less specific)
+ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine())
+
+# Wait for lab results (slower but more specific)
+ContactTracing(OnIsolation(), 0.6, Exponential(2.0), Quarantine())
+
+# Trace both suspected and confirmed cases
+ContactTracing(Any(OnSymptomOnset(), OnIsolation()), 0.7, Exponential(1.5), Quarantine())
+```
+
+Needs `:isolated`, `:isolation_time` from `Isolation` and `:asymptomatic`, `:onset_time`
+from `clinical_presentation()`. Sets `:traced`, `:quarantined`.
 """
 struct ContactTracing{
     E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction} <:
@@ -164,15 +227,29 @@ function ContactTracing(;
     )
 end
 
-required_fields(ct::ContactTracing) = _required_for_ct_eligibility(ct.eligibility)
+required_fields(ct::ContactTracing) = required_fields(ct.eligibility)
 intervention_time(::ContactTracing, ind::Individual) = isolation_time(ind)
 
-# Required-field validation dispatches on the eligibility trait so a
-# custom eligibility that doesn't read these fields doesn't trip the
-# validator.
-_required_for_ct_eligibility(::SymptomaticParent) = [:isolated, :asymptomatic]
-_required_for_ct_eligibility(::AlwaysEligible) = Symbol[]
-_required_for_ct_eligibility(::TraceEligibility) = Symbol[]
+# Required-field validation dispatches on the eligibility trait
+required_fields(::SymptomaticParent) = [:isolated, :asymptomatic]
+required_fields(::OnSymptomOnset) = [:asymptomatic]
+required_fields(::OnCaseDetection) = Symbol[]
+required_fields(::NoTracing) = Symbol[]
+required_fields(::AlwaysEligible) = Symbol[]
+required_fields(::TraceEligibility) = Symbol[]
+
+# Composition operators inherit requirements from their components
+function required_fields(eligibility::Any)
+    reduce(union, [required_fields(c) for c in eligibility.conditions]; init=Symbol[])
+end
+
+function required_fields(eligibility::All)
+    reduce(union, [required_fields(c) for c in eligibility.conditions]; init=Symbol[])
+end
+
+function required_fields(eligibility::Unless)
+    union(required_fields(eligibility.primary), required_fields(eligibility.exclusion))
+end
 
 function reset!(::ContactTracing, ind::Individual)
     ind.state[:traced] = false
