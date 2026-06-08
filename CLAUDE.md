@@ -59,7 +59,7 @@ The superspreading R package (https://github.com/epiverse-trace/superspreading) 
 
 The architectural design lives in [`docs/src/design.md`](docs/src/design.md). Read that first — in particular the "Extension model" section, which governs how new transmission models, interventions, and output rules should be added, and the "Reserved keys" table for `Individual.state`. The points below are package-level coding conventions that sit on top of the design.
 
-1. **Distributions from Distributions.jl**: use standard `Distributions.jl` types for offspring distributions, delay distributions, etc. No custom distribution wrappers.
+1. **Distributions from Distributions.jl**: use standard `Distributions.jl` types for offspring distributions, delay distributions, etc. Do not wrap these in bespoke distribution types. The one sanctioned exception is the internal `_ChainSizeLaw`/`_ChainLengthLaw` wrappers in `src/likelihood_dists.jl`, which subtype `Distribution` solely so a model can sit on the right-hand side of Turing's `~`; they delegate to the existing `loglikelihood` methods and are not exported.
 2. **DataFrames output**: line lists and chain statistics returned as DataFrames, matching epidemiological conventions (one row per case or per contact pair).
 3. **Reproducibility**: explicit RNG threading for reproducible parallel simulations.
 
