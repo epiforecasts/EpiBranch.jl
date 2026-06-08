@@ -1,5 +1,12 @@
 # API reference
 
+## Model specification
+
+```@docs
+ModelSpec
+NoObservation
+```
+
 ## Transmission models
 
 ```@docs
