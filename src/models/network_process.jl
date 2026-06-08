@@ -38,9 +38,9 @@ model = NetworkProcess(adjacency, 0.5, LogNormal(1.6, 0.5))
 
 The graph is the population: `population_size` equals the number of
 nodes. (Passing a separate `population_size` warns and leaves the node
-count in force.) Each node is instantiated once with stable identity,
-so attributes — age, type, susceptibility — are drawn once and belong
-to the node for the whole run.
+count in force.) Each node is built once with a stable identity, so its
+attributes (age, type, susceptibility) are drawn once and belong to the
+node for the whole run.
 
 When several infectious neighbours reach a susceptible node in the same
 generation, competing risks are evaluated for each incoming edge and

@@ -1,17 +1,17 @@
 # Network models
 
 `NetworkProcess` spreads infection over a fixed contact network. Each
-node is a person, an infectious node infects its neighbours, and a node
-can be infected at most once. The graph takes the role the offspring
-distribution plays in [`BranchingProcess`](@ref): it determines who can
-infect whom. Interventions, attributes, and clinical transitions work
-exactly as they do for a branching process.
+node is a person. An infectious node infects its neighbours, and each
+node can be infected once. The graph does the job the offspring
+distribution does in [`BranchingProcess`](@ref): it sets who can infect
+whom. Interventions, attributes, and clinical transitions behave the
+same as for a branching process.
 
 ## Defining a network
 
-Pass an adjacency list — `adjacency[i]` lists the nodes connected to
-node `i` — together with a per-edge transmission probability and a
-generation time.
+Pass an adjacency list, where `adjacency[i]` holds the nodes connected
+to node `i`, plus a per-edge transmission probability and a generation
+time.
 
 ```@example networks
 using EpiBranch
@@ -41,7 +41,7 @@ adjacency = household_ring(20, 4)
 model = NetworkProcess(adjacency, 0.4, LogNormal(1.6, 0.5))
 ```
 
-An adjacency matrix works too; `NetworkProcess(A, p, gt)` reads any
+An adjacency matrix works too. `NetworkProcess(A, p, gt)` reads any
 nonzero `A[i, j]` as an undirected edge.
 
 ## Simulating
@@ -57,7 +57,7 @@ println("Final outbreak size: ", state.cumulative_cases, " of ", length(adjacenc
 ```
 
 The population is the graph, so an outbreak saturates at the number of
-nodes rather than growing without bound. Run a batch with
+nodes instead of growing without bound. For a batch, use
 `simulate(model, n)`:
 
 ```@example networks
@@ -72,10 +72,10 @@ println("Mean size: ", round(sum(sizes) / length(sizes), digits = 1))
 
 ## Attributes belong to the node
 
-Each node is instantiated once, so attributes are drawn once and stay
-fixed for the run. This makes node properties — age, risk group,
-susceptibility — part of the network. Here susceptibility rises with
-age, and the older, more susceptible nodes end up over-represented
+Each node is built once, so its attributes are drawn once and stay
+fixed for the run. Node properties like age, risk group, or
+susceptibility are part of the network. Below, susceptibility rises
+with age, and the older, more susceptible nodes end up over-represented
 among cases:
 
 ```@example networks
@@ -98,9 +98,9 @@ println("Fraction of cases aged ≥60: ", round(frac_old, digits = 2))
 
 ## Interventions
 
-Isolation, contact tracing, and ring vaccination apply unchanged. A
-contact traced on the network is the same node throughout, so its
-intervention state persists across generations.
+Isolation, contact tracing, and ring vaccination work without changes.
+A node traced on the network keeps its identity, so its intervention
+state carries across generations.
 
 ```@example networks
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
