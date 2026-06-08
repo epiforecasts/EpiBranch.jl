@@ -154,8 +154,8 @@ ChainLengths
 
 These return a `Distribution` (the analytical form where one exists,
 otherwise a wrapper around `loglikelihood`) you can put on the
-right-hand side of Turing's `~`. `chain_size_distribution` also has
-methods listed under [Chain-size distributions](@ref) above.
+right-hand side of Turing's `~`. The [`chain_size_distribution`](@ref)
+entry above lists its process-side (analytical) methods.
 
 ```@docs
 chain_length_distribution
