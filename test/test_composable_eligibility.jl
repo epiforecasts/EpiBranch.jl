@@ -3,53 +3,53 @@ using EpiBranch: is_eligible, required_fields
 # Custom eligibility used by the extension test below. Structs must be
 # defined at top level, so it lives here rather than inside the testset.
 struct SymptomaticOver65 <: EpiBranch.TraceEligibility end
-function EpiBranch.is_eligible(::SymptomaticOver65, parent, contact, state)
-    !EpiBranch.is_asymptomatic(parent) && get(parent.state, :age, 0) >= 65
+function EpiBranch.is_eligible(::SymptomaticOver65, infector, contact, state)
+    !EpiBranch.is_asymptomatic(infector) && get(infector.state, :age, 0) >= 65
 end
 
-# Build a parent Individual carrying the given state keys.
-parent_with(; kwargs...) = Individual(id = 1, state = Dict{Symbol, Any}(kwargs...))
+# Build an infector Individual carrying the given state keys.
+infector_with(; kwargs...) = Individual(id = 1, state = Dict{Symbol, Any}(kwargs...))
 
 # None of the built-in policies read the contact or the state argument,
 # so a bare contact and `nothing` state suffice.
 const _CONTACT = Individual(id = 2, parent_id = 1)
-elig(policy, parent) = is_eligible(policy, parent, _CONTACT, nothing)
+elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
 
 @testset "Composable eligibility" begin
     @testset "Atomic predicates read one key each" begin
-        symptomatic = parent_with(asymptomatic = false)
-        asymptomatic = parent_with(asymptomatic = true)
+        symptomatic = infector_with(asymptomatic = false)
+        asymptomatic = infector_with(asymptomatic = true)
         @test elig(OnSymptomOnset(), symptomatic)
         @test !elig(OnSymptomOnset(), asymptomatic)
 
-        @test elig(OnLabConfirmation(), parent_with(test_positive = true))
-        @test !elig(OnLabConfirmation(), parent_with(test_positive = false))
+        @test elig(OnLabConfirmation(), infector_with(test_positive = true))
+        @test !elig(OnLabConfirmation(), infector_with(test_positive = false))
         # Atomic: lab confirmation does not also require symptoms.
-        @test elig(OnLabConfirmation(), parent_with(test_positive = true, asymptomatic = true))
+        @test elig(OnLabConfirmation(), infector_with(test_positive = true, asymptomatic = true))
 
-        @test elig(OnIsolation(), parent_with(isolated = true))
-        @test !elig(OnIsolation(), parent_with(isolated = false))
+        @test elig(OnIsolation(), infector_with(isolated = true))
+        @test !elig(OnIsolation(), infector_with(isolated = false))
 
         @test elig(TraceEveryone(), asymptomatic)
         @test !elig(TraceNobody(), symptomatic)
     end
 
     @testset "Boolean operators compose policies" begin
-        parent = parent_with(asymptomatic = false, isolated = false, test_positive = true)
+        infector = infector_with(asymptomatic = false, isolated = false, test_positive = true)
 
-        @test elig(OnSymptomOnset() | OnLabConfirmation(), parent)   # OR
-        @test !elig(OnIsolation() | TraceNobody(), parent)
+        @test elig(OnSymptomOnset() | OnLabConfirmation(), infector)   # OR
+        @test !elig(OnIsolation() | TraceNobody(), infector)
 
-        @test elig(OnSymptomOnset() & OnLabConfirmation(), parent)   # AND
-        @test !elig(OnSymptomOnset() & OnIsolation(), parent)
+        @test elig(OnSymptomOnset() & OnLabConfirmation(), infector)   # AND
+        @test !elig(OnSymptomOnset() & OnIsolation(), infector)
 
-        @test elig(!OnIsolation(), parent)                           # NOT
-        @test !elig(!OnSymptomOnset(), parent)
+        @test elig(!OnIsolation(), infector)                           # NOT
+        @test !elig(!OnSymptomOnset(), infector)
 
         # "symptomatic, not yet isolated" — the old `Unless` use case.
-        @test elig(OnSymptomOnset() & !OnIsolation(), parent)
+        @test elig(OnSymptomOnset() & !OnIsolation(), infector)
         @test !elig(OnSymptomOnset() & !OnIsolation(),
-            parent_with(asymptomatic = false, isolated = true))
+            infector_with(asymptomatic = false, isolated = true))
     end
 
     @testset "Operators build the wrapper types" begin
@@ -59,14 +59,14 @@ elig(policy, parent) = is_eligible(policy, parent, _CONTACT, nothing)
     end
 
     @testset "SymptomaticParent reproduces the original gate" begin
-        @test elig(SymptomaticParent(), parent_with(asymptomatic = false, isolated = true))
-        @test !elig(SymptomaticParent(), parent_with(asymptomatic = false, isolated = false))
-        @test !elig(SymptomaticParent(), parent_with(asymptomatic = true, isolated = true))
+        @test elig(SymptomaticParent(), infector_with(asymptomatic = false, isolated = true))
+        @test !elig(SymptomaticParent(), infector_with(asymptomatic = false, isolated = false))
+        @test !elig(SymptomaticParent(), infector_with(asymptomatic = true, isolated = true))
         # Equivalent to the composed atomic form.
         composed = OnSymptomOnset() & OnIsolation()
-        for p in (parent_with(asymptomatic = false, isolated = true),
-            parent_with(asymptomatic = false, isolated = false),
-            parent_with(asymptomatic = true, isolated = true))
+        for p in (infector_with(asymptomatic = false, isolated = true),
+            infector_with(asymptomatic = false, isolated = false),
+            infector_with(asymptomatic = true, isolated = true))
             @test elig(SymptomaticParent(), p) == elig(composed, p)
         end
     end
@@ -105,10 +105,10 @@ elig(policy, parent) = is_eligible(policy, parent, _CONTACT, nothing)
     end
 
     @testset "Custom eligibility still slots in by type" begin
-        @test elig(SymptomaticOver65(), parent_with(asymptomatic = false, age = 70))
-        @test !elig(SymptomaticOver65(), parent_with(asymptomatic = false, age = 30))
+        @test elig(SymptomaticOver65(), infector_with(asymptomatic = false, age = 70))
+        @test !elig(SymptomaticOver65(), infector_with(asymptomatic = false, age = 30))
         # Custom policies compose with the operators too.
         @test elig(SymptomaticOver65() | OnIsolation(),
-            parent_with(asymptomatic = true, isolated = true, age = 30))
+            infector_with(asymptomatic = true, isolated = true, age = 30))
     end
 end

@@ -8,53 +8,53 @@
 """
     TraceEligibility
 
-Trait deciding whether a parent → contact pair is eligible to be
+Trait deciding whether a infector → contact pair is eligible to be
 traced. Implementations override
-[`is_eligible(eligibility, parent, contact, state)`](@ref).
+[`is_eligible(eligibility, infector, contact, state)`](@ref).
 """
 abstract type TraceEligibility end
 
 """
-    is_eligible(eligibility, parent, contact, state) -> Bool
+    is_eligible(eligibility, infector, contact, state) -> Bool
 """
-is_eligible(::TraceEligibility, parent, contact, state) = true
+is_eligible(::TraceEligibility, infector, contact, state) = true
 
 # ── Built-in eligibility policies ─────────────────────────────────
 #
 # Each built-in is an *atomic* predicate — it tests one thing about the
-# parent. Compose them with the boolean operators `&`, `|`, `!` (see
+# infector. Compose them with the boolean operators `&`, `|`, `!` (see
 # below): e.g. `OnSymptomOnset() & !OnIsolation()` for "symptomatic but
 # not yet isolated". Keeping predicates atomic is what makes that
 # composition read correctly.
 
-"""Trace when the parent is symptomatic (clinical suspicion)."""
+"""Trace when the infector is symptomatic (clinical suspicion)."""
 struct OnSymptomOnset <: TraceEligibility end
-is_eligible(::OnSymptomOnset, parent, contact, state) = !is_asymptomatic(parent)
+is_eligible(::OnSymptomOnset, infector, contact, state) = !is_asymptomatic(infector)
 
-"""Trace when the parent has tested positive (lab confirmation)."""
+"""Trace when the infector has tested positive (lab confirmation)."""
 struct OnLabConfirmation <: TraceEligibility end
-function is_eligible(::OnLabConfirmation, parent, contact, state)
-    get(parent.state, :test_positive, false)
+function is_eligible(::OnLabConfirmation, infector, contact, state)
+    get(infector.state, :test_positive, false)
 end
 
-"""Trace when the parent has been isolated."""
+"""Trace when the infector has been isolated."""
 struct OnIsolation <: TraceEligibility end
-is_eligible(::OnIsolation, parent, contact, state) = is_isolated(parent)
+is_eligible(::OnIsolation, infector, contact, state) = is_isolated(infector)
 
-"""Trace every contact, regardless of parent status."""
+"""Trace every contact, regardless of infector status."""
 struct TraceEveryone <: TraceEligibility end
-is_eligible(::TraceEveryone, parent, contact, state) = true
+is_eligible(::TraceEveryone, infector, contact, state) = true
 
 """Never trace any contacts."""
 struct TraceNobody <: TraceEligibility end
-is_eligible(::TraceNobody, parent, contact, state) = false
+is_eligible(::TraceNobody, infector, contact, state) = false
 
-"""Original default gate: parent symptomatic *and* isolated. Equivalent
+"""Original default gate: infector symptomatic *and* isolated. Equivalent
 to `OnSymptomOnset() & OnIsolation()`; kept as a named type for
 backwards compatibility (it is the default `eligibility`)."""
 struct SymptomaticParent <: TraceEligibility end
-function is_eligible(::SymptomaticParent, parent, contact, state)
-    !is_asymptomatic(parent) && is_isolated(parent)
+function is_eligible(::SymptomaticParent, infector, contact, state)
+    !is_asymptomatic(infector) && is_isolated(infector)
 end
 
 # `AlwaysEligible` and `NoTracing` were the previous names for tracing
@@ -68,7 +68,7 @@ const NoTracing = TraceNobody
 
 # ── Composition ────────────────────────────────────────────────────
 #
-# Policies form a boolean algebra over the parent predicate. The
+# Policies form a boolean algebra over the infector predicate. The
 # wrapper types below are normally built through the operators `&`, `|`,
 # `!` rather than by name, so user code reads as ordinary boolean logic:
 #
@@ -81,9 +81,9 @@ struct AnyOf{T <: Tuple} <: TraceEligibility
     AnyOf(conditions...) = new{typeof(conditions)}(conditions)
 end
 
-function is_eligible(e::AnyOf, parent, contact, state)
+function is_eligible(e::AnyOf, infector, contact, state)
     for condition in e.conditions
-        is_eligible(condition, parent, contact, state) && return true
+        is_eligible(condition, infector, contact, state) && return true
     end
     return false
 end
@@ -94,9 +94,9 @@ struct AllOf{T <: Tuple} <: TraceEligibility
     AllOf(conditions...) = new{typeof(conditions)}(conditions)
 end
 
-function is_eligible(e::AllOf, parent, contact, state)
+function is_eligible(e::AllOf, infector, contact, state)
     for condition in e.conditions
-        is_eligible(condition, parent, contact, state) || return false
+        is_eligible(condition, infector, contact, state) || return false
     end
     return true
 end
@@ -109,9 +109,9 @@ struct NoneOf{T <: Tuple} <: TraceEligibility
     NoneOf(conditions...) = new{typeof(conditions)}(conditions)
 end
 
-function is_eligible(e::NoneOf, parent, contact, state)
+function is_eligible(e::NoneOf, infector, contact, state)
     for condition in e.conditions
-        is_eligible(condition, parent, contact, state) && return false
+        is_eligible(condition, infector, contact, state) && return false
     end
     return true
 end
@@ -127,40 +127,40 @@ Base.:!(a::TraceEligibility) = NoneOf(a)
 
 Trait deciding whether tracing happens for an eligible
 contact. Implementations override
-[`traces(rate, parent, contact, state, rng)`](@ref).
+[`traces(rate, infector, contact, state, rng)`](@ref).
 """
 abstract type TraceRate end
 
 """
-    traces(rate, parent, contact, state, rng) -> Bool
+    traces(rate, infector, contact, state, rng) -> Bool
 """
-traces(::TraceRate, parent, contact, state, rng) = false
+traces(::TraceRate, infector, contact, state, rng) = false
 
 """Bernoulli with constant probability `p`."""
 struct ConstantRate <: TraceRate
     p::Float64
 end
-traces(r::ConstantRate, parent, contact, state, rng) = rand(rng) < r.p
+traces(r::ConstantRate, infector, contact, state, rng) = rand(rng) < r.p
 
 """
     TraceDelay
 
-Trait giving the delay between the parent's isolation and the
+Trait giving the delay between the infector's isolation and the
 contact being traced. Implementations override
-[`draw_trace_delay(delay, parent, contact, state, rng)`](@ref).
+[`draw_trace_delay(delay, infector, contact, state, rng)`](@ref).
 """
 abstract type TraceDelay end
 
 """
-    draw_trace_delay(delay, parent, contact, state, rng) -> Float64
+    draw_trace_delay(delay, infector, contact, state, rng) -> Float64
 """
-draw_trace_delay(::TraceDelay, parent, contact, state, rng) = 0.0
+draw_trace_delay(::TraceDelay, infector, contact, state, rng) = 0.0
 
 """Delay drawn from a fixed distribution."""
 struct ConstantDelay{D <: Distribution} <: TraceDelay
     dist::D
 end
-draw_trace_delay(d::ConstantDelay, parent, contact, state, rng) = float(rand(rng, d.dist))
+draw_trace_delay(d::ConstantDelay, infector, contact, state, rng) = float(rand(rng, d.dist))
 
 """
     TraceAction
@@ -210,15 +210,15 @@ end
 # ── ContactTracing intervention ──────────────────────────────────────
 
 """
-Trace contacts based on when the parent becomes eligible for tracing.
+Trace contacts based on when the infector becomes eligible for tracing.
 
 ## Eligibility policies
 
-Atomic predicates on the parent:
+Atomic predicates on the infector:
 
-- `OnSymptomOnset()` — parent is symptomatic
-- `OnLabConfirmation()` — parent has tested positive
-- `OnIsolation()` — parent has been isolated
+- `OnSymptomOnset()` — infector is symptomatic
+- `OnLabConfirmation()` — infector has tested positive
+- `OnIsolation()` — infector has been isolated
 - `TraceEveryone()` / `TraceNobody()` — trace all / none
 
 Combine them with the boolean operators `&`, `|`, `!`:
@@ -255,14 +255,14 @@ ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0))
 ## Custom eligibility
 
 Users can define custom eligibility types. Per-individual attributes
-live in `parent.state` (see [`clinical_presentation`](@ref) /
+live in `infector.state` (see [`clinical_presentation`](@ref) /
 [`demographics`](@ref)), so read them with `get`:
 
 ```julia
 struct SymptomaticOver65 <: TraceEligibility end
 
-function is_eligible(::SymptomaticOver65, parent, contact, state)
-    !is_asymptomatic(parent) && get(parent.state, :age, 0) >= 65
+function is_eligible(::SymptomaticOver65, infector, contact, state)
+    !is_asymptomatic(infector) && get(infector.state, :age, 0) >= 65
 end
 ```
 
@@ -351,13 +351,14 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
     for ind in new_contacts
         ind.parent_id == 0 && continue
         ind.parent_id > length(state.individuals) && continue
-        parent = state.individuals[ind.parent_id]
+        infector = state.individuals[ind.parent_id]
 
-        is_eligible(ct.eligibility, parent, ind, state) || continue
-        traces(ct.trace_rate, parent, ind, state, rng) || continue
+        is_eligible(ct.eligibility, infector, ind, state) || continue
+        traces(ct.trace_rate, infector, ind, state, rng) || continue
 
-        trace_delay = draw_trace_delay(ct.isolation_to_trace_delay, parent, ind, state, rng)
-        trace_time = isolation_time(parent) + trace_delay
+        trace_delay = draw_trace_delay(
+            ct.isolation_to_trace_delay, infector, ind, state, rng)
+        trace_time = isolation_time(infector) + trace_delay
         apply_trace!(ct.action, ind, state, trace_time, rng)
     end
     return nothing
