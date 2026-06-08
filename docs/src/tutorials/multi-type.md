@@ -78,7 +78,7 @@ Interventions operate on individual state, not types — they work unchanged:
 
 ```@example multitype
 model = BranchingProcess(M, R_j -> NegBin(R_j, 0.5), LogNormal(1.6, 0.5))
-iso = Isolation(delay = Exponential(2.0))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 
 rng = StableRNG(42)
 results = simulate(model, 200;

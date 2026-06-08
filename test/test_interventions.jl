@@ -12,7 +12,7 @@
             attributes = clinical, sim_opts = SimOpts(max_cases = 200), rng = rng1)
 
         rng2 = StableRNG(42)
-        iso = Isolation(delay = Exponential(2.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
         results_iso = simulate(model, 100;
             interventions = [iso], attributes = clinical,
             sim_opts = SimOpts(max_cases = 200), rng = rng2)
@@ -25,8 +25,8 @@
     @testset "Contact tracing marks individuals as traced" begin
         rng = StableRNG(101)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        iso = Isolation(delay = Exponential(1.0))
-        ct = ContactTracing(probability = 1.0, delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0))
 
         state = simulate(model;
             interventions = [iso, ct], attributes = clinical,
@@ -48,7 +48,7 @@
     @testset "Scheduled start_time respected" begin
         rng = StableRNG(200)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        iso = Scheduled(Isolation(delay = Exponential(1.0)); start_time = 1000.0)
+        iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0)); start_time = 1000.0)
 
         state = simulate(model;
             interventions = [iso], attributes = clinical,
@@ -60,7 +60,7 @@
     @testset "Asymptomatic cases are not isolated" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-        iso = Isolation(delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         clinical_asymp = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5),
             prob_asymptomatic = 0.5
@@ -80,7 +80,7 @@
 
     @testset "Test sensitivity affects isolation" begin
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        iso = Isolation(delay = Exponential(1.0), test_sensitivity = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.0)
 
         state = simulate(model;
             interventions = [iso], attributes = clinical,
@@ -94,13 +94,13 @@
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
 
         rng1 = StableRNG(42)
-        iso_fast = Isolation(delay = Exponential(0.5))
+        iso_fast = Isolation(onset_to_isolation_delay = Exponential(0.5))
         results_fast = simulate(model, 200;
             interventions = [iso_fast], attributes = clinical,
             sim_opts = SimOpts(max_cases = 200), rng = rng1)
 
         rng2 = StableRNG(42)
-        iso_slow = Isolation(delay = Exponential(10.0))
+        iso_slow = Isolation(onset_to_isolation_delay = Exponential(10.0))
         results_slow = simulate(model, 200;
             interventions = [iso_slow], attributes = clinical,
             sim_opts = SimOpts(max_cases = 200), rng = rng2)
@@ -111,8 +111,8 @@
     @testset "Intervention initialises state on individuals" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        iso = Isolation(delay = Exponential(1.0))
-        ct = ContactTracing(probability = 0.5, delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.0))
 
         state = simulate(model;
             interventions = [iso, ct], attributes = clinical,
@@ -126,7 +126,7 @@
 
     @testset "Missing init gives helpful error" begin
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        iso = Isolation(delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
 
         @test_throws ErrorException simulate(model;
             interventions = [iso], sim_opts = SimOpts(max_cases = 10), rng = StableRNG(42))
@@ -152,8 +152,8 @@
     @testset "Ring vaccination" begin
         @testset "Leaky mode reduces transmission" begin
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(1.0))
-            ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
 
             rng1 = StableRNG(42)
             rv = RingVaccination(efficacy = 0.9, mode = LeakyMode())
@@ -172,8 +172,8 @@
 
         @testset "All-or-nothing mode" begin
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(1.0))
-            ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
             rv = RingVaccination(efficacy = 0.8, mode = AllOrNothingMode())
 
             state = simulate(model;
@@ -191,8 +191,8 @@
 
         @testset "Delay to immunity" begin
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(1.0))
-            ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
 
             rng1 = StableRNG(42)
             rv_instant = RingVaccination(efficacy = 0.9, delay_to_immunity = 0.0)
@@ -213,8 +213,8 @@
 
         @testset "Coverage thins vaccinations" begin
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(1.0))
-            ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
 
             # Coverage = 0 means nobody gets vaccinated, even though traced.
             rv_zero = RingVaccination(efficacy = 0.9, coverage = 0.0)
@@ -254,8 +254,8 @@
             attrs = compose(clinical,
                 demographics(age_distribution = Uniform(0, 90)))
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(0.5))
-            ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
+            iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
+            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
             rv = RingVaccination(efficacy = 0.9,
                 coverage = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0)
             state = simulate(model;
@@ -271,8 +271,8 @@
             # within a tight window. A short window should produce strictly
             # fewer vaccinations than an infinite one.
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(5.0))
-            ct = ContactTracing(probability = 1.0, delay = Exponential(1.0))
+            iso = Isolation(onset_to_isolation_delay = Exponential(5.0))
+            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0))
 
             rv_inf = RingVaccination(efficacy = 0.9, eligibility_window = Inf)
             n_inf = sum(
@@ -307,8 +307,8 @@
             # the parent's immunity is in place the onward risk is
             # certain to block.
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(0.5))
-            ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
+            iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
+            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
             rv = RingVaccination(efficacy = 0.0, onward_efficacy = 1.0,
                 delay_to_immunity = 0.0)
 
@@ -339,8 +339,8 @@
             # should be bit-identical to the previous behaviour for the
             # same seed.
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(1.0))
-            ct = ContactTracing(probability = 1.0, delay = Exponential(0.5))
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
             rv = RingVaccination(efficacy = 0.9)  # default onward_efficacy
 
             rng1 = StableRNG(42)
@@ -364,8 +364,8 @@
     @testset "Contact tracing without quarantine" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        iso = Isolation(delay = Exponential(1.0))
-        ct = ContactTracing(probability = 1.0, delay = Exponential(1.0),
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
             quarantine_on_trace = false)
 
         state = simulate(model;
@@ -395,8 +395,8 @@
         # because the engine stops before they would be active.
         rng = StableRNG(20260601)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-        iso = Isolation(delay = Exponential(1.0), test_sensitivity = 0.4)
-        ct = ContactTracing(probability = 1.0, delay = Exponential(1.0),
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.4)
+        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
             quarantine_on_trace = false)
 
         state = simulate(model;
@@ -428,13 +428,13 @@
 
             # Compare scheduled (late start) vs always-on — scheduled should contain less
             rng1 = StableRNG(42)
-            iso_late = Scheduled(Isolation(delay = Exponential(1.0)); start_time = 20.0)
+            iso_late = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0)); start_time = 20.0)
             results_late = simulate(model, 100;
                 interventions = [iso_late], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng1)
 
             rng2 = StableRNG(42)
-            iso_always = Isolation(delay = Exponential(1.0))
+            iso_always = Isolation(onset_to_isolation_delay = Exponential(1.0))
             results_always = simulate(model, 100;
                 interventions = [iso_always], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng2)
@@ -453,7 +453,7 @@
 
         @testset "start_after_cases delays activation" begin
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            iso = Scheduled(Isolation(delay = Exponential(0.5)); start_after_cases = 20)
+            iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(0.5)); start_after_cases = 20)
 
             rng1 = StableRNG(42)
             results_scheduled = simulate(model, 100;
@@ -462,7 +462,7 @@
 
             # Compare with always-on isolation — scheduled should contain less
             rng2 = StableRNG(42)
-            iso_always = Isolation(delay = Exponential(0.5))
+            iso_always = Isolation(onset_to_isolation_delay = Exponential(0.5))
             results_always = simulate(model, 100;
                 interventions = [iso_always], attributes = clinical,
                 sim_opts = SimOpts(max_cases = 200), rng = rng2)
@@ -473,7 +473,7 @@
 
         @testset "custom predicate" begin
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            iso = Scheduled(Isolation(delay = Exponential(1.0)),
+            iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0)),
                 state -> state.current_generation >= 3)
 
             state = simulate(model;
@@ -489,7 +489,7 @@
         @testset "end_time deactivates" begin
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
             # Active only in a short window
-            iso = Scheduled(Isolation(delay = Exponential(0.5));
+            iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(0.5));
                 start_time = 5.0, end_time = 10.0)
 
             state = simulate(model;
@@ -505,8 +505,9 @@
 
         @testset "mixed Scheduled and always-on" begin
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(1.0))
-            ct = Scheduled(ContactTracing(probability = 0.5, delay = Exponential(1.0));
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+            ct = Scheduled(
+                ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.0));
                 start_after_cases = 10)
 
             state = simulate(model;
@@ -522,7 +523,7 @@
 
         @testset "filters on action time not infection time" begin
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            iso = Scheduled(Isolation(delay = Exponential(0.1)); start_time = 15.0)
+            iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(0.1)); start_time = 15.0)
 
             state = simulate(model;
                 interventions = [iso], attributes = clinical,
@@ -537,7 +538,7 @@
         end
 
         @testset "requires at least one condition" begin
-            iso = Isolation(delay = Exponential(1.0))
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             @test_throws ErrorException Scheduled(iso)
         end
     end

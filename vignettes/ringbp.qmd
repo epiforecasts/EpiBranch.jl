@@ -48,7 +48,7 @@ println("Extinct: ", state.extinct)
 ## Adding isolation
 
 ```{julia}
-iso = Isolation(delay = LogNormal(1.0, 0.5))
+iso = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5))
 
 rng = Xoshiro(42)
 results_iso = simulate_batch(model, 500;
@@ -65,7 +65,7 @@ println("Containment probability (isolation only): ", round(cp, digits = 3))
 ## Adding contact tracing
 
 ```{julia}
-ct = ContactTracing(probability = 0.5, delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(2.0))
 
 rng = Xoshiro(42)
 results_both = simulate_batch(model, 500;
@@ -106,7 +106,7 @@ trace_probs = 0.0:0.2:1.0
 containment_results = Float64[]
 
 for p in trace_probs
-    local ct_sweep = ContactTracing(probability = p, delay = Exponential(2.0))
+    local ct_sweep = ContactTracing(probability = p, isolation_to_trace_delay = Exponential(2.0))
     local rng = Xoshiro(42)
     local results = simulate_batch(model, 500;
         interventions = [iso, ct_sweep],
@@ -137,7 +137,7 @@ state = simulate(model;
 )
 
 r_df = generation_R(state)
-println("R_eff by generation:")
+println("Offspring ratio by generation:")
 first(r_df, 5)
 ```
 
@@ -168,8 +168,8 @@ println("Contact-to-case ratio: ", round(n_total_contacts / n_infected, digits =
 ## Leaky isolation
 
 ```{julia}
-iso_perfect = Isolation(delay = LogNormal(1.0, 0.5), residual_transmission = 0.0)
-iso_leaky = Isolation(delay = LogNormal(1.0, 0.5), residual_transmission = 0.3)
+iso_perfect = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5), post_isolation_transmission = 0.0)
+iso_leaky = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5), post_isolation_transmission = 0.3)
 
 rng1 = Xoshiro(42)
 results_perfect = simulate_batch(model, 500;

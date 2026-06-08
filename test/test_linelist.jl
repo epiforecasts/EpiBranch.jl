@@ -111,7 +111,7 @@ using Dates
 
     @testset "linelist empty state" begin
         empty_state = SimulationState(Individual[], Int[], 0, StableRNG(1), 0, true,
-            nothing, 0.0, 0.0, nothing, AbstractClinicalTransition[])
+            nothing, 0.0, nothing, AbstractClinicalTransition[])
         df = linelist(empty_state)
         @test nrow(df) == 0
     end
@@ -119,7 +119,7 @@ using Dates
     @testset "linelist includes intervention state" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        iso = Isolation(delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         state = simulate(model;
             interventions = [iso], attributes = clinical,
             sim_opts = SimOpts(max_cases = 50), rng = rng)

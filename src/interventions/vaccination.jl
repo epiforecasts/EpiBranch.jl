@@ -16,11 +16,17 @@ contact; the competing risk reads the stored value.
 `mode` is an [`AbstractEffectMode`](@ref): [`LeakyMode`](@ref) (the
 default) reduces each exposure's success probability by `efficacy`,
 while [`AllOrNothingMode`](@ref) fully protects a fraction `efficacy`
-of vaccinated individuals and leaves the rest unaffected. In a pure
-branching tree the two modes give the same per-contact infection
-probability — every contact is a unique exposure, so per-exposure and
-per-individual semantics coincide. The distinction starts to matter
-once network models permit multiple exposures per individual.
+of vaccinated individuals and leaves the rest unaffected.
+
+!!! note "In a pure branching process the two modes are equivalent"
+    Every contact in a branching process is a unique exposure, so
+    per-exposure and per-individual semantics give the **same**
+    per-contact infection probability. Switching between `LeakyMode`
+    and `AllOrNothingMode` here will not change simulation results.
+    The distinction only starts to matter once network models permit
+    multiple exposures per individual (e.g. the planned
+    `EpiBranchHouseholds`); the two modes are exposed now so that
+    code written for the household model has the right vocabulary.
 
 # Multi-dose vaccination
 

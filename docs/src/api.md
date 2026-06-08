@@ -28,6 +28,7 @@ should_stop
 simulate
 EpiBranch.step!
 make_contact!
+susceptible_fraction
 ```
 
 ## Interventions
@@ -220,7 +221,6 @@ developers extending the package.
 EpiBranch.get_generation_time
 EpiBranch._create_contacts!
 EpiBranch._resolve_competing_risks!
-EpiBranch._susceptible_fraction
 EpiBranch._register_step!
 EpiBranch.population_size
 EpiBranch._create_individual

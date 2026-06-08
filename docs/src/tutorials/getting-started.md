@@ -61,8 +61,8 @@ println("Infection: $(round(ind.infection_time, digits=1)), Onset: $(round(onset
 You can combine interventions by passing them as a vector:
 
 ```@example gettingstarted
-iso = Isolation(delay = Exponential(2.0))
-ct = ContactTracing(probability = 0.5, delay = Exponential(1.5))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.5))
 
 rng = StableRNG(42)
 state = simulate(model;

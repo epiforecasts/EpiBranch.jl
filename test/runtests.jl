@@ -25,4 +25,5 @@ include("testutils/sim_analytical_consistency.jl")
     include("test_multitype.jl")
     include("test_integration.jl")
     include("test_r_targets.jl")
+    include("test_ad.jl")
 end

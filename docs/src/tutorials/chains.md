@@ -118,7 +118,7 @@ passing a [`BranchingProcess`](@ref) model instead of a distribution:
 
 ```@example chains
 model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-iso = Isolation(delay = Exponential(2.0))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 
 ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2]), model;
     interventions = [iso],

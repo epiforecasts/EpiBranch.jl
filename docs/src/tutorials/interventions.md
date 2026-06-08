@@ -40,7 +40,7 @@ symptom onset using [`Isolation`](@ref). Clinical state on individuals
 is required, set by [`clinical_presentation`](@ref):
 
 ```@example interventions
-iso = Isolation(delay = Exponential(2.0))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 
 rng = StableRNG(42)
 results = simulate(model, 200;
@@ -57,7 +57,7 @@ generation time. Faster isolation truncates more of the infectious period:
 
 ```@example interventions
 for d in [0.5, 2.0, 10.0]
-    let iso = Isolation(delay = Exponential(d)),
+    let iso = Isolation(onset_to_isolation_delay = Exponential(d)),
         rng = StableRNG(42)
         results = simulate(model, 200;
             interventions = [iso],
@@ -76,7 +76,7 @@ With `post_isolation_transmission > 0`, isolated individuals still transmit at
 a reduced rate (e.g. household contacts):
 
 ```@example interventions
-iso_leaky = Isolation(delay = Exponential(2.0), post_isolation_transmission = 0.3)
+iso_leaky = Isolation(onset_to_isolation_delay = Exponential(2.0), post_isolation_transmission = 0.3)
 
 rng = StableRNG(42)
 results = simulate(model, 200;
@@ -94,8 +94,8 @@ Contacts of isolated cases are identified using [`ContactTracing`](@ref).
 With quarantine, traced contacts are isolated before symptom onset:
 
 ```@example interventions
-iso = Isolation(delay = Exponential(2.0))
-ct = ContactTracing(probability = 0.7, delay = Exponential(1.0), quarantine_on_trace = true)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = true)
 
 rng = StableRNG(42)
 results = simulate(model, 200;
@@ -119,7 +119,7 @@ disease_hard = clinical_presentation(
     incubation_period = LogNormal(1.5, 0.5),
     prob_asymptomatic = 0.3,
 )
-iso_imperfect = Isolation(delay = Exponential(2.0), test_sensitivity = 0.8)
+iso_imperfect = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.8)
 
 rng = StableRNG(42)
 results = simulate(model, 200;
@@ -141,8 +141,8 @@ Requires [`ContactTracing`](@ref) in the intervention stack so contacts
 are identified.
 
 ```@example interventions
-iso = Isolation(delay = Exponential(2.0))
-ct = ContactTracing(probability = 0.7, delay = Exponential(1.0))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0))
 rv = RingVaccination(efficacy = 0.8)
 
 rng = StableRNG(42)
@@ -347,7 +347,7 @@ must be available at the time the individual would be tested.
 
 ```@example interventions
 # Testing starts on day 10
-iso_delayed = Scheduled(Isolation(delay = Exponential(2.0)); start_time = 10.0)
+iso_delayed = Scheduled(Isolation(onset_to_isolation_delay = Exponential(2.0)); start_time = 10.0)
 
 rng = StableRNG(42)
 results = simulate(model, 200;
@@ -369,9 +369,9 @@ fixed time, such as case-count triggers:
 
 ```@example interventions
 # Start contact tracing after 20 cumulative cases
-iso = Isolation(delay = Exponential(2.0))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 ct_triggered = Scheduled(
-    ContactTracing(probability = 0.7, delay = Exponential(1.0));
+    ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0));
     start_after_cases = 20,
 )
 
@@ -389,7 +389,7 @@ Conditions can be combined:
 
 ```@example interventions
 # Active only between day 5 and day 30
-iso_window = Scheduled(Isolation(delay = Exponential(1.0));
+iso_window = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0));
     start_time = 5.0, end_time = 30.0)
 ```
 
@@ -398,7 +398,7 @@ For full flexibility, pass a predicate on [`SimulationState`](@ref):
 ```@example interventions
 # Start isolation from generation 3 onwards
 iso_gen3 = Scheduled(
-    Isolation(delay = Exponential(2.0)),
+    Isolation(onset_to_isolation_delay = Exponential(2.0)),
     state -> state.current_generation >= 3,
 )
 ```

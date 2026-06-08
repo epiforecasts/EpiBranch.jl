@@ -15,13 +15,11 @@ struct BranchingProcess{O, G, P, L} <: TransmissionModel
     offspring::O
     generation_time::G
     population_size::P
-    latent_period::Float64
     n_types::Int
     type_labels::L
 end
 
 population_size(m::BranchingProcess) = m.population_size
-latent_period(m::BranchingProcess) = m.latent_period
 n_types(m::BranchingProcess) = m.n_types
 
 function Base.show(io::IO, m::BranchingProcess)
@@ -36,26 +34,24 @@ end
 
 # Single-type with generation time
 function BranchingProcess(offspring::Distribution, gt::Union{Distribution, Function};
-        population_size::Union{Int, NoPopulation} = NoPopulation(),
-        latent_period::Real = 0.0)
+        population_size::Union{Int, NoPopulation} = NoPopulation())
     BranchingProcess(
-        offspring, gt, population_size, Float64(latent_period), 1, NoTypeLabels())
+        offspring, gt, population_size, 1, NoTypeLabels())
 end
 
 # Single-type without generation time (pure chain statistics)
 function BranchingProcess(offspring::Distribution;
         population_size::Union{Int, NoPopulation} = NoPopulation())
     BranchingProcess(offspring, NoGenerationTime(), population_size,
-        0.0, 1, NoTypeLabels())
+        1, NoTypeLabels())
 end
 
 # Multi-type with explicit offspring function
 function BranchingProcess(offspring::Function, gt::Union{Distribution, Function};
         n_types::Int = 1, population_size::Union{Int, NoPopulation} = NoPopulation(),
-        latent_period::Real = 0.0,
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
     BranchingProcess(
-        offspring, gt, population_size, Float64(latent_period), n_types, type_labels)
+        offspring, gt, population_size, n_types, type_labels)
 end
 
 """
@@ -69,7 +65,6 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
         dist_fn::Function,
         gt::Union{Distribution, Function};
         population_size::Union{Int, NoPopulation} = NoPopulation(),
-        latent_period::Real = 0.0,
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
     n = size(offspring_matrix, 1)
     size(offspring_matrix, 2) == n || throw(ArgumentError(
@@ -91,7 +86,7 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
     end
 
     BranchingProcess(
-        offspring_fn, gt, population_size, float(latent_period), n, type_labels)
+        offspring_fn, gt, population_size, n, type_labels)
 end
 
 # ── Generation time specification ────────────────────────────────────
@@ -164,11 +159,13 @@ end
 """Compute a contact's infection time from the parent's infection time
 and the generation-time draw. Dispatches on the generation-time spec:
 [`NoGenerationTime`](@ref) (no timing) returns the parent's time;
-otherwise samples and adds, clamped to `state.latent_period`."""
+otherwise samples and adds. The generation time distribution should
+already encode any biological constraint (e.g. a minimum latent
+period); to enforce a lower bound use `truncated(gt_dist, lower, Inf)`
+or a shifted distribution."""
 _infection_time(::NoGenerationTime, parent, state) = parent.infection_time
 function _infection_time(gt_dist::Distribution, parent, state)
-    gt = max(rand(state.rng, gt_dist), state.latent_period)
-    return parent.infection_time + gt
+    return parent.infection_time + rand(state.rng, gt_dist)
 end
 
 """Single-type contacts."""

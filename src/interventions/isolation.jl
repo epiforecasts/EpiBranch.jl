@@ -7,8 +7,8 @@
 # - `test_sensitivity`: probability an eligible individual tests
 #   positive and so reaches isolation (a scalar / distribution /
 #   function, sampled per individual at init time).
-# - `delay`: time from onset to self-reported isolation (a
-#   distribution drawn per individual).
+# - `onset_to_isolation_delay`: time from onset to self-reported
+#   isolation (a distribution drawn per individual).
 #
 # Post-isolation transmission stays a scalar parameter — it modifies
 # the competing risk's block probability without changing the
@@ -61,8 +61,8 @@ tests positive and so reaches isolation; it accepts a `Real`, a
 `Distribution`, or a function `(rng, ind) -> Real` (sampled once per
 individual at init time, stored as `:test_positive`).
 
-`delay` is a `Distribution` from which the time from onset to
-self-reported isolation is drawn per individual.
+`onset_to_isolation_delay` is a `Distribution` from which the time
+from symptom onset to self-reported isolation is drawn per individual.
 
 `post_isolation_transmission` ∈ [0, 1] sets the residual transmission
 probability after isolation. The competing risk's `block_probability`
@@ -72,17 +72,17 @@ Initialises: `:isolated`, `:isolation_time`, `:test_positive`.
 """
 struct Isolation{E <: IsolationEligibility, D <: Distribution, S} <: AbstractIntervention
     eligibility::E
-    delay::D
+    onset_to_isolation_delay::D
     test_sensitivity::S
     post_isolation_transmission::Float64
 end
 
 function Isolation(;
-        delay::Distribution,
+        onset_to_isolation_delay::Distribution,
         eligibility::IsolationEligibility = SymptomaticOnly(),
         test_sensitivity::Union{Real, Distribution, Function} = 1.0,
         post_isolation_transmission::Real = 0.0)
-    return Isolation(eligibility, delay, test_sensitivity,
+    return Isolation(eligibility, onset_to_isolation_delay, test_sensitivity,
         Float64(post_isolation_transmission))
 end
 
@@ -129,7 +129,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     # test-negative-but-traced contact is still isolated via tracing.
     traced_time = get(individual.state, :traced_isolation_time, Inf)::Float64
     test_time = if is_test_positive(individual)
-        onset_time(individual) + rand(state.rng, iso.delay)
+        onset_time(individual) + rand(state.rng, iso.onset_to_isolation_delay)
     else
         Inf
     end

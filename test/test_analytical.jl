@@ -545,7 +545,7 @@
 
         @testset "With interventions" begin
             model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(1.0))
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             ll = loglikelihood(ChainSizes([1, 1, 2, 1]), model;
                 interventions = [iso],
                 attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
@@ -560,7 +560,7 @@
             # wrapper does not have. The intervention path now simulates
             # the wrapped process, thins chain sizes per case, and compares.
             model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-            iso = Isolation(delay = Exponential(1.0))
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             po = Observed(model, PerCaseObservation(0.7, Dirac(0.0)))
             ll = loglikelihood(ChainSizes([1, 1, 2, 1]), po;
                 interventions = [iso],

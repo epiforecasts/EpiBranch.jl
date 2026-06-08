@@ -25,8 +25,8 @@ using StableRNGs
 
 model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
 
-iso = Isolation(delay = Exponential(2.0))
-ct = ContactTracing(probability = 0.5, delay = Exponential(1.5))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.5))
 
 rng = StableRNG(42)
 results = simulate(model, 500;
