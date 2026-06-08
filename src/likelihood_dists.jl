@@ -1,39 +1,20 @@
 # ── Distribution wrappers for direct Turing use ─────────────────────
 #
-# These wrap a model so `data ~ wrapper(model)` works in Turing without
-# needing `Turing.@addlogprob! loglikelihood(...)`. Each wrapper delegates
-# to the existing `loglikelihood(data_wrapper, model)` methods, so the
-# analytical fast paths and simulation fallbacks are unchanged.
+# Internal wrapper types that turn any model with a defined
+# `loglikelihood(::ChainSizes/ChainLengths/OffspringCounts, model)`
+# method into something usable with Turing's `~`. Constructed via
+# `chain_size_distribution`, `chain_length_distribution`, and
+# `offspring_distribution`; not exported on their own. `logpdf` routes
+# back to the existing `loglikelihood` methods so analytical fast
+# paths and simulation fallbacks are unchanged. `rand(d, n)` simulates
+# from the underlying model and projects to the relevant data type.
 
-"""
-    ChainSizeLikelihood(model; seeds=nothing, pi=nothing, kwargs...)
-
-Distribution wrapper that turns any model with a defined
-`loglikelihood(::ChainSizes, model; pi)` into something usable with
-Turing's `~`:
-
-```julia
-@model function fit(data)
-    R ~ Beta(1, 1)
-    data ~ ChainSizeLikelihood(Poisson(R))
-end
-```
-
-`seeds` and `pi`, if supplied, are forwarded to `ChainSizes` and to the
-underlying `loglikelihood` call respectively. Extra `kwargs` are
-forwarded to `loglikelihood` (e.g. `n_sim`, `interventions` for the
-simulation-based path).
-"""
-struct ChainSizeLikelihood{M, S, P, K} <:
+struct _ChainSizeLaw{M, S, P, K} <:
        Distributions.Distribution{Multivariate, Discrete}
     model::M
     seeds::S
     pi::P
     kwargs::K
-end
-
-function ChainSizeLikelihood(model; seeds = nothing, pi = nothing, kwargs...)
-    ChainSizeLikelihood(model, seeds, pi, NamedTuple(kwargs))
 end
 
 function _chain_sizes(data, seeds)
@@ -42,63 +23,106 @@ function _chain_sizes(data, seeds)
 end
 
 function Distributions.logpdf(
-        d::ChainSizeLikelihood, data::AbstractVector{<:Integer})
+        d::_ChainSizeLaw, data::AbstractVector{<:Integer})
+    cs = _chain_sizes(data, d.seeds)
+    # The pi mixture is only defined against the analytical chain-size
+    # distribution. If we were handed a transmission model, route pi
+    # through its offspring so the analytical multi-seed/pi method
+    # picks it up instead of the simulation-based one (which doesn't
+    # accept pi).
     if d.pi === nothing
-        return loglikelihood(_chain_sizes(data, d.seeds), d.model; d.kwargs...)
+        return loglikelihood(cs, d.model; d.kwargs...)
     end
-    return loglikelihood(_chain_sizes(data, d.seeds), d.model; pi = d.pi, d.kwargs...)
+    target = d.model isa TransmissionModel ? single_type_offspring(d.model) : d.model
+    return loglikelihood(cs, target; pi = d.pi, d.kwargs...)
 end
 
 function Distributions.loglikelihood(
-        d::ChainSizeLikelihood, data::AbstractVector{<:Integer})
+        d::_ChainSizeLaw, data::AbstractVector{<:Integer})
     return logpdf(d, data)
 end
 
-"""
-    ChainLengthLikelihood(model; kwargs...)
+# `::Int` rather than `::Integer` to disambiguate against
+# `rand(::AbstractRNG, ::Sampleable{Multivariate}, ::Int64)`.
+function Base.rand(rng::AbstractRNG, d::_ChainSizeLaw, n::Int)
+    states = simulate_batch(_underlying_model(d), n; d.kwargs..., rng)
+    return [chain_statistics(s).size[1] for s in states]
+end
 
-Distribution wrapper around `loglikelihood(::ChainLengths, model)`. See
-[`ChainSizeLikelihood`](@ref) for usage; `kwargs` are forwarded to the
-underlying `loglikelihood` call.
-"""
-struct ChainLengthLikelihood{M, K} <:
+_underlying_model(d::_ChainSizeLaw) = d.model
+
+struct _ChainLengthLaw{M, K} <:
        Distributions.Distribution{Multivariate, Discrete}
     model::M
     kwargs::K
 end
 
-function ChainLengthLikelihood(model; kwargs...)
-    ChainLengthLikelihood(model, NamedTuple(kwargs))
-end
-
 function Distributions.logpdf(
-        d::ChainLengthLikelihood, data::AbstractVector{<:Integer})
+        d::_ChainLengthLaw, data::AbstractVector{<:Integer})
     return loglikelihood(ChainLengths(data), d.model; d.kwargs...)
 end
 
 function Distributions.loglikelihood(
-        d::ChainLengthLikelihood, data::AbstractVector{<:Integer})
+        d::_ChainLengthLaw, data::AbstractVector{<:Integer})
     return logpdf(d, data)
 end
 
-"""
-    OffspringCountLikelihood(offspring)
-
-Distribution wrapper around `loglikelihood(::OffspringCounts,
-offspring)`. The argument is a `Distribution` (typically `Poisson` or
-`NegativeBinomial`) — the same thing the underlying method takes.
-"""
-struct OffspringCountLikelihood{D <: Distribution} <:
-       Distributions.Distribution{Multivariate, Discrete}
-    offspring::D
+function Base.rand(rng::AbstractRNG, d::_ChainLengthLaw, n::Int)
+    states = simulate_batch(d.model, n; d.kwargs..., rng)
+    return [chain_statistics(s).length[1] for s in states]
 end
 
-function Distributions.logpdf(
-        d::OffspringCountLikelihood, data::AbstractVector{<:Integer})
-    return loglikelihood(OffspringCounts(data), d.offspring)
+# ── Public constructors ─────────────────────────────────────────────
+#
+# Extend the existing `chain_size_distribution` so that — with no
+# kwargs and an offspring that has a closed-form distribution — it
+# still returns the analytical `Borel` / `GammaBorel`. With `seeds`,
+# `pi`, or anything else passed through, it returns the wrapper.
+# `chain_length_distribution` and `offspring_distribution` are new
+# entry points.
+
+function chain_size_distribution(model::TransmissionModel;
+        seeds = nothing, pi = nothing, kwargs...)
+    if seeds === nothing && pi === nothing && isempty(kwargs)
+        return chain_size_distribution(single_type_offspring(model))
+    end
+    return _ChainSizeLaw(model, seeds, pi, NamedTuple(kwargs))
 end
 
-function Distributions.loglikelihood(
-        d::OffspringCountLikelihood, data::AbstractVector{<:Integer})
-    return logpdf(d, data)
+"""
+    chain_length_distribution(model; kwargs...)
+
+Distribution over observed chain lengths under `model`. Use with
+Turing's `~`:
+
+```julia
+@model function fit(data)
+    R ~ Beta(1, 1)
+    data ~ chain_length_distribution(BranchingProcess(Poisson(R)))
+end
+```
+
+`kwargs` are forwarded to the underlying
+`loglikelihood(::ChainLengths, model)` call (e.g. `n_sim`,
+`interventions` for the simulation-based path).
+"""
+function chain_length_distribution(model::TransmissionModel; kwargs...)
+    return _ChainLengthLaw(model, NamedTuple(kwargs))
+end
+
+"""
+    offspring_distribution(model)
+
+Per-case offspring distribution of `model`. For a `BranchingProcess`
+this is the same `Distribution` you passed in as `offspring`.
+
+```julia
+@model function fit(data)
+    R ~ Beta(1, 1)
+    data ~ offspring_distribution(BranchingProcess(Poisson(R)))
+end
+```
+"""
+function offspring_distribution(model::TransmissionModel)
+    return single_type_offspring(model)
 end

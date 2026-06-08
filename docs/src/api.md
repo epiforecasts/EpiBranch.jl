@@ -150,14 +150,16 @@ ChainSizes
 ChainLengths
 ```
 
-### Distribution wrappers
+### Distribution entry points
 
-These let an EpiBranch model sit on the right-hand side of Turing's `~`.
+These return a `Distribution` (the analytical form where one exists,
+otherwise a wrapper around `loglikelihood`) you can put on the
+right-hand side of Turing's `~`. `chain_size_distribution` also has
+methods listed under [Chain-size distributions](@ref) above.
 
 ```@docs
-ChainSizeLikelihood
-ChainLengthLikelihood
-OffspringCountLikelihood
+chain_length_distribution
+offspring_distribution
 ```
 
 ### Observation models

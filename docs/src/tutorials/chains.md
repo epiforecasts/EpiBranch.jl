@@ -158,24 +158,25 @@ println("Poisson MLE from chain sizes: R = $(round(mean(d), digits=2))")
 
 ### Bayesian inference with Turing.jl
 
-Wrap the model in [`ChainSizeLikelihood`](@ref) (or
-[`ChainLengthLikelihood`](@ref), [`OffspringCountLikelihood`](@ref)) so
-the data appears directly on the right-hand side of `~`:
+Call [`chain_size_distribution`](@ref) (or
+[`chain_length_distribution`](@ref), [`offspring_distribution`](@ref))
+on the model and the data sits directly on the right-hand side of `~`:
 
 ```julia
 using Turing
 
 @model function chain_model(data)
     R ~ LogNormal(-0.5, 1.0)
-    data ~ ChainSizeLikelihood(Poisson(R))
+    data ~ chain_size_distribution(BranchingProcess(Poisson(R)))
 end
 ```
 
-The wrappers delegate to the same `loglikelihood` methods used in the
-MLE path, so the analytical fast paths and simulation fallbacks apply
-unchanged. If you have multi-seed clusters or a real-time finished-mass
-vector, pass them on construction:
+With no extra arguments these return the analytical distribution
+(`Borel`, `GammaBorel`, …) where one exists; with `seeds`, `pi`,
+interventions, or other kwargs they return a wrapper that routes
+through `loglikelihood` the same way as the MLE path.
 
 ```julia
-data ~ ChainSizeLikelihood(Poisson(R); seeds = seeds, pi = pi)
+data ~ chain_size_distribution(BranchingProcess(Poisson(R));
+    seeds = seeds, pi = pi)
 ```

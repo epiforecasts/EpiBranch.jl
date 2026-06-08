@@ -1,13 +1,14 @@
 # Inference
 
-For each `loglikelihood` method EpiBranch provides a matching
-`Distribution` wrapper — [`ChainSizeLikelihood`](@ref),
-[`ChainLengthLikelihood`](@ref), [`OffspringCountLikelihood`](@ref) —
-so an EpiBranch model sits on the right-hand side of [Turing.jl](https://turinglang.org)'s
-`~` like any other distribution. The wrappers delegate to the same
-`loglikelihood` methods used for MLE, so the analytical fast paths and
-simulation fallbacks apply unchanged. The likelihoods are also
-AD-compatible, so NUTS works wherever the underlying method does.
+[`chain_size_distribution`](@ref), [`chain_length_distribution`](@ref),
+and [`offspring_distribution`](@ref) turn a model into a
+`Distribution` you can put on the right-hand side of
+[Turing.jl](https://turinglang.org)'s `~`. With no extra arguments
+they return the analytical form (`Borel`, `GammaBorel`, the bare
+offspring `Distribution`) where one exists; with `seeds`, `pi`,
+interventions, or other kwargs they return a wrapper that routes
+through the same `loglikelihood` methods used for MLE. Both paths are
+AD-compatible, so NUTS works wherever the underlying likelihood does.
 
 !!! note
     Turing.jl is not a dependency of EpiBranch.jl. Install it separately
@@ -43,7 +44,7 @@ the same Turing model used for the posterior also gives the MLE via
 @model function offspring_model(data)
     R ~ LogNormal(0.0, 1.0)
     k ~ Exponential(1.0)
-    data ~ OffspringCountLikelihood(NegBin(R, k))
+    data ~ offspring_distribution(BranchingProcess(NegBin(R, k)))
 end
 
 mle = maximum_likelihood(offspring_model(data))
@@ -93,7 +94,7 @@ println("MLE: R=$(round(mean(d_mle), digits=2))")
 ```@example inference
 @model function chain_size_model(data)
     R ~ Beta(2, 2)  # prior on (0, 1) for subcritical
-    data ~ ChainSizeLikelihood(Poisson(R))
+    data ~ chain_size_distribution(BranchingProcess(Poisson(R)))
 end
 
 chain = sample(chain_size_model(sizes), NUTS(), 1000; progress=false)
@@ -169,7 +170,7 @@ P(size = cap).
 @model function intervention_model(data, iso, clinical)
     R ~ LogNormal(0.5, 0.5)
     model = BranchingProcess(Poisson(R), Exponential(5.0))
-    data ~ ChainSizeLikelihood(model;
+    data ~ chain_size_distribution(model;
         interventions = [iso], attributes = clinical,
         sim_opts = SimOpts(max_cases = 500),
         n_sim = 500, rng = StableRNG(hash(R)))
@@ -210,7 +211,7 @@ println("Clusters: $(length(sizes)) (seeds 1 / 2: " *
 @model function cluster_size_model(sizes, seeds)
     R ~ LogNormal(0.0, 1.0)
     k ~ LogNormal(-1.0, 1.0)
-    sizes ~ ChainSizeLikelihood(NegativeBinomial(k, k / (k + R)); seeds = seeds)
+    sizes ~ chain_size_distribution(BranchingProcess(NegativeBinomial(k, k / (k + R))); seeds = seeds)
 end
 
 chain = sample(cluster_size_model(sizes, seeds), NUTS(), 1000; progress = false)
@@ -244,6 +245,6 @@ Two largely independent questions:
 
 The `loglikelihood` methods are the shared backend: `fit` minimises
 `-loglikelihood` over a bracket; Turing models route through the
-`Likelihood` wrappers, which call the same methods. Switching between
+distribution wrappers, which call the same methods. Switching between
 MLE, MAP, and posterior is a question of which Turing entry point you
 call, not which package.
