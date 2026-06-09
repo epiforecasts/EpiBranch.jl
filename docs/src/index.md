@@ -1,14 +1,19 @@
 # EpiBranch.jl
 
-**EpiBranch.jl** is a [Julia](https://julialang.org/) package for stochastic branching process simulation
-of infectious disease outbreaks. It unifies the functionality of
-several R packages (cf.
+**EpiBranch.jl** is a composable [Julia](https://julialang.org/) engine for
+branching-process models in epidemiology. It does both stochastic simulation and
+analytical inference, and uses closed-form solutions where they exist.
+Interventions like isolation, contact tracing and vaccination combine on one
+engine, transmission can run over a fixed contact network or a multitype process,
+and an observation step sits on top.
+
+It started as a unification of five R packages (cf.
 [ringbp](https://github.com/epiforecasts/ringbp),
 [simulist](https://github.com/epiverse-trace/simulist),
 [epichains](https://github.com/epiverse-trace/epichains),
-[superspreading](https://github.com/epiverse-trace/superspreading),
-[pepbp](https://github.com/sophiemeakin/pepbp)) in
-a single package with one shared simulation engine.
+[superspreading](https://github.com/epiverse-trace/superspreading) and
+[pepbp](https://github.com/sophiemeakin/pepbp)) but adds type-structured
+offspring and a single interface across simulation and analytical methods.
 
 EpiBranch.jl separates the offspring draw from timing and interventions:
 the branching process draws contacts, generation times are assigned
