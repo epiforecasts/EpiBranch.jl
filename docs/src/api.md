@@ -160,6 +160,18 @@ ChainSizes
 ChainLengths
 ```
 
+### Distribution entry points
+
+These return a `Distribution` (the analytical form where one exists,
+otherwise a wrapper around `loglikelihood`) you can put on the
+right-hand side of Turing's `~`. The [`chain_size_distribution`](@ref)
+entry above lists its process-side (analytical) methods.
+
+```@docs
+chain_length_distribution
+offspring_distribution
+```
+
 ### Observation models
 
 ```@docs

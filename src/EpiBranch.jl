@@ -70,6 +70,9 @@ include("analytical/fitting.jl")
 include("analytical/cluster_mixed.jl")
 include("analytical/end_of_outbreak_probability.jl")
 
+# Distribution wrappers so models work directly with Turing's `~`.
+include("likelihood_dists.jl")
+
 # Exports — types
 export TransmissionModel, BranchingProcess, NetworkProcess
 export Individual, SimulationState
@@ -126,6 +129,9 @@ export probability_contain
 
 # Exports — unified inference interface
 export OffspringCounts, ChainSizes, ChainLengths
+# Entry points returning a Distribution that wraps a model; use with
+# Turing's `~`. `chain_size_distribution` is already exported above.
+export chain_length_distribution, offspring_distribution
 export ClusterMixed, ChainSizeMixture
 # Real-time mixture: per-cluster "is finished?" weight
 export end_of_outbreak_probability
