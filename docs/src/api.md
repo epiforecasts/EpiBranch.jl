@@ -135,7 +135,7 @@ epidemic_probability
 probability_contain
 proportion_transmission
 proportion_cluster_size
-network_R
+heterogeneous_contact_R
 ```
 
 ### Chain-size distributions

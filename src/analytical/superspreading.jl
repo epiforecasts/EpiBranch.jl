@@ -125,7 +125,7 @@ end
 # ── Network-adjusted reproduction number ─────────────────────────────
 
 """
-    network_R(mean_contacts, sd_contacts, duration, prob_transmission)
+    heterogeneous_contact_R(mean_contacts, sd_contacts, duration, prob_transmission)
 
 Compute the basic reproduction number adjusted for heterogeneous contact
 patterns in a network.
@@ -137,8 +137,15 @@ Returns a named tuple `(R=..., R_net=...)`:
 
 The adjustment reflects that high-contact individuals both acquire and
 transmit more, amplifying R beyond what homogeneous mixing predicts.
+
+This is a mean-field, configuration-model result: it depends only on the
+mean and variance of the contact (degree) distribution and assumes no
+clustering. It is an analytical summary, distinct from the
+[`NetworkProcess`](@ref) simulation, which transmits over an explicit
+graph that may have the clustering this formula assumes away. It is a
+direct port of `superspreading::calc_network_R`.
 """
-function network_R(mean_contacts::Real, sd_contacts::Real,
+function heterogeneous_contact_R(mean_contacts::Real, sd_contacts::Real,
         duration::Real, prob_transmission::Real)
     mean_contacts >= 0 || throw(ArgumentError("mean_contacts must be ≥ 0"))
     sd_contacts >= 0 || throw(ArgumentError("sd_contacts must be ≥ 0"))

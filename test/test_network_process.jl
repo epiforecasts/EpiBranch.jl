@@ -13,14 +13,16 @@
         @test m isa NetworkProcess
         @test length(m.adjacency) == 5
 
-        # Adjacency matrix is read as undirected.
-        A = [0 1 0; 1 0 1; 0 1 0]
-        mm = NetworkProcess(A, 0.5, LogNormal(1.6, 0.5))
+        # Weighted adjacency matrix is read as undirected; entries are
+        # per-edge transmission probabilities.
+        A = [0.0 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.0]
+        mm = NetworkProcess(A, LogNormal(1.6, 0.5))
         @test mm.adjacency[2] == [1, 3]
         @test mm.adjacency[1] == [2]
+        @test mm.edge_probability[2] == [0.5, 0.5]
 
         # Non-square matrix is rejected.
-        @test_throws ArgumentError NetworkProcess([0 1; 1 0; 0 0], 0.5)
+        @test_throws ArgumentError NetworkProcess([0 1; 1 0; 0 0])
 
         # population_size is determined by the graph; passing one warns.
         @test_logs (:warn,) NetworkProcess(adj, 0.5, LogNormal(1.6, 0.5);

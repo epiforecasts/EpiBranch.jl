@@ -2,10 +2,9 @@
 
 **EpiBranch.jl** is a composable [Julia](https://julialang.org/) engine for
 branching-process models in epidemiology. It does both stochastic simulation and
-analytical inference, and uses closed-form solutions where they exist.
-Interventions like isolation, contact tracing and vaccination combine on one
-engine, transmission can run over a fixed contact network or a multitype process,
-and an observation step sits on top.
+analytical inference, and uses closed-form results where they exist. A flexible
+extension interface includes interventions, host attributes and transmission over
+contact networks.
 
 It started as a unification of five R packages (cf.
 [ringbp](https://github.com/epiforecasts/ringbp),
