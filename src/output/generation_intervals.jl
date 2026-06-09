@@ -1,18 +1,18 @@
 """
-    generation_interval(ind::Individual, state::SimulationState)
+    realised_generation_interval(ind::Individual, state::SimulationState)
 
-Realised forward generation interval for `ind`: the time from its
+The realised forward generation interval for `ind`: the time from its
 infector's infection to its own, `ind.infection_time -
-parent.infection_time`. Returns `NaN` for index cases (no parent) and
-for individuals that were not infected.
+parent.infection_time`. Index cases and individuals that were never
+infected return `NaN`.
 
-This is the realised interval, shaped by the epidemic — susceptible
-depletion and interventions act on which transmissions occur, so the
-distribution of realised intervals differs from the intrinsic
-`generation_time` supplied to the model. It is the per-individual
-mirror of [`onset_time`](@ref).
+The interval is shaped by the epidemic. Susceptible depletion and
+interventions decide which transmissions happen, so realised intervals
+are distributed differently from the intrinsic `generation_time` you
+give the model. This is the per-individual counterpart of
+[`onset_time`](@ref).
 """
-function generation_interval(ind::Individual, state::SimulationState)
+function realised_generation_interval(ind::Individual, state::SimulationState)
     (is_infected(ind) && ind.parent_id != 0) || return NaN
     parent = state.individuals[ind.parent_id]
     return ind.infection_time - parent.infection_time
@@ -21,14 +21,14 @@ end
 """
     realised_generation_intervals(state::SimulationState)
 
-Collect the realised forward generation intervals across all infected
-non-index cases in a single simulation (see
-[`generation_interval`](@ref)). Returns a `Vector{Float64}`.
+The realised forward generation intervals of every infected non-index
+case in one simulation, as a `Vector{Float64}`. See
+[`realised_generation_interval`](@ref).
 
-To recover the intrinsic generation interval for a model with a fixed
-`generation_time`, read that distribution directly; for a
-state-dependent `generation_time`, run the model without interventions
-so that no transmissions are blocked.
+For a model with a fixed `generation_time`, the intrinsic interval is
+that distribution itself. For a state-dependent `generation_time`, run
+the model without interventions and the realised intervals coincide
+with the intrinsic ones, since nothing blocks transmission.
 """
 function realised_generation_intervals(state::SimulationState)
     gts = Float64[]
@@ -43,8 +43,8 @@ end
 """
     realised_generation_intervals(states::Vector{<:SimulationState})
 
-Collect realised forward generation intervals across several
-simulations into a single `Vector{Float64}`.
+The realised forward generation intervals across several simulations,
+flattened into one `Vector{Float64}`.
 """
 function realised_generation_intervals(states::Vector{<:SimulationState})
     reduce(vcat, (realised_generation_intervals(s) for s in states);

@@ -7,7 +7,7 @@
         # Index cases have no parent.
         for ind in state.individuals
             if ind.parent_id == 0
-                @test isnan(generation_interval(ind, state))
+                @test isnan(realised_generation_interval(ind, state))
             end
         end
 
@@ -15,9 +15,9 @@
         for ind in state.individuals
             if is_infected(ind) && ind.parent_id != 0
                 parent = state.individuals[ind.parent_id]
-                @test generation_interval(ind, state) ≈
+                @test realised_generation_interval(ind, state) ≈
                       ind.infection_time - parent.infection_time
-                @test generation_interval(ind, state) >= 0
+                @test realised_generation_interval(ind, state) >= 0
             end
         end
     end

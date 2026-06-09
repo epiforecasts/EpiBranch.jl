@@ -116,7 +116,7 @@ set_isolated!
 linelist
 contacts
 chain_statistics
-generation_interval
+realised_generation_interval
 realised_generation_intervals
 containment_probability
 is_extinct
