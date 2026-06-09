@@ -22,7 +22,7 @@ makedocs(;
             "Multi-type models" => "tutorials/multi-type.md",
             "Network models" => "tutorials/networks.md",
             "Line lists and contacts" => "tutorials/linelist.md",
-            "Chain statistics, likelihood, and fitting" => "tutorials/chains.md",
+            "Chain statistics" => "tutorials/chains.md",
             "Inference" => "tutorials/inference.md",
             "Analytical functions" => "tutorials/analytical.md",
             "Extending EpiBranch" => "tutorials/extending.md"
