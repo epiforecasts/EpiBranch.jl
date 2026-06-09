@@ -70,6 +70,8 @@
             simulate(model, 30; interventions = [iso], attributes = attrs,
             sim_opts = opts, rng = rng_b))
 
+        @test !isempty(free)
+        @test !isempty(isolated)
         @test sum(isolated) / length(isolated) < sum(free) / length(free)
     end
 
