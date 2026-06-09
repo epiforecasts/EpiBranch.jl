@@ -154,15 +154,15 @@
         @test prop > 0.7
     end
 
-    # ── network_R (NATSAL data) ─────────────────────────────────────────
+    # ── heterogeneous_contact_R (NATSAL data) ─────────────────────────────────────────
     # R: superspreading::calc_network_R(mean_num_contact=14.1/(74-16),
     #                                   sd_num_contact=69.6/(74-16),
     #                                   infect_duration=1, p_trans=1)
     # Expected: R=0.2431034, R_net=6.166508
-    @testset "network_R matches R calc_network_R" begin
+    @testset "heterogeneous_contact_R matches R calc_network_R" begin
         mean_c = 14.1 / (74 - 16)
         sd_c = 69.6 / (74 - 16)
-        res = network_R(mean_c, sd_c, 1.0, 1.0)
+        res = heterogeneous_contact_R(mean_c, sd_c, 1.0, 1.0)
         @test res.R ≈ 0.2431034 atol = 1e-3
         @test res.R_net ≈ 6.166508 atol = 1e-2
     end

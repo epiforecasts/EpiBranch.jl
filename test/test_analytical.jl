@@ -673,18 +673,18 @@
 
     @testset "Network R" begin
         @testset "Homogeneous contacts" begin
-            result = network_R(10.0, 0.0, 1.0, 0.1)
+            result = heterogeneous_contact_R(10.0, 0.0, 1.0, 0.1)
             @test result.R ≈ 1.0
             @test result.R_net ≈ 1.0  # no variance → no adjustment
         end
 
         @testset "Heterogeneous contacts amplify R" begin
-            result = network_R(10.0, 20.0, 1.0, 0.1)
+            result = heterogeneous_contact_R(10.0, 20.0, 1.0, 0.1)
             @test result.R_net > result.R
         end
 
         @testset "Zero contacts" begin
-            result = network_R(0.0, 0.0, 1.0, 0.5)
+            result = heterogeneous_contact_R(0.0, 0.0, 1.0, 0.5)
             @test result.R == 0.0
             @test result.R_net == 0.0
         end
