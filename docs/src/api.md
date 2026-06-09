@@ -98,6 +98,7 @@ terminal_event
 
 ```@docs
 onset_time
+incubation_period
 is_isolated
 isolation_time
 is_traced

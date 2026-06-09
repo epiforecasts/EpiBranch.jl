@@ -68,7 +68,7 @@ For a parent of type `j`, contacts are drawn from an offspring distribution. Thi
 
 Generation times are assigned independently to each contact.
 
-Each contact is given a generation time sampled from a distribution (either fixed or derived from the parent's incubation period, as in the ringbp-style model). This generation time is the *potential* time of transmission — the infectiousness profile, or h(t) in survival analysis terms.
+Each contact is given a generation time sampled from a distribution. That distribution can be fixed, or built per individual by passing a function for `generation_time`. The engine hands the function the individual and uses the distribution it returns, so the generation time can read any per-individual quantity: the parent's incubation period (as in the ringbp-style model), or anything else an attributes function has stored. This generation time is the *potential* time of transmission — the infectiousness profile, or h(t) in survival analysis terms.
 
 #### 3. Competing risks
 

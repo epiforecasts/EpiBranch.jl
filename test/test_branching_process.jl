@@ -59,6 +59,39 @@
         end
     end
 
+    @testset "incubation_period accessor" begin
+        ind = Individual(id = 1, infection_time = 2.0)
+        @test isnan(incubation_period(ind))   # onset not set yet
+        ind.state[:onset_time] = 5.5
+        @test incubation_period(ind) ≈ 3.5
+    end
+
+    @testset "Generation time can depend on individual state" begin
+        # An attributes function stores a per-individual latent and sets
+        # onset from it; the generation_time function reads the same
+        # latent, so onset and generation time come from one draw rather
+        # than two independent ones.
+        rng = StableRNG(7)
+        init_fn = function (rng, ind)
+            scale = 3.0 + rand(rng)
+            ind.state[:gt_scale] = scale
+            ind.state[:onset_time] = ind.infection_time + scale
+        end
+        gt_fn = ind -> Exponential(ind.state[:gt_scale])
+        model = BranchingProcess(Poisson(1.2), gt_fn)
+        state = simulate(model; attributes = init_fn,
+            sim_opts = SimOpts(max_cases = 50), rng = rng)
+
+        # Require secondary transmission so the generation_time function
+        # is actually exercised, not just the index case.
+        secondary = filter(ind -> is_infected(ind) && ind.parent_id > 0,
+            state.individuals)
+        @test !isempty(secondary)
+        for ind in secondary
+            @test incubation_period(ind) ≈ ind.state[:gt_scale]
+        end
+    end
+
     @testset "Truncated generation time enforces minimum" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), truncated(Exponential(5.0), 3.0, Inf))

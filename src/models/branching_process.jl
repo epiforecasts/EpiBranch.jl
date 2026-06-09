@@ -95,21 +95,19 @@ end
     get_generation_time(gt, individual)
 
 Return the generation time distribution for a specific individual.
-For a `Distribution`, the distribution is returned unchanged. For a `Function`,
-it is called with the individual's incubation period.
+
+For a `Distribution`, everyone shares the same distribution. For a
+`Function`, the engine calls it with the individual and uses the
+`Distribution` it returns, so the generation time can read anything in
+`individual.state`: the incubation period, or any per-individual
+quantity an attributes function has stored. That is how the generation
+time and symptom onset can come from one per-individual draw instead of
+two independent ones. Use [`incubation_period`](@ref) to read the
+incubation period inside such a function.
 """
 get_generation_time(gt::Distribution, individual) = gt
 get_generation_time(ngt::NoGenerationTime, individual) = ngt
-
-function get_generation_time(gt::Function, individual)
-    onset = get(individual.state, :onset_time, NaN)
-    inc_period = onset - individual.infection_time
-    if isnan(inc_period) || inc_period <= 0.0
-        @debug "Missing or non-positive incubation period (e.g. asymptomatic individual); using 5.0 days" maxlog=1
-        inc_period = 5.0
-    end
-    gt(inc_period)
-end
+get_generation_time(gt::Function, individual) = gt(individual)
 
 # ── Generation step ──────────────────────────────────────────────────
 
