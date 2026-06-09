@@ -4,8 +4,8 @@
 node is a person. An infectious node infects its neighbours, and each
 node can be infected once. The graph does the job the offspring
 distribution does in [`BranchingProcess`](@ref): it sets who can infect
-whom. Interventions, attributes, and clinical transitions behave the
-same as for a branching process.
+whom. Interventions, node attributes and the clinical timeline all
+behave exactly as they do for a branching process.
 
 ## Defining a network
 
@@ -41,8 +41,9 @@ adjacency = household_ring(20, 4)
 model = NetworkProcess(adjacency, 0.4, LogNormal(1.6, 0.5))
 ```
 
-An adjacency matrix works too. `NetworkProcess(A, p, gt)` reads any
-nonzero `A[i, j]` as an undirected edge.
+A weighted adjacency matrix works too. `NetworkProcess(A, gt)` reads any
+nonzero `A[i, j]` as an undirected edge whose value is the per-edge
+transmission probability.
 
 ## Simulating
 

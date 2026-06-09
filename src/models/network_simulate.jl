@@ -88,10 +88,13 @@ function simulate(model::NetworkProcess;
         for idx in state.active_ids
             parent = state.individuals[idx]
             gt_dist = get_generation_time(model.generation_time, parent)
-            for nb in model.adjacency[idx]
+            nbrs = model.adjacency[idx]
+            probs = model.edge_probability[idx]
+            for k in eachindex(nbrs)
+                nb = nbrs[k]
                 target = state.individuals[nb]
                 is_infected(target) && continue
-                p = _edge_probability(model.transmission_probability, rng, parent, nb)
+                p = probs[k]
                 (p >= 1.0 || rand(rng) < p) || continue
                 inf_time = _infection_time(gt_dist, parent, state)
                 push!(get!(exposures, nb, Tuple{Int, Float64}[]), (idx, inf_time))
