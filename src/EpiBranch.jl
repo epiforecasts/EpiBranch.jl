@@ -118,6 +118,7 @@ export clinical_presentation, demographics, transmission_traits, compose
 
 # Exports — simulation
 export simulate, make_contact!, susceptible_fraction
+export contacts_of, collect_exposures, gather_by_target
 
 # Exports — output
 export linelist, contacts, chain_statistics

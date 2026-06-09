@@ -38,12 +38,12 @@ ChainLengths
 ORTHOGONAL
 ─────────
 AbstractIntervention (Isolation, ContactTracing, RingVaccination, Scheduled)
-    — passed to simulate as a vector; modifies state during step!
+    — passed to simulate as a vector; modifies state each generation
 
 EXTENSION POINTS (for users adding their own pieces)
 ─────────
 - Custom transmission model: subtype TransmissionModel,
-  define step!, single_type_offspring, chain_size_distribution
+  define contacts_of, single_type_offspring, chain_size_distribution
 - Custom observation model: subtype ObservationModel,
   define loglikelihood(::DataType, ::Observed{<:Any, <:YourObs})
   and chain_size_distribution(::Observed{<:Any, <:YourObs}) if analytical
@@ -253,7 +253,7 @@ The generic case uses adaptive Gauss-Kronrod quadrature via `ChainSizeMixture`. 
 
 ## Simulation, mutation, and automatic differentiation
 
-The simulation engine works in place, generation by generation. Per generation, the engine resolves intervention state on each active parent, then `step!` builds the next generation's contacts (offspring + timing only), then the engine initialises intervention state on each contact, runs post-transmission hooks, and resolves competing risks to set `:infected`. `step!` itself is strictly the model's offspring-and-timing layer — its signature is `step!(model, state)`, with no `interventions` argument — and never mutates `state.individuals` directly; it returns a `Vector{Individual}` that the engine appends. Copying the full state at every generation would be prohibitively expensive for an unbounded tree, so mutation in place is deliberate.
+The simulation engine works in place, generation by generation. Per generation, the engine resolves intervention state on each active parent, gathers the generation's contacts by calling `contacts_of(model, node, state)` for each active node (via `collect_exposures`), initialises intervention state on each new contact, runs post-transmission hooks, and resolves competing risks to set `:infected`. `contacts_of` is strictly the model's contact-and-timing layer — its signature is `contacts_of(model, node, state)`, with no `interventions` argument — returning `(contact, infection_time)` pairs: tree-like models create fresh contacts with `make_contact!`, while graph-like models return existing nodes. Copying the full state at every generation would be prohibitively expensive for an unbounded tree, so mutation in place is deliberate.
 
 ### Analytical likelihoods
 

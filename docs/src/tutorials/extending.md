@@ -462,30 +462,34 @@ defaults for the rest.
 
 For **simulation**, define one method:
 
-- `step!(model, state)` — advance one generation. The default
-  `simulate(::TransmissionModel)` loop calls this until termination.
-  It must return a `Vector{Individual}` of the new contacts for this
-  generation. Build each contact with [`make_contact!`](@ref); do not
-  push to `state.individuals` or set `:infected` yourself.
+- [`contacts_of`](@ref)`(model, node, state)` — the contacts an
+  infectious `node` reaches this generation, as `(contact, infection_time)`
+  pairs. Tree-like models create fresh contacts with
+  [`make_contact!`](@ref); graph-like models return existing nodes. Do
+  not set `:infected` yourself.
 
-The signature has no `interventions` argument: a custom `step!` is
-strictly the model's offspring-and-timing layer and cannot couple to
-interventions. Produce every potential contact your model generates —
-do not pre-filter by parent intervention state (`:isolated`,
-`:vaccinated`, …). Whether each contact is actually infected is then
-decided by the engine's competing-risks resolution after `step!`
-returns; that is the only place intervention effects on transmission
-outcomes apply.
+The signature has no `interventions` argument: `contacts_of` is strictly
+the model's contact-and-timing layer and cannot couple to interventions.
+Produce every potential contact your model generates — do not pre-filter
+by parent intervention state (`:isolated`, `:vaccinated`, …). Whether
+each contact is actually infected is then decided by the engine's
+competing-risks resolution; that is the only place intervention effects
+on transmission outcomes apply.
 
-The engine handles everything around `step!`: `resolve_individual!`
-runs on each active parent before `step!`, so by the time your `step!`
-is called every parent's intervention state for this generation is
-already up to date. After `step!` returns, the engine runs
-`initialise_individual!` and `apply_post_transmission!` on the new
+The engine handles everything around `contacts_of`: `resolve_individual!`
+runs on each active parent first, so by the time your `contacts_of` is
+called every parent's intervention state for this generation is already
+up to date. The engine then gathers the contacts ([`collect_exposures`](@ref)),
+runs `initialise_individual!` and `apply_post_transmission!` on the new
 contacts, resolves competing risks to set `:infected`, runs clinical
 transitions, and updates the bookkeeping fields
 (`cumulative_cases`, `current_generation`, `active_ids`, `extinct`,
 `max_infection_time`).
+
+Models whose contacts can be *shared* across parents within a generation
+(networks, households, clustering) also override
+[`collect_exposures`](@ref) with [`gather_by_target`](@ref), which
+deduplicates shared targets so a node reached several times resolves once.
 
 For **analytical inference helpers** that route through the offspring
 specification (`extinction_probability`, `epidemic_probability`,
@@ -515,19 +519,15 @@ struct MyModel{O, G} <: TransmissionModel
     # ... your model parameters
 end
 
-# Required for simulation: one generation step. Build contacts with
-# `make_contact!` and return the vector; the engine handles
-# `:infected`, post-transmission hooks, transitions, and bookkeeping.
-function EpiBranch.step!(model::MyModel, state::SimulationState)
-    new_contacts = Individual[]
-    for idx in state.active_ids
-        parent = state.individuals[idx]
-        for _ in 1:rand(state.rng, model.offspring)
-            t = parent.infection_time + rand(state.rng, model.generation_time)
-            make_contact!(new_contacts, state, parent, t)
-        end
+# Required for simulation: this node's contacts this generation, as
+# `(contact, infection_time)` pairs. Create fresh contacts with
+# `make_contact!`; the engine handles `:infected`, post-transmission
+# hooks, transitions, and bookkeeping.
+function EpiBranch.contacts_of(model::MyModel, parent, state)
+    map(1:rand(state.rng, model.offspring)) do _
+        t = parent.infection_time + rand(state.rng, model.generation_time)
+        (make_contact!(state, parent, t), t)
     end
-    return new_contacts
 end
 
 # Required for analytical helpers (optional but recommended).
@@ -712,7 +712,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
-| Custom transmission model | Struct `<: TransmissionModel` + `step!`, `single_type_offspring` | Simulation + analytics |
+| Custom transmission model | Struct `<: TransmissionModel` + `contacts_of`, `single_type_offspring` | Simulation + analytics |
 | Custom observation model | Struct `<: ObservationModel` + `chain_size_distribution(::Observed{...})` and/or `loglikelihood(::DataType, ::Observed{...})` | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
