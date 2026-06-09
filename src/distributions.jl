@@ -26,11 +26,13 @@ Return a function suitable for the `generation_time` field of a
 `BranchingProcess`, in which each individual's generation time is linked
 to their own incubation period.
 
-The returned function takes an incubation period (Float64) and produces a
-truncated skew-normal distribution SN(ξ, ω, α), where ξ = incubation
-period, and α is chosen so that the fraction of generation times shorter
-than the incubation period equals `presymptomatic_fraction`. This is the
-generation time model used in Hellewell et al. (2020).
+The returned function takes an `Individual` and produces a truncated
+skew-normal distribution SN(ξ, ω, α), where ξ is the individual's
+incubation period and α is chosen so that the fraction of generation
+times shorter than the incubation period equals `presymptomatic_fraction`.
+This is the generation time model used in Hellewell et al. (2020).
+Individuals with no usable incubation period (for example asymptomatic
+cases) fall back to a 5-day centre.
 
 Usage:
 ```julia
@@ -52,7 +54,12 @@ function incubation_linked_generation_time(; presymptomatic_fraction::Real = 0.3
     alpha = tan(float(π) * (0.5 - float(presymptomatic_fraction)))
     om = float(omega)
 
-    return function (inc_period)
+    return function (individual)
+        inc_period = incubation_period(individual)
+        if isnan(inc_period) || inc_period <= 0.0
+            @debug "Missing or non-positive incubation period (e.g. asymptomatic individual); using 5.0 days" maxlog=1
+            inc_period = 5.0
+        end
         _TruncatedSkewNormal(inc_period, om, alpha)
     end
 end

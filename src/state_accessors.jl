@@ -13,6 +13,14 @@ end
 """Symptom onset time (Float64, NaN if asymptomatic or not set)."""
 onset_time(ind::Individual) = get(ind.state, :onset_time, NaN)::Float64
 
+"""
+Incubation period: time from infection to symptom onset (Float64, NaN if
+asymptomatic or onset is not set). Useful inside a `generation_time`
+function that links an individual's generation time to their own
+incubation period.
+"""
+incubation_period(ind::Individual) = onset_time(ind) - ind.infection_time
+
 """Whether the individual is isolated."""
 is_isolated(ind::Individual) = get(ind.state, :isolated, false)::Bool
 
