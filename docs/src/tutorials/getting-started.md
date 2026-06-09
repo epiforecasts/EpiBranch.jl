@@ -56,34 +56,6 @@ ind = state.individuals[1]
 println("Infection: $(round(ind.infection_time, digits=1)), Onset: $(round(onset_time(ind), digits=1))")
 ```
 
-## Linking the generation time to the individual
-
-So far the generation time has been one distribution shared by
-everyone. You can instead pass a function for `generation_time`. The
-engine calls it with each infected individual and uses whatever
-`Distribution` it returns, so the generation time can read anything the
-individual carries. The most common choice is the individual's own
-incubation period, available through [`incubation_period`](@ref):
-
-```@example gettingstarted
-gt = ind -> Gamma(2.0, incubation_period(ind) / 2)
-linked = BranchingProcess(NegBin(2.5, 0.16), gt)
-
-rng = StableRNG(42)
-state = simulate(linked;
-    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-    sim_opts = SimOpts(max_cases = 500),
-    rng = rng,
-)
-println("Cases: $(state.cumulative_cases)")
-```
-
-The incubation period is drawn once per individual, and the generation
-time is built from it, so the two are correlated: a later-onset case
-also tends to transmit later. [`incubation_linked_generation_time`](@ref)
-gives you a ready-made version of this, the skew-normal model from
-Hellewell et al. (2020).
-
 ## Adding interventions
 
 You can combine interventions by passing them as a vector:

@@ -291,6 +291,59 @@ ind = state.individuals[1]
 println("Individual 1: age=$(ind.state[:age]), sex=$(ind.state[:sex]), risk=$(ind.state[:risk_group])")
 ```
 
+## Generation time as a function of the individual
+
+`generation_time` can be a `Distribution` shared by everyone, or a
+function. When it is a function, the engine calls it with each infected
+individual and uses the `Distribution` it returns, so the generation
+time can read anything the individual carries in `individual.state`.
+
+The common case is linking it to the individual's own incubation
+period, read with [`incubation_period`](@ref):
+
+```@example extending
+gt = ind -> Gamma(2.0, incubation_period(ind) / 2)
+linked = BranchingProcess(NegBin(2.5, 0.16), gt)
+
+rng = StableRNG(42)
+state = simulate(linked;
+    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+    sim_opts = SimOpts(max_cases = 500),
+    rng = rng,
+)
+println("Cases: $(state.cumulative_cases)")
+```
+
+Because the incubation period is drawn once per individual and the
+generation time is built from it, the two are correlated: a later-onset
+case also tends to transmit later. [`incubation_linked_generation_time`](@ref)
+is a ready-made version (the skew-normal model from Hellewell et al.
+2020).
+
+The function sees the whole individual, so the generation time can
+depend on any quantity an attributes function has stored, not only the
+incubation period. Store a per-individual value and read it back:
+
+```@example extending
+# Attributes function draws a per-individual infectiousness scale and
+# sets the onset time from the same draw.
+host = function (rng, ind)
+    scale = 3.0 + rand(rng)
+    ind.state[:gt_scale] = scale
+    ind.state[:onset_time] = ind.infection_time + scale
+end
+
+scaled = BranchingProcess(Poisson(2.0), ind -> Exponential(ind.state[:gt_scale]))
+
+rng = StableRNG(42)
+state = simulate(scaled;
+    attributes = host, sim_opts = SimOpts(max_cases = 500), rng = rng)
+println("Cases: $(state.cumulative_cases)")
+```
+
+This is the seam to use whenever generation time and onset should come
+from one per-individual draw instead of two independent ones.
+
 ## Custom offspring distributions
 
 `BranchingProcess` takes anything its sampling path can use. Two paths
