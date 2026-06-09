@@ -1,16 +1,21 @@
-# ── Network simulation loop ─────────────────────────────────────────
+# ── Network model: setup and exposure collection ────────────────────
 #
-# Instantiates the full set of network nodes once, each with a stable
-# identity and attributes drawn at setup. Every generation, infectious
-# nodes transmit along their edges to susceptible neighbours; a node
-# reached by several neighbours is infected if any incoming edge
-# transmits, and stays a single node.
+# NetworkProcess runs through the same generic `simulate`/
+# `_advance_generation!` engine as BranchingProcess. It supplies just two
+# model-specific pieces:
 #
-# Infection resolution reuses the engine's competing-risks resolver
-# (`_decide_infected`), the intervention hooks, and the clinical
-# transitions; transmission references the existing nodes.
+#   * `initialise_state` — the population is the graph, so every node is
+#     pre-instantiated once with a stable identity and fixed attributes,
+#     and `sim_opts.n_initial` seed nodes are infected at random.
+#   * `collect_exposures` — each generation, infectious nodes transmit
+#     along their edges; exposures are gathered by target node, so a
+#     susceptible reached by several infectious neighbours in one
+#     generation is resolved once (the loop case the tree never hits).
+#
+# Everything else — intervention hooks, competing-risks resolution,
+# clinical transitions, bookkeeping — is the shared engine.
 
-function _init_network_state(model::NetworkProcess, sim_opts::SimOpts,
+function initialise_state(model::NetworkProcess, sim_opts::SimOpts,
         interventions, transitions, attributes, rng::AbstractRNG)
     n = length(model.adjacency)
     individuals = Individual[]
@@ -19,7 +24,9 @@ function _init_network_state(model::NetworkProcess, sim_opts::SimOpts,
         population_size(model), 0.0, attributes,
         convert(Vector{AbstractClinicalTransition}, transitions))
 
-    # Pre-instantiate every node with fixed attributes.
+    # Pre-instantiate every node with fixed attributes and intervention
+    # state. (The tree case mints contacts lazily; the network's nodes
+    # exist from the start.)
     for i in 1:n
         ind = _create_individual(state, 0, i, i, 0.0)
         ind.state[:network_node] = i
@@ -42,9 +49,6 @@ function _init_network_state(model::NetworkProcess, sim_opts::SimOpts,
         _validate_required_fields(individuals[seed_ids[1]], interventions)
         _validate_required_fields(individuals[seed_ids[1]], transitions)
     end
-    for id in seed_ids
-        _resolve_transitions!(state, individuals[id])
-    end
 
     state.cumulative_cases = n_seed
     state.active_ids = seed_ids
@@ -52,117 +56,39 @@ function _init_network_state(model::NetworkProcess, sim_opts::SimOpts,
     return state
 end
 
+# A network's contacts can be shared across parents in a generation
+# (the loop case), so it gathers exposures by target rather than using the
+# tree-default `collect_exposures`.
+function collect_exposures(model::NetworkProcess, state::SimulationState)
+    gather_by_target(model, state)
+end
+
 """
-    simulate(model::NetworkProcess; kwargs...)
+    contacts_of(model::NetworkProcess, parent, state)
 
-Run a single outbreak over a fixed contact network. Each node carries a
-stable identity; transmission flows along edges and each node is
-infected at most once. Interventions, attributes, and clinical
-transitions apply as for [`BranchingProcess`](@ref).
-
-Keyword arguments match the [`BranchingProcess`](@ref) method
-(`interventions`, `transitions`, `attributes`, `sim_opts`, `rng`).
-`sim_opts.n_initial` seed nodes are chosen at random.
+Transmission over a fixed graph: `parent`'s contacts this generation are
+its existing graph neighbours. Each edge fires with its per-edge
+probability; already-infected neighbours are skipped, and surviving edges
+are returned as `(node, infection_time)` pairs at a generation-time-shifted
+time. No contacts are created — the nodes already exist — so the engine
+recognises them as pre-existing by id. A susceptible reached by several
+infectious neighbours in one generation is deduplicated downstream by
+[`gather_by_target`](@ref).
 """
-function simulate(model::NetworkProcess;
-        interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
-        transitions::Vector{<:AbstractClinicalTransition} = AbstractClinicalTransition[],
-        attributes::Union{Function, NoAttributes} = NoAttributes(),
-        sim_opts::SimOpts = SimOpts(),
-        rng::AbstractRNG = Random.default_rng())
-    state = _init_network_state(
-        model, sim_opts, interventions, transitions, attributes, rng)
-
-    while !should_terminate(state, sim_opts)
-        # 1. Resolve intervention state on the currently-infectious nodes.
-        for idx in state.active_ids
-            for intervention in interventions
-                resolve_individual!(intervention, state.individuals[idx], state)
-            end
-        end
-
-        # 2. Gather exposures: each susceptible neighbour collects the
-        #    (infectious parent, infection time) of every edge that
-        #    passes the per-edge transmission-probability draw.
-        exposures = Dict{Int, Vector{Tuple{Int, Float64}}}()
-        for idx in state.active_ids
-            parent = state.individuals[idx]
-            gt_dist = get_generation_time(model.generation_time, parent)
-            nbrs = model.adjacency[idx]
-            probs = model.edge_probability[idx]
-            for k in eachindex(nbrs)
-                nb = nbrs[k]
-                target = state.individuals[nb]
-                is_infected(target) && continue
-                p = probs[k]
-                (p >= 1.0 || rand(rng) < p) || continue
-                inf_time = _infection_time(gt_dist, parent, state)
-                push!(get!(exposures, nb, Tuple{Int, Float64}[]), (idx, inf_time))
-            end
-        end
-
-        if isempty(exposures)
-            state.extinct = true
-            state.active_ids = Int[]
-            state.current_generation += 1
-            continue
-        end
-
-        # 3. Earliest exposing edge becomes each node's provisional
-        #    parent so contact-level interventions (tracing, ring
-        #    vaccination) can act on the exposed susceptibles.
-        exposed = Individual[]
-        for (nb, edges) in exposures
-            sort!(edges, by = last)
-            target = state.individuals[nb]
-            target.parent_id = edges[1][1]
-            target.infection_time = edges[1][2]
-            push!(exposed, target)
-        end
-        for intervention in interventions
-            apply_post_transmission!(intervention, state, exposed)
-        end
-
-        # 4. Resolve infection per node: infected if ANY incoming edge
-        #    transmits under competing risks. Edges are tried earliest
-        #    first, so the first success gives the infection time.
-        newly_infected = Int[]
-        for (nb, edges) in exposures
-            target = state.individuals[nb]
-            infected = false
-            for (pid, t) in edges
-                target.parent_id = pid
-                target.infection_time = t
-                if _decide_infected(state, target, interventions, 0)
-                    infected = true
-                    break
-                end
-            end
-            if infected
-                parent = state.individuals[target.parent_id]
-                target.state[:infected] = true
-                target.generation = parent.generation + 1
-                target.chain_id = parent.chain_id
-                _set_onset_from_incubation!(target)
-                push!(parent.secondary_case_ids, nb)
-                push!(newly_infected, nb)
-                target.infection_time > state.max_infection_time &&
-                    (state.max_infection_time = target.infection_time)
-            else
-                target.parent_id = 0
-                target.infection_time = 0.0
-            end
-        end
-
-        # 5. Bookkeeping and clinical transitions on the new cases.
-        state.cumulative_cases += length(newly_infected)
-        state.current_generation += 1
-        state.active_ids = newly_infected
-        isempty(newly_infected) && (state.extinct = true)
-        for nb in newly_infected
-            _resolve_transitions!(state, state.individuals[nb])
-        end
+function contacts_of(model::NetworkProcess, parent::Individual,
+        state::SimulationState)
+    rng = state.rng
+    idx = parent.id
+    gt_dist = get_generation_time(model.generation_time, parent)
+    nbrs = model.adjacency[idx]
+    probs = model.edge_probability[idx]
+    result = Tuple{Individual, Float64}[]
+    for k in eachindex(nbrs)
+        target = state.individuals[nbrs[k]]
+        is_infected(target) && continue
+        p = probs[k]
+        (p >= 1.0 || rand(rng) < p) || continue
+        push!(result, (target, _infection_time(gt_dist, parent, state)))
     end
-
-    return state
+    return result
 end

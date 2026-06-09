@@ -20,14 +20,13 @@ end
 
 # Minimal custom TransmissionModel used to verify the engine handles
 # bookkeeping, competing-risks resolution, and clinical-transition
-# resolution for new individuals, leaving step! to just describe the
-# transmission decision. A single deterministic infection per call.
+# resolution for new individuals, leaving `contacts_of` to just describe
+# the transmission decision. A single deterministic infection per parent.
 struct SingleSpawnModel <: EpiBranch.TransmissionModel end
-function EpiBranch.step!(::SingleSpawnModel, state::EpiBranch.SimulationState)
-    new_contacts = EpiBranch.Individual[]
-    parent = state.individuals[state.active_ids[1]]
-    make_contact!(new_contacts, state, parent, parent.infection_time + 1.0)
-    return new_contacts
+function EpiBranch.contacts_of(::SingleSpawnModel, parent::EpiBranch.Individual,
+        state::EpiBranch.SimulationState)
+    t = parent.infection_time + 1.0
+    return [(make_contact!(state, parent, t), t)]
 end
 
 @testset "Clinical transitions" begin

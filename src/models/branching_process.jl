@@ -109,27 +109,27 @@ get_generation_time(gt::Distribution, individual) = gt
 get_generation_time(ngt::NoGenerationTime, individual) = ngt
 get_generation_time(gt::Function, individual) = gt(individual)
 
-# ── Generation step ──────────────────────────────────────────────────
+# ── Neighbour generation ─────────────────────────────────────────────
 
 """
-    step!(model::BranchingProcess, state::SimulationState)
+    contacts_of(model::BranchingProcess, parent, state)
 
-Process one generation of the branching process. Produces the new
-contacts (both eventual infections and contacts whose transmission
-will be blocked) without deciding `:infected` — the engine resolves
-that via [`competing_risk`](@ref) after `step!` returns. See the
-[Design](@ref "Simulation, mutation, and automatic differentiation")
-section for implications on automatic differentiation.
+A branching process is a network grown lazily as a tree: each infectious
+`parent` reaches fresh, never-before-seen contacts. The offspring
+distribution gives how many; each is created with [`make_contact!`](@ref)
+at a generation-time-shifted infection time and returned as a
+`(contact, infection_time)` pair. `:infected` is left undecided — the
+engine resolves it via [`competing_risk`](@ref) after `contacts_of`
+returns (both eventual infections and contacts whose transmission is
+blocked are produced). See the [Design](@ref "Simulation, mutation, and
+automatic differentiation") section for implications on automatic
+differentiation.
 """
-function step!(model::BranchingProcess, state::SimulationState)
-    new_contacts = Individual[]
-    for idx in state.active_ids
-        individual = state.individuals[idx]
-        offspring_result = draw_offspring(state.rng, model.offspring, individual, state)
-        gt_dist = get_generation_time(model.generation_time, individual)
-        _create_contacts!(new_contacts, offspring_result, individual, state, gt_dist)
-    end
-    return new_contacts
+function contacts_of(model::BranchingProcess, parent::Individual,
+        state::SimulationState)
+    offspring_result = draw_offspring(state.rng, model.offspring, parent, state)
+    gt_dist = get_generation_time(model.generation_time, parent)
+    return _create_contacts(offspring_result, parent, state, gt_dist)
 end
 
 # ── Offspring drawing ────────────────────────────────────────────────
@@ -166,24 +166,26 @@ function _infection_time(gt_dist::Distribution, parent, state)
     return parent.infection_time + rand(state.rng, gt_dist)
 end
 
-"""Single-type contacts."""
-function _create_contacts!(new_contacts,
-        n_contacts::Int, parent, state, gt_dist)
+"""Single-type contacts: each offspring becomes a fresh contact, returned
+as a `(contact, infection_time)` pair."""
+function _create_contacts(n_contacts::Int, parent, state, gt_dist)
+    result = Tuple{Individual, Float64}[]
     for _ in 1:n_contacts
         inf_time = _infection_time(gt_dist, parent, state)
-        make_contact!(new_contacts, state, parent, inf_time)
+        push!(result, (make_contact!(state, parent, inf_time), inf_time))
     end
-    return nothing
+    return result
 end
 
-"""Multi-type contacts."""
-function _create_contacts!(new_contacts,
-        counts::Vector{Int}, parent, state, gt_dist)
+"""Multi-type contacts: `counts[i]` fresh contacts of type `i`, each
+returned as a `(contact, infection_time)` pair."""
+function _create_contacts(counts::Vector{Int}, parent, state, gt_dist)
+    result = Tuple{Individual, Float64}[]
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
             inf_time = _infection_time(gt_dist, parent, state)
-            make_contact!(new_contacts, state, parent, inf_time; type_idx)
+            push!(result, (make_contact!(state, parent, inf_time; type_idx), inf_time))
         end
     end
-    return nothing
+    return result
 end

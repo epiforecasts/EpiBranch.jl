@@ -143,9 +143,8 @@ end
 State of a running or completed simulation.
 
 `transitions` is the per-run vector of clinical transitions (set by
-`simulate`). It is held on the state so individual-creation paths
-inside `step!` can apply transitions without threading a parameter
-through every signature.
+`simulate`). It is held on the state so individual-creation paths can
+apply transitions without threading a parameter through every signature.
 """
 mutable struct SimulationState{R <: AbstractRNG, P, A}
     individuals::Vector{Individual}

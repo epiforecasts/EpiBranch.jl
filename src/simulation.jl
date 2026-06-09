@@ -42,32 +42,7 @@ function simulate(model::TransmissionModel;
     _resolve_new_transitions!(state, 0)
 
     while !should_terminate(state, sim_opts)
-        pre = length(state.individuals)
-        # Engine owns every intervention-aware step so a custom `step!`
-        # only touches the model dynamics (offspring + timing). Order:
-        #   1. resolve_individual! on each active parent
-        #   2. step! produces new contacts (offspring + timing only)
-        #   3. initialise_individual! on each new contact
-        #   4. apply_post_transmission! on the new contacts
-        #   5. competing-risks resolution
-        for idx in state.active_ids
-            individual = state.individuals[idx]
-            for intervention in interventions
-                resolve_individual!(intervention, individual, state)
-            end
-        end
-        new_contacts = step!(model, state)
-        for contact in new_contacts
-            for intervention in interventions
-                initialise_individual!(intervention, contact, state)
-            end
-        end
-        for intervention in interventions
-            apply_post_transmission!(intervention, state, new_contacts)
-        end
-        _resolve_competing_risks!(state, new_contacts, interventions)
-        _register_step!(state, new_contacts)
-        _resolve_new_transitions!(state, pre)
+        _advance_generation!(model, state, interventions)
     end
 
     return state
@@ -103,6 +78,207 @@ function simulate(model::TransmissionModel, n::Int;
         return [simulate(model; interventions, transitions, attributes,
                     sim_opts, rng) for _ in 1:n]
     end
+end
+
+# ── Unified generation step ─────────────────────────────────────────
+#
+# Both BranchingProcess and NetworkProcess advance through this one
+# step. A branching process is a network process on a tree generated
+# lazily: each infectious node draws fresh, never-before-seen contacts,
+# so no node is ever revisited. A network process is the same dynamics
+# over a fixed graph, where a susceptible can be reached by several
+# infectious neighbours in one generation (a loop). The single point of
+# variation is `contacts_of`: a branching process creates a fresh contact
+# per edge (the tree case), while a network returns existing nodes (the
+# loop case). Everything downstream — intervention hooks, competing-risks
+# resolution, clinical transitions, bookkeeping — is shared.
+
+"""
+    contacts_of(model, node, state) -> iterable of (contact, infection_time)
+
+The contacts an infectious `node` reaches this generation, as
+`(contact, infection_time)` pairs — the single point of variation between
+transmission models. A branching process creates fresh, never-seen
+contacts with [`make_contact!`](@ref) (a tree); a network returns the
+node's existing graph neighbours (a graph with loops).
+
+`contacts_of` is the single transmission seam: a `TransmissionModel`
+defines what contacts an infectious node has this generation, and the
+shared engine ([`collect_exposures`](@ref), [`_advance_generation!`](@ref))
+handles everything else — interventions, competing-risks resolution,
+clinical transitions, and bookkeeping.
+"""
+function contacts_of end
+
+"""
+    collect_exposures(model, state) -> (targets, edges, minted, is_new)
+
+This generation's candidate exposures, grouped by target, gathered by
+walking [`contacts_of`](@ref) for each active node. Returns parallel
+vectors: distinct `targets`, the `edges` (`(parent_id, infection_time)`)
+reaching each, the contacts `minted` this generation, and `is_new`
+flagging which targets were created this step.
+
+The default suits tree-like models, where every contact is freshly
+created and is its own target — no two parents share one. Models whose
+contacts can be *shared* across parents in a generation (networks,
+households, clustering) override this with [`gather_by_target`](@ref),
+which deduplicates so a node reached several times resolves once.
+"""
+function collect_exposures(model::TransmissionModel, state::SimulationState)
+    pre = length(state.individuals)   # contacts created this step get id > pre
+    targets = Individual[]
+    edges = Vector{Tuple{Int, Float64}}[]
+    for idx in state.active_ids
+        parent = state.individuals[idx]
+        for (contact, time) in contacts_of(model, parent, state)
+            push!(targets, contact)
+            push!(edges, Tuple{Int, Float64}[(parent.id, time)])
+        end
+    end
+    minted = view(state.individuals, (pre + 1):length(state.individuals))
+    return targets, edges, minted, trues(length(targets))
+end
+
+"""
+    gather_by_target(model, state) -> (targets, edges, minted, is_new)
+
+A [`collect_exposures`](@ref) implementation for models whose contacts
+can be shared across parents within a generation (networks, households,
+clustering). Exposures are deduplicated by id, so a node reached by
+several infectious neighbours in one generation collects all its incoming
+edges and resolves once. Freshly created contacts (id past the
+generation's starting count) are each their own target, so a model that
+mixes new and existing contacts — e.g. a clustering dial — works too. The
+dedup map is only touched for shared nodes.
+"""
+function gather_by_target(model::TransmissionModel, state::SimulationState)
+    pre = length(state.individuals)
+    targets = Individual[]
+    edges = Vector{Tuple{Int, Float64}}[]
+    is_new = Bool[]
+    pos = Dict{Int, Int}()       # node id -> target index; shared nodes only
+    for idx in state.active_ids
+        parent = state.individuals[idx]
+        for (target, time) in contacts_of(model, parent, state)
+            if target.id > pre
+                push!(targets, target)
+                push!(edges, Tuple{Int, Float64}[(parent.id, time)])
+                push!(is_new, true)
+            else
+                j = get(pos, target.id, 0)
+                if j == 0
+                    push!(targets, target)
+                    push!(edges, Tuple{Int, Float64}[])
+                    push!(is_new, false)
+                    j = length(targets)
+                    pos[target.id] = j
+                end
+                push!(edges[j], (parent.id, time))
+            end
+        end
+    end
+    minted = view(state.individuals, (pre + 1):length(state.individuals))
+    return targets, edges, minted, is_new
+end
+
+"""Advance the simulation by one generation through the unified engine:
+resolve interventions on active parents, collect this generation's
+exposures (grouped by target), initialise newly minted contacts, let
+contact-level interventions act, resolve infection per target under
+competing risks, and update bookkeeping and clinical transitions."""
+function _advance_generation!(model::TransmissionModel,
+        state::SimulationState, interventions)
+    for idx in state.active_ids
+        individual = state.individuals[idx]
+        for intervention in interventions
+            resolve_individual!(intervention, individual, state)
+        end
+    end
+
+    targets, edges, minted, is_new = collect_exposures(model, state)
+
+    # Newly created contacts (already appended to state by make_contact!)
+    # get their intervention state initialised.
+    for contact in minted
+        for intervention in interventions
+            initialise_individual!(intervention, contact, state)
+        end
+    end
+
+    # Provisional parent = earliest exposing edge, so contact-level
+    # interventions (tracing, ring vaccination) act on the exposed target
+    # before infection is resolved. With one edge (the tree case) this is
+    # the contact's only parent.
+    for i in eachindex(targets)
+        es = edges[i]
+        length(es) > 1 && sort!(es, by = last)
+        targets[i].parent_id, targets[i].infection_time = es[1]
+    end
+
+    for intervention in interventions
+        apply_post_transmission!(intervention, state, targets)
+    end
+
+    # Resolve infection per target: infected if any edge transmits,
+    # earliest edge first so the first success gives the infection time.
+    infected_so_far = 0
+    newly_infected = Individual[]
+    for i in eachindex(targets)
+        target = targets[i]
+        infected = false
+        for (pid, t) in edges[i]
+            target.parent_id = pid
+            target.infection_time = t
+            if _decide_infected(state, target, interventions, infected_so_far)
+                infected = true
+                break
+            end
+        end
+        target.state[:infected] = infected
+        if infected
+            infected_so_far += 1
+            parent = state.individuals[target.parent_id]
+            target.generation = parent.generation + 1
+            target.chain_id = parent.chain_id
+            # Onset follows from the *infection* time. A minted contact is
+            # created at its infection time, so this is idempotent; a
+            # pre-instantiated network node was created at t=0, so this
+            # recomputes its onset from the time it was actually infected.
+            _set_onset_from_incubation!(target)
+            # Freshly created contacts were already registered on their
+            # parent by `make_contact!`; shared network nodes are not.
+            is_new[i] || push!(parent.secondary_case_ids, target.id)
+            push!(newly_infected, target)
+        elseif !is_new[i]
+            # A pre-instantiated node exposed but not infected this
+            # generation stays a clean susceptible; clear the provisional
+            # parent left from the failed exposure. (Minted "contact-only"
+            # individuals keep their parent — they are real contacts.)
+            target.parent_id = 0
+            target.infection_time = 0.0
+        end
+    end
+
+    for target in newly_infected
+        target.infection_time > state.max_infection_time &&
+            (state.max_infection_time = target.infection_time)
+    end
+    state.cumulative_cases += length(newly_infected)
+    state.current_generation += 1
+    if isempty(newly_infected)
+        state.extinct = true
+        state.active_ids = Int[]
+    else
+        state.active_ids = [target.id for target in newly_infected]
+    end
+
+    if !isempty(state.transitions)
+        for target in newly_infected
+            _resolve_transitions!(state, target)
+        end
+    end
+    return nothing
 end
 
 # ── Internal helpers ───────────────────────────────────────────────
@@ -194,11 +370,11 @@ function susceptible_fraction(state::SimulationState{<:Any, Int},
 end
 
 """Create a new Individual with attributes applied. `:infected` is left
-at `false` so that any contact returned from a model's `step!` carries
-a not-yet-decided flag — only the engine's competing-risks resolution
-may set it to `true`. Intervention `initialise_individual!` is called
-by the engine after `step!` returns, not here; this keeps `step!` and
-its helpers (`make_contact!`) intervention-free.
+at `false` so that any contact a model's [`contacts_of`](@ref) produces
+carries a not-yet-decided flag — only the engine's competing-risks
+resolution may set it to `true`. Intervention `initialise_individual!`
+is called by the engine after exposures are collected, not here; this
+keeps `contacts_of` and its helper `make_contact!` intervention-free.
 """
 function _create_individual(state::SimulationState, parent_id::Int,
         chain_id::Int, next_id::Int, inf_time::Float64)
@@ -222,48 +398,42 @@ _set_type!(contact, ::NoTypeLabels) = nothing
 _set_type!(contact, idx::Int) = (contact.state[:type] = idx)
 
 """
-    make_contact!(new_contacts, state, parent, infection_time;
-                  type_idx = NoTypeLabels())
+    make_contact!(state, parent, infection_time; type_idx = NoTypeLabels())
 
-Construct a new contact of `parent` at `infection_time`, append it to
-`new_contacts`, and register it in `parent.secondary_case_ids`. Returns
-the constructed `Individual`. Attributes are applied to the new contact
-at construction; intervention state is initialised by the engine after
-`step!` returns, not here.
+Create a new contact of `parent` at `infection_time`, add it to
+`state.individuals`, and register it in `parent.secondary_case_ids`.
+Returns the new `Individual`. Attributes are applied at creation;
+intervention state is initialised by the engine after the generation's
+exposures are collected, not here.
 
-Use this from a custom `TransmissionModel`'s `step!`:
+Use this from a tree-like model's [`contacts_of`](@ref), returning each
+contact with its infection time:
 
 ```julia
-function step!(m::MyModel, state)
-    new_contacts = Individual[]
-    for idx in state.active_ids
-        parent = state.individuals[idx]
-        for _ in 1:rand(state.rng, m.offspring)
-            t = parent.infection_time + rand(state.rng, m.generation_time)
-            make_contact!(new_contacts, state, parent, t)
-        end
+function contacts_of(m::MyModel, parent, state)
+    map(1:rand(state.rng, m.offspring)) do _
+        t = parent.infection_time + rand(state.rng, m.generation_time)
+        (make_contact!(state, parent, t), t)
     end
-    return new_contacts
 end
 ```
 
 The engine handles every other side effect: `resolve_individual!` on
-each parent before `step!`, `initialise_individual!` and
+each parent before collection, `initialise_individual!` and
 `apply_post_transmission!` on the new contacts after, competing-risks
 resolution that sets `:infected`, clinical transitions, and per-step
 bookkeeping (`cumulative_cases`, `active_ids`, `max_infection_time`,
-…). A custom `step!` only owns the model-specific draw.
+…). A model's `contacts_of` only owns the model-specific draw.
 """
-function make_contact!(new_contacts::Vector{Individual},
-        state::SimulationState, parent::Individual,
+function make_contact!(state::SimulationState, parent::Individual,
         infection_time::Real;
         type_idx::Union{Int, NoTypeLabels} = NoTypeLabels())
-    next_id = length(state.individuals) + length(new_contacts) + 1
+    next_id = length(state.individuals) + 1
     contact = _create_individual(state, parent.id, parent.chain_id,
         next_id, float(infection_time))
     _set_type!(contact, type_idx)
     push!(parent.secondary_case_ids, next_id)
-    push!(new_contacts, contact)
+    push!(state.individuals, contact)
     return contact
 end
 
@@ -285,28 +455,18 @@ function _resolve_transitions!(state::SimulationState, individual)
     return nothing
 end
 
-"""Decide `:infected` for each newly produced contact by composing
-competing risks. Built-in risks (per-individual susceptibility,
-parent infectiousness, population-level susceptibility for
-finite-population models) are applied first; any [`competing_risk`](@ref)
-contributed by an intervention is then applied in stack order. A risk
-that has fired by transmission time blocks transmission with its
-`block_probability`; transmission succeeds iff no risk blocks it.
+"""Decide whether a single contact is infected along one edge by
+composing competing risks. Built-in risks (per-individual
+susceptibility, parent infectiousness, population-level susceptibility
+for finite-population models) are applied first; any
+[`competing_risk`](@ref) contributed by an intervention is then applied
+in stack order. A risk that has fired by transmission time blocks
+transmission with its `block_probability`; transmission succeeds iff no
+risk blocks it.
 
-Population susceptibility is recomputed per contact so that, as
-contacts within the same step get infected, the susceptible pool
-shrinks accordingly. This prevents the cumulative case count from
-overshooting a finite `population_size`."""
-function _resolve_competing_risks!(state::SimulationState, new_contacts, interventions)
-    infected_so_far = 0
-    for contact in new_contacts
-        infected = _decide_infected(state, contact, interventions, infected_so_far)
-        contact.state[:infected] = infected
-        infected && (infected_so_far += 1)
-    end
-    return nothing
-end
-
+`infected_so_far` counts infections already resolved this generation, so
+population susceptibility shrinks the pool as contacts get infected and
+the cumulative case count cannot overshoot a finite `population_size`."""
 function _decide_infected(state::SimulationState, contact::Individual,
         interventions, infected_so_far::Int)
     contact.parent_id == 0 && return true
@@ -343,35 +503,11 @@ _iter_risks(::Nothing) = ()
 _iter_risks(r::Risk) = (r,)
 _iter_risks(rs) = rs
 
-"""Append the new contacts returned by `step!` to `state.individuals`
-and update the bookkeeping fields: `cumulative_cases`,
-`current_generation`, `max_infection_time`, `active_ids`, `extinct`."""
-function _register_step!(state::SimulationState, new_contacts)
-    append!(state.individuals, new_contacts)
-    new_infected_ids = Int[]
-    for ind in new_contacts
-        is_infected(ind) || continue
-        push!(new_infected_ids, ind.id)
-        if ind.infection_time > state.max_infection_time
-            state.max_infection_time = ind.infection_time
-        end
-    end
-    state.cumulative_cases += length(new_infected_ids)
-    state.current_generation += 1
-    if isempty(new_infected_ids)
-        state.extinct = true
-        state.active_ids = Int[]
-    else
-        state.active_ids = new_infected_ids
-    end
-    return nothing
-end
-
 """Sweep newly added infected individuals (those at indices
 `from_index+1:end`) and run clinical transitions on each. Called by
-[`simulate`](@ref) after `initialise_state` and after each `step!` so
-that authors of custom [`TransmissionModel`](@ref) subtypes do not
-need to invoke transition resolution from inside their `step!`."""
+[`simulate`](@ref) after `initialise_state` to resolve transitions on
+the seed cases; per-generation resolution happens inside
+[`_advance_generation!`](@ref)."""
 function _resolve_new_transitions!(state::SimulationState, from_index::Int)
     isempty(state.transitions) && return nothing
     @inbounds for i in (from_index + 1):length(state.individuals)
