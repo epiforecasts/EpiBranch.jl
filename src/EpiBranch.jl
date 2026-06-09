@@ -15,6 +15,7 @@ include("types.jl")
 include("state_accessors.jl")
 include("options.jl")
 include("distributions.jl")
+include("timing.jl")
 include("utils.jl")
 
 # Intervention interface (must come before models that use it)
@@ -32,6 +33,11 @@ include("transitions/interface.jl")
 include("transitions/reporting.jl")
 include("transitions/hospitalisation.jl")
 include("transitions/outcome.jl")
+
+# Offspring-driven model interface, declared before `public.jl` marks it.
+# The engine calls it once per parent; structure-driven models (e.g.
+# NetworkProcess) override `_advance_generation!` instead.
+function generate_offspring end
 
 # Public API declarations (Julia 1.11+)
 @static if VERSION >= v"1.11"

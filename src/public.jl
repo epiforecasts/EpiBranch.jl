@@ -9,3 +9,4 @@ public apply_post_transmission!
 public competing_risk
 public reset!
 public required_fields
+public generate_offspring
