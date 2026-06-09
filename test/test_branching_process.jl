@@ -82,8 +82,12 @@
         state = simulate(model; attributes = init_fn,
             sim_opts = SimOpts(max_cases = 50), rng = rng)
 
-        @test state.cumulative_cases > 0
-        for ind in filter(is_infected, state.individuals)
+        # Require secondary transmission so the generation_time function
+        # is actually exercised, not just the index case.
+        secondary = filter(ind -> is_infected(ind) && ind.parent_id > 0,
+            state.individuals)
+        @test !isempty(secondary)
+        for ind in secondary
             @test incubation_period(ind) ≈ ind.state[:gt_scale]
         end
     end
