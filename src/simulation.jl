@@ -39,38 +39,55 @@ function simulate(model::TransmissionModel;
 
     state = initialise_state(
         model, sim_opts, interventions, transitions, attributes, rng)
-    _resolve_new_transitions!(state, 0)
 
     while !should_terminate(state, sim_opts)
-        pre = length(state.individuals)
-        # Engine owns every intervention-aware step so a custom `step!`
-        # only touches the model dynamics (offspring + timing). Order:
-        #   1. resolve_individual! on each active parent
-        #   2. step! produces new contacts (offspring + timing only)
-        #   3. initialise_individual! on each new contact
-        #   4. apply_post_transmission! on the new contacts
-        #   5. competing-risks resolution
-        for idx in state.active_ids
-            individual = state.individuals[idx]
-            for intervention in interventions
-                resolve_individual!(intervention, individual, state)
-            end
-        end
-        new_contacts = step!(model, state)
-        for contact in new_contacts
-            for intervention in interventions
-                initialise_individual!(intervention, contact, state)
-            end
-        end
-        for intervention in interventions
-            apply_post_transmission!(intervention, state, new_contacts)
-        end
-        _resolve_competing_risks!(state, new_contacts, interventions)
-        _register_step!(state, new_contacts)
-        _resolve_new_transitions!(state, pre)
+        _advance_generation!(model, state, interventions)
     end
 
     return state
+end
+
+"""
+    _advance_generation!(model, state, interventions)
+
+Run one generation for `model`. The default is the offspring-driven path:
+each active parent's `generate_offspring` count is materialised into
+contacts, timed, and resolved through competing risks. Structure-driven
+models (e.g. `NetworkProcess`) define their own method over the shared
+engine primitives (`_set_provisional_sources!`, `_resolve_exposures!`).
+
+Stage order: resolve interventions on each active parent, generate and
+materialise contacts (engine assigns each its generation time), run
+`initialise_individual!` then `apply_post_transmission!` on the new
+contacts, then competing-risks resolution.
+"""
+function _advance_generation!(model::TransmissionModel, state::SimulationState, interventions)
+    pre = length(state.individuals)
+    for idx in state.active_ids
+        individual = state.individuals[idx]
+        for intervention in interventions
+            resolve_individual!(intervention, individual, state)
+        end
+    end
+    new_contacts = Individual[]
+    for idx in state.active_ids
+        parent = state.individuals[idx]
+        offspring = generate_offspring(model, parent, state)
+        gt_dist = get_generation_time(model.generation_time, parent)
+        _materialise_contacts!(new_contacts, offspring, parent, state, gt_dist)
+    end
+    for contact in new_contacts
+        for intervention in interventions
+            initialise_individual!(intervention, contact, state)
+        end
+    end
+    for intervention in interventions
+        apply_post_transmission!(intervention, state, new_contacts)
+    end
+    _resolve_competing_risks!(state, new_contacts, interventions)
+    _register_step!(state, new_contacts)
+    _resolve_new_transitions!(state, pre)
+    return nothing
 end
 
 """
@@ -153,6 +170,7 @@ function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
     temp_state.cumulative_cases = sim_opts.n_initial
     temp_state.active_ids = collect(1:(sim_opts.n_initial))
 
+    _resolve_new_transitions!(temp_state, 0)
     return temp_state
 end
 
@@ -194,11 +212,10 @@ function susceptible_fraction(state::SimulationState{<:Any, Int},
 end
 
 """Create a new Individual with attributes applied. `:infected` is left
-at `false` so that any contact returned from a model's `step!` carries
-a not-yet-decided flag — only the engine's competing-risks resolution
-may set it to `true`. Intervention `initialise_individual!` is called
-by the engine after `step!` returns, not here; this keeps `step!` and
-its helpers (`make_contact!`) intervention-free.
+at `false` so that each freshly materialised contact carries a
+not-yet-decided flag — only the engine's competing-risks resolution may
+set it to `true`. Intervention `initialise_individual!` is called by the
+engine after the contacts are materialised, not here.
 """
 function _create_individual(state::SimulationState, parent_id::Int,
         chain_id::Int, next_id::Int, inf_time::Float64)
@@ -227,32 +244,13 @@ _set_type!(contact, idx::Int) = (contact.state[:type] = idx)
 
 Construct a new contact of `parent` at `infection_time`, append it to
 `new_contacts`, and register it in `parent.secondary_case_ids`. Returns
-the constructed `Individual`. Attributes are applied to the new contact
-at construction; intervention state is initialised by the engine after
-`step!` returns, not here.
+the constructed `Individual`. Attributes are applied at construction;
+intervention state is initialised by the engine afterwards, not here.
 
-Use this from a custom `TransmissionModel`'s `step!`:
-
-```julia
-function step!(m::MyModel, state)
-    new_contacts = Individual[]
-    for idx in state.active_ids
-        parent = state.individuals[idx]
-        for _ in 1:rand(state.rng, m.offspring)
-            t = parent.infection_time + rand(state.rng, m.generation_time)
-            make_contact!(new_contacts, state, parent, t)
-        end
-    end
-    return new_contacts
-end
-```
-
-The engine handles every other side effect: `resolve_individual!` on
-each parent before `step!`, `initialise_individual!` and
-`apply_post_transmission!` on the new contacts after, competing-risks
-resolution that sets `:infected`, clinical transitions, and per-step
-bookkeeping (`cumulative_cases`, `active_ids`, `max_infection_time`,
-…). A custom `step!` only owns the model-specific draw.
+This is an engine primitive. Offspring-driven models do not call it —
+they return a count from [`generate_offspring`](@ref) and the engine
+materialises the contacts. Structure-driven models that define their own
+`simulate` (e.g. `NetworkProcess`) may use it directly.
 """
 function make_contact!(new_contacts::Vector{Individual},
         state::SimulationState, parent::Individual,
@@ -265,6 +263,90 @@ function make_contact!(new_contacts::Vector{Individual},
     push!(parent.secondary_case_ids, next_id)
     push!(new_contacts, contact)
     return contact
+end
+
+# Turn an offspring count (single-type) or per-type counts (multi-type)
+# into materialised contacts, each given its generation time. This is the
+# engine's half of the offspring-driven contract: the model supplies the
+# count via `generate_offspring`, the engine owns timing and creation.
+function _materialise_contacts!(new_contacts, n_contacts::Int, parent, state, gt_dist)
+    for _ in 1:n_contacts
+        inf_time = _infection_time(gt_dist, parent, state)
+        make_contact!(new_contacts, state, parent, inf_time)
+    end
+    return nothing
+end
+
+function _materialise_contacts!(new_contacts, counts::Vector{Int}, parent, state, gt_dist)
+    for (type_idx, n) in enumerate(counts)
+        for _ in 1:n
+            inf_time = _infection_time(gt_dist, parent, state)
+            make_contact!(new_contacts, state, parent, inf_time; type_idx)
+        end
+    end
+    return nothing
+end
+
+# ── Competition over shared targets ──────────────────────────────────
+#
+# When several infectious sources can reach the same target in one
+# generation, the candidate transmissions are grouped by target:
+#   target id => [(source id, infection time), ...].
+# Structure-driven models (the network process now; household and
+# metapopulation models later) build this map, and the two helpers below
+# resolve it. The offspring-driven path never produces collisions (each
+# contact is a fresh node), so it does not use them.
+const Exposures = Dict{Int, Vector{Tuple{Int, Float64}}}
+
+"""Give each exposed target its earliest incoming edge as a provisional
+source, so contact-level interventions (tracing, ring vaccination) can act
+before infection is resolved. Returns the exposed individuals."""
+function _set_provisional_sources!(state::SimulationState, exposures::Exposures)
+    exposed = Individual[]
+    for (nb, edges) in exposures
+        sort!(edges, by = last)
+        target = state.individuals[nb]
+        target.parent_id = edges[1][1]
+        target.infection_time = edges[1][2]
+        push!(exposed, target)
+    end
+    return exposed
+end
+
+"""Resolve each exposed target: it is infected if any incoming edge
+transmits under competing risks, tried earliest first, and infected at
+most once. The first success fixes its source and infection time;
+otherwise the provisional source is cleared. Returns the ids infected
+this generation."""
+function _resolve_exposures!(state::SimulationState, exposures::Exposures, interventions)
+    newly_infected = Int[]
+    for (nb, edges) in exposures
+        target = state.individuals[nb]
+        infected = false
+        for (pid, t) in edges
+            target.parent_id = pid
+            target.infection_time = t
+            if _decide_infected(state, target, interventions, 0)
+                infected = true
+                break
+            end
+        end
+        if infected
+            parent = state.individuals[target.parent_id]
+            target.state[:infected] = true
+            target.generation = parent.generation + 1
+            target.chain_id = parent.chain_id
+            _set_onset_from_incubation!(target)
+            push!(parent.secondary_case_ids, nb)
+            push!(newly_infected, nb)
+            target.infection_time > state.max_infection_time &&
+                (state.max_infection_time = target.infection_time)
+        else
+            target.parent_id = 0
+            target.infection_time = 0.0
+        end
+    end
+    return newly_infected
 end
 
 """Run init, resolve, and terminal-arbitration for every clinical
