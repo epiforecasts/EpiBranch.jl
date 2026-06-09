@@ -27,7 +27,7 @@ should_stop
 
 ```@docs
 simulate
-EpiBranch.step!
+EpiBranch.generate_offspring
 make_contact!
 susceptible_fraction
 ```
