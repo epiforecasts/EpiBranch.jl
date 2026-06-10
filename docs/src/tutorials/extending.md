@@ -460,31 +460,51 @@ defaults for the rest.
 
 ### What the framework expects
 
-For **simulation**, define one method:
+For **simulation** there are two paths, depending on whether your model
+can produce its candidates one parent at a time.
+
+An **offspring-driven** model (a branching process and its variants)
+defines one method:
+
+- [`generate_offspring`](@ref)`(model, parent, state)` — return how many
+  contacts `parent` makes this generation: a single count, or a count
+  per type for a multi-type model. The default
+  `simulate(::TransmissionModel)` loop calls it once per active parent,
+  creates that many candidate contacts, gives each an infection time
+  from your model's `generation_time`, and resolves competing risks.
+
+`generate_offspring` returns a count and nothing else: it assigns no
+timing, builds no `Individual`s, and takes no `interventions` argument.
+Return the number of *potential* contacts, and don't pre-filter by
+parent intervention state (`:isolated`, `:vaccinated`, …). The engine's
+competing-risks resolution decides afterwards which contacts are
+infected, and that is the only place intervention effects on
+transmission apply. The engine also runs `resolve_individual!` on each
+parent first, then `initialise_individual!` and
+`apply_post_transmission!` on the new contacts, the clinical
+transitions, and the bookkeeping fields (`cumulative_cases`,
+`current_generation`, `active_ids`, `extinct`, `max_infection_time`).
+
+A **structure-driven** model produces candidates a count can't name: a
+contact network, or a household/metapopulation process where a
+susceptible can be reached by several infectious sources at once and
+infections deplete a fixed pool. It defines two methods instead:
 
 - [`contacts_of`](@ref)`(model, node, state)` — the contacts an
   infectious `node` reaches this generation, as `(contact, infection_time)`
-  pairs. Tree-like models create fresh contacts with
-  [`make_contact!`](@ref); graph-like models return existing nodes. Do
-  not set `:infected` yourself.
+  pairs. Return existing nodes (a network), or mint fresh ones with
+  [`make_contact!`](@ref). Do not set `:infected` yourself.
+- override [`collect_exposures`](@ref) with [`gather_by_target`](@ref),
+  so a node reached by several infectious neighbours in one generation
+  collects all its incoming edges and is resolved once.
 
-The signature has no `interventions` argument: `contacts_of` is strictly
-the model's contact-and-timing layer and cannot couple to interventions.
-Produce every potential contact your model generates — do not pre-filter
-by parent intervention state (`:isolated`, `:vaccinated`, …). Whether
-each contact is actually infected is then decided by the engine's
-competing-risks resolution; that is the only place intervention effects
-on transmission outcomes apply.
-
-The engine handles everything around `contacts_of`: `resolve_individual!`
-runs on each active parent first, so by the time your `contacts_of` is
-called every parent's intervention state for this generation is already
-up to date. The engine then gathers the contacts ([`collect_exposures`](@ref)),
-runs `initialise_individual!` and `apply_post_transmission!` on the new
-contacts, resolves competing risks to set `:infected`, runs clinical
-transitions, and updates the bookkeeping fields
-(`cumulative_cases`, `current_generation`, `active_ids`, `extinct`,
-`max_infection_time`).
+`contacts_of` has no `interventions` argument either, and the same rule
+applies: produce every *potential* contact and let the engine's
+competing-risks resolution decide infection. Everything else — gathering
+the exposures, `initialise_individual!` and `apply_post_transmission!` on
+new contacts, competing risks, clinical transitions, and bookkeeping — is
+the shared engine. A structure-driven model also defines `initialise_state`
+to set up its fixed population. `NetworkProcess` is the worked example.
 
 Models whose contacts can be *shared* across parents within a generation
 (networks, households, clustering) also override
@@ -519,16 +539,11 @@ struct MyModel{O, G} <: TransmissionModel
     # ... your model parameters
 end
 
-# Required for simulation: this node's contacts this generation, as
-# `(contact, infection_time)` pairs. Create fresh contacts with
-# `make_contact!`; the engine handles `:infected`, post-transmission
-# hooks, transitions, and bookkeeping.
-function EpiBranch.contacts_of(model::MyModel, parent, state)
-    map(1:rand(state.rng, model.offspring)) do _
-        t = parent.infection_time + rand(state.rng, model.generation_time)
-        (make_contact!(state, parent, t), t)
-    end
-end
+# Required for simulation: how many contacts this parent makes. The
+# engine creates them, assigns each a generation time, and handles
+# `:infected`, post-transmission hooks, transitions, and bookkeeping.
+EpiBranch.generate_offspring(model::MyModel, parent, state) =
+    rand(state.rng, model.offspring)
 
 # Required for analytical helpers (optional but recommended).
 EpiBranch.single_type_offspring(m::MyModel) = m.offspring
@@ -712,7 +727,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
-| Custom transmission model | Struct `<: TransmissionModel` + `contacts_of`, `single_type_offspring` | Simulation + analytics |
+| Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (or `contacts_of` + `gather_by_target`), `single_type_offspring` | Simulation + analytics |
 | Custom observation model | Struct `<: ObservationModel` + `chain_size_distribution(::Observed{...})` and/or `loglikelihood(::DataType, ::Observed{...})` | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |

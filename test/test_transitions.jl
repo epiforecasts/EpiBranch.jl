@@ -20,14 +20,14 @@ end
 
 # Minimal custom TransmissionModel used to verify the engine handles
 # bookkeeping, competing-risks resolution, and clinical-transition
-# resolution for new individuals, leaving `contacts_of` to just describe
-# the transmission decision. A single deterministic infection per parent.
-struct SingleSpawnModel <: EpiBranch.TransmissionModel end
-function EpiBranch.contacts_of(::SingleSpawnModel, parent::EpiBranch.Individual,
-        state::EpiBranch.SimulationState)
-    t = parent.infection_time + 1.0
-    return [(make_contact!(state, parent, t), t)]
+# resolution for new individuals. As an offspring-driven model it only
+# implements `generate_offspring`; the engine owns timing and creation.
+# One offspring per parent each generation.
+struct SingleSpawnModel <: EpiBranch.TransmissionModel
+    generation_time::Exponential{Float64}
 end
+SingleSpawnModel() = SingleSpawnModel(Exponential(1.0))
+EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
 
 @testset "Clinical transitions" begin
     clinical = clinical_presentation(
@@ -293,7 +293,7 @@ end
     end
 
     @testset "Custom TransmissionModel — engine resolves transitions automatically" begin
-        # SingleSpawnModel's step! just appends infected individuals;
+        # SingleSpawnModel's generate_offspring just yields infected cases;
         # it does not touch transitions itself. The engine sweep should
         # still populate DummyTest fields on every infected case.
         rng = StableRNG(7)

@@ -82,31 +82,45 @@ end
 
 # ── Unified generation step ─────────────────────────────────────────
 #
-# Both BranchingProcess and NetworkProcess advance through this one
-# step. A branching process is a network process on a tree generated
-# lazily: each infectious node draws fresh, never-before-seen contacts,
-# so no node is ever revisited. A network process is the same dynamics
-# over a fixed graph, where a susceptible can be reached by several
-# infectious neighbours in one generation (a loop). The single point of
-# variation is `contacts_of`: a branching process creates a fresh contact
-# per edge (the tree case), while a network returns existing nodes (the
-# loop case). Everything downstream — intervention hooks, competing-risks
-# resolution, clinical transitions, bookkeeping — is shared.
+# Every model advances through this one step. The only thing a model
+# varies is how it names this generation's contacts, and there are two
+# extension paths for that:
+#
+#   * Offspring-driven (the tree case — BranchingProcess). The model
+#     defines [`generate_offspring`](@ref): how *many* contacts each
+#     infectious parent makes, as a pure count. It constructs nothing and
+#     assigns no time. The engine creates that many fresh, never-seen
+#     contacts and times each one — the default [`collect_exposures`](@ref).
+#     The tree and the timing factorise, so the model stays a pure draw.
+#
+#   * Structure-driven (the graph case — NetworkProcess; households later).
+#     The contacts are *existing* nodes a count cannot name, and a
+#     susceptible can be reached by several infectious neighbours in one
+#     generation (a loop). The model defines [`contacts_of`](@ref) — the
+#     actual nodes, each with its infection time — and overrides
+#     `collect_exposures` with [`gather_by_target`](@ref), which
+#     deduplicates so a node reached several times resolves once.
+#
+# Everything downstream — intervention hooks, competing-risks resolution,
+# clinical transitions, bookkeeping — is shared.
 
 """
     contacts_of(model, node, state) -> iterable of (contact, infection_time)
 
-The contacts an infectious `node` reaches this generation, as
-`(contact, infection_time)` pairs — the single point of variation between
-transmission models. A branching process creates fresh, never-seen
-contacts with [`make_contact!`](@ref) (a tree); a network returns the
-node's existing graph neighbours (a graph with loops).
+The structure-driven transmission seam: the contacts an infectious `node`
+reaches this generation, as `(contact, infection_time)` pairs. Used by
+models whose contacts are *existing* nodes a plain count cannot name — a
+network returns the node's graph neighbours (a graph with loops);
+households would return household members. Pair it with
+[`gather_by_target`](@ref) so a node reached by several neighbours in one
+generation resolves once.
 
-`contacts_of` is the single transmission seam: a `TransmissionModel`
-defines what contacts an infectious node has this generation, and the
-shared engine ([`collect_exposures`](@ref), [`_advance_generation!`](@ref))
-handles everything else — interventions, competing-risks resolution,
-clinical transitions, and bookkeeping.
+Offspring-driven models (a branching process, where every contact is
+fresh) use [`generate_offspring`](@ref) instead and never define
+`contacts_of`: they return a count and the engine creates and times the
+contacts. Either way the shared engine ([`collect_exposures`](@ref),
+[`_advance_generation!`](@ref)) handles interventions, competing-risks
+resolution, clinical transitions, and bookkeeping.
 """
 function contacts_of end
 
@@ -119,11 +133,14 @@ vectors: distinct `targets`, the `edges` (`(parent_id, infection_time)`)
 reaching each, the contacts `minted` this generation, and `is_new`
 flagging which targets were created this step.
 
-The default suits tree-like models, where every contact is freshly
-created and is its own target — no two parents share one. Models whose
-contacts can be *shared* across parents in a generation (networks,
-households, clustering) override this with [`gather_by_target`](@ref),
-which deduplicates so a node reached several times resolves once.
+The default serves offspring-driven models: it asks each active parent
+for an offspring count via [`generate_offspring`](@ref), then creates and
+times that many fresh contacts itself. Every contact is its own target —
+no two parents share one — so `is_new` is all `true`. Models whose
+contacts are existing nodes that can be *shared* across parents in a
+generation (networks, households, clustering) override this with
+[`gather_by_target`](@ref), which walks [`contacts_of`](@ref) and
+deduplicates so a node reached several times resolves once.
 """
 function collect_exposures(model::TransmissionModel, state::SimulationState)
     pre = length(state.individuals)   # contacts created this step get id > pre
@@ -131,13 +148,43 @@ function collect_exposures(model::TransmissionModel, state::SimulationState)
     edges = Vector{Tuple{Int, Float64}}[]
     for idx in state.active_ids
         parent = state.individuals[idx]
-        for (contact, time) in contacts_of(model, parent, state)
-            push!(targets, contact)
-            push!(edges, Tuple{Int, Float64}[(parent.id, time)])
-        end
+        offspring = generate_offspring(model, parent, state)
+        gt_dist = get_generation_time(model.generation_time, parent)
+        _materialise_offspring!(targets, edges, offspring, parent, state, gt_dist)
     end
     minted = view(state.individuals, (pre + 1):length(state.individuals))
     return targets, edges, minted, trues(length(targets))
+end
+
+# Engine half of the offspring-driven contract: the model returns a count
+# from `generate_offspring`; the engine creates each contact with
+# `make_contact!` and assigns it a generation time. Each fresh contact is
+# its own target reached by a single edge (the tree case). Single-type
+# offspring is a count; multi-type is a count per type.
+function _materialise_offspring!(targets::Vector{Individual},
+        edges::Vector{Vector{Tuple{Int, Float64}}}, n_contacts::Int,
+        parent::Individual, state::SimulationState,
+        gt_dist::Union{Distribution, NoGenerationTime})
+    for _ in 1:n_contacts
+        t = _infection_time(gt_dist, parent, state)
+        push!(targets, make_contact!(state, parent, t))
+        push!(edges, Tuple{Int, Float64}[(parent.id, t)])
+    end
+    return nothing
+end
+
+function _materialise_offspring!(targets::Vector{Individual},
+        edges::Vector{Vector{Tuple{Int, Float64}}}, counts::Vector{Int},
+        parent::Individual, state::SimulationState,
+        gt_dist::Union{Distribution, NoGenerationTime})
+    for (type_idx, n) in enumerate(counts)
+        for _ in 1:n
+            t = _infection_time(gt_dist, parent, state)
+            push!(targets, make_contact!(state, parent, t; type_idx))
+            push!(edges, Tuple{Int, Float64}[(parent.id, t)])
+        end
+    end
+    return nothing
 end
 
 """
@@ -188,7 +235,7 @@ exposures (grouped by target), initialise newly minted contacts, let
 contact-level interventions act, resolve infection per target under
 competing risks, and update bookkeeping and clinical transitions."""
 function _advance_generation!(model::TransmissionModel,
-        state::SimulationState, interventions)
+        state::SimulationState, interventions::Vector{<:AbstractIntervention})
     for idx in state.active_ids
         individual = state.individuals[idx]
         for intervention in interventions
@@ -370,11 +417,12 @@ function susceptible_fraction(state::SimulationState{<:Any, Int},
 end
 
 """Create a new Individual with attributes applied. `:infected` is left
-at `false` so that any contact a model's [`contacts_of`](@ref) produces
-carries a not-yet-decided flag — only the engine's competing-risks
-resolution may set it to `true`. Intervention `initialise_individual!`
-is called by the engine after exposures are collected, not here; this
-keeps `contacts_of` and its helper `make_contact!` intervention-free.
+at `false` so that every freshly created contact carries a
+not-yet-decided flag — only the engine's competing-risks resolution may
+set it to `true`. Intervention `initialise_individual!` is called by the
+engine after exposures are collected, not here; this keeps contact
+creation (`make_contact!`, and any model's [`contacts_of`](@ref))
+intervention-free.
 """
 function _create_individual(state::SimulationState, parent_id::Int,
         chain_id::Int, next_id::Int, inf_time::Float64)
@@ -406,8 +454,11 @@ Returns the new `Individual`. Attributes are applied at creation;
 intervention state is initialised by the engine after the generation's
 exposures are collected, not here.
 
-Use this from a tree-like model's [`contacts_of`](@ref), returning each
-contact with its infection time:
+This is an engine primitive. The default offspring-driven path calls it
+for each contact a model's [`generate_offspring`](@ref) count asks for, so
+those models never touch it. A structure-driven model that mints fresh
+nodes inside its [`contacts_of`](@ref) may call it directly, returning
+each contact with its infection time:
 
 ```julia
 function contacts_of(m::MyModel, parent, state)
@@ -423,7 +474,7 @@ each parent before collection, `initialise_individual!` and
 `apply_post_transmission!` on the new contacts after, competing-risks
 resolution that sets `:infected`, clinical transitions, and per-step
 bookkeeping (`cumulative_cases`, `active_ids`, `max_infection_time`,
-…). A model's `contacts_of` only owns the model-specific draw.
+…).
 """
 function make_contact!(state::SimulationState, parent::Individual,
         infection_time::Real;

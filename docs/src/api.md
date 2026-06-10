@@ -27,6 +27,7 @@ should_stop
 
 ```@docs
 simulate
+EpiBranch.generate_offspring
 EpiBranch.contacts_of
 EpiBranch.collect_exposures
 EpiBranch.gather_by_target

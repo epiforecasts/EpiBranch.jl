@@ -42,8 +42,10 @@ AbstractIntervention (Isolation, ContactTracing, RingVaccination, Scheduled)
 
 EXTENSION POINTS (for users adding their own pieces)
 ─────────
-- Custom transmission model: subtype TransmissionModel,
-  define contacts_of, single_type_offspring, chain_size_distribution
+- Custom transmission model: subtype TransmissionModel, then either
+  define generate_offspring (offspring-driven) or contacts_of +
+  collect_exposures=gather_by_target (structure-driven); for analytics,
+  single_type_offspring, chain_size_distribution
 - Custom observation model: subtype ObservationModel,
   define loglikelihood(::DataType, ::Observed{<:Any, <:YourObs})
   and chain_size_distribution(::Observed{<:Any, <:YourObs}) if analytical
@@ -106,6 +108,32 @@ This applies on every extension axis:
 - **Output, observation, and outcome rules** follow the same shape: mortality, hospitalisation, reporting probability, stopping conditions, line-list columns are typed objects with methods, not closed sets of fields.
 
 The test of correctness for any component is: can a plausible new variant be added without editing the component's source? If not, the component is doing too much; lift the varying part into a dispatched-on trait.
+
+### Model interface
+
+A transmission model produces candidate transmissions. Timing and infection-resolution happen afterwards, in the engine. How a model plugs in depends on whether it can produce its candidates one parent at a time.
+
+An **offspring-driven** model (the branching process, and variants like density-dependent or multi-type) implements one method:
+
+```
+generate_offspring(model, parent, state) -> offspring count
+```
+
+It returns how many contacts the parent makes: a single count, or a count per type for a multi-type model. The engine's generic per-generation loop does the rest. For each active parent it calls `generate_offspring`, creates that many candidate contacts, gives each an infection time from the model's `generation_time`, and resolves competing risks. The model assigns no timing, builds no `Individual`s, and never sees interventions.
+
+A **structure-driven** model (the network process, and a future household or metapopulation model) cannot produce its candidates one parent at a time. A susceptible may be reachable by several infectious neighbours at once, and infections deplete a fixed pool. Such a model plugs into the same `simulate` loop by defining `initialise_state` (set up its fixed population) and `_advance_generation!` (build each generation's exposures), then reuses the engine's competition machinery — `_set_provisional_sources!` and `_resolve_exposures!` — to resolve who is infected. `NetworkProcess` is the worked example.
+
+Either way the model only says who contacts whom. Timing and the competing-risks decision run the same way for every model. That keeps the offspring layer analysable on its own (extinction probability, chain-size distributions) and keeps the draw differentiable when the offspring distribution permits.
+
+### Three stages: one model-specific, two shared
+
+Of the three stages, only the first is model-specific:
+
+1. **Candidate generation (model-specific).** The branching process generates the tree: each parent's offspring become new candidate nodes. The network process generates nothing: its contact structure is an input (a fixed adjacency), and its candidates are the susceptible neighbours of each infectious node. So tree generation belongs to the branching process and has no counterpart for networks.
+2. **Timing (shared).** The engine gives each candidate an infection time from the parent's `generation_time`, the same way for both processes. The `generation_time` distribution is model data; drawing and assigning the times is an engine stage.
+3. **Competing risks (shared).** The engine resolves each candidate to infected or not by one per-pair decision: parent infectiousness, contact susceptibility, isolation truncation, and any risks an intervention contributes.
+
+Only candidate generation differs, so timing and the competing-risks decision are primitives both processes call. The two still keep separate top-level loops: the network loop also has to resolve several infectious neighbours competing for one susceptible node, which the branching process never produces. But both sit over the same engine primitives, in sibling modules. To add another process (household- or metapopulation-structured, say), supply a new candidate-generation step and reuse the shared timing and competing-risks stages.
 
 ### Naming convention for abstract types
 
@@ -251,9 +279,9 @@ chain_size_distribution(o::ClusterMixed{PoissonFamily, <:Gamma}) = PoissonGammaC
 
 The generic case uses adaptive Gauss-Kronrod quadrature via `ChainSizeMixture`. When a closed form applies, dispatch uses it without the user having to ask.
 
-## Simulation, mutation, and automatic differentiation
+## Simulation and inference
 
-The simulation engine works in place, generation by generation. Per generation, the engine resolves intervention state on each active parent, gathers the generation's contacts by calling `contacts_of(model, node, state)` for each active node (via `collect_exposures`), initialises intervention state on each new contact, runs post-transmission hooks, and resolves competing risks to set `:infected`. `contacts_of` is strictly the model's contact-and-timing layer — its signature is `contacts_of(model, node, state)`, with no `interventions` argument — returning `(contact, infection_time)` pairs: tree-like models create fresh contacts with `make_contact!`, while graph-like models return existing nodes. Copying the full state at every generation would be prohibitively expensive for an unbounded tree, so mutation in place is deliberate.
+The simulation engine works in place, one generation at a time. Each generation it resolves intervention state on every active parent, gathers the generation's candidate contacts (via `collect_exposures`), initialises intervention state on each new contact, runs the post-transmission hooks, and resolves competing risks to set `:infected`. A model varies only how it names those contacts, through one of two seams — neither of which takes an `interventions` argument. Offspring-driven models (the tree case) define `generate_offspring(model, parent, state)`, returning a pure offspring count: the engine creates that many fresh contacts and gives each an infection time from the model's `generation_time`, so the model builds no `Individual`s and assigns no timing. Structure-driven models (the graph case) define `contacts_of(model, node, state)`, returning `(contact, infection_time)` pairs over existing nodes, and override `collect_exposures` with `gather_by_target` so a node reached by several neighbours in one generation resolves once. Either way the engine owns the downstream stages. Copying the whole state every generation would be far too expensive for an unbounded tree, so the engine mutates in place on purpose.
 
 ### Analytical likelihoods
 
