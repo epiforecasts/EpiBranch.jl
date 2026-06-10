@@ -239,6 +239,38 @@ n_infected = count(is_infected, state.individuals)
 println("Vaccinated: $n_vaccinated, Infected: $n_infected")
 ```
 
+### Rings beyond direct contacts
+
+By default tracing reaches a case's direct contacts. `ContactTracing`
+takes a `depth` to widen the ring: `depth = 2` traces the contacts of
+those contacts as well, the level-2 ring an Ebola-style protocol
+vaccinates around a confirmed case. Each infected, eligible case seeds a
+ring of radius `depth`, and uninfected ring members keep generating
+contacts for one more hop so the ring can grow past them. The same
+`RingVaccination` then vaccinates the whole ring:
+
+```@example interventions
+ct2 = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0), depth = 2)
+
+rng = StableRNG(42)
+state = simulate(model;
+    condition = 50:200,
+    interventions = [iso, ct2, rv],
+    attributes = clinical,
+    sim_opts = SimOpts(max_cases = 200),
+    rng = rng,
+)
+doses_depth2 = count(is_vaccinated, state.individuals)
+println("Doses with a level-2 ring: $doses_depth2")
+```
+
+A wider ring reaches more people, so it costs more doses. Whether the
+extra reach buys extra control depends on how much transmission the
+direct-contact ring already caught. For a tightly traced outbreak the
+second ring is often mostly doses with little added containment. Compare
+dose counts and `containment_probability` across depths to see the
+trade-off for a given setting.
+
 ### Post-exposure prophylaxis
 
 For PEP (antivirals or antibiotics given to traced contacts), use
