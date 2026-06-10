@@ -29,7 +29,7 @@ is_eligible(::TraceEligibility, infector, contact, state) = true
 
 """Trace when the infector is symptomatic (clinical suspicion), timed
 from symptom onset — so tracing fires before, or without, lab
-confirmation. See [`trigger_time`](@ref)."""
+confirmation. See [`trigger_time`](@ref EpiBranch.trigger_time)."""
 struct OnSymptomOnset <: TraceEligibility end
 is_eligible(::OnSymptomOnset, infector, contact, state) = !is_asymptomatic(infector)
 

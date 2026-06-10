@@ -64,6 +64,7 @@ TraceAction
 Quarantine
 FlagOnly
 EpiBranch.is_eligible
+EpiBranch.trigger_time
 EpiBranch.traces
 EpiBranch.draw_trace_delay
 EpiBranch.apply_trace!
