@@ -161,8 +161,10 @@ end
 # `make_contact!` and assigns it a generation time. Each fresh contact is
 # its own target reached by a single edge (the tree case). Single-type
 # offspring is a count; multi-type is a count per type.
-function _materialise_offspring!(targets, edges, n_contacts::Int,
-        parent, state::SimulationState, gt_dist)
+function _materialise_offspring!(targets::Vector{Individual},
+        edges::Vector{Vector{Tuple{Int, Float64}}}, n_contacts::Int,
+        parent::Individual, state::SimulationState,
+        gt_dist::Union{Distribution, NoGenerationTime})
     for _ in 1:n_contacts
         t = _infection_time(gt_dist, parent, state)
         push!(targets, make_contact!(state, parent, t))
@@ -171,8 +173,10 @@ function _materialise_offspring!(targets, edges, n_contacts::Int,
     return nothing
 end
 
-function _materialise_offspring!(targets, edges, counts::Vector{Int},
-        parent, state::SimulationState, gt_dist)
+function _materialise_offspring!(targets::Vector{Individual},
+        edges::Vector{Vector{Tuple{Int, Float64}}}, counts::Vector{Int},
+        parent::Individual, state::SimulationState,
+        gt_dist::Union{Distribution, NoGenerationTime})
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
             t = _infection_time(gt_dist, parent, state)
