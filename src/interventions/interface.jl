@@ -25,6 +25,25 @@ resolve_individual!(::AbstractIntervention, individual, state) = nothing
 """Act on contacts after creation. All contacts are received. Default: no-op."""
 apply_post_transmission!(::AbstractIntervention, state, new_contacts) = nothing
 
+"""
+    keep_active(intervention, state, targets, is_new) -> iterable of Int
+
+The ids of this generation's contacts that should stay *active* into the
+next generation (keep generating contacts of their own), beyond the newly
+infected cases, which always do. Default: none.
+
+The engine unions these into the next active set, so who keeps generating
+contacts is not a special built-in rule. An intervention that needs the
+engine to keep growing contacts from *uninfected* nodes, such as contact
+tracing reaching contacts-of-contacts, returns those nodes' ids here. Pair
+it with the `InfectiousSource` risk source (a default) so those uninfected
+nodes generate contacts without infecting them.
+
+`targets` are this generation's contacts and `is_new[i]` flags which were
+freshly created. Return ids of nodes that are *not* already infected; the
+infected ones stay active anyway."""
+keep_active(::AbstractIntervention, state, targets, is_new) = ()
+
 """Whether an intervention is currently active given the simulation state. Default: always."""
 is_active(::AbstractIntervention, ::SimulationState) = true
 

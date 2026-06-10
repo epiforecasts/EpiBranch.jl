@@ -79,9 +79,11 @@ Scheduled
 Risk
 EpiBranch.HostSusceptibility
 EpiBranch.InfectorInfectiousness
+EpiBranch.InfectiousSource
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
+EpiBranch.keep_active
 EpiBranch.competing_risk
 EpiBranch.intervention_time
 EpiBranch.reset!

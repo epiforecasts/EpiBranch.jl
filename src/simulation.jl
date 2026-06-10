@@ -313,12 +313,17 @@ function _advance_generation!(model::TransmissionModel,
     end
     state.cumulative_cases += length(newly_infected)
     state.current_generation += 1
-    if isempty(newly_infected)
-        state.extinct = true
-        state.active_ids = Int[]
-    else
-        state.active_ids = [target.id for target in newly_infected]
+
+    # Next active set: the cases that transmit, plus any nodes an
+    # intervention asks to keep active (`keep_active`), such as uninfected
+    # contacts a tracing depth wants to keep growing. Who stays active is
+    # not a special built-in rule.
+    next_active = [target.id for target in newly_infected]
+    for intervention in interventions
+        append!(next_active, keep_active(intervention, state, targets, is_new))
     end
+    state.active_ids = next_active
+    state.extinct = isempty(next_active)
 
     if !isempty(state.transitions)
         for target in newly_infected
@@ -547,7 +552,18 @@ function competing_risk(::InfectorInfectiousness, parent, contact, state)
     Risk(block_probability = 1.0 - parent.infectiousness) : nothing
 end
 
-const _BUILTIN_RISK_SOURCES = (HostSusceptibility(), InfectorInfectiousness())
+"""Default risk source: only an infected source transmits. An uninfected
+source blocks transmission entirely, so the engine can keep uninfected
+nodes active (e.g. for contact tracing depth, via [`keep_active`](@ref))
+to grow their contacts without those contacts becoming infected. A no-op
+in the usual case where every active node is infected."""
+struct InfectiousSource end
+function competing_risk(::InfectiousSource, parent, contact, state)
+    is_infected(parent) ? nothing : Risk(block_probability = 1.0)
+end
+
+const _BUILTIN_RISK_SOURCES = (InfectiousSource(), HostSusceptibility(),
+    InfectorInfectiousness())
 
 """Apply one risk source's [`competing_risk`](@ref)(s) to a transmission;
 return `true` if any active risk blocks it. Built-in risk sources and

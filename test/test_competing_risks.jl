@@ -1,3 +1,10 @@
+# Test intervention exercising the `keep_active` seam: keep every
+# uninfected contact active so it grows contacts of its own next generation.
+struct KeepUninfectedActive <: EpiBranch.AbstractIntervention end
+function EpiBranch.keep_active(::KeepUninfectedActive, state, targets, is_new)
+    [t.id for t in targets if !is_infected(t)]
+end
+
 @testset "Competing risks" begin
     clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
     model = BranchingProcess(Poisson(2.0), Exponential(5.0))
@@ -205,5 +212,36 @@
             push!(frac, count(is_infected, kids) / length(kids))
         end
         @test 0.2 < sum(frac) / length(frac) < 0.4
+    end
+
+    @testset "keep_active grows uninfected contacts without infecting them" begin
+        # ~half of each case's contacts go uninfected (susceptibility 0.5).
+        m = BranchingProcess((rng, ind) -> 4, Exponential(5.0))
+        attrs = transmission_traits(susceptibility = 0.5)
+        opts = SimOpts(n_initial = 5, max_generations = 4)
+        base = simulate(m; attributes = attrs, sim_opts = opts, rng = StableRNG(1))
+        grown = simulate(m; interventions = [KeepUninfectedActive()],
+            attributes = attrs, sim_opts = opts, rng = StableRNG(1))
+
+        # The uninfected fringe now spawns its own contacts: far more nodes.
+        @test length(grown.individuals) > length(base.individuals)
+        # But an uninfected source never transmits (`InfectiousSource`):
+        # every contact of an uninfected parent is itself uninfected.
+        for ind in grown.individuals
+            ind.parent_id == 0 && continue
+            is_infected(grown.individuals[ind.parent_id]) && continue
+            @test !is_infected(ind)
+        end
+        # InfectiousSource itself: an uninfected source contributes a
+        # full block; an infected one contributes nothing.
+        well = Individual(id = 1)
+        well.state[:infected] = false
+        sick = Individual(id = 2)
+        sick.state[:infected] = true
+        c = Individual(id = 3, parent_id = 1)
+        @test EpiBranch.competing_risk(EpiBranch.InfectiousSource(),
+            well, c, nothing).block_probability == 1.0
+        @test EpiBranch.competing_risk(EpiBranch.InfectiousSource(),
+            sick, c, nothing) === nothing
     end
 end
