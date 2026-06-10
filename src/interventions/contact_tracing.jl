@@ -28,8 +28,8 @@ is_eligible(::TraceEligibility, infector, contact, state) = true
 # composition read correctly.
 
 """Trace when the infector is symptomatic (clinical suspicion), timed
-from symptom onset — so tracing fires before, or without, lab
-confirmation. See [`trigger_time`](@ref EpiBranch.trigger_time)."""
+from symptom onset, so tracing can start before lab confirmation, or
+without it. See [`trigger_time`](@ref EpiBranch.trigger_time)."""
 struct OnSymptomOnset <: TraceEligibility end
 is_eligible(::OnSymptomOnset, infector, contact, state) = !is_asymptomatic(infector)
 
@@ -126,23 +126,23 @@ Base.:!(a::TraceEligibility) = NoneOf(a)
 
 # ── Trigger time ────────────────────────────────────────────────────
 #
-# When the trace fires is read from the same eligibility policy that
-# decides whether it fires: the trace is timed from when the infector
-# first *meets* the condition. So `OnSymptomOnset` times from symptom
-# onset (suspicion-based tracing, which fires before — or without — lab
-# confirmation), while the historical default and the isolation/
-# confirmation policies time from isolation. `ContactTracing` adds its
-# delay to this. Combinators compose: an `AllOf` fires once its last
-# condition is met (the latest trigger), an `AnyOf` once its first is.
+# The same eligibility policy that decides *whether* to trace also sets
+# *when*: the trace is timed from when the infector first meets the
+# condition. `OnSymptomOnset` times from symptom onset, so tracing can
+# start before lab confirmation (or without it), while the historical
+# default and the isolation/confirmation policies time from isolation.
+# `ContactTracing` adds its delay on top. Combinators compose: an `AllOf`
+# triggers once its last condition is met (the latest time), an `AnyOf`
+# once its first is.
 
 """
     trigger_time(eligibility, infector, state) -> Float64
 
-The time the trace fires for `infector` under this eligibility policy;
+The time the trace starts for `infector` under this eligibility policy;
 [`ContactTracing`](@ref) adds its delay to it. Defaults to the infector's
-isolation time (the historical anchor); [`OnSymptomOnset`](@ref) overrides
-to onset time so suspicion-based tracing fires from symptom onset rather
-than waiting for isolation/confirmation.
+isolation time (the historical default). [`OnSymptomOnset`](@ref) overrides
+this to onset time, so suspicion-based tracing starts at symptom onset
+instead of waiting for isolation or confirmation.
 """
 trigger_time(::TraceEligibility, infector, state) = isolation_time(infector)
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
