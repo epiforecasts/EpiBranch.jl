@@ -297,9 +297,28 @@ function is_eligible(::SymptomaticOver65, infector, contact, state)
 end
 ```
 
+## Ring depth
+
+`depth` sets how many contact hops out the trace reaches (default `1`,
+direct contacts only). With `depth = 2` the traced contacts of a case
+keep generating their own contacts, which are traced in turn: the
+contacts-of-contacts that a level-2 ring vaccination targets. Each
+infected, eligible case seeds a fresh ring of radius `depth`; uninfected
+ring members stay active for one more generation so the ring can grow
+past them (see [`keep_active`](@ref EpiBranch.keep_active)), without
+infecting their contacts (the [`InfectiousSource`](@ref
+EpiBranch.InfectiousSource) default). Pair with [`RingVaccination`](@ref)
+to vaccinate the whole ring:
+
+```julia
+[ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0); depth = 2),
+ RingVaccination(efficacy = 0.9)]
+```
+
 Needs `:asymptomatic`, `:onset_time` from `clinical_presentation()` and optionally
 `:isolated`, `:isolation_time`, `:test_positive` depending on eligibility type.
-Sets `:traced`, `:quarantined`.
+Sets `:traced`, `:quarantined`. With `depth > 1` also sets `:trace_time`
+and `:ring_remaining` to carry the ring outward.
 """
 struct ContactTracing{
     E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction} <:
@@ -308,18 +327,30 @@ struct ContactTracing{
     trace_rate::F
     isolation_to_trace_delay::D
     action::A
+    depth::Int
+end
+
+# Fully-typed form (eligibility + trait objects) with a default depth, so
+# callers that build the traits directly need not pass `depth`.
+function ContactTracing(eligibility::TraceEligibility, trace_rate::TraceRate,
+        isolation_to_trace_delay::TraceDelay, action::TraceAction;
+        depth::Integer = 1)
+    return ContactTracing(
+        eligibility, trace_rate, isolation_to_trace_delay, action, Int(depth))
 end
 
 function ContactTracing(;
         probability::Float64,
         isolation_to_trace_delay::Distribution,
         quarantine_on_trace::Bool = true,
-        eligibility::TraceEligibility = SymptomaticParent())
+        eligibility::TraceEligibility = SymptomaticParent(),
+        depth::Integer = 1)
     return ContactTracing(
         eligibility,
         ConstantRate(probability),
         ConstantDelay(isolation_to_trace_delay),
-        quarantine_on_trace ? Quarantine() : FlagOnly()
+        quarantine_on_trace ? Quarantine() : FlagOnly(),
+        Int(depth)
     )
 end
 
@@ -328,12 +359,14 @@ end
 # constructor (taking `TraceRate`/`TraceDelay` objects) is unaffected —
 # `probability::Real` and `delay::Distribution` do not match those.
 function ContactTracing(eligibility::TraceEligibility, probability::Real,
-        isolation_to_trace_delay::Distribution, action::TraceAction = Quarantine())
+        isolation_to_trace_delay::Distribution, action::TraceAction = Quarantine();
+        depth::Integer = 1)
     return ContactTracing(
         eligibility,
         ConstantRate(probability),
         ConstantDelay(isolation_to_trace_delay),
-        action
+        action,
+        Int(depth)
     )
 end
 
@@ -384,13 +417,63 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
         ind.parent_id > length(state.individuals) && continue
         infector = state.individuals[ind.parent_id]
 
-        is_eligible(ct.eligibility, infector, ind, state) || continue
+        # A contact enters the ring two ways. As a *seed*, when its
+        # infector is an infected case meeting the eligibility condition
+        # (a symptomatic case, say): this starts a fresh ring of radius
+        # `depth` around that case. By *propagation*, when its infector is
+        # itself a traced ring node with budget left: this is how the ring
+        # reaches contacts-of-contacts. The seed path is the original
+        # behaviour; propagation only happens when `depth > 1`.
+        #
+        # Requiring the seed's infector to be infected is a no-op at
+        # `depth == 1` (only infected cases ever generate contacts there),
+        # but it stops an uninfected ring member, which carries its own
+        # clinical state, from re-seeding a fresh full-radius ring and
+        # letting the fringe grow without bound.
+        seed = is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state)
+        propagate = ct.depth > 1 && !seed && is_traced(infector) &&
+                    get(infector.state, :ring_remaining, 0)::Int > 0
+        (seed || propagate) || continue
         traces(ct.trace_rate, infector, ind, state, rng) || continue
 
         trace_delay = draw_trace_delay(
             ct.isolation_to_trace_delay, infector, ind, state, rng)
-        trace_time = trigger_time(ct.eligibility, infector, state) + trace_delay
+        if seed
+            trace_time = trigger_time(ct.eligibility, infector, state) + trace_delay
+        else
+            base = get(infector.state, :trace_time, isolation_time(infector))::Float64
+            trace_time = base + trace_delay
+        end
         apply_trace!(ct.action, ind, state, trace_time, rng)
+
+        # Record how far the ring can still grow from this contact, and
+        # when it was traced, so a contact-of-contact one hop further out
+        # can time its own trace from here. Only `depth > 1` rings expand,
+        # so depth-1 tracing writes no extra state and matches the
+        # original byte for byte.
+        if ct.depth > 1
+            ind.state[:trace_time] = trace_time
+            ind.state[:ring_remaining] = seed ? ct.depth - 1 :
+                                         get(infector.state, :ring_remaining, 0)::Int - 1
+        end
     end
     return nothing
+end
+
+"""Keep uninfected ring members generating contacts so the ring can
+reach contacts-of-contacts. A traced contact with ring budget left
+stays active for one more generation; the [`InfectiousSource`](@ref
+EpiBranch.InfectiousSource) default keeps it from infecting those
+contacts. Infected cases stay active regardless, so only the uninfected
+fringe is returned. Empty for `depth == 1` (direct contacts only)."""
+function keep_active(ct::ContactTracing, state, targets, is_new)
+    ct.depth > 1 || return ()
+    ids = Int[]
+    for t in targets
+        is_infected(t) && continue
+        is_traced(t) || continue
+        get(t.state, :ring_remaining, 0)::Int > 0 || continue
+        push!(ids, t.id)
+    end
+    return ids
 end
