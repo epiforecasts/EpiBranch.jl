@@ -38,13 +38,14 @@ ChainLengths
 ORTHOGONAL
 ─────────
 AbstractIntervention (Isolation, ContactTracing, RingVaccination, Scheduled)
-    — passed to simulate as a vector; modifies state during simulation
+    — passed to simulate as a vector; modifies state each generation
 
 EXTENSION POINTS (for users adding their own pieces)
 ─────────
-- Custom transmission model: subtype TransmissionModel,
-  define generate_offspring, single_type_offspring,
-  chain_size_distribution
+- Custom transmission model: subtype TransmissionModel, then either
+  define generate_offspring (offspring-driven) or contacts_of +
+  collect_exposures=gather_by_target (structure-driven); for analytics,
+  single_type_offspring, chain_size_distribution
 - Custom observation model: subtype ObservationModel,
   define loglikelihood(::DataType, ::Observed{<:Any, <:YourObs})
   and chain_size_distribution(::Observed{<:Any, <:YourObs}) if analytical
@@ -280,7 +281,7 @@ The generic case uses adaptive Gauss-Kronrod quadrature via `ChainSizeMixture`. 
 
 ## Simulation and inference
 
-The simulation engine works in place, one generation at a time. Each generation it resolves intervention state on every active parent, then calls `generate_offspring(model, parent, state)` for each parent's offspring count. It creates that many candidate contacts, gives each an infection time from the model's `generation_time`, initialises intervention state on them, runs the post-transmission hooks, and resolves competing risks to set `:infected`. `generate_offspring` is purely the model's candidate-generation layer: it takes no `interventions` argument, builds no `Individual`s, and never mutates `state.individuals`. The engine owns timing, materialisation, and the downstream stages. Copying the whole state every generation would be far too expensive for an unbounded tree, so the engine mutates in place on purpose.
+The simulation engine works in place, one generation at a time. Each generation it resolves intervention state on every active parent, gathers the generation's candidate contacts (via `collect_exposures`), initialises intervention state on each new contact, runs the post-transmission hooks, and resolves competing risks to set `:infected`. A model varies only how it names those contacts, through one of two seams — neither of which takes an `interventions` argument. Offspring-driven models (the tree case) define `generate_offspring(model, parent, state)`, returning a pure offspring count: the engine creates that many fresh contacts and gives each an infection time from the model's `generation_time`, so the model builds no `Individual`s and assigns no timing. Structure-driven models (the graph case) define `contacts_of(model, node, state)`, returning `(contact, infection_time)` pairs over existing nodes, and override `collect_exposures` with `gather_by_target` so a node reached by several neighbours in one generation resolves once. Either way the engine owns the downstream stages. Copying the whole state every generation would be far too expensive for an unbounded tree, so the engine mutates in place on purpose.
 
 ### Analytical likelihoods
 

@@ -72,7 +72,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
     end
 
     @testset "required_fields" begin
-        @test required_fields(OnSymptomOnset()) == [:asymptomatic]
+        @test required_fields(OnSymptomOnset()) == [:asymptomatic, :onset_time]
         @test required_fields(OnLabConfirmation()) == [:test_positive]
         @test required_fields(OnIsolation()) == [:isolated]
         @test required_fields(TraceEveryone()) == Symbol[]
@@ -80,10 +80,23 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         @test required_fields(SymptomaticParent()) == [:asymptomatic, :isolated]
 
         @test Set(required_fields(OnSymptomOnset() | OnIsolation())) ==
-              Set([:asymptomatic, :isolated])
+              Set([:asymptomatic, :onset_time, :isolated])
         @test required_fields(!OnLabConfirmation()) == [:test_positive]
         @test Set(required_fields(OnSymptomOnset() & !OnIsolation())) ==
-              Set([:asymptomatic, :isolated])
+              Set([:asymptomatic, :onset_time, :isolated])
+    end
+
+    @testset "Trigger time follows the eligibility condition" begin
+        tt(policy, infector) = EpiBranch.trigger_time(policy, infector, nothing)
+        infector = infector_with(asymptomatic = false, onset_time = 4.0,
+            isolated = true, isolation_time = 9.0)
+        # OnSymptomOnset times from onset; isolation/default policies from isolation.
+        @test tt(OnSymptomOnset(), infector) == 4.0
+        @test tt(OnIsolation(), infector) == 9.0
+        @test tt(SymptomaticParent(), infector) == 9.0
+        # Combinators: AnyOf fires at the earliest trigger, AllOf at the latest.
+        @test tt(OnSymptomOnset() | OnIsolation(), infector) == 4.0
+        @test tt(OnSymptomOnset() & OnIsolation(), infector) == 9.0
     end
 
     @testset "Integration with ContactTracing constructors" begin
@@ -97,7 +110,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         ct2 = ContactTracing(OnSymptomOnset() | OnLabConfirmation(), 0.5, Exponential(2.0), FlagOnly())
         @test ct2.eligibility isa AnyOf
         @test ct2.action isa FlagOnly
-        @test Set(required_fields(ct2)) == Set([:asymptomatic, :test_positive])
+        @test Set(required_fields(ct2)) == Set([:asymptomatic, :onset_time, :test_positive])
 
         # Keyword form keeps the original default eligibility.
         ct3 = ContactTracing(probability = 0.6, isolation_to_trace_delay = Exponential(1.0))

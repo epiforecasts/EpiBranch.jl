@@ -27,7 +27,9 @@ is_eligible(::TraceEligibility, infector, contact, state) = true
 # not yet isolated". Keeping predicates atomic is what makes that
 # composition read correctly.
 
-"""Trace when the infector is symptomatic (clinical suspicion)."""
+"""Trace when the infector is symptomatic (clinical suspicion), timed
+from symptom onset — so tracing fires before, or without, lab
+confirmation. See [`trigger_time`](@ref EpiBranch.trigger_time)."""
 struct OnSymptomOnset <: TraceEligibility end
 is_eligible(::OnSymptomOnset, infector, contact, state) = !is_asymptomatic(infector)
 
@@ -121,6 +123,35 @@ end
 Base.:|(a::TraceEligibility, b::TraceEligibility) = AnyOf(a, b)
 Base.:&(a::TraceEligibility, b::TraceEligibility) = AllOf(a, b)
 Base.:!(a::TraceEligibility) = NoneOf(a)
+
+# ── Trigger time ────────────────────────────────────────────────────
+#
+# When the trace fires is read from the same eligibility policy that
+# decides whether it fires: the trace is timed from when the infector
+# first *meets* the condition. So `OnSymptomOnset` times from symptom
+# onset (suspicion-based tracing, which fires before — or without — lab
+# confirmation), while the historical default and the isolation/
+# confirmation policies time from isolation. `ContactTracing` adds its
+# delay to this. Combinators compose: an `AllOf` fires once its last
+# condition is met (the latest trigger), an `AnyOf` once its first is.
+
+"""
+    trigger_time(eligibility, infector, state) -> Float64
+
+The time the trace fires for `infector` under this eligibility policy;
+[`ContactTracing`](@ref) adds its delay to it. Defaults to the infector's
+isolation time (the historical anchor); [`OnSymptomOnset`](@ref) overrides
+to onset time so suspicion-based tracing fires from symptom onset rather
+than waiting for isolation/confirmation.
+"""
+trigger_time(::TraceEligibility, infector, state) = isolation_time(infector)
+trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
+function trigger_time(e::AllOf, infector, state)
+    maximum(trigger_time(c, infector, state) for c in e.conditions)
+end
+function trigger_time(e::AnyOf, infector, state)
+    minimum(trigger_time(c, infector, state) for c in e.conditions)
+end
 
 """
     TraceRate
@@ -311,7 +342,7 @@ intervention_time(::ContactTracing, ind::Individual) = isolation_time(ind)
 
 # Required-field validation dispatches on the eligibility trait. Each
 # atomic predicate declares only the state key it reads.
-required_fields(::OnSymptomOnset) = [:asymptomatic]
+required_fields(::OnSymptomOnset) = [:asymptomatic, :onset_time]
 required_fields(::OnLabConfirmation) = [:test_positive]
 required_fields(::OnIsolation) = [:isolated]
 required_fields(::TraceEveryone) = Symbol[]
@@ -358,7 +389,7 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
 
         trace_delay = draw_trace_delay(
             ct.isolation_to_trace_delay, infector, ind, state, rng)
-        trace_time = isolation_time(infector) + trace_delay
+        trace_time = trigger_time(ct.eligibility, infector, state) + trace_delay
         apply_trace!(ct.action, ind, state, trace_time, rng)
     end
     return nothing

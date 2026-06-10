@@ -28,6 +28,9 @@ should_stop
 ```@docs
 simulate
 EpiBranch.generate_offspring
+EpiBranch.contacts_of
+EpiBranch.collect_exposures
+EpiBranch.gather_by_target
 make_contact!
 susceptible_fraction
 ```
@@ -62,6 +65,7 @@ TraceAction
 Quarantine
 FlagOnly
 EpiBranch.is_eligible
+EpiBranch.trigger_time
 EpiBranch.traces
 EpiBranch.draw_trace_delay
 EpiBranch.apply_trace!
@@ -244,9 +248,8 @@ developers extending the package.
 
 ```@docs
 EpiBranch.get_generation_time
-EpiBranch._create_contacts!
-EpiBranch._resolve_competing_risks!
-EpiBranch._register_step!
+EpiBranch._advance_generation!
+EpiBranch._decide_infected
 EpiBranch.population_size
 EpiBranch._create_individual
 EpiBranch.logsumexp

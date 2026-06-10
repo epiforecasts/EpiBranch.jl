@@ -485,15 +485,31 @@ parent first, then `initialise_individual!` and
 transitions, and the bookkeeping fields (`cumulative_cases`,
 `current_generation`, `active_ids`, `extinct`, `max_infection_time`).
 
-A **structure-driven** model produces candidates that can't be generated
-one parent at a time: a contact network, or a household/metapopulation
-process where a susceptible can be reached by several infectious sources
-at once and infections deplete a fixed pool. Instead of
-`generate_offspring`, plug into the same `simulate` loop by defining
-`initialise_state` (set up the fixed population) and `_advance_generation!`
-(build each generation's exposures), and reuse the engine's competition
-machinery (`_set_provisional_sources!`, `_resolve_exposures!`).
-`NetworkProcess` is the worked example.
+A **structure-driven** model produces candidates a count can't name: a
+contact network, or a household/metapopulation process where a
+susceptible can be reached by several infectious sources at once and
+infections deplete a fixed pool. It defines two methods instead:
+
+- [`contacts_of`](@ref)`(model, node, state)` — the contacts an
+  infectious `node` reaches this generation, as `(contact, infection_time)`
+  pairs. Return existing nodes (a network), or mint fresh ones with
+  [`make_contact!`](@ref). Do not set `:infected` yourself.
+- override [`collect_exposures`](@ref) with [`gather_by_target`](@ref),
+  so a node reached by several infectious neighbours in one generation
+  collects all its incoming edges and is resolved once.
+
+`contacts_of` has no `interventions` argument either, and the same rule
+applies: produce every *potential* contact and let the engine's
+competing-risks resolution decide infection. Everything else — gathering
+the exposures, `initialise_individual!` and `apply_post_transmission!` on
+new contacts, competing risks, clinical transitions, and bookkeeping — is
+the shared engine. A structure-driven model also defines `initialise_state`
+to set up its fixed population. `NetworkProcess` is the worked example.
+
+Models whose contacts can be *shared* across parents within a generation
+(networks, households, clustering) also override
+[`collect_exposures`](@ref) with [`gather_by_target`](@ref), which
+deduplicates shared targets so a node reached several times resolves once.
 
 For **analytical inference helpers** that route through the offspring
 specification (`extinction_probability`, `epidemic_probability`,
@@ -711,7 +727,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
-| Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring`, `single_type_offspring` | Simulation + analytics |
+| Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (or `contacts_of` + `gather_by_target`), `single_type_offspring` | Simulation + analytics |
 | Custom observation model | Struct `<: ObservationModel` + `chain_size_distribution(::Observed{...})` and/or `loglikelihood(::DataType, ::Observed{...})` | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |

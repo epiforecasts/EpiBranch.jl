@@ -34,9 +34,21 @@ include("transitions/reporting.jl")
 include("transitions/hospitalisation.jl")
 include("transitions/outcome.jl")
 
-# Offspring-driven model interface, declared before `public.jl` marks it.
-# The engine calls it once per parent; structure-driven models (e.g.
-# NetworkProcess) override `_advance_generation!` instead.
+"""
+    generate_offspring(model, parent, state) -> count
+
+The offspring-driven transmission seam: how many contacts `parent` makes
+this generation, as a single count (single-type) or a count per type
+(multi-type). The engine calls it once per active parent, then creates
+that many fresh contacts and assigns each an infection time from the
+model's `generation_time` — so the model builds no `Individual`s, assigns
+no timing, and takes no `interventions` argument.
+
+This is the path for tree-like models (a branching process), where every
+contact is fresh. Structure-driven models whose contacts are existing
+nodes (e.g. [`NetworkProcess`](@ref)) define [`contacts_of`](@ref) and
+override [`collect_exposures`](@ref) instead.
+"""
 function generate_offspring end
 
 # Public API declarations (Julia 1.11+)
@@ -124,6 +136,7 @@ export clinical_presentation, demographics, transmission_traits, compose
 
 # Exports — simulation
 export simulate, make_contact!, susceptible_fraction
+export generate_offspring, contacts_of, collect_exposures, gather_by_target
 
 # Exports — output
 export linelist, contacts, chain_statistics
