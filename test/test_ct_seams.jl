@@ -76,8 +76,8 @@ end
     end
 
     # Offspring-as-ring with susceptibility 0.5: each case has four
-    # contacts, about half of which go uninfected — the fringe a level-2
-    # ring needs to reach past.
+    # contacts, about half of which go uninfected. That uninfected fringe
+    # is what a level-2 ring has to reach past.
     model = BranchingProcess((rng, ind) -> 4, Exponential(5.0))
     attrs = compose(clinical, transmission_traits(susceptibility = 0.5))
     opts = SimOpts(n_initial = 3, max_generations = 4)
@@ -105,7 +105,7 @@ end
         # The uninfected fringe now grows its own contacts: more nodes.
         @test length(s2.individuals) > length(s1.individuals)
 
-        # Some traced contact has an uninfected parent — a contact-of-
+        # Some traced contact has an uninfected parent: a contact-of-
         # contact the ring could only reach by growing past the fringe.
         reached = false
         for ind in s2.individuals

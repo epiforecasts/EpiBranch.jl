@@ -9,7 +9,7 @@ EpiBranch.jl is designed for user extension. This guide covers:
 ## Custom interventions
 
 Every intervention is a struct that subtypes `AbstractIntervention`. The
-engine calls four hooks on each intervention; you implement only the
+engine calls these hooks on each intervention; you implement only the
 ones your intervention needs (all default to no-ops).
 
 ### Hook contract
@@ -20,11 +20,13 @@ ones your intervention needs (all default to no-ops).
 | `resolve_individual!(iv, individual, state)` | Once per active individual at the start of each generation, before offspring are drawn | The parent for the upcoming step | `nothing` (mutate `individual.state` in place) |
 | `apply_post_transmission!(iv, state, new_contacts)` | Once per generation after all contacts for that generation have been created (across every active parent) | A `Vector{Individual}` of the new contacts | `nothing` (mutate any of the contacts' `state` in place) |
 | `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair during infection resolution, after `apply_post_transmission!` has run | The parent and a single new contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
+| `keep_active(iv, state, targets, is_new)` | Once per generation after infection is resolved, while the engine builds the next active set | This generation's `targets` and an `is_new` flag per target | An iterable of contact ids to keep generating contacts into the next generation (default: none) |
 
 Ordering guarantees:
 
 - `resolve_individual!` runs strictly before any `competing_risk` call for that generation, so a competing risk can read whatever `resolve_individual!` wrote on the parent.
 - `apply_post_transmission!` runs strictly before any `competing_risk` call, so a competing risk can read whatever post-transmission hook wrote on the contact (e.g. `:vaccination_time`).
+- `keep_active` runs after infection is resolved, so it can read each target's `:infected` and anything `apply_post_transmission!` wrote on it this generation.
 - Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
 
 A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms — `RingVaccination` returns both a susceptibility risk on the contact and an onward-infectiousness risk on the parent.
@@ -117,6 +119,59 @@ end
 `event_time = bc.start_time` means the risk only applies to contacts
 whose transmission time is on or after the closure date; cross-border
 transmissions before the closure are unaffected.
+
+### Built-in transmission terms are risk sources too
+
+The host's susceptibility and the infector's infectiousness are not
+special engine rules. They are default risk sources on the same
+`competing_risk` surface your `BorderClosure` plugs into. The engine
+evaluates `[built-ins; your interventions]` through one shared path and
+privileges neither, so `competing_risk` is the whole vocabulary for
+gating transmission: a vaccine, a border closure, and the host's own
+susceptibility all speak it.
+
+Three defaults ship, each contributing a block probability:
+
+- [`EpiBranch.HostSusceptibility`](@ref) — `1 - susceptibility` on the contact.
+- [`EpiBranch.InfectorInfectiousness`](@ref) — `1 - infectiousness` on the parent.
+- [`EpiBranch.InfectiousSource`](@ref) — a full block when the source is
+  not infected, so an uninfected node can stay active (see below) and
+  generate contacts without infecting them. A no-op in the usual case
+  where every active node is infected.
+
+A trait of `1.0` contributes no risk, so the defaults are silent unless
+an attributes function sets a susceptibility or infectiousness below one.
+You can replace or extend them by adding your own `competing_risk` the
+same way.
+
+### Growing the contact graph with `keep_active`
+
+By default the only nodes that carry into the next generation are the
+cases infected this generation: they stay active and generate their own
+contacts, and an uninfected contact is a dead end. `keep_active` lets an
+intervention keep other nodes active. Return the ids of this generation's
+targets that should keep generating contacts, and the engine unions them
+into the next active set.
+
+The case that needs it is contact tracing to a depth beyond direct
+contacts. To reach contacts-of-contacts, the engine has to grow the
+contacts of an infected case's contacts even when those in-between nodes
+were never infected. Keep them active here, and pair that with the
+`InfectiousSource` default so they grow their contacts without becoming a
+second wave of infections:
+
+```julia
+struct KeepUninfectedActive <: AbstractIntervention end
+
+function EpiBranch.keep_active(::KeepUninfectedActive, state, targets, is_new)
+    [t.id for t in targets if !is_infected(t)]
+end
+```
+
+[`ContactTracing`](@ref) with `depth > 1` is the built-in user of this
+hook: it keeps the uninfected ring members active for as many hops as the
+ring radius, so a level-2 ring reaches the contacts-of-contacts a ring
+vaccination then targets.
 
 ### Making the intervention schedulable
 

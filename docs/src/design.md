@@ -51,7 +51,8 @@ EXTENSION POINTS (for users adding their own pieces)
   and chain_size_distribution(::Observed{<:Any, <:YourObs}) if analytical
 - Custom data type: define a struct + a loglikelihood method
 - Custom intervention: subtype AbstractIntervention,
-  define apply_post_transmission!, initialise_individual!, ...
+  define apply_post_transmission!, initialise_individual!,
+  competing_risk, keep_active, ...
 ```
 
 The four design principles are documented separately
@@ -131,7 +132,7 @@ Of the three stages, only the first is model-specific:
 
 1. **Candidate generation (model-specific).** The branching process generates the tree: each parent's offspring become new candidate nodes. The network process generates nothing: its contact structure is an input (a fixed adjacency), and its candidates are the susceptible neighbours of each infectious node. So tree generation belongs to the branching process and has no counterpart for networks.
 2. **Timing (shared).** The engine gives each candidate an infection time from the parent's `generation_time`, the same way for both processes. The `generation_time` distribution is model data; drawing and assigning the times is an engine stage.
-3. **Competing risks (shared).** The engine resolves each candidate to infected or not by one per-pair decision: parent infectiousness, contact susceptibility, isolation truncation, and any risks an intervention contributes.
+3. **Competing risks (shared).** The engine resolves each candidate to infected or not by one per-pair decision composed from a list of risk sources. Parent infectiousness and contact susceptibility are not privileged engine checks: they are default risk sources on the same `competing_risk` surface an intervention uses, composed as `[built-ins; interventions]` through one shared path. Isolation truncation and any risk an intervention contributes join the same list.
 
 Only candidate generation differs, so timing and the competing-risks decision are primitives both processes call. The two still keep separate top-level loops: the network loop also has to resolve several infectious neighbours competing for one susceptible node, which the branching process never produces. But both sit over the same engine primitives, in sibling modules. To add another process (household- or metapopulation-structured, say), supply a new candidate-generation step and reuse the shared timing and competing-risks stages.
 
@@ -184,6 +185,8 @@ The keys below are reserved by the package. Custom interventions should pick nam
 | `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
 | `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff |
+| `:trace_time` | `Float64` | — | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
+| `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
 | `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
@@ -208,12 +211,13 @@ Built-in keys use short bare names like `:isolated`, `:traced`, `:age`. Those na
 
 ## Intervention interface
 
-Four hooks, all optional. See the [Extending guide](@ref "Extending EpiBranch") for the full input/output contract, ordering guarantees, and a `BorderClosure` worked example.
+Five hooks, all optional. See the [Extending guide](@ref "Extending EpiBranch") for the full input/output contract, ordering guarantees, and a `BorderClosure` worked example.
 
 - `initialise_individual!(intervention, individual, state)` — set up fields on a new contact
 - `resolve_individual!(intervention, individual, state)` — determine intervention state before transmission (e.g. compute isolation time from onset + delay)
 - `apply_post_transmission!(intervention, state, new_contacts)` — act on contacts after creation (e.g. contact tracing, ring vaccination). All contacts, infected and non-infected, are passed.
 - `competing_risk(intervention, parent, contact, state)` — return the `Risk` (or `NTuple{N, Risk}`) this intervention contributes against the parent → contact transmission, or `nothing`.
+- `keep_active(intervention, state, targets, is_new)` — return the ids of this generation's contacts to keep generating contacts into the next generation, beyond the newly infected cases. Lets an intervention grow the graph from uninfected nodes, e.g. contact tracing reaching contacts-of-contacts. Default: none.
 
 Interventions are stacked in a vector and applied in order. Each intervention has its own fields on the individual and declares what fields it requires.
 
