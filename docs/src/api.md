@@ -78,7 +78,7 @@ AllOrNothingMode
 Scheduled
 Risk
 EpiBranch.HostSusceptibility
-EpiBranch.ParentInfectiousness
+EpiBranch.InfectorInfectiousness
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!

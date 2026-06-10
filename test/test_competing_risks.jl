@@ -172,7 +172,7 @@
         end
     end
 
-    @testset "Built-in physics are default risk sources on the surface" begin
+    @testset "Susceptibility and infectiousness are default risk sources on the surface" begin
         # Host susceptibility and parent infectiousness expose themselves
         # through the same `competing_risk` seam as interventions, as a
         # block probability `1 - trait`; trait == 1 contributes no risk.
@@ -182,14 +182,14 @@
             parent, contact, nothing)
         @test rs isa Risk
         @test rs.block_probability ≈ 0.75
-        ri = EpiBranch.competing_risk(EpiBranch.ParentInfectiousness(),
+        ri = EpiBranch.competing_risk(EpiBranch.InfectorInfectiousness(),
             parent, contact, nothing)
         @test ri.block_probability ≈ 0.4
         # Default trait (1.0) ⇒ no risk contributed.
         plain = Individual(id = 3, parent_id = 1)
         @test EpiBranch.competing_risk(EpiBranch.HostSusceptibility(),
             parent, plain, nothing) === nothing
-        @test EpiBranch.competing_risk(EpiBranch.ParentInfectiousness(),
+        @test EpiBranch.competing_risk(EpiBranch.InfectorInfectiousness(),
             Individual(id = 4), plain, nothing) === nothing
 
         # And they actually thin transmission: susceptibility 0.3 ⇒ ~30%

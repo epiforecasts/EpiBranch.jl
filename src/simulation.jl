@@ -522,15 +522,15 @@ _iter_risks(::Nothing) = ()
 _iter_risks(r::Risk) = (r,)
 _iter_risks(rs) = rs
 
-# ── Built-in transmission physics as default risk sources ────────────
+# ── Susceptibility and infectiousness as default risk sources ────────
 #
-# Host susceptibility and parent infectiousness are not privileged engine
-# rules: they are *default risk sources* on the very same
-# [`competing_risk`](@ref) surface that interventions use. The engine
-# composes them with the user's interventions and privileges neither — a
-# user could replace or extend them by the same mechanism.
+# The host's susceptibility and the infector's infectiousness are not
+# special engine rules. They are default risk sources on the same
+# [`competing_risk`](@ref) surface interventions use: the engine composes
+# them with the user's interventions and privileges neither, and a user
+# could replace or extend them the same way.
 
-"""Default risk source: the contact's per-individual susceptibility, as a
+"""Default risk source: the host's per-individual susceptibility, as a
 block probability `1 - susceptibility` on the [`competing_risk`](@ref)
 surface."""
 struct HostSusceptibility end
@@ -539,19 +539,19 @@ function competing_risk(::HostSusceptibility, parent, contact, state)
     Risk(block_probability = 1.0 - contact.susceptibility) : nothing
 end
 
-"""Default risk source: the infecting parent's infectiousness, as a block
+"""Default risk source: the infector's infectiousness, as a block
 probability `1 - infectiousness` on the [`competing_risk`](@ref) surface."""
-struct ParentInfectiousness end
-function competing_risk(::ParentInfectiousness, parent, contact, state)
+struct InfectorInfectiousness end
+function competing_risk(::InfectorInfectiousness, parent, contact, state)
     parent.infectiousness < 1.0 ?
     Risk(block_probability = 1.0 - parent.infectiousness) : nothing
 end
 
-const _BUILTIN_RISK_SOURCES = (HostSusceptibility(), ParentInfectiousness())
+const _BUILTIN_RISK_SOURCES = (HostSusceptibility(), InfectorInfectiousness())
 
 """Apply one risk source's [`competing_risk`](@ref)(s) to a transmission;
-return `true` if any fired risk blocks it. Shared by built-in risk
-sources and interventions — the single risk-evaluation path."""
+return `true` if any active risk blocks it. Built-in risk sources and
+interventions share this single risk-evaluation path."""
 function _risk_blocks(source, parent, contact, state, transmission_time)
     rng = state.rng
     for risk in _iter_risks(competing_risk(source, parent, contact, state))
@@ -577,8 +577,8 @@ function _decide_infected(state::SimulationState, contact::Individual,
     pop_suscept <= 0.0 && return false
     pop_suscept < 1.0 && rand(rng) > pop_suscept && return false
 
-    # All transmission risks — built-in physics then interventions — on
-    # one surface, applied in order; the first to block wins.
+    # All transmission risks — susceptibility and infectiousness, then
+    # interventions — on one surface, applied in order; first to block wins.
     for source in _BUILTIN_RISK_SOURCES
         _risk_blocks(source, parent, contact, state, transmission_time) && return false
     end
