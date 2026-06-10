@@ -171,4 +171,39 @@
             @test ind.state[:age] < 50
         end
     end
+
+    @testset "Built-in physics are default risk sources on the surface" begin
+        # Host susceptibility and parent infectiousness expose themselves
+        # through the same `competing_risk` seam as interventions, as a
+        # block probability `1 - trait`; trait == 1 contributes no risk.
+        parent = Individual(id = 1, infectiousness = 0.6)
+        contact = Individual(id = 2, parent_id = 1, susceptibility = 0.25)
+        rs = EpiBranch.competing_risk(EpiBranch.HostSusceptibility(),
+            parent, contact, nothing)
+        @test rs isa Risk
+        @test rs.block_probability ≈ 0.75
+        ri = EpiBranch.competing_risk(EpiBranch.ParentInfectiousness(),
+            parent, contact, nothing)
+        @test ri.block_probability ≈ 0.4
+        # Default trait (1.0) ⇒ no risk contributed.
+        plain = Individual(id = 3, parent_id = 1)
+        @test EpiBranch.competing_risk(EpiBranch.HostSusceptibility(),
+            parent, plain, nothing) === nothing
+        @test EpiBranch.competing_risk(EpiBranch.ParentInfectiousness(),
+            Individual(id = 4), plain, nothing) === nothing
+
+        # And they actually thin transmission: susceptibility 0.3 ⇒ ~30%
+        # of contacts infected, end to end.
+        m = BranchingProcess((rng, ind) -> 6, Exponential(5.0))
+        attrs = transmission_traits(susceptibility = 0.3)
+        frac = Float64[]
+        for seed in 1:8
+            s = simulate(m; attributes = attrs,
+                sim_opts = SimOpts(n_initial = 50, max_generations = 1),
+                rng = StableRNG(seed))
+            kids = filter(i -> i.parent_id != 0, s.individuals)
+            push!(frac, count(is_infected, kids) / length(kids))
+        end
+        @test 0.2 < sum(frac) / length(frac) < 0.4
+    end
 end

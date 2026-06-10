@@ -518,6 +518,53 @@ risk blocks it.
 `infected_so_far` counts infections already resolved this generation, so
 population susceptibility shrinks the pool as contacts get infected and
 the cumulative case count cannot overshoot a finite `population_size`."""
+_iter_risks(::Nothing) = ()
+_iter_risks(r::Risk) = (r,)
+_iter_risks(rs) = rs
+
+# ── Built-in transmission physics as default risk sources ────────────
+#
+# Host susceptibility and parent infectiousness are not privileged engine
+# rules: they are *default risk sources* on the very same
+# [`competing_risk`](@ref) surface that interventions use. The engine
+# composes them with the user's interventions and privileges neither — a
+# user could replace or extend them by the same mechanism.
+
+"""Default risk source: the contact's per-individual susceptibility, as a
+block probability `1 - susceptibility` on the [`competing_risk`](@ref)
+surface."""
+struct HostSusceptibility end
+function competing_risk(::HostSusceptibility, parent, contact, state)
+    contact.susceptibility < 1.0 ?
+    Risk(block_probability = 1.0 - contact.susceptibility) : nothing
+end
+
+"""Default risk source: the infecting parent's infectiousness, as a block
+probability `1 - infectiousness` on the [`competing_risk`](@ref) surface."""
+struct ParentInfectiousness end
+function competing_risk(::ParentInfectiousness, parent, contact, state)
+    parent.infectiousness < 1.0 ?
+    Risk(block_probability = 1.0 - parent.infectiousness) : nothing
+end
+
+const _BUILTIN_RISK_SOURCES = (HostSusceptibility(), ParentInfectiousness())
+
+"""Apply one risk source's [`competing_risk`](@ref)(s) to a transmission;
+return `true` if any fired risk blocks it. Shared by built-in risk
+sources and interventions — the single risk-evaluation path."""
+function _risk_blocks(source, parent, contact, state, transmission_time)
+    rng = state.rng
+    for risk in _iter_risks(competing_risk(source, parent, contact, state))
+        event_t = _sample_value(risk.event_time, rng, parent, contact, state)
+        event_t > transmission_time && continue
+        prob = _sample_value(risk.block_probability, rng, parent, contact, state)
+        prob <= 0.0 && continue
+        prob >= 1.0 && return true
+        rand(rng) < prob && return true
+    end
+    return false
+end
+
 function _decide_infected(state::SimulationState, contact::Individual,
         interventions, infected_so_far::Int)
     contact.parent_id == 0 && return true
@@ -525,34 +572,22 @@ function _decide_infected(state::SimulationState, contact::Individual,
     parent = state.individuals[contact.parent_id]
     transmission_time = contact.infection_time
 
-    # Built-in risks (time-agnostic Bernoulli draws). Population
-    # susceptibility reflects infections accumulated this step.
+    # Finite-population depletion (dispatched on the population type).
     pop_suscept = susceptible_fraction(state, infected_so_far)
     pop_suscept <= 0.0 && return false
     pop_suscept < 1.0 && rand(rng) > pop_suscept && return false
-    contact.susceptibility < 1.0 && rand(rng) > contact.susceptibility && return false
-    parent.infectiousness < 1.0 && rand(rng) > parent.infectiousness && return false
 
-    # Intervention-contributed risks. Each intervention returns nothing,
-    # a single `Risk`, or an iterable of `Risk`s (for interventions that
-    # gate transmission through more than one mechanism — e.g. ring
-    # vaccination's susceptibility and onward-infectiousness effects).
+    # All transmission risks — built-in physics then interventions — on
+    # one surface, applied in order; the first to block wins.
+    for source in _BUILTIN_RISK_SOURCES
+        _risk_blocks(source, parent, contact, state, transmission_time) && return false
+    end
     for intervention in interventions
-        for risk in _iter_risks(competing_risk(intervention, parent, contact, state))
-            event_t = _sample_value(risk.event_time, rng, parent, contact, state)
-            event_t > transmission_time && continue
-            prob = _sample_value(risk.block_probability, rng, parent, contact, state)
-            prob <= 0.0 && continue
-            prob >= 1.0 && return false
-            rand(rng) < prob && return false
-        end
+        _risk_blocks(intervention, parent, contact, state, transmission_time) &&
+            return false
     end
     return true
 end
-
-_iter_risks(::Nothing) = ()
-_iter_risks(r::Risk) = (r,)
-_iter_risks(rs) = rs
 
 """Sweep newly added infected individuals (those at indices
 `from_index+1:end`) and run clinical transitions on each. Called by
