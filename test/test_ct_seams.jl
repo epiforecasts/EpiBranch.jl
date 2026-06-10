@@ -75,6 +75,15 @@ end
             ConstantDelay(Exponential(0.5)), Quarantine(); depth = 2).depth == 2
     end
 
+    @testset "depth below 1 is rejected" begin
+        @test_throws ArgumentError ContactTracing(
+            OnSymptomOnset(), 1.0, Exponential(0.5); depth = 0)
+        @test_throws ArgumentError ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5), depth = -1)
+        @test_throws ArgumentError ContactTracing(OnSymptomOnset(), ConstantRate(1.0),
+            ConstantDelay(Exponential(0.5)), Quarantine(); depth = 0)
+    end
+
     # Offspring-as-ring with susceptibility 0.5: each case has four
     # contacts, about half of which go uninfected. That uninfected fringe
     # is what a level-2 ring has to reach past.

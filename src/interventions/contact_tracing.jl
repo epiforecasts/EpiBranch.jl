@@ -300,7 +300,7 @@ end
 ## Ring depth
 
 `depth` sets how many contact hops out the trace reaches (default `1`,
-direct contacts only). With `depth = 2` the traced contacts of a case
+direct contacts only; must be at least `1`). With `depth = 2` the traced contacts of a case
 keep generating their own contacts, which are traced in turn: the
 contacts-of-contacts that a level-2 ring vaccination targets. Each
 infected, eligible case seeds a fresh ring of radius `depth`; uninfected
@@ -328,6 +328,19 @@ struct ContactTracing{
     isolation_to_trace_delay::D
     action::A
     depth::Int
+
+    # Validate the ring radius once, here, so every construction path
+    # (all the convenience constructors below funnel through this) rejects
+    # depth < 1 rather than silently behaving as depth 1.
+    function ContactTracing(eligibility::E, trace_rate::F,
+            isolation_to_trace_delay::D, action::A,
+            depth::Integer) where {
+            E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction}
+        depth >= 1 ||
+            throw(ArgumentError("ContactTracing depth must be at least 1, got $depth"))
+        return new{E, F, D, A}(
+            eligibility, trace_rate, isolation_to_trace_delay, action, Int(depth))
+    end
 end
 
 # Fully-typed form (eligibility + trait objects) with a default depth, so
