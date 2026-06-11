@@ -116,13 +116,14 @@ descendant via `parent_id` lookup. The per-individual draw is
 """
 function BranchingProcess(offspring::ClusterMixed, gt::Union{Distribution, Function};
         population_size::Union{Int, NoPopulation} = NoPopulation())
-    BranchingProcess(
-        (Infectiousness(offspring; kernel = gt),), population_size, 1, NoTypeLabels())
+    BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, 1,
+        NoTypeLabels(), AbstractClinicalTransition[])
 end
 
 function BranchingProcess(offspring::ClusterMixed;
         population_size::Union{Int, NoPopulation} = NoPopulation())
-    BranchingProcess((Infectiousness(offspring),), population_size, 1, NoTypeLabels())
+    BranchingProcess((Infectiousness(offspring),), population_size, 1,
+        NoTypeLabels(), AbstractClinicalTransition[])
 end
 
 """

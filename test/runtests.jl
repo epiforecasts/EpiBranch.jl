@@ -5,6 +5,7 @@ using Random
 using StableRNGs
 
 include("testutils/sim_analytical_consistency.jl")
+include("testutils/progression.jl")
 
 @testset "EpiBranch" begin
     include("test_quality.jl")

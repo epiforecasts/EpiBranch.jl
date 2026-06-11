@@ -61,7 +61,16 @@ struct BranchingProcess{W <: Tuple, P, L} <: TransmissionModel
     population_size::P
     n_types::Int
     type_labels::L
+    progression::Vector{AbstractClinicalTransition}
 end
+
+# The model's natural history: the timed clinical-state transitions a case
+# moves through (latent, onset, severity, death/recovery, burial). The
+# infectiousness windows and interventions key off the states it writes.
+# Optional and empty by default; models without one resolve no transitions.
+_progression(::TransmissionModel) = AbstractClinicalTransition[]
+_progression(m::BranchingProcess) = m.progression
+_progvec(p) = convert(Vector{AbstractClinicalTransition}, p)
 
 population_size(m::BranchingProcess) = m.population_size
 n_types(m::BranchingProcess) = m.n_types
@@ -100,30 +109,35 @@ end
 
 # Single-type with a contact interval (one default window).
 function BranchingProcess(offspring::Distribution, gt::Union{Distribution, Function};
-        population_size::Union{Int, NoPopulation} = NoPopulation())
-    BranchingProcess(
-        (Infectiousness(offspring; kernel = gt),), population_size, 1, NoTypeLabels())
+        population_size::Union{Int, NoPopulation} = NoPopulation(),
+        progression = AbstractClinicalTransition[])
+    BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, 1,
+        NoTypeLabels(), _progvec(progression))
 end
 
 # Single-type without a contact interval (pure chain statistics).
 function BranchingProcess(offspring::Distribution;
-        population_size::Union{Int, NoPopulation} = NoPopulation())
-    BranchingProcess((Infectiousness(offspring),), population_size, 1, NoTypeLabels())
+        population_size::Union{Int, NoPopulation} = NoPopulation(),
+        progression = AbstractClinicalTransition[])
+    BranchingProcess((Infectiousness(offspring),), population_size, 1,
+        NoTypeLabels(), _progvec(progression))
 end
 
 # Multi-type with an explicit offspring function.
 function BranchingProcess(offspring::Function, gt::Union{Distribution, Function};
         n_types::Int = 1, population_size::Union{Int, NoPopulation} = NoPopulation(),
-        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
-    BranchingProcess(
-        (Infectiousness(offspring; kernel = gt),), population_size, n_types, type_labels)
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(),
+        progression = AbstractClinicalTransition[])
+    BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, n_types,
+        type_labels, _progvec(progression))
 end
 
 # Explicit windows: pass `Infectiousness` windows directly.
 function BranchingProcess(windows::Tuple{Infectiousness, Vararg{Infectiousness}};
         n_types::Int = 1, population_size::Union{Int, NoPopulation} = NoPopulation(),
-        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
-    BranchingProcess(windows, population_size, n_types, type_labels)
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(),
+        progression = AbstractClinicalTransition[])
+    BranchingProcess(windows, population_size, n_types, type_labels, _progvec(progression))
 end
 function BranchingProcess(window::Infectiousness, windows::Infectiousness...; kwargs...)
     BranchingProcess((window, windows...); kwargs...)
@@ -140,7 +154,8 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
         dist_fn::Function,
         gt::Union{Distribution, Function};
         population_size::Union{Int, NoPopulation} = NoPopulation(),
-        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(),
+        progression = AbstractClinicalTransition[])
     n = size(offspring_matrix, 1)
     size(offspring_matrix, 2) == n || throw(ArgumentError(
         "offspring_matrix must be square, got $(size(offspring_matrix))"))
@@ -160,8 +175,8 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
         return rand(rng, Multinomial(total, alloc_probs[:, pt]))
     end
 
-    BranchingProcess(
-        (Infectiousness(offspring_fn; kernel = gt),), population_size, n, type_labels)
+    BranchingProcess((Infectiousness(offspring_fn; kernel = gt),), population_size, n,
+        type_labels, _progvec(progression))
 end
 
 # ── Offspring generation ─────────────────────────────────────────────

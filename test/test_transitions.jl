@@ -25,9 +25,13 @@ end
 # One offspring per parent each generation.
 struct SingleSpawnModel <: EpiBranch.TransmissionModel
     generation_time::Exponential{Float64}
+    progression::Vector{EpiBranch.AbstractClinicalTransition}
 end
-SingleSpawnModel() = SingleSpawnModel(Exponential(1.0))
+function SingleSpawnModel(; progression = EpiBranch.AbstractClinicalTransition[])
+    SingleSpawnModel(Exponential(1.0), progression)
+end
 EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
+EpiBranch._progression(m::SingleSpawnModel) = m.progression
 
 @testset "Clinical transitions" begin
     clinical = clinical_presentation(
@@ -39,7 +43,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
         # Backwards-compat: no transitions kwarg = old behaviour. No new
         # state keys appear on individuals.
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model; attributes = clinical,
+        state = tsim(model; attributes = clinical,
             sim_opts = SimOpts(max_cases = 20), rng = StableRNG(1))
         for ind in state.individuals
             @test !haskey(ind.state, :reported)
@@ -56,7 +60,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
             prob_asymptomatic = 0.3
         )
         rep = Reporting(delay = LogNormal(1.0, 0.3))
-        state = simulate(model; attributes = clin_30, transitions = [rep],
+        state = tsim(model; attributes = clin_30, transitions = [rep],
             sim_opts = SimOpts(max_cases = 100), rng = rng)
 
         for ind in state.individuals
@@ -77,7 +81,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
         rng = StableRNG(3)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         rep = Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5)
-        state = simulate(model; attributes = clinical, transitions = [rep],
+        state = tsim(model; attributes = clinical, transitions = [rep],
             sim_opts = SimOpts(max_cases = 400), rng = rng)
         frac_reported = count(ind -> ind.state[:reported], state.individuals) /
                         length(state.individuals)
@@ -88,12 +92,12 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
 
         h0 = Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.0)
-        state0 = simulate(model; attributes = clinical, transitions = [h0],
+        state0 = tsim(model; attributes = clinical, transitions = [h0],
             sim_opts = SimOpts(max_cases = 50), rng = StableRNG(4))
         @test all(!ind.state[:admitted] for ind in state0.individuals)
 
         h1 = Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 1.0)
-        state1 = simulate(model; attributes = clinical, transitions = [h1],
+        state1 = tsim(model; attributes = clinical, transitions = [h1],
             sim_opts = SimOpts(max_cases = 50), rng = StableRNG(5))
         @test all(ind.state[:admitted] for ind in state1.individuals)
     end
@@ -110,7 +114,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
             probability = (rng, ind) -> get(ind.state, :reported, false) ? 1.0 :
                                         0.0
         )
-        state = simulate(model; attributes = clinical,
+        state = tsim(model; attributes = clinical,
             transitions = [rep, hosp],
             sim_opts = SimOpts(max_cases = 200), rng = rng)
         for ind in state.individuals
@@ -123,7 +127,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         d = Death(delay = LogNormal(2.5, 0.4), probability = 0.3)
         r = Recovery(delay = LogNormal(2.0, 0.4))
-        state = simulate(model; attributes = clinical, transitions = [d, r],
+        state = tsim(model; attributes = clinical, transitions = [d, r],
             sim_opts = SimOpts(max_cases = 200), rng = rng)
         for ind in state.individuals
             @test haskey(ind.state, :outcome)
@@ -148,7 +152,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         d = Death(delay = LogNormal(2.5, 0.4), probability = 0.0)
         r = Recovery(delay = LogNormal(2.0, 0.4))
-        state = simulate(model; attributes = clinical, transitions = [d, r],
+        state = tsim(model; attributes = clinical, transitions = [d, r],
             sim_opts = SimOpts(max_cases = 50), rng = rng)
         @test all(ind.state[:outcome] == :recovered for ind in state.individuals)
     end
@@ -164,7 +168,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
             Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 1.0),
             Death(delay = LogNormal(2.5, 0.4), probability = 1.0),
             Recovery(delay = LogNormal(2.0, 0.4))]
-        state = simulate(model; attributes = all_asymp, transitions = ts,
+        state = tsim(model; attributes = all_asymp, transitions = ts,
             sim_opts = SimOpts(max_cases = 50), rng = rng)
         for ind in state.individuals
             @test ind.state[:reported] == false
@@ -177,7 +181,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
         model = BranchingProcess(Poisson(1.0), Exponential(5.0))
         rep = Reporting(delay = LogNormal(1.0, 0.3))
         # No attributes function → no :onset_time → error.
-        @test_throws ErrorException simulate(model; transitions = [rep],
+        @test_throws ErrorException tsim(model; transitions = [rep],
             sim_opts = SimOpts(max_cases = 5), rng = StableRNG(10))
     end
 
@@ -197,7 +201,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
         d = Death(delay = LogNormal(0.5, 0.1),
             probability = (rng, ind) -> ind.state[:age] >= 80 ? 1.0 : 0.0)
         r = Recovery(delay = LogNormal(2.0, 0.4))
-        state = simulate(model; condition = 100:500, attributes = attrs,
+        state = tsim(model; condition = 100:500, attributes = attrs,
             transitions = [d, r],
             sim_opts = SimOpts(max_cases = 500), rng = rng)
         n_died_80plus = 0
@@ -225,7 +229,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
         hosp = Hospitalisation(
             delay = (rng, ind) -> ind.state[:age] < 30 ? 1.0 : 5.0,
             probability = 1.0)
-        state = simulate(model; attributes = attrs,
+        state = tsim(model; attributes = attrs,
             transitions = [hosp],
             sim_opts = SimOpts(max_cases = 100), rng = rng)
         for ind in state.individuals
@@ -253,7 +257,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
             # anchor relation exactly.
             Reporting(delay = (rng, ind) -> 1.0, from = :test_time)
         ]
-        state = simulate(model; attributes = clinical,
+        state = tsim(model; attributes = clinical,
             transitions = test_then_report,
             sim_opts = SimOpts(max_cases = 50), rng = rng)
         for ind in state.individuals
@@ -271,7 +275,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         rep = Reporting(delay = (rng, ind) -> 1.0,
             from = ind -> ind.infection_time)
-        state = simulate(model; transitions = [rep],
+        state = tsim(model; transitions = [rep],
             sim_opts = SimOpts(max_cases = 30), rng = rng)
         for ind in state.individuals
             @test ind.state[:reported]
@@ -285,7 +289,7 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
         # struct definitions can't live inside @testset).
         rng = StableRNG(12)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = simulate(model; attributes = clinical,
+        state = tsim(model; attributes = clinical,
             transitions = [DummyTest(LogNormal(0.5, 0.2))],
             sim_opts = SimOpts(max_cases = 30), rng = rng)
         @test all(ind.state[:tested] for ind in state.individuals)
@@ -297,9 +301,8 @@ EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
         # it does not touch transitions itself. The engine sweep should
         # still populate DummyTest fields on every infected case.
         rng = StableRNG(7)
-        state = simulate(SingleSpawnModel(); attributes = clinical,
-            transitions = [DummyTest(LogNormal(0.5, 0.2))],
-            sim_opts = SimOpts(max_cases = 5), rng = rng)
+        state = simulate(SingleSpawnModel(progression = [DummyTest(LogNormal(0.5, 0.2))]);
+            attributes = clinical, sim_opts = SimOpts(max_cases = 5), rng = rng)
         @test all(ind.state[:tested] for ind in state.individuals)
         @test all(isfinite(ind.state[:test_time]) for ind in state.individuals)
     end
