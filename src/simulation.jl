@@ -203,7 +203,8 @@ function collect_exposures(model::BranchingProcess, state::SimulationState)
             isfinite(from_t) || continue
             kernel = get_generation_time(window.kernel, parent)
             counts = draw_offspring(state.rng, window.offspring, parent, state)
-            _materialise_window!(targets, edges, counts, parent, state, from_t, kernel)
+            _materialise_window!(
+                targets, edges, counts, parent, state, from_t, kernel, window.until)
         end
     end
     minted = view(state.individuals, (pre + 1):length(state.individuals))
@@ -217,14 +218,22 @@ function _window_infection_time(kernel::Distribution, from_t::Float64, state)
     return from_t + rand(state.rng, kernel)
 end
 
+# Tag a contact with its window's `until` states so `WindowCensor` can
+# block it after the infector is removed. Skipped for windows with no
+# `until` (the default), so single-window models write no extra state.
+_tag_window!(contact, until::Tuple{}) = nothing
+_tag_window!(contact, until) = (contact.state[:censor_until] = until; nothing)
+
 # Single-type: one count. Multi-type: a count per type.
 function _materialise_window!(targets::Vector{Individual},
         edges::Vector{Vector{Tuple{Int, Float64}}}, n_contacts::Int,
         parent::Individual, state::SimulationState, from_t::Float64,
-        kernel::Union{Distribution, NoGenerationTime})
+        kernel::Union{Distribution, NoGenerationTime}, until)
     for _ in 1:n_contacts
         t = _window_infection_time(kernel, from_t, state)
-        push!(targets, make_contact!(state, parent, t))
+        contact = make_contact!(state, parent, t)
+        _tag_window!(contact, until)
+        push!(targets, contact)
         push!(edges, Tuple{Int, Float64}[(parent.id, t)])
     end
     return nothing
@@ -233,11 +242,13 @@ end
 function _materialise_window!(targets::Vector{Individual},
         edges::Vector{Vector{Tuple{Int, Float64}}}, counts::Vector{Int},
         parent::Individual, state::SimulationState, from_t::Float64,
-        kernel::Union{Distribution, NoGenerationTime})
+        kernel::Union{Distribution, NoGenerationTime}, until)
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
             t = _window_infection_time(kernel, from_t, state)
-            push!(targets, make_contact!(state, parent, t; type_idx))
+            contact = make_contact!(state, parent, t; type_idx)
+            _tag_window!(contact, until)
+            push!(targets, contact)
             push!(edges, Tuple{Int, Float64}[(parent.id, t)])
         end
     end
@@ -619,8 +630,28 @@ function competing_risk(::InfectiousSource, parent, contact, state)
     is_infected(parent) ? nothing : Risk(block_probability = 1.0)
 end
 
-const _BUILTIN_RISK_SOURCES = (InfectiousSource(), HostSusceptibility(),
-    InfectorInfectiousness())
+"""Default risk source: an infectiousness window's censoring. A contact
+whose transmission time falls at or after the earliest of its window's
+`until` states (the infector's death, recovery, burial, …) is blocked: the
+infector was removed before the contact would have happened. The window's
+`until` state names are tagged on the contact as `:censor_until`; each
+resolves to the infector's `Symbol(state, :_time)`. A no-op for windows
+with no `until` (the default), which write no tag."""
+struct WindowCensor end
+function competing_risk(::WindowCensor, parent, contact, state)
+    until = get(contact.state, :censor_until, ())
+    isempty(until) && return nothing
+    t_end = Inf
+    for s in until
+        st = get(parent.state, Symbol(s, :_time), Inf)::Float64
+        st < t_end && (t_end = st)
+    end
+    isfinite(t_end) || return nothing
+    return Risk(event_time = t_end, block_probability = 1.0)
+end
+
+const _BUILTIN_RISK_SOURCES = (InfectiousSource(), WindowCensor(),
+    HostSusceptibility(), InfectorInfectiousness())
 
 """Apply one risk source's [`competing_risk`](@ref)(s) to a transmission;
 return `true` if any active risk blocks it. Built-in risk sources and
