@@ -1,3 +1,10 @@
 [deps]
 EpiBranch = "d1aa5d78-c683-4158-9743-7109392647a5"
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+LoweredCodeUtils = "6f1432cf-f94c-5a45-995e-cdbf5db27b0b"
+
+# LoweredCodeUtils 3.6 drops the `add_active_gotos!` arity JET 0.11 calls, so a
+# fresh resolve (CI keeps no manifest here) picks an incompatible pair and JET
+# fails to precompile. Pin below 3.6 until JET supports it; then remove.
+[compat]
+LoweredCodeUtils = "~3.5"
