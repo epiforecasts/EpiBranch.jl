@@ -1,18 +1,17 @@
 """
-    simulate(model::TransmissionModel; interventions=[], transitions=[],
+    simulate(model::TransmissionModel; interventions=[],
              attributes=nothing, sim_opts=SimOpts(),
              rng=Random.default_rng(),
              condition=nothing, max_attempts=10_000)
 
 Run a single outbreak simulation.
 
-`transitions` is a vector of [`AbstractClinicalTransition`](@ref)s
-(e.g. [`Reporting`](@ref), [`Hospitalisation`](@ref), [`Death`](@ref),
-[`Recovery`](@ref)) that act on each case's clinical timeline after
-attributes and interventions have run. Build the vector explicitly —
-each transition's `probability` and `delay` accept either constants or
+The case's clinical timeline — the [`AbstractClinicalTransition`](@ref)s a
+case moves through (latent, onset, severity, death/recovery, burial) — is
+the model's `progression`, set on the [`BranchingProcess`](@ref). Each
+transition's `probability` and `delay` accept constants or
 `(rng, ind) -> value` functions, so age- or risk-conditional rates and
-delays are configured per-transition with no special-cased defaults.
+delays are configured per-transition.
 
 If `condition` is provided (a `UnitRange{Int}`), simulations are repeated
 until one produces an outbreak whose cumulative cases fall within the range,
@@ -20,7 +19,6 @@ up to `max_attempts`.
 """
 function simulate(model::TransmissionModel;
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
-        transitions::Vector{<:AbstractClinicalTransition} = AbstractClinicalTransition[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
         sim_opts::SimOpts = SimOpts(),
         rng::AbstractRNG = Random.default_rng(),
@@ -28,8 +26,7 @@ function simulate(model::TransmissionModel;
         max_attempts::Int = 10_000)
     if condition !== nothing
         for _ in 1:max_attempts
-            state = simulate(model; interventions, transitions,
-                attributes, sim_opts, rng)
+            state = simulate(model; interventions, attributes, sim_opts, rng)
             state.cumulative_cases in condition && return state
         end
         throw(ErrorException(
@@ -38,7 +35,7 @@ function simulate(model::TransmissionModel;
     end
 
     state = initialise_state(
-        model, sim_opts, interventions, transitions, attributes, rng)
+        model, sim_opts, interventions, _progression(model), attributes, rng)
     _resolve_new_transitions!(state, 0)
 
     while !should_terminate(state, sim_opts)
@@ -60,7 +57,6 @@ using independent RNG streams derived from the provided `rng`. Use
 """
 function simulate(model::TransmissionModel, n::Int;
         interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
-        transitions::Vector{<:AbstractClinicalTransition} = AbstractClinicalTransition[],
         attributes::Union{Function, NoAttributes} = NoAttributes(),
         sim_opts::SimOpts = SimOpts(),
         rng::AbstractRNG = Random.default_rng(),
@@ -70,12 +66,12 @@ function simulate(model::TransmissionModel, n::Int;
         results = Vector{SimulationState}(undef, n)
         Threads.@threads for i in 1:n
             local_rng = Random.Xoshiro(seeds[i])
-            results[i] = simulate(model; interventions, transitions,
+            results[i] = simulate(model; interventions,
                 attributes, sim_opts, rng = local_rng)
         end
         return results
     else
-        return [simulate(model; interventions, transitions, attributes,
+        return [simulate(model; interventions, attributes,
                     sim_opts, rng) for _ in 1:n]
     end
 end
@@ -181,6 +177,74 @@ function _materialise_offspring!(targets::Vector{Individual},
         for _ in 1:n
             t = _infection_time(gt_dist, parent, state)
             push!(targets, make_contact!(state, parent, t; type_idx))
+            push!(edges, Tuple{Int, Float64}[(parent.id, t)])
+        end
+    end
+    return nothing
+end
+
+# Window-aware exposure collection for the branching process. Each
+# infectiousness window draws its own offspring and times them from its
+# `from` state. A window contributes contacts only once its `from` state
+# has been reached for this parent (`:infection` always has, so the
+# default single window reproduces the offspring-driven path above).
+function collect_exposures(model::BranchingProcess, state::SimulationState)
+    pre = length(state.individuals)
+    targets = Individual[]
+    edges = Vector{Tuple{Int, Float64}}[]
+    for idx in state.active_ids
+        parent = state.individuals[idx]
+        for window in model.infectiousness
+            from_t = _state_time(parent, window.from)
+            isfinite(from_t) || continue
+            kernel = get_generation_time(window.kernel, parent)
+            counts = draw_offspring(state.rng, window.offspring, parent, state)
+            _materialise_window!(
+                targets, edges, counts, parent, state, from_t, kernel, window.until)
+        end
+    end
+    minted = view(state.individuals, (pre + 1):length(state.individuals))
+    return targets, edges, minted, trues(length(targets))
+end
+
+# A contact's infection time is the window's `from`-state time plus a draw
+# from its kernel (the contact interval measured from `from`).
+_window_infection_time(::NoGenerationTime, from_t::Float64, state) = from_t
+function _window_infection_time(kernel::Distribution, from_t::Float64, state)
+    return from_t + rand(state.rng, kernel)
+end
+
+# Tag a contact with its window's `until` states so `WindowCensor` can
+# block it after the infector is removed. Skipped for windows with no
+# `until` (the default), so single-window models write no extra state.
+_tag_window!(contact, until::Tuple{}) = nothing
+_tag_window!(contact, until) = (contact.state[:censor_until] = until; nothing)
+
+# Single-type: one count. Multi-type: a count per type.
+function _materialise_window!(targets::Vector{Individual},
+        edges::Vector{Vector{Tuple{Int, Float64}}}, n_contacts::Int,
+        parent::Individual, state::SimulationState, from_t::Float64,
+        kernel::Union{Distribution, NoGenerationTime}, until)
+    for _ in 1:n_contacts
+        t = _window_infection_time(kernel, from_t, state)
+        contact = make_contact!(state, parent, t)
+        _tag_window!(contact, until)
+        push!(targets, contact)
+        push!(edges, Tuple{Int, Float64}[(parent.id, t)])
+    end
+    return nothing
+end
+
+function _materialise_window!(targets::Vector{Individual},
+        edges::Vector{Vector{Tuple{Int, Float64}}}, counts::Vector{Int},
+        parent::Individual, state::SimulationState, from_t::Float64,
+        kernel::Union{Distribution, NoGenerationTime}, until)
+    for (type_idx, n) in enumerate(counts)
+        for _ in 1:n
+            t = _window_infection_time(kernel, from_t, state)
+            contact = make_contact!(state, parent, t; type_idx)
+            _tag_window!(contact, until)
+            push!(targets, contact)
             push!(edges, Tuple{Int, Float64}[(parent.id, t)])
         end
     end
@@ -562,8 +626,28 @@ function competing_risk(::InfectiousSource, parent, contact, state)
     is_infected(parent) ? nothing : Risk(block_probability = 1.0)
 end
 
-const _BUILTIN_RISK_SOURCES = (InfectiousSource(), HostSusceptibility(),
-    InfectorInfectiousness())
+"""Default risk source: an infectiousness window's censoring. A contact
+whose transmission time falls at or after the earliest of its window's
+`until` states (the infector's death, recovery, burial, …) is blocked: the
+infector was removed before the contact would have happened. The window's
+`until` state names are tagged on the contact as `:censor_until`; each
+resolves to the infector's `Symbol(state, :_time)`. A no-op for windows
+with no `until` (the default), which write no tag."""
+struct WindowCensor end
+function competing_risk(::WindowCensor, parent, contact, state)
+    until = get(contact.state, :censor_until, ())
+    isempty(until) && return nothing
+    t_end = Inf
+    for s in until
+        st = get(parent.state, Symbol(s, :_time), Inf)::Float64
+        st < t_end && (t_end = st)
+    end
+    isfinite(t_end) || return nothing
+    return Risk(event_time = t_end, block_probability = 1.0)
+end
+
+const _BUILTIN_RISK_SOURCES = (InfectiousSource(), WindowCensor(),
+    HostSusceptibility(), InfectorInfectiousness())
 
 """Apply one risk source's [`competing_risk`](@ref)(s) to a transmission;
 return `true` if any active risk blocks it. Built-in risk sources and

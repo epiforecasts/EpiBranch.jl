@@ -201,13 +201,14 @@ for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
             n_sim::Int = 10_000,
             rng::AbstractRNG = Random.default_rng())
         # Fast path: use analytical likelihood when no interventions and
-        # the offspring specification has one. Falls through to simulation
-        # if no analytical method is defined.
-        if isempty(interventions) && hasproperty(model, :offspring)
+        # the model has a single-type offspring specification. Falls
+        # through to simulation if no analytical method is defined, or the
+        # model is multi-type / multi-window (no single offspring law).
+        if isempty(interventions)
             try
-                return loglikelihood(data, model.offspring)
+                return loglikelihood(data, single_type_offspring(model))
             catch e
-                e isa MethodError || rethrow()
+                (e isa MethodError || e isa ArgumentError) || rethrow()
             end
         end
         _sim_loglikelihood(data.data, model, $(QuoteNode(col)), $mv;

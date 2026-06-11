@@ -317,6 +317,111 @@ The result is right-censoring of the transmission process. The generation time d
 
 The same objects -- the generation time distribution and the censoring time -- appear in both simulation and Kenah's pairwise likelihood. Inference built on top of this framework would fit the same quantities we simulate from.
 
+## The host timeline and transmission-route windows
+
+The three stages above describe the simplest model: one offspring law, one
+generation-time distribution. On top of that, the branching process carries a **host
+timeline** (the case's natural history) and **transmission routes** (infectiousness
+windows) that key off it. This is what lets the package say "infectiousness begins only
+after a latent period", "a second route runs at the funeral, between death and burial",
+"hospital-acquired transmission runs between admission and discharge", or "isolation
+lowers R by cutting the infectious period short": each as one mechanism rather than a
+special case. The three-stage engine and the single-window analytical layer are
+unchanged; the timeline and the windows live in stages 1–3 without disturbing them.
+
+### The model carries a natural history
+
+A case has a timeline of timed states from infection: `:infectious` (onset of
+infectiousness), `:onset` (symptoms), `:severe`, `:died` or `:recovered`, `:buried`.
+Each is a transition with a `from` state it follows, a delay, and optionally a
+probability (it happens for a fraction of cases) or a terminal flag (it ends the case).
+This is the existing `AbstractClinicalTransition` surface generalised so the user names
+the state and can start from `:infection`, with incubation and the latent period
+becoming ordinary transitions rather than special cases.
+
+The natural history is the model's `progression` (a field on `BranchingProcess`). It is
+biology, the same kind of object as the offspring law, but it is not the part that
+creates the tree. It sits alongside the transmission routes and apart from interventions
+(policy, given to `simulate`) and attributes (population heterogeneity). The three
+concerns separate cleanly:
+
+- **model** — how the disease spreads and progresses (transmission routes + `progression`);
+- **interventions** — what is done about it (isolation, vaccination, tracing);
+- **attributes** — who the people are (age, susceptibility).
+
+### Transmission is a set of route windows
+
+A transmission route is a window on the timeline: an offspring law, a `from` state where
+infectiousness begins, the `until` states that end it, and a survival kernel for the
+timing within it.
+
+```julia
+Infectiousness(NegBin(2.0, 0.5); from = :infectious, until = (:recovered, :died, :isolated), kernel = Weibull(...))  # community
+Infectiousness(NegBin(0.5, 0.3); from = :died,       until = (:buried,),                     kernel = Weibull(...))  # funeral
+Infectiousness(NegBin(0.4, 0.5); from = :admitted,   until = (:discharged, :died),           kernel = Weibull(...))  # hospital-acquired
+```
+
+The funeral is nothing special: it is one route among many. Hospital-acquired
+(nosocomial) transmission is the same object keyed to `:admitted` and `:discharged`; a
+vector-borne or sexual route would be others. The bare
+`BranchingProcess(NegBin(R, k), kernel)` is one route with `from = :infection` and no
+censoring, which is the simplest model unchanged. The kernel is a distribution with a
+hazard, supplied by SurvivalDistributions.jl: its shape sets the infectiousness profile
+(when within the window transmission concentrates) and its survival function does the
+censoring.
+
+### The three stages still hold
+
+The generalisation lands entirely in stages 2 and 3; stage 1 stays the pure, analysable
+layer.
+
+1. **Branch (stage 1).** For each infector, draw each window's offspring from its own
+   law and tag every contact with its window. No timing or interventions are read. The
+   intrinsic offspring is the sum of the per-window laws; for one window it is exactly
+   today's `NegBin(R, k)` with every closed form intact, and for several it is the
+   product of their generating functions.
+2. **Timing (stage 2).** A contact's time is its window's `from`-state time plus a draw
+   from the window's kernel. The latent period is just the offset to `:infectious`, and
+   the generation interval of the next case is the latent period plus the kernel draw,
+   derived rather than specified.
+3. **Censor (stage 3).** Each window contributes a full-block competing risk at the
+   earliest of its `until` states. Because a contact is infected only if no risk blocks
+   it, the earliest removal before the contact's time wins, with no min-logic to write.
+   This is the shape isolation already has, a full block at a removal time, so isolation
+   stops being special and becomes one removal state among death, recovery, and burial.
+   Susceptibility and vaccination compose on the same surface.
+
+R and k stay the inputs. R is the intrinsic reproduction number, the offspring a case
+would make if never removed, and the realised R falls out of the censoring: shortening
+the infectious window (isolation, safe burial) blocks more contacts and lowers it,
+mechanically. k is the intrinsic offspring dispersion, a per-infector frailty. It is
+deliberately not the shape of the infectious period: drawing the count from the duration
+would couple stage 1 to timing and break the branch-first decoupling the whole engine
+rests on.
+
+### Windows open at their `from` state
+
+A window contributes contacts only once its `from` state has occurred for the infector.
+The community window's `:infectious` is structural and always occurs; the funeral
+window's `:died` occurs only for those who die, so "funeral transmission for the dead
+alone" falls out of the general rule rather than a special case. A survivor never
+materialises funeral contacts, so nothing is created only to be censored.
+
+The offspring law that drives outbreak size is therefore a fate-mixture: community
+offspring for everyone, plus funeral offspring for the fraction who die. That mixture is
+inherent to funeral transmission, not an artefact of the draw order. Analytically it is
+a mixture of the per-window laws, closed-form when each branch is a `NegBin` and
+simulation otherwise, so the analytical/simulation dual path carries over.
+
+### What this subsumes
+
+The latent period becomes the `:infection → :infectious` transition; the contact
+interval becomes the community window's kernel; the generation interval is derived from
+the two. Isolation's truncation becomes a removal state in a window's `until`. So a set
+of currently separate mechanisms (the generation time, isolation truncation, clinical
+transitions, and the missing funeral and severity machinery) collapse onto one timeline
+that transmission, interventions, and the natural history all read.
+
 ## References
 
 - Kenah E, Lipsitch M, Robins JM (2008). Generation interval contraction and epidemic data analysis. *Mathematical Biosciences* 213(1):71–79. [doi:10.1016/j.mbs.2008.02.007](https://doi.org/10.1016/j.mbs.2008.02.007)

@@ -30,6 +30,7 @@ include("interventions/scheduled.jl")
 # abstract type so the public API can keep `interventions=` and
 # `transitions=` namespaces distinct.
 include("transitions/interface.jl")
+include("transitions/transition.jl")
 include("transitions/reporting.jl")
 include("transitions/hospitalisation.jl")
 include("transitions/outcome.jl")
@@ -93,7 +94,7 @@ include("analytical/end_of_outbreak_probability.jl")
 include("likelihood_dists.jl")
 
 # Exports — types
-export TransmissionModel, BranchingProcess, NetworkProcess
+export TransmissionModel, BranchingProcess, NetworkProcess, Infectiousness
 export Individual, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
@@ -110,7 +111,7 @@ export AbstractVaccination, RingVaccination, MassVaccination
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
 export is_active, intervention_time
-export AbstractClinicalTransition, Reporting, Hospitalisation, Death, Recovery
+export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event
 export ObservationModel, PerCaseObservation, Observed
 export single_type_offspring

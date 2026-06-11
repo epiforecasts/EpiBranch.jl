@@ -4,6 +4,7 @@
 
 ```@docs
 BranchingProcess
+Infectiousness
 NetworkProcess
 single_type_offspring
 EpiBranch.draw_offspring
@@ -90,10 +91,11 @@ EpiBranch.reset!
 is_active
 ```
 
-## Clinical transitions
+## Natural history (progression)
 
 ```@docs
 AbstractClinicalTransition
+Transition
 Reporting
 Hospitalisation
 Death

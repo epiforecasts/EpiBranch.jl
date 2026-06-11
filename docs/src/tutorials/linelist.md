@@ -22,22 +22,21 @@ using DataFrames
 using Dates
 using StableRNGs
 
-model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5))
-
 attrs = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
-transitions = [
+progression = [
     Reporting(delay = Exponential(3.0)),
     Hospitalisation(delay = Exponential(5.0), probability = 0.2),
     Death(delay = Exponential(14.0), probability = 0.05),
     Recovery(delay = Exponential(14.0)),
 ]
 
+model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5); progression = progression)
+
 rng = StableRNG(42)
 state = simulate(model;
     condition = 50:200,
     attributes = attrs,
-    transitions = transitions,
     sim_opts = SimOpts(max_cases = 200),
     rng = rng,
 )
@@ -68,7 +67,6 @@ rng = StableRNG(42)
 state = simulate(model;
     condition = 50:200,
     attributes = attrs_demo,
-    transitions = transitions,
     sim_opts = SimOpts(max_cases = 200),
     rng = rng,
 )
@@ -100,11 +98,12 @@ age_stratified = [
     Recovery(delay = Exponential(14.0)),
 ]
 
+model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5); progression = age_stratified)
+
 rng = StableRNG(42)
 state = simulate(model;
     condition = 100:500,
     attributes = attrs_demo,
-    transitions = age_stratified,
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
@@ -139,8 +138,10 @@ first(ct, 5)
 Generate outbreaks of a specific size range:
 
 ```@example linelist
+plain = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5))
+
 rng = StableRNG(42)
-state = simulate(model;
+state = simulate(plain;
     condition = 100:150,
     attributes = attrs,
     sim_opts = SimOpts(max_cases = 200),

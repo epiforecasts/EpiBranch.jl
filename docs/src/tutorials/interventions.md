@@ -10,7 +10,7 @@ survival function of remaining potential transmission, truncated by isolation.
 
 ## Without interventions
 
-First, let's see the baseline — a supercritical outbreak with no interventions:
+First, the baseline: a supercritical outbreak with no interventions.
 
 ```@example interventions
 using EpiBranch
@@ -243,7 +243,7 @@ println("Vaccinated: $n_vaccinated, Infected: $n_infected")
 
 By default tracing reaches a case's direct contacts. `ContactTracing`
 takes a `depth` to widen the ring: `depth = 2` traces the contacts of
-those contacts as well, the level-2 ring an Ebola-style protocol
+those contacts as well, the level-2 ring that an Ebola-style protocol
 vaccinates around a confirmed case. Each infected, eligible case seeds a
 ring of radius `depth`, and uninfected ring members keep generating
 contacts for one more hop so the ring can grow past them. The same
@@ -493,7 +493,7 @@ iso_gen3 = Scheduled(
 (`is_active`) skips the inner `resolve_individual!` and
 `apply_post_transmission!` until the condition turns true. Once active,
 the wrapper also performs individual-level reset: after each per-individual
-hook fires, if [`intervention_time`](@ref) for that individual falls
+hook runs, if [`intervention_time`](@ref) for that individual falls
 before `start_time`, `Scheduled` calls [`reset!`](@ref EpiBranch.reset!)
 to undo the effect. Individual interventions therefore do not need to
 know their own scheduling — they just declare their action time and how

@@ -8,7 +8,7 @@ using DataFrames
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         @test model.n_types == 2
-        @test model.offspring isa Function
+        @test model.infectiousness[1].offspring isa Function
     end
 
     @testset "Non-square matrix throws" begin
