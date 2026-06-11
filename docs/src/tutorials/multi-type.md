@@ -52,7 +52,7 @@ end
 
 ## Custom offspring function
 
-For full control, pass a function `(rng, parent_type) → Vector{Int}`:
+For full control, pass a function `(rng, individual) → Vector{Int}`:
 
 ```@example multitype
 function heterogeneous_offspring(rng, individual)

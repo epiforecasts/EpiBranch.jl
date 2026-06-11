@@ -252,6 +252,6 @@ call, not which package.
 ## Live diagnostics during long fits
 
 `sample(...)` accepts a `callback=` kwarg (from AbstractMCMC) that
-fires once per chain per step. Use it with
+runs once per chain per step. Use it with
 [TensorBoardLogger.jl](https://github.com/JuliaLogging/TensorBoardLogger.jl)
 or any logger to stream per-iteration diagnostics while the fit runs.

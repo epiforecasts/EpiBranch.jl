@@ -35,7 +35,7 @@ Tree-shaping changes — capping offspring per parent, gathering-size limits, an
 
 ### What each hook looks like in practice
 
-Short snippets from the built-in interventions, one per hook, to anchor the contract above. The full source lives in `src/interventions/`.
+Short snippets from the built-in interventions, one per hook, to make the contract above concrete. The full source lives in `src/interventions/`.
 
 **`initialise_individual!`** — `ContactTracing` initialises the two flags it owns on every new individual so accessors elsewhere get a defined value:
 
@@ -505,9 +505,9 @@ println("Waning-R model: $(round(containment_probability(results), digits=3))")
 
 Most use cases stay inside `BranchingProcess` and customise via the
 offspring distribution (function-based, `ClusterMixed`, multi-type).
-But if you need a fundamentally different transmission process — a
+But if you need a fundamentally different transmission process (a
 density-dependent model, a network-structured one, a continuous-time
-SEIR-like alternative — you can subtype `TransmissionModel` directly
+SEIR-like alternative), you can subtype `TransmissionModel` directly
 and reuse the rest of the framework.
 
 The contract is small. You implement what your model needs and reuse
@@ -582,6 +582,13 @@ spec, define methods on `loglikelihood` directly.
 For optional **state accessors**, override `population_size`,
 `n_types` if your model has values for them. The defaults
 (`NoPopulation()`, `1`) are fine if not.
+
+If your model carries a clinical natural history (incubation, onset,
+recovery), expose it as the model's progression: store the transitions in
+a field and define `EpiBranch._progression(m::MyModel) = m.progression`.
+The engine reads progression off the model and applies the transitions to
+each new contact. `BranchingProcess` does this for the `progression`
+keyword; a custom model opts in the same way.
 
 ### Minimal sketch
 
