@@ -320,7 +320,7 @@ The same objects -- the generation time distribution and the censoring time -- a
 ## The host timeline and transmission-route windows
 
 The three stages above describe the simplest model: one offspring law, one
-generation-time distribution. On top of that the branching process carries a **host
+generation-time distribution. On top of that, the branching process carries a **host
 timeline** (the case's natural history) and **transmission routes** (infectiousness
 windows) that key off it. This is what lets the package say "infectiousness begins only
 after a latent period", "a second route runs at the funeral, between death and burial",
@@ -355,7 +355,7 @@ A transmission route is a window on the timeline: an offspring law, a `from` sta
 infectiousness begins, the `until` states that end it, and a survival kernel for the
 timing within it.
 
-```
+```julia
 Infectiousness(NegBin(2.0, 0.5); from = :infectious, until = (:recovered, :died, :isolated), kernel = Weibull(...))  # community
 Infectiousness(NegBin(0.5, 0.3); from = :died,       until = (:buried,),                     kernel = Weibull(...))  # funeral
 Infectiousness(NegBin(0.4, 0.5); from = :admitted,   until = (:discharged, :died),           kernel = Weibull(...))  # hospital-acquired
