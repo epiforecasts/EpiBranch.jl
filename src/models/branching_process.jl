@@ -62,6 +62,34 @@ struct BranchingProcess{W <: Tuple, P, L} <: TransmissionModel
     n_types::Int
     type_labels::L
     progression::Vector{AbstractClinicalTransition}
+
+    function BranchingProcess(infectiousness::W, population_size::P, n_types::Int,
+            type_labels::L,
+            progression::Vector{AbstractClinicalTransition}) where {W <: Tuple, P, L}
+        _validate_windows(infectiousness, progression)
+        return new{W, P, L}(
+            infectiousness, population_size, n_types, type_labels, progression)
+    end
+end
+
+# Warn when a window's `from` state is never produced — the window would
+# silently never open. `from` may legitimately be a state written by an
+# attribute or intervention (rather than a progression transition), so this
+# is a warning, not an error. The co-location of windows and progression on
+# the model is what lets us check this at all.
+function _validate_windows(windows, progression)
+    produced = Set{Symbol}((:infection,))
+    for t in progression
+        hasproperty(t, :state) && push!(produced, t.state::Symbol)
+    end
+    for w in windows
+        w.from isa Symbol || continue
+        (w.from === :infection || w.from in produced) && continue
+        @warn "Infectiousness window has from = :$(w.from), which no progression " *
+              "transition produces; the window only opens if something sets " *
+              ":$(Symbol(w.from, :_time)) (an attribute, intervention, or transition)."
+    end
+    return nothing
 end
 
 # The model's natural history: the timed clinical-state transitions a case

@@ -22,9 +22,10 @@
 
     @testset "a window whose from-state is never reached produces no contacts" begin
         # `from = :died` but no death transition, so `:died_time` is never
-        # set and the window never opens: the outbreak cannot spread.
-        m = BranchingProcess(Infectiousness((rng, ind) -> 5;
-            from = :died, kernel = Exponential(1.0)))
+        # set and the window never opens: the outbreak cannot spread. The
+        # model warns about the unreachable from-state at construction.
+        m = @test_logs (:warn,) match_mode=:any BranchingProcess(
+            Infectiousness((rng, ind) -> 5; from = :died, kernel = Exponential(1.0)))
         s = simulate(m; sim_opts = SimOpts(n_initial = 10, max_generations = 3),
             rng = StableRNG(2))
         @test s.cumulative_cases == 10
