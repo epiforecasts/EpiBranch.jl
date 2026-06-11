@@ -3,15 +3,16 @@
 Interventions are policy: isolation, contact tracing, vaccination.
 Clinical transitions are the case's own progression: symptoms,
 reporting, maybe admission, and recovery or death. **EpiBranch.jl**
-models them as a Markov chain on case state, running alongside the
-transmission process.
+models them as a Markov chain on case state. The natural history is
+part of the model: set it as the [`BranchingProcess`](@ref)'s
+`progression`.
 
 Transitions use the same two hooks as interventions
 ([`initialise_individual!`](@ref EpiBranch.initialise_individual!),
 [`resolve_individual!`](@ref EpiBranch.resolve_individual!)) but sit
 under their own abstract type, [`AbstractClinicalTransition`](@ref).
-That keeps the public API tidy: `interventions=` for policy,
-`transitions=` for biology.
+This keeps the public API tidy: `interventions=` on `simulate` for
+policy, the model's `progression` for biology.
 
 ## Built-in transitions
 
@@ -34,20 +35,20 @@ using EpiBranch
 using Distributions
 using StableRNGs
 
-model = BranchingProcess(Poisson(2.0), Exponential(5.0))
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
-transitions = [
+progression = [
     Reporting(delay = LogNormal(1.0, 0.3)),
     Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.2),
     Death(delay = LogNormal(2.5, 0.4), probability = 0.05),
     Recovery(delay = LogNormal(2.0, 0.4)),
 ]
 
+model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression)
+
 rng = StableRNG(42)
 state = simulate(model;
     attributes = clinical,
-    transitions = transitions,
     sim_opts = SimOpts(max_cases = 200),
     rng = rng,
 )
@@ -103,10 +104,12 @@ hosp_age = Hospitalisation(
     probability = 0.2,
 )
 
+progression = [hosp_age, death_age, Recovery(delay = LogNormal(2.0, 0.4))]
+model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression)
+
 rng = StableRNG(42)
 state = simulate(model;
     attributes = attrs,
-    transitions = [hosp_age, death_age, Recovery(delay = LogNormal(2.0, 0.4))],
     sim_opts = SimOpts(max_cases = 300),
     rng = rng,
 )
@@ -136,13 +139,15 @@ gated_hosp = Hospitalisation(
     probability = (rng, ind) -> get(ind.state, :reported, false) ? 0.2 : 0.0,
 )
 
+progression = [
+    Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5),
+    gated_hosp,
+]
+model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression)
+
 rng = StableRNG(42)
 state = simulate(model;
     attributes = clinical,
-    transitions = [
-        Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5),
-        gated_hosp,
-    ],
     sim_opts = SimOpts(max_cases = 200),
     rng = rng,
 )
@@ -200,10 +205,12 @@ reporting_post_test = Reporting(
     from = :test_time,
 )
 
+progression = [testing, reporting_post_test]
+model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression)
+
 rng = StableRNG(42)
 state = simulate(model;
     attributes = clinical,
-    transitions = [testing, reporting_post_test],
     sim_opts = SimOpts(max_cases = 100),
     rng = rng,
 )
@@ -251,14 +258,6 @@ each closure reads whichever state keys it needs. The engine sets
 `attributes`. A transition closure can read any of these.
 
 ```@example transitions
-# Two-type model with asymmetric mixing between children and adults.
-multitype = BranchingProcess(
-    [2.0 0.5; 0.8 1.5],
-    R -> NegBin(R, 0.5),
-    LogNormal(1.6, 0.5),
-    type_labels = ["children", "adults"],
-)
-
 attrs_age = compose(
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     demographics(age_distribution = Uniform(0, 90)),
@@ -279,14 +278,24 @@ hosp_type = Hospitalisation(
     probability = 0.2,
 )
 
+progression = [
+    hosp_type,
+    death_type_age,
+    Recovery(delay = LogNormal(2.0, 0.4)),
+]
+
+# Two-type model with asymmetric mixing between children and adults.
+multitype = BranchingProcess(
+    [2.0 0.5; 0.8 1.5],
+    R -> NegBin(R, 0.5),
+    LogNormal(1.6, 0.5),
+    type_labels = ["children", "adults"],
+    progression = progression,
+)
+
 rng = StableRNG(42)
 state = simulate(multitype;
     attributes = attrs_age,
-    transitions = [
-        hosp_type,
-        death_type_age,
-        Recovery(delay = LogNormal(2.0, 0.4)),
-    ],
     sim_opts = SimOpts(max_cases = 500),
     rng = rng,
 )
@@ -350,14 +359,16 @@ end
 
 # Slot it alongside Death and Recovery. The competing arbitration picks
 # the earliest candidate time across all terminal transitions.
+progression = [
+    Death(delay = LogNormal(2.5, 0.4), probability = 0.05),
+    Recovery(delay = LogNormal(2.0, 0.4)),
+    LostToFollowUp(LogNormal(1.5, 0.5), 0.1),
+]
+model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression)
+
 rng = StableRNG(42)
 state = simulate(model;
     attributes = clinical,
-    transitions = [
-        Death(delay = LogNormal(2.5, 0.4), probability = 0.05),
-        Recovery(delay = LogNormal(2.0, 0.4)),
-        LostToFollowUp(LogNormal(1.5, 0.5), 0.1),
-    ],
     sim_opts = SimOpts(max_cases = 200),
     rng = rng,
 )
