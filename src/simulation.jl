@@ -187,6 +187,63 @@ function _materialise_offspring!(targets::Vector{Individual},
     return nothing
 end
 
+# Window-aware exposure collection for the branching process. Each
+# infectiousness window draws its own offspring and times them from its
+# `from` state. A window contributes contacts only once its `from` state
+# has been reached for this parent (`:infection` always has, so the
+# default single window reproduces the offspring-driven path above).
+function collect_exposures(model::BranchingProcess, state::SimulationState)
+    pre = length(state.individuals)
+    targets = Individual[]
+    edges = Vector{Tuple{Int, Float64}}[]
+    for idx in state.active_ids
+        parent = state.individuals[idx]
+        for window in model.infectiousness
+            from_t = _state_time(parent, window.from)
+            isfinite(from_t) || continue
+            kernel = get_generation_time(window.kernel, parent)
+            counts = draw_offspring(state.rng, window.offspring, parent, state)
+            _materialise_window!(targets, edges, counts, parent, state, from_t, kernel)
+        end
+    end
+    minted = view(state.individuals, (pre + 1):length(state.individuals))
+    return targets, edges, minted, trues(length(targets))
+end
+
+# A contact's infection time is the window's `from`-state time plus a draw
+# from its kernel (the contact interval measured from `from`).
+_window_infection_time(::NoGenerationTime, from_t::Float64, state) = from_t
+function _window_infection_time(kernel::Distribution, from_t::Float64, state)
+    return from_t + rand(state.rng, kernel)
+end
+
+# Single-type: one count. Multi-type: a count per type.
+function _materialise_window!(targets::Vector{Individual},
+        edges::Vector{Vector{Tuple{Int, Float64}}}, n_contacts::Int,
+        parent::Individual, state::SimulationState, from_t::Float64,
+        kernel::Union{Distribution, NoGenerationTime})
+    for _ in 1:n_contacts
+        t = _window_infection_time(kernel, from_t, state)
+        push!(targets, make_contact!(state, parent, t))
+        push!(edges, Tuple{Int, Float64}[(parent.id, t)])
+    end
+    return nothing
+end
+
+function _materialise_window!(targets::Vector{Individual},
+        edges::Vector{Vector{Tuple{Int, Float64}}}, counts::Vector{Int},
+        parent::Individual, state::SimulationState, from_t::Float64,
+        kernel::Union{Distribution, NoGenerationTime})
+    for (type_idx, n) in enumerate(counts)
+        for _ in 1:n
+            t = _window_infection_time(kernel, from_t, state)
+            push!(targets, make_contact!(state, parent, t; type_idx))
+            push!(edges, Tuple{Int, Float64}[(parent.id, t)])
+        end
+    end
+    return nothing
+end
+
 """
     gather_by_target(model, state) -> (targets, edges, minted, is_new)
 

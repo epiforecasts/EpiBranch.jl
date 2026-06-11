@@ -94,7 +94,7 @@ include("analytical/end_of_outbreak_probability.jl")
 include("likelihood_dists.jl")
 
 # Exports — types
-export TransmissionModel, BranchingProcess, NetworkProcess
+export TransmissionModel, BranchingProcess, NetworkProcess, Infectiousness
 export Individual, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop

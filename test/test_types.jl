@@ -37,8 +37,8 @@
 
     @testset "BranchingProcess construction" begin
         model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
-        @test model.offspring isa NegativeBinomial
-        @test model.generation_time isa Distribution
+        @test single_type_offspring(model) isa NegativeBinomial
+        @test model.infectiousness[1].kernel isa Distribution
         @test model.population_size isa NoPopulation
     end
 
@@ -50,7 +50,7 @@
     @testset "BranchingProcess with function generation time" begin
         gt_fn = inc -> truncated(Normal(inc, 2.0), 0.0, Inf)
         model = BranchingProcess(NegBin(2.5, 0.16), gt_fn)
-        @test model.generation_time isa Function
+        @test model.infectiousness[1].kernel isa Function
     end
 
     @testset "scale_distribution" begin

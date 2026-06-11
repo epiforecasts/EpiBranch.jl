@@ -68,7 +68,7 @@ process, drop the `Observed` wrapper at the call site.
 """
 function end_of_outbreak_probability(model::BranchingProcess, τ::Real)
     return end_of_outbreak_probability(
-        single_type_offspring(model), model.generation_time, τ)
+        single_type_offspring(model), _single_kernel(model), τ)
 end
 
 # Explicit refusal for the Observed{..., PerCaseObservation} wrapper.
