@@ -5,6 +5,7 @@ LoweredCodeUtils = "6f1432cf-f94c-5a45-995e-cdbf5db27b0b"
 
 # LoweredCodeUtils 3.6 drops the `add_active_gotos!` arity JET 0.11 calls, so a
 # fresh resolve (CI keeps no manifest here) picks an incompatible pair and JET
-# fails to precompile. Pin below 3.6 until JET supports it; then remove.
+# fails to precompile on the latest Julia. Exclude only 3.6+; the range still
+# allows the 3.0.x that JET needs on the LTS Julia. Drop once JET supports 3.6.
 [compat]
-LoweredCodeUtils = "~3.5"
+LoweredCodeUtils = "3.0 - 3.5"
