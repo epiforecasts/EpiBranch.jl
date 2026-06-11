@@ -105,7 +105,9 @@ n_types(m::BranchingProcess) = m.n_types
 
 function single_type_offspring(m::BranchingProcess)
     length(m.infectiousness) == 1 || throw(ArgumentError(
-        "single_type_offspring needs a single infectiousness window; this model has $(length(m.infectiousness))"))
+        "Analytical helpers need a single infectiousness window (this model has " *
+        "$(length(m.infectiousness))). The offspring law across several windows is a " *
+        "fate-mixture with no closed form, so use simulation for multi-window models."))
     off = m.infectiousness[1].offspring
     off isa Function && throw(ArgumentError(
         "This function only works with single-type models (not multi-type function offspring)"))

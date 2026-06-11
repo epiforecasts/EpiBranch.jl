@@ -62,4 +62,16 @@
         @test kids_early < 5
         @test kids_early < kids_late
     end
+
+    @testset "analytics: single window closed-form, multi-window directs to simulation" begin
+        single = BranchingProcess(NegBin(2.0, 0.5), LogNormal(1.6, 0.5))
+        @test single_type_offspring(single) isa NegativeBinomial
+        @test extinction_probability(single) isa Real
+
+        multi = BranchingProcess(
+            Infectiousness(NegBin(1.5, 0.5); from = :infection),
+            Infectiousness(NegBin(0.8, 0.5); from = :infection))
+        @test_throws ArgumentError single_type_offspring(multi)
+        @test_throws ArgumentError extinction_probability(multi)
+    end
 end
