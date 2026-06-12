@@ -59,15 +59,19 @@
         # those that still occur are shorter.
         rng_a = StableRNG(7)
         rng_b = StableRNG(7)
-        model = BranchingProcess(Poisson(2.5), Exponential(6.0))
         attrs = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
         opts = (; max_cases = 1000)
 
         free = realised_generation_intervals(
-            simulate(with_attributes(model, attrs), 30; opts..., rng = rng_a))
+            simulate(BranchingProcess(Poisson(2.5), Exponential(6.0); attributes = attrs),
+            30; opts..., rng = rng_a))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         isolated = realised_generation_intervals(
-            simulate(with_attributes(with_interventions(model, [iso]), attrs), 30; opts..., rng = rng_b))
+            simulate(
+            BranchingProcess(Poisson(2.5), Exponential(6.0); interventions = [iso], attributes = attrs),
+            30;
+            opts...,
+            rng = rng_b))
 
         @test !isempty(free)
         @test !isempty(isolated)

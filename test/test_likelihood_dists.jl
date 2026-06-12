@@ -44,8 +44,8 @@
 
     @testset "chain_size_distribution — per-case observation" begin
         data = [1, 2, 1, 3, 1]
-        bp = BranchingProcess(Poisson(0.5))
-        obs = with_observation(bp, PerCaseObservation(; detection_prob = 0.7))
+        obs = BranchingProcess(Poisson(0.5); observation = PerCaseObservation(;
+            detection_prob = 0.7))
         d = chain_size_distribution(obs; n_sim = 0)
         # n_sim=0 forces the wrapper path; logpdf should still match the
         # analytical loglikelihood with no kwargs since there are no

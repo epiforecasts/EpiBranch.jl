@@ -117,12 +117,15 @@ using DataFrames
     @testset "Multi-type with interventions" begin
         M = [1.5 0.3;
              0.3 1.0]
-        model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
         rng = StableRNG(42)
-        state = simulate(with_attributes(with_interventions(model, [iso]), init_fn); max_cases = 100, rng = rng)
+        state = simulate(
+            BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0);
+                interventions = [iso], attributes = init_fn);
+            max_cases = 100,
+            rng = rng)
 
         n_isolated = count(ind -> is_isolated(ind), state.individuals)
         @test n_isolated > 0

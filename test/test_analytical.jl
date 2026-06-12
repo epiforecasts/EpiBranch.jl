@@ -55,7 +55,8 @@
             # observation wrappers. Before the fix it threw FieldError
             # because the wrapper has no `offspring` field.
             bp = BranchingProcess(NegBin(0.5, 0.5))
-            obs_model = with_observation(bp, PerCaseObservation(0.7, Dirac(0.0)))
+            obs_model = BranchingProcess(NegBin(0.5, 0.5);
+                observation = PerCaseObservation(0.7, Dirac(0.0)))
             @test extinction_probability(obs_model) ==
                   extinction_probability(bp)
         end
@@ -171,8 +172,8 @@
         end
 
         @testset "With partial observation" begin
-            base = BranchingProcess(Poisson(0.5))
-            mk(p) = with_observation(base, PerCaseObservation(p, Dirac(0.0)))
+            mk(p) = BranchingProcess(Poisson(0.5);
+                observation = PerCaseObservation(p, Dirac(0.0)))
 
             ll = loglikelihood(ChainSizes([1, 1, 2]), mk(0.8))
             @test isfinite(ll)
@@ -189,9 +190,11 @@
             # Reporting delay is irrelevant for closed-outbreak chain
             # sizes — same answer regardless of delay distribution.
             ll_with_delay = loglikelihood(ChainSizes([1, 1, 2]),
-                with_observation(base, PerCaseObservation(0.7, LogNormal(1.0, 0.5))))
+                BranchingProcess(Poisson(0.5);
+                    observation = PerCaseObservation(0.7, LogNormal(1.0, 0.5))))
             ll_no_delay = loglikelihood(ChainSizes([1, 1, 2]),
-                with_observation(base, PerCaseObservation(0.7, Dirac(0.0))))
+                BranchingProcess(Poisson(0.5);
+                    observation = PerCaseObservation(0.7, Dirac(0.0))))
             @test ll_with_delay ≈ ll_no_delay atol=1e-12
         end
 
@@ -333,7 +336,8 @@
             # The Observed{..., PerCaseObservation} wrapper is refused
             # explicitly: under-reporting (ρ < 1) needs the Volterra
             # recursion which is not implemented.
-            om = with_observation(bp, PerCaseObservation(0.5, Dirac(0.0)))
+            om = BranchingProcess(NegBin(R, k), GT;
+                observation = PerCaseObservation(0.5, Dirac(0.0)))
             @test_throws ArgumentError end_of_outbreak_probability(om, 5.0)
 
             # Vector-of-τ overload returns same elements.
@@ -354,14 +358,14 @@
         @testset "Per-case observation: simulation decoration" begin
             R, k = 0.6, 0.3
             gt = Gamma(2.0, 2.5)
-            model = BranchingProcess(NegBin(R, k), gt)
 
             # simulate(::Observed) decorates each individual with
             # :reported and :report_time so downstream code can filter
             # to observed reports.
             using StableRNGs
             sim_state = simulate(
-                with_observation(model, PerCaseObservation(0.6, LogNormal(1.0, 0.4)));
+                BranchingProcess(NegBin(R, k), gt;
+                    observation = PerCaseObservation(0.6, LogNormal(1.0, 0.4)));
                 rng = StableRNG(42))
             @test all(haskey(ind.state, :reported) for ind in sim_state.individuals)
             @test all(haskey(ind.state, :report_time) for ind in sim_state.individuals)
@@ -369,12 +373,12 @@
             for ind in sim_state.individuals)
         end
 
-        @testset "Composition: with_observation(BranchingProcess(ClusterMixed))" begin
+        @testset "Composition: BranchingProcess(ClusterMixed) with observation" begin
             k, R = 0.5, 0.8
             data = ChainSizes([1, 1, 2, 3, 1, 4])
             cm = ClusterMixed(Poisson, Gamma(k, R / k))
-            bp = BranchingProcess(cm)
-            mk(p) = with_observation(bp, PerCaseObservation(p, Dirac(0.0)))
+            mk(p) = BranchingProcess(cm;
+                observation = PerCaseObservation(p, Dirac(0.0)))
 
             # ρ = 1 should equal the bare likelihood.
             ll_full = loglikelihood(data, mk(1.0))
@@ -388,9 +392,9 @@
 
             # Composition also works over the quadrature fallback.
             cm_nb = ClusterMixed(R -> NegBin(R, 0.5), Gamma(2.0, 0.3))
-            bp_nb = BranchingProcess(cm_nb)
             ll_nb_partial = loglikelihood(data,
-                with_observation(bp_nb, PerCaseObservation(0.7, Dirac(0.0))))
+                BranchingProcess(cm_nb;
+                    observation = PerCaseObservation(0.7, Dirac(0.0))))
             @test isfinite(ll_nb_partial)
         end
 
@@ -415,13 +419,14 @@
                 @test e≈a atol=0.02
             end
 
-            # with_observation(bp, PerCaseObservation(p, ...)): simulate bare,
-            # thin per case, compare against ThinnedChainSize PMF. This
-            # is how any new observation model should be tested — define
-            # observe_chain_sizes and the helper does the rest.
+            # BranchingProcess with a PerCaseObservation(p, ...): simulate
+            # bare, thin per case, compare against ThinnedChainSize PMF.
+            # This is how any new observation model should be tested —
+            # define observe_chain_sizes and the helper does the rest.
             emp_po,
             ana_po = sim_analytical_consistent(
-                with_observation(bp, PerCaseObservation(0.6, Dirac(0.0)));
+                BranchingProcess(NegBin(0.6, 0.5), Exponential(5.0);
+                    observation = PerCaseObservation(0.6, Dirac(0.0)));
                 n_chains = 5000, rng = StableRNG(7))
             for (e, a) in zip(emp_po, ana_po)
                 @test e≈a atol=0.02
@@ -492,10 +497,10 @@
             # Per-case detection doesn't cleanly transform chain length.
             # Raise a clear error rather than routing through an undefined
             # simulate path.
-            bp = BranchingProcess(Poisson(0.5), Exponential(5.0))
             @test_throws ArgumentError loglikelihood(
                 ChainLengths([0, 1]),
-                with_observation(bp, PerCaseObservation(0.7, Dirac(0.0))))
+                BranchingProcess(Poisson(0.5), Exponential(5.0);
+                    observation = PerCaseObservation(0.7, Dirac(0.0))))
         end
     end
 
@@ -529,11 +534,12 @@
         end
 
         @testset "With interventions" begin
-            model = BranchingProcess(Poisson(2.0), Exponential(5.0))
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             ll = loglikelihood(ChainSizes([1, 1, 2, 1]),
-                with_attributes(with_interventions(model, [iso]),
-                    clinical_presentation(incubation_period = LogNormal(1.5, 0.5)));
+                BranchingProcess(Poisson(2.0), Exponential(5.0);
+                    interventions = [iso],
+                    attributes = clinical_presentation(
+                        incubation_period = LogNormal(1.5, 0.5)));
                 max_cases = 500,
                 n_sim = 500,
                 rng = StableRNG(42))
@@ -545,12 +551,13 @@
             # fallback accessed model.offspring, which the Observed
             # wrapper does not have. The intervention path now simulates
             # the wrapped process, thins chain sizes per case, and compares.
-            model = BranchingProcess(Poisson(2.0), Exponential(5.0))
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-            po = with_observation(model, PerCaseObservation(0.7, Dirac(0.0)))
             ll = loglikelihood(ChainSizes([1, 1, 2, 1]),
-                with_attributes(with_interventions(po, [iso]),
-                    clinical_presentation(incubation_period = LogNormal(1.5, 0.5)));
+                BranchingProcess(Poisson(2.0), Exponential(5.0);
+                    observation = PerCaseObservation(0.7, Dirac(0.0)),
+                    interventions = [iso],
+                    attributes = clinical_presentation(
+                        incubation_period = LogNormal(1.5, 0.5)));
                 max_cases = 500,
                 n_sim = 500,
                 rng = StableRNG(42))

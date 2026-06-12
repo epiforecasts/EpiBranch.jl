@@ -28,16 +28,15 @@ struct SingleSpawnModel <: EpiBranch.TransmissionModel
     progression::Vector{EpiBranch.AbstractClinicalTransition}
     forcings::EpiBranch.Forcings
 end
-function SingleSpawnModel(; progression = EpiBranch.AbstractClinicalTransition[])
-    SingleSpawnModel(Exponential(1.0), progression, EpiBranch._NO_FORCINGS)
+function SingleSpawnModel(; progression = EpiBranch.AbstractClinicalTransition[],
+        forcing_kwargs...)
+    SingleSpawnModel(Exponential(1.0), progression,
+        EpiBranch.make_forcings(; forcing_kwargs...))
 end
 EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
 EpiBranch._progression(m::SingleSpawnModel) = m.progression
-# Carry forcings so the model joins the with_* / forcings system.
-EpiBranch._forcings(m::SingleSpawnModel) = m.forcings
-function EpiBranch._rebuild(m::SingleSpawnModel, f::EpiBranch.Forcings)
-    SingleSpawnModel(m.generation_time, m.progression, f)
-end
+# Carry forcings so the model joins the forcings system.
+EpiBranch.forcings(m::SingleSpawnModel) = m.forcings
 
 @testset "Clinical transitions" begin
     clinical = clinical_presentation(
@@ -308,7 +307,7 @@ end
         # still populate DummyTest fields on every infected case.
         rng = StableRNG(7)
         state = simulate(
-            with_attributes(SingleSpawnModel(progression = [DummyTest(LogNormal(0.5, 0.2))]), clinical);
+            SingleSpawnModel(; progression = [DummyTest(LogNormal(0.5, 0.2))], attributes = clinical);
             max_cases = 5,
             rng = rng)
         @test all(ind.state[:tested] for ind in state.individuals)

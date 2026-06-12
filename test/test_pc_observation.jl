@@ -20,8 +20,10 @@
         obs = PerCaseObservation(
             detection_prob = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0)
         rng = StableRNG(11)
-        m = with_observation(BranchingProcess(Poisson(2.0), Exponential(5.0)), obs)
-        state = simulate(with_attributes(m, attrs); max_cases = 100, rng = rng)
+        state = simulate(
+            BranchingProcess(Poisson(2.0), Exponential(5.0);
+                observation = obs, attributes = attrs);
+            max_cases = 100, rng = rng)
         for ind in state.individuals
             expected = ind.state[:age] >= 50
             @test ind.state[:reported] == expected
@@ -38,8 +40,10 @@
         obs = PerCaseObservation(
             delay = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 7.0)
         rng = StableRNG(23)
-        m = with_observation(BranchingProcess(Poisson(2.0), Exponential(5.0)), obs)
-        state = simulate(with_attributes(m, attrs); max_cases = 100, rng = rng)
+        state = simulate(
+            BranchingProcess(Poisson(2.0), Exponential(5.0);
+                observation = obs, attributes = attrs);
+            max_cases = 100, rng = rng)
         for ind in state.individuals
             expected_lag = ind.state[:age] >= 50 ? 1.0 : 7.0
             @test ind.state[:report_time] ≈ ind.state[:onset_time] + expected_lag
@@ -54,8 +58,10 @@
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 1.0))
         obs = PerCaseObservation(delay = 2.0)
         rng = StableRNG(99)
-        m = with_observation(BranchingProcess(Poisson(1.5), Exponential(5.0)), obs)
-        state = simulate(with_attributes(m, attrs); max_cases = 50, rng = rng)
+        state = simulate(
+            BranchingProcess(Poisson(1.5), Exponential(5.0);
+                observation = obs, attributes = attrs);
+            max_cases = 50, rng = rng)
         for ind in state.individuals
             @test !isnan(ind.state[:report_time])
             @test ind.state[:report_time] ≈ ind.infection_time + 2.0
@@ -69,8 +75,10 @@
         obs = PerCaseObservation(delay = 3.0,
             from = ind -> ind.infection_time)
         rng = StableRNG(7)
-        m = with_observation(BranchingProcess(Poisson(1.5), Exponential(5.0)), obs)
-        state = simulate(with_attributes(m, attrs); max_cases = 50, rng = rng)
+        state = simulate(
+            BranchingProcess(Poisson(1.5), Exponential(5.0);
+                observation = obs, attributes = attrs);
+            max_cases = 50, rng = rng)
         for ind in state.individuals
             @test ind.state[:report_time] ≈ ind.infection_time + 3.0
         end
@@ -79,7 +87,7 @@
     @testset "Distribution detection_prob varies per individual" begin
         # Beta-distributed reporting probability: aggregate over many runs.
         obs = PerCaseObservation(detection_prob = Beta(2.0, 2.0))
-        m = with_observation(BranchingProcess(Poisson(2.0), Exponential(5.0)), obs)
+        m = BranchingProcess(Poisson(2.0), Exponential(5.0); observation = obs)
         rng = StableRNG(31)
         states = simulate(m, 50; max_cases = 50,
             rng = rng)
@@ -104,9 +112,9 @@
     end
 
     @testset "Closed-form chain_size_distribution refuses non-scalar" begin
-        base = BranchingProcess(Poisson(0.5), Exponential(5.0))
-        m = with_observation(base, PerCaseObservation(
-            detection_prob = (rng, ind) -> 0.5))
+        m = BranchingProcess(Poisson(0.5), Exponential(5.0);
+            observation = PerCaseObservation(
+                detection_prob = (rng, ind) -> 0.5))
         @test_throws ArgumentError chain_size_distribution(m)
     end
 end

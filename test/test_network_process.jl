@@ -2,9 +2,7 @@
     # A small ring graph used by several tests.
     ring(n) = [sort([mod1(i - 1, n), mod1(i + 1, n)]) for i in 1:n]
 
-    sim1(model; attributes = NoAttributes(),
-        interventions = AbstractIntervention[], kwargs...) = simulate(
-        with_attributes(with_interventions(model, interventions), attributes);
+    sim1(model; kwargs...) = simulate(model;
         n_initial = 1,
         stopping_rules = [Extinction(), MaxGenerations(100)],
         kwargs...)
@@ -94,11 +92,11 @@
     end
 
     @testset "Attributes fixed per node; onset derived at infection" begin
-        model = NetworkProcess(ring(80), 0.8, LogNormal(1.6, 0.5))
         attrs = compose(
             demographics(age_distribution = Uniform(0, 80)),
             clinical_presentation(incubation_period = LogNormal(1.6, 0.5)))
-        state = sim1(model; attributes = attrs, rng = StableRNG(3))
+        model = NetworkProcess(ring(80), 0.8, LogNormal(1.6, 0.5); attributes = attrs)
+        state = sim1(model; rng = StableRNG(3))
         for ind in filter(is_infected, state.individuals)
             # onset = infection_time + incubation (host property).
             @test haskey(ind.state, :incubation_period)
@@ -113,17 +111,17 @@
         n = 300
         adj = [sort(unique([mod1(i - 1, n), mod1(i + 1, n),
                    mod1(i + 5, n), mod1(i - 5, n)])) for i in 1:n]
-        model = NetworkProcess(adj, 0.5, LogNormal(1.6, 0.5))
         attrs = compose(
             demographics(age_distribution = Uniform(0, 80)),
             clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
             transmission_traits(
                 susceptibility = (rng, ind) -> ind.state[:age] >= 60 ? 0.95 : 0.15))
+        model = NetworkProcess(adj, 0.5, LogNormal(1.6, 0.5); attributes = attrs)
         old_pop = 0
         tot_pop = 0
         old_inf = 0
         tot_inf = 0
-        for s in simulate(with_attributes(model, attrs), 40; n_initial = 3,
+        for s in simulate(model, 40; n_initial = 3,
             stopping_rules = [Extinction(), MaxGenerations(100)], rng = StableRNG(11))
             for ind in s.individuals
                 tot_pop += 1
@@ -183,16 +181,18 @@
         n = 200
         adj = [sort(unique([mod1(i - 1, n), mod1(i + 1, n),
                    mod1(i + 7, n), mod1(i - 7, n)])) for i in 1:n]
-        model = NetworkProcess(adj, 0.6, LogNormal(1.6, 0.5))
         opts = (; n_initial = 1,
             stopping_rules = [Extinction(), MaxGenerations(100)])
         attrs = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
 
-        base = simulate(with_attributes(model, attrs), 100; opts..., rng = StableRNG(5))
+        base = simulate(NetworkProcess(adj, 0.6, LogNormal(1.6, 0.5); attributes = attrs),
+            100; opts..., rng = StableRNG(5))
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
         ct = ContactTracing(probability = 0.7,
             isolation_to_trace_delay = Exponential(1.5))
-        treated = simulate(with_attributes(with_interventions(model, [iso, ct]), attrs),
+        treated = simulate(
+            NetworkProcess(adj, 0.6, LogNormal(1.6, 0.5);
+                interventions = [iso, ct], attributes = attrs),
             100; opts..., rng = StableRNG(5))
 
         mean_base = sum(s.cumulative_cases for s in base) / 100

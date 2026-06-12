@@ -29,9 +29,8 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases())
         rng = StableRNG(42)
         state = simulate(
-            with_attributes(
-                with_interventions(BranchingProcess(Poisson(2.0), Exponential(5.0)), [iso]),
-                clin_mixed);
+            BranchingProcess(Poisson(2.0), Exponential(5.0);
+                interventions = [iso], attributes = clin_mixed);
             max_cases = 100,
             rng = rng)
         # AllCases + sensitivity = 1.0 means every individual tests
@@ -48,9 +47,8 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         )
         rng = StableRNG(13)
         state = simulate(
-            with_attributes(
-                with_interventions(BranchingProcess(Poisson(2.0), Exponential(5.0)), [iso]),
-                attrs);
+            BranchingProcess(Poisson(2.0), Exponential(5.0);
+                interventions = [iso], attributes = attrs);
             max_cases = 100,
             rng = rng)
         for ind in state.individuals
@@ -76,9 +74,8 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         iso = Isolation(onset_to_isolation_delay = Exponential(0.1), eligibility = OnlyOlder(50))
         rng = StableRNG(17)
         state = simulate(
-            with_attributes(
-                with_interventions(BranchingProcess(Poisson(2.0), Exponential(5.0)), [iso]),
-                attrs);
+            BranchingProcess(Poisson(2.0), Exponential(5.0);
+                interventions = [iso], attributes = attrs);
             max_cases = 100,
             rng = rng)
         for ind in state.individuals
