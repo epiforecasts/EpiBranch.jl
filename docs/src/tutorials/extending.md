@@ -87,7 +87,7 @@ end
 
 The engine never errors when a hook is missing — every hook has a no-op default. That is convenient for partial implementations but means that *forgotten* hooks fail silently. Quick checks:
 
-- Run a tiny simulation (`SimOpts(max_cases = 50)`) with and without your intervention in the stack. If the outcome looks the same in both, your `competing_risk` or `apply_post_transmission!` is probably not being called for the cases you think.
+- Run a tiny simulation (`max_cases = 50`) with and without your intervention in the stack. If the outcome looks the same in both, your `competing_risk` or `apply_post_transmission!` is probably not being called for the cases you think.
 - Override `required_fields` (see below) so the engine fails at simulation start when an upstream attributes function hasn't set a field your intervention needs.
 - Inspect `state.individuals[1].state` after a small run to confirm your hook actually wrote the keys downstream code reads.
 
@@ -239,7 +239,7 @@ rng = StableRNG(42)
 results = simulate(model, 200;
     interventions = [iso, bc],
     attributes = clinical_with_region,
-    sim_opts = SimOpts(max_cases = 500), rng = rng,
+    max_cases = 500, rng = rng,
 )
 println("Isolation + border closure: $(round(containment_probability(results), digits=3))")
 ```
@@ -316,7 +316,7 @@ attrs = compose(
 )
 
 rng = StableRNG(42)
-state = simulate(model; attributes = attrs, sim_opts = SimOpts(max_cases = 100), rng = rng)
+state = simulate(model; attributes = attrs, max_cases = 100, rng = rng)
 n_high = count(ind -> get(ind.state, :risk_group, :low) == :high, state.individuals)
 println("High-risk individuals: $n_high / $(length(state.individuals))")
 ```
@@ -339,7 +339,7 @@ combined = compose(
 rng = StableRNG(42)
 state = simulate(model;
     attributes = combined,
-    sim_opts = SimOpts(max_cases = 100),
+    max_cases = 100,
     rng = rng,
 )
 ind = state.individuals[1]
@@ -363,7 +363,7 @@ linked = BranchingProcess(NegBin(2.5, 0.16), gt)
 rng = StableRNG(42)
 state = simulate(linked;
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-    sim_opts = SimOpts(max_cases = 500),
+    max_cases = 500,
     rng = rng,
 )
 println("Cases: $(state.cumulative_cases)")
@@ -392,7 +392,7 @@ scaled = BranchingProcess(Poisson(2.0), ind -> Exponential(ind.state[:gt_scale])
 
 rng = StableRNG(42)
 state = simulate(scaled;
-    attributes = host, sim_opts = SimOpts(max_cases = 500), rng = rng)
+    attributes = host, max_cases = 500, rng = rng)
 println("Cases: $(state.cumulative_cases)")
 ```
 
@@ -474,7 +474,7 @@ model_risk = BranchingProcess(risk_offspring, Exponential(5.0); n_types = 1)
 rng = StableRNG(42)
 results = simulate(model_risk, 200;
     attributes = risk_group,
-    sim_opts = SimOpts(max_cases = 500),
+    max_cases = 500,
     rng = rng,
 )
 println("Risk-stratified model: $(round(containment_probability(results), digits=3))")
@@ -495,7 +495,7 @@ model_waning = BranchingProcess(waning_offspring, Exponential(5.0); n_types = 1)
 
 rng = StableRNG(42)
 results = simulate(model_waning, 200;
-    sim_opts = SimOpts(max_cases = 500),
+    max_cases = 500,
     rng = rng,
 )
 println("Waning-R model: $(round(containment_probability(results), digits=3))")
@@ -625,27 +625,26 @@ loglikelihood(ChainSizes(data), MyModel(NegBin(0.8, 0.5), ...))
 
 ### Composing with the observation side
 
-Your model fits into `Observed` without any extra work. Process and
-observation are combined through `Observed{P, O}` and the dispatch only
-asks that `single_type_offspring` delegates correctly through any
-wrappers — which it does for `Observed` automatically. So:
+Your model carries an observation like any other process: pass
+`observation = …` to its constructor, or attach one with
+[`with_observation`](@ref). The likelihood reads it automatically:
 
 ```julia
-Observed(MyModel(...), PerCaseObservation(detection_prob = 0.7))
+with_observation(MyModel(...), PerCaseObservation(detection_prob = 0.7))
 ```
 
 works the same way as it does for `BranchingProcess`.
 
 ## Adding an observation model
 
-Observation models subtype `ObservationModel` and combine with a
-process model via [`Observed`](@ref). `PerCaseObservation` (per-case
-detection probability and reporting delay) is the reference. A new
-observation model needs three pieces:
+Observation models are a *forcing* on the process, added the same way
+interventions are. They subtype `ObservationModel` and join in through
+two methods dispatched on the observation type, with no model type
+parameter:
 
 1. A struct holding the observation parameters, subtyping `ObservationModel`.
-2. A transformed chain size distribution (a new `DiscreteUnivariateDistribution`) whose `logpdf` applies the observation process to a base distribution. This type can wrap any distribution, including one produced by another observation, so nesting works.
-3. A `chain_size_distribution` method on `Observed{<:Any, <:YourObservation}` that pairs the wrapped distribution with the new transformed distribution.
+2. [`observe`](@ref)`(base_distribution, ::YourObservation)` — the analytical side: return a `Distribution` transforming the latent chain-size distribution. Often a small new `DiscreteUnivariateDistribution`.
+3. `apply_observation!(::YourObservation, state, rng)` — the simulation side: mark observed cases on a finished `SimulationState` (only needed for the simulation-based likelihood).
 
 ### Minimal sketch
 
@@ -670,39 +669,30 @@ function Distributions.logpdf(d::TruncatedChainSize, n::Integer)
     return logpdf(d.base, n) - log(Z)
 end
 
-# 3. Hook into the dispatch
-function EpiBranch.chain_size_distribution(m::Observed{<:Any, CensoredAtSize})
-    TruncatedChainSize(
-        EpiBranch.chain_size_distribution(m.process), m.observation.cap)
-end
-
-function Distributions.loglikelihood(data::ChainSizes,
-        m::Observed{<:Any, CensoredAtSize})
-    d = EpiBranch.chain_size_distribution(m)
-    sum(logpdf(d, n) for n in data.data)
-end
+# 3. The analytical side of the protocol: one method, dispatched on the
+#    observation. loglikelihood(data, model) routes through it.
+EpiBranch.observe(base, o::CensoredAtSize) = TruncatedChainSize(base, o.cap)
 ```
 
-Usage: `Observed(model, CensoredAtSize(10))`. Composition with another
-observation type goes through nested `Observed`:
-`Observed(Observed(model, PerCaseObservation(0.7)), CensoredAtSize(10))`.
+Usage: `BranchingProcess(...; observation = CensoredAtSize(10))`, or
+`with_observation(model, CensoredAtSize(10))`. No per-observation
+`loglikelihood` method is needed — returning a distribution from `observe`
+means the shared machinery evaluates `logpdf` on it.
 
 ### Sim ↔ analytical consistency test
 
 The helper in `test/testutils/sim_analytical_consistency.jl` cross-checks
-simulation against your new distribution once you define two methods:
+simulation against your new distribution. It reads the model's observation
+and thins the simulated true sizes accordingly; add a method for your
+observation type to its `_observe_sizes` dispatch:
 
 ```julia
 # Transform simulated true sizes into observed ones
-function observe_chain_sizes(m::Observed{<:Any, CensoredAtSize},
-        true_sizes, rng::AbstractRNG)
-    inner = observe_chain_sizes(m.process, true_sizes, rng)
-    return filter(n -> n <= m.observation.cap, inner)
-end
+_observe_sizes(o::CensoredAtSize, true_sizes, ::AbstractRNG) =
+    filter(n -> n <= o.cap, true_sizes)
 ```
 
-`generative_model(::Observed)` is already defined and strips the
-observation. With your `observe_chain_sizes` method in place,
+With that in place,
 `sim_analytical_consistent(model; n_chains=5000, rng=StableRNG(1))`
 returns empirical and analytical PMFs that should agree within
 sampling error.
@@ -790,6 +780,6 @@ your new data type inherits the same closed forms for `Borel`,
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (or `contacts_of` + `gather_by_target`), `single_type_offspring` | Simulation + analytics |
-| Custom observation model | Struct `<: ObservationModel` + `chain_size_distribution(::Observed{...})` and/or `loglikelihood(::DataType, ::Observed{...})` | Analytics / inference |
+| Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |

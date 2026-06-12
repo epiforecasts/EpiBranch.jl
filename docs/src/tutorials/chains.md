@@ -15,7 +15,7 @@ using StableRNGs
 model = BranchingProcess(Poisson(0.9), Exponential(5.0))
 
 rng = StableRNG(42)
-state = simulate(model; sim_opts = SimOpts(n_initial = 20, max_cases = 10_000), rng = rng)
+state = simulate(model; n_initial = 20, max_cases = 10_000, rng = rng)
 
 cs = chain_statistics(state)
 first(cs, 10)
@@ -66,30 +66,19 @@ println("NegBin(R=0.9, k=0.5): LL = $(round(ll, digits=2))")
 
 ### Imperfect observation
 
-Account for incomplete case ascertainment by combining a process
-model with a [`PerCaseObservation`](@ref) via [`Observed`](@ref).
-Each case is detected independently with the given probability:
+Account for incomplete case ascertainment by giving the model a
+[`PerCaseObservation`](@ref) — pass `observation = …` to the process
+constructor, or attach it to an existing model with
+[`with_observation`](@ref). Each case is detected independently with the
+given probability:
 
 ```@example chains
 data = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
 base = BranchingProcess(Poisson(0.9))
-full = Observed(base, PerCaseObservation(detection_prob = 1.0))
-partial = Observed(base, PerCaseObservation(detection_prob = 0.7))
+full = with_observation(base, PerCaseObservation(detection_prob = 1.0))
+partial = with_observation(base, PerCaseObservation(detection_prob = 0.7))
 println("Full observation:  $(round(loglikelihood(data, full), digits=2))")
 println("70% observation:   $(round(loglikelihood(data, partial), digits=2))")
-```
-
-Stacking compounds the detection probabilities: two rounds at 0.5
-give the same observed distribution as one round at 0.25.
-
-```@example chains
-inner = Observed(base, PerCaseObservation(detection_prob = 0.5))
-ll_stacked = loglikelihood(data,
-    Observed(inner, PerCaseObservation(detection_prob = 0.5)))
-ll_single = loglikelihood(data,
-    Observed(base, PerCaseObservation(detection_prob = 0.25)))
-println("Stacked: $(round(ll_stacked, digits=2))")
-println("Single:  $(round(ll_single, digits=2))")
 ```
 
 ### Offspring counts
@@ -114,15 +103,19 @@ println("Chain length LL: $(round(ll, digits=2))")
 ## Simulation-based likelihood
 
 For models with interventions, use the simulation-based likelihood by
-passing a [`BranchingProcess`](@ref) model instead of a distribution:
+passing a model instead of a distribution. Because the interventions and
+attributes are forcings on the model, the likelihood is evaluated under
+exactly the process that produced the data, with nothing to pass twice:
 
 ```@example chains
-model = BranchingProcess(Poisson(2.0), Exponential(5.0))
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 
-ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2]), model;
+model = BranchingProcess(Poisson(2.0), Exponential(5.0);
     interventions = [iso],
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+)
+
+ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2]), model;
     n_sim = 1000,
     rng = StableRNG(42),
 )
@@ -131,29 +124,30 @@ println("LL with interventions: $(round(ll, digits=2))")
 
 Forward simulation and likelihood evaluation share the same code path.
 Likelihoods can therefore be evaluated under interventions — something
-not possible when simulation and inference are in separate packages.
+not possible when simulation and inference are in separate packages — and
+the same `model` drives both `simulate(model)` and `loglikelihood`.
 
 ## Fitting
 
-EpiBranch provides `fit` MLE wrappers for chain-size and chain-length
-data, whose likelihoods aren't in Distributions.jl. For raw offspring
-counts, use `Distributions.fit` (Poisson) directly, or pair the
-`loglikelihood` interface with Optim.jl or Turing's `maximum_likelihood`
-(NegBin) — see the [inference tutorial](inference.md).
+The `loglikelihood` interface is the backend for both maximum-likelihood
+and Bayesian fitting. For an MLE, maximise `loglikelihood` over the
+parameter — with Optim.jl, Turing's `maximum_likelihood`, or, for a
+single parameter, a simple grid:
 
 ```@example chains
-# From chain sizes (subcritical only)
 rng = StableRNG(42)
-model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-states = simulate(model, 500; rng = rng)
+truth = BranchingProcess(Poisson(0.5), Exponential(5.0))
+states = simulate(truth, 500; rng = rng)
 sizes = Int[]
 for s in states
     cs = chain_statistics(s)
     append!(sizes, cs.size)
 end
+data = ChainSizes(sizes)
 
-d = fit(Poisson, ChainSizes(sizes))
-println("Poisson MLE from chain sizes: R = $(round(mean(d), digits=2))")
+Rgrid = 0.05:0.01:0.95
+R̂ = Rgrid[argmax([loglikelihood(data, Poisson(R)) for R in Rgrid])]
+println("Poisson MLE from chain sizes: R = $(round(R̂, digits=2))")
 ```
 
 ### Bayesian inference with Turing.jl
@@ -171,10 +165,11 @@ using Turing
 end
 ```
 
-With no extra arguments, these return the analytical distribution
-(`Borel`, `GammaBorel`, …) where one exists; with `seeds`, `pi`,
-interventions, or other kwargs they return a wrapper that routes
-through `loglikelihood` the same way as the MLE path.
+For a bare offspring law these return the analytical distribution
+(`Borel`, `GammaBorel`, …) where one exists; when the model carries
+interventions (or you pass `seeds`, `pi`, `n_sim`, …) they return a
+wrapper that routes through the simulation-based `loglikelihood`. Either
+way the model carries its own forcings, so the `~` line stays clean.
 
 ```julia
 data ~ chain_size_distribution(BranchingProcess(Poisson(R));

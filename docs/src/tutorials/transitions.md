@@ -11,8 +11,8 @@ Transitions use the same two hooks as interventions
 ([`initialise_individual!`](@ref EpiBranch.initialise_individual!),
 [`resolve_individual!`](@ref EpiBranch.resolve_individual!)) but sit
 under their own abstract type, [`AbstractClinicalTransition`](@ref).
-This keeps the public API tidy: `interventions=` on `simulate` for
-policy, the model's `progression` for biology.
+This keeps the concerns tidy: the model's `interventions` forcing for
+policy, its `progression` for biology.
 
 ## Built-in transitions
 
@@ -49,7 +49,7 @@ model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progressi
 rng = StableRNG(42)
 state = simulate(model;
     attributes = clinical,
-    sim_opts = SimOpts(max_cases = 200),
+    max_cases = 200,
     rng = rng,
 )
 
@@ -110,7 +110,7 @@ model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progressi
 rng = StableRNG(42)
 state = simulate(model;
     attributes = attrs,
-    sim_opts = SimOpts(max_cases = 300),
+    max_cases = 300,
     rng = rng,
 )
 
@@ -148,7 +148,7 @@ model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progressi
 rng = StableRNG(42)
 state = simulate(model;
     attributes = clinical,
-    sim_opts = SimOpts(max_cases = 200),
+    max_cases = 200,
     rng = rng,
 )
 
@@ -211,7 +211,7 @@ model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progressi
 rng = StableRNG(42)
 state = simulate(model;
     attributes = clinical,
-    sim_opts = SimOpts(max_cases = 100),
+    max_cases = 100,
     rng = rng,
 )
 
@@ -296,7 +296,7 @@ multitype = BranchingProcess(
 rng = StableRNG(42)
 state = simulate(multitype;
     attributes = attrs_age,
-    sim_opts = SimOpts(max_cases = 500),
+    max_cases = 500,
     rng = rng,
 )
 
@@ -369,7 +369,7 @@ model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progressi
 rng = StableRNG(42)
 state = simulate(model;
     attributes = clinical,
-    sim_opts = SimOpts(max_cases = 200),
+    max_cases = 200,
     rng = rng,
 )
 

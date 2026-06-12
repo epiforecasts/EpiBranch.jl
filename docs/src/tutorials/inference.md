@@ -84,9 +84,14 @@ println("Observed $(length(sizes)) chain sizes, mean=$(round(mean(sizes), digits
 
 ### Maximum likelihood
 
+Maximise `loglikelihood` over the parameter — here a one-parameter grid;
+for harder problems use Optim.jl or Turing's `maximum_likelihood`:
+
 ```@example inference
-d_mle = fit(Poisson, ChainSizes(sizes))
-println("MLE: R=$(round(mean(d_mle), digits=2))")
+data = ChainSizes(sizes)
+Rgrid = 0.05:0.01:0.95
+R_mle = Rgrid[argmax([loglikelihood(data, Poisson(R)) for R in Rgrid])]
+println("MLE: R=$(round(R_mle, digits=2))")
 ```
 
 ### Bayesian estimation
@@ -128,30 +133,32 @@ for s in states
 end
 
 R_offspring = mean(offspring_data)  # Poisson MLE = sample mean
-d_chains = fit(Poisson, ChainSizes(size_data))
+size_d = ChainSizes(size_data)
+Rgrid = 0.05:0.01:0.95
+R_chains = Rgrid[argmax([loglikelihood(size_d, Poisson(R)) for R in Rgrid])]
 println("From offspring counts: R=$(round(R_offspring, digits=2))")
-println("From chain sizes:     R=$(round(mean(d_chains), digits=2))")
+println("From chain sizes:     R=$(round(R_chains, digits=2))")
 println("True:                 R=$true_R")
 ```
 
 ## Inference under interventions
 
-When you pass a `BranchingProcess` model with interventions to
-`loglikelihood`, it uses simulation-based likelihood. Because this is
-stochastic and not differentiable, you have to use a gradient-free
-sampler like `MH()` instead of `NUTS()`:
+When the model carries interventions, `loglikelihood` uses the
+simulation-based likelihood. Because this is stochastic and not
+differentiable, you have to use a gradient-free sampler like `MH()`
+instead of `NUTS()`:
 
 ```@example inference
 # Generate "observed" chain sizes from a model WITH isolation
 rng = StableRNG(42)
 true_R = 2.0
-true_model = BranchingProcess(Poisson(true_R), Exponential(5.0))
 iso = Isolation(onset_to_isolation_delay=Exponential(2.0))
 clinical = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
+true_model = BranchingProcess(Poisson(true_R), Exponential(5.0);
+    interventions=[iso], attributes=clinical)
 
 observed_states = simulate(true_model, 100;
-    interventions=[iso], attributes=clinical,
-    sim_opts=SimOpts(max_cases=500), rng=rng)
+    max_cases=500, rng=rng)
 observed_sizes = Int[]
 for s in observed_states
     cs = chain_statistics(s)
@@ -169,10 +176,10 @@ P(size = cap).
 ```@example inference
 @model function intervention_model(data, iso, clinical)
     R ~ LogNormal(0.5, 0.5)
-    model = BranchingProcess(Poisson(R), Exponential(5.0))
+    model = BranchingProcess(Poisson(R), Exponential(5.0);
+        interventions = [iso], attributes = clinical)
     data ~ chain_size_distribution(model;
-        interventions = [iso], attributes = clinical,
-        sim_opts = SimOpts(max_cases = 500),
+        max_cases = 500,
         n_sim = 500, rng = StableRNG(hash(R)))
 end
 

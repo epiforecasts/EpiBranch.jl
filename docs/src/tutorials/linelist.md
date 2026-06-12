@@ -37,7 +37,7 @@ rng = StableRNG(42)
 state = simulate(model;
     condition = 50:200,
     attributes = attrs,
-    sim_opts = SimOpts(max_cases = 200),
+    max_cases = 200,
     rng = rng,
 )
 
@@ -67,7 +67,7 @@ rng = StableRNG(42)
 state = simulate(model;
     condition = 50:200,
     attributes = attrs_demo,
-    sim_opts = SimOpts(max_cases = 200),
+    max_cases = 200,
     rng = rng,
 )
 
@@ -104,7 +104,7 @@ rng = StableRNG(42)
 state = simulate(model;
     condition = 100:500,
     attributes = attrs_demo,
-    sim_opts = SimOpts(max_cases = 500),
+    max_cases = 500,
     rng = rng,
 )
 
@@ -144,7 +144,7 @@ rng = StableRNG(42)
 state = simulate(plain;
     condition = 100:150,
     attributes = attrs,
-    sim_opts = SimOpts(max_cases = 200),
+    max_cases = 200,
     rng = rng,
 )
 println("Outbreak size: $(state.cumulative_cases) (target: 100-150)")

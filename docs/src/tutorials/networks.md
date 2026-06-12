@@ -51,7 +51,7 @@ transmission probability.
 rng = StableRNG(42)
 state = simulate(model;
     attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    sim_opts = SimOpts(n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)]),
+    n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)],
     rng = rng)
 
 println("Final outbreak size: ", state.cumulative_cases, " of ", length(adjacency))
@@ -64,7 +64,7 @@ nodes instead of growing without bound. For a batch, use
 ```@example networks
 results = simulate(model, 200;
     attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    sim_opts = SimOpts(n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)]),
+    n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)],
     rng = StableRNG(1))
 
 sizes = [s.cumulative_cases for s in results]
@@ -89,7 +89,7 @@ attrs = compose(
 
 state = simulate(model;
     attributes = attrs,
-    sim_opts = SimOpts(n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)]),
+    n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)],
     rng = StableRNG(7))
 
 infected = filter(is_infected, state.individuals)
@@ -110,7 +110,7 @@ ct = ContactTracing(probability = 0.6, isolation_to_trace_delay = Exponential(1.
 results = simulate(model, 200;
     interventions = [iso, ct],
     attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    sim_opts = SimOpts(n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)]),
+    n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)],
     rng = StableRNG(2))
 
 sizes = [s.cumulative_cases for s in results]
