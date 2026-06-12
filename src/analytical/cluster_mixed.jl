@@ -115,15 +115,15 @@ descendant via `parent_id` lookup. The per-individual draw is
 `rand(build(θ))`.
 """
 function BranchingProcess(offspring::ClusterMixed, gt::Union{Distribution, Function};
-        population_size::Union{Int, NoPopulation} = NoPopulation())
+        population_size::Union{Int, NoPopulation} = NoPopulation(), forcing_kwargs...)
     BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, 1,
-        NoTypeLabels(), AbstractClinicalTransition[])
+        NoTypeLabels(), AbstractClinicalTransition[], _mk_forcings(; forcing_kwargs...))
 end
 
 function BranchingProcess(offspring::ClusterMixed;
-        population_size::Union{Int, NoPopulation} = NoPopulation())
+        population_size::Union{Int, NoPopulation} = NoPopulation(), forcing_kwargs...)
     BranchingProcess((Infectiousness(offspring),), population_size, 1,
-        NoTypeLabels(), AbstractClinicalTransition[])
+        NoTypeLabels(), AbstractClinicalTransition[], _mk_forcings(; forcing_kwargs...))
 end
 
 """

@@ -57,14 +57,18 @@ function generate_offspring end
     include("public.jl")
 end
 
+# Observation models (state-space slot) and the forcings overlay
+# (interventions + attributes + observation) that every process carries.
+# Defined before the process types so their constructors can store them.
+include("observation_models.jl")
+include("forcings.jl")
+
 # Transmission models
 include("models/branching_process.jl")
 include("models/network_process.jl")
 
-# Observation models (state-space slot)
-include("observation_models.jl")
-
-# Observation models (wrappers around TransmissionModel)
+# Observation helpers (thinned chain-size distribution, dispatch on the
+# model's observation model)
 include("observation.jl")
 
 # Simulation engine
@@ -113,7 +117,7 @@ export Scheduled, Risk
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event
-export ObservationModel, PerCaseObservation, Observed
+export ObservationModel, PerCaseObservation, NoObservation, with_observation, observe
 export single_type_offspring
 
 # Exports — sentinel types

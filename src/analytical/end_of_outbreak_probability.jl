@@ -59,29 +59,28 @@ end
     end_of_outbreak_probability(model::BranchingProcess, τ)
 
 Convenience that reads the offspring and generation-time distributions
-straight off a bare `BranchingProcess`. Restricted to the un-wrapped
-process: applying this to an `Observed{..., PerCaseObservation}` model
-would mean under-reporting (`ρ < 1`), which needs the Volterra
-recursion of Thompson, Morgan & Jansen (2019) and is not implemented
-here. To compute the full-reporting (`ρ = 1`) value on the underlying
-process, drop the `Observed` wrapper at the call site.
+straight off a `BranchingProcess`. Assumes full reporting: a model that
+carries a [`PerCaseObservation`](@ref) means under-reporting (`ρ < 1`),
+which needs the Volterra recursion of Thompson, Morgan & Jansen (2019)
+and is not implemented here. Evaluate on a model with no observation to
+get the full-reporting (`ρ = 1`) value.
 """
 function end_of_outbreak_probability(model::BranchingProcess, τ::Real)
+    # Refuse under per-case under-reporting rather than silently using
+    # the bare offspring: makes the missing `ρ < 1` case discoverable.
+    _eoo_assert_full_reporting(_observation(model))
     return end_of_outbreak_probability(
         single_type_offspring(model), _single_kernel(model), τ)
 end
 
-# Explicit refusal for the Observed{..., PerCaseObservation} wrapper.
-# Better than a silent extraction of the bare offspring: makes the
-# missing `ρ < 1` case discoverable through a clear error.
-function end_of_outbreak_probability(
-        ::Observed{<:Any, <:PerCaseObservation}, ::Real)
+_eoo_assert_full_reporting(::NoObservation) = nothing
+function _eoo_assert_full_reporting(::PerCaseObservation)
     throw(ArgumentError(
         "end_of_outbreak_probability under per-case under-reporting (ρ < 1) " *
         "is not implemented. The closed form here assumes full reporting; " *
         "the ρ < 1 case needs the Volterra recursion of Thompson, Morgan & " *
-        "Jansen (2019). Drop the Observed wrapper to compute the ρ = 1 " *
-        "value on the underlying BranchingProcess."))
+        "Jansen (2019). Evaluate on a model with no observation to compute " *
+        "the ρ = 1 value."))
 end
 
 """

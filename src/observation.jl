@@ -1,56 +1,47 @@
-# ── Observation models ──────────────────────────────────────────────
-# Wrappers around a TransmissionModel that describe how it is observed.
-# Dispatch uses the analytical likelihood when one is defined; otherwise
-# it falls back to simulation.
+# ── Observation protocol ────────────────────────────────────────────
+# A process carries its observation model in its forcings (see
+# forcings.jl); the engine and the likelihood read it with
+# `_observation(model)` and dispatch on the returned object. An
+# observation model sits alongside `AbstractIntervention`: it joins in by
+# implementing two methods, dispatched on the observation type,
+# `apply_observation!` (simulation side) and `observe` (analytical side).
+# The dispatch is on the observation value, so there is no model type
+# parameter.
 
 """
-    Observed(process, observation)
+    with_observation(model, observation)
 
-State-space combiner: pair a `TransmissionModel` with an
-[`ObservationModel`](@ref). Dispatch on `Observed{P, O}` is the single
-surface for likelihoods that need to know about both the latent
-dynamics and how the data was observed.
-
-Forwards process-model accessors (`population_size`, `n_types`,
-`single_type_offspring`) to `process`.
+Return a copy of `model` with its observation model set to `observation`,
+preserving the other forcings (interventions, attributes). Equivalent to
+passing `observation = …` to the process constructor; handy for adding an
+observation to a model built earlier.
 """
-struct Observed{P <: TransmissionModel, O <: ObservationModel} <:
-       TransmissionModel
-    process::P
-    observation::O
+function with_observation(m::BranchingProcess, o::ObservationModel)
+    BranchingProcess(m.infectiousness, m.population_size, m.n_types,
+        m.type_labels, m.progression, _with_observation(m.forcings, o))
 end
 
-function Base.show(io::IO, m::Observed)
-    print(io, "Observed($(m.process), $(m.observation))")
+function with_observation(m::NetworkProcess, o::ObservationModel)
+    NetworkProcess(m.adjacency, m.edge_probability, m.generation_time;
+        attributes = m.forcings.attributes,
+        interventions = m.forcings.interventions, observation = o)
 end
 
-population_size(m::Observed) = population_size(m.process)
-n_types(m::Observed) = n_types(m.process)
-single_type_offspring(m::Observed) = single_type_offspring(m.process)
-
 """
-    simulate(m::Observed; kwargs...)
+    apply_observation!(obs::ObservationModel, state, rng)
 
-Run the underlying process simulation, then apply the observation
-model in place. For `PerCaseObservation(ρ, D, from)`, each individual
-gets:
-
-- `state[:reported] = true` with probability `ρ`, else `false`.
-- `state[:report_time] = anchor + d` where `anchor` is resolved from
-  `from` (defaults to `:onset_time`, falling back to
-  `infection_time` if the anchor is `NaN`), and `d` is an independent
-  draw from `D`.
-
-Downstream output (line list, chain statistics) can then filter on
-`:reported` and read `:report_time`.
+Simulation side of the observation protocol: apply `obs` to a finished
+`SimulationState` in place (e.g. mark `:reported` cases and set
+`:report_time`). Called by [`simulate`](@ref) after the run. The default
+[`NoObservation`](@ref) leaves the latent cases untouched.
 """
-function simulate(m::Observed{<:TransmissionModel, <:PerCaseObservation};
-        rng::AbstractRNG = Random.default_rng(), kwargs...)
-    state = simulate(m.process; rng = rng, kwargs...)
+apply_observation!(::NoObservation, state, rng) = state
+
+function apply_observation!(o::PerCaseObservation, state, rng)
     for ind in state.individuals
-        ρ = _sample_value(m.observation.detection_prob, rng, ind)
-        d = _sample_value(m.observation.delay, rng, ind)
-        anchor = _percase_anchor(m.observation.from, ind)
+        ρ = _sample_value(o.detection_prob, rng, ind)
+        d = _sample_value(o.delay, rng, ind)
+        anchor = _percase_anchor(o.from, ind)
         ind.state[:reported] = rand(rng) < ρ
         ind.state[:report_time] = anchor + d
     end
@@ -70,14 +61,12 @@ _percase_anchor(f, ind) =
     ThinnedChainSize(base, detection_prob)
 
 Distribution of observed chain sizes when each case in a `base` chain
-is detected with probability `detection_prob`. Nesting applies a second
-round of Binomial thinning.
+is detected with probability `detection_prob`.
 
 `logpdf(d, obs)` sums `logpdf(base, n) + logpdf(Binomial(n, p), obs)`
 over `n >= obs` until the tail is negligible. The computation only
-needs `logpdf` on the base, so a nested `ThinnedChainSize` gives the
-same answer as a single thinning with a compounded probability without
-any specialised method.
+needs `logpdf` on the base, so this composes without specialised
+methods.
 """
 struct ThinnedChainSize{D <: DiscreteUnivariateDistribution} <:
        DiscreteUnivariateDistribution
@@ -125,18 +114,21 @@ end
 Distributions.pdf(d::ThinnedChainSize, n::Integer) = exp(logpdf(d, n))
 
 """
-    chain_size_distribution(m::Observed{<:Any, <:PerCaseObservation})
+    observe(base_distribution, obs::ObservationModel)
 
-Return `ThinnedChainSize` wrapping the chain size distribution of the
-inner process. Recurses through any nested `Observed` wrappers, so a
-double per-case observation (e.g. surveillance plus a separate audit)
-gives the right nested-thinning likelihood without pairwise dispatch.
+Analytical side of the observation protocol: transform the latent
+`base_distribution` (e.g. a chain-size distribution) into the
+distribution of the *observed* quantity under `obs`, returning a
+`Distribution`. Because the result is itself a distribution, it slots
+into the same likelihood machinery as the latent law (see the design
+notes on why observation models return distributions). The default
+[`NoObservation`](@ref) returns the base unchanged;
+[`PerCaseObservation`](@ref) thins it with [`ThinnedChainSize`](@ref).
 """
-function chain_size_distribution(m::Observed{<:Any, <:PerCaseObservation})
-    p = scalar_detection_prob(m.observation)
-    base = chain_size_distribution(m.process)
-    # ρ = 1 is a no-op; skip the ThinnedChainSize wrap so multi-seed
-    # likelihoods route directly to the underlying distribution's
-    # multi-seed implementation (which ThinnedChainSize lacks).
+observe(base, ::NoObservation) = base
+function observe(base, o::PerCaseObservation)
+    p = scalar_detection_prob(o)
+    # ρ = 1 is a no-op; skip the wrap so multi-seed likelihoods route
+    # directly to the base distribution's own multi-seed implementation.
     return p == 1.0 ? base : ThinnedChainSize(base, p)
 end
