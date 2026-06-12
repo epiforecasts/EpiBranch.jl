@@ -159,7 +159,7 @@ function _weekly_time(by::Symbol, ind)
 end
 
 """
-    scenario_sweep(params::Dict{Symbol, Vector}; n_sim=500, sim_opts=SimOpts(), rng=Random.default_rng())
+    scenario_sweep(params::Dict{Symbol, Vector}; n_sim=500, rng=Random.default_rng(), sim_kwargs...)
 
 Run a parameter sweep over all combinations of parameters and return a
 DataFrame of results. Each row contains the parameter values and the
@@ -180,8 +180,8 @@ results = scenario_sweep(Dict(
 """
 function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
         n_sim::Int = 500,
-        sim_opts::SimOpts = SimOpts(),
-        rng::AbstractRNG = Random.default_rng())
+        rng::AbstractRNG = Random.default_rng(),
+        sim_kwargs...)
     haskey(params, :offspring) || throw(ArgumentError("params must include :offspring"))
 
     keys_ordered = collect(keys(params))
@@ -200,13 +200,10 @@ function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
         attributes = get(vals, :attributes, NoAttributes())
         pop_size = get(vals, :population_size, NoPopulation())
 
-        model = BranchingProcess(offspring, gt; population_size = pop_size)
+        model = BranchingProcess(offspring, gt;
+            population_size = pop_size, interventions, attributes)
 
-        results = simulate(model, n_sim;
-            interventions = interventions isa Vector ? interventions : [interventions],
-            attributes = attributes,
-            sim_opts = sim_opts,
-            rng = rng)
+        results = simulate(model, n_sim; rng = rng, sim_kwargs...)
 
         for k in keys_ordered
             push!(rows[k], vals[k])

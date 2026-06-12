@@ -56,9 +56,8 @@ analytical helpers (`extinction_probability`, `epidemic_probability`,
 `<: TransmissionModel` type that defines a method here gets all of
 those helpers for free.
 
-Wrappers (e.g. `Observed`) should specialise this to delegate to the
-wrapped process. Throws for multi-type (function-based) offspring,
-which the single-type accessor cannot sensibly return.
+Throws for multi-type (function-based) offspring, which the single-type
+accessor cannot sensibly return.
 """
 function single_type_offspring(model::TransmissionModel)
     hasproperty(model, :offspring) || throw(ArgumentError(

@@ -1,6 +1,6 @@
 # ── Unified loglikelihood interface ───────────────────────────────────
 
-import Distributions: fit, loglikelihood
+import Distributions: loglikelihood
 
 """
     loglikelihood(data::OffspringCounts, offspring::Distribution)
@@ -129,11 +129,11 @@ with interventions.
 """
 function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
         interventions, attributes, sim_opts, n_sim, rng)
-    states = simulate(model, n_sim; interventions, attributes, sim_opts, rng)
+    states = _simulate_n(model, n_sim, sim_opts; interventions, attributes, rng)
     sim_values = Int[]
     # Track which simulations hit the case cap (right-censored)
     censored = Bool[]
-    cap = max_cases(sim_opts)
+    cap = _case_cap(sim_opts)
     for state in states
         cs = chain_statistics(state)
         vals = getproperty(cs, column)
@@ -144,180 +144,102 @@ function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
     return _empirical_ll(observed, sim_values; min_val, censored, cap)
 end
 
-"""
-    loglikelihood(data::ChainSizes, m::Observed{<:Any, <:PerCaseObservation}; kwargs...)
+# Observed chain sizes for one simulated state. Dispatch on the model's
+# observation: with `NoObservation` every infected case counts;
+# otherwise only the cases the observation marked `:reported`.
+_sim_chain_sizes(state, ::NoObservation) = chain_statistics(state).size
+function _sim_chain_sizes(state, ::ObservationModel)
+    counts = Dict{Int, Int}()
+    for ind in state.individuals
+        (is_infected(ind) && get(ind.state, :reported, false)) || continue
+        counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
+    end
+    return collect(values(counts))
+end
 
-Log-likelihood under a per-case-observed model. With no interventions,
-routes through the analytical `chain_size_distribution(m)`. When
-interventions are supplied, simulates the wrapped process model,
-applies per-case Binomial thinning, and compares against the observed
-data via the empirical likelihood.
 """
-function loglikelihood(data::ChainSizes,
-        m::Observed{<:Any, <:PerCaseObservation};
-        interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
-        attributes::Union{Function, NoAttributes} = NoAttributes(),
-        sim_opts::SimOpts = SimOpts(),
+    loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
+
+Log-likelihood of observed chain sizes under `model`. With no
+interventions and a single-type offspring law, uses the analytical
+chain-size distribution transformed by the model's observation
+([`observe`](@ref)); otherwise simulates the observed model and compares
+the reported chain sizes against the data. The interventions and
+attributes are read from `model`.
+"""
+function loglikelihood(data::ChainSizes, model::TransmissionModel;
+        n_initial::Int = 1,
+        max_cases::Union{Int, Nothing} = 10_000,
+        max_generations::Union{Int, Nothing} = 100,
+        max_time::Union{Real, Nothing} = nothing,
+        stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         n_sim::Int = 10_000,
         rng::AbstractRNG = Random.default_rng())
+    obs = _observation(model)
+    interventions = _interventions(model)
+    attributes = _attributes(model)
     if isempty(interventions)
         try
-            d = chain_size_distribution(m)
+            d = observe(chain_size_distribution(single_type_offspring(model)), obs)
             return _chain_size_loglik(d, data)
         catch e
-            e isa MethodError || rethrow()
+            (e isa MethodError || e isa ArgumentError) || rethrow()
         end
     end
-    p = scalar_detection_prob(m.observation)
-    states = simulate(m.process, n_sim;
-        interventions, attributes, sim_opts, rng)
+    sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
+        stopping_rules)
+    states = _simulate_n(model, n_sim, sim_opts; interventions, attributes, rng)
     sim_values = Int[]
     censored = Bool[]
-    cap = max_cases(sim_opts)
+    cap = _case_cap(sim_opts)
     for state in states
-        cs = chain_statistics(state)
-        for true_size in cs.size
-            obs = rand(rng, Binomial(true_size, p))
-            obs >= 1 || continue
-            push!(sim_values, obs)
-            hit_cap = !state.extinct && state.cumulative_cases >= cap
+        hit_cap = !state.extinct && state.cumulative_cases >= cap
+        for v in _sim_chain_sizes(state, obs)
+            v >= 1 || continue
+            push!(sim_values, v)
             push!(censored, hit_cap)
         end
     end
     return _empirical_ll(data.data, sim_values; min_val = 1, censored, cap)
 end
 
-function loglikelihood(::ChainLengths,
-        ::Observed{<:Any, <:PerCaseObservation}; kwargs...)
-    throw(ArgumentError(
-        "loglikelihood(ChainLengths, Observed{..., PerCaseObservation}) is not defined: per-case detection does not translate to a well-defined chain length distribution. Use ChainSizes or evaluate on the bare process model."))
-end
+"""
+    loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
 
-for (DT, col, mv) in [(:ChainSizes, :size, 1), (:ChainLengths, :length, 0)]
-    @eval function loglikelihood(data::$DT, model::TransmissionModel;
-            interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
-            attributes::Union{Function, NoAttributes} = NoAttributes(),
-            sim_opts::SimOpts = SimOpts(),
-            n_sim::Int = 10_000,
-            rng::AbstractRNG = Random.default_rng())
-        # Fast path: use analytical likelihood when no interventions and
-        # the model has a single-type offspring specification. Falls
-        # through to simulation if no analytical method is defined, or the
-        # model is multi-type / multi-window (no single offspring law).
-        if isempty(interventions)
-            try
-                return loglikelihood(data, single_type_offspring(model))
-            catch e
-                (e isa MethodError || e isa ArgumentError) || rethrow()
-            end
+Log-likelihood of observed chain lengths under `model`. Only defined for
+models with no observation (per-case detection does not give a
+well-defined chain length); uses the analytical chain-length
+distribution with no interventions, otherwise a simulation estimate.
+The interventions and attributes are read from `model`.
+"""
+function loglikelihood(data::ChainLengths, model::TransmissionModel;
+        n_initial::Int = 1,
+        max_cases::Union{Int, Nothing} = 10_000,
+        max_generations::Union{Int, Nothing} = 100,
+        max_time::Union{Real, Nothing} = nothing,
+        stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
+        n_sim::Int = 10_000,
+        rng::AbstractRNG = Random.default_rng())
+    _observation(model) isa NoObservation || throw(ArgumentError(
+        "loglikelihood(ChainLengths, model with $(typeof(_observation(model)))) " *
+        "is not defined: per-case detection does not give a well-defined chain " *
+        "length. Use ChainSizes, or a model with no observation."))
+    interventions = _interventions(model)
+    attributes = _attributes(model)
+    if isempty(interventions)
+        try
+            return loglikelihood(data, single_type_offspring(model))
+        catch e
+            (e isa MethodError || e isa ArgumentError) || rethrow()
         end
-        _sim_loglikelihood(data.data, model, $(QuoteNode(col)), $mv;
-            interventions, attributes, sim_opts, n_sim, rng)
     end
-end
-
-# ── Unified fit interface (extends Distributions.fit) ────────────────
-#
-# For raw offspring counts, `Distributions.fit(Poisson, x)` already gives
-# the MLE; for NegBin offspring counts, plug `loglikelihood(OffspringCounts(x), NegBin(R, k))`
-# into Optim.jl or Turing's `maximum_likelihood`. EpiBranch's `fit` is
-# scoped to data types whose likelihoods are not in Distributions.jl:
-# `ChainSizes` and `ChainLengths`.
-
-"""
-    fit(::Type{Poisson}, data::ChainSizes; R_range=(0.001, 0.999))
-
-Maximum likelihood estimate of a Poisson offspring distribution from
-observed chain sizes, using the Borel chain size distribution.
-Only defined for subcritical R < 1.
-"""
-function fit(::Type{Poisson}, data::ChainSizes;
-        R_range::Tuple{Float64, Float64} = (0.001, 0.999))
-    neg_ll(R) = -loglikelihood(data, Poisson(R))
-    R = _golden_section_min(neg_ll, R_range...)
-    return Poisson(R)
-end
-
-"""
-    fit(::Type{NegativeBinomial}, data::ChainSizes;
-        R_range=(0.001, 0.999), k_range=(0.01, 100.0))
-
-Maximum likelihood estimate of a NegBin offspring distribution from
-observed chain sizes, using the GammaBorel chain size distribution.
-Only defined for subcritical R < 1.
-"""
-function fit(::Type{NegativeBinomial}, data::ChainSizes;
-        R_range::Tuple{Float64, Float64} = (0.001, 0.999),
-        k_range::Tuple{Float64, Float64} = (0.01, 100.0))
-    _coord_descent_negbin(data, R_range, k_range)
-end
-
-"""
-    fit(::Type{Poisson}, data::ChainLengths; R_range=(0.001, 0.999))
-
-Maximum likelihood estimate of a Poisson offspring distribution from
-observed chain lengths.
-"""
-function fit(::Type{Poisson}, data::ChainLengths;
-        R_range::Tuple{Float64, Float64} = (0.001, 0.999))
-    neg_ll(R) = -loglikelihood(data, Poisson(R))
-    R = _golden_section_min(neg_ll, R_range...)
-    return Poisson(R)
-end
-
-"""
-    fit(::Type{NegativeBinomial}, data::ChainLengths;
-        R_range=(0.001, 0.999), k_range=(0.01, 100.0))
-
-Maximum likelihood estimate of a NegBin offspring distribution from
-observed chain lengths, using the analytical chain length distribution.
-Only defined for subcritical R < 1.
-"""
-function fit(::Type{NegativeBinomial}, data::ChainLengths;
-        R_range::Tuple{Float64, Float64} = (0.001, 0.999),
-        k_range::Tuple{Float64, Float64} = (0.01, 100.0))
-    _coord_descent_negbin(data, R_range, k_range)
+    sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
+        stopping_rules)
+    return _sim_loglikelihood(data.data, model, :length, 0;
+        interventions, attributes, sim_opts, n_sim, rng)
 end
 
 # ── Helpers ──────────────────────────────────────────────────────────
-
-"""Coordinate descent on NegBin(R, k) MLE, using golden section on each axis."""
-function _coord_descent_negbin(data, R_range, k_range;
-        tol::Float64 = 1e-6, maxiter::Int = 50)
-    R = (R_range[1] + R_range[2]) / 2.0
-    k = sqrt(k_range[1] * k_range[2])
-    R_prev, k_prev = R, k
-    for iter in 1:maxiter
-        R = _golden_section_min(r -> -loglikelihood(data, NegBin(r, k)), R_range...)
-        k = _golden_section_min(κ -> -loglikelihood(data, NegBin(R, κ)), k_range...)
-        if iter > 1 &&
-           abs(R - R_prev) < tol &&
-           abs(k - k_prev) / max(k, 1.0) < tol
-            break
-        end
-        R_prev, k_prev = R, k
-    end
-    return NegBin(R, k)
-end
-
-"""Golden section search for minimum of a 1D function on [lo, hi]."""
-function _golden_section_min(
-        f, lo::Float64, hi::Float64; tol::Float64 = 1e-8, maxiter::Int = 100)
-    φ = (sqrt(5.0) - 1.0) / 2.0
-    c = hi - φ * (hi - lo)
-    d = lo + φ * (hi - lo)
-    for _ in 1:maxiter
-        (hi - lo) < tol && break
-        if f(c) < f(d)
-            hi = d
-        else
-            lo = c
-        end
-        c = hi - φ * (hi - lo)
-        d = lo + φ * (hi - lo)
-    end
-    return (lo + hi) / 2.0
-end
 
 """Empirical log-likelihood with Laplace smoothing and right-censoring.
 

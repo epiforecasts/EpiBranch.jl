@@ -8,7 +8,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         state = tsim(model; attributes = clinical,
-            sim_opts = SimOpts(max_cases = 50), rng = rng)
+            max_cases = 50, rng = rng)
 
         df = linelist(state)
 
@@ -23,7 +23,7 @@ using Dates
     @testset "linelist without clinical presentation has no onset" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = tsim(model; sim_opts = SimOpts(max_cases = 50), rng = rng)
+        state = tsim(model; max_cases = 50, rng = rng)
 
         df = linelist(state)
         @test "id" in names(df)
@@ -41,7 +41,7 @@ using Dates
             Recovery(delay = Exponential(10.0))
         ]
         state = tsim(model; attributes = clinical, transitions = transitions,
-            sim_opts = SimOpts(max_cases = 100), rng = rng)
+            max_cases = 100, rng = rng)
 
         df = linelist(state)
         @test "date_reporting" in names(df)
@@ -70,7 +70,7 @@ using Dates
             demographics(age_distribution = Normal(40, 15))
         )
         state = tsim(model; attributes = attrs,
-            sim_opts = SimOpts(max_cases = 50), rng = rng)
+            max_cases = 50, rng = rng)
 
         df = linelist(state)
         @test "age" in names(df)
@@ -92,7 +92,7 @@ using Dates
         state = tsim(model;
             condition = 50:500, attributes = attrs,
             transitions = [death, recovery],
-            sim_opts = SimOpts(max_cases = 500), rng = rng)
+            max_cases = 500, rng = rng)
 
         df = linelist(state)
         @test any(df.outcome .== "died")
@@ -122,7 +122,7 @@ using Dates
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         state = tsim(model;
             interventions = [iso], attributes = clinical,
-            sim_opts = SimOpts(max_cases = 50), rng = rng)
+            max_cases = 50, rng = rng)
 
         df = linelist(state)
         @test "isolated" in names(df)
@@ -131,7 +131,7 @@ using Dates
     @testset "contacts output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        state = tsim(model; sim_opts = SimOpts(max_cases = 50), rng = rng)
+        state = tsim(model; max_cases = 50, rng = rng)
 
         df = contacts(state)
         @test df isa DataFrame
@@ -144,7 +144,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         state = tsim(model; attributes = clinical,
-            sim_opts = SimOpts(max_cases = 20, n_initial = 3), rng = rng)
+            max_cases = 20, n_initial = 3, rng = rng)
 
         df = linelist(state)
         n_index = count(df.parent_id .== 0)
@@ -159,7 +159,7 @@ using Dates
             rng, ind) -> (ind.state[:vaccination_time] = ind.infection_time + 7.0)
         attrs = compose(clinical, risk_group, custom_time)
         state = tsim(model; attributes = attrs,
-            sim_opts = SimOpts(max_cases = 30), rng = rng)
+            max_cases = 30, rng = rng)
 
         df = linelist(state)
         @test "risk_group" in names(df)             # pass-through, symbol → string

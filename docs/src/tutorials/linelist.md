@@ -31,15 +31,11 @@ progression = [
     Recovery(delay = Exponential(14.0)),
 ]
 
-model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5); progression = progression)
+model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5);
+    progression = progression, attributes = attrs)
 
 rng = StableRNG(42)
-state = simulate(model;
-    condition = 50:200,
-    attributes = attrs,
-    sim_opts = SimOpts(max_cases = 200),
-    rng = rng,
-)
+state = simulate(model; condition = 50:200, max_cases = 200, rng = rng)
 
 ll = linelist(state; reference_date = Date(2024, 1, 1))
 first(ll, 5)
@@ -63,13 +59,11 @@ attrs_demo = compose(
     demographics(age_distribution = Normal(40, 15), prob_female = 0.55),
 )
 
+model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5);
+    progression = progression, attributes = attrs_demo)
+
 rng = StableRNG(42)
-state = simulate(model;
-    condition = 50:200,
-    attributes = attrs_demo,
-    sim_opts = SimOpts(max_cases = 200),
-    rng = rng,
-)
+state = simulate(model; condition = 50:200, max_cases = 200, rng = rng)
 
 ll = linelist(state; reference_date = Date(2024, 1, 1))
 println("Age range: $(minimum(ll.age)) - $(maximum(ll.age))")
@@ -98,15 +92,11 @@ age_stratified = [
     Recovery(delay = Exponential(14.0)),
 ]
 
-model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5); progression = age_stratified)
+model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5);
+    progression = age_stratified, attributes = attrs_demo)
 
 rng = StableRNG(42)
-state = simulate(model;
-    condition = 100:500,
-    attributes = attrs_demo,
-    sim_opts = SimOpts(max_cases = 500),
-    rng = rng,
-)
+state = simulate(model; condition = 100:500, max_cases = 500, rng = rng)
 
 ll = linelist(state; reference_date = Date(2024, 1, 1))
 
@@ -138,14 +128,9 @@ first(ct, 5)
 Generate outbreaks of a specific size range:
 
 ```@example linelist
-plain = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5))
+plain = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5); attributes = attrs)
 
 rng = StableRNG(42)
-state = simulate(plain;
-    condition = 100:150,
-    attributes = attrs,
-    sim_opts = SimOpts(max_cases = 200),
-    rng = rng,
-)
+state = simulate(plain; condition = 100:150, max_cases = 200, rng = rng)
 println("Outbreak size: $(state.cumulative_cases) (target: 100-150)")
 ```

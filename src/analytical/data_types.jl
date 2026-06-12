@@ -8,7 +8,7 @@ infected.  Used with `loglikelihood` and `fit`.
 
 ```julia
 data = OffspringCounts([0, 1, 2, 0, 3, 1, 0])
-fit(data, NegativeBinomial)
+loglikelihood(data, NegBin(0.8, 0.5))
 ```
 """
 struct OffspringCounts
@@ -69,7 +69,7 @@ Used with `loglikelihood` and `fit`.
 
 ```julia
 data = ChainLengths([0, 1, 0, 2, 1])
-fit(data, Poisson)
+loglikelihood(data, Poisson(0.5))
 ```
 """
 struct ChainLengths

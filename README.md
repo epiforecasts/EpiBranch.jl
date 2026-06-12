@@ -24,16 +24,18 @@ Pkg.add(url="https://github.com/epiforecasts/EpiBranch.jl")
 using EpiBranch
 using Distributions
 
-model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
-
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.5))
 
-results = simulate_batch(model, 500;
+# A model is a process together with the population it acts on
+# (attributes) and the policy in force (interventions); simulate and
+# loglikelihood read these straight off the model.
+model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5);
     interventions = [iso, ct],
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-    sim_opts = SimOpts(max_cases = 5000),
 )
+
+results = simulate(model, 500; max_cases = 5000)
 
 containment_probability(results)
 ```

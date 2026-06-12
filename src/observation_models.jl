@@ -1,16 +1,18 @@
 # ── Observation models ─────────────────────────────────────────────
 # State-space framework: the process model (TransmissionModel)
 # describes the latent epidemiological dynamics; an ObservationModel
-# describes how the latent state generates observed data. The two are
-# combined by `Observed(process, observation)` so that a single
-# `loglikelihood(data, model)` dispatch covers any process /
-# observation pairing for which a method is defined.
+# describes how the latent state generates observed data. An observation
+# is a forcing on the process (passed as `observation = …` to the
+# constructor), so a single `loglikelihood(data, model)` dispatch covers
+# any process / observation pairing for which the protocol is defined.
 
 """
 Abstract supertype for observation models. Subtypes describe how
 underlying transmission events generate observable data — per-case
 detection, reporting delays, aggregation, multi-stream surveillance,
-etc. Composed with a `TransmissionModel` via [`Observed`](@ref).
+etc. Attached to a process as the `observation` forcing (or via
+[`with_observation`](@ref)); participates through [`observe`](@ref) and
+`apply_observation!`, dispatched on the observation type.
 """
 abstract type ObservationModel end
 
@@ -38,11 +40,11 @@ the report time is still well-defined.
   per-individual state (e.g. age-conditional reporting probability).
 
 Per-individual variation is honoured by the simulation path
-(`simulate(::Observed{..., PerCaseObservation})`). The closed-form
-analytical helpers — `ThinnedChainSize`, `chain_size_distribution` on
-`Observed{..., PerCaseObservation}` — require a scalar `detection_prob`
-and will throw when given a `Distribution` or `Function`; fall back
-to the simulation likelihood for per-individual reporting.
+(`apply_observation!`). The closed-form analytical helpers —
+`ThinnedChainSize`, `observe(distribution, ::PerCaseObservation)` —
+require a scalar `detection_prob` and will throw when given a
+`Distribution` or `Function`; fall back to the simulation likelihood for
+per-individual reporting.
 
 `detection_prob = 1.0, delay = Dirac(0.0)` ↔ no observation effect.
 `detection_prob = 1.0, delay = D` ↔ full reporting with delay `D`.

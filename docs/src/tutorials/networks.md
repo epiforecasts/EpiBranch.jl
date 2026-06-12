@@ -38,7 +38,8 @@ function household_ring(n_households, household_size)
 end
 
 adjacency = household_ring(20, 4)
-model = NetworkProcess(adjacency, 0.4, LogNormal(1.6, 0.5))
+clinical = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+model = NetworkProcess(adjacency, 0.4, LogNormal(1.6, 0.5); attributes = clinical)
 ```
 
 A weighted adjacency matrix works too. `NetworkProcess(A, gt)` reads any
@@ -50,8 +51,7 @@ transmission probability.
 ```@example networks
 rng = StableRNG(42)
 state = simulate(model;
-    attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    sim_opts = SimOpts(n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)]),
+    n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)],
     rng = rng)
 
 println("Final outbreak size: ", state.cumulative_cases, " of ", length(adjacency))
@@ -63,8 +63,7 @@ nodes instead of growing without bound. For a batch, use
 
 ```@example networks
 results = simulate(model, 200;
-    attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    sim_opts = SimOpts(n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)]),
+    n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)],
     rng = StableRNG(1))
 
 sizes = [s.cumulative_cases for s in results]
@@ -87,9 +86,9 @@ attrs = compose(
         susceptibility = (rng, ind) -> ind.state[:age] >= 60 ? 0.9 : 0.3),
 )
 
-state = simulate(model;
-    attributes = attrs,
-    sim_opts = SimOpts(n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)]),
+model_attrs = NetworkProcess(adjacency, 0.4, LogNormal(1.6, 0.5); attributes = attrs)
+state = simulate(model_attrs;
+    n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)],
     rng = StableRNG(7))
 
 infected = filter(is_infected, state.individuals)
@@ -107,10 +106,10 @@ state carries across generations.
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 ct = ContactTracing(probability = 0.6, isolation_to_trace_delay = Exponential(1.5))
 
-results = simulate(model, 200;
-    interventions = [iso, ct],
-    attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    sim_opts = SimOpts(n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)]),
+model_ct = NetworkProcess(adjacency, 0.4, LogNormal(1.6, 0.5);
+    interventions = [iso, ct], attributes = clinical)
+results = simulate(model_ct, 200;
+    n_initial = 1, stopping_rules = [Extinction(), MaxGenerations(50)],
     rng = StableRNG(2))
 
 sizes = [s.cumulative_cases for s in results]

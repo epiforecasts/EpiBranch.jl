@@ -27,18 +27,18 @@ using EpiBranch
 using Distributions
 using StableRNGs
 
-model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
-
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 ct = ContactTracing(OnSymptomOnset(), 0.5, Exponential(1.5), Quarantine())
 
-rng = StableRNG(42)
-results = simulate(model, 500;
+# A model is a process together with the population (attributes) and the
+# policy in force (interventions); simulate reads both from it.
+model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5);
     interventions = [iso, ct],
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-    sim_opts = SimOpts(max_cases = 5000),
-    rng = rng,
 )
+
+rng = StableRNG(42)
+results = simulate(model, 500; max_cases = 5000, rng = rng)
 
 containment_probability(results)
 ```

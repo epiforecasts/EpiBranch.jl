@@ -26,12 +26,18 @@ end
 struct SingleSpawnModel <: EpiBranch.TransmissionModel
     generation_time::Exponential{Float64}
     progression::Vector{EpiBranch.AbstractClinicalTransition}
+    forcings::EpiBranch.Forcings
 end
 function SingleSpawnModel(; progression = EpiBranch.AbstractClinicalTransition[])
-    SingleSpawnModel(Exponential(1.0), progression)
+    SingleSpawnModel(Exponential(1.0), progression, EpiBranch._NO_FORCINGS)
 end
 EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
 EpiBranch._progression(m::SingleSpawnModel) = m.progression
+# Carry forcings so the model joins the with_* / forcings system.
+EpiBranch._forcings(m::SingleSpawnModel) = m.forcings
+function EpiBranch._rebuild(m::SingleSpawnModel, f::EpiBranch.Forcings)
+    SingleSpawnModel(m.generation_time, m.progression, f)
+end
 
 @testset "Clinical transitions" begin
     clinical = clinical_presentation(
@@ -44,7 +50,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         # state keys appear on individuals.
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         state = tsim(model; attributes = clinical,
-            sim_opts = SimOpts(max_cases = 20), rng = StableRNG(1))
+            max_cases = 20, rng = StableRNG(1))
         for ind in state.individuals
             @test !haskey(ind.state, :reported)
             @test !haskey(ind.state, :admitted)
@@ -61,7 +67,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         )
         rep = Reporting(delay = LogNormal(1.0, 0.3))
         state = tsim(model; attributes = clin_30, transitions = [rep],
-            sim_opts = SimOpts(max_cases = 100), rng = rng)
+            max_cases = 100, rng = rng)
 
         for ind in state.individuals
             @test haskey(ind.state, :reported)
@@ -82,7 +88,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         rep = Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5)
         state = tsim(model; attributes = clinical, transitions = [rep],
-            sim_opts = SimOpts(max_cases = 400), rng = rng)
+            max_cases = 400, rng = rng)
         frac_reported = count(ind -> ind.state[:reported], state.individuals) /
                         length(state.individuals)
         @test 0.35 <= frac_reported <= 0.65
@@ -93,12 +99,12 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
 
         h0 = Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.0)
         state0 = tsim(model; attributes = clinical, transitions = [h0],
-            sim_opts = SimOpts(max_cases = 50), rng = StableRNG(4))
+            max_cases = 50, rng = StableRNG(4))
         @test all(!ind.state[:admitted] for ind in state0.individuals)
 
         h1 = Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 1.0)
         state1 = tsim(model; attributes = clinical, transitions = [h1],
-            sim_opts = SimOpts(max_cases = 50), rng = StableRNG(5))
+            max_cases = 50, rng = StableRNG(5))
         @test all(ind.state[:admitted] for ind in state1.individuals)
     end
 
@@ -116,7 +122,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         )
         state = tsim(model; attributes = clinical,
             transitions = [rep, hosp],
-            sim_opts = SimOpts(max_cases = 200), rng = rng)
+            max_cases = 200, rng = rng)
         for ind in state.individuals
             ind.state[:admitted] && @test ind.state[:reported]
         end
@@ -128,7 +134,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         d = Death(delay = LogNormal(2.5, 0.4), probability = 0.3)
         r = Recovery(delay = LogNormal(2.0, 0.4))
         state = tsim(model; attributes = clinical, transitions = [d, r],
-            sim_opts = SimOpts(max_cases = 200), rng = rng)
+            max_cases = 200, rng = rng)
         for ind in state.individuals
             @test haskey(ind.state, :outcome)
             @test ind.state[:outcome] in (:died, :recovered)
@@ -153,7 +159,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         d = Death(delay = LogNormal(2.5, 0.4), probability = 0.0)
         r = Recovery(delay = LogNormal(2.0, 0.4))
         state = tsim(model; attributes = clinical, transitions = [d, r],
-            sim_opts = SimOpts(max_cases = 50), rng = rng)
+            max_cases = 50, rng = rng)
         @test all(ind.state[:outcome] == :recovered for ind in state.individuals)
     end
 
@@ -169,7 +175,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
             Death(delay = LogNormal(2.5, 0.4), probability = 1.0),
             Recovery(delay = LogNormal(2.0, 0.4))]
         state = tsim(model; attributes = all_asymp, transitions = ts,
-            sim_opts = SimOpts(max_cases = 50), rng = rng)
+            max_cases = 50, rng = rng)
         for ind in state.individuals
             @test ind.state[:reported] == false
             @test ind.state[:admitted] == false
@@ -182,7 +188,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         rep = Reporting(delay = LogNormal(1.0, 0.3))
         # No attributes function → no :onset_time → error.
         @test_throws ErrorException tsim(model; transitions = [rep],
-            sim_opts = SimOpts(max_cases = 5), rng = StableRNG(10))
+            max_cases = 5, rng = StableRNG(10))
     end
 
     @testset "Heterogeneous probability via function" begin
@@ -203,7 +209,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         r = Recovery(delay = LogNormal(2.0, 0.4))
         state = tsim(model; condition = 100:500, attributes = attrs,
             transitions = [d, r],
-            sim_opts = SimOpts(max_cases = 500), rng = rng)
+            max_cases = 500, rng = rng)
         n_died_80plus = 0
         n_died_under80 = 0
         for ind in state.individuals
@@ -231,7 +237,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
             probability = 1.0)
         state = tsim(model; attributes = attrs,
             transitions = [hosp],
-            sim_opts = SimOpts(max_cases = 100), rng = rng)
+            max_cases = 100, rng = rng)
         for ind in state.individuals
             ind.state[:admitted] || continue
             d = ind.state[:admission_time] - onset_time(ind)
@@ -259,7 +265,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         ]
         state = tsim(model; attributes = clinical,
             transitions = test_then_report,
-            sim_opts = SimOpts(max_cases = 50), rng = rng)
+            max_cases = 50, rng = rng)
         for ind in state.individuals
             @test ind.state[:reported]
             @test ind.state[:reporting_time] ≈ ind.state[:test_time] + 1.0
@@ -276,7 +282,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         rep = Reporting(delay = (rng, ind) -> 1.0,
             from = ind -> ind.infection_time)
         state = tsim(model; transitions = [rep],
-            sim_opts = SimOpts(max_cases = 30), rng = rng)
+            max_cases = 30, rng = rng)
         for ind in state.individuals
             @test ind.state[:reported]
             @test ind.state[:reporting_time] ≈ ind.infection_time + 1.0
@@ -291,7 +297,7 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         state = tsim(model; attributes = clinical,
             transitions = [DummyTest(LogNormal(0.5, 0.2))],
-            sim_opts = SimOpts(max_cases = 30), rng = rng)
+            max_cases = 30, rng = rng)
         @test all(ind.state[:tested] for ind in state.individuals)
         @test all(isfinite(ind.state[:test_time]) for ind in state.individuals)
     end
@@ -301,8 +307,10 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         # it does not touch transitions itself. The engine sweep should
         # still populate DummyTest fields on every infected case.
         rng = StableRNG(7)
-        state = simulate(SingleSpawnModel(progression = [DummyTest(LogNormal(0.5, 0.2))]);
-            attributes = clinical, sim_opts = SimOpts(max_cases = 5), rng = rng)
+        state = simulate(
+            with_attributes(SingleSpawnModel(progression = [DummyTest(LogNormal(0.5, 0.2))]), clinical);
+            max_cases = 5,
+            rng = rng)
         @test all(ind.state[:tested] for ind in state.individuals)
         @test all(isfinite(ind.state[:test_time]) for ind in state.individuals)
     end

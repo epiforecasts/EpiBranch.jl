@@ -187,10 +187,20 @@ offspring_distribution
 
 ### Observation models
 
+An observation model is part of the process. Pass `observation = …` to a
+process constructor, or attach one later with [`with_observation`](@ref).
+It is added the same way an intervention is, by implementing two methods
+dispatched on the observation type: [`observe`](@ref) for the analytical
+likelihood and `apply_observation!` for simulation.
+
 ```@docs
 ObservationModel
+NoObservation
 PerCaseObservation
-Observed
+with_interventions
+with_attributes
+with_observation
+observe
 ThinnedChainSize
 ```
 
@@ -210,22 +220,12 @@ data wrapper:
 loglikelihood(OffspringCounts(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), NegBin(0.8, 0.5))
 loglikelihood(ChainLengths(data), Poisson(0.5))
-loglikelihood(ChainSizes(data), model; interventions=[iso])
+loglikelihood(ChainSizes(data), model)   # interventions/observation read from model
 ```
 
-It also extends `Distributions.fit` with MLE methods for chain-size and
-chain-length data, whose likelihoods are not provided by Distributions.jl:
-
-```julia
-fit(Poisson, ChainSizes(data))
-fit(NegativeBinomial, ChainSizes(data))
-fit(Poisson, ChainLengths(data))
-fit(NegativeBinomial, ChainLengths(data))
-```
-
-For raw offspring counts, use `Distributions.fit(Poisson, x)` directly,
-or plug `loglikelihood(OffspringCounts(x), NegBin(R, k))` into Optim.jl
-or Turing's `maximum_likelihood`.
+For maximum-likelihood estimation, pair the `loglikelihood` interface
+with Optim.jl, or use Turing's `maximum_likelihood` — the same model that
+feeds `data ~ chain_size_distribution(model)` works for both.
 
 See the [chains tutorial](@ref "Chain statistics, likelihood, and fitting")
 for examples.

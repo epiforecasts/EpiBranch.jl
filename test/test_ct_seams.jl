@@ -31,9 +31,8 @@ end
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
-        state = simulate(model;
-            interventions = [iso, ct], attributes = clinical,
-            sim_opts = SimOpts(max_cases = 50), rng = rng)
+        state = simulate(
+            with_attributes(with_interventions(model, [iso, ct]), clinical); max_cases = 50, rng = rng)
         # Some traces should fire: at least one quarantined contact.
         @test any(get(ind.state, :quarantined, false) for ind in state.individuals)
     end
@@ -89,12 +88,11 @@ end
     # is what a level-2 ring has to reach past.
     model = BranchingProcess((rng, ind) -> 4, Exponential(5.0))
     attrs = compose(clinical, transmission_traits(susceptibility = 0.5))
-    opts = SimOpts(n_initial = 3, max_generations = 4)
+    opts = (; n_initial = 3, max_generations = 4)
 
     @testset "depth 1 traces direct contacts only; the fringe does not grow" begin
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 1)
-        state = simulate(model; interventions = [ct], attributes = attrs,
-            sim_opts = opts, rng = StableRNG(1))
+        state = simulate(with_attributes(with_interventions(model, [ct]), attrs); opts..., rng = StableRNG(1))
         # No uninfected contact ever generated contacts of its own.
         for ind in state.individuals
             ind.parent_id == 0 && continue
@@ -106,10 +104,8 @@ end
     @testset "depth 2 reaches contacts-of-contacts past the uninfected fringe" begin
         ct1 = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 1)
         ct2 = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
-        s1 = simulate(model; interventions = [ct1], attributes = attrs,
-            sim_opts = opts, rng = StableRNG(1))
-        s2 = simulate(model; interventions = [ct2], attributes = attrs,
-            sim_opts = opts, rng = StableRNG(1))
+        s1 = simulate(with_attributes(with_interventions(model, [ct1]), attrs); opts..., rng = StableRNG(1))
+        s2 = simulate(with_attributes(with_interventions(model, [ct2]), attrs); opts..., rng = StableRNG(1))
 
         # The uninfected fringe now grows its own contacts: more nodes.
         @test length(s2.individuals) > length(s1.individuals)
@@ -134,8 +130,8 @@ end
         # is an uninfected ring member) carries no remaining budget, so
         # the ring stops there rather than running away.
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
-        state = simulate(model; interventions = [ct], attributes = attrs,
-            sim_opts = SimOpts(n_initial = 3, max_generations = 6), rng = StableRNG(7))
+        state = simulate(with_attributes(with_interventions(model, [ct]), attrs);
+            n_initial = 3, max_generations = 6, rng = StableRNG(7))
         for ind in state.individuals
             ind.parent_id == 0 && continue
             parent = state.individuals[ind.parent_id]
@@ -151,8 +147,8 @@ end
     @testset "RingVaccination vaccinates the depth-2 ring" begin
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
         rv = RingVaccination(efficacy = 0.9)
-        state = simulate(model; interventions = [ct, rv], attributes = attrs,
-            sim_opts = opts, rng = StableRNG(3))
+        state = simulate(
+            with_attributes(with_interventions(model, [ct, rv]), attrs); opts..., rng = StableRNG(3))
         # At least one vaccinated contact sits past the fringe (its parent
         # was never infected): the level-2 ring delivered doses there.
         outer_vaccinated = false

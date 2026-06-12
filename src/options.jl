@@ -104,7 +104,7 @@ end
 """Extract the `MaxCases` cap from `opts` (or `typemax(Int)` if absent).
 Used by analytical helpers that need to know the cap to flag outbreaks
 that hit it before going extinct."""
-function max_cases(opts::SimOpts)
+function _case_cap(opts::SimOpts)
     for rule in opts.stopping_rules
         rule isa MaxCases && return rule.n
     end

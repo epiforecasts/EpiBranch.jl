@@ -3,7 +3,7 @@
 The core workflow is covered here: defining a model, running simulations,
 and extracting results.
 
-## Defining a transmission model
+## Defining a model
 
 At minimum, a branching process is defined by an offspring distribution
 (how many secondary cases each case produces). If you also want timing
@@ -20,6 +20,11 @@ model = BranchingProcess(
 )
 ```
 
+This is already a complete model. The population it acts on (attributes),
+the policy in force (interventions), and how cases are observed are
+*forcings* you add as keyword arguments to the constructor below;
+`simulate` and `loglikelihood` then read them straight off the model.
+
 [`NegBin`](@ref) is a convenience constructor for the Negative Binomial,
 parameterised by mean (R) and dispersion (k), matching the epidemiological
 convention.
@@ -29,7 +34,7 @@ convention.
 ```@example gettingstarted
 rng = StableRNG(123)
 state = simulate(model;
-    sim_opts = SimOpts(max_cases = 500),
+    max_cases = 500,
     rng = rng,
 )
 println("Cases: $(state.cumulative_cases), Extinct: $(state.extinct)")
@@ -38,18 +43,19 @@ println("Cases: $(state.cumulative_cases), Extinct: $(state.extinct)")
 A `SimulationState` is returned, containing all individuals and
 outbreak metadata.
 
-## Adding clinical parameters
+## Adding a population
 
 To model symptom onset (needed for isolation-based interventions), provide
-an incubation period distribution via [`clinical_presentation`](@ref):
+an incubation period distribution via [`clinical_presentation`](@ref) as
+the `attributes` forcing:
 
 ```@example gettingstarted
-rng = StableRNG(42)
-state = simulate(model;
+model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5);
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-    sim_opts = SimOpts(max_cases = 500),
-    rng = rng,
 )
+
+rng = StableRNG(42)
+state = simulate(model; max_cases = 500, rng = rng)
 
 # Check onset times are set
 ind = state.individuals[1]
@@ -58,19 +64,20 @@ println("Infection: $(round(ind.infection_time, digits=1)), Onset: $(round(onset
 
 ## Adding interventions
 
-You can combine interventions by passing them as a vector:
+Interventions are another forcing on the model. `simulate` reads them
+from the model, so there is nothing to pass at the call site:
 
 ```@example gettingstarted
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.5))
 
-rng = StableRNG(42)
-state = simulate(model;
-    interventions = [iso, ct],
+model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5);
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-    sim_opts = SimOpts(max_cases = 500),
-    rng = rng,
+    interventions = [iso, ct],
 )
+
+rng = StableRNG(42)
+state = simulate(model; max_cases = 500, rng = rng)
 println("Cases: $(state.cumulative_cases)")
 println("Isolated: $(count(is_isolated, state.individuals))")
 println("Traced: $(count(is_traced, state.individuals))")
@@ -82,12 +89,7 @@ Run many replicates to estimate containment probability:
 
 ```@example gettingstarted
 rng = StableRNG(42)
-results = simulate(model, 500;
-    interventions = [iso, ct],
-    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-    sim_opts = SimOpts(max_cases = 5000),
-    rng = rng,
-)
+results = simulate(model, 500; max_cases = 5000, rng = rng)
 println("Containment probability: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -155,7 +157,7 @@ Generate outbreaks of a specific size via rejection sampling:
 rng = StableRNG(42)
 state = simulate(model;
     condition = 50:100,
-    sim_opts = SimOpts(max_cases = 200),
+    max_cases = 200,
     rng = rng,
 )
 println("Outbreak size: $(state.cumulative_cases) (target: 50-100)")

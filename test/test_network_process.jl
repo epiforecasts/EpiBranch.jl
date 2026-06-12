@@ -2,9 +2,11 @@
     # A small ring graph used by several tests.
     ring(n) = [sort([mod1(i - 1, n), mod1(i + 1, n)]) for i in 1:n]
 
-    sim1(model; kwargs...) = simulate(model;
-        sim_opts = SimOpts(n_initial = 1,
-            stopping_rules = [Extinction(), MaxGenerations(100)]),
+    sim1(model; attributes = NoAttributes(),
+        interventions = AbstractIntervention[], kwargs...) = simulate(
+        with_attributes(with_interventions(model, interventions), attributes);
+        n_initial = 1,
+        stopping_rules = [Extinction(), MaxGenerations(100)],
         kwargs...)
 
     @testset "Constructors" begin
@@ -55,15 +57,15 @@
         model = NetworkProcess(adj, 1.0, LogNormal(1.6, 0.5))
         # Seed node 1; only nodes 1–3 can ever be infected.
         state = simulate(model;
-            sim_opts = SimOpts(n_initial = 1,
-                stopping_rules = [Extinction(), MaxGenerations(20)]),
+            n_initial = 1,
+            stopping_rules = [Extinction(), MaxGenerations(20)],
             rng = StableRNG(1))
         # With n_initial = 1 the seed is a random node; check the
         # component containment property over several seeds.
         for seed in 1:20
             s = simulate(model;
-                sim_opts = SimOpts(n_initial = 1,
-                    stopping_rules = [Extinction(), MaxGenerations(20)]),
+                n_initial = 1,
+                stopping_rules = [Extinction(), MaxGenerations(20)],
                 rng = StableRNG(seed))
             infected = [ind.state[:network_node]
                         for ind in s.individuals if is_infected(ind)]
@@ -82,8 +84,8 @@
         for p in (0.1, 0.5, 0.9)
             model = NetworkProcess(adj, p, LogNormal(1.6, 0.5))
             res = simulate(model, 100;
-                sim_opts = SimOpts(n_initial = 1,
-                    stopping_rules = [Extinction(), MaxGenerations(100)]),
+                n_initial = 1,
+                stopping_rules = [Extinction(), MaxGenerations(100)],
                 rng = StableRNG(1))
             push!(sizes, sum(s.cumulative_cases for s in res) / 100)
         end
@@ -121,11 +123,8 @@
         tot_pop = 0
         old_inf = 0
         tot_inf = 0
-        for s in simulate(model, 40;
-            attributes = attrs,
-            sim_opts = SimOpts(n_initial = 3,
-                stopping_rules = [Extinction(), MaxGenerations(100)]),
-            rng = StableRNG(11))
+        for s in simulate(with_attributes(model, attrs), 40; n_initial = 3,
+            stopping_rules = [Extinction(), MaxGenerations(100)], rng = StableRNG(11))
             for ind in s.individuals
                 tot_pop += 1
                 ind.state[:age] >= 60 && (old_pop += 1)
@@ -165,8 +164,8 @@
         leaf_gens = Int[]
         for rep in 1:30
             s = simulate(model;
-                sim_opts = SimOpts(n_initial = 1,
-                    stopping_rules = [Extinction(), MaxGenerations(100)]),
+                n_initial = 1,
+                stopping_rules = [Extinction(), MaxGenerations(100)],
                 rng = StableRNG(100 + rep))
             s.cumulative_cases < 20 && continue
             for ind in filter(is_infected, s.individuals)
@@ -185,17 +184,16 @@
         adj = [sort(unique([mod1(i - 1, n), mod1(i + 1, n),
                    mod1(i + 7, n), mod1(i - 7, n)])) for i in 1:n]
         model = NetworkProcess(adj, 0.6, LogNormal(1.6, 0.5))
-        opts = SimOpts(n_initial = 1,
+        opts = (; n_initial = 1,
             stopping_rules = [Extinction(), MaxGenerations(100)])
         attrs = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
 
-        base = simulate(model, 100; attributes = attrs, sim_opts = opts,
-            rng = StableRNG(5))
+        base = simulate(with_attributes(model, attrs), 100; opts..., rng = StableRNG(5))
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
         ct = ContactTracing(probability = 0.7,
             isolation_to_trace_delay = Exponential(1.5))
-        treated = simulate(model, 100; interventions = [iso, ct],
-            attributes = attrs, sim_opts = opts, rng = StableRNG(5))
+        treated = simulate(with_attributes(with_interventions(model, [iso, ct]), attrs),
+            100; opts..., rng = StableRNG(5))
 
         mean_base = sum(s.cumulative_cases for s in base) / 100
         mean_treated = sum(s.cumulative_cases for s in treated) / 100

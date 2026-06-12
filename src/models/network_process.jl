@@ -65,6 +65,7 @@ struct NetworkProcess{G} <: TransmissionModel
     adjacency::Vector{Vector{Int}}
     edge_probability::Vector{Vector{Float64}}
     generation_time::G
+    forcings::Forcings
 
     # Single inner constructor: accepts any adjacency-list form with
     # per-edge probabilities parallel to it, normalises the neighbour
@@ -74,7 +75,7 @@ struct NetworkProcess{G} <: TransmissionModel
     function NetworkProcess(adjacency::AbstractVector{<:AbstractVector{<:Integer}},
             edge_probability::AbstractVector{<:AbstractVector{<:Real}},
             generation_time::G = NoGenerationTime();
-            population_size = nothing) where {G}
+            population_size = nothing, forcing_kwargs...) where {G}
         length(adjacency) == length(edge_probability) || throw(ArgumentError(
             "adjacency and edge_probability must have the same number of nodes"))
         adj = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
@@ -90,9 +91,12 @@ struct NetworkProcess{G} <: TransmissionModel
                   "is the network itself (got $(length(adjacency)) nodes). Build a " *
                   "larger graph to model a larger population." maxlog=1
         end
-        new{G}(adj, ep, generation_time)
+        new{G}(adj, ep, generation_time, _mk_forcings(; forcing_kwargs...))
     end
 end
+
+# The model carries its forcings; shared accessors read them from here.
+_forcings(m::NetworkProcess) = m.forcings
 
 """
     NetworkProcess(adjacency, p::Real, gt; population_size = nothing)
@@ -100,9 +104,11 @@ end
 Give every edge the same transmission probability `p`.
 """
 function NetworkProcess(adjacency::AbstractVector{<:AbstractVector{<:Integer}},
-        p::Real, generation_time = NoGenerationTime(); population_size = nothing)
+        p::Real, generation_time = NoGenerationTime();
+        population_size = nothing, forcing_kwargs...)
     edge_probability = [fill(float(p), length(nbrs)) for nbrs in adjacency]
-    NetworkProcess(adjacency, edge_probability, generation_time; population_size)
+    NetworkProcess(adjacency, edge_probability, generation_time;
+        population_size, forcing_kwargs...)
 end
 
 population_size(::NetworkProcess) = NoPopulation()
@@ -128,7 +134,7 @@ takes `A[i, j]` if nonzero, otherwise `A[j, i]`.
 """
 function NetworkProcess(A::AbstractMatrix,
         gt::Union{Distribution, Function, NoGenerationTime} = NoGenerationTime();
-        population_size = nothing)
+        population_size = nothing, forcing_kwargs...)
     n = size(A, 1)
     size(A, 2) == n || throw(ArgumentError(
         "adjacency matrix must be square, got $(size(A))"))
@@ -144,7 +150,7 @@ function NetworkProcess(A::AbstractMatrix,
             push!(edge_probability[j], float(w))
         end
     end
-    NetworkProcess(adjacency, edge_probability, gt; population_size)
+    NetworkProcess(adjacency, edge_probability, gt; population_size, forcing_kwargs...)
 end
 
 # ── Node bookkeeping ─────────────────────────────────────────────────

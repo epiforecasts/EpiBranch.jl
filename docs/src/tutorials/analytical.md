@@ -109,7 +109,7 @@ q_exact = extinction_probability(R, k)
 
 model = BranchingProcess(NegBin(R, k), Exponential(5.0))
 results = simulate(model, 1000;
-    sim_opts = SimOpts(max_cases = 10_000, max_generations = 200),
+    max_cases = 10_000, max_generations = 200,
     rng = StableRNG(42),
 )
 q_sim = containment_probability(results)
