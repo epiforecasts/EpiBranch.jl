@@ -44,14 +44,10 @@ progression = [
     Recovery(delay = LogNormal(2.0, 0.4)),
 ]
 
-model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression)
+model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
-state = simulate(model;
-    attributes = clinical,
-    max_cases = 200,
-    rng = rng,
-)
+state = simulate(model; max_cases = 200, rng = rng)
 
 ind = state.individuals[end]
 println("onset = ", ind.state[:onset_time])
@@ -105,14 +101,10 @@ hosp_age = Hospitalisation(
 )
 
 progression = [hosp_age, death_age, Recovery(delay = LogNormal(2.0, 0.4))]
-model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression)
+model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression, attributes = attrs)
 
 rng = StableRNG(42)
-state = simulate(model;
-    attributes = attrs,
-    max_cases = 300,
-    rng = rng,
-)
+state = simulate(model; max_cases = 300, rng = rng)
 
 n_died = count(ind -> ind.state[:outcome] == :died, state.individuals)
 n_died_80plus = count(state.individuals) do ind
@@ -143,14 +135,10 @@ progression = [
     Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5),
     gated_hosp,
 ]
-model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression)
+model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
-state = simulate(model;
-    attributes = clinical,
-    max_cases = 200,
-    rng = rng,
-)
+state = simulate(model; max_cases = 200, rng = rng)
 
 # Admitted ⊆ Reported, by construction.
 for ind in state.individuals
@@ -206,14 +194,10 @@ reporting_post_test = Reporting(
 )
 
 progression = [testing, reporting_post_test]
-model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression)
+model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
-state = simulate(model;
-    attributes = clinical,
-    max_cases = 100,
-    rng = rng,
-)
+state = simulate(model; max_cases = 100, rng = rng)
 
 ind = state.individuals[end]
 println("onset = ", onset_time(ind))
@@ -290,15 +274,10 @@ multitype = BranchingProcess(
     R -> NegBin(R, 0.5),
     LogNormal(1.6, 0.5),
     type_labels = ["children", "adults"],
-    progression = progression,
-)
+    progression = progression, attributes = attrs_age)
 
 rng = StableRNG(42)
-state = simulate(multitype;
-    attributes = attrs_age,
-    max_cases = 500,
-    rng = rng,
-)
+state = simulate(multitype; max_cases = 500, rng = rng)
 
 n_died_kids = count(state.individuals) do ind
     ind.state[:outcome] == :died && ind.state[:type] == 1
@@ -364,14 +343,10 @@ progression = [
     Recovery(delay = LogNormal(2.0, 0.4)),
     LostToFollowUp(LogNormal(1.5, 0.5), 0.1),
 ]
-model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression)
+model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
-state = simulate(model;
-    attributes = clinical,
-    max_cases = 200,
-    rng = rng,
-)
+state = simulate(model; max_cases = 200, rng = rng)
 
 outcomes = [ind.state[:outcome] for ind in state.individuals if haskey(ind.state, :outcome)]
 println("Outcome counts: ",

@@ -227,20 +227,17 @@ the `BorderClosure` above (interpreted here as everyone being in one
 region so closure does nothing — illustrative only):
 
 ```@example extending
-model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
 clinical_with_region = compose(
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     (rng, ind) -> (ind.state[:region] = :only),
 )
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 bc = BorderClosure(10.0, 0.05)
+model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0);
+    interventions = [iso, bc], attributes = clinical_with_region)
 
 rng = StableRNG(42)
-results = simulate(model, 200;
-    interventions = [iso, bc],
-    attributes = clinical_with_region,
-    max_cases = 500, rng = rng,
-)
+results = simulate(model, 200; max_cases = 500, rng = rng)
 println("Isolation + border closure: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -315,8 +312,9 @@ attrs = compose(
     ),
 )
 
+model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0); attributes = attrs)
 rng = StableRNG(42)
-state = simulate(model; attributes = attrs, max_cases = 100, rng = rng)
+state = simulate(model; max_cases = 100, rng = rng)
 n_high = count(ind -> get(ind.state, :risk_group, :low) == :high, state.individuals)
 println("High-risk individuals: $n_high / $(length(state.individuals))")
 ```
@@ -336,12 +334,11 @@ combined = compose(
     ),
 )
 
+model_combined = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0);
+    attributes = combined)
+
 rng = StableRNG(42)
-state = simulate(model;
-    attributes = combined,
-    max_cases = 100,
-    rng = rng,
-)
+state = simulate(model_combined; max_cases = 100, rng = rng)
 ind = state.individuals[1]
 println("Individual 1: age=$(ind.state[:age]), sex=$(ind.state[:sex]), risk=$(ind.state[:risk_group])")
 ```
@@ -358,14 +355,11 @@ period, read with [`incubation_period`](@ref):
 
 ```@example extending
 gt = ind -> Gamma(2.0, incubation_period(ind) / 2)
-linked = BranchingProcess(NegBin(2.5, 0.16), gt)
+linked = BranchingProcess(NegBin(2.5, 0.16), gt;
+    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
 
 rng = StableRNG(42)
-state = simulate(linked;
-    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-    max_cases = 500,
-    rng = rng,
-)
+state = simulate(linked; max_cases = 500, rng = rng)
 println("Cases: $(state.cumulative_cases)")
 ```
 
@@ -388,11 +382,10 @@ host = function (rng, ind)
     ind.state[:onset_time] = ind.infection_time + scale
 end
 
-scaled = BranchingProcess(Poisson(2.0), ind -> Exponential(ind.state[:gt_scale]))
+scaled = BranchingProcess(Poisson(2.0), ind -> Exponential(ind.state[:gt_scale]); attributes = host)
 
 rng = StableRNG(42)
-state = simulate(scaled;
-    attributes = host, max_cases = 500, rng = rng)
+state = simulate(scaled; max_cases = 500, rng = rng)
 println("Cases: $(state.cumulative_cases)")
 ```
 
@@ -469,14 +462,10 @@ function risk_offspring(rng, individual)
     return rand(rng, Poisson(base_R))
 end
 
-model_risk = BranchingProcess(risk_offspring, Exponential(5.0); n_types = 1)
+model_risk = BranchingProcess(risk_offspring, Exponential(5.0); n_types = 1, attributes = risk_group)
 
 rng = StableRNG(42)
-results = simulate(model_risk, 200;
-    attributes = risk_group,
-    max_cases = 500,
-    rng = rng,
-)
+results = simulate(model_risk, 200; max_cases = 500, rng = rng)
 println("Risk-stratified model: $(round(containment_probability(results), digits=3))")
 ```
 

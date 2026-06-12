@@ -8,13 +8,11 @@ vs when is the parent isolated (intervention time)?
 There is a connection to survival analysis. The generation time CDF is the
 survival function of remaining potential transmission, truncated by isolation.
 
-The canonical way to attach a policy to a model is as a forcing on the
-process constructor:
-`BranchingProcess(offspring, gt; interventions = [iso], attributes = clinical)`,
-which `simulate` and `loglikelihood` then read from. This tutorial instead
-compares many policies against a single shared `process` by passing
-`interventions =` straight to `simulate` — the deliberate override form,
-which is exactly what a scenario sweep does.
+A policy is a forcing on the model: pass `interventions = [iso]` to the
+process constructor, and `simulate` and `loglikelihood` read it from the
+model. This tutorial compares several policies against the same base
+process, so it defines a small builder (each scenario is its own model)
+and simulates each.
 
 ## Without interventions
 
@@ -25,15 +23,14 @@ using EpiBranch
 using Distributions
 using StableRNGs
 
-process = BranchingProcess(Poisson(3.0), Exponential(5.0))
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
+# A scenario is a model: the base process under a given policy.
+scenario(interventions = AbstractIntervention[], attributes = clinical) =
+    BranchingProcess(Poisson(3.0), Exponential(5.0); interventions, attributes)
+
 rng = StableRNG(42)
-results_baseline = simulate(process, 200;
-    attributes = clinical,
-    max_cases = 500,
-    rng = rng,
-)
+results_baseline = simulate(scenario(), 200; max_cases = 500, rng = rng)
 println("Containment (no interventions): $(round(containment_probability(results_baseline), digits=3))")
 ```
 
@@ -51,12 +48,7 @@ is required, set by [`clinical_presentation`](@ref):
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 
 rng = StableRNG(42)
-results = simulate(process, 200;
-    interventions = [iso],
-    attributes = clinical,
-    max_cases = 500,
-    rng = rng,
-)
+results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
 println("Containment (isolation): $(round(containment_probability(results), digits=3))")
 ```
 
@@ -67,12 +59,7 @@ generation time. Faster isolation truncates more of the infectious period:
 for d in [0.5, 2.0, 10.0]
     let iso = Isolation(onset_to_isolation_delay = Exponential(d)),
         rng = StableRNG(42)
-        results = simulate(process, 200;
-            interventions = [iso],
-            attributes = clinical,
-            max_cases = 500,
-            rng = rng,
-        )
+        results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
         println("Delay ~ Exp($d): containment = $(round(containment_probability(results), digits=3))")
     end
 end
@@ -87,12 +74,7 @@ a reduced rate (e.g. household contacts):
 iso_leaky = Isolation(onset_to_isolation_delay = Exponential(2.0), post_isolation_transmission = 0.3)
 
 rng = StableRNG(42)
-results = simulate(process, 200;
-    interventions = [iso_leaky],
-    attributes = clinical,
-    max_cases = 500,
-    rng = rng,
-)
+results = simulate(scenario([iso_leaky]), 200; max_cases = 500, rng = rng)
 println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -106,12 +88,7 @@ iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = true)
 
 rng = StableRNG(42)
-results = simulate(process, 200;
-    interventions = [iso, ct],
-    attributes = clinical,
-    max_cases = 500,
-    rng = rng,
-)
+results = simulate(scenario([iso, ct]), 200; max_cases = 500, rng = rng)
 println("Isolation + tracing: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -182,12 +159,7 @@ disease_hard = clinical_presentation(
 iso_imperfect = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.8)
 
 rng = StableRNG(42)
-results = simulate(process, 200;
-    interventions = [iso_imperfect, ct],
-    attributes = disease_hard,
-    max_cases = 500,
-    rng = rng,
-)
+results = simulate(scenario([iso_imperfect, ct], disease_hard), 200; max_cases = 500, rng = rng)
 println("30% asymptomatic, 80% test sensitivity: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -206,12 +178,7 @@ ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.
 rv = RingVaccination(efficacy = 0.8)
 
 rng = StableRNG(42)
-results = simulate(process, 200;
-    interventions = [iso, ct, rv],
-    attributes = clinical,
-    max_cases = 500,
-    rng = rng,
-)
+results = simulate(scenario([iso, ct, rv]), 200; max_cases = 500, rng = rng)
 println("Iso + tracing + ring vaccination: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -222,12 +189,7 @@ If transmission occurs before immunity develops, there is no protection:
 rv_delayed = RingVaccination(efficacy = 0.9, delay_to_immunity = 7.0)
 
 rng = StableRNG(42)
-results = simulate(process, 200;
-    interventions = [iso, ct, rv_delayed],
-    attributes = clinical,
-    max_cases = 500,
-    rng = rng,
-)
+results = simulate(scenario([iso, ct, rv_delayed]), 200; max_cases = 500, rng = rng)
 println("With 7-day delay to immunity: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -235,13 +197,7 @@ We can also count the number of vaccine doses administered:
 
 ```@example interventions
 rng = StableRNG(42)
-state = simulate(process;
-    condition = 50:200,
-    interventions = [iso, ct, rv],
-    attributes = clinical,
-    max_cases = 200,
-    rng = rng,
-)
+state = simulate(scenario([iso, ct, rv]); condition = 50:200, max_cases = 200, rng = rng)
 n_vaccinated = count(is_vaccinated, state.individuals)
 n_infected = count(is_infected, state.individuals)
 println("Vaccinated: $n_vaccinated, Infected: $n_infected")
@@ -261,13 +217,7 @@ contacts for one more hop so the ring can grow past them. The same
 ct2 = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0), depth = 2)
 
 rng = StableRNG(42)
-state = simulate(process;
-    condition = 50:200,
-    interventions = [iso, ct2, rv],
-    attributes = clinical,
-    max_cases = 200,
-    rng = rng,
-)
+state = simulate(scenario([iso, ct2, rv]); condition = 50:200, max_cases = 200, rng = rng)
 doses_depth2 = count(is_vaccinated, state.individuals)
 println("Doses with a level-2 ring: $doses_depth2")
 ```
@@ -291,12 +241,7 @@ resolution handles this automatically:
 pep = RingVaccination(efficacy = 0.9)  # delay_to_immunity defaults to 0
 
 rng = StableRNG(42)
-results = simulate(process, 200;
-    interventions = [iso, ct, pep],
-    attributes = clinical,
-    max_cases = 500,
-    rng = rng,
-)
+results = simulate(scenario([iso, ct, pep]), 200; max_cases = 500, rng = rng)
 println("Iso + tracing + PEP: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -315,10 +260,7 @@ mv = MassVaccination(efficacy = 0.85, eligibility_time = 30.0,
     delay_to_immunity = 14.0)
 
 rng = StableRNG(42)
-results = simulate(process, 200;
-    interventions = [mv], attributes = clinical,
-    max_cases = 500, rng = rng,
-)
+results = simulate(scenario([mv]), 200; max_cases = 500, rng = rng)
 println("Mass vaccination from day 30: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -347,10 +289,7 @@ the attributes:
 ```@example interventions
 attrs = compose(clinical, demographics(age_distribution = Uniform(0, 90)))
 rng = StableRNG(42)
-results = simulate(process, 200;
-    interventions = [mv_age], attributes = attrs,
-    max_cases = 500, rng = rng,
-)
+results = simulate(scenario([mv_age], attrs), 200; max_cases = 500, rng = rng)
 println("Age-stratified rollout: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -388,10 +327,7 @@ boost = MassVaccination(efficacy = 0.9, eligibility_time = 60.0,
     delay_to_immunity = 14.0, dose_label = :boost)
 
 rng = StableRNG(42)
-results = simulate(process, 200;
-    interventions = [prime, boost], attributes = clinical,
-    max_cases = 500, rng = rng,
-)
+results = simulate(scenario([prime, boost]), 200; max_cases = 500, rng = rng)
 println("Two-dose rollout: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -407,13 +343,7 @@ effort is fully trackable:
 
 ```@example interventions
 rng = StableRNG(42)
-state = simulate(process;
-    condition = 50:200,
-    interventions = [iso, ct],
-    attributes = clinical,
-    max_cases = 200,
-    rng = rng,
-)
+state = simulate(scenario([iso, ct]); condition = 50:200, max_cases = 200, rng = rng)
 
 total = length(state.individuals)
 infected = count(is_infected, state.individuals)
@@ -442,12 +372,7 @@ must be available at the time the individual would be tested.
 iso_delayed = Scheduled(Isolation(onset_to_isolation_delay = Exponential(2.0)); start_time = 10.0)
 
 rng = StableRNG(42)
-results = simulate(process, 200;
-    interventions = [iso_delayed],
-    attributes = clinical,
-    max_cases = 500,
-    rng = rng,
-)
+results = simulate(scenario([iso_delayed]), 200; max_cases = 500, rng = rng)
 println("Isolation from day 10: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -468,12 +393,7 @@ ct_triggered = Scheduled(
 )
 
 rng = StableRNG(42)
-results = simulate(process, 200;
-    interventions = [iso, ct_triggered],
-    attributes = clinical,
-    max_cases = 500,
-    rng = rng,
-)
+results = simulate(scenario([iso, ct_triggered]), 200; max_cases = 500, rng = rng)
 println("Tracing after 20 cases: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -552,12 +472,8 @@ end
 
 # Test it
 gl = GatheringLimit(5)
+model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0); interventions = [gl])
 rng = StableRNG(42)
-results_gl = simulate(
-    BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)), 200;
-    interventions = [gl],
-    max_cases = 500,
-    rng = rng,
-)
+results_gl = simulate(model, 200; max_cases = 500, rng = rng)
 println("With gathering limit (max 5): $(round(containment_probability(results_gl), digits=3))")
 ```

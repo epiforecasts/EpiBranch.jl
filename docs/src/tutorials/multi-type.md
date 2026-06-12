@@ -77,15 +77,12 @@ println("Cases: $(state.cumulative_cases)")
 Interventions operate on individual state, not types — they work unchanged:
 
 ```@example multitype
-model = BranchingProcess(M, R_j -> NegBin(R_j, 0.5), LogNormal(1.6, 0.5))
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+model = BranchingProcess(M, R_j -> NegBin(R_j, 0.5), LogNormal(1.6, 0.5);
+    interventions = [iso],
+    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
 
 rng = StableRNG(42)
-results = simulate(model, 200;
-    interventions = [iso],
-    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-    max_cases = 500,
-    rng = rng,
-)
+results = simulate(model, 200; max_cases = 500, rng = rng)
 println("Containment: $(round(containment_probability(results), digits=3))")
 ```
