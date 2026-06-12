@@ -140,5 +140,15 @@ end
 ```
 """
 function offspring_distribution(model::TransmissionModel)
-    return single_type_offspring(model)
+    off = single_type_offspring(model)
+    # `single_type_offspring` may return a spec that has a chain-size law
+    # but no per-individual offspring `Distribution` (e.g. `ClusterMixed`,
+    # whose θ is shared within a chain, so the counts are not iid). Refuse
+    # clearly rather than handing back something `logpdf(·, count)` can't use.
+    off isa Distribution || throw(ArgumentError(
+        "offspring_distribution needs a per-case offspring Distribution, but " *
+        "$(typeof(model)) carries a $(typeof(off)) offspring spec with no single " *
+        "per-individual law (e.g. ClusterMixed shares θ within a chain). Use " *
+        "chain_size_distribution for such models."))
+    return off
 end
