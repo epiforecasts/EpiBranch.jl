@@ -114,6 +114,20 @@ end
 population_size(::NetworkProcess) = NoPopulation()
 n_types(::NetworkProcess) = 1
 
+# A network has no single per-case offspring law: each node's offspring
+# is set by its neighbours and their edge probabilities, not a shared
+# distribution. The analytical helpers that route through
+# `single_type_offspring` (chain_size_distribution, offspring_distribution,
+# extinction_probability, …) therefore can't apply; say so plainly rather
+# than letting the generic "no offspring field" extension hint surface.
+function single_type_offspring(::NetworkProcess)
+    throw(ArgumentError(
+        "NetworkProcess has no single offspring law: each node's offspring " *
+        "is determined by its neighbours in the graph. Use " *
+        "chain_length_distribution or simulate(); the chain-size and " *
+        "offspring analytical paths need a closed-form offspring distribution."))
+end
+
 function Base.show(io::IO, m::NetworkProcess)
     n = length(m.adjacency)
     n_edges = sum(length, m.adjacency; init = 0) ÷ 2

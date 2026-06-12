@@ -77,4 +77,42 @@
         @test length(lengths) == 50
         @test all(l -> l >= 0, lengths)
     end
+
+    @testset "coverage matrix: every cell is a Distribution or a clear ArgumentError" begin
+        # Locks the model × data-type matrix so a gap can't silently
+        # reopen: each entry point either returns something usable with
+        # Turing's `~` (a `Distribution`) or refuses with a user-facing
+        # `ArgumentError`. No bare `MethodError`s, no developer-only hints.
+        bp = BranchingProcess(Poisson(0.5))
+        bp_obs = BranchingProcess(Poisson(0.5);
+            observation = PerCaseObservation(detection_prob = 0.6))
+        bp_cm = BranchingProcess(ClusterMixed(Poisson, Gamma(2.0, 0.4)))
+        bp_mt = BranchingProcess([1.0 0.5; 0.5 1.0],
+            R -> NegBin(R, 0.16), LogNormal(1.6, 0.5))
+        net = NetworkProcess([[2], [1, 3], [2]], 0.5)
+
+        @testset "chain_size_distribution" begin
+            @test chain_size_distribution(bp) isa Distribution
+            @test chain_size_distribution(bp_obs) isa Distribution
+            @test chain_size_distribution(bp_cm) isa Distribution
+            @test_throws ArgumentError chain_size_distribution(bp_mt)
+            @test_throws ArgumentError chain_size_distribution(net)
+        end
+
+        @testset "chain_length_distribution" begin
+            @test chain_length_distribution(bp) isa Distribution
+            @test chain_length_distribution(net) isa Distribution
+            # per-case detection has no well-defined chain length; the
+            # refusal surfaces when the law is evaluated, not at construction.
+            dl = chain_length_distribution(bp_obs)
+            @test_throws ArgumentError logpdf(dl, [0, 1, 2])
+        end
+
+        @testset "offspring_distribution" begin
+            @test offspring_distribution(bp) isa Distribution
+            @test_throws ArgumentError offspring_distribution(bp_cm)
+            @test_throws ArgumentError offspring_distribution(bp_mt)
+            @test_throws ArgumentError offspring_distribution(net)
+        end
+    end
 end
