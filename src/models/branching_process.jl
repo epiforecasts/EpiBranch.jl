@@ -44,12 +44,21 @@ The second positional argument is the contact interval (generation-time
 distribution); with the default single window and no natural-history
 states it is the generation interval, exactly as before.
 
+Every constructor also takes `interventions`, `attributes`, and
+`observation` as keyword arguments, the forcings the model carries (see
+[`with_interventions`](@ref)). They default to none, so a model with no
+forcings reads exactly as above.
+
 # Examples
 
 ```julia
 BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
 BranchingProcess(NegBin(0.8, 0.5))  # no timing, pure chain statistics
 BranchingProcess(M, R_j -> NegBin(R_j, 0.16), LogNormal(1.6, 0.5))  # multi-type
+
+# attach forcings at construction
+BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5);
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0))])
 ```
 
 Transmission is a tuple of [`Infectiousness`](@ref) windows; the
