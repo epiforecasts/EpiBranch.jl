@@ -32,8 +32,23 @@ EpiBranch.generate_offspring
 EpiBranch.contacts_of
 EpiBranch.collect_exposures
 EpiBranch.gather_by_target
+EpiBranch.model_generation_time
 make_contact!
 susceptible_fraction
+```
+
+### Building a model's starting population
+
+A transmission model defines [`initialise_state`](@ref EpiBranch.initialise_state)
+to set up its starting population. These helpers carry the shared work, so a
+model never touches the `SimulationState` constructor or the engine's
+bookkeeping directly.
+
+```@docs
+EpiBranch.initialise_state
+EpiBranch.new_state
+EpiBranch.add_individuals!
+EpiBranch.seed!
 ```
 
 ## Interventions

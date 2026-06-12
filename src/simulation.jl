@@ -155,6 +155,17 @@ resolution, clinical transitions, and bookkeeping.
 function contacts_of end
 
 """
+    model_generation_time(model)
+
+The generation-time spec the default [`collect_exposures`](@ref) reads when
+timing the contacts of an offspring-driven model. Defaults to the model's
+`generation_time` field; a model that times its contacts differently (no such
+field, or a per-window kernel) overrides this instead of being forced to carry
+a `generation_time` field.
+"""
+model_generation_time(model::TransmissionModel) = model.generation_time
+
+"""
     collect_exposures(model, state) -> (targets, edges, minted, is_new)
 
 This generation's candidate exposures, grouped by target, gathered by
@@ -172,18 +183,6 @@ generation (networks, households, clustering) override this with
 [`gather_by_target`](@ref), which walks [`contacts_of`](@ref) and
 deduplicates so a node reached several times resolves once.
 """
-
-"""
-    model_generation_time(model)
-
-The generation-time spec the default [`collect_exposures`](@ref) reads when
-timing the contacts of an offspring-driven model. Defaults to the model's
-`generation_time` field; a model that times its contacts differently (no such
-field, or a per-window kernel) overrides this instead of being forced to carry
-a `generation_time` field.
-"""
-model_generation_time(model::TransmissionModel) = model.generation_time
-
 function collect_exposures(model::TransmissionModel, state::SimulationState)
     pre = length(state.individuals)   # contacts created this step get id > pre
     targets = Individual[]
@@ -526,6 +525,17 @@ function seed!(state::SimulationState, ids, interventions, transitions)
     return state
 end
 
+"""
+    initialise_state(model, sim_opts, interventions, transitions, attributes, rng) -> SimulationState
+
+Build the starting [`SimulationState`](@ref) for `model`: its population and
+its index cases, before the engine steps any generations. The default
+offspring-driven method mints `sim_opts.n_initial` index cases and seeds them.
+A structure-driven model (a fixed, depleting population such as a network or
+households) defines its own method, typically by building the population with
+[`new_state`](@ref) and [`add_individuals!`](@ref) and infecting the index
+cases with [`seed!`](@ref).
+"""
 function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         interventions, transitions, attributes, rng::AbstractRNG)
     state = new_state(model, transitions, attributes, rng)
