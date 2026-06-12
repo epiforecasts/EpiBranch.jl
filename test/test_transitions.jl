@@ -23,20 +23,28 @@ end
 # resolution for new individuals. As an offspring-driven model it only
 # implements `generate_offspring`; the engine owns timing and creation.
 # One offspring per parent each generation.
-struct SingleSpawnModel <: EpiBranch.TransmissionModel
+struct SingleSpawnModel{A, O} <: EpiBranch.TransmissionModel
     generation_time::Exponential{Float64}
     progression::Vector{EpiBranch.AbstractClinicalTransition}
-    forcings::EpiBranch.Forcings
+    interventions::Vector{EpiBranch.AbstractIntervention}
+    attributes::A
+    observation::O
 end
 function SingleSpawnModel(; progression = EpiBranch.AbstractClinicalTransition[],
-        forcing_kwargs...)
-    SingleSpawnModel(Exponential(1.0), progression,
-        EpiBranch.make_forcings(; forcing_kwargs...))
+        interventions = EpiBranch.AbstractIntervention[],
+        attributes = EpiBranch.NoAttributes(),
+        observation::EpiBranch.ObservationModel = EpiBranch.NoObservation())
+    SingleSpawnModel(Exponential(1.0),
+        convert(Vector{EpiBranch.AbstractClinicalTransition}, progression),
+        convert(Vector{EpiBranch.AbstractIntervention}, interventions),
+        attributes, observation)
 end
 EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
 EpiBranch._progression(m::SingleSpawnModel) = m.progression
-# Carry forcings so the model joins the forcings system.
-EpiBranch.forcings(m::SingleSpawnModel) = m.forcings
+# Carry the model inputs so the model joins the engine.
+EpiBranch.interventions(m::SingleSpawnModel) = m.interventions
+EpiBranch.attributes(m::SingleSpawnModel) = m.attributes
+EpiBranch.observation(m::SingleSpawnModel) = m.observation
 
 @testset "Clinical transitions" begin
     clinical = clinical_presentation(

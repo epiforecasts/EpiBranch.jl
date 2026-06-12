@@ -21,8 +21,8 @@ model = BranchingProcess(
 ```
 
 This is already a complete model. The population it acts on (attributes),
-the policy in force (interventions), and how cases are observed are
-*forcings* you add as keyword arguments to the constructor below;
+the policy in force (interventions), and how cases are observed
+(observation) are keyword arguments you add to the constructor below;
 `simulate` and `loglikelihood` then read them straight off the model.
 
 [`NegBin`](@ref) is a convenience constructor for the Negative Binomial,
@@ -47,7 +47,7 @@ outbreak metadata.
 
 To model symptom onset (needed for isolation-based interventions), provide
 an incubation period distribution via [`clinical_presentation`](@ref) as
-the `attributes` forcing:
+the model's `attributes`:
 
 ```@example gettingstarted
 model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5);
@@ -64,7 +64,7 @@ println("Infection: $(round(ind.infection_time, digits=1)), Onset: $(round(onset
 
 ## Adding interventions
 
-Interventions are another forcing on the model. `simulate` reads them
+Interventions are another thing the model carries. `simulate` reads them
 from the model, so there is nothing to pass at the call site:
 
 ```@example gettingstarted

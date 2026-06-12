@@ -17,10 +17,13 @@ public required_fields
 #   - candidate generation: `generate_offspring` (offspring-driven) or
 #     `contacts_of` + `collect_exposures` (structure-driven), all exported;
 #   - `initialise_state` to build its starting population;
-#   - `forcings` to return the `Forcings` it carries;
+#   - `interventions`, `attributes`, `observation` to return the model
+#     inputs it carries;
 #   - `population_size`, `n_types`, `model_generation_time` metadata.
 public initialise_state
-public forcings
+public interventions
+public attributes
+public observation
 public population_size
 public n_types
 public model_generation_time
@@ -30,10 +33,8 @@ public model_generation_time
 public new_state
 public add_individuals!
 public seed!
-public make_forcings
 public get_generation_time
 public transmission_time
 
 # Types a model constructs or dispatches on.
-public Forcings
 public NoGenerationTime

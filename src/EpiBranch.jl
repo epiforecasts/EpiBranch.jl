@@ -57,11 +57,11 @@ function generate_offspring end
     include("public.jl")
 end
 
-# Observation models (state-space slot) and the forcings overlay
-# (interventions + attributes + observation) that every process carries.
+# Observation models (state-space slot) and the model inputs
+# (interventions, attributes, observation) that every process carries.
 # Defined before the process types so their constructors can store them.
 include("observation_models.jl")
-include("forcings.jl")
+include("model_inputs.jl")
 
 # Transmission models
 include("models/branching_process.jl")

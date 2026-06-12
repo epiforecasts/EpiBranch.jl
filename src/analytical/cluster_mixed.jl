@@ -116,18 +116,25 @@ descendant via `parent_id` lookup. The per-individual draw is
 
 Both constructors forward `interventions`, `attributes`, and
 `observation` keyword arguments to the wrapped model, so a cluster-mixed
-process can carry forcings like any other.
+process can carry interventions, attributes and observation like any
+other.
 """
 function BranchingProcess(offspring::ClusterMixed, gt::Union{Distribution, Function};
-        population_size::Union{Int, NoPopulation} = NoPopulation(), forcing_kwargs...)
+        population_size::Union{Int, NoPopulation} = NoPopulation(),
+        interventions = AbstractIntervention[], attributes = NoAttributes(),
+        observation::ObservationModel = NoObservation())
     BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, 1,
-        NoTypeLabels(), AbstractClinicalTransition[], make_forcings(; forcing_kwargs...))
+        NoTypeLabels(), AbstractClinicalTransition[];
+        interventions, attributes, observation)
 end
 
 function BranchingProcess(offspring::ClusterMixed;
-        population_size::Union{Int, NoPopulation} = NoPopulation(), forcing_kwargs...)
+        population_size::Union{Int, NoPopulation} = NoPopulation(),
+        interventions = AbstractIntervention[], attributes = NoAttributes(),
+        observation::ObservationModel = NoObservation())
     BranchingProcess((Infectiousness(offspring),), population_size, 1,
-        NoTypeLabels(), AbstractClinicalTransition[], make_forcings(; forcing_kwargs...))
+        NoTypeLabels(), AbstractClinicalTransition[];
+        interventions, attributes, observation)
 end
 
 """

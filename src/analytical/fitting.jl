@@ -175,10 +175,10 @@ function loglikelihood(data::ChainSizes, model::TransmissionModel;
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         n_sim::Int = 10_000,
         rng::AbstractRNG = Random.default_rng())
-    obs = _observation(model)
-    interventions = _interventions(model)
-    attributes = _attributes(model)
-    if isempty(interventions)
+    obs = observation(model)
+    ivs = interventions(model)
+    attrs = attributes(model)
+    if isempty(ivs)
         try
             d = observe(chain_size_distribution(single_type_offspring(model)), obs)
             return _chain_size_loglik(d, data)
@@ -188,7 +188,8 @@ function loglikelihood(data::ChainSizes, model::TransmissionModel;
     end
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
-    states = _simulate_n(model, n_sim, sim_opts; interventions, attributes, rng)
+    states = _simulate_n(model, n_sim, sim_opts;
+        interventions = ivs, attributes = attrs, rng)
     sim_values = Int[]
     censored = Bool[]
     cap = _case_cap(sim_opts)
@@ -220,13 +221,13 @@ function loglikelihood(data::ChainLengths, model::TransmissionModel;
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         n_sim::Int = 10_000,
         rng::AbstractRNG = Random.default_rng())
-    _observation(model) isa NoObservation || throw(ArgumentError(
-        "loglikelihood(ChainLengths, model with $(typeof(_observation(model)))) " *
+    observation(model) isa NoObservation || throw(ArgumentError(
+        "loglikelihood(ChainLengths, model with $(typeof(observation(model)))) " *
         "is not defined: per-case detection does not give a well-defined chain " *
         "length. Use ChainSizes, or a model with no observation."))
-    interventions = _interventions(model)
-    attributes = _attributes(model)
-    if isempty(interventions)
+    ivs = interventions(model)
+    attrs = attributes(model)
+    if isempty(ivs)
         try
             return loglikelihood(data, single_type_offspring(model))
         catch e
@@ -236,7 +237,7 @@ function loglikelihood(data::ChainLengths, model::TransmissionModel;
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
     return _sim_loglikelihood(data.data, model, :length, 0;
-        interventions, attributes, sim_opts, n_sim, rng)
+        interventions = ivs, attributes = attrs, sim_opts, n_sim, rng)
 end
 
 # ── Helpers ──────────────────────────────────────────────────────────

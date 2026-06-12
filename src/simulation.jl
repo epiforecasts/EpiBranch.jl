@@ -6,9 +6,9 @@
 
 Run a single outbreak simulation.
 
-The interventions, attributes and observation are forcings carried by
-`model`, set on the process constructor, so the model alone determines the
-generative process. `simulate` takes only execution controls.
+The interventions, attributes and observation are carried by `model`, set
+on the process constructor, so the model alone determines the generative
+process. `simulate` takes only execution controls.
 
 Termination is set by `max_cases`, `max_generations`, and `max_time` (any
 of which may be `nothing` to drop that limit); the run always stops on
@@ -37,8 +37,8 @@ function simulate(model::TransmissionModel;
         max_attempts::Int = 10_000)
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
-    return _simulate(model, sim_opts; interventions = _interventions(model),
-        attributes = _attributes(model), rng, condition, max_attempts)
+    return _simulate(model, sim_opts; interventions = interventions(model),
+        attributes = attributes(model), rng, condition, max_attempts)
 end
 
 # Internal single run against a built `SimOpts`. The public methods build
@@ -64,7 +64,7 @@ function _simulate(model::TransmissionModel, sim_opts::SimOpts;
         _advance_generation!(model, state, interventions)
     end
 
-    apply_observation!(_observation(model), state, rng)
+    apply_observation!(observation(model), state, rng)
     return state
 end
 
@@ -89,8 +89,8 @@ function simulate(model::TransmissionModel, n::Int;
         parallel::Bool = false)
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
-    return _simulate_n(model, n, sim_opts; interventions = _interventions(model),
-        attributes = _attributes(model), rng, parallel)
+    return _simulate_n(model, n, sim_opts; interventions = interventions(model),
+        attributes = attributes(model), rng, parallel)
 end
 
 function _simulate_n(model::TransmissionModel, n::Int, sim_opts::SimOpts;

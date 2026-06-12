@@ -8,9 +8,9 @@ vs when is the parent isolated (intervention time)?
 There is a connection to survival analysis. The generation time CDF is the
 survival function of remaining potential transmission, truncated by isolation.
 
-A policy is a forcing on the model: pass `interventions = [iso]` to the
-process constructor, and `simulate` and `loglikelihood` read it from the
-model. This tutorial compares several policies against the same base
+A policy lives on the model: pass `interventions = [iso]` to the process
+constructor, and `simulate` and `loglikelihood` read it from the model.
+This tutorial compares several policies against the same base
 process, so it defines a small builder (each scenario is its own model)
 and simulates each.
 

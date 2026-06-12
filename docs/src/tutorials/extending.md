@@ -615,19 +615,19 @@ loglikelihood(ChainSizes(data), MyModel(NegBin(0.8, 0.5), ...))
 ### Composing with the observation side
 
 Your model carries an observation like any other process: pass
-`observation = …` to its constructor, or attach one with
-[`with_observation`](@ref). The likelihood reads it automatically:
+`observation = …` to its constructor and the likelihood reads it
+automatically:
 
 ```julia
-with_observation(MyModel(...), PerCaseObservation(detection_prob = 0.7))
+MyModel(...; observation = PerCaseObservation(detection_prob = 0.7))
 ```
 
 works the same way as it does for `BranchingProcess`.
 
 ## Adding an observation model
 
-Observation models are a *forcing* on the process, added the same way
-interventions are. They subtype `ObservationModel` and join in through
+Observation models attach to the process the same way interventions do.
+They subtype `ObservationModel` and join in through
 two methods dispatched on the observation type, with no model type
 parameter:
 
@@ -663,10 +663,9 @@ end
 EpiBranch.observe(base, o::CensoredAtSize) = TruncatedChainSize(base, o.cap)
 ```
 
-Usage: `BranchingProcess(...; observation = CensoredAtSize(10))`, or
-`with_observation(model, CensoredAtSize(10))`. No per-observation
-`loglikelihood` method is needed — returning a distribution from `observe`
-means the shared machinery evaluates `logpdf` on it.
+Usage: `BranchingProcess(...; observation = CensoredAtSize(10))`. No
+per-observation `loglikelihood` method is needed — returning a distribution
+from `observe` means the shared machinery evaluates `logpdf` on it.
 
 ### Sim ↔ analytical consistency test
 

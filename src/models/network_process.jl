@@ -61,11 +61,13 @@ the node is infected if any edge transmits.
 `:onset_time` is set to `infection_time + incubation_period` when the
 node is infected.
 """
-struct NetworkProcess{G} <: TransmissionModel
+struct NetworkProcess{G, A, O} <: TransmissionModel
     adjacency::Vector{Vector{Int}}
     edge_probability::Vector{Vector{Float64}}
     generation_time::G
-    forcings::Forcings
+    interventions::Vector{AbstractIntervention}
+    attributes::A
+    observation::O
 
     # Single inner constructor: accepts any adjacency-list form with
     # per-edge probabilities parallel to it, normalises the neighbour
@@ -75,7 +77,10 @@ struct NetworkProcess{G} <: TransmissionModel
     function NetworkProcess(adjacency::AbstractVector{<:AbstractVector{<:Integer}},
             edge_probability::AbstractVector{<:AbstractVector{<:Real}},
             generation_time::G = NoGenerationTime();
-            population_size = nothing, forcing_kwargs...) where {G}
+            population_size = nothing,
+            interventions = AbstractIntervention[],
+            attributes::A = NoAttributes(),
+            observation::O = NoObservation()) where {G, A, O}
         length(adjacency) == length(edge_probability) || throw(ArgumentError(
             "adjacency and edge_probability must have the same number of nodes"))
         adj = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
@@ -91,12 +96,16 @@ struct NetworkProcess{G} <: TransmissionModel
                   "is the network itself (got $(length(adjacency)) nodes). Build a " *
                   "larger graph to model a larger population." maxlog=1
         end
-        new{G}(adj, ep, generation_time, make_forcings(; forcing_kwargs...))
+        new{G, A, O}(adj, ep, generation_time,
+            _intervention_vector(interventions), attributes, observation)
     end
 end
 
-# The model carries its forcings; shared accessors read them from here.
-forcings(m::NetworkProcess) = m.forcings
+# The model carries its interventions, attributes and observation; the
+# shared accessors read them from here.
+interventions(m::NetworkProcess) = m.interventions
+attributes(m::NetworkProcess) = m.attributes
+observation(m::NetworkProcess) = m.observation
 
 """
     NetworkProcess(adjacency, p::Real, gt; population_size = nothing)
@@ -105,10 +114,12 @@ Give every edge the same transmission probability `p`.
 """
 function NetworkProcess(adjacency::AbstractVector{<:AbstractVector{<:Integer}},
         p::Real, generation_time = NoGenerationTime();
-        population_size = nothing, forcing_kwargs...)
+        population_size = nothing,
+        interventions = AbstractIntervention[], attributes = NoAttributes(),
+        observation::ObservationModel = NoObservation())
     edge_probability = [fill(float(p), length(nbrs)) for nbrs in adjacency]
     NetworkProcess(adjacency, edge_probability, generation_time;
-        population_size, forcing_kwargs...)
+        population_size, interventions, attributes, observation)
 end
 
 population_size(::NetworkProcess) = NoPopulation()
@@ -148,7 +159,9 @@ takes `A[i, j]` if nonzero, otherwise `A[j, i]`.
 """
 function NetworkProcess(A::AbstractMatrix,
         gt::Union{Distribution, Function, NoGenerationTime} = NoGenerationTime();
-        population_size = nothing, forcing_kwargs...)
+        population_size = nothing,
+        interventions = AbstractIntervention[], attributes = NoAttributes(),
+        observation::ObservationModel = NoObservation())
     n = size(A, 1)
     size(A, 2) == n || throw(ArgumentError(
         "adjacency matrix must be square, got $(size(A))"))
@@ -164,7 +177,8 @@ function NetworkProcess(A::AbstractMatrix,
             push!(edge_probability[j], float(w))
         end
     end
-    NetworkProcess(adjacency, edge_probability, gt; population_size, forcing_kwargs...)
+    NetworkProcess(adjacency, edge_probability, gt;
+        population_size, interventions, attributes, observation)
 end
 
 # ── Node bookkeeping ─────────────────────────────────────────────────

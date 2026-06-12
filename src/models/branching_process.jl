@@ -45,8 +45,9 @@ distribution); with the default single window and no natural-history
 states it is the generation interval, exactly as before.
 
 Every constructor also takes `interventions`, `attributes`, and
-`observation` as keyword arguments, the forcings the model carries. They
-default to none, so a model with no forcings reads exactly as above.
+`observation` as keyword arguments, the inputs the model carries. They
+default to none, so a model with no interventions, attributes or
+observation reads exactly as above.
 
 # Examples
 
@@ -55,7 +56,7 @@ BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
 BranchingProcess(NegBin(0.8, 0.5))  # no timing, pure chain statistics
 BranchingProcess(M, R_j -> NegBin(R_j, 0.16), LogNormal(1.6, 0.5))  # multi-type
 
-# attach forcings at construction
+# attach interventions at construction
 BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5);
     interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0))])
 ```
@@ -64,22 +65,26 @@ Transmission is a tuple of [`Infectiousness`](@ref) windows; the
 convenience constructors above build a single default window with
 `from = :infection` and no censoring.
 """
-struct BranchingProcess{W <: Tuple, P, L} <: TransmissionModel
+struct BranchingProcess{W <: Tuple, P, L, A, O} <: TransmissionModel
     infectiousness::W
     population_size::P
     n_types::Int
     type_labels::L
     progression::Vector{AbstractClinicalTransition}
-    forcings::Forcings
+    interventions::Vector{AbstractIntervention}
+    attributes::A
+    observation::O
 
     function BranchingProcess(infectiousness::W, population_size::P, n_types::Int,
             type_labels::L,
-            progression::Vector{AbstractClinicalTransition},
-            forcings::Forcings = _NO_FORCINGS) where {W <: Tuple, P, L}
+            progression::Vector{AbstractClinicalTransition};
+            interventions = AbstractIntervention[],
+            attributes::A = NoAttributes(),
+            observation::O = NoObservation()) where {W <: Tuple, P, L, A, O}
         _validate_windows(infectiousness, progression)
-        return new{W, P, L}(
+        return new{W, P, L, A, O}(
             infectiousness, population_size, n_types, type_labels, progression,
-            forcings)
+            _intervention_vector(interventions), attributes, observation)
     end
 end
 
@@ -111,9 +116,11 @@ _progression(::TransmissionModel) = AbstractClinicalTransition[]
 _progression(m::BranchingProcess) = m.progression
 _progvec(p) = convert(Vector{AbstractClinicalTransition}, p)
 
-# The model carries its forcings (interventions + attributes +
-# observation); the shared accessors in forcings.jl read them from here.
-forcings(m::BranchingProcess) = m.forcings
+# The model carries its interventions, attributes and observation; the
+# shared accessors in model_inputs.jl read them from here.
+interventions(m::BranchingProcess) = m.interventions
+attributes(m::BranchingProcess) = m.attributes
+observation(m::BranchingProcess) = m.observation
 
 population_size(m::BranchingProcess) = m.population_size
 n_types(m::BranchingProcess) = m.n_types
@@ -155,35 +162,47 @@ end
 # Single-type with a contact interval (one default window).
 function BranchingProcess(offspring::Distribution, gt::Union{Distribution, Function};
         population_size::Union{Int, NoPopulation} = NoPopulation(),
-        progression = AbstractClinicalTransition[], forcing_kwargs...)
+        progression = AbstractClinicalTransition[],
+        interventions = AbstractIntervention[], attributes = NoAttributes(),
+        observation::ObservationModel = NoObservation())
     BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, 1,
-        NoTypeLabels(), _progvec(progression), make_forcings(; forcing_kwargs...))
+        NoTypeLabels(), _progvec(progression);
+        interventions, attributes, observation)
 end
 
 # Single-type without a contact interval (pure chain statistics).
 function BranchingProcess(offspring::Distribution;
         population_size::Union{Int, NoPopulation} = NoPopulation(),
-        progression = AbstractClinicalTransition[], forcing_kwargs...)
+        progression = AbstractClinicalTransition[],
+        interventions = AbstractIntervention[], attributes = NoAttributes(),
+        observation::ObservationModel = NoObservation())
     BranchingProcess((Infectiousness(offspring),), population_size, 1,
-        NoTypeLabels(), _progvec(progression), make_forcings(; forcing_kwargs...))
+        NoTypeLabels(), _progvec(progression);
+        interventions, attributes, observation)
 end
 
 # Multi-type with an explicit offspring function.
 function BranchingProcess(offspring::Function, gt::Union{Distribution, Function};
         n_types::Int = 1, population_size::Union{Int, NoPopulation} = NoPopulation(),
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(),
-        progression = AbstractClinicalTransition[], forcing_kwargs...)
+        progression = AbstractClinicalTransition[],
+        interventions = AbstractIntervention[], attributes = NoAttributes(),
+        observation::ObservationModel = NoObservation())
     BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, n_types,
-        type_labels, _progvec(progression), make_forcings(; forcing_kwargs...))
+        type_labels, _progvec(progression);
+        interventions, attributes, observation)
 end
 
 # Explicit windows: pass `Infectiousness` windows directly.
 function BranchingProcess(windows::Tuple{Infectiousness, Vararg{Infectiousness}};
         n_types::Int = 1, population_size::Union{Int, NoPopulation} = NoPopulation(),
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(),
-        progression = AbstractClinicalTransition[], forcing_kwargs...)
+        progression = AbstractClinicalTransition[],
+        interventions = AbstractIntervention[], attributes = NoAttributes(),
+        observation::ObservationModel = NoObservation())
     BranchingProcess(windows, population_size, n_types, type_labels,
-        _progvec(progression), make_forcings(; forcing_kwargs...))
+        _progvec(progression);
+        interventions, attributes, observation)
 end
 function BranchingProcess(window::Infectiousness, windows::Infectiousness...; kwargs...)
     BranchingProcess((window, windows...); kwargs...)
@@ -201,7 +220,9 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
         gt::Union{Distribution, Function};
         population_size::Union{Int, NoPopulation} = NoPopulation(),
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels(),
-        progression = AbstractClinicalTransition[], forcing_kwargs...)
+        progression = AbstractClinicalTransition[],
+        interventions = AbstractIntervention[], attributes = NoAttributes(),
+        observation::ObservationModel = NoObservation())
     n = size(offspring_matrix, 1)
     size(offspring_matrix, 2) == n || throw(ArgumentError(
         "offspring_matrix must be square, got $(size(offspring_matrix))"))
@@ -222,7 +243,8 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
     end
 
     BranchingProcess((Infectiousness(offspring_fn; kernel = gt),), population_size, n,
-        type_labels, _progvec(progression), make_forcings(; forcing_kwargs...))
+        type_labels, _progvec(progression);
+        interventions, attributes, observation)
 end
 
 # ── Offspring generation ─────────────────────────────────────────────

@@ -11,8 +11,8 @@ Transitions use the same two hooks as interventions
 ([`initialise_individual!`](@ref EpiBranch.initialise_individual!),
 [`resolve_individual!`](@ref EpiBranch.resolve_individual!)) but sit
 under their own abstract type, [`AbstractClinicalTransition`](@ref).
-This keeps the concerns tidy: the model's `interventions` forcing for
-policy, its `progression` for biology.
+This keeps the concerns tidy: the model's `interventions` for policy, its
+`progression` for biology.
 
 ## Built-in transitions
 

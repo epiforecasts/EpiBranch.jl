@@ -26,7 +26,7 @@ the analytical distribution, by applying the model's observation. Default
 (no observation) is identity.
 """
 function observe_chain_sizes(m::TransmissionModel, true_sizes, rng::AbstractRNG)
-    _observe_sizes(EpiBranch._observation(m), true_sizes, rng)
+    _observe_sizes(EpiBranch.observation(m), true_sizes, rng)
 end
 
 _observe_sizes(::NoObservation, true_sizes, ::AbstractRNG) = true_sizes

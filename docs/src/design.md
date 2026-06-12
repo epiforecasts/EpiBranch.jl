@@ -11,24 +11,24 @@ The offspring draw is completely decoupled from timing and interventions. The co
 A model is the whole generative specification of how data arises: a
 transmission process, the population it acts on (attributes), the policy
 in force (interventions), and how cases are observed. The process carries
-the last three itself, as *forcings* passed to its constructor
+the last three itself, as keyword arguments to its constructor
 (`BranchingProcess(...; interventions, attributes, observation)`), rather
 than through a separate wrapper type. So `simulate(model)` and
-`loglikelihood(data, model)` both work from one object and read the
-forcings off it. A simulation-based likelihood is then evaluated under
-the same process that could have produced the data (see [Why the model
-carries its forcings](#why-the-model-carries-its-forcings)).
+`loglikelihood(data, model)` both work from one object and read them off
+it. A simulation-based likelihood is then evaluated under the same process
+that could have produced the data (see [Why these live on the
+model](#why-these-live-on-the-model)).
 
 ```
-THE MODEL — a TransmissionModel carrying its forcings
+THE MODEL — a TransmissionModel carrying its interventions, attributes, observation
 ─────────
 TransmissionModel (abstract)
 ├── BranchingProcess(offspring, generation_time; interventions, attributes, observation)
 └── NetworkProcess(graph, ...;                    interventions, attributes, observation)
         core dynamics (offspring law / graph + progression)
-        + forcings: interventions, attributes, observation
+        + interventions, attributes, observation (each optional)
 
-OBSERVATION — a forcing, dispatched on its type (alongside AbstractIntervention)
+OBSERVATION — read off the model, dispatched on its type (alongside AbstractIntervention)
 ─────────
 ObservationModel (abstract)
 ├── NoObservation                            (default — cases observed exactly)
@@ -36,7 +36,7 @@ ObservationModel (abstract)
     protocol:  apply_observation!(obs, state, rng)   (simulation side)
                observe(distribution, obs)            (analytical side)
 
-                       │ simulate(model)   ← reads forcings from the model
+                       │ simulate(model)   ← reads them from the model
                        ▼
                  SimulationState (linelist, chain stats, ...)
 
@@ -44,7 +44,7 @@ ObservationModel (abstract)
 DATA  ─────────────────┴─────────────►  INFERENCE
 ─────                                   ─────────
 OffspringCounts                         loglikelihood(data, model)
-ChainSizes                                ← also reads forcings from the model
+ChainSizes                                ← also reads them from the model
 ChainLengths
 
 EXECUTION (given to simulate, not part of the model)
@@ -57,10 +57,12 @@ EXTENSION POINTS (for users adding their own pieces)
 ─────────
 - Custom transmission model: subtype TransmissionModel, then either
   define generate_offspring (offspring-driven) or contacts_of +
-  collect_exposures=gather_by_target (structure-driven). Carry a Forcings
-  field and define `_forcings` to inherit interventions/attributes/
-  observation; single_type_offspring/chain_size_distribution for
-  analytics. (A future HouseholdProcess is exactly this.)
+  collect_exposures=gather_by_target (structure-driven), and
+  initialise_state (build the starting population with new_state /
+  add_individuals! / seed!). Add interventions/attributes/observation
+  accessors for any of those the model carries (each defaults to none);
+  single_type_offspring/chain_size_distribution for analytics. (A future
+  HouseholdProcess is exactly this.)
 - Custom observation model: subtype ObservationModel, define
   apply_observation! and observe, dispatched on the observation type
   alongside interventions
@@ -70,38 +72,43 @@ EXTENSION POINTS (for users adding their own pieces)
   competing_risk, keep_active, ...
 ```
 
-### Why the model carries its forcings
+### Why these live on the model
 
 Interventions, attributes, and observation belong to the model rather
 than to `simulate`, because a simulation-based likelihood has to
 reproduce the same generative process that produced the data. If
 isolation suppressed transmission in the observed outbreak, the
 likelihood of those chain sizes is only correct if it also applies
-isolation. Were the forcings `simulate`-only arguments, you would have to
-pass an identical stack to both `simulate` and `loglikelihood` and keep
-the two in step by hand, and it is easy to forget. With them on the
-model, `loglikelihood(data, model)` already has them.
+isolation. Were they `simulate`-only arguments, you would have to pass an
+identical stack to both `simulate` and `loglikelihood` and keep the two in
+step by hand, and it is easy to forget. With them on the model,
+`loglikelihood(data, model)` already has them.
 
-This puts the forcings in the *generative spec*. How interventions
-compose *with each other* is a separate question, still handled by the
-competing-risks machinery (see [Intervention
-interface](#intervention-interface)) and unchanged. A scenario sweep then
-becomes a map over models, where each scenario is a process built with
-different forcings. This is the usual Turing/SciML idiom.
+This puts them in the *generative spec*. How interventions compose *with
+each other* is a separate question, still handled by the competing-risks
+machinery (see [Intervention interface](#intervention-interface)) and
+unchanged. A scenario sweep is then a map over models, each scenario a
+process built with a different policy. This is the usual Turing/SciML
+idiom.
 
-The forcings live on the abstract `TransmissionModel` interface, through a
-shared `Forcings` field and the `_forcings` accessor. So every process
-type (`BranchingProcess`, `NetworkProcess`, a future `HouseholdProcess`)
-inherits the forcings, the engine integration, and the simulation-based
-likelihood without re-implementing them. The model is the core dynamics,
-with the forcings sitting on it as components.
+Each of the three is read off the model through its own accessor —
+`interventions(model)`, `attributes(model)`, `observation(model)` —
+defined once on the abstract `TransmissionModel` to default to none. A
+process opts in by carrying a field and defining the matching accessor, so
+it picks up only what it uses: every process type (`BranchingProcess`,
+`NetworkProcess`, a future `HouseholdProcess`) gets the engine integration
+and the simulation-based likelihood without re-implementing them, and a
+process with no interventions defines no intervention accessor at all. The
+model is the core dynamics; the three sit on top, each optional.
 
 `simulate` and `loglikelihood` take no `interventions`/`attributes`
 arguments: the model is the only source, so the two can never disagree.
-For a counterfactual, such as a fitted model under a policy it was not
-fitted with, derive a new model with `with_interventions(model, …)` or
-`with_attributes(model, …)` and simulate that. These are
-copy-with-one-forcing-changed helpers, alongside `with_observation`.
+They are set once, on the constructor — `BranchingProcess(...;
+interventions = [iso])`. For a counterfactual, such as a fitted model
+under a policy it was not fitted with, build a fresh model with the policy
+you want; there is no in-place "swap one input" helper, so a model's
+interventions, attributes and observation are always explicit at
+construction.
 
 The four design principles are documented separately
 ([Design principles](principles.md)) and are the basis on which this
@@ -309,7 +316,7 @@ Offspring specifications replace what a branching process draws per individual. 
 - `draw_offspring(rng, offspring_spec, individual, state)` for simulation
 - `chain_size_distribution(offspring_spec)` for analytics (returns a distribution)
 
-Observation models capture how the latent process generates data. They subtype `ObservationModel` and act as a *forcing* on the process, alongside interventions: pass `observation = …` to the constructor, or attach one with `with_observation`. An observation joins in through two methods dispatched on its type:
+Observation models capture how the latent process generates data. They subtype `ObservationModel` and are carried by the process the same way interventions are: pass `observation = …` to the constructor. An observation joins in through two methods dispatched on its type:
 
 - `observe(base_distribution, ::YourObservation)` returning a distribution that transforms the latent chain-size distribution (e.g. `ThinnedChainSize(base, ρ)`) — the analytical side
 - `apply_observation!(::YourObservation, state, rng)` marking observed cases on a finished simulation — the simulation side
@@ -393,7 +400,7 @@ The natural history is the process's `progression` (a field on `BranchingProcess
 biology, the same kind of object as the offspring law, but it is not the part that
 creates the tree. It sits alongside the transmission routes and apart from interventions
 (policy) and attributes (population heterogeneity). The three concerns separate cleanly,
-even though a model gathers all three as forcings on one object:
+even though a model carries all three:
 
 - **process** — how the disease spreads and progresses (transmission routes + `progression`);
 - **interventions** — what is done about it (isolation, vaccination, tracing);

@@ -188,18 +188,15 @@ offspring_distribution
 ### Observation models
 
 An observation model is part of the process. Pass `observation = …` to a
-process constructor, or attach one later with [`with_observation`](@ref).
-It is added the same way an intervention is, by implementing two methods
-dispatched on the observation type: [`observe`](@ref) for the analytical
-likelihood and `apply_observation!` for simulation.
+process constructor. It is added the same way an intervention is, by
+implementing two methods dispatched on the observation type:
+[`observe`](@ref) for the analytical likelihood and `apply_observation!`
+for simulation.
 
 ```@docs
 ObservationModel
 NoObservation
 PerCaseObservation
-with_interventions
-with_attributes
-with_observation
 observe
 ThinnedChainSize
 ```

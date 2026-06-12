@@ -97,10 +97,10 @@ function chain_size_distribution(model::TransmissionModel;
     # or its interventions would be silently dropped. The model's
     # observation is applied analytically via `observe`.
     if seeds === nothing && pi === nothing && isempty(kwargs) &&
-       isempty(_interventions(model))
+       isempty(interventions(model))
         return observe(
             chain_size_distribution(single_type_offspring(model)),
-            _observation(model))
+            observation(model))
     end
     return _ChainSizeLaw(model, seeds, pi, NamedTuple(kwargs))
 end

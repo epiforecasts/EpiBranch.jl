@@ -1,19 +1,20 @@
 # ── Observation protocol ────────────────────────────────────────────
-# A process carries its observation model in its forcings (see
-# forcings.jl); the engine and the likelihood read it with
-# `_observation(model)` and dispatch on the returned object. An
+# A process carries its observation model alongside its dynamics (see
+# model_inputs.jl); the engine and the likelihood read it with
+# `observation(model)` and dispatch on the returned object. An
 # observation model sits alongside `AbstractIntervention`: it joins in by
 # implementing two methods, dispatched on the observation type,
 # `apply_observation!` (simulation side) and `observe` (analytical side).
 # The dispatch is on the observation value, so there is no model type
 # parameter.
 
-# Forcings (interventions, attributes, observation) are set once, on the
-# model constructor. A process reads them back through the `forcings(m)`
-# accessor (forcings.jl); the engine and likelihood use the component
-# accessors. There is no in-place "replace one forcing" API: to vary a
-# forcing, construct the model with the forcing you want, stating all of
-# them, so a model's forcings are always explicit at construction.
+# Interventions, attributes and observation are set once, on the model
+# constructor. A process reads them back through the `interventions(m)`,
+# `attributes(m)` and `observation(m)` accessors (model_inputs.jl). There
+# is no in-place "replace one input" API: to vary one of them, construct
+# the model with the input you want, stating all of them, so a model's
+# interventions, attributes and observation are always explicit at
+# construction.
 
 """
     apply_observation!(obs::ObservationModel, state, rng)
