@@ -113,6 +113,10 @@ Wrap a cluster-mixed offspring in a `BranchingProcess`. Simulation
 samples `θ` once per chain at the index case and reuses it for every
 descendant via `parent_id` lookup. The per-individual draw is
 `rand(build(θ))`.
+
+Both constructors forward `interventions`, `attributes`, and
+`observation` keyword arguments to the wrapped model, so a cluster-mixed
+process can carry forcings like any other (see [`with_interventions`](@ref)).
 """
 function BranchingProcess(offspring::ClusterMixed, gt::Union{Distribution, Function};
         population_size::Union{Int, NoPopulation} = NoPopulation(), forcing_kwargs...)
