@@ -86,15 +86,15 @@ This puts the forcings in the *generative spec*. How interventions
 compose *with each other* is a separate question, still handled by the
 competing-risks machinery (see [Intervention
 interface](#intervention-interface)) and unchanged. A scenario sweep then
-becomes a map over models — each scenario is a process built with
-different forcings — which is the usual Turing/SciML idiom.
+becomes a map over models, where each scenario is a process built with
+different forcings. This is the usual Turing/SciML idiom.
 
 The forcings live on the abstract `TransmissionModel` interface, through a
 shared `Forcings` field and the `_forcings` accessor. So every process
-type — `BranchingProcess`, `NetworkProcess`, a future `HouseholdProcess` —
-gets the forcings, the engine integration, and the simulation-based
+type (`BranchingProcess`, `NetworkProcess`, a future `HouseholdProcess`)
+inherits the forcings, the engine integration, and the simulation-based
 likelihood without re-implementing them. The model is the core dynamics,
-and the forcings sit on it as components rather than wrapping it.
+with the forcings sitting on it as components.
 
 The `interventions`/`attributes` keywords still exist on `simulate` and
 the model-level `loglikelihood` methods, defaulting to the model's own.
