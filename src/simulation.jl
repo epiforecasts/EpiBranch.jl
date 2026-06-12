@@ -7,10 +7,8 @@
 Run a single outbreak simulation.
 
 The interventions, attributes and observation are forcings carried by
-`model` (set on the process constructor, or with
-[`with_interventions`](@ref) / [`with_attributes`](@ref) /
-[`with_observation`](@ref)), so the model alone determines the generative
-process. `simulate` takes only execution controls.
+`model`, set on the process constructor, so the model alone determines the
+generative process. `simulate` takes only execution controls.
 
 Termination is set by `max_cases`, `max_generations`, and `max_time` (any
 of which may be `nothing` to drop that limit); the run always stops on
@@ -174,6 +172,18 @@ generation (networks, households, clustering) override this with
 [`gather_by_target`](@ref), which walks [`contacts_of`](@ref) and
 deduplicates so a node reached several times resolves once.
 """
+
+"""
+    model_generation_time(model)
+
+The generation-time spec the default [`collect_exposures`](@ref) reads when
+timing the contacts of an offspring-driven model. Defaults to the model's
+`generation_time` field; a model that times its contacts differently (no such
+field, or a per-window kernel) overrides this instead of being forced to carry
+a `generation_time` field.
+"""
+model_generation_time(model::TransmissionModel) = model.generation_time
+
 function collect_exposures(model::TransmissionModel, state::SimulationState)
     pre = length(state.individuals)   # contacts created this step get id > pre
     targets = Individual[]
@@ -181,7 +191,7 @@ function collect_exposures(model::TransmissionModel, state::SimulationState)
     for idx in state.active_ids
         parent = state.individuals[idx]
         offspring = generate_offspring(model, parent, state)
-        gt_dist = get_generation_time(model.generation_time, parent)
+        gt_dist = get_generation_time(model_generation_time(model), parent)
         _materialise_offspring!(targets, edges, offspring, parent, state, gt_dist)
     end
     minted = view(state.individuals, (pre + 1):length(state.individuals))
@@ -198,7 +208,7 @@ function _materialise_offspring!(targets::Vector{Individual},
         parent::Individual, state::SimulationState,
         gt_dist::Union{Distribution, NoGenerationTime})
     for _ in 1:n_contacts
-        t = _infection_time(gt_dist, parent, state)
+        t = transmission_time(gt_dist, parent, state)
         push!(targets, make_contact!(state, parent, t))
         push!(edges, Tuple{Int, Float64}[(parent.id, t)])
     end
@@ -211,7 +221,7 @@ function _materialise_offspring!(targets::Vector{Individual},
         gt_dist::Union{Distribution, NoGenerationTime})
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
-            t = _infection_time(gt_dist, parent, state)
+            t = transmission_time(gt_dist, parent, state)
             push!(targets, make_contact!(state, parent, t; type_idx))
             push!(edges, Tuple{Int, Float64}[(parent.id, t)])
         end
@@ -435,53 +445,94 @@ end
 
 # ── Internal helpers ───────────────────────────────────────────────
 
-function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
-        interventions, transitions, attributes, rng::AbstractRNG)
-    individuals = Individual[]
+# ── Population-building helpers for a model's `initialise_state` ──────
+# A model defines `initialise_state` to set up its starting population.
+# These three helpers carry the shared boilerplate so a model never
+# touches the `SimulationState` constructor or the engine's bookkeeping
+# fields directly: `new_state` opens an empty state, `add_individuals!`
+# builds its members, `seed!` infects the index cases.
 
-    temp_state = SimulationState(
-        individuals,
-        Int[],
-        0,
-        rng,
-        0,
-        false,
-        population_size(model),
-        0.0,
-        attributes,
-        convert(Vector{AbstractClinicalTransition}, transitions)
-    )
+"""
+    new_state(model, transitions, attributes, rng) -> SimulationState
 
-    nt = n_types(model)
-    for i in 1:(sim_opts.n_initial)
-        ind = _create_individual(temp_state, 0, i, i, 0.0)
+An empty [`SimulationState`](@ref) for `model`: no individuals yet,
+generation 0, carrying the model's population size, the run's `attributes`,
+and the clinical `transitions`. The starting point a model's
+`initialise_state` builds on with [`add_individuals!`](@ref) and
+[`seed!`](@ref).
+"""
+function new_state(model::TransmissionModel, transitions, attributes,
+        rng::AbstractRNG)
+    SimulationState(Individual[], Int[], 0, rng, 0, false,
+        population_size(model), 0.0, attributes,
+        convert(Vector{AbstractClinicalTransition}, transitions))
+end
+
+"""
+    add_individuals!(state, n, interventions; n_types = 1, setup = (ind, i) -> nothing)
+
+Create `n` individuals, append them to `state`, and return them. For each,
+`setup(ind, i)` runs first (to stamp model-specific state such as a node or
+household id), then a random type is assigned for multi-type models, then
+each intervention's `initialise_individual!` runs. Used by a model's
+`initialise_state` to build its population.
+"""
+function add_individuals!(state::SimulationState, n::Integer, interventions;
+        n_types::Integer = 1, setup = (ind, i) -> nothing)
+    base = length(state.individuals)
+    added = Individual[]
+    for i in 1:n
+        ind = _create_individual(state, 0, base + i, base + i, 0.0)
+        setup(ind, i)
         # Match the new-contact path's ordering (`make_contact!` sets
         # `:type` before the engine calls `initialise_individual!`) so an
-        # intervention that reads `:type` at init sees the same state
-        # for seed cases and downstream contacts.
-        if nt > 1
-            ind.state[:type] = rand(rng, 1:nt)
-        end
+        # intervention that reads `:type` at init sees the same state for
+        # seed cases and downstream contacts.
+        n_types > 1 && (ind.state[:type] = rand(state.rng, 1:n_types))
         for intervention in interventions
-            initialise_individual!(intervention, ind, temp_state)
+            initialise_individual!(intervention, ind, state)
         end
-        ind.state[:infected] = true  # index cases are infected by definition
-        # Validate required fields on the first individual, before any
-        # transition resolution runs. Without this, a missing :onset_time
-        # surfaces as an opaque error inside the transition closure rather
-        # than as the engine's friendly "Reporting requires field :onset_time"
-        # message.
-        if i == 1
-            _validate_required_fields(ind, interventions)
-            _validate_required_fields(ind, transitions)
-        end
-        push!(individuals, ind)
+        push!(state.individuals, ind)
+        push!(added, ind)
     end
+    return added
+end
 
-    temp_state.cumulative_cases = sim_opts.n_initial
-    temp_state.active_ids = collect(1:(sim_opts.n_initial))
+"""
+    seed!(state, ids, interventions, transitions) -> state
 
-    return temp_state
+Mark the individuals with the given `ids` as infected index cases: set
+`:infected`, derive `:onset_time` from any incubation period, validate that
+the interventions' and transitions' required fields are present (on the
+first id, before any transition closure runs, so a missing field surfaces
+as the engine's friendly message), and record the run's initial bookkeeping
+(`cumulative_cases`, `active_ids`, `extinct`). Used by a model's
+`initialise_state` after [`add_individuals!`](@ref).
+"""
+function seed!(state::SimulationState, ids, interventions, transitions)
+    for id in ids
+        ind = state.individuals[id]
+        ind.state[:infected] = true
+        _set_onset_from_incubation!(ind)
+    end
+    if !isempty(ids)
+        first_ind = state.individuals[first(ids)]
+        _validate_required_fields(first_ind, interventions)
+        _validate_required_fields(first_ind, transitions)
+    end
+    state.cumulative_cases = length(ids)
+    state.active_ids = collect(ids)
+    state.extinct = isempty(ids)
+    return state
+end
+
+function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
+        interventions, transitions, attributes, rng::AbstractRNG)
+    state = new_state(model, transitions, attributes, rng)
+    add_individuals!(state, sim_opts.n_initial, interventions;
+        n_types = n_types(model))
+    seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
+    return state
 end
 
 function should_terminate(state::SimulationState, sim_opts::SimOpts)

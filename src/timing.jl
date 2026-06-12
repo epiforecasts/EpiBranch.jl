@@ -30,7 +30,7 @@ otherwise samples and adds. The generation time distribution should
 already encode any biological constraint (e.g. a minimum latent
 period); to enforce a lower bound use `truncated(gt_dist, lower, Inf)`
 or a shifted distribution."""
-_infection_time(::NoGenerationTime, parent, state) = parent.infection_time
-function _infection_time(gt_dist::Distribution, parent, state)
+transmission_time(::NoGenerationTime, parent, state) = parent.infection_time
+function transmission_time(gt_dist::Distribution, parent, state)
     return parent.infection_time + rand(state.rng, gt_dist)
 end

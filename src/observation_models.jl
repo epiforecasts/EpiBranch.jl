@@ -10,9 +10,9 @@
 Abstract supertype for observation models. Subtypes describe how
 underlying transmission events generate observable data — per-case
 detection, reporting delays, aggregation, multi-stream surveillance,
-etc. Attached to a process as the `observation` forcing (or via
-[`with_observation`](@ref)); participates through [`observe`](@ref) and
-`apply_observation!`, dispatched on the observation type.
+etc. Attached to a process as the `observation` forcing on its constructor;
+participates through [`observe`](@ref) and `apply_observation!`, dispatched
+on the observation type.
 """
 abstract type ObservationModel end
 

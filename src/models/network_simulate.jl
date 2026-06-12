@@ -18,41 +18,17 @@
 function initialise_state(model::NetworkProcess, sim_opts::SimOpts,
         interventions, transitions, attributes, rng::AbstractRNG)
     n = length(model.adjacency)
-    individuals = Individual[]
-    state = SimulationState(
-        individuals, Int[], 0, rng, 0, false,
-        population_size(model), 0.0, attributes,
-        convert(Vector{AbstractClinicalTransition}, transitions))
+    state = new_state(model, transitions, attributes, rng)
 
-    # Pre-instantiate every node with fixed attributes and intervention
-    # state. (The tree case mints contacts lazily; the network's nodes
-    # exist from the start.)
-    for i in 1:n
-        ind = _create_individual(state, 0, i, i, 0.0)
-        ind.state[:network_node] = i
-        ind.state[:infected] = false
-        for intervention in interventions
-            initialise_individual!(intervention, ind, state)
-        end
-        push!(individuals, ind)
-    end
+    # The population is the graph: pre-instantiate every node with a stable
+    # identity, fixed attributes and intervention state. (The tree case
+    # mints contacts lazily; the network's nodes exist from the start.)
+    add_individuals!(state, n, interventions;
+        setup = (ind, i) -> (ind.state[:network_node] = i))
 
     # Seed infections on random nodes.
     n_seed = min(sim_opts.n_initial, n)
-    seed_ids = randperm(rng, n)[1:n_seed]
-    for id in seed_ids
-        ind = individuals[id]
-        ind.state[:infected] = true
-        _set_onset_from_incubation!(ind)
-    end
-    if n_seed >= 1
-        _validate_required_fields(individuals[seed_ids[1]], interventions)
-        _validate_required_fields(individuals[seed_ids[1]], transitions)
-    end
-
-    state.cumulative_cases = n_seed
-    state.active_ids = seed_ids
-    state.extinct = n_seed == 0
+    seed!(state, randperm(rng, n)[1:n_seed], interventions, transitions)
     return state
 end
 
@@ -88,7 +64,7 @@ function contacts_of(model::NetworkProcess, parent::Individual,
         is_infected(target) && continue
         p = probs[k]
         (p >= 1.0 || rand(rng) < p) || continue
-        push!(result, (target, _infection_time(gt_dist, parent, state)))
+        push!(result, (target, transmission_time(gt_dist, parent, state)))
     end
     return result
 end

@@ -5,7 +5,7 @@
 # defined once against the abstract `TransmissionModel` and shared by
 # every process type, so a new process (say a future `HouseholdProcess`)
 # picks up the forcings, the engine integration and the simulation-based
-# likelihood by holding a `Forcings` field and defining `_forcings`.
+# likelihood by holding a `Forcings` field and defining `forcings`.
 
 """No observation model: latent cases are observed exactly."""
 struct NoObservation <: ObservationModel end
@@ -21,7 +21,7 @@ end
 
 const _NO_FORCINGS = Forcings(NoAttributes(), AbstractIntervention[], NoObservation())
 
-function _mk_forcings(; attributes = NoAttributes(),
+function make_forcings(; attributes = NoAttributes(),
         interventions = AbstractIntervention[],
         observation::ObservationModel = NoObservation())
     ivs = interventions isa AbstractVector ? interventions : [interventions]
@@ -29,13 +29,9 @@ function _mk_forcings(; attributes = NoAttributes(),
         convert(Vector{AbstractIntervention}, ivs), observation)
 end
 
-function _with_observation(f::Forcings, o::ObservationModel)
-    Forcings(f.attributes, f.interventions, o)
-end
-
-# Shared accessors. A process opts in by defining `_forcings`; the three
+# Shared accessors. A process opts in by defining `forcings`; the three
 # component accessors are defined once here against `TransmissionModel`.
-_forcings(::TransmissionModel) = _NO_FORCINGS
-_interventions(m::TransmissionModel) = _forcings(m).interventions
-_attributes(m::TransmissionModel) = _forcings(m).attributes
-_observation(m::TransmissionModel) = _forcings(m).observation
+forcings(::TransmissionModel) = _NO_FORCINGS
+_interventions(m::TransmissionModel) = forcings(m).interventions
+_attributes(m::TransmissionModel) = forcings(m).attributes
+_observation(m::TransmissionModel) = forcings(m).observation

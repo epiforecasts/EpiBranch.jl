@@ -91,12 +91,12 @@ struct NetworkProcess{G} <: TransmissionModel
                   "is the network itself (got $(length(adjacency)) nodes). Build a " *
                   "larger graph to model a larger population." maxlog=1
         end
-        new{G}(adj, ep, generation_time, _mk_forcings(; forcing_kwargs...))
+        new{G}(adj, ep, generation_time, make_forcings(; forcing_kwargs...))
     end
 end
 
 # The model carries its forcings; shared accessors read them from here.
-_forcings(m::NetworkProcess) = m.forcings
+forcings(m::NetworkProcess) = m.forcings
 
 """
     NetworkProcess(adjacency, p::Real, gt; population_size = nothing)
