@@ -164,12 +164,10 @@ Log-likelihood of observed chain sizes under `model`. With no
 interventions and a single-type offspring law, uses the analytical
 chain-size distribution transformed by the model's observation
 ([`observe`](@ref)); otherwise simulates the observed model and compares
-the reported chain sizes against the data. `interventions` and
-`attributes` default to those carried by `model`.
+the reported chain sizes against the data. The interventions and
+attributes are read from `model`.
 """
 function loglikelihood(data::ChainSizes, model::TransmissionModel;
-        interventions::Vector{<:AbstractIntervention} = _interventions(model),
-        attributes::Union{Function, NoAttributes} = _attributes(model),
         n_initial::Int = 1,
         max_cases::Union{Int, Nothing} = 10_000,
         max_generations::Union{Int, Nothing} = 100,
@@ -178,6 +176,8 @@ function loglikelihood(data::ChainSizes, model::TransmissionModel;
         n_sim::Int = 10_000,
         rng::AbstractRNG = Random.default_rng())
     obs = _observation(model)
+    interventions = _interventions(model)
+    attributes = _attributes(model)
     if isempty(interventions)
         try
             d = observe(chain_size_distribution(single_type_offspring(model)), obs)
@@ -210,10 +210,9 @@ Log-likelihood of observed chain lengths under `model`. Only defined for
 models with no observation (per-case detection does not give a
 well-defined chain length); uses the analytical chain-length
 distribution with no interventions, otherwise a simulation estimate.
+The interventions and attributes are read from `model`.
 """
 function loglikelihood(data::ChainLengths, model::TransmissionModel;
-        interventions::Vector{<:AbstractIntervention} = _interventions(model),
-        attributes::Union{Function, NoAttributes} = _attributes(model),
         n_initial::Int = 1,
         max_cases::Union{Int, Nothing} = 10_000,
         max_generations::Union{Int, Nothing} = 100,
@@ -225,6 +224,8 @@ function loglikelihood(data::ChainLengths, model::TransmissionModel;
         "loglikelihood(ChainLengths, model with $(typeof(_observation(model)))) " *
         "is not defined: per-case detection does not give a well-defined chain " *
         "length. Use ChainSizes, or a model with no observation."))
+    interventions = _interventions(model)
+    attributes = _attributes(model)
     if isempty(interventions)
         try
             return loglikelihood(data, single_type_offspring(model))

@@ -117,7 +117,8 @@ export Scheduled, Risk
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event
-export ObservationModel, PerCaseObservation, NoObservation, with_observation, observe
+export ObservationModel, PerCaseObservation, NoObservation, observe
+export with_interventions, with_attributes, with_observation
 export single_type_offspring
 
 # Exports — sentinel types

@@ -197,6 +197,8 @@ likelihood and `apply_observation!` for simulation.
 ObservationModel
 NoObservation
 PerCaseObservation
+with_interventions
+with_attributes
 with_observation
 observe
 ThinnedChainSize

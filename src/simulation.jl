@@ -1,16 +1,16 @@
 """
-    simulate(model::TransmissionModel; interventions, attributes,
+    simulate(model::TransmissionModel;
              max_cases=10_000, max_generations=100, max_time=nothing,
              n_initial=1, stopping_rules=nothing,
              rng=Random.default_rng(), condition=nothing, max_attempts=10_000)
 
 Run a single outbreak simulation.
 
-`interventions` and `attributes` default to those carried by `model` (a
-process is built with `interventions`/`attributes`/`observation`
-forcings), so the model alone determines the generative process. Pass
-them explicitly only to override the model's own, for a counterfactual
-run.
+The interventions, attributes and observation are forcings carried by
+`model` (set on the process constructor, or with
+[`with_interventions`](@ref) / [`with_attributes`](@ref) /
+[`with_observation`](@ref)), so the model alone determines the generative
+process. `simulate` takes only execution controls.
 
 Termination is set by `max_cases`, `max_generations`, and `max_time` (any
 of which may be `nothing` to drop that limit); the run always stops on
@@ -29,8 +29,6 @@ until one produces an outbreak whose cumulative cases fall within the range,
 up to `max_attempts`.
 """
 function simulate(model::TransmissionModel;
-        interventions::Vector{<:AbstractIntervention} = _interventions(model),
-        attributes::Union{Function, NoAttributes} = _attributes(model),
         n_initial::Int = 1,
         max_cases::Union{Int, Nothing} = 10_000,
         max_generations::Union{Int, Nothing} = 100,
@@ -41,8 +39,8 @@ function simulate(model::TransmissionModel;
         max_attempts::Int = 10_000)
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
-    return _simulate(model, sim_opts; interventions, attributes, rng,
-        condition, max_attempts)
+    return _simulate(model, sim_opts; interventions = _interventions(model),
+        attributes = _attributes(model), rng, condition, max_attempts)
 end
 
 # Internal single run against a built `SimOpts`. The public methods build
@@ -76,16 +74,14 @@ end
     simulate(model, n::Int; parallel=false, kwargs...)
 
 Run `n` independent outbreak simulations. Returns a
-`Vector{SimulationState}`. Takes the same termination and forcing keywords
-as the single-run method.
+`Vector{SimulationState}`. Takes the same termination keywords as the
+single-run method.
 
 When `parallel=true`, simulations are distributed across available threads
 using independent RNG streams derived from the provided `rng`. Use
 `julia --threads N` to enable multi-threading.
 """
 function simulate(model::TransmissionModel, n::Int;
-        interventions::Vector{<:AbstractIntervention} = _interventions(model),
-        attributes::Union{Function, NoAttributes} = _attributes(model),
         n_initial::Int = 1,
         max_cases::Union{Int, Nothing} = 10_000,
         max_generations::Union{Int, Nothing} = 100,
@@ -95,7 +91,8 @@ function simulate(model::TransmissionModel, n::Int;
         parallel::Bool = false)
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
-    return _simulate_n(model, n, sim_opts; interventions, attributes, rng, parallel)
+    return _simulate_n(model, n, sim_opts; interventions = _interventions(model),
+        attributes = _attributes(model), rng, parallel)
 end
 
 function _simulate_n(model::TransmissionModel, n::Int, sim_opts::SimOpts;

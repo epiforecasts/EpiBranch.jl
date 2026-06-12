@@ -8,24 +8,49 @@
 # The dispatch is on the observation value, so there is no model type
 # parameter.
 
+# Rebuild a process with a replacement `Forcings`, keeping its core
+# dynamics. Each process type implements this; the `with_*` helpers below
+# are then defined once against the abstract model.
+function _rebuild(m::BranchingProcess, f::Forcings)
+    BranchingProcess(m.infectiousness, m.population_size, m.n_types,
+        m.type_labels, m.progression, f)
+end
+
+function _rebuild(m::NetworkProcess, f::Forcings)
+    NetworkProcess(m.adjacency, m.edge_probability, m.generation_time;
+        attributes = f.attributes, interventions = f.interventions,
+        observation = f.observation)
+end
+
 """
+    with_interventions(model, interventions)
+    with_attributes(model, attributes)
     with_observation(model, observation)
 
-Return a copy of `model` with its observation model set to `observation`,
-preserving the other forcings (interventions, attributes). Equivalent to
-passing `observation = …` to the process constructor; handy for adding an
-observation to a model built earlier.
+Return a copy of `model` with one forcing replaced, keeping the others.
+Equivalent to passing `interventions = …` / `attributes = …` /
+`observation = …` to the process constructor. Use it to derive a
+counterfactual model (e.g. a fitted model under a policy it was not fitted
+with): a different forcing means a different model.
 """
-function with_observation(m::BranchingProcess, o::ObservationModel)
-    BranchingProcess(m.infectiousness, m.population_size, m.n_types,
-        m.type_labels, m.progression, _with_observation(m.forcings, o))
+function with_interventions(m::TransmissionModel, interventions)
+    _rebuild(m, _mk_forcings(; attributes = _attributes(m),
+        interventions, observation = _observation(m)))
 end
 
-function with_observation(m::NetworkProcess, o::ObservationModel)
-    NetworkProcess(m.adjacency, m.edge_probability, m.generation_time;
-        attributes = m.forcings.attributes,
-        interventions = m.forcings.interventions, observation = o)
+function with_attributes(m::TransmissionModel, attributes)
+    _rebuild(m,
+        _mk_forcings(; attributes,
+            interventions = _interventions(m), observation = _observation(m)))
 end
+
+function with_observation(m::TransmissionModel, observation::ObservationModel)
+    _rebuild(m, _with_observation(_forcings(m), observation))
+end
+
+# All three share the docstring attached to `with_interventions`.
+@doc (@doc with_interventions) with_attributes
+@doc (@doc with_interventions) with_observation
 
 """
     apply_observation!(obs::ObservationModel, state, rng)

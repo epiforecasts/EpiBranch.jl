@@ -96,10 +96,12 @@ inherits the forcings, the engine integration, and the simulation-based
 likelihood without re-implementing them. The model is the core dynamics,
 with the forcings sitting on it as components.
 
-The `interventions`/`attributes` keywords still exist on `simulate` and
-the model-level `loglikelihood` methods, defaulting to the model's own.
-They stay as deliberate overrides for counterfactuals, such as simulating
-a fitted model under an intervention it was not fitted with.
+`simulate` and `loglikelihood` take no `interventions`/`attributes`
+arguments: the model is the only source, so the two can never disagree.
+For a counterfactual, such as a fitted model under a policy it was not
+fitted with, derive a new model with `with_interventions(model, …)` or
+`with_attributes(model, …)` and simulate that. These are
+copy-with-one-forcing-changed helpers, alongside `with_observation`.
 
 The four design principles are documented separately
 ([Design principles](principles.md)) and are the basis on which this
