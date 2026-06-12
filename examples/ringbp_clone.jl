@@ -60,7 +60,7 @@ for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan
         for tracing_prob in [0.0, 0.5, 1.0]
             for initial_cases in [5, 20]
                 k = 0.16
-                model = BranchingProcess(NegBin(R0, k), gt)
+                process = BranchingProcess(NegBin(R0, k), gt)
                 iso = Isolation(onset_to_isolation_delay = delay_dist, test_sensitivity = 1.0)
 
                 interventions = if tracing_prob > 0
@@ -74,14 +74,14 @@ for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan
                     [iso]
                 end
 
-                batch = simulate_batch(model, n_sim;
-                    interventions = interventions,
-                    attributes = clinical,
-                    sim_opts = SimOpts(
-                        max_cases = 5000,
-                        max_time = 350.0,
-                        n_initial = initial_cases
-                    ),
+                # Each (R0, delay, tracing, initial-cases) cell is its own
+                # model — a Scenario the simulator reads the policy from.
+                model = Scenario(process; interventions, attributes = clinical)
+
+                batch = simulate(model, n_sim;
+                    max_cases = 5000,
+                    max_time = 350.0,
+                    n_initial = initial_cases,
                     rng = rng
                 )
 
