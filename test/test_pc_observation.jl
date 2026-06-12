@@ -21,8 +21,7 @@
             detection_prob = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0)
         rng = StableRNG(11)
         m = with_observation(BranchingProcess(Poisson(2.0), Exponential(5.0)), obs)
-        state = simulate(m; attributes = attrs,
-            max_cases = 100, rng = rng)
+        state = simulate(with_attributes(m, attrs); max_cases = 100, rng = rng)
         for ind in state.individuals
             expected = ind.state[:age] >= 50
             @test ind.state[:reported] == expected
@@ -40,8 +39,7 @@
             delay = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 7.0)
         rng = StableRNG(23)
         m = with_observation(BranchingProcess(Poisson(2.0), Exponential(5.0)), obs)
-        state = simulate(m; attributes = attrs,
-            max_cases = 100, rng = rng)
+        state = simulate(with_attributes(m, attrs); max_cases = 100, rng = rng)
         for ind in state.individuals
             expected_lag = ind.state[:age] >= 50 ? 1.0 : 7.0
             @test ind.state[:report_time] ≈ ind.state[:onset_time] + expected_lag
@@ -57,8 +55,7 @@
         obs = PerCaseObservation(delay = 2.0)
         rng = StableRNG(99)
         m = with_observation(BranchingProcess(Poisson(1.5), Exponential(5.0)), obs)
-        state = simulate(m; attributes = attrs,
-            max_cases = 50, rng = rng)
+        state = simulate(with_attributes(m, attrs); max_cases = 50, rng = rng)
         for ind in state.individuals
             @test !isnan(ind.state[:report_time])
             @test ind.state[:report_time] ≈ ind.infection_time + 2.0
@@ -73,8 +70,7 @@
             from = ind -> ind.infection_time)
         rng = StableRNG(7)
         m = with_observation(BranchingProcess(Poisson(1.5), Exponential(5.0)), obs)
-        state = simulate(m; attributes = attrs,
-            max_cases = 50, rng = rng)
+        state = simulate(with_attributes(m, attrs); max_cases = 50, rng = rng)
         for ind in state.individuals
             @test ind.state[:report_time] ≈ ind.infection_time + 3.0
         end

@@ -63,10 +63,7 @@
         @testset "Integrates with simulate" begin
             model = BranchingProcess(Poisson(1.5), Exponential(5.0))
             attrs = transmission_traits(susceptibility = 0.5, infectiousness = 0.8)
-            state = simulate(model;
-                attributes = attrs,
-                max_cases = 30,
-                rng = StableRNG(1))
+            state = simulate(with_attributes(model, attrs); max_cases = 30, rng = StableRNG(1))
             @test all(ind.susceptibility == 0.5 for ind in state.individuals)
             @test all(ind.infectiousness == 0.8 for ind in state.individuals)
         end

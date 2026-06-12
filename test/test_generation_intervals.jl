@@ -64,11 +64,10 @@
         opts = (; max_cases = 1000)
 
         free = realised_generation_intervals(
-            simulate(model, 30; attributes = attrs, opts..., rng = rng_a))
+            simulate(with_attributes(model, attrs), 30; opts..., rng = rng_a))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         isolated = realised_generation_intervals(
-            simulate(model, 30; interventions = [iso], attributes = attrs,
-            opts..., rng = rng_b))
+            simulate(with_attributes(with_interventions(model, [iso]), attrs), 30; opts..., rng = rng_b))
 
         @test !isempty(free)
         @test !isempty(isolated)

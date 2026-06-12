@@ -8,14 +8,12 @@
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
 
         rng1 = StableRNG(42)
-        results_no_iso = simulate(model, 100;
-            attributes = clinical, max_cases = 200, rng = rng1)
+        results_no_iso = simulate(with_attributes(model, clinical), 100; max_cases = 200, rng = rng1)
 
         rng2 = StableRNG(42)
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
-        results_iso = simulate(model, 100;
-            interventions = [iso], attributes = clinical,
-            max_cases = 200, rng = rng2)
+        results_iso = simulate(with_attributes(with_interventions(model, [iso]), clinical),
+            100; max_cases = 200, rng = rng2)
 
         ext_no_iso = count(s -> s.extinct, results_no_iso)
         ext_iso = count(s -> s.extinct, results_iso)
@@ -28,9 +26,8 @@
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0))
 
-        state = simulate(model;
-            interventions = [iso, ct], attributes = clinical,
-            max_cases = 50, rng = rng)
+        state = simulate(
+            with_attributes(with_interventions(model, [iso, ct]), clinical); max_cases = 50, rng = rng)
 
         n_traced = count(is_traced, state.individuals)
         n_with_isolated_parent = count(state.individuals) do ind
@@ -50,9 +47,7 @@
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0)); start_time = 1000.0)
 
-        state = simulate(model;
-            interventions = [iso], attributes = clinical,
-            max_cases = 50, rng = rng)
+        state = simulate(with_attributes(with_interventions(model, [iso]), clinical); max_cases = 50, rng = rng)
 
         @test all(ind -> ind.infection_time < 1000.0, state.individuals)
     end
@@ -66,8 +61,7 @@
             prob_asymptomatic = 0.5
         )
 
-        state = simulate(model;
-            interventions = [iso], attributes = clinical_asymp,
+        state = simulate(with_attributes(with_interventions(model, [iso]), clinical_asymp);
             max_cases = 500, rng = rng)
 
         for ind in state.individuals
@@ -82,8 +76,7 @@
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.0)
 
-        state = simulate(model;
-            interventions = [iso], attributes = clinical,
+        state = simulate(with_attributes(with_interventions(model, [iso]), clinical);
             max_cases = 100, rng = StableRNG(42))
 
         n_isolated = count(is_isolated, state.individuals)
@@ -95,15 +88,15 @@
 
         rng1 = StableRNG(42)
         iso_fast = Isolation(onset_to_isolation_delay = Exponential(0.5))
-        results_fast = simulate(model, 200;
-            interventions = [iso_fast], attributes = clinical,
-            max_cases = 200, rng = rng1)
+        results_fast = simulate(
+            with_attributes(with_interventions(model, [iso_fast]), clinical),
+            200; max_cases = 200, rng = rng1)
 
         rng2 = StableRNG(42)
         iso_slow = Isolation(onset_to_isolation_delay = Exponential(10.0))
-        results_slow = simulate(model, 200;
-            interventions = [iso_slow], attributes = clinical,
-            max_cases = 200, rng = rng2)
+        results_slow = simulate(
+            with_attributes(with_interventions(model, [iso_slow]), clinical),
+            200; max_cases = 200, rng = rng2)
 
         @test containment_probability(results_fast) >= containment_probability(results_slow)
     end
@@ -114,9 +107,8 @@
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.0))
 
-        state = simulate(model;
-            interventions = [iso, ct], attributes = clinical,
-            max_cases = 20, rng = rng)
+        state = simulate(
+            with_attributes(with_interventions(model, [iso, ct]), clinical); max_cases = 20, rng = rng)
 
         for ind in state.individuals
             @test haskey(ind.state, :isolated)
@@ -128,8 +120,8 @@
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
 
-        @test_throws ErrorException simulate(model;
-            interventions = [iso], max_cases = 10, rng = StableRNG(42))
+        @test_throws ErrorException simulate(
+            with_interventions(model, [iso]); max_cases = 10, rng = StableRNG(42))
     end
 
     @testset "compose works" begin
@@ -140,8 +132,7 @@
             demographics(age_distribution = Normal(40, 15))
         )
 
-        state = simulate(model;
-            attributes = init_fn, max_cases = 50, rng = rng)
+        state = simulate(with_attributes(model, init_fn); max_cases = 50, rng = rng)
 
         ind = state.individuals[1]
         @test haskey(ind.state, :onset_time)
@@ -157,14 +148,14 @@
 
             rng1 = StableRNG(42)
             rv = RingVaccination(efficacy = 0.9, mode = LeakyMode())
-            results_vacc = simulate(model, 100;
-                interventions = [iso, ct, rv], attributes = clinical,
-                max_cases = 200, rng = rng1)
+            results_vacc = simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv]), clinical),
+                100; max_cases = 200, rng = rng1)
 
             rng2 = StableRNG(42)
-            results_no_vacc = simulate(model, 100;
-                interventions = [iso, ct], attributes = clinical,
-                max_cases = 200, rng = rng2)
+            results_no_vacc = simulate(
+                with_attributes(with_interventions(model, [iso, ct]), clinical),
+                100; max_cases = 200, rng = rng2)
 
             @test containment_probability(results_vacc) >=
                   containment_probability(results_no_vacc)
@@ -176,8 +167,8 @@
             ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
             rv = RingVaccination(efficacy = 0.8, mode = AllOrNothingMode())
 
-            state = simulate(model;
-                interventions = [iso, ct, rv], attributes = clinical,
+            state = simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv]), clinical);
                 max_cases = 100, rng = StableRNG(42))
 
             n_vaccinated = count(is_vaccinated, state.individuals)
@@ -196,15 +187,15 @@
 
             rng1 = StableRNG(42)
             rv_instant = RingVaccination(efficacy = 0.9, delay_to_immunity = 0.0)
-            results_instant = simulate(model, 200;
-                interventions = [iso, ct, rv_instant], attributes = clinical,
-                max_cases = 200, rng = rng1)
+            results_instant = simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv_instant]), clinical),
+                200; max_cases = 200, rng = rng1)
 
             rng2 = StableRNG(42)
             rv_delayed = RingVaccination(efficacy = 0.9, delay_to_immunity = 14.0)
-            results_delayed = simulate(model, 200;
-                interventions = [iso, ct, rv_delayed], attributes = clinical,
-                max_cases = 200, rng = rng2)
+            results_delayed = simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv_delayed]), clinical),
+                200; max_cases = 200, rng = rng2)
 
             # Instant immunity should contain at least as well as delayed
             @test containment_probability(results_instant) >=
@@ -218,8 +209,8 @@
 
             # Coverage = 0 means nobody gets vaccinated, even though traced.
             rv_zero = RingVaccination(efficacy = 0.9, coverage = 0.0)
-            state = simulate(model;
-                interventions = [iso, ct, rv_zero], attributes = clinical,
+            state = simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv_zero]), clinical);
                 max_cases = 100, rng = StableRNG(42))
             @test count(is_vaccinated, state.individuals) == 0
             @test count(is_traced, state.individuals) > 0
@@ -227,8 +218,8 @@
             # Coverage = 1 reproduces the previous behaviour: every eligible
             # traced contact is vaccinated.
             rv_full = RingVaccination(efficacy = 0.9, coverage = 1.0)
-            state_full = simulate(model;
-                interventions = [iso, ct, rv_full], attributes = clinical,
+            state_full = simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv_full]), clinical);
                 max_cases = 100, rng = StableRNG(42))
             n_vacc_full = count(is_vaccinated, state_full.individuals)
             @test n_vacc_full > 0
@@ -238,14 +229,14 @@
             rv_partial = RingVaccination(efficacy = 0.9, coverage = 0.3)
             n_vacc_partial = sum(
                 count(is_vaccinated, s.individuals)
-            for s in simulate(model, 30;
-                interventions = [iso, ct, rv_partial], attributes = clinical,
-                max_cases = 100, rng = StableRNG(7)))
+            for s in simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv_partial]), clinical),
+                30; max_cases = 100, rng = StableRNG(7)))
             n_vacc_full_batch = sum(
                 count(is_vaccinated, s.individuals)
-            for s in simulate(model, 30;
-                interventions = [iso, ct, rv_full], attributes = clinical,
-                max_cases = 100, rng = StableRNG(7)))
+            for s in simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv_full]), clinical),
+                30; max_cases = 100, rng = StableRNG(7)))
             @test n_vacc_partial < n_vacc_full_batch
         end
 
@@ -258,8 +249,8 @@
             ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
             rv = RingVaccination(efficacy = 0.9,
                 coverage = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0)
-            state = simulate(model;
-                interventions = [iso, ct, rv], attributes = attrs,
+            state = simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv]), attrs);
                 max_cases = 200, rng = StableRNG(101))
             for ind in state.individuals
                 is_vaccinated(ind) && @test ind.state[:age] >= 50
@@ -277,14 +268,14 @@
             rv_inf = RingVaccination(efficacy = 0.9, eligibility_window = Inf)
             n_inf = sum(
                 count(is_vaccinated, s.individuals)
-            for s in simulate(model, 50;
-                interventions = [iso, ct, rv_inf], attributes = clinical,
-                max_cases = 100, rng = StableRNG(3)))
+            for s in simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv_inf]), clinical),
+                50; max_cases = 100, rng = StableRNG(3)))
 
             rv_narrow = RingVaccination(efficacy = 0.9, eligibility_window = 1.0)
-            states_narrow = simulate(model, 50;
-                interventions = [iso, ct, rv_narrow], attributes = clinical,
-                max_cases = 100, rng = StableRNG(3))
+            states_narrow = simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv_narrow]), clinical),
+                50; max_cases = 100, rng = StableRNG(3))
             n_narrow = sum(
                 count(is_vaccinated, s.individuals) for s in states_narrow)
             @test n_narrow < n_inf
@@ -314,8 +305,8 @@
 
             saw_blocked_chain = false
             for seed in 1:5
-                state = simulate(model;
-                    interventions = [iso, ct, rv], attributes = clinical,
+                state = simulate(
+                    with_attributes(with_interventions(model, [iso, ct, rv]), clinical);
                     max_cases = 500, rng = StableRNG(seed))
                 by_id = Dict(ind.id => ind for ind in state.individuals)
                 for child in state.individuals
@@ -344,17 +335,19 @@
             rv = RingVaccination(efficacy = 0.9)  # default onward_efficacy
 
             rng1 = StableRNG(42)
-            results_default = simulate(model, 100;
-                interventions = [iso, ct, rv], attributes = clinical,
-                max_cases = 200, rng = rng1)
+            results_default = simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv]), clinical),
+                100; max_cases = 200, rng = rng1)
 
             # Explicit onward_efficacy = 0.0 should reproduce the same
             # outcome with the same seed (no extra rng draws).
             rv_explicit = RingVaccination(efficacy = 0.9, onward_efficacy = 0.0)
             rng2 = StableRNG(42)
-            results_explicit = simulate(model, 100;
-                interventions = [iso, ct, rv_explicit], attributes = clinical,
-                max_cases = 200, rng = rng2)
+            results_explicit = simulate(
+                with_attributes(with_interventions(model, [iso, ct, rv_explicit]), clinical),
+                100;
+                max_cases = 200,
+                rng = rng2)
 
             @test [s.cumulative_cases for s in results_default] ==
                   [s.cumulative_cases for s in results_explicit]
@@ -368,9 +361,8 @@
         ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
             quarantine_on_trace = false)
 
-        state = simulate(model;
-            interventions = [iso, ct], attributes = clinical,
-            max_cases = 50, rng = rng)
+        state = simulate(
+            with_attributes(with_interventions(model, [iso, ct]), clinical); max_cases = 50, rng = rng)
 
         n_traced = count(is_traced, state.individuals)
         if n_traced > 0
@@ -399,8 +391,7 @@
         ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
             quarantine_on_trace = false)
 
-        state = simulate(model;
-            interventions = [iso, ct], attributes = clinical,
+        state = simulate(with_attributes(with_interventions(model, [iso, ct]), clinical);
             max_cases = 500, rng = rng)
 
         resolved = filter(
@@ -429,22 +420,22 @@
             # Compare scheduled (late start) vs always-on — scheduled should contain less
             rng1 = StableRNG(42)
             iso_late = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0)); start_time = 20.0)
-            results_late = simulate(model, 100;
-                interventions = [iso_late], attributes = clinical,
-                max_cases = 200, rng = rng1)
+            results_late = simulate(
+                with_attributes(with_interventions(model, [iso_late]), clinical),
+                100; max_cases = 200, rng = rng1)
 
             rng2 = StableRNG(42)
             iso_always = Isolation(onset_to_isolation_delay = Exponential(1.0))
-            results_always = simulate(model, 100;
-                interventions = [iso_always], attributes = clinical,
-                max_cases = 200, rng = rng2)
+            results_always = simulate(
+                with_attributes(with_interventions(model, [iso_always]), clinical),
+                100; max_cases = 200, rng = rng2)
 
             @test containment_probability(results_always) >=
                   containment_probability(results_late)
 
             # Fields should still be initialised on all individuals
-            state = simulate(model;
-                interventions = [iso_late], attributes = clinical,
+            state = simulate(
+                with_attributes(with_interventions(model, [iso_late]), clinical);
                 max_cases = 50, rng = StableRNG(99))
             for ind in state.individuals
                 @test haskey(ind.state, :isolated)
@@ -456,16 +447,16 @@
             iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(0.5)); start_after_cases = 20)
 
             rng1 = StableRNG(42)
-            results_scheduled = simulate(model, 100;
-                interventions = [iso], attributes = clinical,
-                max_cases = 200, rng = rng1)
+            results_scheduled = simulate(
+                with_attributes(with_interventions(model, [iso]), clinical),
+                100; max_cases = 200, rng = rng1)
 
             # Compare with always-on isolation — scheduled should contain less
             rng2 = StableRNG(42)
             iso_always = Isolation(onset_to_isolation_delay = Exponential(0.5))
-            results_always = simulate(model, 100;
-                interventions = [iso_always], attributes = clinical,
-                max_cases = 200, rng = rng2)
+            results_always = simulate(
+                with_attributes(with_interventions(model, [iso_always]), clinical),
+                100; max_cases = 200, rng = rng2)
 
             @test containment_probability(results_always) >=
                   containment_probability(results_scheduled)
@@ -476,8 +467,7 @@
             iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0)),
                 state -> state.current_generation >= 3)
 
-            state = simulate(model;
-                interventions = [iso], attributes = clinical,
+            state = simulate(with_attributes(with_interventions(model, [iso]), clinical);
                 max_cases = 100, rng = StableRNG(42))
 
             # Verify the intervention ran without errors and fields exist
@@ -492,8 +482,7 @@
             iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(0.5));
                 start_time = 5.0, end_time = 10.0)
 
-            state = simulate(model;
-                interventions = [iso], attributes = clinical,
+            state = simulate(with_attributes(with_interventions(model, [iso]), clinical);
                 max_cases = 100, rng = StableRNG(42))
 
             # Late individuals should not be isolated
@@ -510,8 +499,8 @@
                 ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.0));
                 start_after_cases = 10)
 
-            state = simulate(model;
-                interventions = [iso, ct], attributes = clinical,
+            state = simulate(
+                with_attributes(with_interventions(model, [iso, ct]), clinical);
                 max_cases = 50, rng = StableRNG(42))
 
             # All individuals should have both isolation and tracing fields
@@ -525,8 +514,7 @@
             model = BranchingProcess(Poisson(3.0), Exponential(5.0))
             iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(0.1)); start_time = 15.0)
 
-            state = simulate(model;
-                interventions = [iso], attributes = clinical,
+            state = simulate(with_attributes(with_interventions(model, [iso]), clinical);
                 max_cases = 200, rng = StableRNG(42))
 
             # No individual should be isolated with isolation_time < 15.0

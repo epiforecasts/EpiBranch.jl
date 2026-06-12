@@ -33,8 +33,7 @@ end
         model_cap = BranchingProcess(cap_after_20, Exponential(5.0))
 
         rng = StableRNG(42)
-        state = simulate(model_cap; attributes = clinical,
-            max_cases = 200, rng = rng)
+        state = simulate(with_attributes(model_cap, clinical); max_cases = 200, rng = rng)
         # After the cap kicks in (cumulative_cases >= 20), every parent
         # should emit at most 2 contacts.
         for ind in state.individuals
@@ -49,9 +48,12 @@ end
         mv = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
             delay_to_immunity = 0.0)
         for seed in 1:5
-            state = simulate(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                interventions = [mv], attributes = clinical,
-                max_cases = 500, rng = StableRNG(seed))
+            state = simulate(
+                with_attributes(
+                    with_interventions(BranchingProcess(Poisson(3.0), Exponential(5.0)), [mv]),
+                    clinical);
+                max_cases = 500,
+                rng = StableRNG(seed))
             @test state.cumulative_cases == 1
         end
     end
@@ -62,10 +64,13 @@ end
         # outbreak should proceed unaffected.
         mv = MassVaccination(efficacy = 1.0, eligibility_time = 1.0e6,
             delay_to_immunity = 0.0)
-        state = simulate(BranchingProcess(Poisson(3.0), Exponential(5.0));
+        state = simulate(
+            with_attributes(
+                with_interventions(BranchingProcess(Poisson(3.0), Exponential(5.0)), [mv]),
+                clinical);
             condition = 50:500,
-            interventions = [mv], attributes = clinical,
-            max_cases = 500, rng = StableRNG(1))
+            max_cases = 500,
+            rng = StableRNG(1))
         @test state.cumulative_cases >= 50
         # Every contact was marked vaccinated (eligibility was finite)
         # but none had immunity in time, so the risk never fires.
@@ -85,9 +90,7 @@ end
         )
 
         rng = StableRNG(42)
-        state = simulate(model;
-            interventions = [mv], attributes = attrs,
-            max_cases = 200, rng = rng)
+        state = simulate(with_attributes(with_interventions(model, [mv]), attrs); max_cases = 200, rng = rng)
         # No infected case should have age >= 65 (those got blocked).
         for ind in state.individuals
             ind.parent_id == 0 && continue
@@ -102,10 +105,13 @@ end
         # — we just want to check the per-contact sampling mechanism.
         mv = MassVaccination(efficacy = Beta(8, 2),
             eligibility_time = 1.0e6, delay_to_immunity = 0.0)
-        state = simulate(BranchingProcess(Poisson(2.0), Exponential(5.0));
+        state = simulate(
+            with_attributes(
+                with_interventions(BranchingProcess(Poisson(2.0), Exponential(5.0)), [mv]),
+                clinical);
             condition = 50:500,
-            interventions = [mv], attributes = clinical,
-            max_cases = 500, rng = StableRNG(1))
+            max_cases = 500,
+            rng = StableRNG(1))
         effs = [ind.state[:vaccine_efficacy]
                 for ind in state.individuals if ind.parent_id != 0]
         @test !isempty(effs)
@@ -122,9 +128,12 @@ end
             efficacy = (rng, ind) -> ind.state[:age] >= 65 ? 0.3 : 0.95,
             eligibility_time = 0.0, delay_to_immunity = 0.0
         )
-        state = simulate(BranchingProcess(Poisson(2.0), Exponential(5.0));
-            interventions = [mv], attributes = attrs,
-            max_cases = 100, rng = StableRNG(2))
+        state = simulate(
+            with_attributes(
+                with_interventions(BranchingProcess(Poisson(2.0), Exponential(5.0)), [mv]),
+                attrs);
+            max_cases = 100,
+            rng = StableRNG(2))
         for ind in state.individuals
             ind.parent_id == 0 && continue
             expected = ind.state[:age] >= 65 ? 0.3 : 0.95
@@ -139,9 +148,13 @@ end
             delay_to_immunity = 0.0, dose_label = :prime)
         boost = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
             delay_to_immunity = 0.0, dose_label = :boost)
-        state = simulate(BranchingProcess(Poisson(3.0), Exponential(5.0));
-            interventions = [prime, boost], attributes = clinical,
-            max_cases = 200, rng = StableRNG(3))
+        state = simulate(
+            with_attributes(
+                with_interventions(BranchingProcess(Poisson(3.0), Exponential(5.0)), [
+                    prime, boost]),
+                clinical);
+            max_cases = 200,
+            rng = StableRNG(3))
         # The default :vaccinated key is untouched; dose-labelled
         # keys carry the state.
         for ind in state.individuals
@@ -169,8 +182,8 @@ end
 
         attrs = compose(clinical, demographics(age_distribution = Uniform(0, 90)))
         rng = StableRNG(42)
-        state = simulate(model;
-            interventions = [AgeConditionalBlock(50)], attributes = attrs,
+        state = simulate(
+            with_attributes(with_interventions(model, [AgeConditionalBlock(50)]), attrs);
             max_cases = 200, rng = rng)
         for ind in state.individuals
             ind.parent_id == 0 && continue
@@ -205,9 +218,7 @@ end
         attrs = transmission_traits(susceptibility = 0.3)
         frac = Float64[]
         for seed in 1:8
-            s = simulate(m; attributes = attrs,
-                n_initial = 50, max_generations = 1,
-                rng = StableRNG(seed))
+            s = simulate(with_attributes(m, attrs); n_initial = 50, max_generations = 1, rng = StableRNG(seed))
             kids = filter(i -> i.parent_id != 0, s.individuals)
             push!(frac, count(is_infected, kids) / length(kids))
         end
@@ -219,9 +230,10 @@ end
         m = BranchingProcess((rng, ind) -> 4, Exponential(5.0))
         attrs = transmission_traits(susceptibility = 0.5)
         opts = (; n_initial = 5, max_generations = 4)
-        base = simulate(m; attributes = attrs, opts..., rng = StableRNG(1))
-        grown = simulate(m; interventions = [KeepUninfectedActive()],
-            attributes = attrs, opts..., rng = StableRNG(1))
+        base = simulate(with_attributes(m, attrs); opts..., rng = StableRNG(1))
+        grown = simulate(
+            with_attributes(with_interventions(m, [KeepUninfectedActive()]), attrs);
+            opts..., rng = StableRNG(1))
 
         # The uninfected fringe now spawns its own contacts: far more nodes.
         @test length(grown.individuals) > length(base.individuals)

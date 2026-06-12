@@ -2,8 +2,9 @@
     # A small ring graph used by several tests.
     ring(n) = [sort([mod1(i - 1, n), mod1(i + 1, n)]) for i in 1:n]
 
-    sim1(model;
-        kwargs...) = simulate(model;
+    sim1(model; attributes = NoAttributes(),
+        interventions = AbstractIntervention[], kwargs...) = simulate(
+        with_attributes(with_interventions(model, interventions), attributes);
         n_initial = 1,
         stopping_rules = [Extinction(), MaxGenerations(100)],
         kwargs...)
@@ -122,11 +123,8 @@
         tot_pop = 0
         old_inf = 0
         tot_inf = 0
-        for s in simulate(model, 40;
-            attributes = attrs,
-            n_initial = 3,
-            stopping_rules = [Extinction(), MaxGenerations(100)],
-            rng = StableRNG(11))
+        for s in simulate(with_attributes(model, attrs), 40; n_initial = 3,
+            stopping_rules = [Extinction(), MaxGenerations(100)], rng = StableRNG(11))
             for ind in s.individuals
                 tot_pop += 1
                 ind.state[:age] >= 60 && (old_pop += 1)
@@ -190,13 +188,12 @@
             stopping_rules = [Extinction(), MaxGenerations(100)])
         attrs = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
 
-        base = simulate(model, 100; attributes = attrs, opts...,
-            rng = StableRNG(5))
+        base = simulate(with_attributes(model, attrs), 100; opts..., rng = StableRNG(5))
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
         ct = ContactTracing(probability = 0.7,
             isolation_to_trace_delay = Exponential(1.5))
-        treated = simulate(model, 100; interventions = [iso, ct],
-            attributes = attrs, opts..., rng = StableRNG(5))
+        treated = simulate(with_attributes(with_interventions(model, [iso, ct]), attrs),
+            100; opts..., rng = StableRNG(5))
 
         mean_base = sum(s.cumulative_cases for s in base) / 100
         mean_treated = sum(s.cumulative_cases for s in treated) / 100

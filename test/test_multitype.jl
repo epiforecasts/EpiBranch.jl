@@ -122,10 +122,7 @@ using DataFrames
         init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
         rng = StableRNG(42)
-        state = simulate(model;
-            interventions = [iso], attributes = init_fn,
-            max_cases = 100,
-            rng = rng)
+        state = simulate(with_attributes(with_interventions(model, [iso]), init_fn); max_cases = 100, rng = rng)
 
         n_isolated = count(ind -> is_isolated(ind), state.individuals)
         @test n_isolated > 0

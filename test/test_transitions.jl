@@ -26,12 +26,18 @@ end
 struct SingleSpawnModel <: EpiBranch.TransmissionModel
     generation_time::Exponential{Float64}
     progression::Vector{EpiBranch.AbstractClinicalTransition}
+    forcings::EpiBranch.Forcings
 end
 function SingleSpawnModel(; progression = EpiBranch.AbstractClinicalTransition[])
-    SingleSpawnModel(Exponential(1.0), progression)
+    SingleSpawnModel(Exponential(1.0), progression, EpiBranch._NO_FORCINGS)
 end
 EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
 EpiBranch._progression(m::SingleSpawnModel) = m.progression
+# Carry forcings so the model joins the with_* / forcings system.
+EpiBranch._forcings(m::SingleSpawnModel) = m.forcings
+function EpiBranch._rebuild(m::SingleSpawnModel, f::EpiBranch.Forcings)
+    SingleSpawnModel(m.generation_time, m.progression, f)
+end
 
 @testset "Clinical transitions" begin
     clinical = clinical_presentation(
@@ -301,8 +307,10 @@ EpiBranch._progression(m::SingleSpawnModel) = m.progression
         # it does not touch transitions itself. The engine sweep should
         # still populate DummyTest fields on every infected case.
         rng = StableRNG(7)
-        state = simulate(SingleSpawnModel(progression = [DummyTest(LogNormal(0.5, 0.2))]);
-            attributes = clinical, max_cases = 5, rng = rng)
+        state = simulate(
+            with_attributes(SingleSpawnModel(progression = [DummyTest(LogNormal(0.5, 0.2))]), clinical);
+            max_cases = 5,
+            rng = rng)
         @test all(ind.state[:tested] for ind in state.individuals)
         @test all(isfinite(ind.state[:test_time]) for ind in state.individuals)
     end

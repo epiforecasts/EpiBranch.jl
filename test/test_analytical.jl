@@ -531,11 +531,12 @@
         @testset "With interventions" begin
             model = BranchingProcess(Poisson(2.0), Exponential(5.0))
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-            ll = loglikelihood(ChainSizes([1, 1, 2, 1]), model;
-                interventions = [iso],
-                attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            ll = loglikelihood(ChainSizes([1, 1, 2, 1]),
+                with_attributes(with_interventions(model, [iso]),
+                    clinical_presentation(incubation_period = LogNormal(1.5, 0.5)));
                 max_cases = 500,
-                n_sim = 500, rng = StableRNG(42))
+                n_sim = 500,
+                rng = StableRNG(42))
             @test isfinite(ll)
         end
 
@@ -547,11 +548,12 @@
             model = BranchingProcess(Poisson(2.0), Exponential(5.0))
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             po = with_observation(model, PerCaseObservation(0.7, Dirac(0.0)))
-            ll = loglikelihood(ChainSizes([1, 1, 2, 1]), po;
-                interventions = [iso],
-                attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            ll = loglikelihood(ChainSizes([1, 1, 2, 1]),
+                with_attributes(with_interventions(po, [iso]),
+                    clinical_presentation(incubation_period = LogNormal(1.5, 0.5)));
                 max_cases = 500,
-                n_sim = 500, rng = StableRNG(42))
+                n_sim = 500,
+                rng = StableRNG(42))
             @test isfinite(ll)
         end
     end

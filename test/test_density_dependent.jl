@@ -26,9 +26,7 @@
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
-        state = simulate(model;
-            interventions = [iso], attributes = init_fn,
-            max_cases = 200, rng = rng)
+        state = simulate(with_attributes(with_interventions(model, [iso]), init_fn); max_cases = 200, rng = rng)
 
         @test count(is_isolated, state.individuals) > 0
     end

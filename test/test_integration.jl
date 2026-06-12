@@ -48,10 +48,8 @@ using Dates
         iso = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5))
         ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(2.0))
 
-        results = simulate(model, 500;
-            interventions = [iso, ct], attributes = clinical,
-            max_cases = 5000, max_generations = 50,
-            rng = rng)
+        results = simulate(with_attributes(with_interventions(model, [iso, ct]), clinical),
+            500; max_cases = 5000, max_generations = 50, rng = rng)
 
         @test containment_probability(results) >= 0.5
     end
@@ -60,10 +58,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5))
 
-        state = simulate(model;
-            attributes = clinical,
-            max_cases = 100, n_initial = 3,
-            rng = rng)
+        state = simulate(with_attributes(model, clinical); max_cases = 100, n_initial = 3, rng = rng)
 
         ll = linelist(state; reference_date = Date(2024, 1, 1))
         @test nrow(ll) == state.cumulative_cases
@@ -81,15 +76,15 @@ using Dates
 
         rng1 = StableRNG(42)
         iso_perfect = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.0)
-        results_perfect = simulate(model, 200;
-            interventions = [iso_perfect], attributes = clinical,
-            max_cases = 200, rng = rng1)
+        results_perfect = simulate(
+            with_attributes(with_interventions(model, [iso_perfect]), clinical),
+            200; max_cases = 200, rng = rng1)
 
         rng2 = StableRNG(42)
         iso_leaky = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.5)
-        results_leaky = simulate(model, 200;
-            interventions = [iso_leaky], attributes = clinical,
-            max_cases = 200, rng = rng2)
+        results_leaky = simulate(
+            with_attributes(with_interventions(model, [iso_leaky]), clinical),
+            200; max_cases = 200, rng = rng2)
 
         @test containment_probability(results_perfect) >=
               containment_probability(results_leaky)
@@ -101,8 +96,7 @@ using Dates
 
         rng = StableRNG(42)
         model = BranchingProcess(NegBin(2.5, 0.16), gt_fn)
-        state = simulate(model;
-            attributes = clinical, max_cases = 50, rng = rng)
+        state = simulate(with_attributes(model, clinical); max_cases = 50, rng = rng)
         @test state.cumulative_cases > 0
     end
 
