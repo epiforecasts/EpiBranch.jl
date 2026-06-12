@@ -1,10 +1,21 @@
 """
-    simulate(model::TransmissionModel; interventions=[],
-             attributes=nothing, sim_opts=SimOpts(),
-             rng=Random.default_rng(),
-             condition=nothing, max_attempts=10_000)
+    simulate(model::TransmissionModel; interventions, attributes,
+             max_cases=10_000, max_generations=100, max_time=nothing,
+             n_initial=1, stopping_rules=nothing,
+             rng=Random.default_rng(), condition=nothing, max_attempts=10_000)
 
 Run a single outbreak simulation.
+
+`interventions` and `attributes` default to those carried by `model` (a
+process is built with `interventions`/`attributes`/`observation`
+forcings), so the model alone determines the generative process. Pass
+them explicitly only to override the model's own, for a counterfactual
+run.
+
+Termination is set by `max_cases`, `max_generations`, and `max_time` (any
+of which may be `nothing` to drop that limit); the run always stops on
+extinction. For finer control pass a `stopping_rules` vector of
+[`AbstractStoppingRule`](@ref). `n_initial` is the number of seed cases.
 
 The case's clinical timeline — the [`AbstractClinicalTransition`](@ref)s a
 case moves through (latent, onset, severity, death/recovery, burial) — is
@@ -18,15 +29,30 @@ until one produces an outbreak whose cumulative cases fall within the range,
 up to `max_attempts`.
 """
 function simulate(model::TransmissionModel;
-        interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
-        attributes::Union{Function, NoAttributes} = NoAttributes(),
-        sim_opts::SimOpts = SimOpts(),
+        interventions::Vector{<:AbstractIntervention} = _interventions(model),
+        attributes::Union{Function, NoAttributes} = _attributes(model),
+        n_initial::Int = 1,
+        max_cases::Union{Int, Nothing} = 10_000,
+        max_generations::Union{Int, Nothing} = 100,
+        max_time::Union{Real, Nothing} = nothing,
+        stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
         condition::Union{UnitRange{Int}, Nothing} = nothing,
         max_attempts::Int = 10_000)
+    sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
+        stopping_rules)
+    return _simulate(model, sim_opts; interventions, attributes, rng,
+        condition, max_attempts)
+end
+
+# Internal single run against a built `SimOpts`. The public methods build
+# the `SimOpts` from the flat termination keywords.
+function _simulate(model::TransmissionModel, sim_opts::SimOpts;
+        interventions, attributes, rng, condition, max_attempts)
     if condition !== nothing
         for _ in 1:max_attempts
-            state = simulate(model; interventions, attributes, sim_opts, rng)
+            state = _simulate(model, sim_opts; interventions, attributes, rng,
+                condition = nothing, max_attempts)
             state.cumulative_cases in condition && return state
         end
         throw(ErrorException(
@@ -42,6 +68,7 @@ function simulate(model::TransmissionModel;
         _advance_generation!(model, state, interventions)
     end
 
+    apply_observation!(_observation(model), state, rng)
     return state
 end
 
@@ -49,30 +76,42 @@ end
     simulate(model, n::Int; parallel=false, kwargs...)
 
 Run `n` independent outbreak simulations. Returns a
-`Vector{SimulationState}`.
+`Vector{SimulationState}`. Takes the same termination and forcing keywords
+as the single-run method.
 
 When `parallel=true`, simulations are distributed across available threads
 using independent RNG streams derived from the provided `rng`. Use
 `julia --threads N` to enable multi-threading.
 """
 function simulate(model::TransmissionModel, n::Int;
-        interventions::Vector{<:AbstractIntervention} = AbstractIntervention[],
-        attributes::Union{Function, NoAttributes} = NoAttributes(),
-        sim_opts::SimOpts = SimOpts(),
+        interventions::Vector{<:AbstractIntervention} = _interventions(model),
+        attributes::Union{Function, NoAttributes} = _attributes(model),
+        n_initial::Int = 1,
+        max_cases::Union{Int, Nothing} = 10_000,
+        max_generations::Union{Int, Nothing} = 100,
+        max_time::Union{Real, Nothing} = nothing,
+        stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false)
+    sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
+        stopping_rules)
+    return _simulate_n(model, n, sim_opts; interventions, attributes, rng, parallel)
+end
+
+function _simulate_n(model::TransmissionModel, n::Int, sim_opts::SimOpts;
+        interventions, attributes, rng, parallel::Bool = false)
     if parallel && Threads.nthreads() > 1
         seeds = [rand(rng, UInt64) for _ in 1:n]
         results = Vector{SimulationState}(undef, n)
         Threads.@threads for i in 1:n
             local_rng = Random.Xoshiro(seeds[i])
-            results[i] = simulate(model; interventions,
-                attributes, sim_opts, rng = local_rng)
+            results[i] = _simulate(model, sim_opts; interventions, attributes,
+                rng = local_rng, condition = nothing, max_attempts = 10_000)
         end
         return results
     else
-        return [simulate(model; interventions, attributes,
-                    sim_opts, rng) for _ in 1:n]
+        return [_simulate(model, sim_opts; interventions, attributes, rng,
+                    condition = nothing, max_attempts = 10_000) for _ in 1:n]
     end
 end
 

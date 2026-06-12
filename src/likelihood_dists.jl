@@ -46,7 +46,7 @@ end
 # `rand(::AbstractRNG, ::Sampleable{Multivariate}, ::Int64)`.
 function Base.rand(rng::AbstractRNG, d::_ChainSizeLaw, n::Int)
     states = simulate(_underlying_model(d), n; d.kwargs..., rng)
-    # Each simulation is one cluster of `sim_opts.n_initial` seeds; its
+    # Each simulation is one cluster of `n_initial` seeds; its
     # observed size is the total infected across all seed chains, so a
     # multi-seed cluster is summed rather than having every chain but the
     # first silently dropped. `seeds`/`pi` describe the grouping of
@@ -91,8 +91,16 @@ end
 
 function chain_size_distribution(model::TransmissionModel;
         seeds = nothing, pi = nothing, kwargs...)
-    if seeds === nothing && pi === nothing && isempty(kwargs)
-        return chain_size_distribution(single_type_offspring(model))
+    # The analytical fast path is only valid when nothing perturbs the
+    # bare offspring law. A model that carries interventions must route
+    # through the simulation-based wrapper, even with no explicit kwargs,
+    # or its interventions would be silently dropped. The model's
+    # observation is applied analytically via `observe`.
+    if seeds === nothing && pi === nothing && isempty(kwargs) &&
+       isempty(_interventions(model))
+        return observe(
+            chain_size_distribution(single_type_offspring(model)),
+            _observation(model))
     end
     return _ChainSizeLaw(model, seeds, pi, NamedTuple(kwargs))
 end
