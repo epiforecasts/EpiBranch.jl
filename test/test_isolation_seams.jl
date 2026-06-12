@@ -30,7 +30,7 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         rng = StableRNG(42)
         state = simulate(BranchingProcess(Poisson(2.0), Exponential(5.0));
             interventions = [iso], attributes = clin_mixed,
-            sim_opts = SimOpts(max_cases = 100), rng = rng)
+            max_cases = 100, rng = rng)
         # AllCases + sensitivity = 1.0 means every individual tests
         # positive, including asymptomatic ones.
         @test all(get(ind.state, :test_positive, false) for ind in state.individuals)
@@ -46,7 +46,7 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         rng = StableRNG(13)
         state = simulate(BranchingProcess(Poisson(2.0), Exponential(5.0));
             interventions = [iso], attributes = attrs,
-            sim_opts = SimOpts(max_cases = 100), rng = rng)
+            max_cases = 100, rng = rng)
         for ind in state.individuals
             expected = !is_asymptomatic(ind) && ind.state[:age] >= 50
             @test get(ind.state, :test_positive, false) == expected
@@ -71,7 +71,7 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         rng = StableRNG(17)
         state = simulate(BranchingProcess(Poisson(2.0), Exponential(5.0));
             interventions = [iso], attributes = attrs,
-            sim_opts = SimOpts(max_cases = 100), rng = rng)
+            max_cases = 100, rng = rng)
         for ind in state.individuals
             ind.state[:test_positive] && @test ind.state[:age] >= 50
         end

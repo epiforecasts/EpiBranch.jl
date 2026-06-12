@@ -17,7 +17,7 @@ end
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
         state = simulate(model;
-            sim_opts = SimOpts(stopping_rules = [Extinction(), MaxCases(50)]),
+            stopping_rules = [Extinction(), MaxCases(50)],
             rng = rng)
         @test state.cumulative_cases >= 50
         @test !state.extinct  # extinction would mean the cap rule wasn't what stopped us
@@ -27,7 +27,7 @@ end
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
         state = simulate(model;
-            sim_opts = SimOpts(stopping_rules = [Extinction(), MaxGenerations(3)]),
+            stopping_rules = [Extinction(), MaxGenerations(3)],
             rng = rng)
         @test state.current_generation <= 3
     end
@@ -36,8 +36,7 @@ end
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
         state = simulate(model;
-            sim_opts = SimOpts(
-                stopping_rules = [Extinction(), MaxTime(20.0)]),
+            stopping_rules = [Extinction(), MaxTime(20.0)],
             rng = rng)
         @test state.max_infection_time >= 20.0
         @test !state.extinct
@@ -55,8 +54,7 @@ end
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
         # Cap chain depth to 3 generations via a user rule.
         state = simulate(model;
-            sim_opts = SimOpts(
-                stopping_rules = [Extinction(), MaxChainLengthRule(3)]),
+            stopping_rules = [Extinction(), MaxChainLengthRule(3)],
             rng = rng)
         @test maximum(ind.generation for ind in state.individuals) <= 3
     end

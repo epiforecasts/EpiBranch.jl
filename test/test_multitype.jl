@@ -24,7 +24,7 @@ using DataFrames
 
         rng = StableRNG(42)
         state = simulate(model;
-            sim_opts = SimOpts(max_cases = 100),
+            max_cases = 100,
             rng = rng)
 
         @test state.cumulative_cases > 0
@@ -45,7 +45,7 @@ using DataFrames
 
         rng = StableRNG(42)
         state = simulate(model;
-            sim_opts = SimOpts(max_cases = 200),
+            max_cases = 200,
             rng = rng)
 
         infected = filter(is_infected, state.individuals)
@@ -69,7 +69,7 @@ using DataFrames
         n_type2_total = 0
         rng = StableRNG(42)
         for _ in 1:20
-            state = simulate(model; sim_opts = SimOpts(max_cases = 200), rng = rng)
+            state = simulate(model; max_cases = 200, rng = rng)
             infected = filter(is_infected, state.individuals)
             n_type1_total += count(ind -> individual_type(ind) == 1, infected)
             n_type2_total += count(ind -> individual_type(ind) == 2, infected)
@@ -86,7 +86,7 @@ using DataFrames
 
         rng = StableRNG(42)
         state = simulate(model;
-            sim_opts = SimOpts(max_cases = 50),
+            max_cases = 50,
             rng = rng)
 
         @test state.cumulative_cases > 0
@@ -106,7 +106,7 @@ using DataFrames
 
         rng = StableRNG(42)
         state = simulate(model;
-            sim_opts = SimOpts(max_cases = 50),
+            max_cases = 50,
             rng = rng)
 
         @test state.cumulative_cases > 0
@@ -124,7 +124,7 @@ using DataFrames
         rng = StableRNG(42)
         state = simulate(model;
             interventions = [iso], attributes = init_fn,
-            sim_opts = SimOpts(max_cases = 100),
+            max_cases = 100,
             rng = rng)
 
         n_isolated = count(ind -> is_isolated(ind), state.individuals)
@@ -139,7 +139,7 @@ using DataFrames
 
         rng = StableRNG(42)
         state = simulate(model;
-            sim_opts = SimOpts(max_cases = 100),
+            max_cases = 100,
             rng = rng)
 
         @test state.cumulative_cases <= 50
@@ -151,7 +151,7 @@ using DataFrames
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         rng = StableRNG(42)
-        state = simulate(model; sim_opts = SimOpts(max_cases = 50), rng = rng)
+        state = simulate(model; max_cases = 50, rng = rng)
 
         cs = chain_statistics(state)
         @test cs isa DataFrame
@@ -164,7 +164,7 @@ using DataFrames
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         rng = StableRNG(42)
-        state = simulate(model; sim_opts = SimOpts(max_cases = 50), rng = rng)
+        state = simulate(model; max_cases = 50, rng = rng)
 
         ct = contacts(state)
         @test ct isa DataFrame
@@ -188,7 +188,7 @@ using DataFrames
 
         rng = StableRNG(42)
         state = simulate(model;
-            sim_opts = SimOpts(max_cases = 100),
+            max_cases = 100,
             rng = rng)
 
         infected = filter(is_infected, state.individuals)

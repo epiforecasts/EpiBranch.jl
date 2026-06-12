@@ -7,7 +7,7 @@
     @testset "writes :state and :state_time, anchored on :infection" begin
         latent = Transition(:infectious, from = :infection, delay = (rng, ind) -> 2.0)
         state = simulate(bp([latent]); attributes = clinical,
-            sim_opts = SimOpts(max_cases = 30), rng = StableRNG(1))
+            max_cases = 30, rng = StableRNG(1))
         for ind in state.individuals
             @test ind.state[:infectious] == true
             @test ind.state[:infectious_time] ≈ ind.infection_time + 2.0
@@ -17,7 +17,7 @@
     @testset "chains: a state measured from an earlier transition's state" begin
         severe = Transition(:severe, from = :onset, delay = (rng, ind) -> 1.0)
         state = simulate(bp([severe]); attributes = clinical,
-            sim_opts = SimOpts(max_cases = 30), rng = StableRNG(2))
+            max_cases = 30, rng = StableRNG(2))
         for ind in state.individuals
             @test ind.state[:severe_time] ≈ onset_time(ind) + 1.0
         end
@@ -27,7 +27,7 @@
         never = Transition(:flagged, delay = (rng, ind) -> 1.0, probability = 0.0)
         always = Transition(:marked, delay = (rng, ind) -> 1.0, probability = 1.0)
         state = simulate(bp([never, always]); attributes = clinical,
-            sim_opts = SimOpts(max_cases = 30), rng = StableRNG(3))
+            max_cases = 30, rng = StableRNG(3))
         for ind in state.individuals
             @test ind.state[:flagged] == false
             @test ind.state[:flagged_time] == Inf
@@ -43,7 +43,7 @@
         died = Transition(:died, from = :severe, delay = (rng, ind) -> 1.0,
             terminal = true)
         state = simulate(bp([severe, died]); attributes = clinical,
-            sim_opts = SimOpts(max_cases = 30), rng = StableRNG(4))
+            max_cases = 30, rng = StableRNG(4))
         for ind in state.individuals
             @test ind.state[:died] == false
             @test ind.state[:died_time] == Inf
@@ -57,7 +57,7 @@
         recovered = Transition(:recovered, from = :onset, delay = (rng, ind) -> 5.0,
             terminal = true)
         state = simulate(bp([died, recovered]); attributes = clinical,
-            sim_opts = SimOpts(max_cases = 30), rng = StableRNG(5))
+            max_cases = 30, rng = StableRNG(5))
         for ind in state.individuals
             @test ind.state[:outcome] == :died
             @test ind.state[:outcome_time] ≈ onset_time(ind) + 2.0
@@ -69,7 +69,7 @@
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 1.0)
         sev = Transition(:severe, from = :onset, delay = (rng, ind) -> 1.0)
         state = simulate(bp([sev]); attributes = all_asymp,
-            sim_opts = SimOpts(max_cases = 30), rng = StableRNG(6))
+            max_cases = 30, rng = StableRNG(6))
         for ind in state.individuals
             @test ind.state[:severe] == false
         end

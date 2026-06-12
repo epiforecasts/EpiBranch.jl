@@ -22,7 +22,7 @@ using Dates
     @testset "weekly_incidence" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        state = simulate(model; sim_opts = SimOpts(max_cases = 100), rng = rng)
+        state = simulate(model; max_cases = 100, rng = rng)
         df = weekly_incidence(state)
         @test df isa DataFrame
         @test sum(df.cases) == state.cumulative_cases
@@ -50,7 +50,7 @@ using Dates
 
         results = simulate(model, 500;
             interventions = [iso, ct], attributes = clinical,
-            sim_opts = SimOpts(max_cases = 5000, max_generations = 50),
+            max_cases = 5000, max_generations = 50,
             rng = rng)
 
         @test containment_probability(results) >= 0.5
@@ -62,7 +62,7 @@ using Dates
 
         state = simulate(model;
             attributes = clinical,
-            sim_opts = SimOpts(max_cases = 100, n_initial = 3),
+            max_cases = 100, n_initial = 3,
             rng = rng)
 
         ll = linelist(state; reference_date = Date(2024, 1, 1))
@@ -83,13 +83,13 @@ using Dates
         iso_perfect = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.0)
         results_perfect = simulate(model, 200;
             interventions = [iso_perfect], attributes = clinical,
-            sim_opts = SimOpts(max_cases = 200), rng = rng1)
+            max_cases = 200, rng = rng1)
 
         rng2 = StableRNG(42)
         iso_leaky = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.5)
         results_leaky = simulate(model, 200;
             interventions = [iso_leaky], attributes = clinical,
-            sim_opts = SimOpts(max_cases = 200), rng = rng2)
+            max_cases = 200, rng = rng2)
 
         @test containment_probability(results_perfect) >=
               containment_probability(results_leaky)
@@ -102,7 +102,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(NegBin(2.5, 0.16), gt_fn)
         state = simulate(model;
-            attributes = clinical, sim_opts = SimOpts(max_cases = 50), rng = rng)
+            attributes = clinical, max_cases = 50, rng = rng)
         @test state.cumulative_cases > 0
     end
 
@@ -110,7 +110,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
         state = simulate(model;
-            condition = 20:500, sim_opts = SimOpts(max_cases = 500), rng = rng)
+            condition = 20:500, max_cases = 500, rng = rng)
 
         df = generation_R(state)
         @test df isa DataFrame
@@ -122,7 +122,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         results = simulate(model, 100;
-            sim_opts = SimOpts(max_cases = 50), rng = rng)
+            max_cases = 50, rng = rng)
 
         cp_naive = containment_probability(results)
         cp_aware = containment_probability(results; max_cases = 50)
@@ -133,7 +133,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         state = simulate(model;
-            sim_opts = SimOpts(max_cases = 10_000, max_time = 30.0), rng = rng)
+            max_cases = 10_000, max_time = 30.0, rng = rng)
 
         # Check infected individuals only — non-infected contacts may have
         # later generation times but were never active
@@ -149,7 +149,7 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(NegBin(R, k), Exponential(5.0))
         results = simulate(model, 500;
-            sim_opts = SimOpts(max_cases = 5000, max_generations = 200), rng = rng)
+            max_cases = 5000, max_generations = 200, rng = rng)
         q_simulated = containment_probability(results)
 
         @test abs(q_analytical - q_simulated) < 0.1

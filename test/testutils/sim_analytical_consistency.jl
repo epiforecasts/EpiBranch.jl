@@ -15,23 +15,27 @@
 # `chain_size_distribution(m)` must return the corresponding
 # distribution over observed chain sizes.
 
-"""Strip observation wrappers; the generative model is what we simulate from."""
+# The generative model is what we simulate from. `chain_statistics`
+# counts all infected cases (the observation only flags `:reported`), so
+# simulating the model directly yields the true chain sizes.
 generative_model(m::TransmissionModel) = m
-generative_model(m::Observed) = generative_model(m.process)
 
 """
 Transform simulated true chain sizes into the observed sizes matching
-the analytical distribution. Default is identity; wrappers specialise.
+the analytical distribution, by applying the model's observation. Default
+(no observation) is identity.
 """
-observe_chain_sizes(::TransmissionModel, true_sizes, ::AbstractRNG) = true_sizes
+function observe_chain_sizes(m::TransmissionModel, true_sizes, rng::AbstractRNG)
+    _observe_sizes(EpiBranch._observation(m), true_sizes, rng)
+end
 
-function observe_chain_sizes(m::Observed{<:Any, <:PerCaseObservation},
-        true_sizes, rng::AbstractRNG)
-    inner = observe_chain_sizes(m.process, true_sizes, rng)
-    p = EpiBranch.scalar_detection_prob(m.observation)
+_observe_sizes(::NoObservation, true_sizes, ::AbstractRNG) = true_sizes
+
+function _observe_sizes(o::PerCaseObservation, true_sizes, rng::AbstractRNG)
+    p = EpiBranch.scalar_detection_prob(o)
     # Keep zero-detection outcomes in the output so the empirical marginal
     # matches the unconditional PMF returned by chain_size_distribution.
-    return [rand(rng, Binomial(n, p)) for n in inner]
+    return [rand(rng, Binomial(n, p)) for n in true_sizes]
 end
 
 """
@@ -52,7 +56,7 @@ function sim_analytical_consistent(model::TransmissionModel;
         max_cases::Int = 500)
     gen = generative_model(model)
     states = simulate(gen, n_chains;
-        sim_opts = SimOpts(max_cases = max_cases), rng = rng)
+        max_cases = max_cases, rng = rng)
     true_sizes = Int[]
     for s in states
         append!(true_sizes, chain_statistics(s).size)

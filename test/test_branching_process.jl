@@ -2,7 +2,7 @@
     @testset "Subcritical outbreak goes extinct" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-        state = simulate(model; sim_opts = SimOpts(), rng = rng)
+        state = simulate(model; rng = rng)
         @test state.extinct
         @test state.cumulative_cases < 100
     end
@@ -10,14 +10,14 @@
     @testset "Supercritical outbreak grows" begin
         rng = StableRNG(123)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-        state = simulate(model; sim_opts = SimOpts(max_cases = 500), rng = rng)
+        state = simulate(model; max_cases = 500, rng = rng)
         @test state.cumulative_cases >= 500
     end
 
     @testset "Multiple index cases" begin
         rng = StableRNG(99)
         model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-        state = simulate(model; sim_opts = SimOpts(n_initial = 5), rng = rng)
+        state = simulate(model; n_initial = 5, rng = rng)
         index_chains = [ind.chain_id for ind in state.individuals if ind.parent_id == 0]
         @test length(unique(index_chains)) == 5
     end
@@ -25,7 +25,7 @@
     @testset "Generation tracking" begin
         rng = StableRNG(77)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        state = simulate(model; sim_opts = SimOpts(max_generations = 3), rng = rng)
+        state = simulate(model; max_generations = 3, rng = rng)
         max_gen = maximum(ind.generation for ind in state.individuals)
         @test max_gen <= 3
     end
@@ -33,7 +33,7 @@
     @testset "Infection times increase across generations" begin
         rng = StableRNG(55)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        state = simulate(model; sim_opts = SimOpts(max_cases = 100), rng = rng)
+        state = simulate(model; max_cases = 100, rng = rng)
 
         for ind in filter(is_infected, state.individuals)
             if ind.parent_id > 0
@@ -50,7 +50,7 @@
         init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         state = simulate(model;
             attributes = init_fn,
-            sim_opts = SimOpts(max_cases = 50),
+            max_cases = 50,
             rng = rng)
 
         for ind in filter(is_infected, state.individuals)
@@ -80,7 +80,7 @@
         gt_fn = ind -> Exponential(ind.state[:gt_scale])
         model = BranchingProcess(Poisson(1.2), gt_fn)
         state = simulate(model; attributes = init_fn,
-            sim_opts = SimOpts(max_cases = 50), rng = rng)
+            max_cases = 50, rng = rng)
 
         # Require secondary transmission so the generation_time function
         # is actually exercised, not just the index case.
@@ -96,7 +96,7 @@
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), truncated(Exponential(5.0), 3.0, Inf))
         state = simulate(model;
-            condition = 20:500, sim_opts = SimOpts(max_cases = 500), rng = rng)
+            condition = 20:500, max_cases = 500, rng = rng)
 
         for ind in filter(is_infected, state.individuals)
             if ind.parent_id > 0

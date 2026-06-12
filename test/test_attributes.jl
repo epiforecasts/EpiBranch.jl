@@ -65,7 +65,7 @@
             attrs = transmission_traits(susceptibility = 0.5, infectiousness = 0.8)
             state = simulate(model;
                 attributes = attrs,
-                sim_opts = SimOpts(max_cases = 30),
+                max_cases = 30,
                 rng = StableRNG(1))
             @test all(ind.susceptibility == 0.5 for ind in state.individuals)
             @test all(ind.infectiousness == 0.8 for ind in state.individuals)

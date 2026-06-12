@@ -42,10 +42,10 @@
         @test logpdf(d, data) ≈ loglikelihood(ChainLengths(data), Poisson(0.5))
     end
 
-    @testset "chain_size_distribution — Observed wrapper" begin
+    @testset "chain_size_distribution — per-case observation" begin
         data = [1, 2, 1, 3, 1]
         bp = BranchingProcess(Poisson(0.5))
-        obs = Observed(bp, PerCaseObservation(; detection_prob = 0.7))
+        obs = with_observation(bp, PerCaseObservation(; detection_prob = 0.7))
         d = chain_size_distribution(obs; n_sim = 0)
         # n_sim=0 forces the wrapper path; logpdf should still match the
         # analytical loglikelihood with no kwargs since there are no
@@ -55,7 +55,7 @@
 
     @testset "rand draws chain sizes from the underlying model" begin
         bp = BranchingProcess(Poisson(0.5), Exponential(5.0))
-        d = chain_size_distribution(bp; sim_opts = SimOpts())
+        d = chain_size_distribution(bp)
         samples = rand(StableRNG(7), d, 50)
         @test length(samples) == 50
         @test all(s -> s >= 1, samples)
@@ -65,14 +65,14 @@
         bp = BranchingProcess(Poisson(0.5), Exponential(5.0))
         # Three seeds per cluster: each draw is the total infected across
         # all three seed chains, so every cluster size is at least 3.
-        d = chain_size_distribution(bp; sim_opts = SimOpts(n_initial = 3))
+        d = chain_size_distribution(bp; n_initial = 3)
         samples = rand(StableRNG(7), d, 50)
         @test length(samples) == 50
         @test all(s -> s >= 3, samples)
 
         # Chain length aggregates with `maximum`, so deeper seed chains
         # are not lost.
-        dl = chain_length_distribution(bp; sim_opts = SimOpts(n_initial = 3))
+        dl = chain_length_distribution(bp; n_initial = 3)
         lengths = rand(StableRNG(7), dl, 50)
         @test length(lengths) == 50
         @test all(l -> l >= 0, lengths)

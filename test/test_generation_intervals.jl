@@ -2,7 +2,7 @@
     @testset "Per-individual accessor" begin
         rng = StableRNG(1)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        state = simulate(model; sim_opts = SimOpts(max_cases = 200), rng = rng)
+        state = simulate(model; max_cases = 200, rng = rng)
 
         # Index cases have no parent.
         for ind in state.individuals
@@ -25,7 +25,7 @@
     @testset "Batch reducer collects all infected non-index cases" begin
         rng = StableRNG(2)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        state = simulate(model; sim_opts = SimOpts(max_cases = 200), rng = rng)
+        state = simulate(model; max_cases = 200, rng = rng)
 
         gts = realised_generation_intervals(state)
         expected = count(ind -> is_infected(ind) && ind.parent_id != 0,
@@ -34,7 +34,7 @@
         @test all(>=(0), gts)
 
         # Vector-of-states method flattens.
-        states = simulate(model, 5; sim_opts = SimOpts(max_cases = 200),
+        states = simulate(model, 5; max_cases = 200,
             rng = StableRNG(3))
         all_gts = realised_generation_intervals(states)
         @test length(all_gts) == sum(length(realised_generation_intervals(s))
@@ -47,7 +47,7 @@
         rng = StableRNG(4)
         gt_mean = 5.0
         model = BranchingProcess(Poisson(1.5), Exponential(gt_mean))
-        states = simulate(model, 50; sim_opts = SimOpts(max_cases = 500),
+        states = simulate(model, 50; max_cases = 500,
             rng = rng)
         gts = realised_generation_intervals(states)
         @test length(gts) > 5000
@@ -61,14 +61,14 @@
         rng_b = StableRNG(7)
         model = BranchingProcess(Poisson(2.5), Exponential(6.0))
         attrs = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
-        opts = SimOpts(max_cases = 1000)
+        opts = (; max_cases = 1000)
 
         free = realised_generation_intervals(
-            simulate(model, 30; attributes = attrs, sim_opts = opts, rng = rng_a))
+            simulate(model, 30; attributes = attrs, opts..., rng = rng_a))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         isolated = realised_generation_intervals(
             simulate(model, 30; interventions = [iso], attributes = attrs,
-            sim_opts = opts, rng = rng_b))
+            opts..., rng = rng_b))
 
         @test !isempty(free)
         @test !isempty(isolated)
@@ -81,8 +81,8 @@
                    mod1(i + 5, n), mod1(i - 5, n)])) for i in 1:n]
         model = NetworkProcess(adj, 0.5, LogNormal(1.6, 0.5))
         state = simulate(model;
-            sim_opts = SimOpts(n_initial = 1,
-                stopping_rules = [Extinction(), MaxGenerations(100)]),
+            n_initial = 1,
+            stopping_rules = [Extinction(), MaxGenerations(100)],
             rng = StableRNG(9))
         gts = realised_generation_intervals(state)
         @test all(>=(0), gts)
