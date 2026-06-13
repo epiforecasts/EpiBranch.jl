@@ -190,6 +190,8 @@ function collect_exposures(model::TransmissionModel, state::SimulationState)
     for idx in state.active_ids
         parent = state.individuals[idx]
         offspring = generate_offspring(model, parent, state)
+        # the generation interval: how long after this parent was infected
+        # each of its contacts occurs.
         gt_dist = get_generation_time(model_generation_time(model), parent)
         _materialise_offspring!(targets, edges, offspring, parent, state, gt_dist)
     end
@@ -376,8 +378,11 @@ function _advance_generation!(model::TransmissionModel,
         apply_post_transmission!(intervention, state, targets)
     end
 
-    # Resolve infection per target: infected if any edge transmits,
-    # earliest edge first so the first success gives the infection time.
+    # Exposure is not infection. Each contact exposed this generation is now
+    # decided infected-or-not: the infector's infectiousness, the contact's
+    # susceptibility and any interventions all act as competing risks on the
+    # same footing. A contact is infected if any of its exposing edges
+    # transmits; the earliest successful edge fixes the infection time.
     infected_so_far = 0
     newly_infected = Individual[]
     for i in eachindex(targets)

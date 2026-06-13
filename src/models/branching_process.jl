@@ -40,9 +40,14 @@ end
 """
 Stochastic branching process transmission model.
 
-The second positional argument is the contact interval (generation-time
-distribution); with the default single window and no natural-history
-states it is the generation interval, exactly as before.
+Each infected case independently generates a random number of secondary
+cases — its offspring — and the outbreak is the branching tree that grows
+from the seeds. The first positional argument is that offspring
+distribution; a negative binomial is the usual choice, its overdispersion
+standing in for superspreading. The second positional argument is the
+contact interval (generation-time distribution); with the default single
+window and no natural-history states it is the generation interval, exactly
+as before.
 
 Every constructor also takes `interventions`, `attributes`, and
 `observation` as keyword arguments, the inputs the model carries. They
