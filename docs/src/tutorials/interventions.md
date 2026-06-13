@@ -429,6 +429,13 @@ to undo it.
 
 ## Writing a custom intervention
 
+Everything above this point is *configuration* — combining the interventions
+that ship with EpiBranch, which is the common case and needs no Julia beyond
+keyword arguments. This section is *extension*: writing a new intervention in
+Julia. That is developer work, alongside [adding a transmission
+model](extending.md#Adding-a-transmission-model) — see [Extending
+EpiBranch](extending.md) for the full picture of the extension points.
+
 Custom interventions are defined as structs subtyping [`AbstractIntervention`](@ref).
 One or more of the following methods should be implemented:
 - `initialise_individual!` — set up fields on new contacts

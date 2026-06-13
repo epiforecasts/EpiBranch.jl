@@ -4,7 +4,7 @@
 branching-process models in epidemiology. It does both stochastic simulation and
 analytical inference, and uses closed-form results where they exist. A flexible
 extension interface includes interventions, host attributes and transmission over
-contact networks.
+contact networks; see [Extending EpiBranch](tutorials/extending.md) for the extension points.
 
 It started as a unification of five R packages (cf.
 [ringbp](https://github.com/epiforecasts/ringbp),

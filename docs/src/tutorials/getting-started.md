@@ -170,3 +170,4 @@ println("Outbreak size: $(state.cumulative_cases) (target: 50-100)")
 - [Line lists and contacts](linelist.md) — generating epidemiological data
 - [Chain statistics and likelihood](chains.md) — inference from chain data
 - [Analytical functions](analytical.md) — closed-form solutions
+- [Extending EpiBranch](extending.md) — writing a custom intervention or a new transmission model

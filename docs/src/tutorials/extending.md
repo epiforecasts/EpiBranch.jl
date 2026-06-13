@@ -1,10 +1,32 @@
 # Extending EpiBranch
 
-EpiBranch.jl is designed for user extension. This guide covers:
+If you only want to *use* the interventions, attributes and models that ship
+with EpiBranch, you don't need this page — start with
+[Interventions](interventions.md) and the other tutorials. This page is for
+writing new pieces in Julia.
 
-- Writing a custom intervention
-- Adding custom individual attributes
-- Using function-based offspring for custom transmission models
+## Extension points
+
+There are a handful of places to extend EpiBranch, in increasing order of how
+much you write:
+
+- **Configure a built-in intervention** — add an existing control measure
+  (`Isolation`, `ContactTracing`, `RingVaccination`, `MassVaccination`) to a
+  model by keyword. This is applied, end-user work and lives in
+  [Interventions](interventions.md), not here.
+- **Write a custom intervention** — subtype `AbstractIntervention` and implement
+  its hooks to add a risk the built-ins don't cover. A new *behaviour* on an
+  existing process. Covered below.
+- **Add a transmission model** — subtype `TransmissionModel` to add a whole new
+  transmission *process* (network-, household- or metapopulation-structured, a
+  continuous-time alternative). The deepest surface. Covered below.
+- **Add an observation or data type** — subtype `ObservationModel`, or define a
+  `loglikelihood` method for a new data type. Covered below.
+
+The two surfaces most people reach for are a **custom intervention** (a new risk
+on an existing model) and a **custom transmission model** (a new process); both
+are developer work in Julia. This guide also covers custom attributes and
+offspring along the way.
 
 ## Custom interventions
 
@@ -547,8 +569,12 @@ applies: produce every *potential* contact and let the engine's
 competing-risks resolution decide infection. Everything else — gathering
 the exposures, `initialise_individual!` and `apply_post_transmission!` on
 new contacts, competing risks, clinical transitions, and bookkeeping — is
-the shared engine. A structure-driven model also defines `initialise_state`
-to set up its fixed population. `NetworkProcess` is the worked example.
+the shared engine. A structure-driven model also defines
+[`initialise_state`](@ref EpiBranch.initialise_state) to set up its fixed
+population, building it with the public helpers
+[`new_state`](@ref EpiBranch.new_state),
+[`add_individuals!`](@ref EpiBranch.add_individuals!) and
+[`seed!`](@ref EpiBranch.seed!). `NetworkProcess` is the worked example.
 
 Models whose contacts can be *shared* across parents within a generation
 (networks, households, clustering) also override
@@ -568,9 +594,18 @@ specification (`extinction_probability`, `epidemic_probability`,
 For **likelihoods** on data types that don't go through the offspring
 spec, define methods on `loglikelihood` directly.
 
-For optional **state accessors**, override `population_size`,
+For optional **state accessors**, override `population_size` and
 `n_types` if your model has values for them. The defaults
 (`NoPopulation()`, `1`) are fine if not.
+
+If your model carries its own interventions, attributes or observation in
+fields, define the matching accessors — `EpiBranch.interventions(m)`,
+`attributes(m)`, `observation(m)` — so the engine and the likelihood can read
+them. `BranchingProcess` defines these over its fields; a new model opts in the
+same way (the defaults are no interventions, no attributes, no observation). And
+if your generation-time distribution is not stored in a field literally named
+`generation_time`, override [`model_generation_time`](@ref EpiBranch.model_generation_time)`(m)` to point at it —
+that accessor is what the engine calls.
 
 If your model carries a clinical natural history (incubation, onset,
 recovery), expose it as the model's progression: store the transitions in
@@ -614,15 +649,16 @@ loglikelihood(ChainSizes(data), MyModel(NegBin(0.8, 0.5), ...))
 
 ### Composing with the observation side
 
-Your model carries an observation like any other process: pass
-`observation = …` to its constructor and the likelihood reads it
-automatically:
+Your model carries an observation like any other process: store it in a field,
+define `EpiBranch.observation(m) = m.observation` (see the accessors above), and
+the likelihood reads it automatically:
 
 ```julia
 MyModel(...; observation = PerCaseObservation(detection_prob = 0.7))
 ```
 
-works the same way as it does for `BranchingProcess`.
+works the same way as it does for `BranchingProcess`, which defines that
+accessor for you.
 
 ## Adding an observation model
 
@@ -767,7 +803,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
-| Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (or `contacts_of` + `gather_by_target`), `single_type_offspring` | Simulation + analytics |
+| Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
