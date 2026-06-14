@@ -6,6 +6,7 @@ using Distributions
 using QuadGK
 using Random
 using SpecialFunctions
+using SurvivalDistributions
 
 # Docstring templates (must come before any docstrings)
 include("docstrings.jl")
@@ -131,6 +132,11 @@ export individual_type, set_isolated!
 
 # Exports — distributions
 export NegBin, scale_distribution, incubation_linked_generation_time
+# Contact intervals as hazards, re-exported from SurvivalDistributions so a
+# kernel can be specified by its hazard without a second `using`.
+export ExpoDist, ExponentiatedWeibull, GeneralizedGamma, LogLogistic
+export PiecewiseConstantHazardDistribution, PowerGeneralizedWeibull
+export hazard, cumhazard, loghazard, censored_loglikelihood
 # Process-side chain-size distributions (closed forms for offspring specs)
 export Borel, GammaBorel, PoissonGammaChainSize, chain_size_distribution
 # Observation-side chain-size distribution (binomial thinning of any base)

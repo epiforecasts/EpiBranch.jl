@@ -1,4 +1,20 @@
 @testset "Generation intervals" begin
+    @testset "Contact interval as a SurvivalDistributions hazard" begin
+        # The contact-interval kernel can be specified by its hazard. The
+        # hazard distributions and their hazard/survival functions are
+        # re-exported from EpiBranch, so no separate `using` is needed.
+        k = LogLogistic(1.5, 2.0)
+        @test k isa Distribution
+        @test hazard(k, 1.0) > 0
+        @test 0 < ccdf(k, 1.0) < 1            # survival function
+        @test cumhazard(k, 1.0) ≈ -log(ccdf(k, 1.0)) atol = 1e-8
+
+        model = BranchingProcess(NegBin(2.0, 0.5), k)
+        state = simulate(model; max_cases = 200, rng = StableRNG(1))
+        gts = realised_generation_intervals(state)
+        @test all(>=(0), gts)
+    end
+
     @testset "Per-individual accessor" begin
         rng = StableRNG(1)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
