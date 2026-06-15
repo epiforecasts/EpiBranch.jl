@@ -32,7 +32,7 @@ transmission in the observed outbreak, the likelihood of those chain sizes
 is only correct if it also applies isolation. With the three on the model,
 `loglikelihood(data, model)` already has them, and the two entry points can
 never disagree. A scenario sweep is then a map over models, each scenario a
-process built with a different policy — the usual Turing/SciML idiom. A
+process built with a different policy, the usual Turing/SciML idiom. A
 counterfactual is a fresh model built with the policy you want; there is no
 in-place "swap one input" helper, so a model's pieces are always explicit
 at construction.
@@ -56,7 +56,7 @@ model-specific; the other two run the same way for every model.
 
 ### 1. Offspring draw (model-specific)
 
-Pure branching process — no time, no interventions. For a parent, contacts
+Pure branching process: no time, no interventions. For a parent, contacts
 are drawn from an offspring distribution: a single count, or a count per
 type for a multi-type model. The mean (R) and overdispersion (k) come from
 that distribution; if a contact matrix is supplied, it sets the mixing
@@ -78,7 +78,7 @@ example. Either way the model only says who contacts whom.
 Each candidate is given a transmission time from the parent's
 infectiousness profile (the generation-time distribution). That
 distribution can be fixed or built per individual, so the timing can read
-any per-individual quantity — the parent's incubation period, or anything
+any per-individual quantity: the parent's incubation period, or anything
 an attributes function has stored. This is the *potential* time of
 transmission: h(t) in survival-analysis terms.
 
@@ -100,9 +100,9 @@ used) with no extra bookkeeping.
 ### Why this separation matters
 
 Because the offspring distribution is a pure probabilistic object, it can
-be analysed with standard tools — extinction probability from the dominant
-eigenvalue, chain-size distributions, analytical likelihoods — none of
-which depends on timing or interventions, and the draw stays differentiable
+be analysed with standard tools: extinction probability from the dominant
+eigenvalue, chain-size distributions, analytical likelihoods. None of these
+depends on timing or interventions, and the draw stays differentiable
 where the distribution permits. Interventions act on the timing and
 competing-risks layers, not the offspring layer: isolation truncates the
 hazard, contact tracing shifts the truncation earlier, vaccination lowers
@@ -141,17 +141,18 @@ This holds on every axis:
 The test of correctness for any component: can a plausible new variant be
 added without editing the component's source? If not, the component is
 doing too much, and the varying part should be lifted into a dispatched-on
-trait. The concrete contracts — which methods each axis requires, with
-worked examples — are in the [Extending guide](@ref "Extending EpiBranch").
+trait. The concrete contracts (which methods each axis requires, with
+worked examples) are in the [Extending guide](@ref "Extending EpiBranch").
 
 ## Individual state
 
-Each individual carries a small typed core that the engine reads — its
-place in the transmission tree, its infection time, and the two universal
-modifiers (susceptibility and infectiousness) — plus an open dictionary for
-everything else. The dictionary is the deliberate extension hatch:
-interventions, attributes builders, clinical transitions, and observation
-models each own a small set of keys, and the engine never inspects them.
+Each individual carries a small typed core that the engine reads, plus an
+open dictionary for everything else. The core holds its place in the
+transmission tree, its infection time, and the two universal modifiers
+(susceptibility and infectiousness). The dictionary is the deliberate
+extension hatch: interventions, attributes builders, clinical transitions,
+and observation models each own a small set of keys, and the engine never
+inspects them.
 
 A typed core would couple the struct to every intervention's state shape
 and would break the dose-label namespacing that lets multi-dose
@@ -162,13 +163,13 @@ listed in the [Extending guide](@ref "Extending EpiBranch").
 
 ## Interventions
 
-All interventions ultimately map onto two numbers: **susceptibility**
+All interventions map onto two numbers: **susceptibility**
 (probability of infection given exposure, reduced by vaccination, prior
 immunity, or population depletion) and **infectiousness** (a modifier on
 onward transmission, reduced by isolation, treatment, or asymptomatic
 status). A contact is infected only if it survives the parent's
 infectiousness check, its own susceptibility check, and the timing check
-(generation time versus isolation time) — the competing-risks resolution of
+(generation time versus isolation time), the competing-risks resolution of
 stage 3.
 
 Interventions are stacked and applied in order, each owning its own state
@@ -182,7 +183,7 @@ it. The hook contract and a worked example are in the
 
 ## Multi-type branching processes
 
-Multiple types — age groups, risk groups, spatial patches — are supported
+Multiple types (age groups, risk groups, spatial patches) are supported
 in the offspring draw: for a parent of type `j`, offspring counts per type
 are drawn from a joint distribution, with the mixing pattern from a contact
 matrix and the count family from the offspring distribution. Each contact
@@ -191,15 +192,15 @@ they operate on individual-level state, not on types.
 
 ## Analytical and simulation duality
 
-Where a quantity has a closed form, the package prefers it; simulation
-covers the rest, and the two are kept consistent.
+Where a closed form exists, EpiBranch uses it; simulation covers the rest,
+and the two are kept consistent.
 
 The simulation side is extended through the intervention and model
 protocols above. The analytical side uses dispatch on the existing model
 types, with no new abstract type. Two kinds of extension plug in:
 
 - **Offspring specifications** replace what a branching process draws per
-  individual — for example letting the offspring parameters vary from chain
+  individual, for example letting the offspring parameters vary from chain
   to chain. They participate in simulation through the offspring draw and in
   analytics by returning a chain-size distribution.
 - **Observation models** capture how the latent process generates data. An
@@ -209,8 +210,8 @@ types, with no new abstract type. Two kinds of extension plug in:
   once, as a transform. On the simulation side it marks observed cases on a
   finished run.
 
-Some combinations have closed forms — Poisson offspring with a
-Gamma-distributed rate gives the `gborel` law from epichains — and these
+Some combinations have closed forms. Poisson offspring with a
+Gamma-distributed rate gives the `gborel` law from epichains, and these
 plug in by specialising the chain-size distribution on the relevant type
 combination, so dispatch picks the closed form without the user asking. The
 generic case falls back to quadrature.
@@ -225,9 +226,10 @@ Analytical likelihoods are deterministic scalar functions of the
 parameters: they work with any AD backend and with gradient-based samplers
 like NUTS. Simulation-based likelihoods draw random numbers, so the output
 is a noisy estimate and the gradient of a single realisation is not a
-useful estimate of the gradient of the expected likelihood — gradient-based
-samplers should not be used. Use gradient-free samplers (Metropolis–
-Hastings, particle methods) instead, as the inference tutorial shows.
+useful estimate of the gradient of the expected likelihood, so
+gradient-based samplers should not be used. Use gradient-free samplers
+(Metropolis–Hastings, particle methods) instead, as the inference tutorial
+shows.
 
 ### Why mutate in place
 
@@ -243,7 +245,7 @@ isolation occurs at time t_iso, P(transmission before isolation) = G(t_iso)
 and P(transmission after) = 1 − G(t_iso): the transmission process is
 right-censored. The generation-time distribution connects to the population
 growth rate through the Euler–Lotka equation R = 1/M_g(−r). The same two
-objects — the generation-time distribution and the censoring time — appear
+objects, the generation-time distribution and the censoring time, appear
 in both simulation and Kenah's pairwise likelihood, so inference built on
 this framework fits the same quantities it simulates from.
 
@@ -251,9 +253,9 @@ this framework fits the same quantities it simulates from.
 
 The three stages above describe the simplest model: one offspring law, one
 generation-time distribution. The branching process generalises this by
-carrying a **host timeline** — the case's natural history as a sequence of
-timed states from infection (infectious, onset, severe, died or recovered,
-buried) — and treating transmission as a set of **route windows** keyed off
+carrying a **host timeline** (the case's natural history as a sequence of
+timed states from infection: infectious, onset, severe, died or recovered,
+buried) and treating transmission as a set of **route windows** keyed off
 that timeline. A route window is an offspring law, a `from` state where
 infectiousness begins, the states that end it, and a survival kernel for
 the timing within it.
@@ -273,7 +275,7 @@ would make if never removed, and the realised R falls out of the censoring:
 shortening the infectious window blocks more contacts and lowers it. k
 remains the intrinsic offspring dispersion and is deliberately not the
 shape of the infectious period, so the count is never drawn from a
-duration — that would couple stage 1 to timing and break the
+duration, which would couple stage 1 to timing and break the
 branch-first decoupling the engine rests on.
 
 A window contributes contacts only once its `from` state has occurred, so a
@@ -281,7 +283,7 @@ survivor never materialises funeral contacts and nothing is created only to
 be censored. The offspring law driving outbreak size is therefore a
 fate-mixture (community offspring for everyone, plus funeral offspring for
 the fraction who die), which stays closed-form when each branch is a
-negative binomial and falls back to simulation otherwise — so the
+negative binomial and falls back to simulation otherwise, so the
 analytical/simulation duality carries over.
 
 This is also the seam through which a household- or

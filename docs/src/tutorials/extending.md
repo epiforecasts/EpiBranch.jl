@@ -37,7 +37,7 @@ attributes functions, clinical transitions, and observation models each own
 a few keys in that dictionary.
 
 Read a key through a one-line accessor that pins the result type and
-supplies a safe default — `onset_time(ind) = get(ind.state, :onset_time, NaN)::Float64`.
+supplies a safe default: `onset_time(ind) = get(ind.state, :onset_time, NaN)::Float64`.
 New code should add an accessor in `src/state_accessors.jl` rather than
 calling `get(ind.state, …)` directly.
 
@@ -86,7 +86,7 @@ colliding.
 `:reported` is shared between the `Reporting` clinical transition (which
 sets it from a probability gate) and `PerCaseObservation` (which sets it
 post-simulation from a detection-probability draw). Composing both in the
-same simulation is not supported — they will overwrite each other.
+same simulation is not supported, because they will overwrite each other.
 
 Built-in keys use short bare names like `:isolated`, `:traced`, `:age`, and
 those names are reserved. If you add keys from another package, prefix them
