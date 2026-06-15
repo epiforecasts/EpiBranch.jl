@@ -49,7 +49,7 @@ jobs:
           coverage: false
 
   docs:
-    needs: test
+    needs: [test, epinetwork]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
