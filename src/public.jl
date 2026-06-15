@@ -27,6 +27,9 @@ public observation
 public population_size
 public n_types
 public model_generation_time
+#   - `transmission_risks` to contribute per-pair competing risks (e.g. a
+#     network's per-edge probability), resolved alongside the built-ins.
+public transmission_risks
 
 # Helpers an `initialise_state` / `contacts_of` builds on, so a model never
 # touches the engine's bookkeeping directly.

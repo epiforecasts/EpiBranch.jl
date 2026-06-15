@@ -631,7 +631,16 @@ infections deplete a fixed pool. It defines two methods instead:
 
 `contacts_of` has no `interventions` argument either, and the same rule
 applies: produce every *potential* contact and let the engine's
-competing-risks resolution decide infection. Everything else — gathering
+competing-risks resolution decide infection. If the model's own
+transmission probability belongs to the *edge* (a network's per-edge
+probability, a metapopulation coupling), don't filter on it in
+`contacts_of` — return the contact and let the probability decide infection
+by overriding
+[`transmission_risks`](@ref EpiBranch.transmission_risks)`(model)` to return
+a risk source with a `competing_risk` method. The contact is then still
+produced and seen by `apply_post_transmission!` (so contact tracing and ring
+vaccination work), and the probability is weighed against susceptibility,
+infectiousness and interventions together. Everything else — gathering
 the exposures, `initialise_individual!` and `apply_post_transmission!` on
 new contacts, competing risks, clinical transitions, and bookkeeping — is
 the shared engine. A structure-driven model also defines
@@ -639,7 +648,7 @@ the shared engine. A structure-driven model also defines
 population, building it with the public helpers
 [`new_state`](@ref EpiBranch.new_state),
 [`add_individuals!`](@ref EpiBranch.add_individuals!) and
-[`seed!`](@ref EpiBranch.seed!). The companion epiNetwork.jl package's
+[`seed!`](@ref EpiBranch.seed!). The companion EpiNetwork.jl package's
 `NetworkProcess` is the worked example.
 
 Models whose contacts can be *shared* across parents within a generation

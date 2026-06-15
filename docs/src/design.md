@@ -70,7 +70,7 @@ metapopulation process) cannot, because a susceptible may be reachable by
 several infectious neighbours at once and infections deplete a fixed pool;
 it instead names the candidate contacts each infectious node reaches, and
 the engine resolves a node reached several times in one generation once.
-The companion `epiNetwork.jl` package's network process is the worked
+The companion `EpiNetwork.jl` package's network process is the worked
 example. Either way the model only says who contacts whom.
 
 ### 2. Timing (shared)
@@ -89,8 +89,13 @@ per-pair decision composed of a list of risk sources. Parent
 infectiousness and contact susceptibility are not privileged engine checks:
 they are default risk sources on the same surface an intervention uses, and
 isolation truncation or any risk an intervention contributes joins the same
-list. A contact is infected only if no risk blocks it, so the earliest
-removal before the contact's time wins, with no special min-logic.
+list. A model can contribute its own sources here too, for a transmission
+term that belongs to the *edge* rather than a node (a network's per-edge
+probability): the per-node susceptibility and infectiousness terms cannot
+carry a per-pair quantity without forcing one shared value across a node's
+edges, so it goes here instead. A contact is infected only if no risk blocks
+it, so the earliest removal before the contact's time wins, with no special
+min-logic.
 
 Contacts that fail a check are still stored. They are contacts that were
 made but did not transmit, and they carry the contact-tracing table and

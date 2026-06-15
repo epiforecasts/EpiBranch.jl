@@ -1,9 +1,9 @@
 using Test
-using epiNetwork
+using EpiNetwork
 using EpiBranch
 using Distributions
 using StableRNGs
 
-@testset "epiNetwork.jl" begin
+@testset "EpiNetwork.jl" begin
     include("test_network_process.jl")
 end
