@@ -426,10 +426,10 @@ The funeral is nothing special: it is one route among many. Hospital-acquired
 (nosocomial) transmission is the same object keyed to `:admitted` and `:discharged`; a
 vector-borne or sexual route would be others. The bare
 `BranchingProcess(NegBin(R, k), kernel)` is one route with `from = :infection` and no
-censoring, which is the simplest model unchanged. The kernel is a distribution with a
-hazard, supplied by SurvivalDistributions.jl: its shape sets the infectiousness profile
-(when within the window transmission concentrates) and its survival function does the
-censoring.
+censoring, which is the simplest model unchanged. The kernel is a survival distribution:
+every continuous time-to-event distribution has a survival function and a hazard, so its
+shape sets the infectiousness profile (when transmission concentrates within the window)
+and its survival function does the censoring.
 
 ### The three stages still hold
 
