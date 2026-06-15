@@ -36,5 +36,9 @@ public seed!
 public get_generation_time
 public transmission_time
 
+# Resolve a case's natural history (the model's `progression`). The engine calls
+# this for every new case; a model running its own simulation loop calls it.
+public resolve_transitions!
+
 # Types a model constructs or dispatches on.
 public NoGenerationTime

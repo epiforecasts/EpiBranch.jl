@@ -615,6 +615,17 @@ The engine reads progression off the model and applies the transitions to
 each new contact. `BranchingProcess` does this for the `progression`
 keyword; a custom model opts in the same way.
 
+A model that runs its **own simulation loop** — rather than the
+generation-based engine — resolves a case's natural history itself by calling
+[`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)`(state, individual)`
+once per case, after its attributes and intervention state are set. This runs
+the progression's transitions (placed on `state` by
+[`new_state`](@ref EpiBranch.new_state)) and stamps the timeline keys
+(`:infectious_time`, `:onset_time`, `:outcome_time`, …) the line list and any
+likelihood read. The companion EpiHouseholds.jl package's continuous-time
+`HouseholdProcess` is the worked example: it drives a Sellke construction but
+stamps each case's timeline through this one call.
+
 ### Minimal sketch
 
 A skeleton for a custom transmission model:

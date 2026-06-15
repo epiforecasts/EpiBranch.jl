@@ -452,7 +452,7 @@ function _advance_generation!(model::TransmissionModel,
 
     if !isempty(state.transitions)
         for target in newly_infected
-            _resolve_transitions!(state, target)
+            resolve_transitions!(state, target)
         end
     end
     return nothing
@@ -670,12 +670,24 @@ function make_contact!(state::SimulationState, parent::Individual,
     return contact
 end
 
-"""Run init, resolve, and terminal-arbitration for every clinical
-transition on `state.transitions` against `individual`. Called from the
-simulation loop after the individual's `:type` is set (multi-type) and
-after `_create_individual` has set attributes and intervention state.
 """
-function _resolve_transitions!(state::SimulationState, individual)
+    resolve_transitions!(state, individual)
+
+Resolve `individual`'s clinical natural history: run every transition on
+`state.transitions` (the model's `progression`) against the individual — first
+each transition's `initialise_individual!`, then each `resolve_individual!` —
+and arbitrate the terminal outcome. This stamps the timeline keys downstream
+code reads (`:infectious_time`, `:onset_time`, `:outcome`/`:outcome_time`, and
+anything else a transition writes) onto `individual.state`.
+
+Part of the public extension API. The built-in engine calls this for every new
+case; a structure-driven model that runs its own simulation loop (rather than
+the generation-based engine) calls it itself, once per case, after the case's
+attributes and intervention state are set. The transitions come from the model's
+`progression`, placed on the state when it is built with
+[`new_state`](@ref EpiBranch.new_state).
+"""
+function resolve_transitions!(state::SimulationState, individual)
     transitions = state.transitions
     isempty(transitions) && return nothing
     for transition in transitions
@@ -812,7 +824,7 @@ function _resolve_new_transitions!(state::SimulationState, from_index::Int)
     @inbounds for i in (from_index + 1):length(state.individuals)
         ind = state.individuals[i]
         if get(ind.state, :infected, false)
-            _resolve_transitions!(state, ind)
+            resolve_transitions!(state, ind)
         end
     end
     return nothing
