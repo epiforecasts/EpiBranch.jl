@@ -85,7 +85,7 @@ transmission: h(t) in survival-analysis terms.
 ### 3. Competing risks (shared)
 
 Each candidate is resolved independently to infected or not, by a single
-per-pair decision composed from a list of risk sources. Parent
+per-pair decision composed of a list of risk sources. Parent
 infectiousness and contact susceptibility are not privileged engine checks:
 they are default risk sources on the same surface an intervention uses, and
 isolation truncation or any risk an intervention contributes joins the same
