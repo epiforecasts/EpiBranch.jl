@@ -632,15 +632,15 @@ infections deplete a fixed pool. It defines two methods instead:
 `contacts_of` has no `interventions` argument either, and the same rule
 applies: produce every *potential* contact and let the engine's
 competing-risks resolution decide infection. If the model's own
-transmission probability is a property of the *edge* (a network's per-edge
+transmission probability belongs to the *edge* (a network's per-edge
 probability, a metapopulation coupling), don't filter on it in
-`contacts_of` — return the contact and contribute the probability as a
-competing risk by overriding
+`contacts_of` — return the contact and let the probability decide infection
+by overriding
 [`transmission_risks`](@ref EpiBranch.transmission_risks)`(model)` to return
-a risk source with a [`competing_risk`](@ref) method. The contact is then
-still produced and seen by `apply_post_transmission!` (so contact tracing
-and ring vaccination work), and the probability composes with susceptibility,
-infectiousness and interventions on one surface. Everything else — gathering
+a risk source with a `competing_risk` method. The contact is then still
+produced and seen by `apply_post_transmission!` (so contact tracing and ring
+vaccination work), and the probability is weighed against susceptibility,
+infectiousness and interventions together. Everything else — gathering
 the exposures, `initialise_individual!` and `apply_post_transmission!` on
 new contacts, competing risks, clinical transitions, and bookkeeping — is
 the shared engine. A structure-driven model also defines
