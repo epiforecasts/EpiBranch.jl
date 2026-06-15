@@ -70,7 +70,8 @@ metapopulation process) cannot, because a susceptible may be reachable by
 several infectious neighbours at once and infections deplete a fixed pool;
 it instead names the candidate contacts each infectious node reaches, and
 the engine resolves a node reached several times in one generation once.
-Either way the model only says who contacts whom.
+The companion `epiNetwork.jl` package's network process is the worked
+example. Either way the model only says who contacts whom.
 
 ### 2. Timing (shared)
 

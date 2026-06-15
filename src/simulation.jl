@@ -123,7 +123,7 @@ end
 #     contacts and times each one — the default [`collect_exposures`](@ref).
 #     The tree and the timing factorise, so the model stays a pure draw.
 #
-#   * Structure-driven (the graph case — NetworkProcess; households later).
+#   * Structure-driven (the graph case — a contact network; households later).
 #     The contacts are *existing* nodes a count cannot name, and a
 #     susceptible can be reached by several infectious neighbours in one
 #     generation (a loop). The model defines [`contacts_of`](@ref) — the
@@ -151,8 +151,19 @@ fresh) use [`generate_offspring`](@ref) instead and never define
 contacts. Either way the shared engine ([`collect_exposures`](@ref),
 [`_advance_generation!`](@ref)) handles interventions, competing-risks
 resolution, clinical transitions, and bookkeeping.
+
+No in-package model is structure-driven, so the abstract fallback states
+the contract rather than failing with a bare `MethodError`. A structure-
+driven extension (see the `epiNetwork` subpackage) defines a method on its
+own model type.
 """
-function contacts_of end
+function contacts_of(model::TransmissionModel, parent, state::SimulationState)
+    throw(ArgumentError(
+        "$(typeof(model)) defines no contacts_of method. A structure-driven " *
+        "model must implement contacts_of(model, parent, state) returning " *
+        "(contact, infection_time) pairs; see the epiNetwork subpackage for a " *
+        "worked example."))
+end
 
 """
     model_generation_time(model)
