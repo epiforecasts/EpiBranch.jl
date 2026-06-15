@@ -77,20 +77,4 @@
         @test !isempty(isolated)
         @test sum(isolated) / length(isolated) < sum(free) / length(free)
     end
-
-    @testset "Works for NetworkProcess" begin
-        n = 150
-        adj = [sort(unique([mod1(i - 1, n), mod1(i + 1, n),
-                   mod1(i + 5, n), mod1(i - 5, n)])) for i in 1:n]
-        model = NetworkProcess(adj, 0.5, LogNormal(1.6, 0.5))
-        state = simulate(model;
-            n_initial = 1,
-            stopping_rules = [Extinction(), MaxGenerations(100)],
-            rng = StableRNG(9))
-        gts = realised_generation_intervals(state)
-        @test all(>=(0), gts)
-        @test length(gts) ==
-              count(ind -> is_infected(ind) && ind.parent_id != 0,
-            state.individuals)
-    end
 end

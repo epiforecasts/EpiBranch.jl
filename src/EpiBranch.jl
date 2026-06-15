@@ -47,7 +47,7 @@ no timing, and takes no `interventions` argument.
 
 This is the path for tree-like models (a branching process), where every
 contact is fresh. Structure-driven models whose contacts are existing
-nodes (e.g. [`NetworkProcess`](@ref)) define [`contacts_of`](@ref) and
+nodes (a contact network, say) define [`contacts_of`](@ref) and
 override [`collect_exposures`](@ref) instead.
 """
 function generate_offspring end
@@ -65,7 +65,6 @@ include("model_inputs.jl")
 
 # Transmission models
 include("models/branching_process.jl")
-include("models/network_process.jl")
 
 # Observation helpers (thinned chain-size distribution, dispatch on the
 # model's observation model)
@@ -73,10 +72,6 @@ include("observation.jl")
 
 # Simulation engine
 include("simulation.jl")
-
-# Network process needs the engine helpers (_decide_infected,
-# _resolve_transitions!, …), so its simulate loop is included after.
-include("models/network_simulate.jl")
 
 # Output
 include("output/linelist.jl")
@@ -98,7 +93,7 @@ include("analytical/end_of_outbreak_probability.jl")
 include("likelihood_dists.jl")
 
 # Exports — types
-export TransmissionModel, BranchingProcess, NetworkProcess, Infectiousness
+export TransmissionModel, BranchingProcess, Infectiousness
 export Individual, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop

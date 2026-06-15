@@ -3,7 +3,7 @@
 `NetworkProcess` spreads infection over a fixed contact network. Each
 node is a person. An infectious node infects its neighbours, and each
 node can be infected once. The graph does the job the offspring
-distribution does in [`BranchingProcess`](@ref): it sets who can infect
+distribution does in a `BranchingProcess`: it sets who can infect
 whom. Interventions, node attributes and the clinical timeline all
 behave exactly as they do for a branching process.
 
@@ -15,6 +15,7 @@ time.
 
 ```@example networks
 using EpiBranch
+using epiNetwork
 using Distributions
 using StableRNGs
 

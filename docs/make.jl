@@ -1,9 +1,10 @@
 using Documenter
 using DocumenterVitepress
 using EpiBranch
+using epiNetwork
 
 makedocs(;
-    modules = [EpiBranch],
+    modules = [EpiBranch, epiNetwork],
     sitename = "EpiBranch.jl",
     authors = "epiforecasts contributors",
     remotes = nothing,
