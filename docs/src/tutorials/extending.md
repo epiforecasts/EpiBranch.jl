@@ -28,6 +28,71 @@ on an existing model) and a **custom transmission model** (a new process); both
 are developer work in Julia. This guide also covers custom attributes and
 offspring along the way.
 
+## Individual state and reserved keys
+
+Each individual carries a small typed core read by the engine plus an open
+`state` dictionary that everything else writes into (see
+[Individual state](@ref) in the design notes for why). Interventions,
+attributes functions, clinical transitions, and observation models each own
+a few keys in that dictionary.
+
+Read a key through a one-line accessor that pins the result type and
+supplies a safe default: `onset_time(ind) = get(ind.state, :onset_time, NaN)::Float64`.
+New code should add an accessor in `src/state_accessors.jl` rather than
+calling `get(ind.state, …)` directly.
+
+### Reserved keys
+
+The keys below are reserved by the package. Custom interventions and
+downstream packages should pick names that do not collide.
+
+| Key | Type | Default | Owner | When set |
+|---|---|---|---|---|
+| `:infected` | `Bool` | `true` | Engine | Competing-risks resolution |
+| `:type` | `Int` | `1` | Engine (multi-type) | Contact creation |
+| `:onset_time` | `Float64` | `NaN` | `clinical_presentation` | Init |
+| `:asymptomatic` | `Bool` | `false` | `clinical_presentation` | Init |
+| `:age` | `Real` | — | `demographics` | Init |
+| `:sex` | `Symbol` | — | `demographics` | Init |
+| `:risk_group` | `Symbol` | — | `demographics` | Init |
+| `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
+| `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
+| `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
+| `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
+| `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
+| `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff |
+| `:trace_time` | `Float64` | — | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
+| `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
+| `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
+| `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
+| `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
+| `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
+| `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
+| `:death_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
+| `:recovery_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
+| `:outcome` | `Symbol` | — | `Outcome` transition | `resolve_individual!` (terminal) |
+| `:outcome_time` | `Float64` | — | `Outcome` transition | `resolve_individual!` (terminal) |
+| `:reported` | `Bool` | `false` | `PerCaseObservation` *or* `Reporting` transition | Post-simulation projection / `resolve_individual!` |
+| `:report_time` | `Float64` | — | `PerCaseObservation` | Post-simulation projection |
+| `:cluster_theta` | `Float64` | — | `ClusterMixed` analytics | First simulation read |
+
+The vaccination keys are namespaced by `dose_label`: the default label
+writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy`,
+and any other label suffixes the key (so `dose_label = :boost` writes
+`:vaccinated_boost`, etc.). This lets multi-dose schedules compose without
+colliding.
+
+`:reported` is shared between the `Reporting` clinical transition (which
+sets it from a probability gate) and `PerCaseObservation` (which sets it
+post-simulation from a detection-probability draw). Composing both in the
+same simulation is not supported, because they will overwrite each other.
+
+Built-in keys use short bare names like `:isolated`, `:traced`, `:age`, and
+those names are reserved. If you add keys from another package, prefix them
+with a short tag for your package so they do not collide with built-ins or
+with keys other packages might add.
+
 ## Custom interventions
 
 Every intervention is a struct that subtypes `AbstractIntervention`. The
@@ -582,6 +647,16 @@ Models whose contacts can be *shared* across parents within a generation
 [`collect_exposures`](@ref) with [`gather_by_target`](@ref), which
 deduplicates shared targets so a node reached several times resolves once.
 
+A model that drives its **own simulation loop** — rather than the
+generation-based engine — resolves each case's natural history itself by
+calling [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)`(state, individual)`
+once per case, after its attributes and intervention state are set. This runs
+the model's clinical transitions (placed on the state by
+[`new_state`](@ref EpiBranch.new_state)) and stamps the timeline keys
+(`:onset_time`, `:outcome_time`, …) the line list and any likelihood read. A
+continuous-time household process, which steps cases in infection-time order
+instead of by generation, is the worked example.
+
 For **analytical inference helpers** that route through the offspring
 specification (`extinction_probability`, `epidemic_probability`,
 `probability_contain`, `proportion_transmission`,
@@ -614,17 +689,6 @@ a field and define `EpiBranch._progression(m::MyModel) = m.progression`.
 The engine reads progression off the model and applies the transitions to
 each new contact. `BranchingProcess` does this for the `progression`
 keyword; a custom model opts in the same way.
-
-A model that runs its **own simulation loop** — rather than the
-generation-based engine — resolves a case's natural history itself by calling
-[`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)`(state, individual)`
-once per case, after its attributes and intervention state are set. This runs
-the progression's transitions (placed on `state` by
-[`new_state`](@ref EpiBranch.new_state)) and stamps the timeline keys
-(`:infectious_time`, `:onset_time`, `:outcome_time`, …) the line list and any
-likelihood read. The companion EpiHouseholds.jl package's continuous-time
-`HouseholdProcess` is the worked example: it drives a Sellke construction but
-stamps each case's timeline through this one call.
 
 ### Minimal sketch
 
