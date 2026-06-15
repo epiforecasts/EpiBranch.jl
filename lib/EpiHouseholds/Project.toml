@@ -1,0 +1,19 @@
+name = "EpiHouseholds"
+uuid = "8b7e9a81-fac4-48f6-84d3-5750de169a00"
+authors = ["Sebastian Funk <sebastian.funk@lshtm.ac.uk>"]
+version = "0.1.0"
+
+[deps]
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+EpiBranch = "d1aa5d78-c683-4158-9743-7109392647a5"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SurvivalDistributions = "7121986e-ae89-4673-ae4e-1cb822919a18"
+
+[compat]
+Distributions = "0.25"
+EpiBranch = "0.1"
+SurvivalDistributions = "0.1"
+julia = "1.11"
+
+[sources]
+EpiBranch = {path = "../.."}

@@ -48,8 +48,27 @@ jobs:
           project: lib/epiNetwork
           coverage: false
 
+  epihouseholds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - uses: julia-actions/julia-buildpkg@v1
+        with:
+          project: lib/EpiHouseholds
+      - uses: julia-actions/julia-runtest@v1
+        with:
+          project: lib/EpiHouseholds
+          coverage: false
+
   docs:
-    needs: [test, epinetwork]
+    needs: [test, epinetwork, epihouseholds]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

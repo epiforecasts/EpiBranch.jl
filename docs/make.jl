@@ -2,9 +2,10 @@ using Documenter
 using DocumenterVitepress
 using EpiBranch
 using epiNetwork
+using EpiHouseholds
 
 makedocs(;
-    modules = [EpiBranch, epiNetwork],
+    modules = [EpiBranch, epiNetwork, EpiHouseholds],
     sitename = "EpiBranch.jl",
     authors = "epiforecasts contributors",
     remotes = nothing,
@@ -22,6 +23,7 @@ makedocs(;
             "Clinical transitions" => "tutorials/transitions.md",
             "Multi-type models" => "tutorials/multi-type.md",
             "Network models" => "tutorials/networks.md",
+            "Household models" => "tutorials/households.md",
             "Line lists and contacts" => "tutorials/linelist.md",
             "Chain statistics" => "tutorials/chains.md",
             "Inference" => "tutorials/inference.md",
