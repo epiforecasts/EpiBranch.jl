@@ -24,7 +24,7 @@ THE MODEL — a TransmissionModel carrying its interventions, attributes, observ
 ─────────
 TransmissionModel (abstract)
 ├── BranchingProcess(offspring, generation_time; interventions, attributes, observation)
-└── structured models (e.g. epiNetwork.jl's NetworkProcess) attach the same way
+└── structured models (e.g. EpiNetwork.jl's NetworkProcess) attach the same way
         core dynamics (offspring law / graph + progression)
         + interventions, attributes, observation (each optional)
 
@@ -177,7 +177,7 @@ generate_offspring(model, parent, state) -> offspring count
 
 It returns how many contacts the parent makes: a single count, or a count per type for a multi-type model. The engine's generic per-generation loop does the rest. For each active parent it calls `generate_offspring`, creates that many candidate contacts, gives each an infection time from the model's `generation_time`, and resolves competing risks. The model assigns no timing, builds no `Individual`s, and never sees interventions.
 
-A **structure-driven** model (the network process, and a future household or metapopulation model) cannot produce its candidates one parent at a time. A susceptible may be reachable by several infectious neighbours at once, and infections deplete a fixed pool. Such a model plugs into the same `simulate` loop by defining `initialise_state` (set up its fixed population) and `contacts_of` (the candidate contacts an infectious node reaches each generation), and overriding `collect_exposures` with `gather_by_target` so a susceptible reached several times in one generation is resolved once. The engine's shared timing and competing-risks stages do the rest. The companion epiNetwork.jl package's `NetworkProcess` is the worked example.
+A **structure-driven** model (the network process, and a future household or metapopulation model) cannot produce its candidates one parent at a time. A susceptible may be reachable by several infectious neighbours at once, and infections deplete a fixed pool. Such a model plugs into the same `simulate` loop by defining `initialise_state` (set up its fixed population) and `contacts_of` (the candidate contacts an infectious node reaches each generation), and overriding `collect_exposures` with `gather_by_target` so a susceptible reached several times in one generation is resolved once. The engine's shared timing and competing-risks stages do the rest. The companion EpiNetwork.jl package's `NetworkProcess` is the worked example.
 
 Either way the model only says who contacts whom. Timing and the competing-risks decision run the same way for every model. That keeps the offspring layer analysable on its own (extinction probability, chain-size distributions) and keeps the draw differentiable when the offspring distribution permits.
 

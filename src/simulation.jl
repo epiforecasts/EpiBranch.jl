@@ -154,14 +154,14 @@ resolution, clinical transitions, and bookkeeping.
 
 No in-package model is structure-driven, so the abstract fallback states
 the contract rather than failing with a bare `MethodError`. A structure-
-driven extension (see the `epiNetwork` subpackage) defines a method on its
+driven extension (see the `EpiNetwork` subpackage) defines a method on its
 own model type.
 """
 function contacts_of(model::TransmissionModel, parent, state::SimulationState)
     throw(ArgumentError(
         "$(typeof(model)) defines no contacts_of method. A structure-driven " *
         "model must implement contacts_of(model, parent, state) returning " *
-        "(contact, infection_time) pairs; see the epiNetwork subpackage for a " *
+        "(contact, infection_time) pairs; see the EpiNetwork subpackage for a " *
         "worked example."))
 end
 

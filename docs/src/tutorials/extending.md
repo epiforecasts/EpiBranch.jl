@@ -574,7 +574,7 @@ the shared engine. A structure-driven model also defines
 population, building it with the public helpers
 [`new_state`](@ref EpiBranch.new_state),
 [`add_individuals!`](@ref EpiBranch.add_individuals!) and
-[`seed!`](@ref EpiBranch.seed!). The companion epiNetwork.jl package's
+[`seed!`](@ref EpiBranch.seed!). The companion EpiNetwork.jl package's
 `NetworkProcess` is the worked example.
 
 Models whose contacts can be *shared* across parents within a generation

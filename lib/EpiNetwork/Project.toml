@@ -1,4 +1,4 @@
-name = "epiNetwork"
+name = "EpiNetwork"
 uuid = "6a3f08e3-1d24-409d-b706-3344905be32e"
 authors = ["Sebastian Funk <sebastian.funk@lshtm.ac.uk>"]
 version = "0.1.0"

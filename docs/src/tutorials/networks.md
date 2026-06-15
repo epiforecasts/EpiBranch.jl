@@ -15,7 +15,7 @@ time.
 
 ```@example networks
 using EpiBranch
-using epiNetwork
+using EpiNetwork
 using Distributions
 using StableRNGs
 
