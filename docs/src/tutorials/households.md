@@ -5,8 +5,8 @@ partitioned into households; within a household every infectious member can
 infect every susceptible household-mate, with the timing of infectious contact
 drawn from a **contact-interval** kernel (Kenah 2011). It is a structure-driven
 model like [`NetworkProcess`](@ref), but a household is a small, depleting
-clique, so it is simulated by the **Sellke construction** in continuous time —
-the exact generative model of its pairwise likelihood — rather than the
+clique, so it is simulated by the **Sellke construction** in continuous time
+(the exact generative model of its pairwise likelihood) rather than by the
 generation-based engine.
 
 It lives in the companion `EpiHouseholds` package.
@@ -53,17 +53,17 @@ clinical = HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0);
 sort(propertynames(linelist(simulate(clinical; rng = StableRNG(2)))))
 ```
 
-`date_infectious` and `date_recovered` appear because the progression stamps
-`:infectious_time` and `:recovered_time` on each case.
+`date_infectious` and `date_recovered` appear because the progression writes
+`:infectious_time` and `:recovered_time` onto each case.
 
 ## The pairwise likelihood
 
 Infections are latent: the model generates them, and the progression maps each to
-its observable outcomes. The contact-process likelihood scores that **infection
-layer** — read out of a simulation with [`household_infections`](@ref) — through
-[`pairwise_surv_loglik`](@ref). Because the Sellke construction is the likelihood's
-generative model, `simulate → loglikelihood` is an exact round trip: the simulated
-outbreak recovers the kernel.
+its observable outcomes. [`pairwise_surv_loglik`](@ref) is the contact-process
+density of that **infection layer**, which [`household_infections`](@ref) reads out
+of a simulation. Because the Sellke construction is the likelihood's generative
+model, `simulate → loglikelihood` is an exact round trip, so the simulated outbreak
+recovers the kernel.
 
 ```@example households
 truth = HouseholdProcess(fill(4, 500), Exponential(4.0); infectious_period = 6.0)
@@ -74,9 +74,27 @@ grid = 2.0:0.5:6.0
 grid[argmax([ll(s) for s in grid])]   # ≈ the true scale, 4.0
 ```
 
-In real inference the infection times are latent and augmented in a Turing
-`@model`: the contact process scores the augmented infections, while the observed
-onsets and tests are conditioned through the progression's delays. The
-inference-friendly `pairwise_surv_loglik(kernel, data; external_hazard)` takes the
-fitted kernel and the augmented infection layer separately, so neither the model
-nor the household structure is rebuilt per evaluation.
+## Fitting with Turing
+
+When the infection layer is observed (here it comes directly from the simulation),
+the likelihood slots into a Turing `@model`. Put a prior on the log contact rate
+and add the pairwise log-density to the target:
+
+```@example households
+using Turing
+
+@model function household_fit(data)
+    logβ ~ Normal(-1, 1)                # log within-household contact rate
+    Turing.@addlogprob! pairwise_surv_loglik(Exponential(1 / exp(logβ)), data)
+end
+
+chain = sample(StableRNG(4), household_fit(data), NUTS(), 300; progress = false)
+exp(-mean(chain[:logβ]))                # posterior mean contact-interval scale, ≈ 4.0
+```
+
+In real data the infection times are unobserved. A household `@model` then augments
+them and conditions the observed onsets and tests through the progression's delays,
+with `pairwise_surv_loglik` supplying the contact-process density of the augmented
+configuration. Passing the kernel and the (augmented) infection layer separately,
+`pairwise_surv_loglik(kernel, data; external_hazard)` rebuilds neither the model nor
+the household structure per evaluation.
