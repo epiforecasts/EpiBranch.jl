@@ -4,8 +4,54 @@ This page is the high-level design: the ideas the package is built on and
 the reasons for them. It deliberately avoids type signatures, field
 layouts, and API names, which live with the code and in the
 [Extending guide](@ref "Extending EpiBranch") and [API reference](api.md).
-The [design principles](principles.md) are the basis on which the shape
-here is judged.
+The design principles below are the basis on which the shape here is
+judged.
+
+## Design principles
+
+These are the principles EpiBranch is meant to satisfy. They should
+be revisited when adding anything substantial, and the architecture
+should be reviewed against them periodically.
+
+### 1. Simple but rigorous
+
+Express only what we need. New machinery earns its place only when an
+analysis we actually do can't be done without it. Prefer closed-form
+likelihoods over simulation when both are available and equivalent. One
+verb (`loglikelihood`, `simulate`) does the dispatch, without
+specialised wrapper functions per data type or model variant.
+
+### 2. Self-explanatory
+
+Type names, function names, and signatures should match an
+epidemiologist's intuition for what they do. If a user has to read
+source to understand what a public name means, the name is wrong. The
+mathematical names (`Borel`, `GammaBorel`) are fair when they match
+the literature the user comes from; the operational names should
+match how an epidemiologist would describe what's happening.
+
+### 3. Cleanly separable concerns
+
+Process model, observation model, data, inference, simulation, and
+output each own one thing. Their interfaces are explicit. A new
+alternative (a network model, multi-stream observation, time-varying
+reporting, aggregated counts) slots in by implementing the relevant
+interface rather than by editing core code. Each concern is replaceable
+independently.
+
+### 4. Extensible from outside
+
+A user can add their own transmission model, observation model,
+intervention, or data type as a separate package or script, reusing
+all framework infrastructure. The contracts they have to satisfy are
+documented and small. Adding a custom piece does not require editing
+EpiBranch.
+
+### 5. Documented with examples
+
+Principle 4 is empty without 5. Every public extension point has a
+worked example. Tutorials are checked at build time so the prose
+stays consistent with the code.
 
 ## Core idea
 
