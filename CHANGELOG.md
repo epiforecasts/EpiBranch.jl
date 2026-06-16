@@ -5,7 +5,7 @@ All notable changes to EpiBranch.jl are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-06-16
 
 Initial release. EpiBranch brings together the branching-process cores of
 [simulist](https://github.com/epiverse-trace/simulist),
@@ -38,4 +38,4 @@ in one Julia package with a shared simulation engine. It provides:
   simulator is its exact generative model.
 - Containment probability and scenario sweeps for comparing interventions.
 
-[Unreleased]: https://github.com/epiforecasts/EpiBranch.jl
+[0.1.0]: https://github.com/epiforecasts/EpiBranch.jl/releases/tag/v0.1.0
