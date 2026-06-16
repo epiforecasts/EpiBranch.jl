@@ -120,6 +120,10 @@ The containment probability for a single introduction is:
 
 where `pgf` is the PGF of the offspring distribution with effective R.
 For `n_initial` independent introductions, the probability is `q^n_initial`.
+
+This is a port of `probability_contain` (and the `probability_extinct`
+self-consistency equation it builds on) in superspreading (Lambert et al.,
+https://github.com/epiverse-trace/superspreading, MIT).
 """
 function probability_contain(R::Real, k::Real;
         n_initial::Int = 1,
