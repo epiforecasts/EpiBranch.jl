@@ -142,8 +142,9 @@ This is a mean-field, configuration-model result: it depends only on the
 mean and variance of the contact (degree) distribution and assumes no
 clustering. It is an analytical summary, distinct from an explicit
 network simulation, which transmits over a graph that may have the
-clustering this formula assumes away. It is a
-direct port of `superspreading::calc_network_R`.
+clustering this formula assumes away. It is a direct port of
+`calc_network_R` in superspreading (Lambert et al.,
+https://github.com/epiverse-trace/superspreading, MIT).
 """
 function heterogeneous_contact_R(mean_contacts::Real, sd_contacts::Real,
         duration::Real, prob_transmission::Real)

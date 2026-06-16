@@ -28,6 +28,10 @@ Log-PDF of the Borel distribution. Accepts any numeric type for μ
 (AD-compatible). With `s > 1`, this is the Borel-Tanner generalisation
 for the total chain size starting from `s` independent index cases:
 `P(X = x | s, μ) = (s/x) * (xμ)^(x-s) * exp(-xμ) / (x-s)!`.
+
+The single-seed case (`s = 1`) is a port of the Borel chain-size
+log-likelihood (`dborel` / `.pois_size_ll`) in epichains (Azam, Funk &
+Finger, https://github.com/epiverse-trace/epichains, MIT).
 """
 function _borel_logpdf(μ, x::Integer, s::Integer = 1)
     (s < 1 || x < s) && return oftype(float(μ), -Inf)
@@ -99,6 +103,10 @@ k, R (AD-compatible). With `s > 1`, this is the multi-seed
 generalisation: the PGF factors as `T(z)^s` and Lagrange inversion
 gives `P(X = x | s) = (s/x) * C(kx + x - s - 1, x - s) *
 k^(kx) * (k+R)^(s - kx - x) * R^(x - s)`.
+
+The single-seed case (`s = 1`) is a port of `.nbinom_size_ll` in
+epichains (Azam, Funk & Finger,
+https://github.com/epiverse-trace/epichains, MIT).
 """
 function _gammaborel_logpdf(k, R, x::Integer, s::Integer = 1)
     (s < 1 || x < s) && return oftype(float(k), -Inf)
@@ -155,6 +163,10 @@ Log-PDF of the PoissonGammaChainSize distribution (AD-compatible).
 With `s > 1`, integrates the multi-seed Borel-Tanner PMF over the
 Gamma mixing rate: the Borel-Tanner kernel gives a Gamma density in λ,
 which integrates in closed form.
+
+The single-seed case (`s = 1`) is a port of `.gborel_size_ll` in
+epichains (Azam, Funk & Finger,
+https://github.com/epiverse-trace/epichains, MIT).
 """
 function _poisson_gamma_logpdf(k, R, x::Integer, s::Integer = 1)
     (s < 1 || x < s) && return oftype(float(k), -Inf)
