@@ -3,8 +3,10 @@
 **EpiBranch.jl** is a composable [Julia](https://julialang.org/) engine for
 branching-process models in epidemiology. It does both stochastic simulation and
 analytical inference, and uses closed-form results where they exist. A flexible
-extension interface includes interventions, host attributes and transmission over
-contact networks; see [Extending EpiBranch](tutorials/extending.md) for the extension points.
+extension interface includes interventions, host attributes, and structured
+transmission over [contact networks](tutorials/networks.md) and within
+[households](tutorials/households.md), each a companion package built on the same
+engine. See [Extending EpiBranch](tutorials/extending.md) for the extension points.
 
 It started as a unification of five R packages (cf.
 [ringbp](https://github.com/epiforecasts/ringbp),
