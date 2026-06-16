@@ -656,6 +656,16 @@ Models whose contacts can be *shared* across parents within a generation
 [`collect_exposures`](@ref) with [`gather_by_target`](@ref), which
 deduplicates shared targets so a node reached several times resolves once.
 
+A model that drives its **own simulation loop** — rather than the
+generation-based engine — resolves each case's natural history itself by
+calling [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)`(state, individual)`
+once per case, after its attributes and intervention state are set. This runs
+the model's clinical transitions (placed on the state by
+[`new_state`](@ref EpiBranch.new_state)) and stamps the timeline keys
+(`:onset_time`, `:outcome_time`, …) the line list and any likelihood read. A
+continuous-time household process, which steps cases in infection-time order
+instead of by generation, is the worked example.
+
 For **analytical inference helpers** that route through the offspring
 specification (`extinction_probability`, `epidemic_probability`,
 `probability_contain`, `proportion_transmission`,

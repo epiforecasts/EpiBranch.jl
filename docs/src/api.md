@@ -6,8 +6,18 @@
 BranchingProcess
 Infectiousness
 NetworkProcess
+HouseholdProcess
 single_type_offspring
 EpiBranch.draw_offspring
+```
+
+## Household likelihood
+
+```@docs
+household_infections
+HouseholdInfections
+pairwise_surv_loglik
+PairwiseSurvivalData
 ```
 
 ## Types
@@ -118,6 +128,7 @@ Death
 Recovery
 is_terminal
 terminal_event
+EpiBranch.resolve_transitions!
 ```
 
 ## State accessors
