@@ -15,10 +15,10 @@ should be reviewed against them periodically.
 
 ### 1. Simple but rigorous
 
-Express what we need, no more. New machinery only earns its place
-when an analysis we actually do can't be done without it. Closed-form
-likelihoods over simulation when both are available and equivalent.
-One verb (`loglikelihood`, `simulate`) does the dispatch — no
+Express only what we need. New machinery earns its place only when an
+analysis we actually do can't be done without it. Prefer closed-form
+likelihoods over simulation when both are available and equivalent. One
+verb (`loglikelihood`, `simulate`) does the dispatch, without
 specialised wrapper functions per data type or model variant.
 
 ### 2. Self-explanatory
@@ -33,10 +33,10 @@ match how an epidemiologist would describe what's happening.
 ### 3. Cleanly separable concerns
 
 Process model, observation model, data, inference, simulation, and
-output each own one thing. Their interfaces are explicit. New
-alternatives — network models, multi-stream observation, time-varying
-reporting, aggregated counts — slot in by implementing the relevant
-interface, not by editing core code. Each concern is replaceable
+output each own one thing. Their interfaces are explicit. A new
+alternative (a network model, multi-stream observation, time-varying
+reporting, aggregated counts) slots in by implementing the relevant
+interface rather than by editing core code. Each concern is replaceable
 independently.
 
 ### 4. Extensible from outside
