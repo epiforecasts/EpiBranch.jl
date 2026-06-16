@@ -83,6 +83,7 @@ using ForwardDiff
         df = linelist(simulate(m; rng = StableRNG(5), obs_end = 30.0))
         @test count(df.index) >= 1                 # community introductions happened
         @test size(df, 1) > count(df.index)        # plus within-household spread
+        @test count(df.index) != length(m.members) # not the one-index-per-household fallback
     end
 
     @testset "pairwise survival likelihood: basics and differentiability" begin
