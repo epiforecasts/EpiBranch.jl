@@ -14,8 +14,10 @@ SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 
 [compat]
 DataFrames = "1"
+Dates = "1"
 Distributions = "0.25"
 DocStringExtensions = "0.9.5"
 QuadGK = "2"
+Random = "1"
 SpecialFunctions = "2"
 julia = "1.10"
