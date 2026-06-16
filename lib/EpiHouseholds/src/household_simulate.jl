@@ -45,6 +45,10 @@ function simulate(model::HouseholdProcess; rng::AbstractRNG = default_rng(),
         (ind.infection_time
         for ind in state.individuals if get(ind.state, :infected, false));
         init = 0.0)
+
+    # Apply the model's observation model (under-reporting, report delays), as
+    # core `simulate` does. A no-op for the default `NoObservation`.
+    apply_observation!(observation(model), state, rng)
     return state
 end
 
