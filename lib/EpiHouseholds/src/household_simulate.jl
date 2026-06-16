@@ -36,6 +36,15 @@ function simulate(model::HouseholdProcess; rng::AbstractRNG = default_rng(),
     for mem in model.members
         _simulate_clique!(state, model, mem, Tobs)
     end
+
+    # The clique loop writes per-individual state directly, so reconcile the
+    # aggregate bookkeeping the engine would otherwise maintain, keeping the
+    # returned state consistent with core `simulate` for downstream consumers.
+    state.cumulative_cases = count(ind -> get(ind.state, :infected, false), state.individuals)
+    state.max_infection_time = maximum(
+        (ind.infection_time
+        for ind in state.individuals if get(ind.state, :infected, false));
+        init = 0.0)
     return state
 end
 
