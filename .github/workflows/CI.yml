@@ -32,6 +32,7 @@ jobs:
       - uses: codecov/codecov-action@v5
         with:
           files: lcov.info
+          flags: epibranch
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
@@ -52,7 +53,16 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         with:
           project: lib/EpiNetwork
-          coverage: false
+          coverage: true
+      - uses: julia-actions/julia-processcoverage@v1
+        with:
+          directories: lib/EpiNetwork/src
+      - uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          flags: epinetwork
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   epihouseholds:
     runs-on: ubuntu-latest
@@ -71,7 +81,16 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         with:
           project: lib/EpiHouseholds
-          coverage: false
+          coverage: true
+      - uses: julia-actions/julia-processcoverage@v1
+        with:
+          directories: lib/EpiHouseholds/src
+      - uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          flags: epihouseholds
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   docs:
     needs: [test, epinetwork, epihouseholds]
