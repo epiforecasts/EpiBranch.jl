@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use EpiBranch.jl, please cite it as below."
+title: "EpiBranch.jl: A composable branching-process engine for epidemiology"
+abstract: >-
+  A Julia engine for branching-process models in epidemiology, combining
+  stochastic simulation with analytical inference. It brings together the
+  branching-process cores of the R packages simulist, epichains and ringbp, the
+  analytical superspreading methods of superspreading, and the post-exposure
+  prophylaxis model of pepbp.
+type: software
+authors:
+  - family-names: Funk
+    given-names: Sebastian
+    email: sebastian.funk@lshtm.ac.uk
+    orcid: "https://orcid.org/0000-0002-2842-3406"
+    affiliation: "London School of Hygiene & Tropical Medicine"
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/epiforecasts/EpiBranch.jl"
+url: "https://github.com/epiforecasts/EpiBranch.jl"
+keywords:
+  - epidemiology
+  - branching-process
+  - infectious-disease
+  - outbreak
+  - julia
