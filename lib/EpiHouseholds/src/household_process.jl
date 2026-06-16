@@ -154,7 +154,9 @@ _intervention_list(iv) = AbstractIntervention[iv]
 # continuous distribution (a calendar-time hazard). `_ext_active` separates "no
 # source" (a zero scalar) from a real one.
 _valid_external(α::Real) = α >= 0
-_valid_external(::ContinuousUnivariateDistribution) = true
+# A calendar-time hazard must live on the non-negative reals: introductions
+# cannot happen before time 0, so reject distributions with negative support.
+_valid_external(d::ContinuousUnivariateDistribution) = minimum(d) >= 0
 _valid_external(_) = false
 _normalise_external(α::Real) = Float64(α)
 _normalise_external(d::ContinuousUnivariateDistribution) = d
