@@ -225,6 +225,7 @@ ObservationModel
 NoObservation
 PerCaseObservation
 observe
+EpiBranch.apply_observation!
 ThinnedChainSize
 ```
 

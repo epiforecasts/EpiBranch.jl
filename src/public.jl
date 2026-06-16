@@ -43,5 +43,10 @@ public transmission_time
 # this for every new case; a model running its own simulation loop calls it.
 public resolve_transitions!
 
+# Apply the model's observation to a finished state (the simulation side of the
+# observation protocol; `observe` is the exported analytical side). The engine
+# calls this after a run; a model running its own simulation loop calls it.
+public apply_observation!
+
 # Types a model constructs or dispatches on.
 public NoGenerationTime
