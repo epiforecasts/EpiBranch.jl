@@ -164,4 +164,15 @@ using ForwardDiff
         for i in obs)
         @test isfinite(joint(log(1 / 3)))
     end
+
+    @testset "the model's observation is applied in simulate" begin
+        # a HouseholdProcess carrying a PerCaseObservation reports cases through
+        # the shared observation protocol, like core simulate.
+        obs = PerCaseObservation(; detection_prob = 0.5, delay = Exponential(2.0))
+        m = HouseholdProcess(fill(4, 200), Exponential(3.0);
+            infectious_period = 6.0, observation = obs)
+        df = linelist(simulate(m; rng = StableRNG(11)))
+        @test :reported in propertynames(df)            # observation ran
+        @test 0 < count(df.reported) < size(df, 1)       # ~half detected, not all
+    end
 end

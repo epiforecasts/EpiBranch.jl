@@ -12,7 +12,8 @@ using SurvivalDistributions: hazard, cumhazard, loghazard
 # population/progression helpers are called qualified — so EpiHouseholds builds
 # on the public surface only, with no reach into EpiBranch internals.
 import EpiBranch: interventions, attributes, observation,
-                  simulate, new_state, add_individuals!, resolve_transitions!
+                  simulate, new_state, add_individuals!, resolve_transitions!,
+                  apply_observation!
 
 export HouseholdProcess, household_sizes
 export HouseholdInfections, household_infections
