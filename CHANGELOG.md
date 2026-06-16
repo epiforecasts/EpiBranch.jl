@@ -11,9 +11,11 @@ Initial release. EpiBranch brings the branching-process cores of the R packages
 simulist, epichains and ringbp together in one Julia package with a shared
 simulation engine. It provides:
 
-- Branching-process and contact-network simulation through one engine
-  (`BranchingProcess`, `NetworkProcess`). Offspring, generation time and
-  clinical progression are set on the model.
+- One simulation engine across a branching-process core (`BranchingProcess`)
+  and structure-driven companion packages: contact networks (`NetworkProcess`,
+  in `EpiNetwork`) and continuous-time household transmission (`HouseholdProcess`,
+  in `EpiHouseholds`). Offspring, generation time and clinical progression are
+  set on the model.
 - Interventions as population-level policies — isolation, contact tracing, and
   ring or mass vaccination — attached to a model and resolved through competing
   risks.
@@ -27,6 +29,9 @@ simulation engine. It provides:
 - A distribution interface for inference: `chain_size_distribution`,
   `chain_length_distribution` and `offspring_distribution` return `Distribution`s
   that sit directly on the right-hand side of a Turing `~`.
+- A pairwise contact-interval likelihood for household data
+  (`pairwise_surv_loglik`, `loglikelihood`), whose continuous-time Sellke
+  simulator is its exact generative model.
 - Containment probability and scenario sweeps for comparing interventions.
 
 [Unreleased]: https://github.com/epiforecasts/EpiBranch.jl
