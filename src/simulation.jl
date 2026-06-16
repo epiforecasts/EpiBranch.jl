@@ -806,6 +806,15 @@ to none, so offspring-driven models are unaffected.
 """
 transmission_risks(::TransmissionModel) = ()
 
+"""
+Decide whether `contact` is infected by its parent. The transmission risks act as
+competing hazards, and the first to block wins. An index case (no parent) is
+always infected. Otherwise finite-population depletion
+([`susceptible_fraction`](@ref)) applies first, then each risk source in turn: the
+built-in host susceptibility and infector infectiousness, then any from the
+model's [`transmission_risks`](@ref), then the interventions. Returns `true` when
+the contact is infected.
+"""
 function _decide_infected(state::SimulationState, contact::Individual,
         model_risks, interventions, infected_so_far::Int)
     contact.parent_id == 0 && return true
