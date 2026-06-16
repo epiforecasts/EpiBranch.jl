@@ -7,11 +7,13 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
-Initial release. EpiBranch brings the branching-process cores of the R packages
+Initial release. EpiBranch brings together the branching-process cores of
 [simulist](https://github.com/epiverse-trace/simulist),
 [epichains](https://github.com/epiverse-trace/epichains) and
-[ringbp](https://github.com/epiforecasts/ringbp) together in one Julia package
-with a shared simulation engine. It provides:
+[ringbp](https://github.com/epiforecasts/ringbp), the analytical superspreading
+methods of [superspreading](https://github.com/epiverse-trace/superspreading), and
+the post-exposure prophylaxis model of [pepbp](https://github.com/sophiemeakin/pepbp),
+in one Julia package with a shared simulation engine. It provides:
 
 - One simulation engine across a branching-process core (`BranchingProcess`)
   and structure-driven companion packages: contact networks (`NetworkProcess`,
