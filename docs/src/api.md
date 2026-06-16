@@ -43,6 +43,7 @@ EpiBranch.contacts_of
 EpiBranch.collect_exposures
 EpiBranch.gather_by_target
 EpiBranch.model_generation_time
+EpiBranch.transmission_risks
 make_contact!
 susceptible_fraction
 ```

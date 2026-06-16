@@ -42,7 +42,7 @@
         model = NetworkProcess(ring(60), 0.9, LogNormal(1.6, 0.5))
         for seed in 1:10
             state = sim1(model; rng = StableRNG(seed))
-            nodes = [ind.state[:network_node]
+            nodes = [ind.state[:epinetwork_node]
                      for ind in state.individuals if is_infected(ind)]
             @test length(nodes) == length(unique(nodes))
         end
@@ -65,7 +65,7 @@
                 n_initial = 1,
                 stopping_rules = [Extinction(), MaxGenerations(20)],
                 rng = StableRNG(seed))
-            infected = [ind.state[:network_node]
+            infected = [ind.state[:epinetwork_node]
                         for ind in s.individuals if is_infected(ind)]
             comp1 = all(x -> x in (1, 2, 3), infected)
             comp2 = all(x -> x in (4, 5, 6), infected)
@@ -167,7 +167,7 @@
                 rng = StableRNG(100 + rep))
             s.cumulative_cases < 20 && continue
             for ind in filter(is_infected, s.individuals)
-                node = ind.state[:network_node]
+                node = ind.state[:epinetwork_node]
                 degree[node] >= leaves_per_hub ? push!(hub_gens, ind.generation) :
                 push!(leaf_gens, ind.generation)
             end

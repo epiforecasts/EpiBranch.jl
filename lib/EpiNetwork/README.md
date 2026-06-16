@@ -1,4 +1,4 @@
-# epiNetwork.jl
+# EpiNetwork.jl
 
 Transmission over a fixed contact network, built on
 [EpiBranch.jl](https://github.com/epiforecasts/EpiBranch.jl).
@@ -11,7 +11,7 @@ and competing-risks resolution route through the EpiBranch engine, so
 the rest apply directly.
 
 ```julia
-using EpiBranch, epiNetwork, Distributions
+using EpiBranch, EpiNetwork, Distributions
 
 # Ring of 5 nodes, uniform per-edge probability
 adjacency = [[2, 5], [1, 3], [2, 4], [3, 5], [4, 1]]
