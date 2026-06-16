@@ -140,9 +140,9 @@ transmit more, amplifying R beyond what homogeneous mixing predicts.
 
 This is a mean-field, configuration-model result: it depends only on the
 mean and variance of the contact (degree) distribution and assumes no
-clustering. It is an analytical summary, distinct from the
-[`NetworkProcess`](@ref) simulation, which transmits over an explicit
-graph that may have the clustering this formula assumes away. It is a
+clustering. It is an analytical summary, distinct from an explicit
+network simulation, which transmits over a graph that may have the
+clustering this formula assumes away. It is a
 direct port of `superspreading::calc_network_R`.
 """
 function heterogeneous_contact_R(mean_contacts::Real, sd_contacts::Real,

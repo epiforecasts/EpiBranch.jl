@@ -28,6 +28,71 @@ on an existing model) and a **custom transmission model** (a new process); both
 are developer work in Julia. This guide also covers custom attributes and
 offspring along the way.
 
+## Individual state and reserved keys
+
+Each individual carries a small typed core read by the engine plus an open
+`state` dictionary that everything else writes into (see
+[Individual state](@ref) in the design notes for why). Interventions,
+attributes functions, clinical transitions, and observation models each own
+a few keys in that dictionary.
+
+Read a key through a one-line accessor that pins the result type and
+supplies a safe default: `onset_time(ind) = get(ind.state, :onset_time, NaN)::Float64`.
+New code should add an accessor in `src/state_accessors.jl` rather than
+calling `get(ind.state, …)` directly.
+
+### Reserved keys
+
+The keys below are reserved by the package. Custom interventions and
+downstream packages should pick names that do not collide.
+
+| Key | Type | Default | Owner | When set |
+|---|---|---|---|---|
+| `:infected` | `Bool` | `true` | Engine | Competing-risks resolution |
+| `:type` | `Int` | `1` | Engine (multi-type) | Contact creation |
+| `:onset_time` | `Float64` | `NaN` | `clinical_presentation` | Init |
+| `:asymptomatic` | `Bool` | `false` | `clinical_presentation` | Init |
+| `:age` | `Real` | — | `demographics` | Init |
+| `:sex` | `Symbol` | — | `demographics` | Init |
+| `:risk_group` | `Symbol` | — | `demographics` | Init |
+| `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
+| `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
+| `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
+| `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
+| `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
+| `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff |
+| `:trace_time` | `Float64` | — | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
+| `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
+| `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
+| `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
+| `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
+| `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
+| `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
+| `:death_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
+| `:recovery_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
+| `:outcome` | `Symbol` | — | `Outcome` transition | `resolve_individual!` (terminal) |
+| `:outcome_time` | `Float64` | — | `Outcome` transition | `resolve_individual!` (terminal) |
+| `:reported` | `Bool` | `false` | `PerCaseObservation` *or* `Reporting` transition | Post-simulation projection / `resolve_individual!` |
+| `:report_time` | `Float64` | — | `PerCaseObservation` | Post-simulation projection |
+| `:cluster_theta` | `Float64` | — | `ClusterMixed` analytics | First simulation read |
+
+The vaccination keys are namespaced by `dose_label`: the default label
+writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy`,
+and any other label suffixes the key (so `dose_label = :boost` writes
+`:vaccinated_boost`, etc.). This lets multi-dose schedules compose without
+colliding.
+
+`:reported` is shared between the `Reporting` clinical transition (which
+sets it from a probability gate) and `PerCaseObservation` (which sets it
+post-simulation from a detection-probability draw). Composing both in the
+same simulation is not supported, because they will overwrite each other.
+
+Built-in keys use short bare names like `:isolated`, `:traced`, `:age`, and
+those names are reserved. If you add keys from another package, prefix them
+with a short tag for your package so they do not collide with built-ins or
+with keys other packages might add.
+
 ## Custom interventions
 
 Every intervention is a struct that subtypes `AbstractIntervention`. The
@@ -566,7 +631,16 @@ infections deplete a fixed pool. It defines two methods instead:
 
 `contacts_of` has no `interventions` argument either, and the same rule
 applies: produce every *potential* contact and let the engine's
-competing-risks resolution decide infection. Everything else — gathering
+competing-risks resolution decide infection. If the model's own
+transmission probability belongs to the *edge* (a network's per-edge
+probability, a metapopulation coupling), don't filter on it in
+`contacts_of` — return the contact and let the probability decide infection
+by overriding
+[`transmission_risks`](@ref EpiBranch.transmission_risks)`(model)` to return
+a risk source with a `competing_risk` method. The contact is then still
+produced and seen by `apply_post_transmission!` (so contact tracing and ring
+vaccination work), and the probability is weighed against susceptibility,
+infectiousness and interventions together. Everything else — gathering
 the exposures, `initialise_individual!` and `apply_post_transmission!` on
 new contacts, competing risks, clinical transitions, and bookkeeping — is
 the shared engine. A structure-driven model also defines
@@ -574,7 +648,8 @@ the shared engine. A structure-driven model also defines
 population, building it with the public helpers
 [`new_state`](@ref EpiBranch.new_state),
 [`add_individuals!`](@ref EpiBranch.add_individuals!) and
-[`seed!`](@ref EpiBranch.seed!). `NetworkProcess` is the worked example.
+[`seed!`](@ref EpiBranch.seed!). The companion EpiNetwork.jl package's
+`NetworkProcess` is the worked example.
 
 Models whose contacts can be *shared* across parents within a generation
 (networks, households, clustering) also override

@@ -97,9 +97,14 @@ struct NetworkProcess{G, A, O} <: TransmissionModel
                   "larger graph to model a larger population." maxlog=1
         end
         new{G, A, O}(adj, ep, generation_time,
-            _intervention_vector(interventions), attributes, observation)
+            _intervention_list(interventions), attributes, observation)
     end
 end
+
+# Normalise the interventions argument to a vector, on the public surface only
+# (rather than reaching into EpiBranch's internal `_intervention_vector`).
+_intervention_list(iv::AbstractVector) = convert(Vector{AbstractIntervention}, iv)
+_intervention_list(iv) = AbstractIntervention[iv]
 
 # The model carries its interventions, attributes and observation; the
 # shared accessors read them from here.
@@ -183,7 +188,39 @@ end
 
 # ── Node bookkeeping ─────────────────────────────────────────────────
 
-network_node(ind::Individual) = get(ind.state, :network_node, 0)
+# The key is package-prefixed (`:epinetwork_node`) per the downstream-package
+# naming convention, so it can't collide with built-in or other-package keys.
+network_node(ind::Individual) = get(ind.state, :epinetwork_node, 0)
+
+# ── Edge probability as a competing risk ─────────────────────────────
+#
+# The per-edge transmission probability belongs on the competing-risks surface,
+# not as a filter in `contacts_of`: that way every graph neighbour is produced
+# as a contact (visible to interventions for tracing/vaccination) and the
+# probability decides infection alongside susceptibility, infectiousness and
+# interventions. The model contributes it through `transmission_risks`.
+
+struct EdgeTransmission{M <: NetworkProcess}
+    model::M
+end
+
+transmission_risks(m::NetworkProcess) = (EdgeTransmission(m),)
+
+# Block transmission across the (parent → contact) edge with probability
+# `1 - edge_probability`; `p == 1` adds no risk, `p == 0` blocks entirely.
+function competing_risk(e::EdgeTransmission, parent, contact, state)
+    p = _edge_probability(e.model, parent.id, contact.id)
+    p < 1.0 ? Risk(block_probability = 1.0 - p) : nothing
+end
+
+# The probability of the edge from node `from_id` to node `to_id` (node ids are
+# the individuals' ids, since the population is pre-instantiated). A missing edge
+# yields 0.0 — it never transmits — but `contacts_of` only offers real edges.
+function _edge_probability(m::NetworkProcess, from_id::Int, to_id::Int)
+    nbrs = m.adjacency[from_id]
+    k = findfirst(==(to_id), nbrs)
+    k === nothing ? 0.0 : m.edge_probability[from_id][k]
+end
 
 # The generation loop for NetworkProcess lives in
 # `models/network_simulate.jl` (a dedicated `simulate` method), because

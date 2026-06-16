@@ -24,7 +24,7 @@ function initialise_state(model::NetworkProcess, sim_opts::SimOpts,
     # identity, fixed attributes and intervention state. (The tree case
     # mints contacts lazily; the network's nodes exist from the start.)
     add_individuals!(state, n, interventions;
-        setup = (ind, i) -> (ind.state[:network_node] = i))
+        setup = (ind, i) -> (ind.state[:epinetwork_node] = i))
 
     # Seed infections on random nodes.
     n_seed = min(sim_opts.n_initial, n)
@@ -42,28 +42,24 @@ end
 """
     contacts_of(model::NetworkProcess, parent, state)
 
-Transmission over a fixed graph: `parent`'s contacts this generation are
-its existing graph neighbours. Each edge fires with its per-edge
-probability; already-infected neighbours are skipped, and surviving edges
-are returned as `(node, infection_time)` pairs at a generation-time-shifted
-time. No contacts are created — the nodes already exist — so the engine
-recognises them as pre-existing by id. A susceptible reached by several
-infectious neighbours in one generation is deduplicated downstream by
+Transmission over a fixed graph: `parent`'s contacts this generation are its
+still-susceptible graph neighbours, each returned as a `(node, infection_time)`
+candidate at a generation-time-shifted time. Every neighbour is produced (so
+`apply_post_transmission!` — contact tracing, ring vaccination — sees the whole
+graph contact, not only the ones that transmit); the per-edge probability is a
+competing risk via [`transmission_risks`](@ref EpiBranch.transmission_risks), not
+a filter here. No contacts are created — the nodes already exist — so the engine
+recognises them by id, and a susceptible reached by several infectious
+neighbours in one generation is deduplicated downstream by
 [`gather_by_target`](@ref).
 """
 function contacts_of(model::NetworkProcess, parent::Individual,
         state::SimulationState)
-    rng = state.rng
-    idx = parent.id
     gt_dist = get_generation_time(model.generation_time, parent)
-    nbrs = model.adjacency[idx]
-    probs = model.edge_probability[idx]
     result = Tuple{Individual, Float64}[]
-    for k in eachindex(nbrs)
-        target = state.individuals[nbrs[k]]
+    for nb in model.adjacency[parent.id]
+        target = state.individuals[nb]
         is_infected(target) && continue
-        p = probs[k]
-        (p >= 1.0 || rand(rng) < p) || continue
         push!(result, (target, transmission_time(gt_dist, parent, state)))
     end
     return result

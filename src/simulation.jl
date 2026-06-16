@@ -123,7 +123,7 @@ end
 #     contacts and times each one — the default [`collect_exposures`](@ref).
 #     The tree and the timing factorise, so the model stays a pure draw.
 #
-#   * Structure-driven (the graph case — NetworkProcess; households later).
+#   * Structure-driven (the graph case — a contact network; households later).
 #     The contacts are *existing* nodes a count cannot name, and a
 #     susceptible can be reached by several infectious neighbours in one
 #     generation (a loop). The model defines [`contacts_of`](@ref) — the
@@ -151,8 +151,19 @@ fresh) use [`generate_offspring`](@ref) instead and never define
 contacts. Either way the shared engine ([`collect_exposures`](@ref),
 [`_advance_generation!`](@ref)) handles interventions, competing-risks
 resolution, clinical transitions, and bookkeeping.
+
+No in-package model is structure-driven, so the abstract fallback states
+the contract rather than failing with a bare `MethodError`. A structure-
+driven extension (see the `EpiNetwork` subpackage) defines a method on its
+own model type.
 """
-function contacts_of end
+function contacts_of(model::TransmissionModel, parent, state::SimulationState)
+    throw(ArgumentError(
+        "$(typeof(model)) defines no contacts_of method. A structure-driven " *
+        "model must implement contacts_of(model, parent, state) returning " *
+        "(contact, infection_time) pairs; see the EpiNetwork subpackage for a " *
+        "worked example."))
+end
 
 """
     model_generation_time(model)
@@ -380,9 +391,11 @@ function _advance_generation!(model::TransmissionModel,
 
     # Exposure is not infection. Each contact exposed this generation is now
     # decided infected-or-not: the infector's infectiousness, the contact's
-    # susceptibility and any interventions all act as competing risks on the
-    # same footing. A contact is infected if any of its exposing edges
-    # transmits; the earliest successful edge fixes the infection time.
+    # susceptibility, any risks the model contributes and any interventions all
+    # act as competing risks on the same footing. A contact is infected if any
+    # of its exposing edges transmits; the earliest successful edge fixes the
+    # infection time.
+    model_risks = transmission_risks(model)
     infected_so_far = 0
     newly_infected = Individual[]
     for i in eachindex(targets)
@@ -391,7 +404,7 @@ function _advance_generation!(model::TransmissionModel,
         for (pid, t) in edges[i]
             target.parent_id = pid
             target.infection_time = t
-            if _decide_infected(state, target, interventions, infected_so_far)
+            if _decide_infected(state, target, model_risks, interventions, infected_so_far)
                 infected = true
                 break
             end
@@ -767,8 +780,22 @@ function _risk_blocks(source, parent, contact, state, transmission_time)
     return false
 end
 
+"""
+    transmission_risks(model) -> iterable of risk sources
+
+Risk sources the *model* contributes to competing-risks resolution, on the same
+[`competing_risk`](@ref) surface as the built-ins and interventions. A
+structure-driven model whose transmission probability is a property of the
+*edge* — `NetworkProcess`'s per-edge probability, a metapopulation's coupling —
+returns a source here so that probability is a competing risk on every potential
+contact (the contact is still produced and seen by `apply_post_transmission!`),
+rather than a filter that drops contacts before they reach the engine. Defaults
+to none, so offspring-driven models are unaffected.
+"""
+transmission_risks(::TransmissionModel) = ()
+
 function _decide_infected(state::SimulationState, contact::Individual,
-        interventions, infected_so_far::Int)
+        model_risks, interventions, infected_so_far::Int)
     contact.parent_id == 0 && return true
     rng = state.rng
     parent = state.individuals[contact.parent_id]
@@ -779,9 +806,13 @@ function _decide_infected(state::SimulationState, contact::Individual,
     pop_suscept <= 0.0 && return false
     pop_suscept < 1.0 && rand(rng) > pop_suscept && return false
 
-    # All transmission risks — susceptibility and infectiousness, then
-    # interventions — on one surface, applied in order; first to block wins.
+    # All transmission risks — susceptibility and infectiousness, then any the
+    # model contributes, then interventions — on one surface, applied in order;
+    # first to block wins.
     for source in _BUILTIN_RISK_SOURCES
+        _risk_blocks(source, parent, contact, state, transmission_time) && return false
+    end
+    for source in model_risks
         _risk_blocks(source, parent, contact, state, transmission_time) && return false
     end
     for intervention in interventions

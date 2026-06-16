@@ -29,8 +29,27 @@ jobs:
         with:
           coverage: false
 
+  epinetwork:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - uses: julia-actions/julia-buildpkg@v1
+        with:
+          project: lib/EpiNetwork
+      - uses: julia-actions/julia-runtest@v1
+        with:
+          project: lib/EpiNetwork
+          coverage: false
+
   docs:
-    needs: test
+    needs: [test, epinetwork]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -46,11 +65,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
-      - run: |
-          julia --project=docs -e '
-            using Pkg
-            Pkg.develop(PackageSpec(path=pwd()))
-            Pkg.instantiate()'
+      - run: julia --project=docs -e 'using Pkg; Pkg.instantiate()'
       - run: julia --project=docs docs/make.jl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
