@@ -162,20 +162,24 @@ end
 # with one they are explained like any other case, so they get rows too.
 function _survival_rows(d::HouseholdInfections{T}; external::Bool = false,
         obs_end::T = T(Inf)) where {T<:Real}
-    # Bucket hosts by household into a `Vector{Vector{Int}}` keyed by id
-    # (no hashing) and walk the buckets in two passes — first to count
-    # rows, then to fill preallocated output arrays. Avoiding the
-    # `Dict` and the per-row `push!` matters under reverse-mode AD,
-    # which tracks every allocation.
-    n_households = maximum(d.household_of)
-    households = [Int[] for _ in 1:n_households]
+    # Bucket hosts by household into a `Vector{Vector{Int}}` indexed by id
+    # offset (no hashing) and walk the buckets in two passes — first to
+    # count rows, then to fill preallocated output arrays. Avoiding the
+    # `Dict` and the per-row `push!` matters under reverse-mode AD, which
+    # tracks every allocation. Offsetting by `lo` tolerates any integer
+    # ids (sparse ids leave empty buckets, which are skipped).
+    isempty(d.household_of) &&
+        return PairwiseSurvivalData{T}(Int[], T[], T[], Bool[]), Int[], Bool[]
+    lo, hi = extrema(d.household_of)
+    n_buckets = hi - lo + 1
+    households = [Int[] for _ in 1:n_buckets]
     for i in eachindex(d.household_of)
-        push!(households[d.household_of[i]], i)
+        push!(households[d.household_of[i] - lo + 1], i)
     end
 
     # ── Pass 1: count rows ──────────────────────────────────────────────
     n_rows = 0
-    for h in 1:n_households
+    for h in 1:n_buckets
         mem = households[h]
         isempty(mem) && continue
         for j in mem
@@ -204,7 +208,7 @@ function _survival_rows(d::HouseholdInfections{T}; external::Bool = false,
     infector = Vector{Int}(undef, n_rows)
     is_ext   = Vector{Bool}(undef, n_rows)
     r = 0
-    for h in 1:n_households
+    for h in 1:n_buckets
         mem = households[h]
         isempty(mem) && continue
         for j in mem
