@@ -20,19 +20,26 @@ true if an infectious contact occurred at `stop[r]`. Several rows share a
 susceptible — its possible infectors. The form is space- and order-agnostic: it
 knows only at-risk intervals and events, never an infection order.
 """
-struct PairwiseSurvivalData
+struct PairwiseSurvivalData{T<:Real}
     sus::Vector{Int}
-    start::Vector{Float64}
-    stop::Vector{Float64}
+    start::Vector{T}
+    stop::Vector{T}
     event::Vector{Bool}
-    function PairwiseSurvivalData(sus, start, stop, event)
+    function PairwiseSurvivalData{T}(sus, start, stop, event) where {T<:Real}
         n = length(sus)
         (length(start) == n && length(stop) == n && length(event) == n) ||
             throw(ArgumentError("sus, start, stop and event must be the same length"))
         all(start[r] <= stop[r] for r in 1:n) ||
             throw(ArgumentError("each row needs start ≤ stop"))
-        return new(Int.(sus), Float64.(start), Float64.(stop), Bool.(event))
+        return new{T}(Int.(sus), Vector{T}(start), Vector{T}(stop), Bool.(event))
     end
+end
+
+# Promote the time-type so callers don't have to spell it out; widens to Float64
+# when the inputs are integers.
+function PairwiseSurvivalData(sus, start, stop, event)
+    T = promote_type(eltype(start), eltype(stop), Float64)
+    return PairwiseSurvivalData{T}(sus, start, stop, event)
 end
 
 Base.length(d::PairwiseSurvivalData) = length(d.sus)
@@ -94,21 +101,27 @@ of a `simulate` round-trip with [`household_infections`](@ref), or augmented in
 inference. Onsets, tests and other observables are *not* here: they are the
 progression's outputs, conditioned separately.
 """
-struct HouseholdInfections
+struct HouseholdInfections{T<:Real}
     household_of::Vector{Int}
-    infection_time::Vector{Float64}
-    infectious_time::Vector{Float64}
-    removal_time::Vector{Float64}
+    infection_time::Vector{T}
+    infectious_time::Vector{T}
+    removal_time::Vector{T}
     is_index::Vector{Bool}
-    obs_end::Float64
+    obs_end::T
 end
 
 # `obs_end` is the end of follow-up — the window the community hazard acts over;
 # only used when the model carries an external hazard, and may be left `Inf`.
 function HouseholdInfections(household_of, infection_time, infectious_time,
         removal_time, is_index; obs_end = Inf)
-    return HouseholdInfections(household_of, infection_time, infectious_time,
-        removal_time, is_index, Float64(obs_end))
+    T = promote_type(eltype(infection_time), eltype(infectious_time),
+                     eltype(removal_time), typeof(obs_end), Float64)
+    return HouseholdInfections{T}(collect(Int, household_of),
+                                   Vector{T}(infection_time),
+                                   Vector{T}(infectious_time),
+                                   Vector{T}(removal_time),
+                                   Vector{Bool}(is_index),
+                                   T(obs_end))
 end
 
 Base.length(d::HouseholdInfections) = length(d.household_of)
@@ -147,50 +160,78 @@ end
 # community term (`infector = 0`, calendar-time at-risk over `[0, tend]`). Without
 # a community term index cases are conditioned on (they appear only as infectors);
 # with one they are explained like any other case, so they get rows too.
-function _survival_rows(d::HouseholdInfections; external::Bool = false,
-        obs_end::Float64 = Inf)
-    sus = Int[]
-    start = Float64[]
-    stop = Float64[]
-    event = Bool[]
-    infector = Int[]
-    is_ext = Bool[]
-    households = Dict{Int, Vector{Int}}()
+function _survival_rows(d::HouseholdInfections{T}; external::Bool = false,
+        obs_end::T = T(Inf)) where {T<:Real}
+    # Bucket hosts by household into a `Vector{Vector{Int}}` keyed by id
+    # (no hashing) and walk the buckets in two passes — first to count
+    # rows, then to fill preallocated output arrays. Avoiding the
+    # `Dict` and the per-row `push!` matters under reverse-mode AD,
+    # which tracks every allocation.
+    n_households = maximum(d.household_of)
+    households = [Int[] for _ in 1:n_households]
     for i in eachindex(d.household_of)
-        push!(get!(households, d.household_of[i], Int[]), i)
+        push!(households[d.household_of[i]], i)
     end
-    for (_, mem) in households
-        infectious = [i for i in mem if isfinite(d.infectious_time[i])]
+
+    # ── Pass 1: count rows ──────────────────────────────────────────────
+    n_rows = 0
+    for h in 1:n_households
+        mem = households[h]
+        isempty(mem) && continue
         for j in mem
             (!external && d.is_index[j]) && continue
             tj = d.infection_time[j]
             infected_j = !isnan(tj)
-            tend = infected_j ? tj : (external ? obs_end : Inf)
-            if external
-                # community row: the external hazard over calendar time [0, tend]
-                push!(sus, j)
-                push!(start, 0.0)
-                push!(stop, tend)
-                push!(event, infected_j)
-                push!(infector, 0)
-                push!(is_ext, true)
-            end
-            for i in infectious
+            tend = infected_j ? tj : (external ? obs_end : T(Inf))
+            external && (n_rows += 1)
+            for i in mem
+                isfinite(d.infectious_time[i]) || continue
                 i == j && continue
                 oi = d.infectious_time[i]
-                oi < tend || continue                # i infectious before j's exposure ends
-                A = min(d.removal_time[i], tend) - oi  # at-risk contact-interval age
+                oi < tend || continue
+                A = min(d.removal_time[i], tend) - oi
                 A > 0 || continue
-                push!(sus, j)
-                push!(start, 0.0)
-                push!(stop, A)
-                push!(event, infected_j && oi < tj <= d.removal_time[i])
-                push!(infector, i)
-                push!(is_ext, false)
+                n_rows += 1
             end
         end
     end
-    return PairwiseSurvivalData(sus, start, stop, event), infector, is_ext
+
+    # ── Pass 2: fill ────────────────────────────────────────────────────
+    sus      = Vector{Int}(undef, n_rows)
+    start    = Vector{T}(undef, n_rows)
+    stop     = Vector{T}(undef, n_rows)
+    event    = Vector{Bool}(undef, n_rows)
+    infector = Vector{Int}(undef, n_rows)
+    is_ext   = Vector{Bool}(undef, n_rows)
+    r = 0
+    for h in 1:n_households
+        mem = households[h]
+        isempty(mem) && continue
+        for j in mem
+            (!external && d.is_index[j]) && continue
+            tj = d.infection_time[j]
+            infected_j = !isnan(tj)
+            tend = infected_j ? tj : (external ? obs_end : T(Inf))
+            if external
+                r += 1
+                sus[r] = j; start[r] = zero(T); stop[r] = tend
+                event[r] = infected_j; infector[r] = 0; is_ext[r] = true
+            end
+            for i in mem
+                isfinite(d.infectious_time[i]) || continue
+                i == j && continue
+                oi = d.infectious_time[i]
+                oi < tend || continue
+                A = min(d.removal_time[i], tend) - oi
+                A > 0 || continue
+                r += 1
+                sus[r] = j; start[r] = zero(T); stop[r] = A
+                event[r] = infected_j && oi < tj <= d.removal_time[i]
+                infector[r] = i; is_ext[r] = false
+            end
+        end
+    end
+    return PairwiseSurvivalData{T}(sus, start, stop, event), infector, is_ext
 end
 
 """
