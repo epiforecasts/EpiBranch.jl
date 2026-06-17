@@ -126,6 +126,13 @@ Distributions.minimum(::GammaBorel) = 1
 Distributions.maximum(::GammaBorel) = Inf
 Distributions.insupport(::GammaBorel, n::Integer) = n >= 1
 
+# Expected total progeny of a subcritical branching process depends only on
+# the mean offspring number R, so this matches `mean(::Borel)`.
+function Distributions.mean(d::GammaBorel)
+    d.R >= 1.0 && return Inf
+    return 1.0 / (1.0 - d.R)
+end
+
 function Base.rand(rng::AbstractRNG, d::GammaBorel)
     d.R >= 1.0 && throw(ArgumentError(
         "rand is not defined for supercritical GammaBorel (R ≥ 1): total mass is < 1 and the chain is infinite with positive probability"))
@@ -190,6 +197,11 @@ Distributions.pdf(d::PoissonGammaChainSize, n::Integer) = exp(logpdf(d, n))
 Distributions.minimum(::PoissonGammaChainSize) = 1
 Distributions.maximum(::PoissonGammaChainSize) = Inf
 Distributions.insupport(::PoissonGammaChainSize, n::Integer) = n >= 1
+
+# The mean is infinite for all parameters: the Gamma rate always places density
+# at and above 1, where the conditional chain size `1/(1-λ)` diverges, so the
+# marginal expectation `E[1/(1-λ)]` does not converge.
+Distributions.mean(::PoissonGammaChainSize) = Inf
 
 function Base.rand(rng::AbstractRNG, d::PoissonGammaChainSize)
     d.R >= 1.0 && throw(ArgumentError(
