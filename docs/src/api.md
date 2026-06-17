@@ -177,17 +177,28 @@ heterogeneous_contact_R
 
 ### Chain-size distributions
 
-`chain_size_distribution(spec)` is the dispatch entry point. The
-distributions below are the process-side outputs — closed forms for
-the cluster-size PMF given an offspring specification. The
-observation-side counterpart (`ThinnedChainSize`) lives with the
-observation models.
+`chain_size_distribution(spec)` is the dispatch entry point: given an
+offspring specification it returns the closed-form cluster-size PMF as a
+`Distribution`. `Borel` (chain sizes from Poisson offspring) is the one
+size law you also construct directly — it is a standard named
+distribution. The observation-side counterpart (`ThinnedChainSize`)
+lives with the observation models.
 
 ```@docs
 chain_size_distribution
 Borel
-GammaBorel
-PoissonGammaChainSize
+```
+
+#### Dispatch outputs (not exported)
+
+Returned by `chain_size_distribution` rather than constructed by name, so
+they are not exported. `GammaBorel` is the size law for `NegativeBinomial`
+offspring (individual-level Gamma-Poisson mixing); `PoissonGammaChainSize`
+is the size law for Poisson offspring with a chain-level Gamma rate.
+
+```@docs
+EpiBranch.GammaBorel
+EpiBranch.PoissonGammaChainSize
 ```
 
 ## Inference

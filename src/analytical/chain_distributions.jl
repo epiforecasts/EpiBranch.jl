@@ -139,6 +139,11 @@ function Base.rand(rng::AbstractRNG, d::GammaBorel)
     _inverse_cdf_rand(rng, d, "GammaBorel")
 end
 
+# Alias documenting that `GammaBorel` is the chain size law of NegativeBinomial
+# offspring (individual-level Gamma-Poisson mixing). Not exported: construct via
+# `chain_size_distribution(::NegativeBinomial)`. `typeof` still prints `GammaBorel`.
+const NegativeBinomialChainSize = GammaBorel
+
 """
     PoissonGammaChainSize(k, R)
 

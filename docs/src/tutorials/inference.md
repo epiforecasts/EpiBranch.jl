@@ -209,7 +209,8 @@ true_R, true_k = 0.6, 0.2
 rng = StableRNG(7)
 n = 50
 seeds = rand(rng, [1, 1, 1, 2], n)
-sizes = [sum(rand(rng, GammaBorel(true_k, true_R)) for _ in 1:s) for s in seeds]
+cluster_law = chain_size_distribution(NegBin(true_R, true_k))
+sizes = [sum(rand(rng, cluster_law) for _ in 1:s) for s in seeds]
 
 data = ChainSizes(sizes; seeds = seeds)
 println("Clusters: $(length(sizes)) (seeds 1 / 2: " *
