@@ -20,12 +20,12 @@ true if an infectious contact occurred at `stop[r]`. Several rows share a
 susceptible — its possible infectors. The form is space- and order-agnostic: it
 knows only at-risk intervals and events, never an infection order.
 """
-struct PairwiseSurvivalData{T<:Real}
+struct PairwiseSurvivalData{T <: Real}
     sus::Vector{Int}
     start::Vector{T}
     stop::Vector{T}
     event::Vector{Bool}
-    function PairwiseSurvivalData{T}(sus, start, stop, event) where {T<:Real}
+    function PairwiseSurvivalData{T}(sus, start, stop, event) where {T <: Real}
         n = length(sus)
         (length(start) == n && length(stop) == n && length(event) == n) ||
             throw(ArgumentError("sus, start, stop and event must be the same length"))
@@ -101,7 +101,7 @@ of a `simulate` round-trip with [`household_infections`](@ref), or augmented in
 inference. Onsets, tests and other observables are *not* here: they are the
 progression's outputs, conditioned separately.
 """
-struct HouseholdInfections{T<:Real}
+struct HouseholdInfections{T <: Real}
     household_of::Vector{Int}
     infection_time::Vector{T}
     infectious_time::Vector{T}
@@ -115,13 +115,13 @@ end
 function HouseholdInfections(household_of, infection_time, infectious_time,
         removal_time, is_index; obs_end = Inf)
     T = promote_type(eltype(infection_time), eltype(infectious_time),
-                     eltype(removal_time), typeof(obs_end), Float64)
+        eltype(removal_time), typeof(obs_end), Float64)
     return HouseholdInfections{T}(collect(Int, household_of),
-                                   Vector{T}(infection_time),
-                                   Vector{T}(infectious_time),
-                                   Vector{T}(removal_time),
-                                   Vector{Bool}(is_index),
-                                   T(obs_end))
+        Vector{T}(infection_time),
+        Vector{T}(infectious_time),
+        Vector{T}(removal_time),
+        Vector{Bool}(is_index),
+        T(obs_end))
 end
 
 Base.length(d::HouseholdInfections) = length(d.household_of)
@@ -161,7 +161,7 @@ end
 # a community term index cases are conditioned on (they appear only as infectors);
 # with one they are explained like any other case, so they get rows too.
 function _survival_rows(d::HouseholdInfections{T}; external::Bool = false,
-        obs_end::T = T(Inf)) where {T<:Real}
+        obs_end::T = T(Inf)) where {T <: Real}
     # Bucket hosts by household into a `Vector{Vector{Int}}` indexed by id
     # offset (no hashing) and walk the buckets in two passes — first to
     # count rows, then to fill preallocated output arrays. Avoiding the
@@ -201,12 +201,12 @@ function _survival_rows(d::HouseholdInfections{T}; external::Bool = false,
     end
 
     # ── Pass 2: fill ────────────────────────────────────────────────────
-    sus      = Vector{Int}(undef, n_rows)
-    start    = Vector{T}(undef, n_rows)
-    stop     = Vector{T}(undef, n_rows)
-    event    = Vector{Bool}(undef, n_rows)
+    sus = Vector{Int}(undef, n_rows)
+    start = Vector{T}(undef, n_rows)
+    stop = Vector{T}(undef, n_rows)
+    event = Vector{Bool}(undef, n_rows)
     infector = Vector{Int}(undef, n_rows)
-    is_ext   = Vector{Bool}(undef, n_rows)
+    is_ext = Vector{Bool}(undef, n_rows)
     r = 0
     for h in 1:n_buckets
         mem = households[h]
@@ -218,8 +218,12 @@ function _survival_rows(d::HouseholdInfections{T}; external::Bool = false,
             tend = infected_j ? tj : (external ? obs_end : T(Inf))
             if external
                 r += 1
-                sus[r] = j; start[r] = zero(T); stop[r] = tend
-                event[r] = infected_j; infector[r] = 0; is_ext[r] = true
+                sus[r] = j
+                start[r] = zero(T)
+                stop[r] = tend
+                event[r] = infected_j
+                infector[r] = 0
+                is_ext[r] = true
             end
             for i in mem
                 isfinite(d.infectious_time[i]) || continue
@@ -229,9 +233,12 @@ function _survival_rows(d::HouseholdInfections{T}; external::Bool = false,
                 A = min(d.removal_time[i], tend) - oi
                 A > 0 || continue
                 r += 1
-                sus[r] = j; start[r] = zero(T); stop[r] = A
+                sus[r] = j
+                start[r] = zero(T)
+                stop[r] = A
                 event[r] = infected_j && oi < tj <= d.removal_time[i]
-                infector[r] = i; is_ext[r] = false
+                infector[r] = i
+                is_ext[r] = false
             end
         end
     end
