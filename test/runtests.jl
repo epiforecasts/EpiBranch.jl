@@ -1,5 +1,7 @@
 using Test
 using EpiBranch
+# Non-exported chain-size types, reached in production via chain_size_distribution.
+using EpiBranch: GammaBorel, PoissonGammaChainSize
 using Distributions
 using Random
 using StableRNGs

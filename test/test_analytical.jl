@@ -127,15 +127,31 @@
             @test isfinite(logpdf(d_super, 3))
             @test_throws ArgumentError rand(d_super)
         end
+
+        @testset "Mean depends only on R" begin
+            # Expected total progeny is 1/(1-R) for any subcritical
+            # offspring family, infinite once R ≥ 1.
+            @test mean(GammaBorel(0.5, 0.8)) ≈ 1 / (1 - 0.8)
+            @test mean(GammaBorel(0.5, 1.5)) == Inf
+        end
     end
 
     @testset "PoissonGammaChainSize" begin
-        @testset "rand throws when Gamma mean ≥ 1" begin
-            # Regression: supercritical mean R puts too much Gamma mass
-            # above 1, so rand would silently truncate.
+        @testset "rand throws for all parameters" begin
+            # The law is defective for every R: the Gamma rate always
+            # places mass above 1, so finite-chain sampling is ill-defined
+            # (consistent with the infinite mean). logpdf stays defined.
+            @test_throws ArgumentError rand(PoissonGammaChainSize(0.5, 0.3))
             d_super = PoissonGammaChainSize(0.5, 1.5)
             @test isfinite(logpdf(d_super, 2))
             @test_throws ArgumentError rand(d_super)
+        end
+
+        @testset "Mean is infinite for all parameters" begin
+            # The Gamma rate always places density at/above 1, where the
+            # conditional chain size 1/(1-λ) diverges.
+            @test mean(PoissonGammaChainSize(0.5, 0.8)) == Inf
+            @test mean(PoissonGammaChainSize(2.0, 0.3)) == Inf
         end
     end
 
