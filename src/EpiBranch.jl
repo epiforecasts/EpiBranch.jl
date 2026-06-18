@@ -127,8 +127,10 @@ export individual_type, set_isolated!
 
 # Exports — distributions
 export NegBin, scale_distribution, incubation_linked_generation_time
-# Process-side chain-size distributions (closed forms for offspring specs)
-export Borel, GammaBorel, PoissonGammaChainSize, chain_size_distribution
+# Process-side chain-size distributions (closed forms for offspring specs).
+# Reach `GammaBorel`/`PoissonGammaChainSize` via `chain_size_distribution`;
+# only the standalone `Borel` and the dispatch entry point are exported.
+export Borel, chain_size_distribution
 # Observation-side chain-size distribution (binomial thinning of any base)
 export ThinnedChainSize
 
