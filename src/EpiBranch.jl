@@ -142,7 +142,7 @@ export simulate, make_contact!, susceptible_fraction
 export generate_offspring, contacts_of, collect_exposures, gather_by_target
 
 # Exports — output
-export linelist, contacts, chain_statistics, derive_trace_level!
+export linelist, contacts, chain_statistics, compute_trace_level!
 export realised_generation_interval, realised_generation_intervals
 export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
 

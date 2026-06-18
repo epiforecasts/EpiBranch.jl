@@ -64,7 +64,7 @@ downstream packages should pick names that do not collide.
 | `:trace_time` | `Float64` | — | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
 | `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
 | `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` |
-| `:trace_level` | `Int` | — | `derive_trace_level!` | Post-simulation |
+| `:trace_level` | `Int` | — | `compute_trace_level!` | Post-simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
 | `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
@@ -92,7 +92,7 @@ same simulation is not supported, because they will overwrite each other.
 
 `:traced_by` is the source a node was traced from — the *first*,
 earliest-exposure tracer, since the engine makes one trace attempt per node.
-`derive_trace_level!` walks it back to the index case post-simulation to set
+`compute_trace_level!` walks it back to the index case post-simulation to set
 `:trace_level` (distance from the index, anchor `0`). On a tree the level is
 exact; on a cyclic `NetworkProcess` it is the depth along the first-traced
 path, **not** a guaranteed shortest distance to the nearest index — do not

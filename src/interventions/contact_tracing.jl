@@ -464,7 +464,7 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
         # Record the source this contact was traced from. The engine makes
         # one trace attempt per node, from the earliest-exposure infector, so
         # this is the *first* tracer: exact (the parent) on a tree,
-        # first-reached on a cyclic network. `derive_trace_level!` walks it
+        # first-reached on a cyclic network. `compute_trace_level!` walks it
         # back to the index case post-run; see issue #150.
         ind.state[:traced_by] = infector.id
 

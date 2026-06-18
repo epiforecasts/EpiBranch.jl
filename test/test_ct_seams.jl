@@ -176,8 +176,8 @@ end
     end
 end
 
-@testset "traced_by and derive_trace_level!" begin
-    @testset "derive_trace_level! walks traced_by back to the index" begin
+@testset "traced_by and compute_trace_level!" begin
+    @testset "compute_trace_level! walks traced_by back to the index" begin
         mini(inds) = SimulationState(
             inds, Int[], 0, StableRNG(1), 0, false, nothing, Inf, nothing,
             AbstractClinicalTransition[])
@@ -188,7 +188,7 @@ end
         inds[3].state[:traced_by] = 2
         inds[4].state[:traced_by] = 1
         state = mini(inds)
-        @test derive_trace_level!(state) === state
+        @test compute_trace_level!(state) === state
         @test inds[1].state[:trace_level] == 0       # anchor: untraced but referenced
         @test inds[2].state[:trace_level] == 1
         @test inds[3].state[:trace_level] == 2
@@ -199,7 +199,7 @@ end
         cyc = [Individual(id = i) for i in 1:2]
         cyc[1].state[:traced_by] = 2
         cyc[2].state[:traced_by] = 1
-        @test derive_trace_level!(mini(cyc)) isa SimulationState
+        @test compute_trace_level!(mini(cyc)) isa SimulationState
     end
 
     @testset "batch overload stamps every state" begin
@@ -211,7 +211,7 @@ end
         b = [Individual(id = i) for i in 1:2]
         b[2].state[:traced_by] = 1
         states = [mini(a), mini(b)]
-        @test derive_trace_level!(states) === states
+        @test compute_trace_level!(states) === states
         @test a[2].state[:trace_level] == 1
         @test b[2].state[:trace_level] == 1
     end
@@ -246,7 +246,7 @@ end
             @test get(ind.state, :traced_by, nothing) == ind.parent_id
         end
 
-        derive_trace_level!(state)
+        compute_trace_level!(state)
         levels = collect(skipmissing(
             get(ind.state, :trace_level, missing) for ind in state.individuals))
         @test 0 in levels        # the index/anchor

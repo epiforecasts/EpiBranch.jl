@@ -1,5 +1,5 @@
 """
-    derive_trace_level!(state::SimulationState) -> state
+    compute_trace_level!(state::SimulationState) -> state
 
 Post-run enrichment: walk each individual's `:traced_by` back to the index
 case and stamp `:trace_level` (distance from the index case) onto its
@@ -22,7 +22,7 @@ deliberate post-run step, so the cost stays out of the hot loop.
     do not read it as one. (A true nearest-index distance would need the
     engine to record every successful tracer; see issue #150.)
 """
-function derive_trace_level!(state::SimulationState)
+function compute_trace_level!(state::SimulationState)
     individuals = state.individuals
 
     # id → position lookup (don't assume id == index).
@@ -70,14 +70,14 @@ function derive_trace_level!(state::SimulationState)
 end
 
 """
-    derive_trace_level!(states::AbstractVector{<:SimulationState}) -> states
+    compute_trace_level!(states::AbstractVector{<:SimulationState}) -> states
 
-Apply [`derive_trace_level!`](@ref) to each state in turn (mirrors
+Apply [`compute_trace_level!`](@ref) to each state in turn (mirrors
 `chain_statistics` over a batch of runs).
 """
-function derive_trace_level!(states::AbstractVector{<:SimulationState})
+function compute_trace_level!(states::AbstractVector{<:SimulationState})
     for state in states
-        derive_trace_level!(state)
+        compute_trace_level!(state)
     end
     return states
 end
