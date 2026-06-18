@@ -175,3 +175,65 @@ end
         @test outer_vaccinated
     end
 end
+
+@testset "traced_by and derive_trace_level!" begin
+    @testset "derive_trace_level! walks traced_by back to the index" begin
+        mini(inds) = SimulationState(
+            inds, Int[], 0, StableRNG(1), 0, false, nothing, Inf, nothing,
+            AbstractClinicalTransition[])
+
+        # 1 (seed) ← 2 ← 3 ; 1 ← 4 ; 5 never traced.
+        inds = [Individual(id = i) for i in 1:5]
+        inds[2].state[:traced_by] = 1
+        inds[3].state[:traced_by] = 2
+        inds[4].state[:traced_by] = 1
+        state = mini(inds)
+        @test derive_trace_level!(state) === state
+        @test inds[1].state[:trace_level] == 0       # anchor: untraced but referenced
+        @test inds[2].state[:trace_level] == 1
+        @test inds[3].state[:trace_level] == 2
+        @test inds[4].state[:trace_level] == 1
+        @test !haskey(inds[5].state, :trace_level)   # never traced, never an anchor
+
+        # A defensive cycle must terminate rather than recurse forever.
+        cyc = [Individual(id = i) for i in 1:2]
+        cyc[1].state[:traced_by] = 2
+        cyc[2].state[:traced_by] = 1
+        @test derive_trace_level!(mini(cyc)) isa SimulationState
+    end
+
+    @testset "trace_level lines up with the ring on a tree sim" begin
+        clinical = clinical_presentation(
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+        attrs = compose(clinical, transmission_traits(susceptibility = 0.5))
+        ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
+        state = simulate(
+            BranchingProcess((rng, ind) -> 4, Exponential(5.0);
+                interventions = [ct], attributes = attrs);
+            n_initial = 3, max_generations = 4, rng = StableRNG(1))
+
+        # Every traced node records the infector it was traced from; on a
+        # branching process that is its (final) parent.
+        for ind in state.individuals
+            is_traced(ind) || continue
+            @test get(ind.state, :traced_by, nothing) == ind.parent_id
+        end
+
+        derive_trace_level!(state)
+        levels = collect(skipmissing(
+            get(ind.state, :trace_level, missing) for ind in state.individuals))
+        @test 0 in levels        # the index/anchor
+        @test 1 in levels        # directly traced contacts
+        @test 2 in levels        # contacts-of-contacts (the depth-2 reach)
+        # Every traced node carries a positive level; only the anchor is 0.
+        for ind in state.individuals
+            is_traced(ind) || continue
+            @test get(ind.state, :trace_level, 0) >= 1
+        end
+
+        # It flows into the linelist automatically.
+        df = linelist(state)
+        @test :traced_by in propertynames(df)
+        @test :trace_level in propertynames(df)
+    end
+end

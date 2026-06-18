@@ -75,6 +75,7 @@ include("simulation.jl")
 
 # Output
 include("output/linelist.jl")
+include("output/tracing.jl")
 include("output/chains.jl")
 include("output/generation_intervals.jl")
 include("output/summary.jl")
@@ -139,7 +140,7 @@ export simulate, make_contact!, susceptible_fraction
 export generate_offspring, contacts_of, collect_exposures, gather_by_target
 
 # Exports — output
-export linelist, contacts, chain_statistics
+export linelist, contacts, chain_statistics, derive_trace_level!
 export realised_generation_interval, realised_generation_intervals
 export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
 
