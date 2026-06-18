@@ -202,6 +202,33 @@ end
         @test derive_trace_level!(mini(cyc)) isa SimulationState
     end
 
+    @testset "batch overload stamps every state" begin
+        mini(inds) = SimulationState(
+            inds, Int[], 0, StableRNG(1), 0, false, nothing, Inf, nothing,
+            AbstractClinicalTransition[])
+        a = [Individual(id = i) for i in 1:2]
+        a[2].state[:traced_by] = 1
+        b = [Individual(id = i) for i in 1:2]
+        b[2].state[:traced_by] = 1
+        states = [mini(a), mini(b)]
+        @test derive_trace_level!(states) === states
+        @test a[2].state[:trace_level] == 1
+        @test b[2].state[:trace_level] == 1
+    end
+
+    @testset "reset! clears traced_by and trace_level" begin
+        ct = ContactTracing(probability = 1.0,
+            isolation_to_trace_delay = Exponential(1.0))
+        ind = Individual(id = 1)
+        ind.state[:traced] = true
+        ind.state[:traced_by] = 7
+        ind.state[:trace_level] = 2
+        EpiBranch.reset!(ct, ind)
+        @test ind.state[:traced] == false
+        @test !haskey(ind.state, :traced_by)
+        @test !haskey(ind.state, :trace_level)
+    end
+
     @testset "trace_level lines up with the ring on a tree sim" begin
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
