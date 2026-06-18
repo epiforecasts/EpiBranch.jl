@@ -137,9 +137,11 @@
     end
 
     @testset "PoissonGammaChainSize" begin
-        @testset "rand throws when Gamma mean ≥ 1" begin
-            # Regression: supercritical mean R puts too much Gamma mass
-            # above 1, so rand would silently truncate.
+        @testset "rand throws for all parameters" begin
+            # The law is defective for every R: the Gamma rate always
+            # places mass above 1, so finite-chain sampling is ill-defined
+            # (consistent with the infinite mean). logpdf stays defined.
+            @test_throws ArgumentError rand(PoissonGammaChainSize(0.5, 0.3))
             d_super = PoissonGammaChainSize(0.5, 1.5)
             @test isfinite(logpdf(d_super, 2))
             @test_throws ArgumentError rand(d_super)

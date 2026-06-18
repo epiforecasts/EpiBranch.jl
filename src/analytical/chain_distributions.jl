@@ -208,10 +208,9 @@ Distributions.insupport(::PoissonGammaChainSize, n::Integer) = n >= 1
 # marginal expectation `E[1/(1-λ)]` does not converge.
 Distributions.mean(::PoissonGammaChainSize) = Inf
 
-function Base.rand(rng::AbstractRNG, d::PoissonGammaChainSize)
-    d.R >= 1.0 && throw(ArgumentError(
-        "rand is not defined for PoissonGammaChainSize with mean R ≥ 1: too much Gamma mass sits above 1 (supercritical rates) and chains are infinite with positive probability"))
-    _inverse_cdf_rand(rng, d, "PoissonGammaChainSize")
+function Base.rand(::AbstractRNG, ::PoissonGammaChainSize)
+    throw(ArgumentError(
+        "rand is not defined for PoissonGammaChainSize: the chain-size law has positive infinite-chain mass for all parameter values (the Gamma rate always places mass above 1), so finite-chain sampling is ill-defined"))
 end
 
 """
