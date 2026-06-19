@@ -154,6 +154,7 @@ set_isolated!
 linelist
 contacts
 chain_statistics
+compute_trace_level!
 realised_generation_interval
 realised_generation_intervals
 containment_probability

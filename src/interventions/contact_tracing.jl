@@ -410,6 +410,8 @@ end
 function reset!(::ContactTracing, ind::Individual)
     ind.state[:traced] = false
     ind.state[:quarantined] = false
+    haskey(ind.state, :traced_by) && delete!(ind.state, :traced_by)
+    haskey(ind.state, :trace_level) && delete!(ind.state, :trace_level)
     if is_isolated(ind)
         ind.state[:isolated] = false
         ind.state[:isolation_time] = Inf
@@ -459,11 +461,16 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
         end
         apply_trace!(ct.action, ind, state, trace_time, rng)
 
+        # Record the source this contact was traced from. The engine makes
+        # one trace attempt per node, from the earliest-exposure infector, so
+        # this is the *first* tracer: exact (the parent) on a tree,
+        # first-reached on a cyclic network. `compute_trace_level!` walks it
+        # back to the index case post-run; see issue #150.
+        ind.state[:traced_by] = infector.id
+
         # Record how far the ring can still grow from this contact, and
         # when it was traced, so a contact-of-contact one hop further out
-        # can time its own trace from here. Only `depth > 1` rings expand,
-        # so depth-1 tracing writes no extra state and matches the
-        # original byte for byte.
+        # can time its own trace from here. Only `depth > 1` rings expand.
         if ct.depth > 1
             ind.state[:trace_time] = trace_time
             ind.state[:ring_remaining] = seed ? ct.depth - 1 :
