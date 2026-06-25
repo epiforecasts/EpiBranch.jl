@@ -289,3 +289,227 @@ _pair(k, i, j) = k(i, j)
 # α is `Exponential(1/α)` (hazard α, cumulative α·t); a distribution is itself.
 _ext_survival(α::Real) = Exponential(1 / α)
 _ext_survival(d::ContinuousUnivariateDistribution) = d
+
+# ── Compiled pair layout (fast path for inference) ───────────────────
+#
+# In inference the household structure (`household_of`, `is_index`) and the
+# set of ever-infected hosts are fixed across gradient evaluations — only the
+# augmented `infection_time`/`infectious_time` move. The default
+# `pairwise_surv_loglik(kernel, ::HouseholdInfections)` rebuilds the entire
+# row structure (a `Dict`, six fresh `Vector{T}`, and per-row allocations)
+# every call, which reverse-mode AD tracks and pays for repeatedly.
+#
+# `HouseholdPairsLayout` captures everything that doesn't depend on the
+# augmented times: row → (susceptible, infector, is_ext) and a susceptible-
+# grouped index for the log-sum-exp. With a layout in hand,
+# `pairwise_surv_loglik(kernel, infections, layout)` runs in a single pass
+# over rows with no `Dict` and a streaming logsumexp — the AD tape is much
+# shorter.
+
+"""
+    HouseholdPairsLayout
+
+Static row structure for [`pairwise_surv_loglik`](@ref) under a fixed
+household population. Each row is one ordered (susceptible, infector) pair
+that the contact process scores; the constructor enumerates the same rows
+the dynamic `_survival_rows` would, but only once.
+
+Build it with [`compile_household_pairs`](@ref).
+"""
+struct HouseholdPairsLayout
+    sus::Vector{Int}                       # row r → susceptible host id
+    infector::Vector{Int}                  # row r → infector host id (0 = external)
+    is_ext::Vector{Bool}
+    sus_unique::Vector{Int}                # susceptibles that have ≥1 row
+    sus_row_ranges::Vector{UnitRange{Int}} # row indices in `sus_row_order`
+    sus_row_order::Vector{Int}             # row indices, susceptible-grouped
+    external::Bool
+end
+
+Base.length(L::HouseholdPairsLayout) = length(L.sus)
+
+"""
+    compile_household_pairs(household_of, is_index, infected; external=false)
+    compile_household_pairs(data::HouseholdInfections; external=false)
+
+Pre-compute the structural pair list for the inference fast path. `infected`
+is the static at-risk mask — true iff the host appears in the posterior as
+an infected case (its `infection_time` will be augmented). The single-arg
+form reads the mask off `data` as `.!isnan.(data.infection_time)`.
+
+With `external=true` an additional row per susceptible carries the
+community hazard term; otherwise index cases are conditioned on and
+contribute only as infectors.
+"""
+function compile_household_pairs(household_of::AbstractVector{<:Integer},
+                                  is_index::AbstractVector{Bool},
+                                  infected::AbstractVector{Bool};
+                                  external::Bool = false)
+    n = length(household_of)
+    (length(is_index) == n && length(infected) == n) ||
+        throw(ArgumentError("household_of, is_index and infected must be same length"))
+    isempty(household_of) && return HouseholdPairsLayout(
+        Int[], Int[], Bool[], Int[], UnitRange{Int}[], Int[], external)
+
+    lo, hi = extrema(household_of)
+    n_buckets = hi - lo + 1
+    buckets = [Int[] for _ in 1:n_buckets]
+    for i in 1:n
+        push!(buckets[household_of[i] - lo + 1], i)
+    end
+
+    sus = Int[]; infector = Int[]; is_ext = Bool[]
+    for h in 1:n_buckets
+        mem = buckets[h]
+        isempty(mem) && continue
+        for j in mem
+            (!external && is_index[j]) && continue
+            if external
+                push!(sus, j); push!(infector, 0); push!(is_ext, true)
+            end
+            for i in mem
+                infected[i] || continue
+                i == j && continue
+                push!(sus, j); push!(infector, i); push!(is_ext, false)
+            end
+        end
+    end
+
+    n_rows = length(sus)
+    sus_row_order = sortperm(sus)
+    sus_unique = Int[]; sus_row_ranges = UnitRange{Int}[]
+    if n_rows > 0
+        s_prev = sus[sus_row_order[1]]
+        push!(sus_unique, s_prev)
+        range_lo = 1
+        for k in 2:n_rows
+            s_k = sus[sus_row_order[k]]
+            if s_k != s_prev
+                push!(sus_row_ranges, range_lo:k - 1)
+                push!(sus_unique, s_k)
+                range_lo = k
+                s_prev = s_k
+            end
+        end
+        push!(sus_row_ranges, range_lo:n_rows)
+    end
+
+    HouseholdPairsLayout(sus, infector, is_ext, sus_unique, sus_row_ranges,
+                         sus_row_order, external)
+end
+
+function compile_household_pairs(d::HouseholdInfections; external::Bool = false)
+    infected = .!isnan.(d.infection_time)
+    compile_household_pairs(d.household_of, d.is_index, infected; external)
+end
+
+# Streaming logsumexp — replaces the `_logsumexp([...])` allocator from the
+# dynamic path. Mooncake/ReverseDiff track each `exp`/`log`, but not the
+# intermediate Vector{T}, which dominates AD cost on small groups.
+mutable struct _LogSumExpAcc{T}
+    m::T
+    s::T
+    nseen::Int
+end
+_LogSumExpAcc{T}() where {T} = _LogSumExpAcc{T}(T(-Inf), zero(T), 0)
+function _push!(acc::_LogSumExpAcc{T}, x) where {T}
+    if acc.nseen == 0
+        acc.m = T(x); acc.s = one(T)
+    elseif x > acc.m
+        acc.s = acc.s * exp(acc.m - x) + one(T)
+        acc.m = T(x)
+    else
+        acc.s += exp(x - acc.m)
+    end
+    acc.nseen += 1
+    return acc
+end
+_value(acc::_LogSumExpAcc{T}) where {T} = acc.nseen == 0 ? T(-Inf) : acc.m + log(acc.s)
+
+"""
+    pairwise_surv_loglik(kernel, data::HouseholdInfections, layout::HouseholdPairsLayout;
+                         external_hazard = 0.0) -> Real
+
+Inference fast path: evaluate the contact-process log-density on the rows
+captured in `layout`. The augmented `data.infection_time` /
+`data.infectious_time` / `data.removal_time` are read on the fly, so the
+caller can re-use the same `layout` across gradient evaluations.
+
+Matches the dynamic-path result up to row order. `external` mode must be
+consistent with `layout.external`; mismatching the two raises.
+"""
+function pairwise_surv_loglik(kernel, data::HouseholdInfections,
+                              layout::HouseholdPairsLayout;
+                              external_hazard = 0.0)
+    external = _ext_active(external_hazard)
+    external == layout.external ||
+        throw(ArgumentError("layout.external = $(layout.external) but external_hazard = $external_hazard"))
+    extdist = external ? _ext_survival(external_hazard) : kernel
+    _shared_kernel = !external && kernel isa ContinuousUnivariateDistribution
+
+    sus = layout.sus
+    infector = layout.infector
+    is_ext = layout.is_ext
+
+    T = promote_type(eltype(data.infection_time),
+                     eltype(data.infectious_time),
+                     eltype(data.removal_time),
+                     Float64)
+    ll = zero(T)
+
+    # Pass 1: cumulative-hazard contribution per row (start always 0 by
+    # construction of `_survival_rows`; we preserve that here).
+    @inbounds for r in eachindex(sus)
+        j = sus[r]
+        tj = data.infection_time[j]
+        infected_j = !isnan(tj)
+        tend = infected_j ? tj : (external ? data.obs_end : T(Inf))
+        if is_ext[r]
+            stop = tend
+            stop > 0 || continue
+            ll -= cumhazard(extdist, stop)
+        else
+            i = infector[r]
+            oi = data.infectious_time[i]
+            isfinite(oi) || continue
+            oi < tend || continue
+            stop = min(data.removal_time[i], tend) - oi
+            stop > 0 || continue
+            kr = _shared_kernel ? kernel : _pair(kernel, i, j)
+            ll -= cumhazard(kr, stop)
+        end
+    end
+
+    # Pass 2: per-susceptible log-sum-exp over event rows.
+    @inbounds for g in eachindex(layout.sus_unique)
+        rng = layout.sus_row_ranges[g]
+        acc = _LogSumExpAcc{T}()
+        had_event = false
+        for k in rng
+            r = layout.sus_row_order[k]
+            j = sus[r]
+            tj = data.infection_time[j]
+            infected_j = !isnan(tj)
+            infected_j || continue
+            if is_ext[r]
+                stop = tj
+                stop > 0 || continue
+                _push!(acc, loghazard(extdist, stop))
+                had_event = true
+            else
+                i = infector[r]
+                oi = data.infectious_time[i]
+                isfinite(oi) || continue
+                if oi < tj && tj <= data.removal_time[i]
+                    stop = tj - oi
+                    kr = _shared_kernel ? kernel : _pair(kernel, i, j)
+                    _push!(acc, loghazard(kr, stop))
+                    had_event = true
+                end
+            end
+        end
+        had_event && (ll += _value(acc))
+    end
+
+    return ll
+end

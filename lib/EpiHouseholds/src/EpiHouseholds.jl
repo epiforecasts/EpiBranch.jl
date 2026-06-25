@@ -18,6 +18,7 @@ import EpiBranch: interventions, attributes, observation,
 export HouseholdProcess, household_sizes
 export HouseholdInfections, household_infections
 export PairwiseSurvivalData, pairwise_surv_loglik
+export HouseholdPairsLayout, compile_household_pairs
 
 include("household_process.jl")
 include("household_simulate.jl")
