@@ -12,8 +12,10 @@ contacts that becomes active at the `from` state, times each contact by
   transition wrote, e.g. `:infectious`, `:died`). The window contributes
   contacts only once that state has been reached.
 - `until` is a tuple of state names whose earliest occurrence censors the
-  window — `(:recovered, :died, :isolated)` for community spread,
-  `(:buried,)` for a funeral window. Empty by default (no censoring).
+  window: `(:recovered, :died)` for community spread, `(:buried,)` for a
+  funeral window. Each name `s` resolves to the infector's
+  `Symbol(s, :_time)`. Empty by default (no censoring). Isolation censoring
+  comes from the `Isolation` intervention, not from a state here.
 - `kernel` is the contact interval, measured from `from`: a
   `Distribution`, a `Function (ind) -> Distribution`, or
   `NoGenerationTime()` (contacts land at the `from` time).
