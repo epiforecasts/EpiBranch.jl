@@ -78,6 +78,8 @@ downstream packages should pick names that do not collide.
 | `:reported` | `Bool` | `false` | `PerCaseObservation` *or* `Reporting` transition | Post-simulation projection / `resolve_individual!` |
 | `:report_time` | `Float64` | — | `PerCaseObservation` | Post-simulation projection |
 | `:cluster_theta` | `Float64` | — | `ClusterMixed` analytics | First simulation read |
+| `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
+| `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)` | `resolve_individual!` |
 
 The vaccination keys are namespaced by `dose_label`: the default label
 writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy`,
@@ -102,6 +104,15 @@ Built-in keys use short bare names like `:isolated`, `:traced`, `:age`, and
 those names are reserved. If you add keys from another package, prefix them
 with a short tag for your package so they do not collide with built-ins or
 with keys other packages might add.
+
+State times follow a convention. A generic `Transition(:state; …)` writes the
+flag `:state` and the time `:state_time` (that is, `Symbol(state, :_time)`).
+Infectiousness windows read the same convention: `from = :infectious` reads
+`:infectious_time`, and `until = (:recovered,)` reads `:recovered_time`. So the
+`_time` keys your transitions produce are the names your windows refer to, and
+they need to match. `:infectious_time` and `:recovered_time` are the common
+natural-history pair; any other state you transition into produces its own
+`<state>_time` the same way.
 
 ## Custom interventions
 
@@ -586,6 +597,81 @@ results = simulate(model_waning, 200;
 )
 println("Waning-R model: $(round(containment_probability(results), digits=3))")
 ```
+
+## Infectiousness windows
+
+A `BranchingProcess` is built from one or more `Infectiousness` windows. A
+window is a source of secondary contacts attached to a case's timeline:
+
+```julia
+Infectiousness(offspring; from = :infection, until = (), kernel = NoGenerationTime())
+```
+
+- `offspring`: how many contacts this source makes (a `Distribution`, or a
+  function for multi-type).
+- `from`: the state at which the window opens. `:infection` (the default)
+  resolves to the individual's infection time; any other symbol `s` resolves
+  to `Symbol(s, :_time)` in `ind.state`, so `from = :infectious` reads
+  `:infectious_time`. The window contributes nothing until that time is finite.
+- `kernel`: the contact interval, measured from the `from` time. Each contact
+  lands at the `from` time plus a draw from `kernel`. `NoGenerationTime()`
+  places contacts at the `from` time itself.
+- `until`: a tuple of state names. Each resolves to `Symbol(s, :_time)` on the
+  infector, and the earliest of them ends the window. A contact whose time
+  falls at or after it does not transmit, because the infector was removed first.
+
+`from` and `until` are how transmission keys off natural history. You supply
+the state times with transitions: a generic `Transition(:state; from, delay)`
+writes `:state` and `:state_time`. A latent period, an infectious period, and a
+window combine like this:
+
+```julia
+progression = [
+    Transition(:infectious, from = :infection,  delay = latent_period),
+    Transition(:recovered,  from = :infectious, delay = infectious_period),
+]
+window = Infectiousness(NegBin(R, k);
+    from   = :infectious,
+    until  = (:recovered,),
+    kernel = contact_interval)
+process = BranchingProcess(window; progression = progression)
+```
+
+The window opens when the case becomes infectious and closes at recovery. The
+`until` censor is a default competing risk on the same surface as
+interventions, so isolation, tracing and vaccination compose with it.
+Isolation comes from the `Isolation` intervention, not from a state in `until`.
+
+The default single window with `from = :infection`, `until = ()` and a
+generation-time `kernel` is the plain branching process.
+
+Whether `until` is empty changes what the kernel means. With `until = ()` there
+is no removal race, so the kernel is the realised generation interval. With a
+non-empty `until` the kernel is the contact interval, and the generation
+interval emerges from the race against removal. Giving a generation interval
+and a competing recovery state for the same window counts the infectious period
+twice; use one or the other.
+
+A case can carry several windows with different timing and censoring, for
+example community spread and a separate funeral source:
+
+```julia
+process = BranchingProcess(
+    (Infectiousness(NegBin(R, k); from = :infectious, until = (:recovered, :died), kernel = gt),
+     Infectiousness(Poisson(λ);   from = :died,       until = (:buried,),         kernel = funeral_kernel));
+    progression = progression)
+```
+
+Each window draws its own offspring, times them from its own `from` state, and
+is censored by its own `until` states.
+
+Two constraints:
+
+- The analytical helpers (`single_type_offspring`, the chain-size laws) need a
+  single window. Offspring across several windows is a fate-mixture with no
+  closed form, so multi-window models are simulation only.
+- If a window's `from` is a state that nothing writes, the window never opens.
+  The constructor warns when it can detect this.
 
 ## Adding a transmission model
 
