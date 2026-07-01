@@ -351,22 +351,45 @@ function gather_by_target(model::TransmissionModel, state::SimulationState)
     return targets, edges, minted, is_new
 end
 
-"""Advance the simulation by one generation through the unified engine:
-resolve interventions on active parents, collect this generation's
-exposures (grouped by target), initialise newly minted contacts, let
-contact-level interventions act, resolve infection per target under
-competing risks, and update bookkeeping and clinical transitions."""
+"""Advance the simulation by one generation through the unified engine, as
+four phases: interventions act on the active infectives ([`_prepare_parents!`](@ref)),
+the exposure phase ([`collect_exposures`](@ref)) builds and times this
+generation's contacts, contact-level interventions act on the exposed
+([`_intervene!`](@ref)), and the resolve phase ([`_resolve!`](@ref)) decides
+infection under competing risks and updates bookkeeping and clinical
+transitions. In the growing tree the build and time steps are fused in
+`collect_exposures` (a contact is minted with its infection time); they
+separate only in the fixed-population path, where contacts pre-exist."""
 function _advance_generation!(model::TransmissionModel,
         state::SimulationState, interventions::Vector{<:AbstractIntervention})
+    _prepare_parents!(state, interventions)
+    targets, edges, minted, is_new = collect_exposures(model, state)
+    _intervene!(state, interventions, targets, edges, minted)
+    _resolve!(model, state, interventions, targets, edges, is_new)
+    return nothing
+end
+
+"""Phase 1 — interventions act on the active infectives before they transmit."""
+function _prepare_parents!(state::SimulationState,
+        interventions::Vector{<:AbstractIntervention})
     for idx in state.active_ids
         individual = state.individuals[idx]
         for intervention in interventions
             resolve_individual!(intervention, individual, state)
         end
     end
+    return nothing
+end
 
-    targets, edges, minted, is_new = collect_exposures(model, state)
-
+"""Phase 3 — contact-level interventions act on this generation's exposures.
+Newly minted contacts get their intervention state initialised; each target is
+given a provisional parent (its earliest exposing edge) so contact-level
+interventions (tracing, ring vaccination) act on the exposed target before
+infection is resolved; then the interventions act."""
+function _intervene!(state::SimulationState,
+        interventions::Vector{<:AbstractIntervention},
+        targets::Vector{Individual}, edges::Vector{Vector{Tuple{Int, Float64}}},
+        minted)
     # Newly created contacts (already appended to state by make_contact!)
     # get their intervention state initialised.
     for contact in minted
@@ -375,10 +398,8 @@ function _advance_generation!(model::TransmissionModel,
         end
     end
 
-    # Provisional parent = earliest exposing edge, so contact-level
-    # interventions (tracing, ring vaccination) act on the exposed target
-    # before infection is resolved. With one edge (the tree case) this is
-    # the contact's only parent.
+    # Provisional parent = earliest exposing edge. With one edge (the tree
+    # case) this is the contact's only parent.
     for i in eachindex(targets)
         es = edges[i]
         length(es) > 1 && sort!(es, by = last)
@@ -388,13 +409,19 @@ function _advance_generation!(model::TransmissionModel,
     for intervention in interventions
         apply_post_transmission!(intervention, state, targets)
     end
+    return nothing
+end
 
-    # Exposure is not infection. Each contact exposed this generation is now
-    # decided infected-or-not: the infector's infectiousness, the contact's
-    # susceptibility, any risks the model contributes and any interventions all
-    # act as competing risks on the same footing. A contact is infected if any
-    # of its exposing edges transmits; the earliest successful edge fixes the
-    # infection time.
+"""Phase 4 — decide infection under competing risks and update bookkeeping.
+Exposure is not infection. Each contact exposed this generation is decided
+infected-or-not: the infector's infectiousness, the contact's susceptibility,
+any risks the model contributes and any interventions all act as competing
+risks on the same footing. A contact is infected if any of its exposing edges
+transmits; the earliest successful edge fixes the infection time."""
+function _resolve!(model::TransmissionModel, state::SimulationState,
+        interventions::Vector{<:AbstractIntervention},
+        targets::Vector{Individual}, edges::Vector{Vector{Tuple{Int, Float64}}},
+        is_new)
     model_risks = transmission_risks(model)
     infected_so_far = 0
     newly_infected = Individual[]
