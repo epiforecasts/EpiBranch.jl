@@ -292,6 +292,9 @@ developers extending the package.
 ```@docs
 EpiBranch.get_generation_time
 EpiBranch._advance_generation!
+EpiBranch._prepare_parents!
+EpiBranch._intervene!
+EpiBranch._resolve!
 EpiBranch._decide_infected
 EpiBranch.population_size
 EpiBranch._create_individual
