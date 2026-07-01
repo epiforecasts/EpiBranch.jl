@@ -3,6 +3,7 @@ using DifferentiationInterface
 import DifferentiationInterfaceTest as DIT
 using FiniteDifferences
 using ForwardDiff
+using StableRNGs
 
 # AD correctness tests for the analytical chain-size, chain-length, and
 # offspring-count log-likelihoods. Uses `DifferentiationInterfaceTest`
@@ -50,4 +51,35 @@ using ForwardDiff
         logging = false,
         rtol = 1e-5,
         atol = 1e-8)
+end
+
+# A gradient of an outbreak summary through the forward simulator, w.r.t. a
+# generation-time parameter — the capability the eltype-generic state opens up.
+# The tree is held fixed (same seed, offspring independent of the timing
+# parameter), so only the times vary with μ. For LogNormal(μ, σ) contact
+# intervals each interval's ∂/∂μ equals the interval itself, so the derivative
+# of the total infection time equals that total — a check with a known answer.
+@testset "AD through the forward simulator (timing gradient)" begin
+    function total_infection_time(μ)
+        model = BranchingProcess(NegBin(3.0, 0.5), LogNormal(μ, 0.5))
+        state = simulate(model; n_initial = 5, rng = StableRNG(20260701),
+            stopping_rules = [Extinction(), MaxGenerations(6)])
+        return sum(ind.infection_time for ind in state.individuals)
+    end
+
+    μ0 = 1.6
+    value = total_infection_time(μ0)
+    grad = ForwardDiff.derivative(total_infection_time, μ0)
+
+    @test isfinite(grad)
+    @test grad > 0
+    @test isapprox(grad, value; rtol = 1e-8)        # ∂/∂μ equals the total itself
+    fd = central_fdm(5, 1)(total_infection_time, μ0)
+    @test isapprox(grad, fd; rtol = 1e-4)           # finite-difference cross-check
+
+    # The default (non-AD) run is unchanged: the state carries Float64.
+    plain = simulate(BranchingProcess(NegBin(3.0, 0.5), LogNormal(1.6, 0.5));
+        n_initial = 1, rng = StableRNG(1),
+        stopping_rules = [Extinction(), MaxGenerations(3)])
+    @test EpiBranch._timetype(plain) === Float64
 end
