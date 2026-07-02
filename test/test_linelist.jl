@@ -110,8 +110,8 @@ using Dates
     end
 
     @testset "linelist empty state" begin
-        empty_state = SimulationState(Individual[], Int[], 0, StableRNG(1), 0, true,
-            nothing, 0.0, nothing, AbstractClinicalTransition[])
+        empty_state = SimulationState(Individual{Float64}[], Int[], 0, StableRNG(1),
+            0, true, nothing, 0.0, nothing, AbstractClinicalTransition[])
         df = linelist(empty_state)
         @test nrow(df) == 0
     end

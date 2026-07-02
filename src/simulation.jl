@@ -196,8 +196,9 @@ deduplicates so a node reached several times resolves once.
 """
 function collect_exposures(model::TransmissionModel, state::SimulationState)
     pre = length(state.individuals)   # contacts created this step get id > pre
-    targets = Individual[]
-    edges = Vector{Tuple{Int, Float64}}[]
+    T = _timetype(state)
+    targets = Individual{T}[]
+    edges = Vector{Tuple{Int, T}}[]
     for idx in state.active_ids
         parent = state.individuals[idx]
         offspring = generate_offspring(model, parent, state)
@@ -215,27 +216,27 @@ end
 # `make_contact!` and assigns it a generation time. Each fresh contact is
 # its own target reached by a single edge (the tree case). Single-type
 # offspring is a count; multi-type is a count per type.
-function _materialise_offspring!(targets::Vector{Individual},
-        edges::Vector{Vector{Tuple{Int, Float64}}}, n_contacts::Int,
+function _materialise_offspring!(targets, edges, n_contacts::Int,
         parent::Individual, state::SimulationState,
         gt_dist::Union{Distribution, NoGenerationTime})
+    T = _timetype(state)
     for _ in 1:n_contacts
         t = transmission_time(gt_dist, parent, state)
         push!(targets, make_contact!(state, parent, t))
-        push!(edges, Tuple{Int, Float64}[(parent.id, t)])
+        push!(edges, Tuple{Int, T}[(parent.id, t)])
     end
     return nothing
 end
 
-function _materialise_offspring!(targets::Vector{Individual},
-        edges::Vector{Vector{Tuple{Int, Float64}}}, counts::Vector{Int},
+function _materialise_offspring!(targets, edges, counts::Vector{Int},
         parent::Individual, state::SimulationState,
         gt_dist::Union{Distribution, NoGenerationTime})
+    T = _timetype(state)
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
             t = transmission_time(gt_dist, parent, state)
             push!(targets, make_contact!(state, parent, t; type_idx))
-            push!(edges, Tuple{Int, Float64}[(parent.id, t)])
+            push!(edges, Tuple{Int, T}[(parent.id, t)])
         end
     end
     return nothing
@@ -248,8 +249,9 @@ end
 # default single window reproduces the offspring-driven path above).
 function collect_exposures(model::BranchingProcess, state::SimulationState)
     pre = length(state.individuals)
-    targets = Individual[]
-    edges = Vector{Tuple{Int, Float64}}[]
+    T = _timetype(state)
+    targets = Individual{T}[]
+    edges = Vector{Tuple{Int, T}}[]
     for idx in state.active_ids
         parent = state.individuals[idx]
         for window in model.infectiousness
@@ -267,8 +269,8 @@ end
 
 # A contact's infection time is the window's `from`-state time plus a draw
 # from its kernel (the contact interval measured from `from`).
-_window_infection_time(::NoGenerationTime, from_t::Float64, state) = from_t
-function _window_infection_time(kernel::Distribution, from_t::Float64, state)
+_window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
+function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
 
@@ -279,31 +281,31 @@ _tag_window!(contact, until::Tuple{}) = nothing
 _tag_window!(contact, until) = (contact.state[:censor_until] = until; nothing)
 
 # Single-type: one count. Multi-type: a count per type.
-function _materialise_window!(targets::Vector{Individual},
-        edges::Vector{Vector{Tuple{Int, Float64}}}, n_contacts::Int,
-        parent::Individual, state::SimulationState, from_t::Float64,
+function _materialise_window!(targets, edges, n_contacts::Int,
+        parent::Individual, state::SimulationState, from_t::Real,
         kernel::Union{Distribution, NoGenerationTime}, until)
+    T = _timetype(state)
     for _ in 1:n_contacts
         t = _window_infection_time(kernel, from_t, state)
         contact = make_contact!(state, parent, t)
         _tag_window!(contact, until)
         push!(targets, contact)
-        push!(edges, Tuple{Int, Float64}[(parent.id, t)])
+        push!(edges, Tuple{Int, T}[(parent.id, t)])
     end
     return nothing
 end
 
-function _materialise_window!(targets::Vector{Individual},
-        edges::Vector{Vector{Tuple{Int, Float64}}}, counts::Vector{Int},
-        parent::Individual, state::SimulationState, from_t::Float64,
+function _materialise_window!(targets, edges, counts::Vector{Int},
+        parent::Individual, state::SimulationState, from_t::Real,
         kernel::Union{Distribution, NoGenerationTime}, until)
+    T = _timetype(state)
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
             t = _window_infection_time(kernel, from_t, state)
             contact = make_contact!(state, parent, t; type_idx)
             _tag_window!(contact, until)
             push!(targets, contact)
-            push!(edges, Tuple{Int, Float64}[(parent.id, t)])
+            push!(edges, Tuple{Int, T}[(parent.id, t)])
         end
     end
     return nothing
@@ -323,8 +325,9 @@ dedup map is only touched for shared nodes.
 """
 function gather_by_target(model::TransmissionModel, state::SimulationState)
     pre = length(state.individuals)
-    targets = Individual[]
-    edges = Vector{Tuple{Int, Float64}}[]
+    T = _timetype(state)
+    targets = Individual{T}[]
+    edges = Vector{Tuple{Int, T}}[]
     is_new = Bool[]
     pos = Dict{Int, Int}()       # node id -> target index; shared nodes only
     for idx in state.active_ids
@@ -332,13 +335,13 @@ function gather_by_target(model::TransmissionModel, state::SimulationState)
         for (target, time) in contacts_of(model, parent, state)
             if target.id > pre
                 push!(targets, target)
-                push!(edges, Tuple{Int, Float64}[(parent.id, time)])
+                push!(edges, Tuple{Int, T}[(parent.id, time)])
                 push!(is_new, true)
             else
                 j = get(pos, target.id, 0)
                 if j == 0
                     push!(targets, target)
-                    push!(edges, Tuple{Int, Float64}[])
+                    push!(edges, Tuple{Int, T}[])
                     push!(is_new, false)
                     j = length(targets)
                     pos[target.id] = j
@@ -388,7 +391,7 @@ interventions (tracing, ring vaccination) act on the exposed target before
 infection is resolved; then the interventions act."""
 function _intervene!(state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
-        targets::Vector{Individual}, edges::Vector{Vector{Tuple{Int, Float64}}},
+        targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
         minted)
     # Newly created contacts (already appended to state by make_contact!)
     # get their intervention state initialised.
@@ -420,11 +423,11 @@ risks on the same footing. A contact is infected if any of its exposing edges
 transmits; the earliest successful edge fixes the infection time."""
 function _resolve!(model::TransmissionModel, state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
-        targets::Vector{Individual}, edges::Vector{Vector{Tuple{Int, Float64}}},
+        targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
         is_new)
     model_risks = transmission_risks(model)
     infected_so_far = 0
-    newly_infected = Individual[]
+    newly_infected = eltype(targets)[]
     for i in eachindex(targets)
         target = targets[i]
         infected = false
@@ -496,6 +499,19 @@ end
 # fields directly: `new_state` opens an empty state, `add_individuals!`
 # builds its members, `seed!` infects the index cases.
 
+# The real element type carrying timing and hazard values through a run, read
+# from the model's timing parameters. Float64 unless the model was built with a
+# dual (or other Real) parameter type — e.g. under ForwardDiff — in which case
+# the whole simulation carries that type so gradients flow through the timing.
+_time_type(::TransmissionModel) = Float64
+_kernel_time_type(::NoGenerationTime) = Float64
+_kernel_time_type(k::Distribution) = float(Distributions.partype(k))
+_kernel_time_type(::Function) = Float64
+function _time_type(m::BranchingProcess)
+    mapreduce(w -> _kernel_time_type(w.kernel), promote_type, m.infectiousness;
+        init = Float64)
+end
+
 """
     new_state(model, transitions, attributes, rng) -> SimulationState
 
@@ -507,8 +523,9 @@ and the clinical `transitions`. The starting point a model's
 """
 function new_state(model::TransmissionModel, transitions, attributes,
         rng::AbstractRNG)
-    SimulationState(Individual[], Int[], 0, rng, 0, false,
-        population_size(model), 0.0, attributes,
+    T = _time_type(model)
+    SimulationState(Individual{T}[], Int[], 0, rng, 0, false,
+        population_size(model), zero(T), attributes,
         convert(Vector{AbstractClinicalTransition}, transitions))
 end
 
@@ -524,7 +541,7 @@ each intervention's `initialise_individual!` runs. Used by a model's
 function add_individuals!(state::SimulationState, n::Integer, interventions;
         n_types::Integer = 1, setup = (ind, i) -> nothing)
     base = length(state.individuals)
-    added = Individual[]
+    added = eltype(state.individuals)[]
     for i in 1:n
         ind = _create_individual(state, 0, base + i, base + i, 0.0)
         setup(ind, i)
@@ -602,7 +619,7 @@ end
 
 Fraction of the population still susceptible at this point in the
 simulation. Dispatched on the `population_size` type carried by
-`SimulationState{<:Any, P}`, so downstream packages can introduce
+`SimulationState{<:Any, <:Any, P}`, so downstream packages can introduce
 structured populations (households, contact networks, age-stratified
 pools) by defining a new population-size type and adding a method
 here.
@@ -615,12 +632,12 @@ Built-in methods:
 - `NoPopulation` — unbounded, always `1.0`.
 - `Int` — single global pool of that size; depletion is global.
 """
-function susceptible_fraction(state::SimulationState{<:Any, NoPopulation},
+function susceptible_fraction(state::SimulationState{<:Any, <:Any, NoPopulation},
         extra_infected::Int = 0)
     1.0
 end
 
-function susceptible_fraction(state::SimulationState{<:Any, Int},
+function susceptible_fraction(state::SimulationState{<:Any, <:Any, Int},
         extra_infected::Int = 0)
     n_susceptible = state.population_size - state.cumulative_cases - extra_infected
     n_susceptible <= 0 && return 0.0
@@ -636,17 +653,17 @@ creation (`make_contact!`, and any model's [`contacts_of`](@ref))
 intervention-free.
 """
 function _create_individual(state::SimulationState, parent_id::Int,
-        chain_id::Int, next_id::Int, inf_time::Float64)
+        chain_id::Int, next_id::Int, inf_time::Real)
+    T = _timetype(state)
     s = Dict{Symbol, Any}(:infected => false)
 
-    ind = Individual(;
-        id = next_id,
-        parent_id = parent_id,
-        generation = state.current_generation + (parent_id == 0 ? 0 : 1),
-        chain_id = chain_id,
-        infection_time = inf_time,
-        state = s
-    )
+    # Build `Individual{T}` directly (not the keyword constructor) so the type
+    # matches `state.individuals`, whatever `T` is: seed cases pass a plain
+    # `Float64` infection time but must still land as `Individual{T}` under AD.
+    ind = Individual{T}(
+        next_id, parent_id,
+        state.current_generation + (parent_id == 0 ? 0 : 1),
+        chain_id, convert(T, inf_time), one(T), one(T), Int[], s)
 
     _apply_attributes!(state.attributes, state.rng, ind)
 
@@ -692,7 +709,7 @@ function make_contact!(state::SimulationState, parent::Individual,
         type_idx::Union{Int, NoTypeLabels} = NoTypeLabels())
     next_id = length(state.individuals) + 1
     contact = _create_individual(state, parent.id, parent.chain_id,
-        next_id, float(infection_time))
+        next_id, infection_time)
     _set_type!(contact, type_idx)
     push!(parent.secondary_case_ids, next_id)
     push!(state.individuals, contact)
