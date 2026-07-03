@@ -83,10 +83,10 @@ The function form covers age-conditional CFRs, vulnerability-dependent
 delays, risk-group-specific reporting, and similar cases.
 
 ```@example transitions
-attrs = compose(
+attrs = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     demographics(age_distribution = Uniform(0, 90)),
-)
+]
 
 # Age-conditional CFR: 30% for 80+, 2% otherwise.
 death_age = Death(
@@ -116,7 +116,7 @@ println("Deaths: $n_died, of which 80+: $n_died_80plus")
 Nothing in the package special-cases age. The closure reading
 `ind.state[:age]` is the only mechanism, and the same pattern works
 for risk groups, comorbidities, or any user-defined state field set
-via [`compose`](@ref).
+via the `attributes` list.
 
 ## Gated transitions
 
@@ -242,10 +242,10 @@ each closure reads whichever state keys it needs. The engine sets
 `attributes`. A transition closure can read any of these.
 
 ```@example transitions
-attrs_age = compose(
+attrs_age = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     demographics(age_distribution = Uniform(0, 90)),
-)
+]
 
 # CFR depends on both type and age.
 death_type_age = Death(

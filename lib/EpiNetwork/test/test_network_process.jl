@@ -92,9 +92,9 @@
     end
 
     @testset "Attributes fixed per node; onset derived at infection" begin
-        attrs = compose(
+        attrs = [
             demographics(age_distribution = Uniform(0, 80)),
-            clinical_presentation(incubation_period = LogNormal(1.6, 0.5)))
+            clinical_presentation(incubation_period = LogNormal(1.6, 0.5))]
         model = NetworkProcess(ring(80), 0.8, LogNormal(1.6, 0.5); attributes = attrs)
         state = sim1(model; rng = StableRNG(3))
         for ind in filter(is_infected, state.individuals)
@@ -111,11 +111,11 @@
         n = 300
         adj = [sort(unique([mod1(i - 1, n), mod1(i + 1, n),
                    mod1(i + 5, n), mod1(i - 5, n)])) for i in 1:n]
-        attrs = compose(
+        attrs = [
             demographics(age_distribution = Uniform(0, 80)),
             clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
             transmission_traits(
-                susceptibility = (rng, ind) -> ind.state[:age] >= 60 ? 0.95 : 0.15))
+                susceptibility = (rng, ind) -> ind.state[:age] >= 60 ? 0.95 : 0.15)]
         model = NetworkProcess(adj, 0.5, LogNormal(1.6, 0.5); attributes = attrs)
         old_pop = 0
         tot_pop = 0

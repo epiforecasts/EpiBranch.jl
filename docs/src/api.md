@@ -273,7 +273,6 @@ for examples.
 clinical_presentation
 demographics
 transmission_traits
-compose
 ```
 
 ## Convenience constructors

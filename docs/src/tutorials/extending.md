@@ -335,10 +335,10 @@ the `BorderClosure` above (interpreted here as everyone being in one
 region so closure does nothing — illustrative only):
 
 ```@example extending
-clinical_with_region = compose(
+clinical_with_region = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     (rng, ind) -> (ind.state[:region] = :only),
-)
+]
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 bc = BorderClosure(10.0, 0.05)
 model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0);
@@ -413,12 +413,12 @@ the closure form; `susceptibility` is derived from it via
 ```@example extending
 risk_group = (rng, ind) -> (ind.state[:risk_group] = rand(rng) < 0.2 ? :high : :low)
 
-attrs = compose(
+attrs = [
     risk_group,
     transmission_traits(
         susceptibility = (rng, ind) -> ind.state[:risk_group] == :high ? 0.8 : 0.3,
     ),
-)
+]
 
 model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0); attributes = attrs)
 rng = StableRNG(42)
@@ -429,18 +429,18 @@ println("High-risk individuals: $n_high / $(length(state.individuals))")
 
 ### Composing attributes functions
 
-`compose` calls its arguments in order, so later builders or closures can
+The attributes list is applied in order, so later builders or closures can
 read fields set by earlier ones:
 
 ```@example extending
-combined = compose(
+combined = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     demographics(age_distribution = Normal(40, 15)),
     risk_group,
     transmission_traits(
         susceptibility = (rng, ind) -> ind.state[:risk_group] == :high ? 0.8 : 0.3,
     ),
-)
+]
 
 model_combined = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0);
     attributes = combined)
@@ -980,7 +980,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom intervention | Struct `<: AbstractIntervention` + hook methods | Each generation |
 | Time-dependent intervention | `Scheduled(iv; start_time = ...)` + `intervention_time`, `reset!` on `iv` | After each hook |
 | Custom attributes | Function `(rng, ind) -> nothing` | Individual creation |
-| Composed attributes | `compose(f1, f2, ...)` | Individual creation |
+| Layered attributes | `[f1, f2, ...]` | Individual creation |
 | Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |

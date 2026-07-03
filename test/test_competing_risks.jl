@@ -79,7 +79,7 @@ end
         # Age-conditional rollout: 65+ become eligible at t=0, younger
         # at t=1e6. With efficacy=1 and delay=0, only 65+ contacts
         # should have transmissions blocked.
-        attrs = compose(clinical, demographics(age_distribution = Uniform(0, 90)))
+        attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         mv = MassVaccination(
             efficacy = 1.0,
             eligibility_time = (rng, ind) -> ind.state[:age] >= 65 ? 0.0 : 1.0e6,
@@ -122,7 +122,7 @@ end
 
     @testset "MassVaccination with callable efficacy reads contact state" begin
         # Age-conditional efficacy: high in <65, low in 65+.
-        attrs = compose(clinical, demographics(age_distribution = Uniform(0, 90)))
+        attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         mv = MassVaccination(
             efficacy = (rng, ind) -> ind.state[:age] >= 65 ? 0.3 : 0.95,
             eligibility_time = 0.0, delay_to_immunity = 0.0
@@ -176,7 +176,7 @@ end
                     state) -> contact.state[:age] >= b.threshold ? 1.0 : 0.0)
         end
 
-        attrs = compose(clinical, demographics(age_distribution = Uniform(0, 90)))
+        attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         rng = StableRNG(42)
         state = simulate(
             BranchingProcess(Poisson(2.0), Exponential(5.0);

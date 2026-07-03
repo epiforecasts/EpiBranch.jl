@@ -102,23 +102,23 @@ any user-defined fields.
 
 # Setting fields at simulation time
 
-Pass an `attributes` function to [`simulate`](@ref). It runs on every
+Pass an `attributes` argument to [`simulate`](@ref). It runs on every
 new individual at creation. EpiBranch provides builders for clinical
-presentation, demographics, and transmission traits, layered with
-[`compose`](@ref):
+presentation, demographics, and transmission traits, layered by passing
+a list applied in order:
 
 ```julia
-attributes = compose(
+attributes = [
     clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
     demographics(age_distribution = Uniform(0, 90)),
     transmission_traits(susceptibility = 0.3, infectiousness = 0.9),
-)
+]
 ```
 
 For fields without a dedicated builder, write your own closure
-`(rng, ind) -> ...` and `compose` it with the others.
+`(rng, ind) -> ...` and include it in the list with the others.
 
-See also [`compose`](@ref), [`clinical_presentation`](@ref),
+See also [`clinical_presentation`](@ref),
 [`demographics`](@ref), [`transmission_traits`](@ref).
 """
 mutable struct Individual{T <: Real}

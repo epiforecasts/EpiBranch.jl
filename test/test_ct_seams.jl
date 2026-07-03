@@ -87,7 +87,7 @@ end
     # Offspring-as-ring with susceptibility 0.5: each case has four
     # contacts, about half of which go uninfected. That uninfected fringe
     # is what a level-2 ring has to reach past.
-    attrs = compose(clinical, transmission_traits(susceptibility = 0.5))
+    attrs = [clinical, transmission_traits(susceptibility = 0.5)]
     opts = (; n_initial = 3, max_generations = 4)
 
     @testset "depth 1 traces direct contacts only; the fringe does not grow" begin
@@ -232,7 +232,7 @@ end
     @testset "trace_level lines up with the ring on a tree sim" begin
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
-        attrs = compose(clinical, transmission_traits(susceptibility = 0.5))
+        attrs = [clinical, transmission_traits(susceptibility = 0.5)]
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
         state = simulate(
             BranchingProcess((rng, ind) -> 4, Exponential(5.0);

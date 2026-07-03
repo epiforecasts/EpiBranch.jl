@@ -80,12 +80,12 @@ with age, and the older, more susceptible nodes end up over-represented
 among cases:
 
 ```@example networks
-attrs = compose(
+attrs = [
     demographics(age_distribution = Uniform(0, 80)),
     clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
     transmission_traits(
         susceptibility = (rng, ind) -> ind.state[:age] >= 60 ? 0.9 : 0.3),
-)
+]
 
 model_attrs = NetworkProcess(adjacency, 0.4, LogNormal(1.6, 0.5); attributes = attrs)
 state = simulate(model_attrs;
