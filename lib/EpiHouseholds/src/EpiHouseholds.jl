@@ -14,6 +14,10 @@ using SurvivalDistributions: hazard, cumhazard, loghazard
 import EpiBranch: interventions, attributes, observation,
                   simulate, new_state, add_individuals!, resolve_transitions!,
                   apply_observation!
+# The infectious-window helpers moved to EpiBranch alongside the shared
+# `_sellke_race!` primitive; the pairwise likelihood reuses them to read each
+# case's window from the same `from`/`until` states the simulator uses.
+import EpiBranch: _window_open, _window_close
 
 export HouseholdProcess, household_sizes
 export HouseholdInfections, household_infections
