@@ -14,11 +14,15 @@ import EpiBranch:
                   single_type_offspring, initialise_state, collect_exposures, contacts_of,
                   new_state, add_individuals!, seed!, get_generation_time,
                   transmission_time, transmission_risks, competing_risk,
-                  NoGenerationTime
+                  NoGenerationTime,
+                  simulate, apply_observation!
 
 export NetworkProcess
+export NetworkRateProcess
 
 include("network_process.jl")
 include("network_simulate.jl")
+include("network_rate.jl")
+include("network_rate_simulate.jl")
 
 end # module
