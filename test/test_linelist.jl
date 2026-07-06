@@ -65,10 +65,10 @@ using Dates
     @testset "linelist with demographics from attributes" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        attrs = compose(
+        attrs = [
             clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
             demographics(age_distribution = Normal(40, 15))
-        )
+        ]
         state = tsim(model; attributes = attrs,
             max_cases = 50, rng = rng)
 
@@ -81,10 +81,10 @@ using Dates
     @testset "linelist with age-conditional CFR via Death callable" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        attrs = compose(
+        attrs = [
             clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
             demographics(age_distribution = Uniform(0, 90))
-        )
+        ]
         # CFR depends on age via a Death probability closure.
         death = Death(delay = Exponential(10.0),
             probability = (rng, ind) -> ind.state[:age] >= 65 ? 0.5 : 0.01)
@@ -157,7 +157,7 @@ using Dates
         risk_group = (rng, ind) -> (ind.state[:risk_group] = rand(rng) < 0.3 ? :high : :low)
         custom_time = (
             rng, ind) -> (ind.state[:vaccination_time] = ind.infection_time + 7.0)
-        attrs = compose(clinical, risk_group, custom_time)
+        attrs = [clinical, risk_group, custom_time]
         state = tsim(model; attributes = attrs,
             max_cases = 30, rng = rng)
 

@@ -906,6 +906,12 @@ end
 """Apply attributes function to an individual. No-op for NoAttributes."""
 _apply_attributes!(::NoAttributes, rng, ind) = nothing
 _apply_attributes!(f::Function, rng, ind) = f(rng, ind)
+function _apply_attributes!(builders::Union{Tuple, AbstractVector}, rng, ind)
+    for build! in builders
+        build!(rng, ind)
+    end
+    return nothing
+end
 
 # ── Attributes function constructors ─────────────────────────────────
 
@@ -951,20 +957,20 @@ attributes = clinical_presentation(
 )
 ```
 
-Age-conditional (children much more likely to be asymptomatic; compose
-after `demographics`):
+Age-conditional (children much more likely to be asymptomatic; list
+after `demographics` so `:age` is set first):
 
 ```julia
-attributes = compose(
+attributes = [
     demographics(age_distribution = Uniform(0, 90)),
     clinical_presentation(
         incubation_period = LogNormal(1.6, 0.5),
         prob_asymptomatic = (rng, ind) -> ind.state[:age] < 18 ? 0.6 : 0.2,
     ),
-)
+]
 ```
 
-See also [`demographics`](@ref), [`compose`](@ref).
+See also [`demographics`](@ref).
 """
 function clinical_presentation(; incubation_period::Distribution,
         prob_asymptomatic::Union{Real, Distribution, Function} = 0.0)
@@ -1029,7 +1035,7 @@ Each argument accepts:
 - a `Function` `(rng, ind) -> value`: called per individual; the
   returned value is assigned. Use this for attribute-dependent rules
   (e.g. age-conditional susceptibility) — place the builder after
-  `demographics` in `compose` so `ind.state[:age]` is set first.
+  `demographics` in the attributes list so `ind.state[:age]` is set first.
 
 Both default to `1.0` (no Bernoulli filtering in the transmission model).
 
@@ -1050,23 +1056,23 @@ attributes = transmission_traits(
 )
 ```
 
-Age-conditional susceptibility (compose after `demographics`):
+Age-conditional susceptibility (list after `demographics` so `:age` is
+set first):
 
 ```julia
-attributes = compose(
+attributes = [
     demographics(age_distribution = Uniform(0, 90)),
     transmission_traits(
         susceptibility = (rng, ind) -> ind.state[:age] >= 65 ? 0.8 : 0.3,
     ),
-)
+]
 ```
 
-The closure form `(rng, ind) -> (ind.susceptibility = ...)` inside
-[`compose`](@ref) remains available as an escape hatch for cases this
-builder does not cover.
+The closure form `(rng, ind) -> (ind.susceptibility = ...)` as a list
+entry remains available as an escape hatch for cases this builder does
+not cover.
 
-See also [`clinical_presentation`](@ref), [`demographics`](@ref),
-[`compose`](@ref).
+See also [`clinical_presentation`](@ref), [`demographics`](@ref).
 """
 function transmission_traits(;
         susceptibility::Union{Real, Distribution, Function} = 1.0,
@@ -1085,59 +1091,6 @@ _trait_sampler(x::Real) =
     end
 _trait_sampler(d::Distribution) = (rng, ind) -> float(rand(rng, d))
 _trait_sampler(f::Function) = (rng, ind) -> float(f(rng, ind))
-
-"""
-    compose(fs...)
-
-Compose multiple attributes functions into one, called in order on each
-individual at creation time.
-
-Each `f` must be a callable `(rng, ind) -> nothing` that mutates
-`ind.state` and/or fields on `ind` (e.g. `ind.susceptibility`).
-EpiBranch provides [`clinical_presentation`](@ref), [`demographics`](@ref),
-and [`transmission_traits`](@ref) for the common patterns; for other
-fields, pass a plain closure.
-
-# Examples
-
-Combine the standard builders:
-
-```julia
-attributes = compose(
-    clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    demographics(age_distribution = Uniform(0, 90)),
-    transmission_traits(susceptibility = 0.3),
-)
-```
-
-Correlate susceptibility with age — `transmission_traits` accepts a
-function, so the rule is part of the builder rather than a follow-up
-closure:
-
-```julia
-attributes = compose(
-    demographics(age_distribution = Uniform(0, 90)),
-    transmission_traits(
-        susceptibility = (rng, ind) -> ind.state[:age] >= 65 ? 0.8 : 0.3,
-    ),
-)
-```
-
-For fields without a dedicated builder, the inline closure form is the
-escape hatch:
-
-```julia
-attributes = compose(
-    clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    (rng, ind) -> (ind.state[:risk_group] = rand(rng, [:low, :high])),
-)
-```
-
-Pass to [`simulate`](@ref) via the `attributes` keyword.
-"""
-compose(fs...) = (rng, ind) -> for f in fs
-    f(rng, ind)
-end
 
 # ── Intervention field validation ────────────────────────────────────
 

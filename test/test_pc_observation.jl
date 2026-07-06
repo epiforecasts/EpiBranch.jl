@@ -13,10 +13,10 @@
 
     @testset "Function detection_prob varies per individual" begin
         # Age-conditional detection: 50+ always reported, under-50 never.
-        attrs = compose(
+        attrs = [
             clinical_presentation(
                 incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0),
-            demographics(age_distribution = Uniform(0, 90)))
+            demographics(age_distribution = Uniform(0, 90))]
         obs = PerCaseObservation(
             detection_prob = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0)
         rng = StableRNG(11)
@@ -33,10 +33,10 @@
     @testset "Function delay varies per individual" begin
         # Per-individual delay drawn from a state-dependent distribution.
         # Default anchor is :onset_time.
-        attrs = compose(
+        attrs = [
             clinical_presentation(
                 incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0),
-            demographics(age_distribution = Uniform(0, 90)))
+            demographics(age_distribution = Uniform(0, 90))]
         obs = PerCaseObservation(
             delay = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 7.0)
         rng = StableRNG(23)
@@ -53,9 +53,9 @@
     @testset "from anchor: infection time fallback for asymptomatic" begin
         # Asymptomatic cases have NaN onset_time; report_time should fall
         # back to infection_time rather than NaN.
-        attrs = compose(
+        attrs = [
             clinical_presentation(
-            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 1.0))
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 1.0)]
         obs = PerCaseObservation(delay = 2.0)
         rng = StableRNG(99)
         state = simulate(
@@ -69,9 +69,9 @@
     end
 
     @testset "from = infection_time anchors on infection" begin
-        attrs = compose(
+        attrs = [
             clinical_presentation(
-            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0))
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)]
         obs = PerCaseObservation(delay = 3.0,
             from = ind -> ind.infection_time)
         rng = StableRNG(7)

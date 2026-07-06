@@ -132,12 +132,12 @@
             max_cases = 10, rng = StableRNG(42))
     end
 
-    @testset "compose works" begin
+    @testset "attribute list works" begin
         rng = StableRNG(42)
-        init_fn = compose(
+        init_fn = [
             clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
             demographics(age_distribution = Normal(40, 15))
-        )
+        ]
 
         state = simulate(
             BranchingProcess(Poisson(2.0), Exponential(5.0); attributes = init_fn);
@@ -256,8 +256,8 @@
 
         @testset "Coverage accepts a function" begin
             # Age-conditional coverage: 50+ always vaccinated, under-50 never.
-            attrs = compose(clinical,
-                demographics(age_distribution = Uniform(0, 90)))
+            attrs = [clinical,
+                demographics(age_distribution = Uniform(0, 90))]
             iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
             ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
             rv = RingVaccination(efficacy = 0.9,

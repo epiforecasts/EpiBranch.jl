@@ -40,7 +40,7 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
 
     @testset "test_sensitivity accepts a function" begin
         # Age-conditional sensitivity: 0+ → 0%, 50+ → 100%.
-        attrs = compose(clinical, demographics(age_distribution = Uniform(0, 90)))
+        attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         iso = Isolation(
             onset_to_isolation_delay = Exponential(0.1),
             test_sensitivity = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0
@@ -70,7 +70,7 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
     end
 
     @testset "Custom IsolationEligibility integrates end-to-end" begin
-        attrs = compose(clinical, demographics(age_distribution = Uniform(0, 90)))
+        attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         iso = Isolation(onset_to_isolation_delay = Exponential(0.1), eligibility = OnlyOlder(50))
         rng = StableRNG(17)
         state = simulate(

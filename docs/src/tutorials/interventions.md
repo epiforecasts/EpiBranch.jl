@@ -283,11 +283,11 @@ mv_age = MassVaccination(
 )
 ```
 
-This requires the `:age` attribute, so compose `demographics` into
-the attributes:
+This requires the `:age` attribute, so add `demographics` to
+the attributes list:
 
 ```@example interventions
-attrs = compose(clinical, demographics(age_distribution = Uniform(0, 90)))
+attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
 rng = StableRNG(42)
 results = simulate(scenario([mv_age], attrs), 200; max_cases = 500, rng = rng)
 println("Age-stratified rollout: $(round(containment_probability(results), digits=3))")
