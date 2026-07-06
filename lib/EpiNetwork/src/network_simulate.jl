@@ -22,7 +22,8 @@ and removal times the model's `progression` stamps on each case.
 With no external hazard, `n_initial` distinct nodes are seeded at time 0 and
 the outbreak spreads along the edges. With an `external_hazard` — a positive
 scalar or a calendar-time distribution — community introductions emerge over
-`[0, obs_end]`; pass a finite `obs_end` in that case.
+`[0, obs_end]`, so a finite `obs_end` is required (an unbounded window would
+seed every node).
 """
 function simulate(model::NetworkProcess; rng::AbstractRNG = default_rng(),
         n_initial::Integer = 1, obs_end::Real = Inf)
@@ -31,6 +32,12 @@ function simulate(model::NetworkProcess; rng::AbstractRNG = default_rng(),
     add_individuals!(state, n, interventions(model); setup = (ind, i) -> nothing)
 
     Tobs = Float64(obs_end)
+    # A community hazard over an unbounded window would introduce every node,
+    # swamping the graph. Require a finite observation window instead.
+    _ext_active(model.external_hazard) && !isfinite(Tobs) &&
+        throw(ArgumentError(
+            "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
+            "the whole network); pass e.g. `obs_end = 30.0`"))
     EpiBranch._sellke_race!(state, collect(1:n), rng;
         from = model.from, until = model.until,
         seed! = (best, members, r) -> _seed_network!(

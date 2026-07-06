@@ -158,6 +158,13 @@ n_infected(state) = count(is_infected, state.individuals)
             infectious_period = 6.0, external_hazard = Uniform(0.0, 20.0))
         df = linelist(simulate(m; rng = StableRNG(13), obs_end = 25.0))
         @test count(df.index) >= 1
+
+        # an external hazard with the default (infinite) obs_end is rejected:
+        # over an unbounded window it would seed every node
+        @test_throws ArgumentError simulate(
+            NetworkProcess(ring_adjacency(n),
+                Exponential(2.0); infectious_period = 6.0, external_hazard = 0.05);
+            rng = StableRNG(14))
     end
 
     @testset "show and invalid external hazard" begin
