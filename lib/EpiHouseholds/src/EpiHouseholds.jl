@@ -9,8 +9,12 @@ using SurvivalDistributions: hazard, cumhazard, loghazard
 # are part of EpiBranch's public extension API but not brought into scope by
 # `using EpiBranch`. Everything else this package builds on (`TransmissionModel`,
 # `Transition`, `Individual`, `linelist`, …) is exported by EpiBranch, and the
-# population/progression helpers are called qualified — so EpiHouseholds builds
-# on the public surface only, with no reach into EpiBranch internals.
+# population/progression helpers are called qualified. The one deliberate reach
+# into EpiBranch internals is the shared continuous-time engine: the
+# `_window_open`/`_window_close` helpers imported below and
+# `EpiBranch._sellke_race!` used by the simulator, reused rather than
+# reimplemented so the household simulate and pairwise likelihood stay aligned
+# with the shared engine.
 import EpiBranch: interventions, attributes, observation,
                   simulate, new_state, add_individuals!, resolve_transitions!,
                   apply_observation!
