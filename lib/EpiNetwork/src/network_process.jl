@@ -1,227 +1,211 @@
-# ── NetworkProcess type and constructors ────────────────────────────
+# ── NetworkProcess ───────────────────────────────────────────────
+#
+# A network whose transmission is driven by contact *rates* rather than a
+# coin flip per edge. Each graph edge carries a contact-interval kernel
+# (Kenah 2011): the time from an infector becoming infectious to its
+# infectious contact with a graph neighbour is drawn from that kernel, and
+# transmission happens only while the infector is inside its infectious
+# window — the window `progression` opens at `from` and closes at the
+# earliest of the `until` states. This is `HouseholdProcess` with the graph
+# neighbours playing the role of the household clique: the same
+# continuous-time (Sellke) race, run once over every node with each node's
+# graph neighbours as its contacts.
+#
+# Because transmission is a hazard racing removal, closing a node's
+# infectious window early (recovery, isolation) genuinely curtails onward
+# transmission — the thing a coin-flip-per-edge model cannot express.
 
 """
-Transmission over a fixed contact network.
+    NetworkProcess(adjacency, kernel; infectious_period = nothing,
+                       latent_period = nothing, progression = [], from = nothing,
+                       until = (:recovered, :died, :isolated), external_hazard = 0.0,
+                       interventions = [], attributes = NoAttributes(),
+                       observation = NoObservation())
 
-`NetworkProcess` transmits along the edges of a fixed graph. Each node
-is a person; an infectious node infects its neighbours, and each node
-can be infected at most once. The run produces a network of
-who-infected-whom.
+Rate-based transmission over a fixed contact network. `adjacency[i]` lists
+the graph neighbours of node `i` (1-based); the graph is the population.
+`kernel` is the **contact interval** — the one required input — a continuous
+`Distributions.jl` distribution shared by every edge, a callable
+`(infector, susceptible) -> Distribution` for covariate models, or a
+per-edge vector of distributions parallel to `adjacency`
+(`kernel[i][k]` for node `i`'s `k`-th listed neighbour). The kernel times
+each infectious contact from the infector's `from` state.
 
-The graph plays the role the offspring distribution plays in
-[`BranchingProcess`](@ref). Timing, interventions, attributes, and
-competing-risks resolution route through the same engine, so
-`Isolation`, `ContactTracing`, `RingVaccination`,
-`clinical_presentation`, and the rest apply directly.
+The infectious timeline is a flexible `progression` of EpiBranch
+`Transition`s, exactly as for `HouseholdProcess`: a latent period is
+`Transition(:infectious, from = :infection, delay = …)`, an infectious
+period a removal transition, and onset, testing and the rest are further
+transitions the line list reads. `from` is the state the kernel times from
+(`:infectious` when the timeline has a latent period, `:infection`
+otherwise); `until` names the removal states that close the infectious
+window. Adding a `Transition(:isolated, …)` (or an intervention that writes
+`:isolated_time`) closes the window early and so cuts onward transmission.
 
-# Fields
+`infectious_period` and `latent_period` are sugar for the two common
+transitions, each a scalar (constant) or a `Distribution` (per-case).
+`external_hazard` is the community force of infection — a scalar for a
+constant hazard or a calendar-time distribution for a time-varying one.
 
-- `adjacency::Vector{Vector{Int}}` — `adjacency[i]` lists the nodes
-  connected to node `i` (1-based).
-- `edge_probability::Vector{Vector{Float64}}` — per-edge transmission
-  probability, parallel to `adjacency`: `edge_probability[i][k]` is the
-  probability that node `i`, when infectious, infects its `k`-th listed
-  neighbour on contact. Node susceptibility and interventions apply on
-  top of these through the usual competing risks.
-- `generation_time` — `Distribution` or `Function`, same semantics as
-  `BranchingProcess`.
-
-# Construction
-
-A scalar gives every edge the same probability; an adjacency matrix
-carries a probability per edge (`A[i, j]` is the transmission
-probability of the edge between `i` and `j`); or pass weights parallel
-to the adjacency list.
-
-# Examples
+# Example
 
 ```julia
-# Ring of 5 nodes, uniform per-edge probability
-adjacency = [[2, 5], [1, 3], [2, 4], [3, 5], [4, 1]]
-model = NetworkProcess(adjacency, 0.5, LogNormal(1.6, 0.5))
-
-# Weighted edges via a matrix: A[i, j] is the per-edge probability
-A = [0.0 0.5; 0.5 0.0]
-model = NetworkProcess(A, LogNormal(1.6, 0.5))
+using EpiNetwork, Distributions
+adjacency = [[2, 5], [1, 3], [2, 4], [3, 5], [4, 1]]   # ring of 5
+model = NetworkProcess(adjacency, Exponential(2.0); infectious_period = 6.0)
 ```
-
-# Population and attributes
-
-The graph is the population: `population_size` equals the number of
-nodes. (Passing a separate `population_size` warns and leaves the node
-count in force.) Each node is built once with a stable identity, so its
-attributes (age, type, susceptibility) are drawn once and belong to the
-node for the whole run.
-
-When several infectious neighbours reach a susceptible node in the same
-generation, competing risks are evaluated for each incoming edge and
-the node is infected if any edge transmits.
-
-`clinical_presentation` records `:incubation_period` on each node, and
-`:onset_time` is set to `infection_time + incubation_period` when the
-node is infected.
 """
-struct NetworkProcess{G, A, O} <: TransmissionModel
-    adjacency::Vector{Vector{Int}}
-    edge_probability::Vector{Vector{Float64}}
-    generation_time::G
+struct NetworkProcess{K, E, A, O <: ObservationModel} <: TransmissionModel
+    adjacency::Vector{Vector{Int}}   # adjacency[i] = graph neighbours of node i
+    edge_kernel::K                   # contact interval: shared, callable, or per-edge
+    from::Symbol                     # state the kernel times contacts from
+    until::Tuple                     # removal states that close the infectious window
+    progression::Vector{AbstractClinicalTransition}  # natural-history timeline
+    external_hazard::E               # community force of infection (0 = none)
     interventions::Vector{AbstractIntervention}
     attributes::A
     observation::O
-
-    # Single inner constructor: accepts any adjacency-list form with
-    # per-edge probabilities parallel to it, normalises the neighbour
-    # vectors, and defaults to no generation time. Defining it suppresses
-    # the auto-generated outer constructors, avoiding ambiguity with the
-    # scalar and matrix constructors.
-    function NetworkProcess(adjacency::AbstractVector{<:AbstractVector{<:Integer}},
-            edge_probability::AbstractVector{<:AbstractVector{<:Real}},
-            generation_time::G = NoGenerationTime();
-            population_size = nothing,
-            interventions = AbstractIntervention[],
-            attributes::A = NoAttributes(),
-            observation::O = NoObservation()) where {G, A, O}
-        length(adjacency) == length(edge_probability) || throw(ArgumentError(
-            "adjacency and edge_probability must have the same number of nodes"))
-        adj = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
-        ep = Vector{Float64}[Float64.(w) for w in edge_probability]
-        for i in eachindex(adj)
-            length(adj[i]) == length(ep[i]) || throw(ArgumentError(
-                "node $i: adjacency and edge_probability have different lengths"))
-            all(p -> 0.0 <= p <= 1.0, ep[i]) || throw(ArgumentError(
-                "edge probabilities must be in [0, 1]"))
-        end
-        if population_size !== nothing
-            @warn "`population_size` is ignored by NetworkProcess: the population " *
-                  "is the network itself (got $(length(adjacency)) nodes). Build a " *
-                  "larger graph to model a larger population." maxlog=1
-        end
-        new{G, A, O}(adj, ep, generation_time,
-            _intervention_list(interventions), attributes, observation)
-    end
 end
 
-# Normalise the interventions argument to a vector, on the public surface only
-# (rather than reaching into EpiBranch's internal `_intervention_vector`).
-_intervention_list(iv::AbstractVector) = convert(Vector{AbstractIntervention}, iv)
-_intervention_list(iv) = AbstractIntervention[iv]
-
-# The model carries its interventions, attributes and observation; the
-# shared accessors read them from here.
-interventions(m::NetworkProcess) = m.interventions
-attributes(m::NetworkProcess) = m.attributes
-observation(m::NetworkProcess) = m.observation
-
-"""
-    NetworkProcess(adjacency, p::Real, gt; population_size = nothing)
-
-Give every edge the same transmission probability `p`.
-"""
 function NetworkProcess(adjacency::AbstractVector{<:AbstractVector{<:Integer}},
-        p::Real, generation_time = NoGenerationTime();
-        population_size = nothing,
-        interventions = AbstractIntervention[], attributes = NoAttributes(),
+        kernel;
+        infectious_period = nothing,
+        latent_period = nothing,
+        progression = AbstractClinicalTransition[],
+        from = nothing,
+        until = (:recovered, :died, :isolated),
+        external_hazard = 0.0,
+        interventions = AbstractIntervention[],
+        attributes = NoAttributes(),
         observation::ObservationModel = NoObservation())
-    edge_probability = [fill(float(p), length(nbrs)) for nbrs in adjacency]
-    NetworkProcess(adjacency, edge_probability, generation_time;
-        population_size, interventions, attributes, observation)
-end
+    adj = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
+    edge_kernel = _validate_kernel(kernel, adj)
+    _valid_external(external_hazard) ||
+        throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
 
-population_size(::NetworkProcess) = NoPopulation()
-n_types(::NetworkProcess) = 1
+    prog = convert(Vector{AbstractClinicalTransition}, progression)
+    # Desugar the common timeline shorthands when no explicit progression given:
+    # a latent period to :infectious, an infectious period to a recovery removal.
+    if isempty(prog)
+        latent_period === nothing ||
+            push!(prog, Transition(:infectious; from = :infection, delay = _as_delay(latent_period)))
+        anchor = latent_period === nothing ? :infection : :infectious
+        infectious_period === nothing ||
+            push!(prog,
+                Transition(:recovered; from = anchor, delay = _as_delay(infectious_period),
+                    terminal = true))
+    end
 
-# A network has no single per-case offspring law: each node's offspring
-# is set by its neighbours and their edge probabilities, not a shared
-# distribution. The analytical helpers that route through
-# `single_type_offspring` (chain_size_distribution, offspring_distribution,
-# extinction_probability, …) therefore can't apply; say so plainly rather
-# than letting the generic "no offspring field" extension hint surface.
-function single_type_offspring(::NetworkProcess)
-    throw(ArgumentError(
-        "NetworkProcess has no single offspring law: each node's offspring " *
-        "is determined by its neighbours in the graph. Use " *
-        "chain_length_distribution or simulate(); the chain-size and " *
-        "offspring analytical paths need a closed-form offspring distribution."))
-end
+    # The kernel times contacts from `from`: default to :infectious when the
+    # timeline produces it (a latent period), otherwise from infection.
+    kfrom = from === nothing ?
+            (any(t -> _writes_state(t, :infectious), prog) ? :infectious : :infection) :
+            from
 
-function Base.show(io::IO, m::NetworkProcess)
-    n = length(m.adjacency)
-    n_edges = sum(length, m.adjacency; init = 0) ÷ 2
-    gt_str = m.generation_time isa NoGenerationTime ? "none" :
-             m.generation_time isa Distribution ? string(typeof(m.generation_time)) :
-             "Function"
-    print(io,
-        "NetworkProcess(nodes=$n, edges=$n_edges, generation_time=$(gt_str))")
+    return NetworkProcess(adj, edge_kernel, kfrom, Tuple(until),
+        prog, _normalise_external(external_hazard), _intervention_list(interventions),
+        attributes, observation)
 end
 
 """
-    NetworkProcess(A::AbstractMatrix, gt; population_size = nothing)
+    NetworkProcess(A::AbstractMatrix, kernel; kwargs...)
 
-Build a `NetworkProcess` from a weighted adjacency matrix. A nonzero
-`A[i, j]` means an edge between `i` and `j` whose value is the per-edge
-transmission probability. The matrix is read as undirected: each edge
-takes `A[i, j]` if nonzero, otherwise `A[j, i]`.
+Build a `NetworkProcess` from an adjacency matrix: a nonzero `A[i, j]`
+means an (undirected) edge between `i` and `j`. Every edge shares `kernel`
+(the matrix marks graph structure only, not per-edge rates).
 """
-function NetworkProcess(A::AbstractMatrix,
-        gt::Union{Distribution, Function, NoGenerationTime} = NoGenerationTime();
-        population_size = nothing,
-        interventions = AbstractIntervention[], attributes = NoAttributes(),
-        observation::ObservationModel = NoObservation())
+function NetworkProcess(A::AbstractMatrix, kernel; kwargs...)
     n = size(A, 1)
     size(A, 2) == n || throw(ArgumentError(
         "adjacency matrix must be square, got $(size(A))"))
     adjacency = [Int[] for _ in 1:n]
-    edge_probability = [Float64[] for _ in 1:n]
     for i in 1:n, j in (i + 1):n
 
-        w = !iszero(A[i, j]) ? A[i, j] : A[j, i]
-        if !iszero(w)
+        if !iszero(A[i, j]) || !iszero(A[j, i])
             push!(adjacency[i], j)
-            push!(edge_probability[i], float(w))
             push!(adjacency[j], i)
-            push!(edge_probability[j], float(w))
         end
     end
-    NetworkProcess(adjacency, edge_probability, gt;
-        population_size, interventions, attributes, observation)
+    return NetworkProcess(adjacency, kernel; kwargs...)
 end
 
-# ── Node bookkeeping ─────────────────────────────────────────────────
+# The interventions/attributes/observation the model carries.
+interventions(m::NetworkProcess) = m.interventions
+attributes(m::NetworkProcess) = m.attributes
+observation(m::NetworkProcess) = m.observation
 
-# The key is package-prefixed (`:epinetwork_node`) per the downstream-package
-# naming convention, so it can't collide with built-in or other-package keys.
-network_node(ind::Individual) = get(ind.state, :epinetwork_node, 0)
+# The population is the graph; there is no separate finite susceptible pool.
+population_size(::NetworkProcess) = NoPopulation()
 
-# ── Edge probability as a competing risk ─────────────────────────────
+function Base.show(io::IO, m::NetworkProcess)
+    n = length(m.adjacency)
+    n_edges = sum(length, m.adjacency; init = 0) ÷ 2
+    kstr = m.edge_kernel isa Distribution ? nameof(typeof(m.edge_kernel)) :
+           m.edge_kernel isa AbstractVector ? "per-edge" : "Function"
+    print(io, "NetworkProcess(nodes=$n, edges=$n_edges, kernel=$kstr, ",
+        "from=:$(m.from), $(length(m.progression)) transitions",
+        _ext_active(m.external_hazard) ? ", external_hazard=$(m.external_hazard))" : ")")
+end
+
+# ── Kernel handling ──────────────────────────────────────────────────
 #
-# The per-edge transmission probability belongs on the competing-risks surface,
-# not as a filter in `contacts_of`: that way every graph neighbour is produced
-# as a contact (visible to interventions for tracing/vaccination) and the
-# probability decides infection alongside susceptibility, infectiousness and
-# interventions. The model contributes it through `transmission_risks`.
+# The contact-interval kernel is stored in whatever form the constructor was
+# given — a shared distribution, a callable `(infector, susceptible) ->
+# Distribution`, or a per-edge vector parallel to the adjacency list — and
+# resolved per contact by `_edge_kernel(model, infector, position)`, where
+# `position` is the index of the neighbour within `adjacency[infector]`.
 
-struct EdgeTransmission{M <: NetworkProcess}
-    model::M
+# A shared distribution is used as-is; a per-edge vector is validated to line
+# up with the adjacency list; anything else is taken to be a callable.
+_validate_kernel(k::ContinuousUnivariateDistribution, adj) = k
+function _validate_kernel(k::AbstractVector{<:AbstractVector}, adj)
+    length(k) == length(adj) || throw(ArgumentError(
+        "per-edge kernel and adjacency must have the same number of nodes"))
+    for i in eachindex(adj)
+        length(k[i]) == length(adj[i]) || throw(ArgumentError(
+            "node $i: per-edge kernel and adjacency have different lengths"))
+    end
+    return [collect(row) for row in k]
 end
+_validate_kernel(k, adj) = k   # callable (infector, susceptible) -> Distribution
 
-transmission_risks(m::NetworkProcess) = (EdgeTransmission(m),)
-
-# Block transmission across the (parent → contact) edge with probability
-# `1 - edge_probability`; `p == 1` adds no risk, `p == 0` blocks entirely.
-function competing_risk(e::EdgeTransmission, parent, contact, state)
-    p = _edge_probability(e.model, parent.id, contact.id)
-    p < 1.0 ? Risk(block_probability = 1.0 - p) : nothing
+# The contact-interval distribution for the `pos`-th neighbour of node `i`.
+function _edge_kernel(m::NetworkProcess, i::Int, pos::Int)
+    _resolve_kernel(m.edge_kernel, m, i, pos)
 end
+_resolve_kernel(k::ContinuousUnivariateDistribution, m, i, pos) = k
+_resolve_kernel(k::AbstractVector, m, i, pos) = k[i][pos]
+_resolve_kernel(k, m, i, pos) = k(i, m.adjacency[i][pos])
 
-# The probability of the edge from node `from_id` to node `to_id` (node ids are
-# the individuals' ids, since the population is pre-instantiated). A missing edge
-# yields 0.0 — it never transmits — but `contacts_of` only offers real edges.
-function _edge_probability(m::NetworkProcess, from_id::Int, to_id::Int)
-    nbrs = m.adjacency[from_id]
-    k = findfirst(==(to_id), nbrs)
-    k === nothing ? 0.0 : m.edge_probability[from_id][k]
-end
+# ── Timeline / external-hazard helpers ───────────────────────────────
+#
+# Mirror the HouseholdProcess helpers: this model shares the same
+# structure-driven timeline sugar and community-introduction machinery.
 
-# The generation loop for NetworkProcess lives in
-# `models/network_simulate.jl` (a dedicated `simulate` method), because
-# pre-instantiated nodes need engine helpers defined after this file.
+# A `Transition` delay is a `Distribution` or `(rng, ind) -> Real`; a scalar
+# period becomes a constant-delay closure so the sugar accepts both.
+_as_delay(d::Distribution) = d
+_as_delay(x::Real) = (rng, ind) -> float(x)
+
+# Does a clinical transition write the named state?
+_writes_state(t, s::Symbol) = hasproperty(t, :state) && getfield(t, :state) === s
+
+# The external community source: a non-negative scalar (constant hazard) or any
+# continuous distribution on the non-negative reals (a calendar-time hazard).
+_valid_external(α::Real) = α >= 0
+_valid_external(d::ContinuousUnivariateDistribution) = minimum(d) >= 0
+_valid_external(_) = false
+_normalise_external(α::Real) = Float64(α)
+_normalise_external(d::ContinuousUnivariateDistribution) = d
+
+_ext_active(α::Real) = α > 0
+_ext_active(::ContinuousUnivariateDistribution) = true
+
+# A community introduction time under the external hazard: the constant case is
+# its Exponential survival time, a distribution is sampled directly.
+_ext_draw(rng, α::Real) = rand(rng, Exponential(1 / α))
+_ext_draw(rng, d::ContinuousUnivariateDistribution) = rand(rng, d)
+
+# Normalise the `interventions` keyword to a vector: a bare intervention is
+# wrapped, a vector is converted to the common element type.
+_intervention_list(iv::AbstractVector) = convert(Vector{AbstractIntervention}, iv)
+_intervention_list(iv) = AbstractIntervention[iv]

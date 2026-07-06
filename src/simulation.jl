@@ -842,8 +842,8 @@ end
 Risk sources the *model* contributes to competing-risks resolution, on the same
 [`competing_risk`](@ref) surface as the built-ins and interventions. A
 structure-driven model whose transmission probability is a property of the
-*edge* — `NetworkProcess`'s per-edge probability, a metapopulation's coupling —
-returns a source here so that probability is a competing risk on every potential
+*edge* — a metapopulation's coupling, say — returns a source here so that
+probability is a competing risk on every potential
 contact (the contact is still produced and seen by `apply_post_transmission!`),
 rather than a filter that drops contacts before they reach the engine. Defaults
 to none, so offspring-driven models are unaffected.
