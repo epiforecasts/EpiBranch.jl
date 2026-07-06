@@ -7,6 +7,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+### Added
+
+- `HomogeneousProcess`, a fixed-size, homogeneously-mixing closed population
+  resolved by the Sellke threshold construction. Every infectious individual
+  exerts the same force of infection on every susceptible, giving the exact
+  stochastic SIR final-size law (`R0 = β·E[infectious period]`) with
+  individual-level infection times.
+
 ### Changed
 
 - `NetworkProcess` (in `EpiNetwork`) is now a continuous-time contact-rate
