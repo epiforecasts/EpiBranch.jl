@@ -728,7 +728,7 @@ infections deplete a fixed pool. It defines two methods instead:
 `contacts_of` has no `interventions` argument either, and the same rule
 applies: produce every *potential* contact and let the engine's
 competing-risks resolution decide infection. If the model's own
-transmission probability belongs to the *edge* (a network's per-edge
+transmission probability belongs to the *edge* (an edge-owned transmission
 probability, a metapopulation coupling), don't filter on it in
 `contacts_of` — return the contact and let the probability decide infection
 by overriding
@@ -744,8 +744,7 @@ the shared engine. A structure-driven model also defines
 population, building it with the public helpers
 [`new_state`](@ref EpiBranch.new_state),
 [`add_individuals!`](@ref EpiBranch.add_individuals!) and
-[`seed!`](@ref EpiBranch.seed!). The companion EpiNetwork.jl package's
-`NetworkProcess` is the worked example.
+[`seed!`](@ref EpiBranch.seed!).
 
 Models whose contacts can be *shared* across parents within a generation
 (networks, households, clustering) also override
@@ -758,9 +757,9 @@ calling [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)`(state, in
 once per case, after its attributes and intervention state are set. This runs
 the model's clinical transitions (placed on the state by
 [`new_state`](@ref EpiBranch.new_state)) and stamps the timeline keys
-(`:onset_time`, `:outcome_time`, …) the line list and any likelihood read. A
-continuous-time household process, which steps cases in infection-time order
-instead of by generation, is the worked example.
+(`:onset_time`, `:outcome_time`, …) the line list and any likelihood read. The
+continuous-time household and network processes, which step cases in
+infection-time order instead of by generation, are the worked examples.
 
 For **analytical inference helpers** that route through the offspring
 specification (`extinction_probability`, `epidemic_probability`,

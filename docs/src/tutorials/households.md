@@ -4,10 +4,10 @@
 partitioned into households; within a household every infectious member can
 infect every susceptible household-mate, with the timing of infectious contact
 drawn from a **contact-interval** kernel (Kenah 2011). It is a structure-driven
-model like [`NetworkProcess`](@ref), but a household is a small, depleting
-clique, so it is simulated by the **Sellke construction** in continuous time
-(the exact generative model of its pairwise likelihood) rather than by the
-generation-based engine.
+model like [`NetworkProcess`](@ref), and like it is simulated by the **Sellke
+construction** in continuous time (the exact generative model of its pairwise
+likelihood) rather than by the generation-based engine; a household is a small,
+depleting clique rather than a fixed graph.
 
 It lives in the companion `EpiHouseholds` package.
 
