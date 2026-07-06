@@ -134,4 +134,42 @@ n_infected(state) = count(is_infected, state.individuals)
         @test count(df.index) == 4                        # four distinct seeds, no spread
         @test n_infected(state) == 4
     end
+
+    @testset "per-edge and callable kernels spread on the graph" begin
+        n = 30
+        ring = ring_adjacency(n)
+        # a per-edge kernel: one fast contact-interval distribution per listed edge
+        edge_k = [[Exponential(0.05) for _ in nbrs] for nbrs in ring]
+        state = simulate(NetworkProcess(ring, edge_k; infectious_period = 20.0);
+            rng = StableRNG(11))
+        @test n_infected(state) == n                      # every edge transmits: whole ring
+
+        # a callable kernel: (infector, susceptible) -> Distribution, for covariates
+        callable = (i, j) -> Exponential(0.05)
+        state2 = simulate(NetworkProcess(ring, callable; infectious_period = 20.0);
+            rng = StableRNG(12))
+        @test n_infected(state2) == n
+    end
+
+    @testset "calendar-time external hazard introduces community cases" begin
+        n = 40
+        # a distribution external hazard (introduction times), not a constant rate
+        m = NetworkProcess(ring_adjacency(n), Exponential(2.0);
+            infectious_period = 6.0, external_hazard = Uniform(0.0, 20.0))
+        df = linelist(simulate(m; rng = StableRNG(13), obs_end = 25.0))
+        @test count(df.index) >= 1
+    end
+
+    @testset "show and invalid external hazard" begin
+        ring = ring_adjacency(5)
+        # show, with and without an active external hazard
+        @test occursin("NetworkProcess", repr(NetworkProcess(ring, Exponential(2.0);
+            infectious_period = 6.0)))
+        @test occursin("external_hazard",
+            repr(NetworkProcess(ring, Exponential(2.0);
+                infectious_period = 6.0, external_hazard = 0.05)))
+        # an external hazard that is neither a number nor a distribution is rejected
+        @test_throws ArgumentError NetworkProcess(ring, Exponential(2.0);
+            external_hazard = "not a hazard")
+    end
 end
