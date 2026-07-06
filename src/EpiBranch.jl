@@ -73,6 +73,10 @@ include("observation.jl")
 # Simulation engine
 include("simulation.jl")
 
+# Sellke/Dijkstra continuous-time race primitive (shared by structure-driven
+# models over a finite, depleting set of nodes, e.g. household cliques).
+include("sellke.jl")
+
 # Output
 include("output/linelist.jl")
 include("output/tracing.jl")

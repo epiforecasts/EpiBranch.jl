@@ -34,7 +34,12 @@ function simulate(model::HouseholdProcess; rng::AbstractRNG = default_rng(),
 
     Tobs = Float64(obs_end)
     for mem in model.members
-        _simulate_clique!(state, model, mem, Tobs)
+        EpiBranch._sellke_race!(state, mem, rng;
+            from = model.from, until = model.until,
+            seed! = (best, members, r) -> _seed_clique!(
+                best, members, model.external_hazard, Tobs, r),
+            targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid))
+            for oid in mem if oid != inf))
     end
 
     # The clique loop writes per-individual state directly, so reconcile the
@@ -52,19 +57,11 @@ function simulate(model::HouseholdProcess; rng::AbstractRNG = default_rng(),
     return state
 end
 
-# The Sellke construction on one household. `best[k]` is member `k`'s earliest
-# candidate infection time (local index), `src[k]` the global id of the infector
-# that offered it (`0` for an exogenous introduction).
-function _simulate_clique!(state, model::HouseholdProcess, mem, Tobs::Float64)
-    rng = state.rng
-    m = length(mem)
-    extsrc = model.external_hazard
-    best = fill(Inf, m)
-    src = zeros(Int, m)
-    processed = falses(m)
-
-    # Exogenous candidates: community introductions under the external hazard,
-    # or a single seeded index per household when there is no external source.
+# Seed one household's candidate table: community introductions under the
+# external hazard (each member drawn, kept if it lands within `[0, Tobs]`), or a
+# single seeded index at time 0 when there is no external source.
+function _seed_clique!(best, members, extsrc, Tobs, rng)
+    m = length(members)
     if _ext_active(extsrc)
         for k in 1:m
             t = _ext_draw(rng, extsrc)
@@ -73,63 +70,7 @@ function _simulate_clique!(state, model::HouseholdProcess, mem, Tobs::Float64)
     else
         best[rand(rng, 1:m)] = 0.0
     end
-
-    while true
-        # The unprocessed member with the earliest candidate is final.
-        j = 0
-        bt = Inf
-        for k in 1:m
-            if !processed[k] && best[k] < bt
-                bt = best[k]
-                j = k
-            end
-        end
-        j == 0 && break
-        processed[j] = true
-
-        ind = state.individuals[mem[j]]
-        ind.infection_time = best[j]
-        ind.state[:infected] = true
-        ind.state[:index] = src[j] == 0
-        if src[j] != 0
-            infector = state.individuals[src[j]]
-            ind.parent_id = infector.id
-            ind.generation = infector.generation + 1
-            ind.chain_id = infector.chain_id
-        end
-        # Stamp this case's natural history (:infectious_time, :outcome_time, …).
-        resolve_transitions!(state, ind)
-
-        open_t = _window_open(ind, model.from)   # infectiousness onset
-        isfinite(open_t) || continue             # never became infectious
-        close_t = _window_close(ind, model.until)  # earliest removal
-
-        # Expose every still-susceptible household-mate: a contact interval from
-        # the kernel, timed from onset and accepted within the infectious window.
-        for k in 1:m
-            (k == j || processed[k]) && continue
-            dt = rand(rng, _pairkernel(model.kernel, mem[j], mem[k]))
-            cand = open_t + dt
-            (cand <= close_t && cand < best[k]) || continue
-            best[k] = cand
-            src[k] = mem[j]
-        end
-    end
     return nothing
-end
-
-# When the infector becomes infectious: the `from` state's time (the infection
-# time itself when the kernel times from :infection, otherwise a state key).
-function _window_open(ind, from::Symbol)
-    from === :infection ? ind.infection_time :
-    (get(ind.state, Symbol(from, :_time), Inf)::Float64)
-end
-
-# When the infectious window closes: the earliest of the `until` removal states'
-# times, or Inf when none has been reached (infectious until the clique is spent).
-function _window_close(ind, until::Tuple)
-    isempty(until) && return Inf
-    return minimum(get(ind.state, Symbol(s, :_time), Inf)::Float64 for s in until)
 end
 
 # Resolve the contact-interval distribution for an ordered (infector,
