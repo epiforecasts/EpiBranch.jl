@@ -73,17 +73,18 @@ closed population, infecting individuals in continuous time and stamping each
 case's natural history.
 
 A model names **which real attributes define mixing** through `mixing_by`, a
-tuple of attribute keys — for example `(:age_band, :ses)`. An individual's
+tuple of attribute keys, for example `(:age_band, :ses)`. An individual's
 **mixing type** is the tuple of those attribute values read off its own state,
-`Tuple(get(ind.state, k, missing) for k in mixing_by)`; these are the real
-attributes an individual already carries (age band, patch, risk group), not a
-synthetic group index. With `mixing_by = ()` every individual has the empty type
-`()` — a single homogeneous group, no tagging needed. The one model-level input
-is the mixing rule between types:
+`Tuple(get(ind.state, k, missing) for k in mixing_by)`. These are the real
+attributes an individual already carries: age band, patch, risk group, read
+straight off its state. With `mixing_by = ()` every individual has the empty type
+`()`, a single homogeneous group with no tagging needed. The one model-level
+input is the mixing rule between types:
 
-  - `force(type, counts)::Float64` is the per-susceptible hazard on a susceptible
-    of mixing type `type`, given `counts` — a `Dict` mapping each mixing type to
-    the number currently infectious of that type. It must be piecewise-constant
+  - `force(type, counts)::Float64` is the per-susceptible force of infection on a
+    susceptible of mixing type `type`, given `counts`, a `Dict` mapping each
+    mixing type to the number currently infectious of that type. It must be
+    piecewise-constant
     between events, which it is: `counts` only changes at an infection, a window
     opening or a window closing. Homogeneous mixing is
     `force = (type, counts) -> beta / N * sum(values(counts))`.

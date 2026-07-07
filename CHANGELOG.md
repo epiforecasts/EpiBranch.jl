@@ -9,11 +9,11 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
-- `HomogeneousProcess`, a fixed-size, homogeneously-mixing closed population
-  resolved by the Sellke threshold construction. Every infectious individual
+- `HomogeneousProcess`, a closed, homogeneously-mixing population of fixed size
+  simulated by the Sellke threshold construction. Every infectious individual
   exerts the same force of infection on every susceptible, giving the exact
-  stochastic SIR final-size law (`R0 = β·E[infectious period]`) with
-  individual-level infection times.
+  stochastic SIR final-size law (`R0 = β·E[infectious period]`) and an infection
+  time for every case.
 
 ### Changed
 
@@ -23,10 +23,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   buckets susceptibles by the actual values of those attributes. The between-group
   force of infection is a model-supplied `force(type, counts)`, where `type` is a
   susceptible's tuple of attribute values and `counts` maps each mixing type to
-  its current infectious number — so structured mixing (age bands, sex, income
-  strata, spatial patches) is written on the extension surface without touching
-  the pool primitive. The homogeneous case names no attributes (`mixing_by = ()`,
-  one type).
+  its current infectious number. Structured mixing (age bands, sex, income
+  strata, spatial patches) is then written on the extension surface without
+  touching the pool primitive. The homogeneous case names no attributes
+  (`mixing_by = ()`, one type).
 - `NetworkProcess` (in `EpiNetwork`) is now a continuous-time contact-rate
   model. Transmission along each edge is a contact hazard racing the
   infector's recovery or isolation, drawn from a contact-interval kernel,

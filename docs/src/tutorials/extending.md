@@ -842,29 +842,26 @@ accessor for you.
 
 ## A fixed-size population on the Sellke pool
 
-`HomogeneousProcess` simulates a closed population of fixed size by the Sellke
-threshold construction: every susceptible carries a resistance threshold drawn
-from an `Exponential(1)`, feels the accumulating pressure of infection over
-time, and is infected the instant that pressure crosses its threshold. This is
-an exact route to the stochastic SIR final-size law, and it gives every case an
-infection time, not just a final count.
+The built-in [Homogeneous models](homogeneous.md) tutorial covers
+`HomogeneousProcess`, a closed population where everyone mixes with everyone
+else at the same rate. To structure the mixing, where different groups feel a
+different force of infection because who meets whom is uneven (age bands, sex,
+income strata, spatial patches, or any categorical membership), write your own
+model on the same pool. The construction is unchanged; the one difference is
+that susceptibles in different mixing groups feel different pressure. The pool
+is built so a model supplies that structure without rewriting the simulation,
+following the four phases of the engine:
 
-A structured population — age bands, sex, income strata, spatial patches, or any
-categorical membership — is the same construction with one change: susceptibles
-in different mixing groups feel different pressure, because who mixes with whom
-is uneven. The pool is built so a model supplies that structure without
-rewriting the simulation. It follows the four phases of the engine:
-
-- **build**: the fixed pool and each individual's mixing type. The type is the
-  tuple of the real attributes a model names as mixing-relevant, read off each
-  individual (its age band, or its patch, or the combination of both).
-- **time**: the natural-history `progression` — latent period, infectious
-  period, onset, recovery — stamped on each case exactly as for
-  `BranchingProcess`.
-- **intervene**: isolation and the other interventions act only by shortening
-  the infectious window, so a removed case stops contributing pressure.
-- **resolve**: the threshold construction itself, racing each group's next
-  infection against the openings and closings of infectious windows.
+- build: the fixed pool and each individual's mixing type. The type is the tuple
+  of the real attributes a model names as mixing-relevant, read off each
+  individual (its age band, its patch, or the combination of both).
+- time: the natural-history `progression`, the latent period, infectious period,
+  onset and recovery, stamped on each case exactly as for `BranchingProcess`.
+- intervene: closing a case's infectious window early, for example an
+  `:isolated` removal state in the progression, so a removed case stops
+  contributing pressure.
+- resolve: the threshold construction itself, racing each group's next infection
+  against the openings and closings of infectious windows.
 
 A structured model provides two things:
 
@@ -882,11 +879,11 @@ A structured model provides two things:
 
 Here is how a user writes a two-age-band population with an asymmetric contact
 matrix, where the younger, more socially active band mixes more than the older
-band. It reuses the pool through `EpiBranch._sellke_pool!` — an internal entry
-point today, but one whose `mixing_by`/`force` contract is documented here and is
-the surface a structured model builds on. It is called exactly as the homogeneous
-model calls it, but names a real attribute as mixing-relevant in place of the
-single homogeneous type:
+band. It reuses the pool through `EpiBranch._sellke_pool!`. That entry point is
+internal today, but its `mixing_by`/`force` contract is documented here and is
+the surface a structured model builds on. `HomogeneousProcess` calls it the same
+way, naming a real attribute as mixing-relevant in place of the single
+homogeneous type:
 
 ```julia
 using EpiBranch, Distributions, Random
@@ -934,9 +931,9 @@ EpiBranch._sellke_pool!(state, collect(1:N), rng; mixing_by = (:age_band,),
 linelist(state)
 ```
 
-The band-1 susceptibles feel a higher force and suffer a higher attack rate; set
-`M` uniform and the two bands collapse back to a single homogeneous pool. Adding
-a dimension is how spatial patches and further strata drop in: give individuals a
+The band-1 susceptibles feel a higher force and reach a higher attack rate; set
+`M` uniform and the two bands collapse back to a single homogeneous pool. The
+same idea extends to spatial patches and further strata: give individuals a
 `:ses` attribute and pass `mixing_by = (:age_band, :ses)`, so each type becomes a
 `(band, ses)` pair and the force factorises across the two dimensions.
 
