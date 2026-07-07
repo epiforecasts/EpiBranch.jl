@@ -1,23 +1,28 @@
 # ── Sellke fixed-size population pool ────────────────────────────────
 #
-# A closed, homogeneously-mixing population of N pre-allocated individuals.
-# Each susceptible carries a fixed resistance threshold `Q_j ~ Exponential(1)`;
-# every currently-infectious individual exerts force of infection at rate
-# `β/N` on each susceptible, so the cumulative pressure a susceptible has
-# received is the same value `Λ(t) = (β/N)·∫ Y(s) ds` for all of them, with
-# `Y` the number currently infectious. A susceptible is infected the instant
-# `Λ(t)` crosses its threshold. This is the Sellke threshold construction; it
-# reproduces the exact stochastic SIR final-size law, with `R0 = β·E[infectious
-# period]`.
+# A closed population of N pre-allocated individuals, bucketed by mixing type.
+# Each susceptible carries a fixed resistance threshold `Q_j ~ Exponential(1)`
+# and accumulates infection pressure `Λ(t) = ∫ λ(s) ds` at the force of
+# infection `λ` felt by its own mixing type; it is infected the instant `Λ`
+# crosses its threshold. A model names *which real attributes define mixing*
+# (`mixing_by`, e.g. `(:age_band, :ses)`); an individual's mixing type is the
+# tuple of those attribute values it already carries, and susceptibles that share
+# a type feel a common force. The force is supplied by the model as a function
+# `force(type, counts)` of the mixing type and the per-type infectious counts —
+# so a homogeneous pool names no attributes (`mixing_by = ()`, one type `()`) and
+# passes `β/N·Σ counts`, while an age- or space-structured model passes a contact
+# matrix keyed on the attribute values. This is the Sellke threshold
+# construction; the homogeneous case reproduces the exact stochastic SIR
+# final-size law, with `R0 = β·E[infectious period]`.
 #
 # The integration is event-driven so that infection *times* — not just the
-# final size — fall out exactly: between events `Λ` grows linearly at rate
-# `(β/N)·Y`, so the next threshold crossing has a closed-form time, and the
-# three candidate events (next infection, next window-open, next window-close)
-# are raced in O(N log N). Every other concern is the shared engine: each
-# infected member's natural history is stamped through `resolve_transitions!`,
-# so interventions act only by shortening the infectious window through
-# `_window_close`, exactly as in `_sellke_race!`.
+# final size — fall out exactly: between events each group's pressure grows
+# linearly at its own force `λ`, so its next threshold crossing has a
+# closed-form time, and the candidate events (each group's next infection, the
+# next window-open, the next window-close) are raced. Every other concern is the
+# shared engine: each infected member's natural history is stamped through
+# `resolve_transitions!`, so interventions act only by shortening the infectious
+# window through `_window_close`, exactly as in `_sellke_race!`.
 
 # A minimal binary min-heap over `(time, id)` pairs — tuples compare
 # lexicographically, so ties break deterministically on id. Avoids a
@@ -61,21 +66,40 @@ function _pool_heap_pop!(h::Vector{Tuple{Float64, Int}})
 end
 
 """
-    _sellke_pool!(state, members, rng; beta, n_initial, from, until)
+    _sellke_pool!(state, members, rng; mixing_by = (), force, n_initial, from, until)
 
 Run the Sellke threshold construction over the `members` (global ids) of a
-closed, homogeneously-mixing population, infecting individuals in continuous
-time and stamping each case's natural history. `beta` is the transmission
-rate (`R0 = beta·E[infectious period]`), `n_initial` the number of index cases
-seeded at time 0, `from` the state the infectious window opens at and `until`
-the removal states that close it. Writes per-individual state directly; the
-caller reconciles aggregate bookkeeping and applies observation.
+closed population, infecting individuals in continuous time and stamping each
+case's natural history.
+
+A model names **which real attributes define mixing** through `mixing_by`, a
+tuple of attribute keys — for example `(:age_band, :ses)`. An individual's
+**mixing type** is the tuple of those attribute values read off its own state,
+`Tuple(get(ind.state, k, missing) for k in mixing_by)`; these are the real
+attributes an individual already carries (age band, patch, risk group), not a
+synthetic group index. With `mixing_by = ()` every individual has the empty type
+`()` — a single homogeneous group, no tagging needed. The one model-level input
+is the mixing rule between types:
+
+  - `force(type, counts)::Float64` is the per-susceptible hazard on a susceptible
+    of mixing type `type`, given `counts` — a `Dict` mapping each mixing type to
+    the number currently infectious of that type. It must be piecewise-constant
+    between events, which it is: `counts` only changes at an infection, a window
+    opening or a window closing. Homogeneous mixing is
+    `force = (type, counts) -> beta / N * sum(values(counts))`.
+
+`n_initial` is the number of index cases seeded at time 0, `from` the state the
+infectious window opens at and `until` the removal states that close it. Each
+susceptible carries a fixed `Exponential(1)` resistance threshold and is infected
+the instant its accumulated pressure crosses it; pressure accumulates at the
+force felt by its mixing type. Writes per-individual state directly; the caller
+reconciles aggregate bookkeeping and applies observation.
 """
 function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
-        rng::AbstractRNG; beta::Real, n_initial::Integer, from::Symbol, until::Tuple)
+        rng::AbstractRNG; mixing_by::Tuple = (), force, n_initial::Integer,
+        from::Symbol, until::Tuple)
     N = length(members)
     N == 0 && return nothing
-    βN = Float64(beta) / N
 
     # Stamp an individual infected at time τ with infector id `src` (0 = index),
     # matching `_sellke_race!`'s conventions, then run its natural history.
@@ -93,14 +117,31 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         return nothing
     end
 
+    # Mixing type of each member, read once as the tuple of its `mixing_by`
+    # attribute values (`missing` for any it lacks). With `mixing_by = ()` every
+    # member has the empty type `()` — a single homogeneous group.
+    typ = Dict{Int, Any}()
+    for id in members
+        s = state.individuals[id].state
+        typ[id] = Tuple(get(s, k, missing) for k in mixing_by)
+    end
+
+    # Current infectious count per mixing type: one persistent Dict, mutated in
+    # place and handed to `force` (never reallocated). Every type present starts
+    # at 0, so index cases and susceptibles of any type key in without a miss.
+    counts = Dict{Any, Int}()
+    for id in members
+        counts[typ[id]] = 0
+    end
+
     open_heap = Tuple{Float64, Int}[]   # pending window-open (becomes infectious)
     close_heap = Tuple{Float64, Int}[]  # pending window-close (recovers/isolates)
     infectious_ids = Int[]              # ids currently infectious (window open)
     slot = Dict{Int, Int}()             # id → its index in `infectious_ids`
 
     # Push an infected individual's infectious window onto the queues. A never-
-    # infectious case (window-open is Inf) contributes nothing to Λ; a never-
-    # closing window (Inf close, e.g. no removal state) simply stays open.
+    # infectious case (window-open is Inf) contributes nothing to the force; a
+    # never-closing window (Inf close, e.g. no removal state) simply stays open.
     push_windows! = function (ind)
         open_t = _window_open(ind, from)
         isfinite(open_t) || return nothing
@@ -118,38 +159,79 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         push_windows!(ind)
     end
 
-    # Susceptibles carry an Exponential(1) resistance threshold; consumed in
-    # ascending order (sorted vector with a front pointer).
-    sus_ids = order[(n_initial + 1):end]
-    sus_Q = [rand(rng, Exponential(1.0)) for _ in sus_ids]
-    perm = sortperm(sus_Q)
-    sus_ids = sus_ids[perm]
-    sus_Q = sus_Q[perm]
-    ptr = 1
-    nsus = length(sus_ids)
+    # The distinct susceptible types are the groups. Assign each a group index on
+    # first appearance and keep `types[g]` = the type value of group `g`.
+    # Susceptibles carry an Exponential(1) resistance threshold; within each group
+    # consume thresholds in ascending order (a sorted vector with a front
+    # pointer), so each group tracks its own next crossing.
+    type_group = Dict{Any, Int}()    # type value → group index
+    types = Any[]                       # group index → type value
+    sus_by_group = Vector{Int}[]
+    Q_by_group = Vector{Float64}[]
+    for id in @view order[(n_initial + 1):end]
+        tp = typ[id]
+        g = get(type_group, tp, 0)
+        if g == 0
+            push!(types, tp)
+            push!(sus_by_group, Int[])
+            push!(Q_by_group, Float64[])
+            g = length(types)
+            type_group[tp] = g
+        end
+        push!(sus_by_group[g], id)
+        push!(Q_by_group[g], rand(rng, Exponential(1.0)))
+    end
+    G = length(types)                   # number of susceptible groups in play
+    for g in 1:G
+        perm = sortperm(Q_by_group[g])
+        sus_by_group[g] = sus_by_group[g][perm]
+        Q_by_group[g] = Q_by_group[g][perm]
+    end
+    ptr = ones(Int, G)                  # front pointer into each group's queue
+    nsus = [length(v) for v in sus_by_group]
+    Λ = zeros(Float64, G)               # accumulated pressure per group
+    λ = zeros(Float64, G)               # current force per group (scratch)
 
     t = 0.0
-    Λ = 0.0
 
     while true
-        Y = length(infectious_ids)
+        # Force on a susceptible in each group at the current infectious counts.
+        # Piecewise-constant between events, so it is evaluated once per group.
+        @inbounds for g in 1:G
+            λ[g] = ptr[g] <= nsus[g] ? Float64(force(types[g], counts)) : 0.0
+        end
+
+        # Next infection per group: the lowest remaining threshold in the group,
+        # reached at the group's own force. The soonest across groups wins.
+        t_inf = Inf
+        gstar = 0
+        @inbounds for g in 1:G
+            (λ[g] > 0 && ptr[g] <= nsus[g]) || continue
+            tg = t + (Q_by_group[g][ptr[g]] - Λ[g]) / λ[g]
+            if tg < t_inf
+                t_inf = tg
+                gstar = g
+            end
+        end
 
         t_open, _ = _pool_heap_peek(open_heap)
         t_close, _ = _pool_heap_peek(close_heap)
-        # Next threshold crossing: pressure rises at rate βN·Y toward the lowest
-        # remaining threshold. No susceptibles or no infectives ⇒ no infection.
-        t_inf = (Y > 0 && ptr <= nsus) ? t + (sus_Q[ptr] - Λ) / (βN * Y) : Inf
 
         t_event = min(t_open, t_close, t_inf)
         isfinite(t_event) || break
 
-        # Accumulate pressure over [t, t_event] at the current infectious count.
-        Λ += βN * Y * (t_event - t)
+        # Advance every group's pressure over [t, t_event] at the force that held
+        # during the interval. The min event includes each group's next crossing,
+        # so Λ[g] never overshoots its next threshold.
+        dt = t_event - t
+        @inbounds for g in 1:G
+            Λ[g] += λ[g] * dt
+        end
         t = t_event
 
         # Ties are resolved close → open → infection, so an equal-time window-open
         # (e.g. a case that becomes infectious at its infection time when
-        # `from == :infection`) increments Y before the next infection is timed.
+        # `from == :infection`) updates `counts` before the next infection is timed.
         if t_close == t_event
             _, id = _pool_heap_pop!(close_heap)
             i = slot[id]
@@ -158,16 +240,22 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             slot[lastid] = i
             pop!(infectious_ids)
             delete!(slot, id)
+            counts[typ[id]] -= 1
         elseif t_open == t_event
             _, id = _pool_heap_pop!(open_heap)
             push!(infectious_ids, id)
             slot[id] = length(infectious_ids)
+            counts[typ[id]] += 1
         else
-            # Infection: the lowest-threshold susceptible crosses now. Its
-            # infector is drawn uniformly from the currently-open infectives.
-            id = sus_ids[ptr]
-            ptr += 1
-            src = infectious_ids[rand(rng, 1:Y)]
+            # Infection: the lowest-threshold susceptible in group `gstar` crosses
+            # now. Its infector is drawn uniformly from all currently-infectious
+            # individuals across groups — a valid parent label whose epidemic
+            # dynamics are exact regardless; mixing-weighted attribution (weighting
+            # by each infective's contribution to `force`) is a possible refinement
+            # that would only sharpen the parent label, not the dynamics.
+            id = sus_by_group[gstar][ptr[gstar]]
+            ptr[gstar] += 1
+            src = infectious_ids[rand(rng, 1:length(infectious_ids))]
             ind = state.individuals[id]
             stamp!(ind, t, src)
             push_windows!(ind)

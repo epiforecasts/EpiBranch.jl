@@ -95,4 +95,68 @@
         # R0 without an infectious period cannot resolve β.
         @test_throws ArgumentError HomogeneousProcess(; R0 = 2.0, population_size = 10)
     end
+
+    # A small helper that runs the structured pool directly: tag a real
+    # attribute (`:age_band`) on a fixed population of size N via `band_of`, name
+    # it as the mixing attribute with `mixing_by = (:age_band,)`, supply a force
+    # keyed on the band value, and return the band each infected case fell in.
+    function _run_pool(N, band_of, force; n_initial = 5, rng)
+        m = HomogeneousProcess(; transmission_rate = 1.0, population_size = N,
+            infectious_period = Exponential(1.0))
+        state = EpiBranch.new_state(m, m.progression, EpiBranch.attributes(m), rng)
+        EpiBranch.add_individuals!(state, N, EpiBranch.interventions(m);
+            setup = (ind, i) -> (ind.state[:age_band] = band_of(ind)))
+        EpiBranch._sellke_pool!(state, collect(1:N), rng;
+            mixing_by = (:age_band,), force = force,
+            n_initial = n_initial, from = m.from, until = m.until)
+        return [ind.state[:age_band]
+                for ind in state.individuals
+                if get(ind.state, :infected, false)]
+    end
+
+    @testset "two-band uniform matrix reduces to one pool" begin
+        # Two bands with uniform contact behave as a single pool of size N: the
+        # force felt is β/N·(total infectious) regardless of band, so the
+        # major-outbreak attack rate matches the homogeneous law (z ≈ 0.7968 at
+        # R0 = 2, since β = 2 and mean infectious period = 1).
+        N = 3000
+        β = 2.0
+        band_of = ind -> (ind.id <= N ÷ 2 ? 1 : 2)
+        force = (type, counts) -> β / N * sum(values(counts))
+        finals = [length(_run_pool(N, band_of, force; rng = StableRNG(s)))
+                  for s in 1:40]
+        major = filter(x -> x > 0.3 * N, finals)
+        @test length(major) > 20
+        @test all(x -> x <= N, finals)
+        @test isapprox(mean(major) / N, 0.7968; atol = 0.03)
+    end
+
+    @testset "asymmetric mixing orders attack rates" begin
+        # A 2×2 contact matrix keyed by band, where band 1 mixes far more than
+        # band 2. With equal band sizes, the force on a band-`b` susceptible is
+        # (1/half)·Σ_h M[b,h]·counts[(h,)]. The high-contact band should suffer a
+        # strictly higher attack rate than the low-contact band, over replicates.
+        N = 2000
+        half = N ÷ 2
+        M = [3.0 0.5; 0.5 0.5]         # band 1 mixes much more than band 2
+        band_of = ind -> (ind.id <= half ? 1 : 2)
+        force = (type, counts) -> begin
+            b = type[1]
+            sum(M[b, h] * get(counts, (h,), 0) for h in 1:2) / half
+        end
+        ar1 = Float64[]
+        ar2 = Float64[]
+        for s in 1:40
+            bands = _run_pool(N, band_of, force; n_initial = 10,
+                rng = StableRNG(s))
+            n1 = count(==(1), bands)
+            n2 = count(==(2), bands)
+            # Keep major outbreaks only, so the ordering is about who is hit hardest.
+            (n1 + n2) > 0.3 * N || continue
+            push!(ar1, n1 / half)
+            push!(ar2, n2 / half)
+        end
+        @test length(ar1) > 20
+        @test mean(ar1) > mean(ar2)
+    end
 end

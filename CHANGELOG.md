@@ -17,6 +17,16 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Changed
 
+- The fixed-size population pool's mixing structure is now keyed on the
+  individual's real attributes: a model names which attributes define mixing via
+  `mixing_by` (a tuple of attribute keys, e.g. `(:age_band, :ses)`), and the pool
+  buckets susceptibles by the actual values of those attributes. The between-group
+  force of infection is a model-supplied `force(type, counts)`, where `type` is a
+  susceptible's tuple of attribute values and `counts` maps each mixing type to
+  its current infectious number — so structured mixing (age bands, sex, income
+  strata, spatial patches) is written on the extension surface without touching
+  the pool primitive. The homogeneous case names no attributes (`mixing_by = ()`,
+  one type).
 - `NetworkProcess` (in `EpiNetwork`) is now a continuous-time contact-rate
   model. Transmission along each edge is a contact hazard racing the
   infector's recovery or isolation, drawn from a contact-interval kernel,

@@ -18,15 +18,13 @@
                        interventions = [], attributes = NoAttributes(),
                        observation = NoObservation())
 
-A homogeneously-mixing closed population of `population_size` individuals,
-simulated by the Sellke threshold construction. Every infectious individual
-exerts force of infection at rate `β/N` on every susceptible, giving the exact
-stochastic SIR final-size law with `R0 = β·E[infectious period]`.
-
-The transmission rate is given either directly as `transmission_rate` (β) or
-through `R0`, in which case `β = R0 / mean(infectious_period)` and
-`infectious_period` is required. Exactly one of `transmission_rate` and `R0`
-must be given.
+A closed population of `population_size` individuals that mix homogeneously:
+every infectious person exerts the same force of infection on every susceptible.
+It is simulated by the Sellke threshold construction, which reproduces the exact
+stochastic SIR final-size law. Set transmission either as `transmission_rate`
+(the per-infective rate β, so β/N to each susceptible) or as `R0`, from which β
+follows as `R0 / mean(infectious_period)`. Give one of the two; `R0` needs an
+`infectious_period`.
 
 The infectious timeline is a flexible `progression` of EpiBranch `Transition`s,
 exactly as for `BranchingProcess`: `infectious_period` and `latent_period` are
@@ -35,6 +33,14 @@ infectious period to a terminal `:recovered` removal), each accepting a scalar
 (constant) or a `Distribution` (per-case). `from` is the state the infectious
 window opens at (`:infectious` when the timeline has a latent period,
 `:infection` otherwise); `until` names the removal states that close it.
+
+How detailed the course of infection is up to you. With just an
+`infectious_period` this is an SIR model; a `latent_period` makes it SEIR, and
+onset, hospitalisation and death (as an alternative to recovery) come from the
+`progression` and appear in the line list. The model holds to two assumptions: a
+closed population, and one infection per person. Age or contact structure,
+waning immunity and reinfection are things you write into a model by extending
+it.
 
 # Example
 
@@ -146,8 +152,13 @@ function simulate(model::HomogeneousProcess; rng::AbstractRNG = Random.default_r
     add_individuals!(state, model.population_size, interventions(model);
         setup = (ind, i) -> nothing)
 
+    # The homogeneous pool is the one-type case of the structured Sellke pool:
+    # no attributes name the mixing (`mixing_by` defaults to `()`), so every
+    # individual has the empty type `()` and feels the same force β/N per
+    # infective (`sum(values(counts))` = number currently infectious).
     _sellke_pool!(state, collect(1:model.population_size), rng;
-        beta = model.β, n_initial = n_initial, from = model.from, until = model.until)
+        force = (type, counts) -> model.β / model.population_size * sum(values(counts)),
+        n_initial = n_initial, from = model.from, until = model.until)
 
     # The pool loop writes per-individual state directly, so reconcile the
     # aggregate bookkeeping the engine would otherwise maintain.
