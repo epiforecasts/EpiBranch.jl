@@ -260,7 +260,11 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             # that would only sharpen the parent label, not the dynamics.
             id = sus_by_group[gstar][ptr[gstar]]
             ptr[gstar] += 1
-            src = infectious_ids[rand(rng, 1:length(infectious_ids))]
+            # If the infectious pool is empty — a custom `force` with a positive
+            # count-independent hazard, e.g. external importation — there is no
+            # infector to attribute to, so fall back to the index-case label 0.
+            src = isempty(infectious_ids) ? 0 :
+                  infectious_ids[rand(rng, 1:length(infectious_ids))]
             ind = state.individuals[id]
             stamp!(ind, t, src)
             push_windows!(ind)

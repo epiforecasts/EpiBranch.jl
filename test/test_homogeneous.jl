@@ -182,4 +182,21 @@
         @test length(ar1) > 20
         @test mean(ar1) > mean(ar2)
     end
+
+    @testset "positive force with empty infectious pool is index-labelled" begin
+        # A custom force with a count-independent positive hazard (external
+        # importation) keeps firing infections even when no one is infectious. The
+        # first infection draws its source from an empty pool: without a guard that
+        # throws; with the guard it falls back to the index-case label 0.
+        N = 50
+        m = HomogeneousProcess(; transmission_rate = 1.0, population_size = N,
+            infectious_period = Exponential(1.0))
+        rng = StableRNG(1)
+        state = EpiBranch.new_state(m, m.progression, EpiBranch.attributes(m), rng)
+        EpiBranch.add_individuals!(state, N, EpiBranch.interventions(m))
+        EpiBranch._sellke_pool!(state, collect(1:N), rng; mixing_by = (),
+            force = (type, counts) -> 0.5, n_initial = 0,
+            from = m.from, until = m.until)
+        @test count(ind -> get(ind.state, :infected, false), state.individuals) > 0
+    end
 end
