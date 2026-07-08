@@ -4,6 +4,9 @@ using EpiBranch
 using Distributions
 using StableRNGs
 using ForwardDiff
+using DifferentiationInterface
+import Mooncake
+using ADTypes: AutoMooncake
 
 @testset "EpiHouseholds.jl" begin
     @testset "construction" begin
@@ -346,5 +349,67 @@ using ForwardDiff
         # mismatched input lengths are rejected at compile time
         @test_throws ArgumentError compile_household_pairs([1, 1], [true],
             [true, false])
+    end
+
+    @testset "compiled pair layout: inference workflow (compile once, reuse)" begin
+        # the documented workflow: the household structure is fixed, so the layout
+        # is compiled once and reused across every gradient evaluation of the fit.
+        # Recovering the kernel scale by Newton MLE — feeding the same layout to
+        # every step — must land on the same optimum as the dynamic path and near
+        # the truth.
+        true_scale = 4.0
+        m = HouseholdProcess(fill(4, 800), Exponential(true_scale);
+            infectious_period = 6.0)
+        data = household_infections(simulate(m; rng = StableRNG(202)), m)
+        layout = compile_household_pairs(data)
+
+        # 1-D Newton on logβ (β = 1/scale), reusing `layout` at every evaluation
+        function mle(f; x0 = log(1 / true_scale), steps = 12)
+            x = x0
+            for _ in 1:steps
+                g = ForwardDiff.derivative(f, x)
+                h = ForwardDiff.derivative(z -> ForwardDiff.derivative(f, z), x)
+                x -= g / h
+            end
+            return x
+        end
+        f_fast(logβ) = pairwise_surv_loglik(Exponential(1 / exp(logβ)), data, layout)
+        f_dyn(logβ) = pairwise_surv_loglik(Exponential(1 / exp(logβ)), data)
+
+        x_fast = mle(f_fast)
+        x_dyn = mle(f_dyn)
+        @test x_fast ≈ x_dyn                              # same optimum as dynamic path
+        @test isapprox(exp(-x_fast), true_scale; rtol = 0.2)  # recovers the scale
+
+        # a scan reusing the one layout object matches the dynamic scan pointwise
+        grid = 2.0:0.5:6.0
+        @test [f_fast(log(1 / s)) for s in grid] ≈ [f_dyn(log(1 / s)) for s in grid]
+    end
+
+    @testset "compiled pair layout: Mooncake reverse-mode gradient" begin
+        # the fast path targets reverse-mode AD (its zero-allocation reduction is
+        # what makes a Mooncake tape cheap). Check the reverse-mode gradient of the
+        # compiled path matches ForwardDiff — shared kernel and external mode.
+        backend = AutoMooncake(; config = nothing)
+
+        m = HouseholdProcess(fill(4, 300), Exponential(3.0); infectious_period = 6.0)
+        data = household_infections(simulate(m; rng = StableRNG(104)), m)
+        layout = compile_household_pairs(data)
+        f_fast(θ) = pairwise_surv_loglik(Exponential(1 / exp(θ[1])), data, layout)
+        x = [log(1 / 3)]
+        @test DifferentiationInterface.gradient(f_fast, backend, x) ≈
+              ForwardDiff.gradient(f_fast, x)
+
+        Tobs = 30.0
+        me = HouseholdProcess(fill(4, 300), Exponential(3.0);
+            infectious_period = 6.0, external_hazard = 0.05)
+        de = household_infections(
+            simulate(me; rng = StableRNG(106), obs_end = Tobs), me; obs_end = Tobs)
+        le = compile_household_pairs(de; external = true)
+        e_fast(θ) = pairwise_surv_loglik(Exponential(1 / exp(θ[1])), de, le;
+            external_hazard = 0.05)
+        xe = [log(1 / 3)]
+        @test DifferentiationInterface.gradient(e_fast, backend, xe) ≈
+              ForwardDiff.gradient(e_fast, xe)
     end
 end
