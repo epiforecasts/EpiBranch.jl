@@ -77,6 +77,11 @@ include("simulation.jl")
 # models over a finite, depleting set of nodes, e.g. household cliques).
 include("sellke.jl")
 
+# Sellke fixed-size population pool (homogeneously-mixing closed population) and
+# its first user, HomogeneousProcess.
+include("sellke_pool.jl")
+include("models/homogeneous.jl")
+
 # Output
 include("output/linelist.jl")
 include("output/tracing.jl")
@@ -98,7 +103,7 @@ include("analytical/end_of_outbreak_probability.jl")
 include("likelihood_dists.jl")
 
 # Exports — types
-export TransmissionModel, BranchingProcess, Infectiousness
+export TransmissionModel, BranchingProcess, Infectiousness, HomogeneousProcess
 export Individual, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop

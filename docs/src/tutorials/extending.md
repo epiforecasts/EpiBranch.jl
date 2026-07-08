@@ -840,6 +840,104 @@ MyModel(...; observation = PerCaseObservation(detection_prob = 0.7))
 works the same way as it does for `BranchingProcess`, which defines that
 accessor for you.
 
+## A fixed-size population on the Sellke pool
+
+The built-in [Homogeneous models](homogeneous.md) tutorial covers
+`HomogeneousProcess`, a closed population where everyone mixes with everyone else
+at the same rate. Mixing is often uneven, though: age bands, sex, income strata
+or spatial patches contact each other at different rates, so susceptibles in
+different groups feel a different force of infection. You can build a model like
+that on the same pool without touching the simulation itself. Only one thing
+changes from the homogeneous case: how the force of infection depends on which
+group a susceptible belongs to. You supply it as two pieces:
+
+1. **Which attributes define the mixing groups** — `mixing_by`, a tuple of
+   attribute keys each individual already carries (`:age_band`, `:ses`, `:patch`;
+   real attributes, not a synthetic group index). A susceptible's group is the
+   tuple of those attribute values. With `mixing_by = ()` everyone lands in one
+   group, which recovers the homogeneous case.
+2. **The force of infection** `force(group, counts)` — the hazard on a
+   susceptible in a given group. `counts` is a `Dict` mapping each mixing group to
+   how many individuals are currently infectious in it. Homogeneous mixing is
+   `β/N` times the total infectious count; structured mixing applies a contact
+   matrix to the per-group prevalence.
+
+A mixing group is always the *tuple* of `mixing_by` values, so it stays a tuple
+even when there is a single attribute. Under `mixing_by = (:age_band,)` a
+susceptible in band `b` has group `(b,)`, not bare `b`. Inside `force` you
+therefore read the band out with `group[1]` and key `counts` by `(h,)`. That one
+wrinkle is what usually trips people up on a first read.
+
+### A worked age-structured example
+
+Below is a two-age-band population with an asymmetric contact matrix, where the
+younger, more socially active band mixes more than the older band. It drives the
+pool through `EpiBranch._sellke_pool!`. That function is internal for now: the
+underscore means it is not part of the public API and may be renamed or given a
+public wrapper in a later release. The `mixing_by`/`force` contract shown here is
+the stable part and will carry over; only the call site would change. If you
+build on it, pin your package version.
+
+```julia
+using EpiBranch, Distributions, Random
+
+# A closed population of N split into two age bands of equal size. Band 1 is the
+# more socially active one; `band_of` reads an individual's band off its id.
+N = 2000
+n = [N ÷ 2, N ÷ 2]                     # band sizes
+band_of = i -> (i <= n[1] ? 1 : 2)
+
+# A 2×2 contact matrix: M[b, h] is the mean rate at which one infectious
+# individual in band h contacts a susceptible in band b. Band 1 mixes far more.
+M = [3.0 0.5;
+     0.5 0.5]
+
+# Force of infection on a susceptible in mixing group `group`, given `counts`.
+# A group is the tuple of :age_band values, so band b is `(b,)`: read the band
+# with group[1] and index counts by (h,). This sums, over bands h, the contact
+# rate M[b, h] times band h's prevalence counts[(h,)] / n[h].
+force = (group, counts) -> begin
+    b = group[1]
+    sum(M[b, h] * get(counts, (h,), 0) / n[h] for h in 1:2)
+end
+
+# A HomogeneousProcess is used here only as a container for the natural-history
+# configuration (progression, interventions, attributes). Its transmission_rate
+# is ignored, because the force above replaces it, so any placeholder value does.
+# Tag each individual's :age_band as it is created; any attribute works, including
+# the built-in demographics (:age, :sex, :risk_group).
+carrier = HomogeneousProcess(; transmission_rate = 1.0, population_size = N,
+    infectious_period = Exponential(1.0))
+rng = MersenneTwister(1)
+state = EpiBranch.new_state(carrier, carrier.progression,
+    EpiBranch.attributes(carrier), rng)
+EpiBranch.add_individuals!(state, N, EpiBranch.interventions(carrier);
+    setup = (ind, i) -> (ind.state[:age_band] = band_of(i)))
+
+# Run the Sellke pool. `mixing_by = (:age_band,)` names the attribute that groups
+# individuals; each group is read from it, and the model supplies only the force.
+EpiBranch._sellke_pool!(state, collect(1:N), rng; mixing_by = (:age_band,),
+    force = force, n_initial = 5, from = carrier.from, until = carrier.until)
+
+linelist(state)
+```
+
+Band-1 susceptibles feel a higher force and reach a higher attack rate. To check
+the wiring, set `M` uniform: the two bands should collapse back to a single
+homogeneous pool with the SIR final size. The same pattern extends to further
+strata. Give individuals a `:ses` attribute and pass
+`mixing_by = (:age_band, :ses)`, and `force` now receives a `(band, ses)` tuple
+as its group and a `counts` Dict keyed by `(band, ses)` pairs. From there you can
+write whatever contact structure you want: a full matrix over every
+`(band, ses)` combination, or a factorised one where band and SES contacts
+multiply independently.
+
+The natural history, isolation and line-list output are all unchanged from
+`HomogeneousProcess`. Internally these map to the engine's build, time, intervene
+and resolve phases, described in the [design overview](../design.md), but you do
+not need any of that to write a structured model; the two pieces above are the
+whole interface.
+
 ## Adding an observation model
 
 Observation models attach to the process the same way interventions do.
@@ -984,6 +1082,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
+| Structured fixed-size pool | Reuse the Sellke pool: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply a `force(group, counts)` | Simulation |
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |

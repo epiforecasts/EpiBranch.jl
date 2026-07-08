@@ -24,6 +24,7 @@ makedocs(;
             "Multi-type models" => "tutorials/multi-type.md",
             "Network models" => "tutorials/networks.md",
             "Household models" => "tutorials/households.md",
+            "Homogeneous models" => "tutorials/homogeneous.md",
             "Line lists and contacts" => "tutorials/linelist.md",
             "Chain statistics" => "tutorials/chains.md",
             "Inference" => "tutorials/inference.md",
