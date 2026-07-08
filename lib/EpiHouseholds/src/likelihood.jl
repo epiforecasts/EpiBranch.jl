@@ -342,9 +342,9 @@ community hazard term; otherwise index cases are conditioned on and
 contribute only as infectors.
 """
 function compile_household_pairs(household_of::AbstractVector{<:Integer},
-                                  is_index::AbstractVector{Bool},
-                                  infected::AbstractVector{Bool};
-                                  external::Bool = false)
+        is_index::AbstractVector{Bool},
+        infected::AbstractVector{Bool};
+        external::Bool = false)
     n = length(household_of)
     (length(is_index) == n && length(infected) == n) ||
         throw(ArgumentError("household_of, is_index and infected must be same length"))
@@ -358,26 +358,33 @@ function compile_household_pairs(household_of::AbstractVector{<:Integer},
         push!(buckets[household_of[i] - lo + 1], i)
     end
 
-    sus = Int[]; infector = Int[]; is_ext = Bool[]
+    sus = Int[]
+    infector = Int[]
+    is_ext = Bool[]
     for h in 1:n_buckets
         mem = buckets[h]
         isempty(mem) && continue
         for j in mem
             (!external && is_index[j]) && continue
             if external
-                push!(sus, j); push!(infector, 0); push!(is_ext, true)
+                push!(sus, j)
+                push!(infector, 0)
+                push!(is_ext, true)
             end
             for i in mem
                 infected[i] || continue
                 i == j && continue
-                push!(sus, j); push!(infector, i); push!(is_ext, false)
+                push!(sus, j)
+                push!(infector, i)
+                push!(is_ext, false)
             end
         end
     end
 
     n_rows = length(sus)
     sus_row_order = sortperm(sus)
-    sus_unique = Int[]; sus_row_ranges = UnitRange{Int}[]
+    sus_unique = Int[]
+    sus_row_ranges = UnitRange{Int}[]
     if n_rows > 0
         s_prev = sus[sus_row_order[1]]
         push!(sus_unique, s_prev)
@@ -385,7 +392,7 @@ function compile_household_pairs(household_of::AbstractVector{<:Integer},
         for k in 2:n_rows
             s_k = sus[sus_row_order[k]]
             if s_k != s_prev
-                push!(sus_row_ranges, range_lo:k - 1)
+                push!(sus_row_ranges, range_lo:(k - 1))
                 push!(sus_unique, s_k)
                 range_lo = k
                 s_prev = s_k
@@ -395,7 +402,7 @@ function compile_household_pairs(household_of::AbstractVector{<:Integer},
     end
 
     HouseholdPairsLayout(sus, infector, is_ext, sus_unique, sus_row_ranges,
-                         sus_row_order, external)
+        sus_row_order, external)
 end
 
 function compile_household_pairs(d::HouseholdInfections; external::Bool = false)
@@ -414,7 +421,8 @@ end
 _LogSumExpAcc{T}() where {T} = _LogSumExpAcc{T}(T(-Inf), zero(T), 0)
 function _push!(acc::_LogSumExpAcc{T}, x) where {T}
     if acc.nseen == 0
-        acc.m = T(x); acc.s = one(T)
+        acc.m = T(x)
+        acc.s = one(T)
     elseif x > acc.m
         acc.s = acc.s * exp(acc.m - x) + one(T)
         acc.m = T(x)
@@ -425,6 +433,23 @@ function _push!(acc::_LogSumExpAcc{T}, x) where {T}
     return acc
 end
 _value(acc::_LogSumExpAcc{T}) where {T} = acc.nseen == 0 ? T(-Inf) : acc.m + log(acc.s)
+
+# The parameter float type the kernel contributes to the accumulator. In
+# inference the fitted parameters ride the kernel (as AD duals), not the data,
+# so the streaming accumulator must be typed to hold them: a distribution
+# exposes its parameter type via `partype`, and a covariate callable is probed
+# on the first internal pair. Falls back to `T` when there is no internal row.
+function _kernel_partype(
+        kernel::ContinuousUnivariateDistribution, layout, ::Type{T}) where {T}
+    Distributions.partype(kernel)
+end
+function _kernel_partype(kernel, layout, ::Type{T}) where {T}
+    for r in eachindex(layout.is_ext)
+        layout.is_ext[r] && continue
+        return Distributions.partype(_pair(kernel, layout.infector[r], layout.sus[r]))
+    end
+    return T
+end
 
 """
     pairwise_surv_loglik(kernel, data::HouseholdInfections, layout::HouseholdPairsLayout;
@@ -439,8 +464,8 @@ Matches the dynamic-path result up to row order. `external` mode must be
 consistent with `layout.external`; mismatching the two raises.
 """
 function pairwise_surv_loglik(kernel, data::HouseholdInfections,
-                              layout::HouseholdPairsLayout;
-                              external_hazard = 0.0)
+        layout::HouseholdPairsLayout;
+        external_hazard = 0.0)
     external = _ext_active(external_hazard)
     external == layout.external ||
         throw(ArgumentError("layout.external = $(layout.external) but external_hazard = $external_hazard"))
@@ -451,10 +476,16 @@ function pairwise_surv_loglik(kernel, data::HouseholdInfections,
     infector = layout.infector
     is_ext = layout.is_ext
 
-    T = promote_type(eltype(data.infection_time),
-                     eltype(data.infectious_time),
-                     eltype(data.removal_time),
-                     Float64)
+    Tdata = promote_type(eltype(data.infection_time),
+        eltype(data.infectious_time),
+        eltype(data.removal_time),
+        Float64)
+    # promote against the kernel's parameter type so AD duals carried by the
+    # fitted kernel (not the data) survive the reduction — the accumulator and
+    # running total below are typed to hold whatever `loghazard`/`cumhazard`
+    # returns, not just the data float type.
+    Text = external ? Distributions.partype(extdist) : Union{}
+    T = promote_type(Tdata, _kernel_partype(kernel, layout, Tdata), Text)
     ll = zero(T)
 
     # Pass 1: cumulative-hazard contribution per row (start always 0 by
