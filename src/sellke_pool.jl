@@ -143,11 +143,15 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     # Push an infected individual's infectious window onto the queues. A never-
     # infectious case (window-open is Inf) contributes nothing to the force; a
     # never-closing window (Inf close, e.g. no removal state) simply stays open.
+    # A case removed at or before its infectious onset (e.g. isolated during a
+    # latent period, so `close_t <= open_t`) is never infectious: skip both queues
+    # so no window opens and no close is popped against an id that was never added.
     push_windows! = function (ind)
         open_t = _window_open(ind, from)
         isfinite(open_t) || return nothing
-        _pool_heap_push!(open_heap, (open_t, ind.id))
         close_t = _window_close(ind, until)
+        (isfinite(close_t) && close_t <= open_t) && return nothing
+        _pool_heap_push!(open_heap, (open_t, ind.id))
         isfinite(close_t) && _pool_heap_push!(close_heap, (close_t, ind.id))
         return nothing
     end

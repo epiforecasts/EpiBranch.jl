@@ -63,6 +63,26 @@
         @test iso_mean < base_mean
     end
 
+    @testset "removal before infectious onset never infects" begin
+        # A latent period opens the window at :infectious, but isolation fires
+        # first (close_t <= open_t). Such a case is never infectious: it must be
+        # skipped rather than pop a close event against an id never made infectious.
+        N = 100
+        m = HomogeneousProcess(; transmission_rate = 5.0, population_size = N,
+            progression = [
+                Transition(:infectious; from = :infection,
+                    delay = (rng, ind) -> 5.0),
+                Transition(:recovered; from = :infectious,
+                    delay = (rng, ind) -> 1.0, terminal = true),
+                Transition(:isolated; from = :infection, delay = (rng, ind) -> 0.1)
+            ])
+        @test m.from === :infectious
+        # No index case reaches :infectious, so no secondary transmission occurs
+        # and the run completes with only the seeds infected.
+        state = simulate(m; rng = StableRNG(1), n_initial = 5)
+        @test state.cumulative_cases == 5
+    end
+
     @testset "line list and timing" begin
         m = HomogeneousProcess(; R0 = 2.0, population_size = 500,
             infectious_period = Exponential(2.0), latent_period = Exponential(1.0))
