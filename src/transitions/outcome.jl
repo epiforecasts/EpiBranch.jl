@@ -36,8 +36,8 @@ function resolve_individual!(r::Recovery, individual, state)
     return nothing
 end
 
-function terminal_event(::Recovery, individual)
-    t = get(individual.state, :recovery_candidate_time, Inf)::Float64
+function terminal_event(::Recovery, individual::Individual{T}) where {T}
+    t = convert(T, get(individual.state, :recovery_candidate_time, T(Inf)))
     return isfinite(t) ? (t, :recovered) : nothing
 end
 
@@ -90,7 +90,7 @@ function resolve_individual!(d::Death, individual, state)
     return nothing
 end
 
-function terminal_event(::Death, individual)
-    t = get(individual.state, :death_candidate_time, Inf)::Float64
+function terminal_event(::Death, individual::Individual{T}) where {T}
+    t = convert(T, get(individual.state, :death_candidate_time, T(Inf)))
     return isfinite(t) ? (t, :died) : nothing
 end

@@ -83,3 +83,41 @@ end
         stopping_rules = [Extinction(), MaxGenerations(3)])
     @test EpiBranch._timetype(plain) === Float64
 end
+
+# The same capability for the fixed-size Sellke pool: a dual β flows through the
+# crossing times, so the derivative of a smooth outbreak summary with respect to
+# β falls out by forward mode. The infected set is held fixed here — a small step
+# keeps every crossing on the same side of every event — so the total infection
+# time is smooth in β with a within-piece derivative a tiny finite difference
+# confirms. How the final size itself moves with β is discontinuous and is the
+# unbiased estimator's job (StochasticAD), not forward mode.
+@testset "AD through the Sellke pool (timing gradient)" begin
+    seed = 20260701
+    build(β) = HomogeneousProcess(; transmission_rate = β, population_size = 500,
+        infectious_period = Exponential(1.0))
+    function total_infection_time(β)
+        state = simulate(build(β); n_initial = 5, rng = StableRNG(seed))
+        return sum(ind.infection_time
+        for ind in state.individuals
+        if get(ind.state, :infected, false))
+    end
+
+    β0 = 2.0
+    plain = simulate(build(β0); n_initial = 5, rng = StableRNG(seed))
+    dual = simulate(build(ForwardDiff.Dual(β0, 1.0)); n_initial = 5, rng = StableRNG(seed))
+
+    # A dual β makes an Individual{Dual} pool; the primal trajectory is unchanged.
+    @test EpiBranch._timetype(plain) === Float64
+    @test EpiBranch._timetype(dual) <: ForwardDiff.Dual
+    @test dual.cumulative_cases == plain.cumulative_cases
+    @test all(ForwardDiff.value(d.infection_time) == p.infection_time
+    for (d, p) in zip(dual.individuals, plain.individuals))
+
+    grad = ForwardDiff.derivative(total_infection_time, β0)
+    @test isfinite(grad)
+    @test grad < 0        # faster spread pulls the same infections earlier
+
+    h = 1e-6              # a step small enough to keep the infected set fixed
+    fd = (total_infection_time(β0 + h) - total_infection_time(β0 - h)) / (2h)
+    @test isapprox(grad, fd; rtol = 1e-4)
+end

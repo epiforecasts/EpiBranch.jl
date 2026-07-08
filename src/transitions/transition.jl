@@ -82,8 +82,8 @@ function resolve_individual!(t::Transition, individual, state)
 end
 
 is_terminal(t::Transition) = t.terminal
-function terminal_event(t::Transition, individual)
+function terminal_event(t::Transition, individual::Individual{T}) where {T}
     t.terminal || return nothing
-    tm = get(individual.state, t.time_key, Inf)::Float64
+    tm = convert(T, get(individual.state, t.time_key, T(Inf)))
     return isfinite(tm) ? (tm, t.state) : nothing
 end
