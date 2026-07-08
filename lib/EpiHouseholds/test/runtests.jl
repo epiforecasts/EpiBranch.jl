@@ -27,7 +27,8 @@ using ForwardDiff
         # an explicit progression is used as given, and sets the anchor
         prog = AbstractClinicalTransition[
             Transition(:infectious; from = :infection, delay = LogNormal(1.0, 0.4)),
-            Transition(:recovered; from = :infectious, delay = Gamma(6, 1), terminal = true)]
+            Transition(
+                :recovered; from = :infectious, delay = Gamma(6, 1), terminal = true)]
         mp = HouseholdProcess([3], Exponential(3.0); progression = prog)
         @test mp.from == :infectious
         @test length(mp.progression) == 2
@@ -35,11 +36,13 @@ using ForwardDiff
         # a scalar and a distribution external hazard are both accepted
         @test HouseholdProcess([2], Exponential(1.0); external_hazard = 0.05) isa
               HouseholdProcess
-        @test HouseholdProcess([2], Exponential(1.0); external_hazard = Exponential(20.0)) isa
+        @test HouseholdProcess(
+            [2], Exponential(1.0); external_hazard = Exponential(20.0)) isa
               HouseholdProcess
 
         @test_throws ArgumentError HouseholdProcess([0, 2], Exponential(1.0))
-        @test_throws ArgumentError HouseholdProcess([2], Exponential(1.0); external_hazard = -1.0)
+        @test_throws ArgumentError HouseholdProcess(
+            [2], Exponential(1.0); external_hazard = -1.0)
     end
 
     @testset "simulation seeds one index per household and spreads within it" begin
@@ -135,7 +138,8 @@ using ForwardDiff
         @test count(data.is_index) >= 1
         @test isfinite(loglikelihood(data, m))          # dispatched form with external
 
-        rows, _, is_ext = EpiHouseholds._survival_rows(data; external = true, obs_end = Tobs)
+        rows, _, is_ext = EpiHouseholds._survival_rows(
+            data; external = true, obs_end = Tobs)
         extdist = Exponential(1 / 0.05)
         ll(s) = pairwise_surv_loglik(r -> is_ext[r] ? extdist : Exponential(s), rows)
         grid = 1.5:0.5:5.0
@@ -174,5 +178,173 @@ using ForwardDiff
         df = linelist(simulate(m; rng = StableRNG(11)))
         @test :reported in propertynames(df)            # observation ran
         @test 0 < count(df.reported) < size(df, 1)       # ~half detected, not all
+    end
+
+    @testset "compiled pair layout matches the dynamic path (shared kernel)" begin
+        # the layout captures the fixed row structure once; evaluating it over a
+        # grid of kernel scales must reproduce the dynamic HouseholdInfections
+        # path exactly (up to row order) while the same layout object is reused.
+        m = HouseholdProcess(fill(4, 500), Exponential(3.0); infectious_period = 6.0)
+        data = household_infections(simulate(m; rng = StableRNG(101)), m)
+        layout = compile_household_pairs(data)
+
+        @test layout isa HouseholdPairsLayout
+        @test !layout.external
+        @test length(layout) == length(layout.sus)
+        @test length(layout) > 0                          # there is real spread to score
+
+        for s in 1.5:0.5:6.0
+            @test pairwise_surv_loglik(Exponential(s), data, layout) ≈
+                  pairwise_surv_loglik(Exponential(s), data)
+        end
+
+        # single-arg constructor reads the at-risk mask off the data and agrees
+        layout1 = compile_household_pairs(data.household_of, data.is_index,
+            .!isnan.(data.infection_time))
+        @test length(layout1) == length(layout)
+        @test pairwise_surv_loglik(Exponential(3.0), data, layout1) ≈
+              pairwise_surv_loglik(Exponential(3.0), data, layout)
+    end
+
+    @testset "compiled pair layout matches the dynamic path (external hazard)" begin
+        # with a community term every susceptible also carries an external row;
+        # the layout must be built with external=true and agree with the dynamic
+        # external path across kernel scales.
+        Tobs = 30.0
+        m = HouseholdProcess(fill(4, 500), Exponential(3.0);
+            infectious_period = 6.0, external_hazard = 0.05)
+        state = simulate(m; rng = StableRNG(102), obs_end = Tobs)
+        data = household_infections(state, m; obs_end = Tobs)
+        layout = compile_household_pairs(data; external = true)
+
+        @test layout.external
+        for s in 1.5:0.5:5.0
+            @test pairwise_surv_loglik(Exponential(s), data, layout;
+                external_hazard = 0.05) ≈
+                  pairwise_surv_loglik(Exponential(s), data; external_hazard = 0.05)
+        end
+
+        # a distribution-valued community hazard routes the same way
+        @test pairwise_surv_loglik(Exponential(3.0), data, layout;
+            external_hazard = Exponential(20.0)) ≈
+              pairwise_surv_loglik(Exponential(3.0), data;
+            external_hazard = Exponential(20.0))
+    end
+
+    @testset "compiled pair layout: covariate (per-pair) kernel" begin
+        # a two-argument (infector, susceptible) -> Distribution kernel routes
+        # through _pair on both the dynamic and the compiled path, so they agree.
+        m = HouseholdProcess(fill(4, 300), Exponential(3.0); infectious_period = 6.0)
+        data = household_infections(simulate(m; rng = StableRNG(103)), m)
+        layout = compile_household_pairs(data)
+
+        # a mild dependence on the pair ids exercises the routing, not the physics
+        kern(i, j) = Exponential(3.0 + 0.01 * (i + j))
+        @test pairwise_surv_loglik(kern, data, layout) ≈
+              pairwise_surv_loglik(kern, data)
+    end
+
+    @testset "compiled pair layout: differentiable and matches dynamic gradient" begin
+        # the fast path exists to be differentiated in the kernel parameters
+        # (its whole reason for being reused across gradient evaluations). The
+        # fitted parameter rides the kernel, not the data, so the layout must
+        # carry the AD duals through both the cumulative-hazard pass and the
+        # per-susceptible log-sum-exp. Checked in all three kernel modes.
+        m = HouseholdProcess(fill(4, 300), Exponential(3.0); infectious_period = 6.0)
+        data = household_infections(simulate(m; rng = StableRNG(104)), m)
+        layout = compile_household_pairs(data)
+
+        f_fast(logβ) = pairwise_surv_loglik(Exponential(1 / exp(logβ)), data, layout)
+        f_dyn(logβ) = pairwise_surv_loglik(Exponential(1 / exp(logβ)), data)
+        @test f_fast(log(1 / 3)) ≈ f_dyn(log(1 / 3))
+
+        g_fast = ForwardDiff.derivative(f_fast, log(1 / 3))
+        g_dyn = ForwardDiff.derivative(f_dyn, log(1 / 3))
+        @test isfinite(g_fast)
+        @test g_fast ≈ g_dyn
+
+        # covariate (per-pair) kernel: the parameter still rides the kernel, now
+        # resolved per pair — the accumulator must promote to hold it.
+        kern(β) = (i, j) -> Exponential(1 / (exp(β) * (1 + 0.001 * (i + j))))
+        h_fast(β) = pairwise_surv_loglik(kern(β), data, layout)
+        h_dyn(β) = pairwise_surv_loglik(kern(β), data)
+        @test ForwardDiff.derivative(h_fast, log(1 / 3)) ≈
+              ForwardDiff.derivative(h_dyn, log(1 / 3))
+
+        # external mode: differentiate the within-household kernel while a fixed
+        # community hazard also contributes rows.
+        Tobs = 30.0
+        me = HouseholdProcess(fill(4, 300), Exponential(3.0);
+            infectious_period = 6.0, external_hazard = 0.05)
+        de = household_infections(simulate(me; rng = StableRNG(106), obs_end = Tobs),
+            me; obs_end = Tobs)
+        le = compile_household_pairs(de; external = true)
+        e_fast(logβ) = pairwise_surv_loglik(Exponential(1 / exp(logβ)), de, le;
+            external_hazard = 0.05)
+        e_dyn(logβ) = pairwise_surv_loglik(Exponential(1 / exp(logβ)), de;
+            external_hazard = 0.05)
+        @test e_fast(log(1 / 3)) ≈ e_dyn(log(1 / 3))
+        @test ForwardDiff.derivative(e_fast, log(1 / 3)) ≈
+              ForwardDiff.derivative(e_dyn, log(1 / 3))
+    end
+
+    @testset "compiled pair layout: hand-built multi-infector household" begin
+        # one household, member 3 infected late with two eligible infectors
+        # (members 1 and 2) — exercises the per-susceptible log-sum-exp over more
+        # than one event row, plus a single-infector susceptible and a conditioned
+        # index case.
+        data = HouseholdInfections([1, 1, 1], [0.0, 0.5, 2.0], [0.0, 0.5, 2.0],
+            [Inf, Inf, Inf], [true, false, false])
+        layout = compile_household_pairs(data)
+
+        # the layout enumerates every ordered (susceptible, infector) structural
+        # pair among the non-index members: 2←{1,3} and 3←{1,2}, i.e. four rows —
+        # even pairs whose timing later contributes nothing are kept, and pruned
+        # on the fly at evaluation. The index (member 1) is conditioned on.
+        @test length(layout) == 4
+        @test 3 in layout.sus_unique && 2 in layout.sus_unique
+        @test !(1 in layout.sus_unique)
+
+        for s in 1.0:1.0:5.0
+            @test pairwise_surv_loglik(Exponential(s), data, layout) ≈
+                  pairwise_surv_loglik(Exponential(s), data)
+        end
+    end
+
+    @testset "compiled pair layout: edge cases" begin
+        # empty population → empty layout, zero log-likelihood, consistent length
+        empty = HouseholdInfections(Int[], Float64[], Float64[], Float64[], Bool[])
+        elayout = compile_household_pairs(empty)
+        @test length(elayout) == 0
+        @test pairwise_surv_loglik(Exponential(3.0), empty, elayout) == 0.0
+        @test compile_household_pairs(Int[], Bool[], Bool[]) isa HouseholdPairsLayout
+
+        # a household where the sole housemate escapes: the index recovers at
+        # t=3 and member 2 is never infected. There is still one structural row
+        # (member 2 at risk from the index), whose only contribution is the
+        # escaped cumulative hazard — finite and equal to the dynamic path.
+        lone = HouseholdInfections([1, 1], [0.0, NaN], [0.0, NaN], [3.0, Inf],
+            [true, false])
+        llayout = compile_household_pairs(lone)
+        @test length(llayout) == 1
+        ll_lone = pairwise_surv_loglik(Exponential(3.0), lone, llayout)
+        @test isfinite(ll_lone)
+        @test ll_lone < 0                                 # pure escaped hazard
+        @test ll_lone ≈ pairwise_surv_loglik(Exponential(3.0), lone)
+
+        # calling the external-built layout without an external hazard (and vice
+        # versa) is a mismatch and must raise
+        m = HouseholdProcess(fill(4, 50), Exponential(3.0); infectious_period = 6.0)
+        data = household_infections(simulate(m; rng = StableRNG(105)), m)
+        ext_layout = compile_household_pairs(data; external = true)
+        int_layout = compile_household_pairs(data; external = false)
+        @test_throws ArgumentError pairwise_surv_loglik(Exponential(3.0), data,
+            ext_layout)                                   # no external_hazard given
+        @test_throws ArgumentError pairwise_surv_loglik(Exponential(3.0), data,
+            int_layout; external_hazard = 0.05)
+
+        # mismatched input lengths are rejected at compile time
+        @test_throws ArgumentError compile_household_pairs([1, 1], [true],
+            [true, false])
     end
 end
