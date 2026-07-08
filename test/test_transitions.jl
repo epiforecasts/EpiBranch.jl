@@ -201,10 +201,10 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
     @testset "Heterogeneous probability via function" begin
         rng = StableRNG(11)
         # Demographics + clinical so :age and :onset_time are both set.
-        attrs = compose(
+        attrs = [
             clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
             demographics(age_distribution = Uniform(0, 90))
-        )
+        ]
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         # Closure CFR: 0% below 80, 100% at 80 and above. Expect deaths
         # only in the 80+ band. Use a short death delay so terminal
@@ -232,10 +232,10 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         # faster than older ones. Check the per-case admission times
         # respect the rule.
         rng = StableRNG(13)
-        attrs = compose(
+        attrs = [
             clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
             demographics(age_distribution = Uniform(0, 90))
-        )
+        ]
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         # Under-30: fixed 1-day delay. 30+: fixed 5-day delay. Comparing
         # admission_time - onset_time recovers the right band.

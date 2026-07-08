@@ -5,6 +5,17 @@ All notable changes to EpiBranch.jl are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `NetworkProcess` (in `EpiNetwork`) is now a continuous-time contact-rate
+  model. Transmission along each edge is a contact hazard racing the
+  infector's recovery or isolation, drawn from a contact-interval kernel,
+  replacing the earlier coin-flip-per-edge version. Shortening a case's
+  infectious window — through recovery or isolation — now genuinely curtails
+  onward spread.
+
 ## [0.1.0] - 2026-06-16
 
 Initial release. EpiBranch brings together the branching-process cores of

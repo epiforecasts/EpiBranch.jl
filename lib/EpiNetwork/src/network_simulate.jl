@@ -1,66 +1,80 @@
-# ── Network model: setup and exposure collection ────────────────────
+# ── Continuous-time (Sellke) simulation over the graph ───────────────
 #
-# NetworkProcess runs through the same generic `simulate`/
-# `_advance_generation!` engine as BranchingProcess. It supplies just two
-# model-specific pieces:
-#
-#   * `initialise_state` — the population is the graph, so every node is
-#     pre-instantiated once with a stable identity and fixed attributes,
-#     and `sim_opts.n_initial` seed nodes are infected at random.
-#   * `collect_exposures` — each generation, infectious nodes transmit
-#     along their edges; exposures are gathered by target node, so a
-#     susceptible reached by several infectious neighbours in one
-#     generation is resolved once (the loop case the tree never hits).
-#
-# Everything else — intervention hooks, competing-risks resolution,
-# clinical transitions, bookkeeping — is the shared engine.
+# A rate-based network outbreak is simulated by the same Sellke/Dijkstra
+# race as HouseholdProcess, but run once over *all* nodes with each node's
+# graph neighbours as its contacts (rather than once per household clique).
+# Nodes are processed in increasing infection-time order; popping the
+# earliest pending infection makes it final. Every other concern is the
+# shared engine: the population is built with `new_state`/`add_individuals!`,
+# each infected node's natural history is stamped through the primitive's
+# `resolve_transitions!`, and the result is an EpiBranch `SimulationState`
+# that `linelist` renders.
 
-function initialise_state(model::NetworkProcess, sim_opts::SimOpts,
-        interventions, transitions, attributes, rng::AbstractRNG)
+"""
+    simulate(model::NetworkProcess; rng = default_rng(), n_initial = 1,
+             obs_end = Inf) -> SimulationState
+
+Simulate `model` by the Sellke construction in continuous time. Returns an
+EpiBranch `SimulationState`; `linelist(state)` turns it into the
+one-row-per-case DataFrame, carrying the infection, infectiousness, onset
+and removal times the model's `progression` stamps on each case.
+
+With no external hazard, `n_initial` distinct nodes are seeded at time 0 and
+the outbreak spreads along the edges. With an `external_hazard` — a positive
+scalar or a calendar-time distribution — community introductions emerge over
+`[0, obs_end]`, so a finite `obs_end` is required (an unbounded window would
+seed every node).
+"""
+function simulate(model::NetworkProcess; rng::AbstractRNG = default_rng(),
+        n_initial::Integer = 1, obs_end::Real = Inf)
+    state = new_state(model, model.progression, attributes(model), rng)
     n = length(model.adjacency)
-    state = new_state(model, transitions, attributes, rng)
+    add_individuals!(state, n, interventions(model); setup = (ind, i) -> nothing)
 
-    # The population is the graph: pre-instantiate every node with a stable
-    # identity, fixed attributes and intervention state. (The tree case
-    # mints contacts lazily; the network's nodes exist from the start.)
-    add_individuals!(state, n, interventions;
-        setup = (ind, i) -> (ind.state[:epinetwork_node] = i))
+    Tobs = Float64(obs_end)
+    # A community hazard over an unbounded window would introduce every node,
+    # swamping the graph. Require a finite observation window instead.
+    _ext_active(model.external_hazard) && !isfinite(Tobs) &&
+        throw(ArgumentError(
+            "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
+            "the whole network); pass e.g. `obs_end = 30.0`"))
+    EpiBranch._sellke_race!(state, collect(1:n), rng;
+        from = model.from, until = model.until,
+        seed! = (best, members, r) -> _seed_network!(
+            best, members, model.external_hazard, n_initial, Tobs, r),
+        targets = (inf, st) -> ((nb, _edge_kernel(model, inf, k))
+        for (k, nb) in enumerate(model.adjacency[inf])
+        if !is_infected(st.individuals[nb])))
 
-    # Seed infections on random nodes.
-    n_seed = min(sim_opts.n_initial, n)
-    seed!(state, randperm(rng, n)[1:n_seed], interventions, transitions)
+    # The race writes per-individual state directly, so reconcile the aggregate
+    # bookkeeping the engine would otherwise maintain, keeping the returned
+    # state consistent with core `simulate` for downstream consumers.
+    state.cumulative_cases = count(ind -> get(ind.state, :infected, false), state.individuals)
+    state.max_infection_time = maximum(
+        (ind.infection_time
+        for ind in state.individuals if get(ind.state, :infected, false));
+        init = 0.0)
+
+    # Apply the model's observation model (under-reporting, report delays), as
+    # core `simulate` does. A no-op for the default `NoObservation`.
+    apply_observation!(observation(model), state, rng)
     return state
 end
 
-# A network's contacts can be shared across parents in a generation
-# (the loop case), so it gathers exposures by target rather than using the
-# tree-default `collect_exposures`.
-function collect_exposures(model::NetworkProcess, state::SimulationState)
-    gather_by_target(model, state)
-end
-
-"""
-    contacts_of(model::NetworkProcess, parent, state)
-
-Transmission over a fixed graph: `parent`'s contacts this generation are its
-still-susceptible graph neighbours, each returned as a `(node, infection_time)`
-candidate at a generation-time-shifted time. Every neighbour is produced (so
-`apply_post_transmission!` — contact tracing, ring vaccination — sees the whole
-graph contact, not only the ones that transmit); the per-edge probability is a
-competing risk via [`transmission_risks`](@ref EpiBranch.transmission_risks), not
-a filter here. No contacts are created — the nodes already exist — so the engine
-recognises them by id, and a susceptible reached by several infectious
-neighbours in one generation is deduplicated downstream by
-[`gather_by_target`](@ref).
-"""
-function contacts_of(model::NetworkProcess, parent::Individual,
-        state::SimulationState)
-    gt_dist = get_generation_time(model.generation_time, parent)
-    result = Tuple{Individual, Float64}[]
-    for nb in model.adjacency[parent.id]
-        target = state.individuals[nb]
-        is_infected(target) && continue
-        push!(result, (target, transmission_time(gt_dist, parent, state)))
+# Seed the candidate table over all nodes: community introductions under the
+# external hazard (each node drawn, kept if it lands within `[0, Tobs]`), or
+# `n_initial` distinct random nodes at time 0 when there is no external source.
+function _seed_network!(best, members, extsrc, n_initial, Tobs, rng)
+    m = length(members)
+    if _ext_active(extsrc)
+        for k in 1:m
+            t = _ext_draw(rng, extsrc)
+            t <= Tobs && (best[k] = t)
+        end
+    else
+        for id in randperm(rng, m)[1:min(n_initial, m)]
+            best[id] = 0.0
+        end
     end
-    return result
+    return nothing
 end

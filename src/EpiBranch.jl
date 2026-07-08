@@ -73,6 +73,10 @@ include("observation.jl")
 # Simulation engine
 include("simulation.jl")
 
+# Sellke/Dijkstra continuous-time race primitive (shared by structure-driven
+# models over a finite, depleting set of nodes, e.g. household cliques).
+include("sellke.jl")
+
 # Output
 include("output/linelist.jl")
 include("output/tracing.jl")
@@ -135,7 +139,7 @@ export Borel, chain_size_distribution
 export ThinnedChainSize
 
 # Exports — attributes functions
-export clinical_presentation, demographics, transmission_traits, compose
+export clinical_presentation, demographics, transmission_traits
 
 # Exports — simulation
 export simulate, make_contact!, susceptible_fraction

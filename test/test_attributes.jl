@@ -36,16 +36,16 @@
         end
 
         @testset "Function dispatch sees ind state set by earlier builders" begin
-            attrs = compose(
+            attrs = [
                 demographics(age_distribution = Uniform(0, 90)),
                 transmission_traits(
                     susceptibility = (rng, ind) -> ind.state[:age] >= 65 ? 0.8 : 0.2,
                 )
-            )
+            ]
             rng = StableRNG(7)
             for _ in 1:200
                 ind = Individual(id = 1)
-                attrs(rng, ind)
+                EpiBranch._apply_attributes!(attrs, rng, ind)
                 expected = ind.state[:age] >= 65 ? 0.8 : 0.2
                 @test ind.susceptibility == expected
             end
@@ -82,17 +82,17 @@
         end
 
         @testset "function: age-conditional asymptomatic fraction" begin
-            attrs = compose(
+            attrs = [
                 demographics(age_distribution = Uniform(0, 90)),
                 clinical_presentation(
                     incubation_period = LogNormal(1.5, 0.5),
                     prob_asymptomatic = (rng, ind) -> ind.state[:age] < 18 ? 1.0 : 0.0
                 )
-            )
+            ]
             rng = StableRNG(7)
             for _ in 1:200
                 ind = Individual(id = 1)
-                attrs(rng, ind)
+                EpiBranch._apply_attributes!(attrs, rng, ind)
                 expected = ind.state[:age] < 18
                 @test ind.state[:asymptomatic] == expected
             end

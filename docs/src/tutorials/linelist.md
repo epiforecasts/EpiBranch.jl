@@ -54,10 +54,10 @@ Demographics are an attribute, set at simulation time via the
 and `sex` columns:
 
 ```@example linelist
-attrs_demo = compose(
+attrs_demo = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     demographics(age_distribution = Normal(40, 15), prob_female = 0.55),
-)
+]
 
 model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5);
     progression = progression, attributes = attrs_demo)
@@ -76,10 +76,10 @@ Age-conditional case fatality risk is expressed as a closure on the
 `Death` transition's `probability`, reading `ind.state[:age]`:
 
 ```@example linelist
-attrs_demo = compose(
+attrs_demo = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     demographics(age_distribution = Uniform(0, 90)),
-)
+]
 
 cfr_by_age = ind -> begin
     age = ind.state[:age]
