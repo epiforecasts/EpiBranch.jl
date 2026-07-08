@@ -71,6 +71,7 @@ function HomogeneousProcess(; transmission_rate = nothing, R0 = nothing,
         interventions = AbstractIntervention[],
         attributes = NoAttributes(),
         observation::ObservationModel = NoObservation())
+    population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
     (transmission_rate === nothing) == (R0 === nothing) && throw(ArgumentError(
         "provide exactly one of `transmission_rate` (β directly) or `R0`"))
 

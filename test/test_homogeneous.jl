@@ -94,6 +94,9 @@
             transmission_rate = 2.0, population_size = 10, infectious_period = 1.0)
         # R0 without an infectious period cannot resolve β.
         @test_throws ArgumentError HomogeneousProcess(; R0 = 2.0, population_size = 10)
+        # A non-positive population is rejected at construction.
+        @test_throws ArgumentError HomogeneousProcess(; transmission_rate = 2.0,
+            population_size = 0, infectious_period = 1.0)
     end
 
     # A small helper that runs the structured pool directly: tag a real
