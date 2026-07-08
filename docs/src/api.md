@@ -5,6 +5,7 @@
 ```@docs
 BranchingProcess
 Infectiousness
+HomogeneousProcess
 NetworkProcess
 HouseholdProcess
 single_type_offspring
