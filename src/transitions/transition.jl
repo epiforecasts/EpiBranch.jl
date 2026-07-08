@@ -53,9 +53,9 @@ end
 # Time of the `from` state for this individual. `:infection` is the
 # infection time (a field, not a state key); any other state name `s` is
 # `Symbol(s, :_time)` in `ind.state`; a function is evaluated directly.
-function _state_time(ind, from::Symbol)
+function _state_time(ind::Individual{T}, from::Symbol) where {T}
     from === :infection && return ind.infection_time
-    return get(ind.state, Symbol(from, :_time), NaN)::Float64
+    return convert(T, get(ind.state, Symbol(from, :_time), T(NaN)))
 end
 _state_time(ind, from) = float(from(ind))
 

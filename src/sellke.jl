@@ -9,15 +9,15 @@
 
 # When the infector becomes infectious: the `from` state's time (the infection
 # time itself when the kernel times from :infection, otherwise a state key).
-function _window_open(ind, from::Symbol)
+function _window_open(ind::Individual{T}, from::Symbol) where {T}
     from === :infection ? ind.infection_time :
-    (get(ind.state, Symbol(from, :_time), Inf)::Float64)
+    convert(T, get(ind.state, Symbol(from, :_time), T(Inf)))
 end
 
 # Earliest of the `until` removal states' times (Inf if none reached).
-function _window_close(ind, until::Tuple)
-    isempty(until) ? Inf :
-    minimum(get(ind.state, Symbol(s, :_time), Inf)::Float64 for s in until)
+function _window_close(ind::Individual{T}, until::Tuple) where {T}
+    isempty(until) ? T(Inf) :
+    minimum(convert(T, get(ind.state, Symbol(s, :_time), T(Inf))) for s in until)
 end
 
 """
