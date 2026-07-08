@@ -78,23 +78,36 @@ grid[argmax([ll(s) for s in grid])]   # ≈ the true scale, 4.0
 
 When the infection layer is observed (here it comes directly from the simulation),
 the likelihood slots into a Turing `@model`. Put a prior on the log contact rate
-and add the pairwise log-density to the target:
+and add the pairwise log-density to the target. The household structure is fixed
+across draws, so [`compile_household_pairs`](@ref) captures the pair layout once
+and each evaluation reuses it — no per-sample rebuild:
 
 ```@example households
 using Turing
 
-@model function household_fit(data)
+layout = compile_household_pairs(data)   # the fixed pair structure, compiled once
+
+@model function household_fit(data, layout)
     logβ ~ Normal(-1, 1)                # log within-household contact rate
-    Turing.@addlogprob! pairwise_surv_loglik(Exponential(1 / exp(logβ)), data)
+    Turing.@addlogprob! pairwise_surv_loglik(Exponential(1 / exp(logβ)), data, layout)
 end
 
-chain = sample(StableRNG(4), household_fit(data), NUTS(), 300; progress = false)
+chain = sample(StableRNG(4), household_fit(data, layout), NUTS(), 300; progress = false)
 exp(-mean(chain[:logβ]))                # posterior mean contact-interval scale, ≈ 4.0
 ```
+
+The plain `pairwise_surv_loglik(kernel, data; external_hazard)` form re-derives the
+pair structure (a bucketed pass over households, one susceptible-grouped row list)
+on every call. [`HouseholdPairsLayout`](@ref) hoists that structural work out of the
+gradient loop: [`compile_household_pairs`](@ref) enumerates the ordered
+(susceptible, infector) rows once — everything that doesn't depend on the sampled
+parameters — and the three-argument `pairwise_surv_loglik(kernel, data, layout)`
+then evaluates the density in a single allocation-free pass, reading the (possibly
+augmented) times on the fly. The two forms agree up to row order.
 
 In real data the infection times are unobserved. A household `@model` then augments
 them and conditions the observed onsets and tests through the progression's delays,
 with `pairwise_surv_loglik` supplying the contact-process density of the augmented
-configuration. Passing the kernel and the (augmented) infection layer separately,
-`pairwise_surv_loglik(kernel, data; external_hazard)` rebuilds neither the model nor
-the household structure per evaluation.
+configuration. The layout stays valid across draws as long as the household
+structure and the set of ever-infected hosts are fixed — only the latent times
+move — so it is compiled once, outside the model, and reused.
