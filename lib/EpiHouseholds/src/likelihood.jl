@@ -475,7 +475,7 @@ function pairwise_surv_loglik(kernel, data::HouseholdInfections,
     min(length(data.infection_time), length(data.infectious_time),
         length(data.removal_time)) >= layout.nhosts ||
         throw(DimensionMismatch("data covers fewer individuals than the layout " *
-            "was compiled for ($(layout.nhosts))"))
+                                "was compiled for ($(layout.nhosts))"))
     extdist = external ? _ext_survival(external_hazard) : kernel
     _shared_kernel = !external && kernel isa ContinuousUnivariateDistribution
 
