@@ -37,10 +37,18 @@ counting-process primitive underneath. In real inference the infection times are
 process, and conditions the observed onsets/tests through the progression's
 delays. The inference-friendly `pairwise_surv_loglik(kernel, data; external_hazard)`
 takes the kernel and infection layer separately, so the fitted parameters and the
-augmented state vary without rebuilding the model:
+augmented state vary without rebuilding the model. The household structure and the
+set of ever-infected hosts are fixed across draws, so `compile_household_pairs`
+captures the pair layout once and the three-argument
+`pairwise_surv_loglik(kernel, data, layout)` reuses it in an allocation-free pass —
+the structural work is lifted out of the gradient loop:
 
 ```julia
-@model function household_fit(onset, household_of, is_index; obs_end)
+# the pair structure depends only on the layout and who was ever infected, both
+# fixed by the data, so compile it once outside the model and reuse each draw
+layout = compile_household_pairs(household_of, is_index, infected)
+
+@model function household_fit(onset, household_of, is_index, layout; obs_end)
     logβ ~ Normal(-1, 1)                                   # within-household log-rate
     incubation ~ ...                                       # latent natural-history params
     infection_time  ~ ...                                  # augment the latent infections
@@ -48,7 +56,7 @@ augmented state vary without rebuilding the model:
     removal_time    = infectious_time .+ 6.0               # infectious window
     infections = HouseholdInfections(household_of, infection_time,
         infectious_time, removal_time, is_index; obs_end)
-    @addlogprob! pairwise_surv_loglik(Exponential(1 / exp(logβ)), infections)  # contact process
+    @addlogprob! pairwise_surv_loglik(Exponential(1 / exp(logβ)), infections, layout)  # contact process
     onset ~ ... infection_time .+ incubation ...           # progression observation, fit to data
 end
 ```

@@ -19,6 +19,8 @@ household_infections
 HouseholdInfections
 pairwise_surv_loglik
 PairwiseSurvivalData
+HouseholdPairsLayout
+compile_household_pairs
 ```
 
 ## Types
