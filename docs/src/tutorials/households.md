@@ -102,7 +102,7 @@ on every call. [`HouseholdPairsLayout`](@ref) hoists that structural work out of
 gradient loop: [`compile_household_pairs`](@ref) enumerates the ordered
 (susceptible, infector) rows once — everything that doesn't depend on the sampled
 parameters — and the three-argument `pairwise_surv_loglik(kernel, data, layout)`
-then evaluates the density in a single allocation-free pass, reading the (possibly
+then evaluates the density in two allocation-free passes, reading the (possibly
 augmented) times on the fly. The two forms agree up to row order.
 
 In real data the infection times are unobserved. A household `@model` then augments
