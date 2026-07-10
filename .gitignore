@@ -3,6 +3,4 @@ docs/build/
 docs/Manifest.toml
 docs/node_modules/
 docs/package-lock.json
-vignettes/*.html
-vignettes/*_files/
 .claude/
