@@ -10,8 +10,8 @@ function Base.show(io::IO, ind::Individual)
         "Individual(id=$(ind.id), gen=$(ind.generation), chain=$(ind.chain_id), t=$(round(ind.infection_time, digits=1)), $(infected_str)$(isolated_str))")
 end
 
-"""Symptom onset time (Float64, NaN if asymptomatic or not set)."""
-onset_time(ind::Individual) = get(ind.state, :onset_time, NaN)::Float64
+"""Symptom onset time (`NaN` if asymptomatic or not set); a dual under AD."""
+onset_time(ind::Individual{T}) where {T} = convert(T, get(ind.state, :onset_time, T(NaN)))
 
 """
 Incubation period: time from infection to symptom onset (Float64, NaN if

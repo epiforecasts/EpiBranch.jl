@@ -27,7 +27,7 @@
 # A minimal binary min-heap over `(time, id)` pairs — tuples compare
 # lexicographically, so ties break deterministically on id. Avoids a
 # DataStructures dependency for the two pending-event queues.
-function _pool_heap_push!(h::Vector{Tuple{Float64, Int}}, x::Tuple{Float64, Int})
+function _pool_heap_push!(h::Vector{Tuple{T, Int}}, x::Tuple{T, Int}) where {T <: Real}
     push!(h, x)
     i = length(h)
     @inbounds while i > 1
@@ -39,11 +39,13 @@ function _pool_heap_push!(h::Vector{Tuple{Float64, Int}}, x::Tuple{Float64, Int}
     return h
 end
 
-_pool_heap_peek(h::Vector{Tuple{Float64, Int}}) = isempty(h) ? (Inf, 0) : @inbounds h[1]
+function _pool_heap_peek(h::Vector{Tuple{T, Int}}) where {T <: Real}
+    isempty(h) ? (T(Inf), 0) : @inbounds h[1]
+end
 
-function _pool_heap_pop!(h::Vector{Tuple{Float64, Int}})
+function _pool_heap_pop!(h::Vector{Tuple{T, Int}}) where {T <: Real}
     n = length(h)
-    n == 0 && return (Inf, 0)
+    n == 0 && return (T(Inf), 0)
     @inbounds top = h[1]
     @inbounds last = h[n]
     pop!(h)
@@ -102,6 +104,14 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     N = length(members)
     N == 0 && return nothing
 
+    # The pool carries the state's timing type `T` (Float64 by default, a dual
+    # or stochastic-triple type under automatic differentiation): pressures,
+    # forces, event times and thresholds promote to it so gradients flow through
+    # the crossing times. The Exponential(1) resistance thresholds are drawn as
+    # constants and stay Float64 — they are the reparameterisation, held fixed
+    # while parameters vary.
+    T = _timetype(state)
+
     # Stamp an individual infected at time τ with infector id `src` (0 = index),
     # matching `_sellke_race!`'s conventions, then run its natural history.
     stamp! = function (ind, τ, src)
@@ -135,8 +145,8 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         counts[typ[id]] = 0
     end
 
-    open_heap = Tuple{Float64, Int}[]   # pending window-open (becomes infectious)
-    close_heap = Tuple{Float64, Int}[]  # pending window-close (recovers/isolates)
+    open_heap = Tuple{T, Int}[]         # pending window-open (becomes infectious)
+    close_heap = Tuple{T, Int}[]        # pending window-close (recovers/isolates)
     infectious_ids = Int[]              # ids currently infectious (window open)
     slot = Dict{Int, Int}()             # id → its index in `infectious_ids`
 
@@ -160,7 +170,7 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     order = shuffle(rng, collect(members))
     for k in 1:n_initial
         ind = state.individuals[order[k]]
-        stamp!(ind, 0.0, 0)
+        stamp!(ind, zero(T), 0)
         push_windows!(ind)
     end
 
@@ -194,21 +204,21 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     end
     ptr = ones(Int, G)                  # front pointer into each group's queue
     nsus = [length(v) for v in sus_by_group]
-    Λ = zeros(Float64, G)               # accumulated pressure per group
-    λ = zeros(Float64, G)               # current force per group (scratch)
+    Λ = zeros(T, G)                     # accumulated pressure per group
+    λ = zeros(T, G)                     # current force per group (scratch)
 
-    t = 0.0
+    t = zero(T)
 
     while true
         # Force on a susceptible in each group at the current infectious counts.
         # Piecewise-constant between events, so it is evaluated once per group.
         @inbounds for g in 1:G
-            λ[g] = ptr[g] <= nsus[g] ? Float64(force(types[g], counts)) : 0.0
+            λ[g] = ptr[g] <= nsus[g] ? convert(T, force(types[g], counts)) : zero(T)
         end
 
         # Next infection per group: the lowest remaining threshold in the group,
         # reached at the group's own force. The soonest across groups wins.
-        t_inf = Inf
+        t_inf = T(Inf)
         gstar = 0
         @inbounds for g in 1:G
             (λ[g] > 0 && ptr[g] <= nsus[g]) || continue

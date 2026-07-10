@@ -51,9 +51,9 @@ model = HomogeneousProcess(; R0 = 2.0, population_size = 3000,
 state = simulate(model; n_initial = 5)
 ```
 """
-struct HomogeneousProcess{A, O <: ObservationModel} <: TransmissionModel
+struct HomogeneousProcess{B <: Real, A, O <: ObservationModel} <: TransmissionModel
     population_size::Int
-    β::Float64
+    β::B
     from::Symbol
     until::Tuple
     progression::Vector{AbstractClinicalTransition}
@@ -96,13 +96,15 @@ function HomogeneousProcess(; transmission_rate = nothing, R0 = nothing,
             (any(t -> _homogeneous_writes(t, :infectious), prog) ? :infectious :
              :infection) : from
 
-    # Resolve β from R0 via the mean infectious period, or take it directly.
+    # Resolve β from R0 via the mean infectious period, or take it directly. β is
+    # kept at whatever real type it comes in as — a dual under automatic
+    # differentiation — so a gradient with respect to R0 or β flows into the pool.
     if R0 !== nothing
         infectious_period === nothing && throw(ArgumentError(
             "`R0` requires `infectious_period` to derive β = R0 / mean infectious period"))
-        β = Float64(R0) / _homogeneous_mean(infectious_period)
+        β = R0 / _homogeneous_mean(infectious_period)
     else
-        β = Float64(transmission_rate)
+        β = float(transmission_rate)
     end
 
     return HomogeneousProcess(Int(population_size), β, kfrom, Tuple(until), prog,
@@ -128,9 +130,14 @@ interventions(m::HomogeneousProcess) = m.interventions
 attributes(m::HomogeneousProcess) = m.attributes
 observation(m::HomogeneousProcess) = m.observation
 
+# The state's timing type follows β's type, so a dual β makes an
+# `Individual{Dual}` pool and gradients flow through the crossing times.
+_time_type(m::HomogeneousProcess) = typeof(m.β)
+
 function Base.show(io::IO, m::HomogeneousProcess)
+    beta = m.β isa AbstractFloat ? round(m.β; digits = 4) : m.β
     print(io, "HomogeneousProcess(population_size=$(m.population_size), ",
-        "β=$(round(m.β; digits = 4)), from=:$(m.from), ",
+        "β=$(beta), from=:$(m.from), ",
         "$(length(m.progression)) transitions)")
 end
 

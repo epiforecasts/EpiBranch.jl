@@ -84,7 +84,9 @@ _resolve_delay(f, rng, ind) = float(f(rng, ind))
 # `Individual` itself, e.g. `ind.infection_time`, or for composite
 # anchors). Returning `NaN` signals "no anchor" and the transition is
 # skipped.
-_resolve_anchor(s::Symbol, ind) = get(ind.state, s, NaN)::Float64
+function _resolve_anchor(s::Symbol, ind::Individual{T}) where {T}
+    convert(T, get(ind.state, s, T(NaN)))
+end
 _resolve_anchor(f, ind) = float(f(ind))
 
 # By default each transition's `required_fields` returns `[:onset_time]`

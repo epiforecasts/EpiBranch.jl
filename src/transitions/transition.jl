@@ -53,9 +53,9 @@ end
 # Time of the `from` state for this individual. `:infection` is the
 # infection time (a field, not a state key); any other state name `s` is
 # `Symbol(s, :_time)` in `ind.state`; a function is evaluated directly.
-function _state_time(ind, from::Symbol)
+function _state_time(ind::Individual{T}, from::Symbol) where {T}
     from === :infection && return ind.infection_time
-    return get(ind.state, Symbol(from, :_time), NaN)::Float64
+    return convert(T, get(ind.state, Symbol(from, :_time), T(NaN)))
 end
 _state_time(ind, from) = float(from(ind))
 
@@ -82,8 +82,8 @@ function resolve_individual!(t::Transition, individual, state)
 end
 
 is_terminal(t::Transition) = t.terminal
-function terminal_event(t::Transition, individual)
+function terminal_event(t::Transition, individual::Individual{T}) where {T}
     t.terminal || return nothing
-    tm = get(individual.state, t.time_key, Inf)::Float64
+    tm = convert(T, get(individual.state, t.time_key, T(Inf)))
     return isfinite(tm) ? (tm, t.state) : nothing
 end
