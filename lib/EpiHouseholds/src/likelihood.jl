@@ -324,6 +324,7 @@ struct HouseholdPairsLayout
     sus_row_ranges::Vector{UnitRange{Int}} # row indices in `sus_row_order`
     sus_row_order::Vector{Int}             # row indices, susceptible-grouped
     external::Bool
+    nhosts::Int                            # population the layout was compiled for
 end
 
 Base.length(L::HouseholdPairsLayout) = length(L.sus)
@@ -349,7 +350,7 @@ function compile_household_pairs(household_of::AbstractVector{<:Integer},
     (length(is_index) == n && length(infected) == n) ||
         throw(ArgumentError("household_of, is_index and infected must be same length"))
     isempty(household_of) && return HouseholdPairsLayout(
-        Int[], Int[], Bool[], Int[], UnitRange{Int}[], Int[], external)
+        Int[], Int[], Bool[], Int[], UnitRange{Int}[], Int[], external, 0)
 
     lo, hi = extrema(household_of)
     n_buckets = hi - lo + 1
@@ -402,7 +403,7 @@ function compile_household_pairs(household_of::AbstractVector{<:Integer},
     end
 
     HouseholdPairsLayout(sus, infector, is_ext, sus_unique, sus_row_ranges,
-        sus_row_order, external)
+        sus_row_order, external, n)
 end
 
 function compile_household_pairs(d::HouseholdInfections; external::Bool = false)
@@ -469,6 +470,12 @@ function pairwise_surv_loglik(kernel, data::HouseholdInfections,
     external = _ext_active(external_hazard)
     external == layout.external ||
         throw(ArgumentError("layout.external = $(layout.external) but external_hazard = $external_hazard"))
+    # The @inbounds passes index the time vectors by host id up to the population
+    # the layout was compiled for; guard against a `data` with fewer individuals.
+    min(length(data.infection_time), length(data.infectious_time),
+        length(data.removal_time)) >= layout.nhosts ||
+        throw(DimensionMismatch("data covers fewer individuals than the layout " *
+            "was compiled for ($(layout.nhosts))"))
     extdist = external ? _ext_survival(external_hazard) : kernel
     _shared_kernel = !external && kernel isa ContinuousUnivariateDistribution
 
