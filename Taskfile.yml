@@ -109,19 +109,12 @@ tasks:
       - task: test
       - task: docs
 
-  # === VIGNETTES ===
-  vignettes:
-    desc: Render Quarto vignettes
-    cmds:
-      - quarto render vignettes/
-
   # === UTILITIES ===
   clean:
     desc: Remove build artefacts and temporary files
     cmds:
       - rm -rf docs/build/
       - rm -f docs/Manifest.toml
-      - rm -rf vignettes/*_files/ vignettes/*.html
       - echo "Build artefacts removed"
 
   info:
