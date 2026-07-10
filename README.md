@@ -3,6 +3,10 @@
 
 <!-- badges: start -->
 [![CI](https://github.com/epiforecasts/EpiBranch.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/epiforecasts/EpiBranch.jl/actions/workflows/CI.yml)
+[![docs dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://epiforecasts.github.io/EpiBranch.jl/dev/)
+[![codecov](https://codecov.io/gh/epiforecasts/EpiBranch.jl/graph/badge.svg)](https://codecov.io/gh/epiforecasts/EpiBranch.jl)
+[![Aqua QA](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
+[![code style: SciML](https://img.shields.io/static/v1?label=code%20style&message=SciML&color=9558b2&labelColor=389826)](https://github.com/SciML/SciMLStyle)
 <!-- badges: end -->
 
 [EpiBranch.jl](https://github.com/epiforecasts/EpiBranch.jl) is a composable Julia engine for branching-process models in epidemiology. It does both stochastic simulation and analytical inference, and uses closed-form results where they exist. A flexible extension interface includes interventions, host attributes and transmission over contact networks.
