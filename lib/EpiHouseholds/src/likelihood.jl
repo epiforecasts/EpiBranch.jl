@@ -518,10 +518,15 @@ function pairwise_surv_loglik(kernel, data::HouseholdInfections,
         end
     end
 
-    # Pass 2: per-susceptible log-sum-exp over event rows.
+    # Pass 2: per-susceptible log-sum-exp over event rows. A single accumulator
+    # is reused across groups (reset per group) so the reduction stays
+    # allocation-free on the AD tape.
+    acc = _LogSumExpAcc{T}()
     @inbounds for g in eachindex(layout.sus_unique)
         rng = layout.sus_row_ranges[g]
-        acc = _LogSumExpAcc{T}()
+        acc.m = T(-Inf)
+        acc.s = zero(T)
+        acc.nseen = 0
         had_event = false
         for k in rng
             r = layout.sus_row_order[k]
