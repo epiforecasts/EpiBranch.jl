@@ -49,6 +49,12 @@ observation(s::ModelSpec) = s.observation
 _progression(s::ModelSpec) = s.progression
 population_size(s::ModelSpec) = population_size(s.process)
 
+# Structural accessors delegate to the wrapped process, so the analytical
+# helpers and the Turing `~` distribution wrappers treat a spec like the
+# process it wraps.
+single_type_offspring(s::ModelSpec) = single_type_offspring(s.process)
+n_types(s::ModelSpec) = n_types(s.process)
+
 # `simulate` unwraps the spec: the process is the model, the spec's layers are
 # the forcing inputs.
 function simulate(spec::ModelSpec;

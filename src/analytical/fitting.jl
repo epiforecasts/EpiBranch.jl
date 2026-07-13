@@ -127,10 +127,10 @@ end
 Simulation-based log-likelihood under any transmission model, optionally
 with interventions.
 """
-function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
-        interventions, attributes, sim_opts, n_sim, rng)
-    states = _simulate_n(model, n_sim, sim_opts; interventions, attributes,
-        progression = _progression(model), observation = observation(model), rng)
+function _sim_loglikelihood(observed, process, column::Symbol, min_val::Int;
+        interventions, attributes, progression, observation, sim_opts, n_sim, rng)
+    states = _simulate_n(process, n_sim, sim_opts; interventions, attributes,
+        progression, observation, rng)
     sim_values = Int[]
     # Track which simulations hit the case cap (right-censored)
     censored = Bool[]
@@ -160,15 +160,28 @@ end
 
 """
     loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
+    loglikelihood(data::ChainSizes, spec::ModelSpec; kwargs...)
 
-Log-likelihood of observed chain sizes under `model`. With no
-interventions and a single-type offspring law, uses the analytical
-chain-size distribution transformed by the model's observation
-([`observe`](@ref)); otherwise simulates the observed model and compares
-the reported chain sizes against the data. The interventions and
-attributes are read from `model`.
+Log-likelihood of observed chain sizes. With no interventions and a
+single-type offspring law, uses the analytical chain-size distribution
+transformed by the observation ([`observe`](@ref)); otherwise simulates
+and compares the reported chain sizes against the data. The interventions,
+attributes and observation come from the process for a bare model, or from
+the spec for a [`ModelSpec`](@ref).
 """
-function loglikelihood(data::ChainSizes, model::TransmissionModel;
+function loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
+    _chain_size_model_loglik(data, model, interventions(model), attributes(model),
+        _progression(model), observation(model); kwargs...)
+end
+function loglikelihood(data::ChainSizes, spec::ModelSpec; kwargs...)
+    _chain_size_model_loglik(data, spec.process, interventions(spec), attributes(spec),
+        _progression(spec), observation(spec); kwargs...)
+end
+
+# Shared core: score `data` against `process` with the modelling layers passed
+# explicitly, so a bare process supplies its own and a `ModelSpec` supplies the
+# spec's.
+function _chain_size_model_loglik(data::ChainSizes, process, ivs, attrs, prog, obs;
         n_initial::Int = 1,
         max_cases::Union{Int, Nothing} = 10_000,
         max_generations::Union{Int, Nothing} = 100,
@@ -176,12 +189,9 @@ function loglikelihood(data::ChainSizes, model::TransmissionModel;
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         n_sim::Int = 10_000,
         rng::AbstractRNG = Random.default_rng())
-    obs = observation(model)
-    ivs = interventions(model)
-    attrs = attributes(model)
     if isempty(ivs)
         try
-            d = observe(chain_size_distribution(single_type_offspring(model)), obs)
+            d = observe(chain_size_distribution(single_type_offspring(process)), obs)
             return _chain_size_loglik(d, data)
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
@@ -189,9 +199,9 @@ function loglikelihood(data::ChainSizes, model::TransmissionModel;
     end
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
-    states = _simulate_n(model, n_sim, sim_opts;
+    states = _simulate_n(process, n_sim, sim_opts;
         interventions = ivs, attributes = attrs,
-        progression = _progression(model), observation = observation(model), rng)
+        progression = prog, observation = obs, rng)
     sim_values = Int[]
     censored = Bool[]
     cap = _case_cap(sim_opts)
@@ -208,14 +218,24 @@ end
 
 """
     loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
+    loglikelihood(data::ChainLengths, spec::ModelSpec; kwargs...)
 
-Log-likelihood of observed chain lengths under `model`. Only defined for
-models with no observation (per-case detection does not give a
-well-defined chain length); uses the analytical chain-length
-distribution with no interventions, otherwise a simulation estimate.
-The interventions and attributes are read from `model`.
+Log-likelihood of observed chain lengths. Only defined with no observation
+(per-case detection does not give a well-defined chain length); uses the
+analytical chain-length distribution with no interventions, otherwise a
+simulation estimate. The interventions, attributes and observation come
+from the process for a bare model, or from the spec for a [`ModelSpec`](@ref).
 """
-function loglikelihood(data::ChainLengths, model::TransmissionModel;
+function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
+    _chain_length_model_loglik(data, model, interventions(model), attributes(model),
+        _progression(model), observation(model); kwargs...)
+end
+function loglikelihood(data::ChainLengths, spec::ModelSpec; kwargs...)
+    _chain_length_model_loglik(data, spec.process, interventions(spec), attributes(spec),
+        _progression(spec), observation(spec); kwargs...)
+end
+
+function _chain_length_model_loglik(data::ChainLengths, process, ivs, attrs, prog, obs;
         n_initial::Int = 1,
         max_cases::Union{Int, Nothing} = 10_000,
         max_generations::Union{Int, Nothing} = 100,
@@ -223,23 +243,22 @@ function loglikelihood(data::ChainLengths, model::TransmissionModel;
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         n_sim::Int = 10_000,
         rng::AbstractRNG = Random.default_rng())
-    observation(model) isa NoObservation || throw(ArgumentError(
-        "loglikelihood(ChainLengths, model with $(typeof(observation(model)))) " *
+    obs isa NoObservation || throw(ArgumentError(
+        "loglikelihood(ChainLengths, model with $(typeof(obs))) " *
         "is not defined: per-case detection does not give a well-defined chain " *
         "length. Use ChainSizes, or a model with no observation."))
-    ivs = interventions(model)
-    attrs = attributes(model)
     if isempty(ivs)
         try
-            return loglikelihood(data, single_type_offspring(model))
+            return loglikelihood(data, single_type_offspring(process))
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
         end
     end
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
-    return _sim_loglikelihood(data.data, model, :length, 0;
-        interventions = ivs, attributes = attrs, sim_opts, n_sim, rng)
+    return _sim_loglikelihood(data.data, process, :length, 0;
+        interventions = ivs, attributes = attrs, progression = prog,
+        observation = obs, sim_opts, n_sim, rng)
 end
 
 # ── Helpers ──────────────────────────────────────────────────────────
