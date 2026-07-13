@@ -82,6 +82,9 @@ include("sellke.jl")
 include("sellke_pool.jl")
 include("models/homogeneous.jl")
 
+# ModelSpec: compose a process with its forcing/observation layers.
+include("model_spec.jl")
+
 # Output
 include("output/linelist.jl")
 include("output/tracing.jl")
@@ -103,7 +106,7 @@ include("analytical/end_of_outbreak_probability.jl")
 include("likelihood_dists.jl")
 
 # Exports — types
-export TransmissionModel, BranchingProcess, Infectiousness, HomogeneousProcess
+export TransmissionModel, BranchingProcess, Infectiousness, HomogeneousProcess, ModelSpec
 export Individual, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop

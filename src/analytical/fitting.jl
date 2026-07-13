@@ -129,7 +129,8 @@ with interventions.
 """
 function _sim_loglikelihood(observed, model, column::Symbol, min_val::Int;
         interventions, attributes, sim_opts, n_sim, rng)
-    states = _simulate_n(model, n_sim, sim_opts; interventions, attributes, rng)
+    states = _simulate_n(model, n_sim, sim_opts; interventions, attributes,
+        progression = _progression(model), observation = observation(model), rng)
     sim_values = Int[]
     # Track which simulations hit the case cap (right-censored)
     censored = Bool[]
@@ -189,7 +190,8 @@ function loglikelihood(data::ChainSizes, model::TransmissionModel;
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
     states = _simulate_n(model, n_sim, sim_opts;
-        interventions = ivs, attributes = attrs, rng)
+        interventions = ivs, attributes = attrs,
+        progression = _progression(model), observation = observation(model), rng)
     sim_values = Int[]
     censored = Bool[]
     cap = _case_cap(sim_opts)

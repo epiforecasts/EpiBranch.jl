@@ -38,17 +38,22 @@ function simulate(model::TransmissionModel;
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
     return _simulate(model, sim_opts; interventions = interventions(model),
-        attributes = attributes(model), rng, condition, max_attempts)
+        attributes = attributes(model), progression = _progression(model),
+        observation = observation(model), rng, condition, max_attempts)
 end
 
-# Internal single run against a built `SimOpts`. The public methods build
-# the `SimOpts` from the flat termination keywords.
+# Internal single run against a built `SimOpts`. The forcing layers
+# (interventions, attributes, progression, observation) are passed in
+# explicitly, so a `ModelSpec` can supply its own while the process stays the
+# dispatched model. The public methods read them off a bare process, or off
+# the spec.
 function _simulate(model::TransmissionModel, sim_opts::SimOpts;
-        interventions, attributes, rng, condition, max_attempts)
+        interventions, attributes, progression, observation, rng, condition,
+        max_attempts)
     if condition !== nothing
         for _ in 1:max_attempts
-            state = _simulate(model, sim_opts; interventions, attributes, rng,
-                condition = nothing, max_attempts)
+            state = _simulate(model, sim_opts; interventions, attributes,
+                progression, observation, rng, condition = nothing, max_attempts)
             state.cumulative_cases in condition && return state
         end
         throw(ErrorException(
@@ -57,14 +62,14 @@ function _simulate(model::TransmissionModel, sim_opts::SimOpts;
     end
 
     state = initialise_state(
-        model, sim_opts, interventions, _progression(model), attributes, rng)
+        model, sim_opts, interventions, progression, attributes, rng)
     _resolve_new_transitions!(state, 0)
 
     while !should_terminate(state, sim_opts)
         _advance_generation!(model, state, interventions)
     end
 
-    apply_observation!(observation(model), state, rng)
+    apply_observation!(observation, state, rng)
     return state
 end
 
@@ -90,23 +95,27 @@ function simulate(model::TransmissionModel, n::Int;
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
     return _simulate_n(model, n, sim_opts; interventions = interventions(model),
-        attributes = attributes(model), rng, parallel)
+        attributes = attributes(model), progression = _progression(model),
+        observation = observation(model), rng, parallel)
 end
 
 function _simulate_n(model::TransmissionModel, n::Int, sim_opts::SimOpts;
-        interventions, attributes, rng, parallel::Bool = false)
+        interventions, attributes, progression, observation, rng,
+        parallel::Bool = false)
     if parallel && Threads.nthreads() > 1
         seeds = [rand(rng, UInt64) for _ in 1:n]
         results = Vector{SimulationState}(undef, n)
         Threads.@threads for i in 1:n
             local_rng = Random.Xoshiro(seeds[i])
             results[i] = _simulate(model, sim_opts; interventions, attributes,
-                rng = local_rng, condition = nothing, max_attempts = 10_000)
+                progression, observation, rng = local_rng, condition = nothing,
+                max_attempts = 10_000)
         end
         return results
     else
-        return [_simulate(model, sim_opts; interventions, attributes, rng,
-                    condition = nothing, max_attempts = 10_000) for _ in 1:n]
+        return [_simulate(model, sim_opts; interventions, attributes, progression,
+                    observation, rng, condition = nothing, max_attempts = 10_000)
+                for _ in 1:n]
     end
 end
 
