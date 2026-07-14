@@ -5,168 +5,128 @@
 # outbreak is a finite, depleting pool with no structure beyond its size. It is
 # simulated by the Sellke threshold construction (`_sellke_pool!`), which
 # reproduces the exact stochastic SIR final-size law and yields infection times,
-# not just the final size. Like the other structure-driven models it shares the
-# natural-history timeline (`progression`/`Transition`), interventions,
-# attributes and observation, and returns an EpiBranch `SimulationState` that
-# `linelist` renders.
+# not just the final size. It is a pure transmission kernel: the natural history
+# (progression), interventions, attributes and observation are composed onto it
+# with a `ModelSpec`, and the infectious window and (for `R0`) β are resolved
+# from that progression when the model is simulated.
 
 """
     HomogeneousProcess(; transmission_rate = nothing, R0 = nothing, population_size,
-                       infectious_period = nothing, latent_period = nothing,
-                       progression = [], from = nothing,
-                       until = (:recovered, :died, :isolated),
-                       interventions = [], attributes = NoAttributes(),
-                       observation = NoObservation())
+                       from = nothing, until = (:recovered, :died, :isolated))
 
 A closed population of `population_size` individuals that mix homogeneously:
 every infectious person exerts the same force of infection on every susceptible.
 It is simulated by the Sellke threshold construction, which reproduces the exact
 stochastic SIR final-size law. Set transmission either as `transmission_rate`
-(the per-infective rate β, so β/N to each susceptible) or as `R0`, from which β
-follows as `R0 / mean(infectious_period)`. Give one of the two; `R0` needs an
-`infectious_period`.
+(the per-infective rate β, so β/N to each susceptible) or as `R0`; give exactly
+one. With `R0`, β is resolved at simulate time as `R0 / mean infectious period`,
+the mean read from the progression composed onto the model.
 
-The infectious timeline is a flexible `progression` of EpiBranch `Transition`s,
-exactly as for `BranchingProcess`: `infectious_period` and `latent_period` are
-sugar for the two common transitions (a latent period to `:infectious`, an
-infectious period to a terminal `:recovered` removal), each accepting a scalar
-(constant) or a `Distribution` (per-case). `from` is the state the infectious
-window opens at (`:infectious` when the timeline has a latent period,
-`:infection` otherwise); `until` names the removal states that close it.
+The process is a pure transmission kernel. The natural history is a
+`progression` of [`Transition`](@ref)s attached with a [`ModelSpec`](@ref),
+exactly as for [`BranchingProcess`](@ref): a latent period is a transition to
+`:infectious`, an infectious period a terminal removal transition (to
+`:recovered`, say). `from` is the state the infectious window opens at; left as
+`nothing` it is derived from the progression (`:infectious` when a latent period
+produces it, otherwise `:infection`). `until` names the removal states that
+close the window.
 
-How detailed the course of infection is up to you. With just an
-`infectious_period` this is an SIR model; a `latent_period` makes it SEIR, and
-onset, hospitalisation and death (as an alternative to recovery) come from the
-`progression` and appear in the line list. The model holds to two assumptions: a
-closed population, and one infection per person. Age or contact structure,
-waning immunity and reinfection are things you write into a model by extending
-it.
+How detailed the course of infection is is up to you: with just a recovery
+transition this is an SIR model; adding a latent transition makes it SEIR, and
+onset, hospitalisation and death come from further transitions in the
+progression and appear in the line list. The model holds to two assumptions: a
+closed population, and one infection per person.
 
 # Example
 
 ```julia
 using EpiBranch, Distributions
-model = HomogeneousProcess(; R0 = 2.0, population_size = 3000,
-    infectious_period = Exponential(1.0))
+model = ModelSpec(
+    HomogeneousProcess(; R0 = 2.0, population_size = 3000);
+    progression = [Transition(:recovered; from = :infection, rate = 1.0, terminal = true)])
 state = simulate(model; n_initial = 5)
 ```
 """
-struct HomogeneousProcess{B <: Real, A, O <: ObservationModel} <: TransmissionModel
+struct HomogeneousProcess{T <: Real} <: TransmissionModel
     population_size::Int
-    β::B
-    from::Symbol
-    until::Tuple
-    progression::Vector{AbstractClinicalTransition}
-    interventions::Vector{AbstractIntervention}
-    attributes::A
-    observation::O
+    β::Union{T, Nothing}            # transmission rate, or nothing when given as R0
+    R0::Union{T, Nothing}          # basic reproduction number, or nothing when β given
+    from::Union{Symbol, Nothing}   # infectious-window start; nothing → derive
+    until::Tuple                   # removal states that close the infectious window
 end
 
 function HomogeneousProcess(; transmission_rate = nothing, R0 = nothing,
         population_size::Integer,
-        infectious_period = nothing, latent_period = nothing,
-        progression = AbstractClinicalTransition[],
         from = nothing,
-        until = (:recovered, :died, :isolated),
-        interventions = AbstractIntervention[],
-        attributes = NoAttributes(),
-        observation::ObservationModel = NoObservation())
+        until = (:recovered, :died, :isolated))
     population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
     (transmission_rate === nothing) == (R0 === nothing) && throw(ArgumentError(
         "provide exactly one of `transmission_rate` (β directly) or `R0`"))
-
-    prog = convert(Vector{AbstractClinicalTransition}, progression)
-    # Desugar the timeline shorthands when no explicit progression is given:
-    # a latent period to :infectious, an infectious period to a recovery removal.
-    if isempty(prog)
-        latent_period === nothing ||
-            push!(prog,
-                Transition(:infectious; from = :infection,
-                    delay = _homogeneous_delay(latent_period)))
-        anchor = latent_period === nothing ? :infection : :infectious
-        infectious_period === nothing ||
-            push!(prog,
-                Transition(:recovered; from = anchor,
-                    delay = _homogeneous_delay(infectious_period), terminal = true))
-    end
-
-    # The infectious window opens at :infectious when a latent period produces
-    # it, otherwise at infection.
-    kfrom = from === nothing ?
-            (any(t -> _homogeneous_writes(t, :infectious), prog) ? :infectious :
-             :infection) : from
-
-    # Resolve β from R0 via the mean infectious period, or take it directly. β is
-    # kept at whatever real type it comes in as — a dual under automatic
-    # differentiation — so a gradient with respect to R0 or β flows into the pool.
-    if R0 !== nothing
-        infectious_period === nothing && throw(ArgumentError(
-            "`R0` requires `infectious_period` to derive β = R0 / mean infectious period"))
-        β = R0 / _homogeneous_mean(infectious_period)
-    else
-        β = float(transmission_rate)
-    end
-
-    return HomogeneousProcess(Int(population_size), β, kfrom, Tuple(until), prog,
-        _intervention_vector(interventions), attributes, observation)
+    # Keep the transmission parameter at whatever real type it comes in as — a
+    # dual under automatic differentiation — so a gradient with respect to β or
+    # R0 flows into the pool.
+    val = transmission_rate === nothing ? float(R0) : float(transmission_rate)
+    T = typeof(val)
+    β = transmission_rate === nothing ? nothing : val
+    r0 = R0 === nothing ? nothing : val
+    return HomogeneousProcess{T}(Int(population_size), β, r0, from, Tuple(until))
 end
 
-# A `Transition` delay is a `Distribution` or `(rng, ind) -> Real`; a scalar
-# period becomes a constant-delay closure so the sugar accepts both.
-_homogeneous_delay(d::Distribution) = d
-_homogeneous_delay(x::Real) = (rng, ind) -> float(x)
-
-# Mean of an infectious-period specification: a distribution's mean, or the
-# scalar itself.
-_homogeneous_mean(d::Distribution) = mean(d)
-_homogeneous_mean(x::Real) = float(x)
-
-# Does a clinical transition write the named state?
-_homogeneous_writes(t, s::Symbol) = hasproperty(t, :state) && getfield(t, :state) === s
-
-# The interventions/attributes/observation the model carries.
 population_size(m::HomogeneousProcess) = m.population_size
-interventions(m::HomogeneousProcess) = m.interventions
-attributes(m::HomogeneousProcess) = m.attributes
-observation(m::HomogeneousProcess) = m.observation
 
-# The state's timing type follows β's type, so a dual β makes an
-# `Individual{Dual}` pool and gradients flow through the crossing times.
-_time_type(m::HomogeneousProcess) = typeof(m.β)
+# The state's timing type follows the transmission parameter's type, so a dual β
+# or R0 makes an `Individual{Dual}` pool and gradients flow through the crossing
+# times.
+_time_type(::HomogeneousProcess{T}) where {T} = T
 
 function Base.show(io::IO, m::HomogeneousProcess)
-    beta = m.β isa AbstractFloat ? round(m.β; digits = 4) : m.β
-    print(io, "HomogeneousProcess(population_size=$(m.population_size), ",
-        "β=$(beta), from=:$(m.from), ",
-        "$(length(m.progression)) transitions)")
+    rate = m.β !== nothing ?
+           "β=$(m.β isa AbstractFloat ? round(m.β; digits = 4) : m.β)" :
+           "R0=$(m.R0 isa AbstractFloat ? round(m.R0; digits = 4) : m.R0)"
+    from = m.from === nothing ? "" : ", from=:$(m.from)"
+    print(io, "HomogeneousProcess(population_size=$(m.population_size), ", rate, from, ")")
 end
 
 """
-    simulate(model::HomogeneousProcess; rng = default_rng(), n_initial = 1) -> SimulationState
+    _simulate(model::HomogeneousProcess, sim_opts; interventions, attributes,
+              progression, observation, rng, condition, max_attempts)
 
-Simulate `model` by the Sellke threshold construction over its fixed pool,
-seeding `n_initial` index cases at time 0. Returns an EpiBranch
-`SimulationState`; `linelist(state)` turns it into the one-row-per-case
-DataFrame, carrying the infection, infectiousness, onset and recovery times the
-model's `progression` stamps on each case.
+Simulate the homogeneous pool by the Sellke threshold construction, with the
+modelling layers supplied by the caller (a bare process, or a `ModelSpec`). The
+infectious window's `from` state and, when the model was built with `R0`, β are
+resolved here from the composed `progression`.
 """
-function simulate(model::HomogeneousProcess; rng::AbstractRNG = Random.default_rng(),
-        n_initial::Integer = 1)
+function _simulate(model::HomogeneousProcess, sim_opts::SimOpts;
+        interventions, attributes, progression, observation, rng, condition,
+        max_attempts)
+    if condition !== nothing
+        for _ in 1:max_attempts
+            state = _simulate(model, sim_opts; interventions, attributes, progression,
+                observation, rng, condition = nothing, max_attempts)
+            state.cumulative_cases in condition && return state
+        end
+        throw(ErrorException(
+            "No simulation produced an outbreak of size $condition within $max_attempts attempts"))
+    end
+
+    n_initial = sim_opts.n_initial
     n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
     n_initial <= model.population_size ||
         throw(ArgumentError("n_initial cannot exceed population_size"))
 
-    state = new_state(model, model.progression, attributes(model), rng)
-    add_individuals!(state, model.population_size, interventions(model);
+    from = _resolve_infectious_from(model.from, progression)
+    β = _resolve_transmission_rate(model, progression, from)
+
+    state = new_state(model, progression, attributes, rng)
+    add_individuals!(state, model.population_size, interventions;
         setup = (ind, i) -> nothing)
 
     # The homogeneous pool is the one-type case of the structured Sellke pool:
-    # no attributes name the mixing (`mixing_by` defaults to `()`), so every
-    # individual has the empty type `()` and feels the same force β/N per
-    # infective (`sum(values(counts))` = number currently infectious).
+    # no attributes name the mixing, so every individual feels the same force
+    # β/N per infective (`sum(values(counts))` = number currently infectious).
     _sellke_pool!(state, collect(1:model.population_size), rng;
-        force = (type, counts) -> model.β / model.population_size * sum(values(counts)),
-        n_initial = n_initial, from = model.from, until = model.until)
+        force = (type, counts) -> β / model.population_size * sum(values(counts)),
+        n_initial = n_initial, from = from, until = model.until)
 
     # The pool loop writes per-individual state directly, so reconcile the
     # aggregate bookkeeping the engine would otherwise maintain.
@@ -177,6 +137,50 @@ function simulate(model::HomogeneousProcess; rng::AbstractRNG = Random.default_r
         for ind in state.individuals if get(ind.state, :infected, false));
         init = 0.0)
 
-    apply_observation!(observation(model), state, rng)
+    apply_observation!(observation, state, rng)
     return state
+end
+
+# β from the model: the direct rate if given, otherwise R0 / mean infectious
+# period, with the mean read from the composed progression.
+function _resolve_transmission_rate(model::HomogeneousProcess, progression, from)
+    model.β !== nothing && return model.β
+    return model.R0 / _infectious_period_mean(progression, from)
+end
+
+# ── Deriving the infectious window from a progression ────────────────
+# Shared by the structure-driven models: the infectious window's `from` state,
+# and (for R0) the mean infectious period, are read from the composed
+# progression when the model is simulated.
+
+# The state the infectious window opens at: :infectious when the progression
+# produces it (a latent period), otherwise :infection. An explicit `from`
+# overrides the derivation.
+_resolve_infectious_from(from::Symbol, progression) = from
+_resolve_infectious_from(::Nothing, progression) = _infectious_from(progression)
+function _infectious_from(progression)
+    any(t -> hasproperty(t, :state) && getfield(t, :state) === :infectious,
+        progression) ? :infectious : :infection
+end
+
+# Mean infectious period implied by the progression: the mean delay of the
+# terminal transition leaving the infectious-window `from` state. Turns an R0
+# into β; errors when no such mean is available.
+function _infectious_period_mean(progression, from)
+    for t in progression
+        (hasproperty(t, :from) && getfield(t, :from) === from &&
+         hasproperty(t, :terminal) && getfield(t, :terminal)) || continue
+        return _delay_mean(getfield(t, :delay))
+    end
+    throw(ArgumentError(
+        "cannot derive β from R0: the progression has no terminal transition " *
+        "from :$from, so there is no mean infectious period. Add a removal " *
+        "transition from :$from, or set transmission_rate (β) directly."))
+end
+_delay_mean(d::Distribution) = mean(d)
+_delay_mean(x::Real) = float(x)
+function _delay_mean(::Any)
+    throw(ArgumentError(
+        "cannot take the mean of a function-valued delay to derive β from R0; " *
+        "set transmission_rate (β) directly."))
 end

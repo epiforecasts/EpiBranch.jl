@@ -123,8 +123,10 @@ end
 # unbiased estimator's job (StochasticAD), not forward mode.
 @testset "AD through the Sellke pool (timing gradient)" begin
     seed = 20260701
-    build(β) = HomogeneousProcess(; transmission_rate = β, population_size = 500,
-        infectious_period = Exponential(1.0))
+    build(β) = ModelSpec(
+        HomogeneousProcess(; transmission_rate = β, population_size = 500);
+        progression = [Transition(:recovered; from = :infection,
+            delay = Exponential(1.0), terminal = true)])
     function total_infection_time(β)
         state = simulate(build(β); n_initial = 5, rng = StableRNG(seed))
         return sum(ind.infection_time
