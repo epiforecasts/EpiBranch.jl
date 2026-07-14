@@ -63,37 +63,49 @@ survival analysis: the competing-risks framework on the transmission
 hazard is the same machinery as Kenah's pairwise survival analysis and
 dynamic survival analysis.
 
-## The model is the generative specification
+## The model is a composition of layers
 
-A *model* is the whole generative specification of how data arises: a
-transmission process, the population it acts on (attributes), the policy in
-force (interventions), and how cases are observed. The process carries the
-last three itself, so one object answers both "what could this produce?"
-(`simulate`) and "how likely was this data?" (`loglikelihood`).
+A *model* is the whole generative specification of how data arises, built by
+composing a transmission process with the modelling layers laid on top of it.
+The transmission process is a *pure kernel* — the between-host mechanism, how
+infection spreads — and it carries nothing else. Onto it compose four layers:
 
-Interventions, attributes, and observation belong to the model rather than
-to `simulate`, because a simulation-based likelihood has to reproduce the
-same generative process that produced the data. If isolation suppressed
-transmission in the observed outbreak, the likelihood of those chain sizes
-is only correct if it also applies isolation. With the three on the model,
-`loglikelihood(data, model)` already has them, and the two entry points can
-never disagree. A scenario sweep is then a map over models, each scenario a
-process built with a different policy, the usual Turing/SciML idiom. A
-counterfactual is a fresh model built with the policy you want; there is no
-in-place "swap one input" helper, so a model's pieces are always explicit
-at construction.
+- **disease** — the within-host natural history: the timed states a case moves
+  through (latent, infectious, onset, severe, recovered or died), with
+  treatment expressible as a step it may pass through;
+- **attributes** — who the people are (age, susceptibility, infectiousness),
+  which can bear on transmission, on the disease course, and on how
+  interventions find their targets;
+- **interventions** — what is done about it (isolation, tracing, vaccination);
+- **observation** — how cases are seen (under-reporting, reporting delays).
 
-The three concerns stay distinct so a model can compose them without
-entangling them:
+These match how an epidemiologist decomposes an outbreak: a pathogen spreads,
+infection causes disease, in a population of people, under a response, watched
+through surveillance. Keeping the five distinct — rather than folding the
+disease or the policy into the process — is what lets each be replaced on its
+own and lets the same layer sit on any process.
 
-- **process** — how the disease spreads and progresses;
-- **interventions** — what is done about it (isolation, vaccination, tracing);
-- **attributes** — who the people are (age, susceptibility).
+The *composed* model, not the bare process, is what both entry points read, so
+"what could this produce?" (`simulate`) and "how likely was this data?"
+(`loglikelihood`) can never disagree: a simulation-based likelihood reproduces
+the same generative specification that produced the data. If isolation
+suppressed transmission in the observed outbreak, the likelihood of those chain
+sizes is only correct because the same composition applies isolation. A
+scenario sweep is a map over compositions, each scenario the same process under
+a different response; a counterfactual is a fresh composition with the layer
+you want. There is no in-place "swap one input" helper, so a model's layers are
+always explicit.
 
-The process knows nothing about the policy, and the policy is the same
-object whichever process it acts on. Each of the three is optional: a
-process opts into the ones it uses and inherits the engine integration and
-the simulation-based likelihood without re-implementing them.
+The layers are interlinked by nature — attributes bear on transmission,
+disease, and targeting at once; the infectious window is defined by disease
+states; a transmission rate expressed as a reproduction number depends on the
+mean infectious period. The composition is what gives each layer access to the
+others it needs, resolving those couplings where both sides are in hand rather
+than by fusing the tiers. A structure-driven process, for one, derives its
+infectious window — and, where transmission is given as a reproduction number,
+its rate — from the composed disease when the model is simulated or scored, so
+the process stays a pure kernel and the disease stays a single, separately
+specified layer.
 
 ## Three separated stages
 
@@ -303,13 +315,15 @@ this framework fits the same quantities it simulates from.
 ## Host timeline and transmission-route windows
 
 The three stages above describe the simplest model: one offspring law, one
-generation-time distribution. The branching process generalises this by
-carrying a **host timeline** (the case's natural history as a sequence of
-timed states from infection: infectious, onset, severe, died or recovered,
-buried) and treating transmission as a set of **route windows** keyed off
-that timeline. A route window is an offspring law, a `from` state where
-infectiousness begins, the states that end it, and a survival kernel for
-the timing within it.
+generation-time distribution. The branching process generalises this against a
+**host timeline** (the disease layer: the case's natural history as a sequence
+of timed states from infection — infectious, onset, severe, died or recovered,
+buried) composed onto it, treating transmission as a set of **route windows**
+keyed off that timeline. A route window is an offspring law, a `from` state
+where infectiousness begins, the states that end it, and a survival kernel for
+the timing within it. Because the timeline is a separate layer, the window's
+`from` state is resolved against the composed disease rather than fixed on the
+process.
 
 This is what lets several mechanisms become one. A funeral route runs
 between death and burial; a nosocomial route between admission and
