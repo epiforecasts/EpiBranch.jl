@@ -54,6 +54,7 @@ population_size(s::ModelSpec) = population_size(s.process)
 # process it wraps.
 single_type_offspring(s::ModelSpec) = single_type_offspring(s.process)
 n_types(s::ModelSpec) = n_types(s.process)
+_single_kernel(s::ModelSpec) = _single_kernel(s.process)
 
 # `simulate` unwraps the spec: the process is the model, the spec's layers are
 # the forcing inputs.
