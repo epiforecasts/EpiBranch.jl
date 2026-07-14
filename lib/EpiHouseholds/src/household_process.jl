@@ -15,10 +15,8 @@
 # cannot reproduce exactly for a finite, depleting clique.
 
 """
-    HouseholdProcess(sizes, kernel; infectious_period = nothing, latent_period = nothing,
-                     progression = [], from = nothing, until = (:recovered, :died, :isolated),
-                     external_hazard = 0.0, interventions = [], attributes = NoAttributes(),
-                     observation = NoObservation())
+    HouseholdProcess(sizes, kernel; from = nothing, until = (:recovered, :died, :isolated),
+                     external_hazard = 0.0, obs_end = Inf)
 
 Household-structured transmission. `sizes` gives the size of each household (so
 `sum(sizes)` individuals in `length(sizes)` households) and `kernel` is the
@@ -27,73 +25,45 @@ within-household **contact interval** — the one required input — any continu
 `(infector, susceptible) -> Distribution` for covariate models. The kernel times
 each infectious contact from the infector's `from` state.
 
-The infectious timeline is a flexible `progression` of EpiBranch `Transition`s,
-exactly as for `BranchingProcess`: a latent period is
-`Transition(:infectious, from = :infection, delay = …)`, an infectious period a
-removal transition (`Transition(:recovered, from = :infectious, delay = …)`),
-and symptom onset, testing and the rest are further transitions the line list
-reads. `from` is the state the kernel times from (`:infectious` when the
-timeline has a latent period, `:infection` otherwise); `until` names the removal
+The process is a pure transmission kernel. The natural history is a `progression`
+of EpiBranch `Transition`s attached with a [`ModelSpec`](@ref): a latent period
+is `Transition(:infectious; from = :infection, delay = …)`, an infectious period
+a terminal removal transition, and onset, testing and the rest are further
+transitions the line list reads. `from` is the state the kernel times contacts
+from; left as `nothing` it is derived from the progression (`:infectious` when a
+latent period produces it, otherwise `:infection`). `until` names the removal
 states that close the infectious window.
 
-`infectious_period` and `latent_period` are sugar for the two common
-transitions: each desugars into the corresponding `Transition` when no explicit
-`progression` is given, and accepts a scalar (constant) or a `Distribution`
-(per-case). `external_hazard` is the community force of infection — a scalar for
-a constant hazard or a calendar-time distribution for a time-varying one.
+`external_hazard` is the community force of infection — a scalar for a constant
+hazard or a calendar-time distribution for a time-varying one — and `obs_end`
+bounds the window `[0, obs_end]` over which those community introductions emerge.
 
 # Example
 
 ```julia
-using EpiHouseholds, Distributions
-model = HouseholdProcess([3, 4, 2], Weibull(1.5, 3.0); infectious_period = 6.0)
+using EpiHouseholds, EpiBranch, Distributions
+model = ModelSpec(HouseholdProcess([3, 4, 2], Weibull(1.5, 3.0));
+    progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])
 ```
 """
-struct HouseholdProcess{K, E, A, O <: ObservationModel} <: TransmissionModel
+struct HouseholdProcess{K, E} <: TransmissionModel
     household_of::Vector{Int}        # household_of[i] = household id of individual i
     members::Vector{Vector{Int}}     # members[h] = individual ids in household h
     kernel::K                        # within-household contact interval (required)
-    from::Symbol                     # state the kernel times contacts from
+    from::Union{Symbol, Nothing}     # infectious-window start; nothing → derive from progression
     until::Tuple                     # removal states that close the infectious window
-    progression::Vector{AbstractClinicalTransition}  # natural-history timeline
     external_hazard::E               # community force of infection (0 = none)
-    interventions::Vector{AbstractIntervention}
-    attributes::A
-    observation::O
+    obs_end::Float64                 # end of the community-importation window
 end
 
 function HouseholdProcess(sizes::AbstractVector{<:Integer}, kernel;
-        infectious_period = nothing,
-        latent_period = nothing,
-        progression = AbstractClinicalTransition[],
         from = nothing,
         until = (:recovered, :died, :isolated),
         external_hazard = 0.0,
-        interventions = AbstractIntervention[],
-        attributes = NoAttributes(),
-        observation::ObservationModel = NoObservation())
+        obs_end = Inf)
     all(s -> s >= 1, sizes) || throw(ArgumentError("household sizes must be ≥ 1"))
     _valid_external(external_hazard) ||
         throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
-
-    prog = convert(Vector{AbstractClinicalTransition}, progression)
-    # Desugar the common timeline shorthands when no explicit progression given:
-    # a latent period to :infectious, an infectious period to a recovery removal.
-    if isempty(prog)
-        latent_period === nothing ||
-            push!(prog, Transition(:infectious; from = :infection, delay = _as_delay(latent_period)))
-        anchor = latent_period === nothing ? :infection : :infectious
-        infectious_period === nothing ||
-            push!(prog,
-                Transition(:recovered; from = anchor, delay = _as_delay(infectious_period),
-                    terminal = true))
-    end
-
-    # The kernel times contacts from `from`: default to :infectious when the
-    # timeline produces it (a latent period), otherwise from infection.
-    kfrom = from === nothing ?
-            (any(t -> _writes_state(t, :infectious), prog) ? :infectious : :infection) :
-            from
 
     household_of = Int[]
     members = Vector{Int}[]
@@ -108,9 +78,8 @@ function HouseholdProcess(sizes::AbstractVector{<:Integer}, kernel;
         push!(members, mem)
     end
 
-    return HouseholdProcess(household_of, members, kernel, kfrom, Tuple(until),
-        prog, _normalise_external(external_hazard), _intervention_list(interventions),
-        attributes, observation)
+    return HouseholdProcess(household_of, members, kernel, from, Tuple(until),
+        _normalise_external(external_hazard), Float64(obs_end))
 end
 
 """
@@ -120,35 +89,17 @@ The size of each household in `model`.
 """
 household_sizes(m::HouseholdProcess) = length.(m.members)
 
-# The interventions/attributes/observation the model carries.
-interventions(m::HouseholdProcess) = m.interventions
-attributes(m::HouseholdProcess) = m.attributes
-observation(m::HouseholdProcess) = m.observation
-
 function Base.show(io::IO, m::HouseholdProcess)
     n = length(m.household_of)
     nh = length(m.members)
+    from = m.from === nothing ? "" : ", from=:$(m.from)"
     print(io, "HouseholdProcess($nh households, $n individuals, ",
-        "kernel=$(m.kernel isa Distribution ? nameof(typeof(m.kernel)) : "Function"), ",
-        "from=:$(m.from), $(length(m.progression)) transitions",
+        "kernel=$(m.kernel isa Distribution ? nameof(typeof(m.kernel)) : "Function")",
+        from,
         _ext_active(m.external_hazard) ? ", external_hazard=$(m.external_hazard))" : ")")
 end
 
 # ── Helpers (public-surface only) ────────────────────────────────────
-
-# A `Transition` delay is a `Distribution` or `(rng, ind) -> Real`; a scalar
-# period becomes a constant-delay closure so the sugar accepts both.
-_as_delay(d::Distribution) = d
-_as_delay(x::Real) = (rng, ind) -> float(x)
-
-# Does a clinical transition write the named state? Mirrors how EpiBranch
-# decides which states a progression produces, using only the public field.
-_writes_state(t, s::Symbol) = hasproperty(t, :state) && getfield(t, :state) === s
-
-# Normalise the interventions argument to a vector without reaching into the
-# EpiBranch internal `_intervention_vector`.
-_intervention_list(iv::AbstractVector) = convert(Vector{AbstractIntervention}, iv)
-_intervention_list(iv) = AbstractIntervention[iv]
 
 # The external community source: a non-negative scalar (constant hazard) or any
 # continuous distribution (a calendar-time hazard). `_ext_active` separates "no

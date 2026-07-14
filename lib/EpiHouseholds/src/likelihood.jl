@@ -127,15 +127,20 @@ end
 Base.length(d::HouseholdInfections) = length(d.household_of)
 
 """
-    household_infections(state, model) -> HouseholdInfections
+    household_infections(state, model::ModelSpec) -> HouseholdInfections
 
 Read the infection layer out of a simulated `state`: each member's household,
-infection time, infectiousness onset (the model's `from` state) and removal (the
-earliest of its `until` states), and index status. The exact `simulate →
-loglikelihood` round trip goes through this.
+infection time, infectiousness onset (the infectious-window `from` state) and
+removal (the earliest of its `until` states), and index status. The infectious
+window is read from the same composed progression the simulation used, so the
+`simulate → loglikelihood` round trip is exact. A bare `HouseholdProcess` is
+accepted too (its window opens at `:infection`).
 """
-function household_infections(state::SimulationState, model::HouseholdProcess;
-        obs_end = Inf)
+function household_infections(state::SimulationState,
+        model::ModelSpec{<:HouseholdProcess}; obs_end = model.process.obs_end)
+    process = model.process
+    from = _resolve_infectious_from(process.from, model.progression)
+    until = process.until
     inds = state.individuals
     n = length(inds)
     hh = Vector{Int}(undef, n)
@@ -147,12 +152,17 @@ function household_infections(state::SimulationState, model::HouseholdProcess;
         hh[k] = ind.state[:household]::Int
         if get(ind.state, :infected, false)
             infection[k] = ind.infection_time
-            infectious[k] = _window_open(ind, model.from)
-            removal[k] = _window_close(ind, model.until)
+            infectious[k] = _window_open(ind, from)
+            removal[k] = _window_close(ind, until)
             index[k] = get(ind.state, :index, false)
         end
     end
     return HouseholdInfections(hh, infection, infectious, removal, index; obs_end)
+end
+
+function household_infections(state::SimulationState, process::HouseholdProcess;
+        kwargs...)
+    return household_infections(state, ModelSpec(process); kwargs...)
 end
 
 # Counting-process rows for one household's pairs, with — per row — the global
@@ -279,6 +289,11 @@ cannot be marginalised in closed form.
 """
 function Distributions.loglikelihood(data::HouseholdInfections, model::HouseholdProcess)
     pairwise_surv_loglik(model.kernel, data; external_hazard = model.external_hazard)
+end
+
+function Distributions.loglikelihood(data::HouseholdInfections,
+        model::ModelSpec{<:HouseholdProcess})
+    loglikelihood(data, model.process)
 end
 
 # Resolve a covariate pair-kernel; a shared distribution ignores the pair.

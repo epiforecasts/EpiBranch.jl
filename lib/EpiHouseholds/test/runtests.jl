@@ -8,33 +8,29 @@ using DifferentiationInterface
 import Mooncake
 using ADTypes: AutoMooncake
 
+# The within-household natural history, composed onto the process with a
+# ModelSpec. A recovery removal (SIR) unless a latent step is prepended (SEIR).
+_sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = true)]
+
 @testset "EpiHouseholds.jl" begin
     @testset "construction" begin
-        m = HouseholdProcess([3, 4, 2], Exponential(3.0); infectious_period = 6.0)
+        m = HouseholdProcess([3, 4, 2], Exponential(3.0))
         @test m isa HouseholdProcess
         @test household_sizes(m) == [3, 4, 2]
         @test length(m.household_of) == 9
         @test m.members[1] == [1, 2, 3]
         @test m.members[3] == [8, 9]
-        @test m.from == :infection            # no latent period
-        @test length(m.progression) == 1      # the recovery removal transition
+        @test m.from === nothing              # window start derived from the progression
         @test m.external_hazard == 0.0
-        @test EpiHouseholds.interventions(m) == AbstractIntervention[]
 
-        # a latent period anchors the kernel at :infectious and adds a transition
-        ml = HouseholdProcess([3], Exponential(3.0);
-            latent_period = LogNormal(1.0, 0.4), infectious_period = Gamma(6, 1))
-        @test ml.from == :infectious
-        @test length(ml.progression) == 2
+        # with no latent transition the window opens at :infection
+        @test EpiBranch._resolve_infectious_from(m.from, _sir(6.0)) === :infection
 
-        # an explicit progression is used as given, and sets the anchor
-        prog = AbstractClinicalTransition[
-            Transition(:infectious; from = :infection, delay = LogNormal(1.0, 0.4)),
-            Transition(
-                :recovered; from = :infectious, delay = Gamma(6, 1), terminal = true)]
-        mp = HouseholdProcess([3], Exponential(3.0); progression = prog)
-        @test mp.from == :infectious
-        @test length(mp.progression) == 2
+        # a latent transition anchors the window at :infectious
+        seir = [Transition(:infectious; from = :infection, delay = LogNormal(1.0, 0.4)),
+            Transition(:recovered; from = :infectious, delay = Gamma(6, 1),
+                terminal = true)]
+        @test EpiBranch._resolve_infectious_from(nothing, seir) === :infectious
 
         # a scalar and a distribution external hazard are both accepted
         @test HouseholdProcess([2], Exponential(1.0); external_hazard = 0.05) isa
@@ -49,7 +45,8 @@ using ADTypes: AutoMooncake
     end
 
     @testset "simulation seeds one index per household and spreads within it" begin
-        m = HouseholdProcess(fill(4, 100), Weibull(1.3, 2.0); infectious_period = 6.0)
+        m = ModelSpec(HouseholdProcess(fill(4, 100), Weibull(1.3, 2.0));
+            progression = _sir(6.0))
         state = simulate(m; rng = StableRNG(1))
         df = linelist(state)
         @test count(df.index) == 100              # one index per household
@@ -59,8 +56,11 @@ using ADTypes: AutoMooncake
 
     @testset "the timeline is stamped through the progression (line-list columns)" begin
         # a latent period and an infectious period give onset and recovery dates
-        m = HouseholdProcess(fill(4, 50), Exponential(2.0);
-            latent_period = LogNormal(1.0, 0.3), infectious_period = Gamma(6, 1))
+        m = ModelSpec(HouseholdProcess(fill(4, 50), Exponential(2.0));
+            progression = [
+                Transition(:infectious; from = :infection, delay = LogNormal(1.0, 0.3)),
+                Transition(:recovered; from = :infectious, delay = Gamma(6, 1),
+                    terminal = true)])
         df = linelist(simulate(m; rng = StableRNG(2)))
         @test :date_infectious in propertynames(df)   # :infectious_time → date_infectious
         @test :date_recovered in propertynames(df)     # the removal transition
@@ -69,27 +69,30 @@ using ADTypes: AutoMooncake
     @testset "no within-household spread when the kernel is far out of the period" begin
         # contact intervals almost never fall within a tiny infectious period,
         # so only the index cases are infected.
-        m = HouseholdProcess(fill(5, 200), Exponential(50.0); infectious_period = 0.001)
+        m = ModelSpec(HouseholdProcess(fill(5, 200), Exponential(50.0));
+            progression = _sir(0.001))
         df = linelist(simulate(m; rng = StableRNG(3)))
         @test 200 <= size(df, 1) <= 205
     end
 
     @testset "final size grows with transmissibility" begin
         sizes = fill(5, 300)
-        low = HouseholdProcess(sizes, Exponential(20.0); infectious_period = 6.0)
-        high = HouseholdProcess(sizes, Exponential(2.0); infectious_period = 6.0)
+        low = ModelSpec(HouseholdProcess(sizes, Exponential(20.0)); progression = _sir(6.0))
+        high = ModelSpec(HouseholdProcess(sizes, Exponential(2.0)); progression = _sir(6.0))
         n_low = size(linelist(simulate(low; rng = StableRNG(4))), 1)
         n_high = size(linelist(simulate(high; rng = StableRNG(4))), 1)
         @test n_high > n_low
     end
 
     @testset "external force of infection introduces community cases" begin
-        m = HouseholdProcess(fill(4, 300), Exponential(3.0);
-            infectious_period = 6.0, external_hazard = 0.05)
-        df = linelist(simulate(m; rng = StableRNG(5), obs_end = 30.0))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 300), Exponential(3.0);
+                external_hazard = 0.05, obs_end = 30.0);
+            progression = _sir(6.0))
+        df = linelist(simulate(m; rng = StableRNG(5)))
         @test count(df.index) >= 1                 # community introductions happened
         @test size(df, 1) > count(df.index)        # plus within-household spread
-        @test count(df.index) != length(m.members) # not the one-index-per-household fallback
+        @test count(df.index) != length(m.process.members) # not the one-index fallback
     end
 
     @testset "pairwise survival likelihood: basics and differentiability" begin
@@ -112,7 +115,8 @@ using ADTypes: AutoMooncake
         # assumes, so the simulated infection layer recovers the kernel scale.
         true_scale = 4.0
         L = 6.0
-        m = HouseholdProcess(fill(4, 1500), Exponential(true_scale); infectious_period = L)
+        m = ModelSpec(HouseholdProcess(fill(4, 1500), Exponential(true_scale));
+            progression = _sir(L))
         state = simulate(m; rng = StableRNG(20260615))
         data = household_infections(state, m)
         @test count(data.is_index) == 1500            # one index per household
@@ -134,10 +138,12 @@ using ADTypes: AutoMooncake
         true_scale = 3.0
         L = 6.0
         Tobs = 30.0
-        m = HouseholdProcess(fill(4, 1500), Exponential(true_scale);
-            infectious_period = L, external_hazard = 0.05)
-        state = simulate(m; rng = StableRNG(7), obs_end = Tobs)
-        data = household_infections(state, m; obs_end = Tobs)
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 1500), Exponential(true_scale);
+                external_hazard = 0.05, obs_end = Tobs);
+            progression = _sir(L))
+        state = simulate(m; rng = StableRNG(7))
+        data = household_infections(state, m)
         @test count(data.is_index) >= 1
         @test isfinite(loglikelihood(data, m))          # dispatched form with external
 
@@ -152,7 +158,8 @@ using ADTypes: AutoMooncake
     @testset "inference-friendly likelihood: kernel varies over a fixed infection layer" begin
         # the form a household @model evaluates each iteration: the kernel carries
         # the fitted parameter, the infection layer is the augmented latent state.
-        m = HouseholdProcess(fill(4, 400), Exponential(3.0); infectious_period = 6.0)
+        m = ModelSpec(HouseholdProcess(fill(4, 400), Exponential(3.0));
+            progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(8)), m)
 
         f(logβ) = pairwise_surv_loglik(Exponential(1 / exp(logβ)), data)
@@ -173,11 +180,11 @@ using ADTypes: AutoMooncake
     end
 
     @testset "the model's observation is applied in simulate" begin
-        # a HouseholdProcess carrying a PerCaseObservation reports cases through
-        # the shared observation protocol, like core simulate.
+        # an observation model composed onto the process reports cases through the
+        # shared observation protocol, like core simulate.
         obs = PerCaseObservation(; detection_prob = 0.5, delay = Exponential(2.0))
-        m = HouseholdProcess(fill(4, 200), Exponential(3.0);
-            infectious_period = 6.0, observation = obs)
+        m = ModelSpec(HouseholdProcess(fill(4, 200), Exponential(3.0));
+            progression = _sir(6.0), observation = obs)
         df = linelist(simulate(m; rng = StableRNG(11)))
         @test :reported in propertynames(df)            # observation ran
         @test 0 < count(df.reported) < size(df, 1)       # ~half detected, not all
@@ -187,7 +194,8 @@ using ADTypes: AutoMooncake
         # the layout captures the fixed row structure once; evaluating it over a
         # grid of kernel scales must reproduce the dynamic HouseholdInfections
         # path exactly (up to row order) while the same layout object is reused.
-        m = HouseholdProcess(fill(4, 500), Exponential(3.0); infectious_period = 6.0)
+        m = ModelSpec(HouseholdProcess(fill(4, 500), Exponential(3.0));
+            progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(101)), m)
         layout = compile_household_pairs(data)
 
@@ -214,10 +222,12 @@ using ADTypes: AutoMooncake
         # the layout must be built with external=true and agree with the dynamic
         # external path across kernel scales.
         Tobs = 30.0
-        m = HouseholdProcess(fill(4, 500), Exponential(3.0);
-            infectious_period = 6.0, external_hazard = 0.05)
-        state = simulate(m; rng = StableRNG(102), obs_end = Tobs)
-        data = household_infections(state, m; obs_end = Tobs)
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 500), Exponential(3.0);
+                external_hazard = 0.05, obs_end = Tobs);
+            progression = _sir(6.0))
+        state = simulate(m; rng = StableRNG(102))
+        data = household_infections(state, m)
         layout = compile_household_pairs(data; external = true)
 
         @test layout.external
@@ -237,7 +247,8 @@ using ADTypes: AutoMooncake
     @testset "compiled pair layout: covariate (per-pair) kernel" begin
         # a two-argument (infector, susceptible) -> Distribution kernel routes
         # through _pair on both the dynamic and the compiled path, so they agree.
-        m = HouseholdProcess(fill(4, 300), Exponential(3.0); infectious_period = 6.0)
+        m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
+            progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(103)), m)
         layout = compile_household_pairs(data)
 
@@ -253,7 +264,8 @@ using ADTypes: AutoMooncake
         # fitted parameter rides the kernel, not the data, so the layout must
         # carry the AD duals through both the cumulative-hazard pass and the
         # per-susceptible log-sum-exp. Checked in all three kernel modes.
-        m = HouseholdProcess(fill(4, 300), Exponential(3.0); infectious_period = 6.0)
+        m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
+            progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(104)), m)
         layout = compile_household_pairs(data)
 
@@ -277,10 +289,11 @@ using ADTypes: AutoMooncake
         # external mode: differentiate the within-household kernel while a fixed
         # community hazard also contributes rows.
         Tobs = 30.0
-        me = HouseholdProcess(fill(4, 300), Exponential(3.0);
-            infectious_period = 6.0, external_hazard = 0.05)
-        de = household_infections(simulate(me; rng = StableRNG(106), obs_end = Tobs),
-            me; obs_end = Tobs)
+        me = ModelSpec(
+            HouseholdProcess(fill(4, 300), Exponential(3.0);
+                external_hazard = 0.05, obs_end = Tobs);
+            progression = _sir(6.0))
+        de = household_infections(simulate(me; rng = StableRNG(106)), me)
         le = compile_household_pairs(de; external = true)
         e_fast(logβ) = pairwise_surv_loglik(Exponential(1 / exp(logβ)), de, le;
             external_hazard = 0.05)
@@ -337,7 +350,8 @@ using ADTypes: AutoMooncake
 
         # calling the external-built layout without an external hazard (and vice
         # versa) is a mismatch and must raise
-        m = HouseholdProcess(fill(4, 50), Exponential(3.0); infectious_period = 6.0)
+        m = ModelSpec(HouseholdProcess(fill(4, 50), Exponential(3.0));
+            progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(105)), m)
         ext_layout = compile_household_pairs(data; external = true)
         int_layout = compile_household_pairs(data; external = false)
@@ -358,8 +372,8 @@ using ADTypes: AutoMooncake
         # every step — must land on the same optimum as the dynamic path and near
         # the truth.
         true_scale = 4.0
-        m = HouseholdProcess(fill(4, 800), Exponential(true_scale);
-            infectious_period = 6.0)
+        m = ModelSpec(HouseholdProcess(fill(4, 800), Exponential(true_scale));
+            progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(202)), m)
         layout = compile_household_pairs(data)
 
@@ -392,7 +406,8 @@ using ADTypes: AutoMooncake
         # compiled path matches ForwardDiff — shared kernel and external mode.
         backend = AutoMooncake(; config = nothing)
 
-        m = HouseholdProcess(fill(4, 300), Exponential(3.0); infectious_period = 6.0)
+        m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
+            progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(104)), m)
         layout = compile_household_pairs(data)
         f_fast(θ) = pairwise_surv_loglik(Exponential(1 / exp(θ[1])), data, layout)
@@ -401,10 +416,11 @@ using ADTypes: AutoMooncake
               ForwardDiff.gradient(f_fast, x)
 
         Tobs = 30.0
-        me = HouseholdProcess(fill(4, 300), Exponential(3.0);
-            infectious_period = 6.0, external_hazard = 0.05)
-        de = household_infections(
-            simulate(me; rng = StableRNG(106), obs_end = Tobs), me; obs_end = Tobs)
+        me = ModelSpec(
+            HouseholdProcess(fill(4, 300), Exponential(3.0);
+                external_hazard = 0.05, obs_end = Tobs);
+            progression = _sir(6.0))
+        de = household_infections(simulate(me; rng = StableRNG(106)), me)
         le = compile_household_pairs(de; external = true)
         e_fast(θ) = pairwise_surv_loglik(Exponential(1 / exp(θ[1])), de, le;
             external_hazard = 0.05)
