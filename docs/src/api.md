@@ -8,6 +8,7 @@ Infectiousness
 HomogeneousProcess
 NetworkProcess
 HouseholdProcess
+ModelSpec
 single_type_offspring
 EpiBranch.draw_offspring
 ```
