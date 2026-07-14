@@ -76,6 +76,7 @@ _resolve_probability(p::Real, rng, ind) = float(p)
 _resolve_probability(f, rng, ind) = float(f(rng, ind))
 
 _resolve_delay(d::Distribution, rng, ind) = float(rand(rng, d))
+_resolve_delay(x::Real, rng, ind) = float(x)         # a fixed, deterministic delay
 _resolve_delay(f, rng, ind) = float(f(rng, ind))
 
 # Anchor for a transition's `delay`. A `Symbol` is looked up in

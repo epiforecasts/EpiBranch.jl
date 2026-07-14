@@ -1,5 +1,5 @@
 """
-    Transition(state; from = :infection, delay, probability = 1.0, terminal = false)
+    Transition(state; from = :infection, delay = …, rate = …, probability = 1.0, terminal = false)
 
 A timed transition in a case's natural history: the case reaches `state`
 a `delay` after it reached `from`, with probability `probability`. On each
@@ -16,8 +16,11 @@ accepted, for anchors held as fields on the `Individual`. If the `from`
 state's time is not finite (the upstream state was never reached, or an
 asymptomatic case has a `NaN` onset), the transition is skipped.
 
-`delay` is a `Distribution` or `(rng, ind) -> Real`; `probability` is a
-`Real` or `(rng, ind) -> Real`, both resolved per individual.
+The timing is given as exactly one of `delay` or `rate`. `delay` is a fixed
+`Real`, a `Distribution`, or an `(rng, ind) -> Real`, resolved per individual.
+`rate = r` is the compartmental alternative: an exponential (Markovian)
+transition with hazard `r`, i.e. `delay = Exponential(1 / r)` (mean `1 / r`).
+`probability` is a `Real` or `(rng, ind) -> Real`, resolved per individual.
 
 `terminal = true` marks the transition as ending the case: it joins the
 competing-terminal arbitration, where `:outcome` and `:outcome_time` take
@@ -30,6 +33,9 @@ and bespoke key names.
 ```julia
 # latent period: infection → onset of infectiousness
 Transition(:infectious, from = :infection, delay = LogNormal(1.0, 0.4))
+
+# infectious period as a recovery rate (exponential, mean 1/γ)
+Transition(:recovered, from = :infectious, rate = 1 / 6, terminal = true)
 
 # severity branch, then death from the severe state
 Transition(:severe, from = :onset,  delay = Gamma(2, 2), probability = 0.3)
@@ -45,9 +51,21 @@ struct Transition{D, P, F} <: AbstractClinicalTransition
     terminal::Bool
 end
 
-function Transition(state::Symbol; delay, from = :infection,
-        probability = 1.0, terminal::Bool = false)
-    return Transition(state, Symbol(state, :_time), delay, probability, from, terminal)
+function Transition(state::Symbol; delay = nothing, rate = nothing,
+        from = :infection, probability = 1.0, terminal::Bool = false)
+    d = _transition_delay(delay, rate)
+    return Transition(state, Symbol(state, :_time), d, probability, from, terminal)
+end
+
+# Resolve a transition's timing from exactly one of `delay` or `rate`. A rate
+# `r` is an exponential (Markovian) transition with hazard `r`, so the delay is
+# `Exponential(1 / r)` with mean `1 / r`.
+function _transition_delay(delay, rate)
+    (delay === nothing) == (rate === nothing) && throw(ArgumentError(
+        "Transition needs exactly one of `delay` or `rate`"))
+    rate === nothing && return delay
+    rate > 0 || throw(ArgumentError("rate must be positive, got $rate"))
+    return Exponential(1 / rate)
 end
 
 # Time of the `from` state for this individual. `:infection` is the
