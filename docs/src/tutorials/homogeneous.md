@@ -17,21 +17,29 @@ not just a final count.
 
 ## Defining a model
 
-The reproduction number, the population size and the infectious period are
-the three inputs. `simulate` seeds `n_initial` index cases at time 0 and
-returns a `SimulationState`.
+`HomogeneousProcess` is a pure transmission kernel: the reproduction number
+(or per-infective rate) and the population size are its only inputs. The
+natural history, here just an infectious period, is a `progression` of
+[`Transition`](@ref)s attached with a [`ModelSpec`](@ref). `simulate` seeds
+`n_initial` index cases at time 0 and returns a `SimulationState`.
 
 ```@example homogeneous
 using EpiBranch
 using Distributions
 using StableRNGs
 
-model = HomogeneousProcess(; R0 = 2.0, population_size = 3000,
-    infectious_period = Exponential(1.0))
+model = ModelSpec(HomogeneousProcess(; R0 = 2.0, population_size = 3000);
+    progression = [Transition(:recovered; from = :infection,
+        delay = Exponential(1.0), terminal = true)])
 
 state = simulate(model; n_initial = 5, rng = StableRNG(1))
 state.cumulative_cases
 ```
+
+With `R0`, β is resolved at simulate time as `R0` divided by the mean
+infectious period read from the progression. This means `R0` needs a
+progression with a removal transition whose mean is defined: a scalar delay
+or a distribution, not a raw function.
 
 [`linelist`](@ref) renders the outbreak as a one-row-per-case DataFrame,
 carrying the infection and recovery times the model stamps on each case.
@@ -52,25 +60,33 @@ round(count(is_infected, state.individuals) / N, digits = 2)
 
 Transmission can be set as `R0` or, equivalently, as a per-infective rate
 `transmission_rate`. `R0` is the rate times the mean infectious period, so
-the two models below are the same.
+the two models below are the same. Set as `transmission_rate`, β is fixed on
+the kernel directly; set as `R0`, it is resolved from the progression at
+simulate time.
 
 ```@example homogeneous
-model_rate = HomogeneousProcess(; transmission_rate = 2.0, population_size = 3000,
-    infectious_period = Exponential(1.0))
-model_rate.β
+model_rate = ModelSpec(
+    HomogeneousProcess(; transmission_rate = 2.0, population_size = 3000);
+    progression = [Transition(:recovered; from = :infection,
+        delay = Exponential(1.0), terminal = true)])
+model_rate.process.β
 ```
 
 ## An exposed period
 
-A `latent_period` inserts an exposed period between infection and
-infectiousness, turning the SIR model into an SEIR one. The final size is
-governed by `R0` and is unchanged by the latent period; what changes is
-the timing, since a case is now infectious only after its exposed period
-has passed.
+Adding an `:infectious` transition inserts an exposed period between
+infection and infectiousness, turning the SIR model into an SEIR one. The
+infectious period then runs `from = :infectious` instead of from infection.
+The final size is governed by `R0` and is unchanged by the latent period;
+what changes is the timing, since a case is now infectious only after its
+exposed period has passed.
 
 ```@example homogeneous
-seir = HomogeneousProcess(; R0 = 2.0, population_size = 3000,
-    latent_period = Exponential(2.0), infectious_period = Exponential(4.0))
+seir = ModelSpec(HomogeneousProcess(; R0 = 2.0, population_size = 3000);
+    progression = [
+        Transition(:infectious; from = :infection, delay = Exponential(2.0)),
+        Transition(:recovered; from = :infectious,
+            delay = Exponential(4.0), terminal = true)])
 seir_state = simulate(seir; n_initial = 10, rng = StableRNG(3))
 sort(propertynames(linelist(seir_state)))
 ```
@@ -79,7 +95,10 @@ sort(propertynames(linelist(seir_state)))
 progression writes an `:infectious_time` onto each case. The natural
 history is a `progression` of [`Transition`](@ref)s, exactly as for
 [`BranchingProcess`](@ref), so symptom onset, hospitalisation and death
-come from the same mechanism and appear as their own line-list columns.
+come from the same mechanism and appear as their own line-list columns. The
+kernel's `from`, the state its infectious window opens at, is derived from
+the progression: `:infectious` when a latent transition produces it,
+otherwise `:infection`.
 
 ## Isolation shortens the outbreak
 
@@ -93,11 +112,13 @@ Here the same population runs to a large outbreak when nothing intervenes,
 but isolating each case a day after infection holds it well back.
 
 ```@example homogeneous
-baseline = HomogeneousProcess(; transmission_rate = 2.0, population_size = 2000,
-    infectious_period = Exponential(1.0))
+baseline = ModelSpec(
+    HomogeneousProcess(; transmission_rate = 2.0, population_size = 2000);
+    progression = [Transition(:recovered; from = :infection,
+        delay = Exponential(1.0), terminal = true)])
 
-isolating = HomogeneousProcess(; transmission_rate = 2.0, population_size = 2000,
-    infectious_period = Exponential(1.0),
+isolating = ModelSpec(
+    HomogeneousProcess(; transmission_rate = 2.0, population_size = 2000);
     progression = [
         Transition(:recovered; from = :infection,
             delay = Exponential(1.0), terminal = true),

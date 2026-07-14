@@ -5,10 +5,11 @@ and [`offspring_distribution`](@ref) turn a model into a
 `Distribution` you can put on the right-hand side of
 [Turing.jl](https://turinglang.org)'s `~`. With no extra arguments
 they return the analytical form (`Borel`, `GammaBorel`, the bare
-offspring `Distribution`) where one exists; with `seeds`, `pi`,
-interventions, or other kwargs they return a wrapper that routes
-through the same `loglikelihood` methods used for MLE. Both paths are
-AD-compatible, so NUTS works wherever the underlying likelihood does.
+offspring `Distribution`) where one exists; with `seeds`, `pi`, a
+[`ModelSpec`](@ref) composing interventions onto the process, or other
+kwargs they return a wrapper that routes through the same
+`loglikelihood` methods used for MLE. Both paths are AD-compatible, so
+NUTS works wherever the underlying likelihood does.
 
 !!! note
     Turing.jl is not a dependency of EpiBranch.jl. Install it separately
@@ -143,8 +144,9 @@ println("True:                 R=$true_R")
 
 ## Inference under interventions
 
-When the model carries interventions, `loglikelihood` uses the
-simulation-based likelihood. Because this is stochastic and not
+When a [`ModelSpec`](@ref) composes interventions onto the process,
+`loglikelihood` uses the simulation-based likelihood. Because this is
+stochastic and not
 differentiable, you have to use a gradient-free sampler like `MH()`
 instead of `NUTS()`:
 
@@ -154,7 +156,7 @@ rng = StableRNG(42)
 true_R = 2.0
 iso = Isolation(onset_to_isolation_delay=Exponential(2.0))
 clinical = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
-true_model = BranchingProcess(Poisson(true_R), Exponential(5.0);
+true_model = ModelSpec(BranchingProcess(Poisson(true_R), Exponential(5.0));
     interventions=[iso], attributes=clinical)
 
 observed_states = simulate(true_model, 100;
@@ -176,7 +178,7 @@ P(size = cap).
 ```@example inference
 @model function intervention_model(data, iso, clinical)
     R ~ LogNormal(0.5, 0.5)
-    model = BranchingProcess(Poisson(R), Exponential(5.0);
+    model = ModelSpec(BranchingProcess(Poisson(R), Exponential(5.0));
         interventions = [iso], attributes = clinical)
     data ~ chain_size_distribution(model;
         max_cases = 500,

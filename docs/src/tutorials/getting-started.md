@@ -20,10 +20,11 @@ model = BranchingProcess(
 )
 ```
 
-This is already a complete model. The population it acts on (attributes),
-the policy in force (interventions), and how cases are observed
-(observation) are keyword arguments you add to the constructor below;
-`simulate` and `loglikelihood` then read them straight off the model.
+This is already a complete model. The transmission process is a pure
+kernel. The population it acts on (attributes), the policy in force
+(interventions), and how cases are observed (observation) are modelling
+layers you compose with a [`ModelSpec`](@ref) wrapper below; `simulate`
+and `loglikelihood` then read them off the resulting specification.
 
 [`NegBin`](@ref) is a convenience constructor for the Negative Binomial,
 parameterised by mean (R) and dispersion (k), matching the epidemiological
@@ -46,16 +47,16 @@ outbreak metadata.
 ## Adding a population
 
 To model symptom onset (needed for isolation-based interventions), provide
-an incubation period distribution via [`clinical_presentation`](@ref) as
-the model's `attributes`:
+an incubation period distribution via [`clinical_presentation`](@ref) as an
+`attributes` layer on a [`ModelSpec`](@ref):
 
 ```@example gettingstarted
-model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5);
+spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
 )
 
 rng = StableRNG(42)
-state = simulate(model; max_cases = 500, rng = rng)
+state = simulate(spec; max_cases = 500, rng = rng)
 
 # Check onset times are set
 ind = state.individuals[1]
@@ -64,20 +65,21 @@ println("Infection: $(round(ind.infection_time, digits=1)), Onset: $(round(onset
 
 ## Adding interventions
 
-Interventions are another thing the model carries. `simulate` reads them
-from the model, so there is nothing to pass at the call site:
+Interventions are another layer you compose with a [`ModelSpec`](@ref).
+`simulate` reads them from the specification, so there is nothing to pass
+at the call site:
 
 ```@example gettingstarted
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.5))
 
-model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5);
+spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     interventions = [iso, ct],
 )
 
 rng = StableRNG(42)
-state = simulate(model; max_cases = 500, rng = rng)
+state = simulate(spec; max_cases = 500, rng = rng)
 println("Cases: $(state.cumulative_cases)")
 println("Isolated: $(count(is_isolated, state.individuals))")
 println("Traced: $(count(is_traced, state.individuals))")
@@ -89,7 +91,7 @@ Run many replicates to estimate containment probability:
 
 ```@example gettingstarted
 rng = StableRNG(42)
-results = simulate(model, 500; max_cases = 5000, rng = rng)
+results = simulate(spec, 500; max_cases = 5000, rng = rng)
 println("Containment probability: $(round(containment_probability(results), digits=3))")
 ```
 
@@ -144,9 +146,9 @@ first(r_df, 5)
 Some quantities have closed-form solutions — no simulation needed:
 
 ```@example gettingstarted
-println("P(extinction): $(round(extinction_probability(model), digits=3))")
-println("P(epidemic):   $(round(epidemic_probability(model), digits=3))")
-println("Top 20% cause $(round(proportion_transmission(model; prop_cases=0.2) * 100, digits=1))% of transmission")
+println("P(extinction): $(round(extinction_probability(spec), digits=3))")
+println("P(epidemic):   $(round(epidemic_probability(spec), digits=3))")
+println("Top 20% cause $(round(proportion_transmission(spec; prop_cases=0.2) * 100, digits=1))% of transmission")
 ```
 
 ## Conditioned simulation
@@ -155,7 +157,7 @@ Generate outbreaks of a specific size via rejection sampling:
 
 ```@example gettingstarted
 rng = StableRNG(42)
-state = simulate(model;
+state = simulate(spec;
     condition = 50:100,
     max_cases = 200,
     rng = rng,

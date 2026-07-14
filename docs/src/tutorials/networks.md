@@ -19,11 +19,16 @@ elsewhere.
 
 ## Defining a network
 
-Pass an adjacency list, where `adjacency[i]` holds the nodes connected
-to node `i`, and the contact-interval kernel — a `Distributions.jl`
-distribution shared by every edge. `infectious_period` sets how long a
-node stays infectious once infected, and an optional `latent_period`
-delays the start of that window.
+The process is a pure transmission kernel: pass an adjacency list, where
+`adjacency[i]` holds the nodes connected to node `i`, and the
+contact-interval kernel — a `Distributions.jl` distribution shared by
+every edge. The disease natural history is a `progression` of
+`Transition`s attached with a [`ModelSpec`](@ref): a terminal removal
+transition sets how long a node stays infectious once infected, and an
+optional latent-period transition delays the start of that window. The
+kernel times contacts from the window's start state, derived from the
+progression (`:infectious` when a latent period produces it, otherwise
+`:infection`).
 
 ```@example networks
 using EpiBranch
@@ -51,8 +56,11 @@ function household_ring(n_households, household_size)
 end
 
 adjacency = household_ring(20, 4)
-model = NetworkProcess(adjacency, Exponential(3.0);
-    latent_period = LogNormal(1.6, 0.5), infectious_period = 7.0)
+model = ModelSpec(NetworkProcess(adjacency, Exponential(3.0));
+    progression = [
+        Transition(:infectious; from = :infection, delay = LogNormal(1.6, 0.5)),
+        Transition(:recovered; from = :infectious, delay = 7.0, terminal = true),
+    ])
 ```
 
 The kernel here has a mean contact interval of three days, and each node
@@ -97,8 +105,9 @@ attrs = [
     clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
 ]
 
-model_attrs = NetworkProcess(adjacency, Exponential(3.0);
-    infectious_period = 7.0, attributes = attrs)
+model_attrs = ModelSpec(NetworkProcess(adjacency, Exponential(3.0));
+    progression = [Transition(:recovered; from = :infection, delay = 7.0, terminal = true)],
+    attributes = attrs)
 state = simulate(model_attrs; n_initial = 1, rng = StableRNG(7))
 
 infected = filter(is_infected, state.individuals)
@@ -123,13 +132,13 @@ the outbreak back.
 ```@example networks
 kernel = Exponential(1.5)
 
-baseline = NetworkProcess(adjacency, kernel;
-    progression = AbstractClinicalTransition[
+baseline = ModelSpec(NetworkProcess(adjacency, kernel);
+    progression = [
         Transition(:recovered; from = :infection,
             delay = (rng, ind) -> 10.0, terminal = true)])
 
-isolating = NetworkProcess(adjacency, kernel;
-    progression = AbstractClinicalTransition[
+isolating = ModelSpec(NetworkProcess(adjacency, kernel);
+    progression = [
         Transition(:recovered; from = :infection,
             delay = (rng, ind) -> 10.0, terminal = true),
         Transition(:isolated; from = :infection, delay = Exponential(2.0))])
@@ -149,13 +158,15 @@ println("Mean size, with isolation: ",
 
 Without an external hazard the outbreak starts from the seeded index
 nodes and spreads only along the edges. An `external_hazard` adds a
-community force of infection, so fresh introductions appear over time;
-pass a finite `obs_end` to bound the window over which they can arrive.
+community force of infection, so fresh introductions appear over time; a
+finite `obs_end` on the process bounds the window over which they can
+arrive.
 
 ```@example networks
-model_ext = NetworkProcess(adjacency, Exponential(3.0);
-    infectious_period = 7.0, external_hazard = 0.02)
-state = simulate(model_ext; rng = StableRNG(11), obs_end = 60.0)
+model_ext = ModelSpec(NetworkProcess(adjacency, Exponential(3.0);
+        external_hazard = 0.02, obs_end = 60.0);
+    progression = [Transition(:recovered; from = :infection, delay = 7.0, terminal = true)])
+state = simulate(model_ext; rng = StableRNG(11))
 df = linelist(state)
 
 println("Cases: ", size(df, 1),
