@@ -37,6 +37,11 @@ onset, hospitalisation and death come from further transitions in the
 progression and appear in the line list. The model holds to two assumptions: a
 closed population, and one infection per person.
 
+The pool is always simulated to extinction over its fixed population, so the
+`simulate` termination controls (`max_cases`, `max_generations`, `max_time`,
+`stopping_rules`) do not apply; only `n_initial` (and `condition`) are used.
+This holds for the structure-driven models generally.
+
 # Example
 
 ```julia
