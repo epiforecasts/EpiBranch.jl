@@ -124,6 +124,44 @@ function _simulate_n(model::TransmissionModel, n::Int, sim_opts::SimOpts;
     end
 end
 
+# ── Shared helpers for the structure-driven (continuous-time) models ────
+# The homogeneous, household and network `_simulate` methods run their own
+# Sellke loop rather than the generation engine, so they share the same two
+# concerns: retrying until a `condition` is met, and reconciling the aggregate
+# bookkeeping the engine would otherwise maintain.
+
+"""
+    _retry_for_condition(run, condition, max_attempts)
+
+Call `run()` (one simulation) until its `cumulative_cases` fall in `condition`,
+up to `max_attempts` times; error if none does.
+"""
+function _retry_for_condition(run, condition, max_attempts)
+    for _ in 1:max_attempts
+        state = run()
+        state.cumulative_cases in condition && return state
+    end
+    throw(ErrorException(
+        "No simulation produced an outbreak of size $condition within $max_attempts attempts"))
+end
+
+"""
+    _reconcile_sellke_bookkeeping!(state) -> state
+
+Set `cumulative_cases` and `max_infection_time` from the per-individual state a
+continuous-time (Sellke) loop writes directly, keeping the returned state
+consistent with the generation engine's bookkeeping.
+"""
+function _reconcile_sellke_bookkeeping!(state::SimulationState)
+    state.cumulative_cases = count(
+        ind -> get(ind.state, :infected, false), state.individuals)
+    state.max_infection_time = maximum(
+        (ind.infection_time
+        for ind in state.individuals if get(ind.state, :infected, false));
+        init = 0.0)
+    return state
+end
+
 # ── Unified generation step ─────────────────────────────────────────
 #
 # Every model advances through this one step. The only thing a model

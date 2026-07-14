@@ -105,15 +105,10 @@ resolved here from the composed `progression`.
 function _simulate(model::HomogeneousProcess, sim_opts::SimOpts;
         interventions, attributes, progression, observation, rng, condition,
         max_attempts)
-    if condition !== nothing
-        for _ in 1:max_attempts
-            state = _simulate(model, sim_opts; interventions, attributes, progression,
-                observation, rng, condition = nothing, max_attempts)
-            state.cumulative_cases in condition && return state
-        end
-        throw(ErrorException(
-            "No simulation produced an outbreak of size $condition within $max_attempts attempts"))
-    end
+    condition !== nothing && return _retry_for_condition(
+        () -> _simulate(model, sim_opts; interventions, attributes, progression,
+            observation, rng, condition = nothing, max_attempts),
+        condition, max_attempts)
 
     n_initial = sim_opts.n_initial
     n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
@@ -134,15 +129,7 @@ function _simulate(model::HomogeneousProcess, sim_opts::SimOpts;
         force = (type, counts) -> β / model.population_size * sum(values(counts)),
         n_initial = n_initial, from = from, until = model.until)
 
-    # The pool loop writes per-individual state directly, so reconcile the
-    # aggregate bookkeeping the engine would otherwise maintain.
-    state.cumulative_cases = count(
-        ind -> get(ind.state, :infected, false), state.individuals)
-    state.max_infection_time = maximum(
-        (ind.infection_time
-        for ind in state.individuals if get(ind.state, :infected, false));
-        init = 0.0)
-
+    _reconcile_sellke_bookkeeping!(state)
     apply_observation!(observation, state, rng)
     return state
 end

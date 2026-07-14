@@ -28,15 +28,10 @@ would seed every node).
 function _simulate(model::NetworkProcess, sim_opts::SimOpts;
         interventions, attributes, progression, observation, rng, condition,
         max_attempts)
-    if condition !== nothing
-        for _ in 1:max_attempts
-            state = _simulate(model, sim_opts; interventions, attributes, progression,
-                observation, rng, condition = nothing, max_attempts)
-            state.cumulative_cases in condition && return state
-        end
-        throw(ErrorException(
-            "No simulation produced an outbreak of size $condition within $max_attempts attempts"))
-    end
+    condition !== nothing && return _retry_for_condition(
+        () -> _simulate(model, sim_opts; interventions, attributes, progression,
+            observation, rng, condition = nothing, max_attempts),
+        condition, max_attempts)
 
     from = _resolve_infectious_from(model.from, progression)
     Tobs = model.obs_end
@@ -60,15 +55,7 @@ function _simulate(model::NetworkProcess, sim_opts::SimOpts;
         for (k, nb) in enumerate(model.adjacency[inf])
         if !is_infected(st.individuals[nb])))
 
-    # The race writes per-individual state directly, so reconcile the aggregate
-    # bookkeeping the engine would otherwise maintain, keeping the returned
-    # state consistent with core `simulate` for downstream consumers.
-    state.cumulative_cases = count(ind -> get(ind.state, :infected, false), state.individuals)
-    state.max_infection_time = maximum(
-        (ind.infection_time
-        for ind in state.individuals if get(ind.state, :infected, false));
-        init = 0.0)
-
+    _reconcile_sellke_bookkeeping!(state)
     # Apply the observation model (under-reporting, report delays), as core
     # `simulate` does. A no-op for the default `NoObservation`.
     apply_observation!(observation, state, rng)

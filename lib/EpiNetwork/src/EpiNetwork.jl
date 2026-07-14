@@ -11,7 +11,8 @@ using Random
 # methods we add to (`population_size`, `_simulate`); the rest are pulled in
 # because they are not brought into scope by `using EpiBranch`.
 import EpiBranch: population_size, new_state, add_individuals!, apply_observation!,
-                  _simulate, SimOpts, _resolve_infectious_from
+                  _simulate, SimOpts, _resolve_infectious_from,
+                  _retry_for_condition, _reconcile_sellke_bookkeeping!
 
 export NetworkProcess
 
