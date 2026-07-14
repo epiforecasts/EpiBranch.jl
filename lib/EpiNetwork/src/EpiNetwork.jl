@@ -4,17 +4,14 @@ using EpiBranch
 using Distributions
 using Random
 
-# `NetworkProcess` builds on EpiBranch's continuous-time simulation surface:
-# it reports the interventions/attributes/observation it carries, builds a
-# population with `new_state`/`add_individuals!`, and runs its own `simulate`.
-# `import` is needed for the methods we add to (the engine's extension
-# surface); the rest are pulled in because they are not brought into scope by
-# `using EpiBranch`. Everything here is part of EpiBranch's public extension
-# API — the package reaches into no internals.
-import EpiBranch:
-                  interventions, attributes, observation, population_size,
-                  new_state, add_individuals!,
-                  simulate, apply_observation!
+# `NetworkProcess` is a pure transmission kernel over EpiBranch's continuous-time
+# simulation surface: it builds a population with `new_state`/`add_individuals!`
+# and runs the shared `_simulate` seam, deriving the infectious window from the
+# progression composed onto it with a `ModelSpec`. `import` is needed for the
+# methods we add to (`population_size`, `_simulate`); the rest are pulled in
+# because they are not brought into scope by `using EpiBranch`.
+import EpiBranch: population_size, new_state, add_individuals!, apply_observation!,
+                  _simulate, SimOpts, _resolve_infectious_from
 
 export NetworkProcess
 
