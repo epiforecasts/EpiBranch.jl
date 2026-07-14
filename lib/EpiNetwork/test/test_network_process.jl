@@ -183,4 +183,12 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test_throws ArgumentError NetworkProcess(ring, Exponential(2.0);
             external_hazard = "not a hazard")
     end
+
+    @testset "conditioned simulation" begin
+        # `condition` retries until the outbreak size falls in the range
+        m = ModelSpec(NetworkProcess(ring_adjacency(40), Exponential(0.5));
+            progression = _sir(20.0))
+        state = simulate(m; condition = 5:40, n_initial = 1, rng = StableRNG(1))
+        @test state.cumulative_cases in 5:40
+    end
 end

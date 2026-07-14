@@ -216,4 +216,27 @@
             from = :infection, until = (:recovered, :died, :isolated))
         @test count(ind -> get(ind.state, :infected, false), state.individuals) > 0
     end
+
+    @testset "conditioned simulation and R0 derivation errors" begin
+        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        spec = ModelSpec(HomogeneousProcess(; R0 = 2.0, population_size = 500);
+            progression = prog)
+        # `condition` retries until the final size falls in the range
+        state = simulate(spec; condition = 100:500, n_initial = 5, rng = StableRNG(1))
+        @test state.cumulative_cases in 100:500
+
+        # a function-valued infectious-period delay has no mean, so R0 cannot
+        # resolve β
+        fprog = [Transition(:recovered; from = :infection,
+            delay = (rng, ind) -> 1.0, terminal = true)]
+        @test_throws ArgumentError simulate(
+            ModelSpec(HomogeneousProcess(; R0 = 2.0, population_size = 10);
+                progression = fprog); rng = StableRNG(2))
+
+        # show renders both the β and R0 forms
+        @test occursin("β=",
+            repr(HomogeneousProcess(; transmission_rate = 2.0, population_size = 10)))
+        @test occursin("R0=",
+            repr(HomogeneousProcess(; R0 = 2.0, population_size = 10)))
+    end
 end

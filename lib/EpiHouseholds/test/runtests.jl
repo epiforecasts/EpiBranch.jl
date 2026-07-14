@@ -428,4 +428,20 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test DifferentiationInterface.gradient(e_fast, backend, xe) ≈
               ForwardDiff.gradient(e_fast, xe)
     end
+
+    @testset "conditioned simulation and bare-process household_infections" begin
+        m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
+            progression = _sir(6.0))
+        # `condition` retries until the outbreak size falls in the range
+        state = simulate(m; condition = 300:1200, rng = StableRNG(1))
+        @test state.cumulative_cases in 300:1200
+
+        # household_infections accepts a bare HouseholdProcess (it delegates
+        # through a ModelSpec); the window opens at :infection, matching the SIR
+        # simulation above
+        bare = HouseholdProcess(fill(4, 50), Exponential(3.0))
+        data = household_infections(
+            simulate(ModelSpec(bare; progression = _sir(6.0)); rng = StableRNG(2)), bare)
+        @test length(data) == 200
+    end
 end
