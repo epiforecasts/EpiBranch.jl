@@ -38,7 +38,9 @@ function ModelSpec(process::TransmissionModel;
         interventions = interventions(process),
         attributes = attributes(process),
         observation = observation(process))
-    return ModelSpec(process, _progvec(progression),
+    prog = _progvec(progression)
+    _validate_process_windows(process, prog)
+    return ModelSpec(process, prog,
         _intervention_vector(interventions), attributes, observation)
 end
 

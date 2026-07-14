@@ -114,27 +114,18 @@ samples `θ` once per chain at the index case and reuses it for every
 descendant via `parent_id` lookup. The per-individual draw is
 `rand(build(θ))`.
 
-Both constructors forward `interventions`, `attributes`, and
-`observation` keyword arguments to the wrapped model, so a cluster-mixed
-process can carry interventions, attributes and observation like any
-other.
+The process is a pure kernel; attach interventions, attributes or an
+observation model with a [`ModelSpec`](@ref).
 """
 function BranchingProcess(offspring::ClusterMixed, gt::Union{Distribution, Function};
-        population_size::Union{Int, NoPopulation} = NoPopulation(),
-        interventions = AbstractIntervention[], attributes = NoAttributes(),
-        observation::ObservationModel = NoObservation())
+        population_size::Union{Int, NoPopulation} = NoPopulation())
     BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, 1,
-        NoTypeLabels(), AbstractClinicalTransition[];
-        interventions, attributes, observation)
+        NoTypeLabels())
 end
 
 function BranchingProcess(offspring::ClusterMixed;
-        population_size::Union{Int, NoPopulation} = NoPopulation(),
-        interventions = AbstractIntervention[], attributes = NoAttributes(),
-        observation::ObservationModel = NoObservation())
-    BranchingProcess((Infectiousness(offspring),), population_size, 1,
-        NoTypeLabels(), AbstractClinicalTransition[];
-        interventions, attributes, observation)
+        population_size::Union{Int, NoPopulation} = NoPopulation())
+    BranchingProcess((Infectiousness(offspring),), population_size, 1, NoTypeLabels())
 end
 
 """
