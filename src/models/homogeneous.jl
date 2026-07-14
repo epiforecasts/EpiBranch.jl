@@ -49,11 +49,15 @@ state = simulate(model; n_initial = 5)
 """
 struct HomogeneousProcess{T <: Real} <: TransmissionModel
     population_size::Int
-    β::Union{T, Nothing}            # transmission rate, or nothing when given as R0
-    R0::Union{T, Nothing}          # basic reproduction number, or nothing when β given
+    rate::T                        # the transmission parameter: β, or an R0 to resolve
+    is_r0::Bool                    # whether `rate` is an R0 (else it is β directly)
     from::Union{Symbol, Nothing}   # infectious-window start; nothing → derive
     until::Tuple                   # removal states that close the infectious window
 end
+
+# A single `rate` field of type `T` keeps the type parameter bound; a bare
+# `Union{T, Nothing}` pair for β and R0 would leave `T` unbound when both are
+# `nothing`. `is_r0` records which of β or R0 `rate` holds.
 
 function HomogeneousProcess(; transmission_rate = nothing, R0 = nothing,
         population_size::Integer,
@@ -65,11 +69,9 @@ function HomogeneousProcess(; transmission_rate = nothing, R0 = nothing,
     # Keep the transmission parameter at whatever real type it comes in as — a
     # dual under automatic differentiation — so a gradient with respect to β or
     # R0 flows into the pool.
-    val = transmission_rate === nothing ? float(R0) : float(transmission_rate)
-    T = typeof(val)
-    β = transmission_rate === nothing ? nothing : val
-    r0 = R0 === nothing ? nothing : val
-    return HomogeneousProcess{T}(Int(population_size), β, r0, from, Tuple(until))
+    is_r0 = transmission_rate === nothing
+    val = float(is_r0 ? R0 : transmission_rate)
+    return HomogeneousProcess(Int(population_size), val, is_r0, from, Tuple(until))
 end
 
 population_size(m::HomogeneousProcess) = m.population_size
@@ -80,11 +82,10 @@ population_size(m::HomogeneousProcess) = m.population_size
 _time_type(::HomogeneousProcess{T}) where {T} = T
 
 function Base.show(io::IO, m::HomogeneousProcess)
-    rate = m.β !== nothing ?
-           "β=$(m.β isa AbstractFloat ? round(m.β; digits = 4) : m.β)" :
-           "R0=$(m.R0 isa AbstractFloat ? round(m.R0; digits = 4) : m.R0)"
+    r = m.rate isa AbstractFloat ? round(m.rate; digits = 4) : m.rate
+    label = m.is_r0 ? "R0=$r" : "β=$r"
     from = m.from === nothing ? "" : ", from=:$(m.from)"
-    print(io, "HomogeneousProcess(population_size=$(m.population_size), ", rate, from, ")")
+    print(io, "HomogeneousProcess(population_size=$(m.population_size), ", label, from, ")")
 end
 
 """
@@ -144,8 +145,8 @@ end
 # β from the model: the direct rate if given, otherwise R0 / mean infectious
 # period, with the mean read from the composed progression.
 function _resolve_transmission_rate(model::HomogeneousProcess, progression, from)
-    model.β !== nothing && return model.β
-    return model.R0 / _infectious_period_mean(progression, from)
+    model.is_r0 || return model.rate
+    return model.rate / _infectious_period_mean(progression, from)
 end
 
 # ── Deriving the infectious window from a progression ────────────────

@@ -69,7 +69,7 @@ model_rate = ModelSpec(
     HomogeneousProcess(; transmission_rate = 2.0, population_size = 3000);
     progression = [Transition(:recovered; from = :infection,
         delay = Exponential(1.0), terminal = true)])
-model_rate.process.β
+model_rate.process.rate   # β, held directly (set as transmission_rate)
 ```
 
 ## An exposed period
