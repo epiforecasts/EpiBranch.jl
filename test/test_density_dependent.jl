@@ -26,7 +26,8 @@
         init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
         state = simulate(
-            BranchingProcess(Poisson(3.0), Exponential(5.0); population_size = 500,
+            ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0); population_size = 500);
                 interventions = [iso], attributes = init_fn);
             max_cases = 200,
             rng = rng)

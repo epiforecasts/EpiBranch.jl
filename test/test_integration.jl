@@ -48,7 +48,7 @@ using Dates
         ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(2.0))
 
         results = simulate(
-            BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5);
+            ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
                 interventions = [iso, ct], attributes = clinical),
             500; max_cases = 5000, max_generations = 50, rng = rng)
 
@@ -58,7 +58,7 @@ using Dates
     @testset "Full pipeline: simulate → linelist → chain_statistics" begin
         rng = StableRNG(42)
         state = simulate(
-            BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5); attributes = clinical);
+            ModelSpec(BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5)); attributes = clinical);
             max_cases = 100, n_initial = 3, rng = rng)
 
         ll = linelist(state; reference_date = Date(2024, 1, 1))
@@ -76,14 +76,14 @@ using Dates
         rng1 = StableRNG(42)
         iso_perfect = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.0)
         results_perfect = simulate(
-            BranchingProcess(Poisson(3.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                 interventions = [iso_perfect], attributes = clinical),
             200; max_cases = 200, rng = rng1)
 
         rng2 = StableRNG(42)
         iso_leaky = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.5)
         results_leaky = simulate(
-            BranchingProcess(Poisson(3.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                 interventions = [iso_leaky], attributes = clinical),
             200; max_cases = 200, rng = rng2)
 
@@ -96,7 +96,8 @@ using Dates
         @test gt_fn isa Function
 
         rng = StableRNG(42)
-        state = simulate(BranchingProcess(NegBin(2.5, 0.16), gt_fn; attributes = clinical);
+        state = simulate(
+            ModelSpec(BranchingProcess(NegBin(2.5, 0.16), gt_fn); attributes = clinical);
             max_cases = 50, rng = rng)
         @test state.cumulative_cases > 0
     end

@@ -1,8 +1,9 @@
 @testset "Generic Transition" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
-    bp(progression; attributes = NoAttributes()) = BranchingProcess(
-        Poisson(1.5), Exponential(5.0);
+    bp(progression;
+        attributes = NoAttributes()) = ModelSpec(
+        BranchingProcess(Poisson(1.5), Exponential(5.0));
         progression = progression, attributes = attributes)
 
     @testset "writes :state and :state_time, anchored on :infection" begin

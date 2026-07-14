@@ -31,7 +31,7 @@ end
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [iso, ct], attributes = clinical);
             max_cases = 50, rng = rng)
         # Some traces should fire: at least one quarantined contact.
@@ -93,7 +93,7 @@ end
     @testset "depth 1 traces direct contacts only; the fringe does not grow" begin
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 1)
         state = simulate(
-            BranchingProcess((rng, ind) -> 4, Exponential(5.0);
+            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
                 interventions = [ct], attributes = attrs);
             opts..., rng = StableRNG(1))
         # No uninfected contact ever generated contacts of its own.
@@ -108,11 +108,11 @@ end
         ct1 = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 1)
         ct2 = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
         s1 = simulate(
-            BranchingProcess((rng, ind) -> 4, Exponential(5.0);
+            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
                 interventions = [ct1], attributes = attrs);
             opts..., rng = StableRNG(1))
         s2 = simulate(
-            BranchingProcess((rng, ind) -> 4, Exponential(5.0);
+            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
                 interventions = [ct2], attributes = attrs);
             opts..., rng = StableRNG(1))
 
@@ -140,7 +140,7 @@ end
         # the ring stops there rather than running away.
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
         state = simulate(
-            BranchingProcess((rng, ind) -> 4, Exponential(5.0);
+            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
                 interventions = [ct], attributes = attrs);
             n_initial = 3, max_generations = 6, rng = StableRNG(7))
         for ind in state.individuals
@@ -159,7 +159,7 @@ end
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
         rv = RingVaccination(efficacy = 0.9)
         state = simulate(
-            BranchingProcess((rng, ind) -> 4, Exponential(5.0);
+            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
                 interventions = [ct, rv], attributes = attrs);
             opts..., rng = StableRNG(3))
         # At least one vaccinated contact sits past the fringe (its parent
@@ -235,7 +235,7 @@ end
         attrs = [clinical, transmission_traits(susceptibility = 0.5)]
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
         state = simulate(
-            BranchingProcess((rng, ind) -> 4, Exponential(5.0);
+            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
                 interventions = [ct], attributes = attrs);
             n_initial = 3, max_generations = 4, rng = StableRNG(1))
 

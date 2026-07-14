@@ -49,14 +49,14 @@
 
         # Recovery far in the future: no contact is censored.
         rec_late = Transition(:recovered, from = :infection, delay = (rng, ind) -> 100.0)
-        s_late = simulate(BranchingProcess(win; progression = [rec_late]);
+        s_late = simulate(ModelSpec(BranchingProcess(win); progression = [rec_late]);
             opts..., rng = StableRNG(1))
         kids_late = count(i -> i.parent_id != 0 && is_infected(i), s_late.individuals)
         @test kids_late == 50   # 5 index × 10, nothing removed early
 
         # Near-instant recovery: almost every contact lands after removal.
         rec_early = Transition(:recovered, from = :infection, delay = (rng, ind) -> 0.001)
-        s_early = simulate(BranchingProcess(win; progression = [rec_early]);
+        s_early = simulate(ModelSpec(BranchingProcess(win); progression = [rec_early]);
             opts..., rng = StableRNG(1))
         kids_early = count(i -> i.parent_id != 0 && is_infected(i), s_early.individuals)
         @test kids_early < 5

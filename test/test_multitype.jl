@@ -122,7 +122,7 @@ using DataFrames
 
         rng = StableRNG(42)
         state = simulate(
-            BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0);
+            ModelSpec(BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0));
                 interventions = [iso], attributes = init_fn);
             max_cases = 100,
             rng = rng)
