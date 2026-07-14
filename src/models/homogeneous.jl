@@ -168,15 +168,36 @@ end
 # terminal transition leaving the infectious-window `from` state. Turns an R0
 # into β; errors when no such mean is available.
 function _infectious_period_mean(progression, from)
-    for t in progression
-        (hasproperty(t, :from) && getfield(t, :from) === from &&
-         hasproperty(t, :terminal) && getfield(t, :terminal)) || continue
-        return _delay_mean(getfield(t, :delay))
+    terminals = filter(progression) do t
+        hasproperty(t, :from) && getfield(t, :from) === from &&
+            hasproperty(t, :terminal) && getfield(t, :terminal)
     end
-    throw(ArgumentError(
-        "cannot derive β from R0: the progression has no terminal transition " *
-        "from :$from, so there is no mean infectious period. Add a removal " *
-        "transition from :$from, or set transmission_rate (β) directly."))
+    if isempty(terminals)
+        # A removal measured from a different state (e.g. :infection while the
+        # window opens at :infectious) is a common mismatch; point at it.
+        others = filter(t -> hasproperty(t, :terminal) && getfield(t, :terminal),
+            progression)
+        hint = isempty(others) ? "" :
+               " A removal transition exists but is measured from " *
+               ":$(getfield(others[1], :from)) rather than the infectious-window " *
+               "start :$from; set `from` on the process to match, or measure the " *
+               "removal from :$from."
+        throw(ArgumentError(
+            "cannot derive β from R0: the progression has no terminal transition " *
+            "from :$from, so there is no mean infectious period.$hint " *
+            "Otherwise set transmission_rate (β) directly."))
+    end
+    if length(terminals) > 1
+        # R0 = β·E[infectious period] is only well-defined for a single removal
+        # route. With competing terminals the period is the race to the first,
+        # which this mean ignores, as it ignores any transition probabilities.
+        @warn "Deriving β from R0 with $(length(terminals)) removal transitions " *
+              "from :$from: the infectious period is taken from the first " *
+              "(:$(getfield(terminals[1], :state))), ignoring the competing-risks " *
+              "race and any transition probabilities. Set transmission_rate (β) " *
+              "directly for full control."
+    end
+    return _delay_mean(getfield(terminals[1], :delay))
 end
 _delay_mean(d::Distribution) = mean(d)
 _delay_mean(x::Real) = float(x)
