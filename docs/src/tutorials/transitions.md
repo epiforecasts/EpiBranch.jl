@@ -3,7 +3,7 @@
 Interventions are policy: isolation, contact tracing, vaccination.
 Clinical transitions are the case's own progression: symptoms,
 reporting, maybe admission, and recovery or death. **EpiBranch.jl**
-models them as a Markov chain on case state. The natural history is a
+models them as transitions between case states. The natural history is a
 layer on the model: attach it as the `progression` of a
 [`ModelSpec`](@ref) that wraps the transmission process. A
 structure-driven process derives its infectious-window `from` state
