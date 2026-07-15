@@ -114,6 +114,17 @@
         @test p.transmission_rate == 2.0
         # `transmission_rate` is required.
         @test_throws UndefKeywordError HomogeneousProcess(; population_size = 10)
+        # β must be finite and non-negative; negative, infinite and NaN rates
+        # are rejected before they reach the Sellke hazard.
+        @test_throws ArgumentError HomogeneousProcess(; transmission_rate = -1.0,
+            population_size = 10)
+        @test_throws ArgumentError HomogeneousProcess(; transmission_rate = Inf,
+            population_size = 10)
+        @test_throws ArgumentError HomogeneousProcess(; transmission_rate = NaN,
+            population_size = 10)
+        # β = 0 (no transmission) is a valid degenerate model.
+        @test HomogeneousProcess(; transmission_rate = 0.0,
+            population_size = 10).transmission_rate == 0.0
         # A non-positive population is rejected at construction.
         @test_throws ArgumentError HomogeneousProcess(; transmission_rate = 2.0,
             population_size = 0)

@@ -71,6 +71,8 @@ function HomogeneousProcess(; transmission_rate,
         from = nothing,
         until = (:recovered, :died, :isolated))
     population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
+    (isfinite(transmission_rate) && transmission_rate >= 0) || throw(ArgumentError(
+        "transmission_rate must be a finite, non-negative number (β ≥ 0)"))
     # Keep β at whatever real type it comes in as — a dual under automatic
     # differentiation — so a gradient with respect to β flows into the pool.
     return HomogeneousProcess(
