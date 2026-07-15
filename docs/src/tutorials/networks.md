@@ -71,6 +71,47 @@ A weighted adjacency matrix works too. `NetworkProcess(A, kernel)` reads
 any nonzero `A[i, j]` as an undirected edge; the matrix marks the graph
 structure only, and every edge shares the kernel.
 
+## Generating a network with Graphs.jl
+
+Building an adjacency list by hand suits small or bespoke structures, but
+for realistic contact networks it is easier to use the generators in
+[Graphs.jl](https://juliagraphs.org/Graphs.jl/), the standard Julia graph
+library. Load Graphs.jl and pass a graph straight to `NetworkProcess`: each
+vertex becomes a node and each vertex's neighbours become its contacts.
+
+```@example networks
+using Graphs
+
+# A small-world network: mostly local contacts (high clustering) with a
+# few long-range links, from the Watts–Strogatz model.
+g = watts_strogatz(400, 6, 0.1)
+
+model_ws = ModelSpec(NetworkProcess(g, Exponential(3.0));
+    progression = [Transition(:recovered; from = :infection, delay = 7.0, terminal = true)])
+state = simulate(model_ws; n_initial = 1, rng = StableRNG(3))
+println("Final size: ", state.cumulative_cases, " of ", nv(g))
+```
+
+Any generator that returns a graph works, so the structure the outbreak
+spreads on is a modelling choice. A few that map onto common assumptions:
+
+- `watts_strogatz(n, k, β)` — small-world: local clustering with a few
+  long-range links.
+- `barabasi_albert(n, k)` — scale-free: a heavy-tailed degree distribution,
+  so a minority of highly-connected nodes drive spread.
+- `stochastic_block_model(...)` — block structure: dense within blocks and
+  sparse between them, a natural fit for households or communities.
+- `euclidean_graph(n, d; cutoff)` — a random geometric graph where nodes
+  close in space are linked, so clustering emerges from proximity (the
+  mechanism spatial outbreak-network models use); it returns the graph and
+  the distances, so take the first element.
+
+The kernel, progression, attributes and interventions attach exactly as
+before — only the source of the graph changes. Graphs.jl is an optional
+dependency: this constructor becomes available once you load Graphs.jl,
+and the adjacency-list and matrix constructors need nothing extra. For a
+directed graph, a node's out-neighbours are the contacts it can infect.
+
 ## Simulating
 
 `simulate` returns a `SimulationState`, and [`linelist`](@ref) renders it
