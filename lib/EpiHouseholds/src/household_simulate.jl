@@ -38,6 +38,13 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
     from = _resolve_infectious_from(model.from, progression)
     Tobs = model.obs_end
 
+    # A community hazard over an unbounded window would introduce every member;
+    # require a finite observation window instead (as the network simulator does).
+    _ext_active(model.external_hazard) && !isfinite(Tobs) &&
+        throw(ArgumentError(
+            "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
+            "every household member); build the process with e.g. `obs_end = 30.0`"))
+
     state = new_state(model, progression, attributes, rng)
     add_individuals!(state, length(model.household_of), interventions;
         setup = (ind, i) -> (ind.state[:household] = model.household_of[i]))
