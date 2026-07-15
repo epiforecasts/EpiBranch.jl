@@ -102,6 +102,10 @@ end
 # The population is the graph; there is no separate finite susceptible pool.
 population_size(::NetworkProcess) = NoPopulation()
 
+# The outbreak runs to extinction over the fixed graph, so the termination
+# controls do not apply; `simulate` warns if any is set.
+_honours_termination_controls(::NetworkProcess) = false
+
 function Base.show(io::IO, m::NetworkProcess)
     n = length(m.adjacency)
     n_edges = sum(length, m.adjacency; init = 0) ÷ 2

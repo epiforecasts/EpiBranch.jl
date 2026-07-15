@@ -17,7 +17,8 @@ using SurvivalDistributions: hazard, cumhazard, loghazard
 # with the shared engine.
 import EpiBranch: new_state, add_individuals!, apply_observation!,
                   _simulate, SimOpts, _resolve_infectious_from,
-                  _retry_for_condition, _reconcile_sellke_bookkeeping!
+                  _retry_for_condition, _reconcile_sellke_bookkeeping!,
+                  _honours_termination_controls
 # The infectious-window helpers moved to EpiBranch alongside the shared
 # `_sellke_race!` primitive; the pairwise likelihood reuses them to read each
 # case's window from the same `from`/`until` states the simulator uses.

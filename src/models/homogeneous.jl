@@ -40,7 +40,8 @@ closed population, and one infection per person.
 The pool is always simulated to extinction over its fixed population, so the
 `simulate` termination controls (`max_cases`, `max_generations`, `max_time`,
 `stopping_rules`) do not apply; only `n_initial` (and `condition`) are used.
-This holds for the structure-driven models generally.
+`simulate` warns if you set one. This holds for the structure-driven models
+generally.
 
 # Example
 
@@ -80,6 +81,10 @@ function HomogeneousProcess(; transmission_rate = nothing, R0 = nothing,
 end
 
 population_size(m::HomogeneousProcess) = m.population_size
+
+# The pool always runs to extinction over its fixed population, so the
+# termination controls do not apply; `simulate` warns if any is set.
+_honours_termination_controls(::HomogeneousProcess) = false
 
 # The state's timing type follows the transmission parameter's type, so a dual β
 # or R0 makes an `Individual{Dual}` pool and gradients flow through the crossing

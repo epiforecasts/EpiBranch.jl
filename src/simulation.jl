@@ -28,8 +28,8 @@ up to `max_attempts`.
 """
 function simulate(model::TransmissionModel;
         n_initial::Int = 1,
-        max_cases::Union{Int, Nothing} = 10_000,
-        max_generations::Union{Int, Nothing} = 100,
+        max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
+        max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
@@ -39,6 +39,8 @@ function simulate(model::TransmissionModel;
     # spec constructor would otherwise do (a ModelSpec routes here via its own
     # `simulate`, already validated at composition, so it never double-warns).
     _validate_process_windows(model, _progression(model))
+    _warn_ignored_termination(
+        model, max_cases, max_generations, max_time, stopping_rules)
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
     return _simulate(model, sim_opts; interventions = interventions(model),
@@ -90,13 +92,15 @@ using independent RNG streams derived from the provided `rng`. Use
 """
 function simulate(model::TransmissionModel, n::Int;
         n_initial::Int = 1,
-        max_cases::Union{Int, Nothing} = 10_000,
-        max_generations::Union{Int, Nothing} = 100,
+        max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
+        max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false)
     _validate_process_windows(model, _progression(model))
+    _warn_ignored_termination(
+        model, max_cases, max_generations, max_time, stopping_rules)
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
     return _simulate_n(model, n, sim_opts; interventions = interventions(model),
@@ -129,6 +133,33 @@ end
 # Sellke loop rather than the generation engine, so they share the same two
 # concerns: retrying until a `condition` is met, and reconciling the aggregate
 # bookkeeping the engine would otherwise maintain.
+
+# Whether a model's simulation honours the termination controls (`max_cases`,
+# `max_generations`, `max_time`, `stopping_rules`). The generation-based engine
+# does; the structure-driven pools always run to extinction over their fixed
+# population and ignore them, so passing a termination control to one has no
+# effect. Structure-driven models override this to `false`.
+_honours_termination_controls(::TransmissionModel) = true
+
+# Warn when a termination control is set on a model that ignores it, so the
+# silent no-op is discoverable. Compares against the keyword defaults, so only
+# an explicitly-set control triggers the warning; `simulate` on a pool with no
+# termination keywords stays quiet.
+function _warn_ignored_termination(
+        model, max_cases, max_generations, max_time, stopping_rules)
+    _honours_termination_controls(model) && return nothing
+    ignored = String[]
+    max_cases != _DEFAULT_MAX_CASES && push!(ignored, "max_cases")
+    max_generations != _DEFAULT_MAX_GENERATIONS && push!(ignored, "max_generations")
+    max_time !== nothing && push!(ignored, "max_time")
+    stopping_rules !== nothing && push!(ignored, "stopping_rules")
+    isempty(ignored) && return nothing
+    @warn "$(nameof(typeof(model))) runs to extinction over its fixed " *
+          "population and ignores termination controls; " *
+          "$(join(ignored, ", ")) had no effect (only n_initial and " *
+          "condition apply)."
+    return nothing
+end
 
 """
     _retry_for_condition(run, condition, max_attempts)

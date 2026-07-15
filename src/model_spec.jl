@@ -62,13 +62,15 @@ _single_kernel(s::ModelSpec) = _single_kernel(s.process)
 # the forcing inputs.
 function simulate(spec::ModelSpec;
         n_initial::Int = 1,
-        max_cases::Union{Int, Nothing} = 10_000,
-        max_generations::Union{Int, Nothing} = 100,
+        max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
+        max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
         condition::Union{UnitRange{Int}, Nothing} = nothing,
         max_attempts::Int = 10_000)
+    _warn_ignored_termination(
+        spec.process, max_cases, max_generations, max_time, stopping_rules)
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
     return _simulate(spec.process, sim_opts; interventions = spec.interventions,
@@ -78,12 +80,14 @@ end
 
 function simulate(spec::ModelSpec, n::Int;
         n_initial::Int = 1,
-        max_cases::Union{Int, Nothing} = 10_000,
-        max_generations::Union{Int, Nothing} = 100,
+        max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
+        max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false)
+    _warn_ignored_termination(
+        spec.process, max_cases, max_generations, max_time, stopping_rules)
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
     return _simulate_n(spec.process, n, sim_opts;

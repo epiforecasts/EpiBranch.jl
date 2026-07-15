@@ -27,6 +27,12 @@ should_stop(r::MaxChainLength, state) =
     maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
 ```
 """
+# Default termination controls, named once so the public `simulate`
+# signatures, the `SimOpts` constructor, and the ignored-control warning share
+# a single source of truth (see `_warn_ignored_termination`).
+const _DEFAULT_MAX_CASES = 10_000
+const _DEFAULT_MAX_GENERATIONS = 100
+
 abstract type AbstractStoppingRule end
 
 """Stop when the simulation has gone extinct (no active individuals)."""
@@ -86,8 +92,8 @@ end
 
 function SimOpts(;
         n_initial::Int = 1,
-        max_cases::Union{Int, Nothing} = 10_000,
-        max_generations::Union{Int, Nothing} = 100,
+        max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
+        max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing)
     if stopping_rules !== nothing

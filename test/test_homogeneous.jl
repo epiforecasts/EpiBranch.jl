@@ -239,4 +239,22 @@
         @test occursin("R0=",
             repr(HomogeneousProcess(; R0 = 2.0, population_size = 10)))
     end
+
+    @testset "termination controls warn on the fixed pool" begin
+        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        spec = ModelSpec(HomogeneousProcess(; R0 = 2.0, population_size = 200);
+            progression = prog)
+        # A set termination control has no effect on the extinction-run pool, so
+        # `simulate` warns rather than silently ignoring it.
+        @test_logs (:warn, r"ignores termination controls") simulate(
+            spec; n_initial = 3, max_cases = 50, rng = StableRNG(1))
+        # No termination keyword set → no warning.
+        @test_logs simulate(spec; n_initial = 3, rng = StableRNG(1))
+        # The trait itself: the pool ignores the controls, the generation engine
+        # honours them.
+        @test !EpiBranch._honours_termination_controls(
+            HomogeneousProcess(; R0 = 2.0, population_size = 10))
+        @test EpiBranch._honours_termination_controls(
+            BranchingProcess(Poisson(1.5), Exponential(2.0)))
+    end
 end
