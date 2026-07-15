@@ -17,18 +17,18 @@ not just a final count.
 
 ## Defining a model
 
-`HomogeneousProcess` is a pure transmission kernel: the reproduction number
-(or per-infective rate) and the population size are its only inputs. The
-natural history, here just an infectious period, is a `progression` of
-[`Transition`](@ref)s attached with a [`ModelSpec`](@ref). `simulate` seeds
-`n_initial` index cases at time 0 and returns a `SimulationState`.
+`HomogeneousProcess` is a pure transmission kernel: the per-infective rate β
+and the population size are its only inputs. The natural history, here just an
+infectious period, is a `progression` of [`Transition`](@ref)s attached with a
+[`ModelSpec`](@ref). `simulate` seeds `n_initial` index cases at time 0 and
+returns a `SimulationState`.
 
 ```@example homogeneous
 using EpiBranch
 using Distributions
 using StableRNGs
 
-model = ModelSpec(HomogeneousProcess(; R0 = 2.0, population_size = 3000);
+model = ModelSpec(HomogeneousProcess(; transmission_rate = 2.0, population_size = 3000);
     progression = [Transition(:recovered; from = :infection,
         delay = Exponential(1.0), terminal = true)])
 
@@ -36,10 +36,13 @@ state = simulate(model; n_initial = 5, rng = StableRNG(1))
 state.cumulative_cases
 ```
 
-With `R0`, β is resolved at simulate time as `R0` divided by the mean
-infectious period read from the progression. This means `R0` needs a
-progression with a removal transition whose mean is defined: a scalar delay
-or a distribution, not a raw function.
+Transmission is set as `transmission_rate`, the per-infective rate β (so β/N
+to each susceptible). The reproduction number then follows as R0 = β · mean
+infectious period; here β = 2 and the mean infectious period is 1, so R0 = 2.
+The package does not derive β from an `R0` keyword: R0 = β · E[T] holds only
+for an unstructured single-removal SIR/SEIR, and with competing removals,
+interventions that truncate infectiousness, or heterogeneous mixing the map
+from R0 needs a next-generation matrix. Set β directly for the case you have.
 
 [`linelist`](@ref) renders the outbreak as a one-row-per-case DataFrame,
 carrying the infection and recovery times the model stamps on each case.
@@ -49,27 +52,13 @@ df = linelist(state)
 first(df, 5)
 ```
 
-The attack rate is the share of the population that was infected. At
-`R0 = 2` a major outbreak infects about 80% of the population, the value
-the deterministic final-size equation `z = 1 - exp(-R0 z)` gives.
+The attack rate is the share of the population that was infected. At R0 = 2 a
+major outbreak infects about 80% of the population, the value the
+deterministic final-size equation `z = 1 - exp(-R0 z)` gives.
 
 ```@example homogeneous
 N = 3000
 round(count(is_infected, state.individuals) / N, digits = 2)
-```
-
-Transmission can be set as `R0` or, equivalently, as a per-infective rate
-`transmission_rate`. `R0` is the rate times the mean infectious period, so
-the two models below are the same. Set as `transmission_rate`, β is fixed on
-the kernel directly; set as `R0`, it is resolved from the progression at
-simulate time.
-
-```@example homogeneous
-model_rate = ModelSpec(
-    HomogeneousProcess(; transmission_rate = 2.0, population_size = 3000);
-    progression = [Transition(:recovered; from = :infection,
-        delay = Exponential(1.0), terminal = true)])
-model_rate.process.rate   # β, held directly (set as transmission_rate)
 ```
 
 ## An exposed period
@@ -77,12 +66,12 @@ model_rate.process.rate   # β, held directly (set as transmission_rate)
 Adding an `:infectious` transition inserts an exposed period between
 infection and infectiousness, turning the SIR model into an SEIR one. The
 infectious period then runs `from = :infectious` instead of from infection.
-The final size is governed by `R0` and is unchanged by the latent period;
-what changes is the timing, since a case is now infectious only after its
-exposed period has passed.
+The final size is governed by β and the infectious period, and is unchanged by
+the latent period; what changes is the timing, since a case is now infectious
+only after its exposed period has passed.
 
 ```@example homogeneous
-seir = ModelSpec(HomogeneousProcess(; R0 = 2.0, population_size = 3000);
+seir = ModelSpec(HomogeneousProcess(; transmission_rate = 2.0, population_size = 3000);
     progression = [
         Transition(:infectious; from = :infection, delay = Exponential(2.0)),
         Transition(:recovered; from = :infectious,
