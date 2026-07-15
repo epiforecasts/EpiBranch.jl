@@ -8,8 +8,10 @@ they return the analytical form (`Borel`, `GammaBorel`, the bare
 offspring `Distribution`) where one exists; with `seeds`, `pi`, a
 [`ModelSpec`](@ref) composing interventions onto the process, or other
 kwargs they return a wrapper that routes through the same
-`loglikelihood` methods used for MLE. Both paths are AD-compatible, so
-NUTS works wherever the underlying likelihood does.
+`loglikelihood` methods used for MLE. A wrapper preserves AD only when
+the likelihood it routes through is itself differentiable, so NUTS works
+for the analytical and closed-form paths but not where a wrapper routes
+through a simulation-based intervention likelihood.
 
 !!! note
     Turing.jl is not a dependency of EpiBranch.jl. Install it separately
