@@ -23,12 +23,12 @@ specialised wrapper functions per data type or model variant.
 
 ### 2. Self-explanatory
 
-Type names, function names, and signatures should match an
-epidemiologist's intuition for what they do. If a user has to read
+Type names, function names, and signatures should match the intuition
+the epidemiology gives for what they do. If a user has to read
 source to understand what a public name means, the name is wrong. The
 mathematical names (`Borel`, `GammaBorel`) are fair when they match
 the literature the user comes from; the operational names should
-match how an epidemiologist would describe what's happening.
+match how the epidemiology describes what's happening.
 
 ### 3. Cleanly separable concerns
 
@@ -79,7 +79,7 @@ infection spreads — and it carries nothing else. Onto it compose four layers:
 - **interventions** — what is done about it (isolation, tracing, vaccination);
 - **observation** — how cases are seen (under-reporting, reporting delays).
 
-These match how an epidemiologist decomposes an outbreak: a pathogen spreads,
+These match how the epidemiology decomposes an outbreak: a pathogen spreads,
 infection causes disease, in a population of people, under a response, watched
 through surveillance. Keeping the five distinct — rather than folding the
 disease or the policy into the process — is what lets each be replaced on its

@@ -39,10 +39,6 @@ state.cumulative_cases
 Transmission is set as `transmission_rate`, the per-infective rate β (so β/N
 to each susceptible). The reproduction number then follows as R0 = β · mean
 infectious period; here β = 2 and the mean infectious period is 1, so R0 = 2.
-The package does not derive β from an `R0` keyword: R0 = β · E[T] holds only
-for an unstructured single-removal SIR/SEIR, and with competing removals,
-interventions that truncate infectiousness, or heterogeneous mixing the map
-from R0 needs a next-generation matrix. Set β directly for the case you have.
 
 [`linelist`](@ref) renders the outbreak as a one-row-per-case DataFrame,
 carrying the infection and recovery times the model stamps on each case.

@@ -20,14 +20,6 @@ It is simulated by the Sellke threshold construction, which reproduces the exact
 stochastic SIR final-size law. Transmission is the per-infective rate
 `transmission_rate` (β, so β/N to each susceptible).
 
-Transmission is set as β directly rather than as `R0`. β = R0 / mean infectious
-period holds only for an unstructured single-removal SIR/SEIR with no
-interventions touching infectiousness; with competing removal routes, isolation
-or other interventions truncating the window, or heterogeneous mixing, the map
-from R0 needs a next-generation matrix, which is out of scope here. Compute β
-yourself for the case you have, or express the target R0 through the mixing you
-build.
-
 The process is a pure transmission kernel. The natural history is a
 `progression` of [`Transition`](@ref)s attached with a [`ModelSpec`](@ref),
 exactly as for [`BranchingProcess`](@ref): a latent period is a transition to
