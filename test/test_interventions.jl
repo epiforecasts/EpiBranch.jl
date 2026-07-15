@@ -7,13 +7,13 @@
     @testset "Isolation reduces transmission" begin
         rng1 = StableRNG(42)
         results_no_iso = simulate(
-            BranchingProcess(Poisson(3.0), Exponential(5.0); attributes = clinical),
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0)); attributes = clinical),
             100; max_cases = 200, rng = rng1)
 
         rng2 = StableRNG(42)
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
         results_iso = simulate(
-            BranchingProcess(Poisson(3.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                 interventions = [iso], attributes = clinical),
             100; max_cases = 200, rng = rng2)
 
@@ -28,7 +28,7 @@
         ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0))
 
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [iso, ct], attributes = clinical);
             max_cases = 50, rng = rng)
 
@@ -50,7 +50,7 @@
         iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0)); start_time = 1000.0)
 
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [iso], attributes = clinical);
             max_cases = 50, rng = rng)
 
@@ -66,7 +66,7 @@
         )
 
         state = simulate(
-            BranchingProcess(Poisson(3.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                 interventions = [iso], attributes = clinical_asymp);
             max_cases = 500, rng = rng)
 
@@ -82,7 +82,7 @@
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.0)
 
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [iso], attributes = clinical);
             max_cases = 100, rng = StableRNG(42))
 
@@ -94,14 +94,14 @@
         rng1 = StableRNG(42)
         iso_fast = Isolation(onset_to_isolation_delay = Exponential(0.5))
         results_fast = simulate(
-            BranchingProcess(Poisson(3.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                 interventions = [iso_fast], attributes = clinical),
             200; max_cases = 200, rng = rng1)
 
         rng2 = StableRNG(42)
         iso_slow = Isolation(onset_to_isolation_delay = Exponential(10.0))
         results_slow = simulate(
-            BranchingProcess(Poisson(3.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                 interventions = [iso_slow], attributes = clinical),
             200; max_cases = 200, rng = rng2)
 
@@ -114,7 +114,7 @@
         ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.0))
 
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [iso, ct], attributes = clinical);
             max_cases = 20, rng = rng)
 
@@ -128,7 +128,7 @@
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
 
         @test_throws ErrorException simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0); interventions = [iso]);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); interventions = [iso]);
             max_cases = 10, rng = StableRNG(42))
     end
 
@@ -140,7 +140,7 @@
         ]
 
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0); attributes = init_fn);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); attributes = init_fn);
             max_cases = 50, rng = rng)
 
         ind = state.individuals[1]
@@ -157,13 +157,13 @@
             rng1 = StableRNG(42)
             rv = RingVaccination(efficacy = 0.9, mode = LeakyMode())
             results_vacc = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv], attributes = clinical),
                 100; max_cases = 200, rng = rng1)
 
             rng2 = StableRNG(42)
             results_no_vacc = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct], attributes = clinical),
                 100; max_cases = 200, rng = rng2)
 
@@ -177,7 +177,7 @@
             rv = RingVaccination(efficacy = 0.8, mode = AllOrNothingMode())
 
             state = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv], attributes = clinical);
                 max_cases = 100, rng = StableRNG(42))
 
@@ -197,14 +197,14 @@
             rng1 = StableRNG(42)
             rv_instant = RingVaccination(efficacy = 0.9, delay_to_immunity = 0.0)
             results_instant = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv_instant], attributes = clinical),
                 200; max_cases = 200, rng = rng1)
 
             rng2 = StableRNG(42)
             rv_delayed = RingVaccination(efficacy = 0.9, delay_to_immunity = 14.0)
             results_delayed = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv_delayed], attributes = clinical),
                 200; max_cases = 200, rng = rng2)
 
@@ -220,7 +220,7 @@
             # Coverage = 0 means nobody gets vaccinated, even though traced.
             rv_zero = RingVaccination(efficacy = 0.9, coverage = 0.0)
             state = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv_zero], attributes = clinical);
                 max_cases = 100, rng = StableRNG(42))
             @test count(is_vaccinated, state.individuals) == 0
@@ -230,7 +230,7 @@
             # traced contact is vaccinated.
             rv_full = RingVaccination(efficacy = 0.9, coverage = 1.0)
             state_full = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv_full], attributes = clinical);
                 max_cases = 100, rng = StableRNG(42))
             n_vacc_full = count(is_vaccinated, state_full.individuals)
@@ -242,13 +242,13 @@
             n_vacc_partial = sum(
                 count(is_vaccinated, s.individuals)
             for s in simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv_partial], attributes = clinical),
                 30; max_cases = 100, rng = StableRNG(7)))
             n_vacc_full_batch = sum(
                 count(is_vaccinated, s.individuals)
             for s in simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv_full], attributes = clinical),
                 30; max_cases = 100, rng = StableRNG(7)))
             @test n_vacc_partial < n_vacc_full_batch
@@ -263,7 +263,7 @@
             rv = RingVaccination(efficacy = 0.9,
                 coverage = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0)
             state = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv], attributes = attrs);
                 max_cases = 200, rng = StableRNG(101))
             for ind in state.individuals
@@ -282,13 +282,13 @@
             n_inf = sum(
                 count(is_vaccinated, s.individuals)
             for s in simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv_inf], attributes = clinical),
                 50; max_cases = 100, rng = StableRNG(3)))
 
             rv_narrow = RingVaccination(efficacy = 0.9, eligibility_window = 1.0)
             states_narrow = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv_narrow], attributes = clinical),
                 50; max_cases = 100, rng = StableRNG(3))
             n_narrow = sum(
@@ -320,7 +320,7 @@
             saw_blocked_chain = false
             for seed in 1:5
                 state = simulate(
-                    BranchingProcess(Poisson(3.0), Exponential(5.0);
+                    ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                         interventions = [iso, ct, rv], attributes = clinical);
                     max_cases = 500, rng = StableRNG(seed))
                 by_id = Dict(ind.id => ind for ind in state.individuals)
@@ -350,7 +350,7 @@
 
             rng1 = StableRNG(42)
             results_default = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv], attributes = clinical),
                 100; max_cases = 200, rng = rng1)
 
@@ -359,7 +359,7 @@
             rv_explicit = RingVaccination(efficacy = 0.9, onward_efficacy = 0.0)
             rng2 = StableRNG(42)
             results_explicit = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv_explicit], attributes = clinical),
                 100;
                 max_cases = 200,
@@ -377,7 +377,7 @@
             quarantine_on_trace = false)
 
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [iso, ct], attributes = clinical);
             max_cases = 50, rng = rng)
 
@@ -408,7 +408,7 @@
             quarantine_on_trace = false)
 
         state = simulate(
-            BranchingProcess(Poisson(3.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                 interventions = [iso, ct], attributes = clinical);
             max_cases = 500, rng = rng)
 
@@ -437,14 +437,14 @@
             rng1 = StableRNG(42)
             iso_late = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0)); start_time = 20.0)
             results_late = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso_late], attributes = clinical),
                 100; max_cases = 200, rng = rng1)
 
             rng2 = StableRNG(42)
             iso_always = Isolation(onset_to_isolation_delay = Exponential(1.0))
             results_always = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso_always], attributes = clinical),
                 100; max_cases = 200, rng = rng2)
 
@@ -453,7 +453,7 @@
 
             # Fields should still be initialised on all individuals
             state = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso_late], attributes = clinical);
                 max_cases = 50, rng = StableRNG(99))
             for ind in state.individuals
@@ -466,7 +466,7 @@
 
             rng1 = StableRNG(42)
             results_scheduled = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso], attributes = clinical),
                 100; max_cases = 200, rng = rng1)
 
@@ -474,7 +474,7 @@
             rng2 = StableRNG(42)
             iso_always = Isolation(onset_to_isolation_delay = Exponential(0.5))
             results_always = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso_always], attributes = clinical),
                 100; max_cases = 200, rng = rng2)
 
@@ -487,7 +487,7 @@
                 state -> state.current_generation >= 3)
 
             state = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso], attributes = clinical);
                 max_cases = 100, rng = StableRNG(42))
 
@@ -503,7 +503,7 @@
                 start_time = 5.0, end_time = 10.0)
 
             state = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso], attributes = clinical);
                 max_cases = 100, rng = StableRNG(42))
 
@@ -521,7 +521,7 @@
                 start_after_cases = 10)
 
             state = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct], attributes = clinical);
                 max_cases = 50, rng = StableRNG(42))
 
@@ -536,7 +536,7 @@
             iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(0.1)); start_time = 15.0)
 
             state = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso], attributes = clinical);
                 max_cases = 200, rng = StableRNG(42))
 

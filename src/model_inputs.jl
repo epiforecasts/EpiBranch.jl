@@ -18,6 +18,10 @@ interventions(::TransmissionModel) = AbstractIntervention[]
 attributes(::TransmissionModel) = NoAttributes()
 observation(::TransmissionModel) = NoObservation()
 
+# The within-host natural history: the clinical-state transitions a case moves
+# through. Composed onto a process with a `ModelSpec`; empty for a bare process.
+_progression(::TransmissionModel) = AbstractClinicalTransition[]
+
 # Normalise an interventions keyword (a single intervention or a vector)
 # to a `Vector{AbstractIntervention}`, for constructors to use.
 function _intervention_vector(ivs)

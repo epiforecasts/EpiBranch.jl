@@ -200,8 +200,8 @@ function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
         attributes = get(vals, :attributes, NoAttributes())
         pop_size = get(vals, :population_size, NoPopulation())
 
-        model = BranchingProcess(offspring, gt;
-            population_size = pop_size, interventions, attributes)
+        model = ModelSpec(BranchingProcess(offspring, gt; population_size = pop_size);
+            interventions, attributes)
 
         results = simulate(model, n_sim; rng = rng, sim_kwargs...)
 

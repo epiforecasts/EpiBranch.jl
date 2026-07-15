@@ -33,7 +33,8 @@ function Distributions.logpdf(
     if d.pi === nothing
         return loglikelihood(cs, d.model; d.kwargs...)
     end
-    target = d.model isa TransmissionModel ? single_type_offspring(d.model) : d.model
+    target = d.model isa Union{TransmissionModel, ModelSpec} ?
+             single_type_offspring(d.model) : d.model
     return loglikelihood(cs, target; pi = d.pi, d.kwargs...)
 end
 
@@ -105,6 +106,17 @@ function chain_size_distribution(model::TransmissionModel;
     return _ChainSizeLaw(model, seeds, pi, NamedTuple(kwargs))
 end
 
+function chain_size_distribution(spec::ModelSpec; seeds = nothing, pi = nothing,
+        kwargs...)
+    if seeds === nothing && pi === nothing && isempty(kwargs) &&
+       isempty(interventions(spec))
+        return observe(
+            chain_size_distribution(single_type_offspring(spec.process)),
+            observation(spec))
+    end
+    return _ChainSizeLaw(spec, seeds, pi, NamedTuple(kwargs))
+end
+
 """
     chain_length_distribution(model; kwargs...)
 
@@ -124,6 +136,10 @@ end
 """
 function chain_length_distribution(model::TransmissionModel; kwargs...)
     return _ChainLengthLaw(model, NamedTuple(kwargs))
+end
+
+function chain_length_distribution(spec::ModelSpec; kwargs...)
+    return _ChainLengthLaw(spec, NamedTuple(kwargs))
 end
 
 """
@@ -152,3 +168,5 @@ function offspring_distribution(model::TransmissionModel)
         "chain_size_distribution for such models."))
     return off
 end
+
+offspring_distribution(spec::ModelSpec) = offspring_distribution(spec.process)

@@ -341,7 +341,7 @@ clinical_with_region = [
 ]
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 bc = BorderClosure(10.0, 0.05)
-model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0);
+model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0));
     interventions = [iso, bc], attributes = clinical_with_region)
 
 rng = StableRNG(42)
@@ -420,7 +420,7 @@ attrs = [
     ),
 ]
 
-model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0); attributes = attrs)
+model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)); attributes = attrs)
 rng = StableRNG(42)
 state = simulate(model; max_cases = 100, rng = rng)
 n_high = count(ind -> get(ind.state, :risk_group, :low) == :high, state.individuals)
@@ -442,7 +442,7 @@ combined = [
     ),
 ]
 
-model_combined = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0);
+model_combined = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0));
     attributes = combined)
 
 rng = StableRNG(42)
@@ -463,7 +463,7 @@ period, read with [`incubation_period`](@ref):
 
 ```@example extending
 gt = ind -> Gamma(2.0, incubation_period(ind) / 2)
-linked = BranchingProcess(NegBin(2.5, 0.16), gt;
+linked = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), gt);
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
 
 rng = StableRNG(42)
@@ -490,7 +490,7 @@ host = function (rng, ind)
     ind.state[:onset_time] = ind.infection_time + scale
 end
 
-scaled = BranchingProcess(Poisson(2.0), ind -> Exponential(ind.state[:gt_scale]); attributes = host)
+scaled = ModelSpec(BranchingProcess(Poisson(2.0), ind -> Exponential(ind.state[:gt_scale])); attributes = host)
 
 rng = StableRNG(42)
 state = simulate(scaled; max_cases = 500, rng = rng)
@@ -570,7 +570,7 @@ function risk_offspring(rng, individual)
     return rand(rng, Poisson(base_R))
 end
 
-model_risk = BranchingProcess(risk_offspring, Exponential(5.0); n_types = 1, attributes = risk_group)
+model_risk = ModelSpec(BranchingProcess(risk_offspring, Exponential(5.0); n_types = 1); attributes = risk_group)
 
 rng = StableRNG(42)
 results = simulate(model_risk, 200; max_cases = 500, rng = rng)
@@ -634,7 +634,7 @@ window = Infectiousness(NegBin(R, k);
     from   = :infectious,
     until  = (:recovered,),
     kernel = contact_interval)
-process = BranchingProcess(window; progression = progression)
+process = ModelSpec(BranchingProcess(window); progression = progression)
 ```
 
 The window opens when the case becomes infectious and closes at recovery. The
@@ -656,9 +656,9 @@ A case can carry several windows with different timing and censoring, for
 example community spread and a separate funeral source:
 
 ```julia
-process = BranchingProcess(
-    (Infectiousness(NegBin(R, k); from = :infectious, until = (:recovered, :died), kernel = gt),
-     Infectiousness(Poisson(λ);   from = :died,       until = (:buried,),         kernel = funeral_kernel));
+process = ModelSpec(BranchingProcess(
+        (Infectiousness(NegBin(R, k); from = :infectious, until = (:recovered, :died), kernel = gt),
+            Infectiousness(Poisson(λ); from = :died, until = (:buried,), kernel = funeral_kernel)));
     progression = progression)
 ```
 
@@ -778,21 +778,29 @@ For optional **state accessors**, override `population_size` and
 `n_types` if your model has values for them. The defaults
 (`NoPopulation()`, `1`) are fine if not.
 
-If your model carries its own interventions, attributes or observation in
-fields, define the matching accessors — `EpiBranch.interventions(m)`,
-`attributes(m)`, `observation(m)` — so the engine and the likelihood can read
-them. `BranchingProcess` defines these over its fields; a new model opts in the
-same way (the defaults are no interventions, no attributes, no observation). And
-if your generation-time distribution is not stored in a field literally named
+Your process is a pure transmission kernel — it does **not** carry the modelling
+layers (a clinical `progression`, `interventions`, `attributes`, or an
+`observation` model). Those are composed onto it by the user with a
+[`ModelSpec`](@ref) and threaded into the run by the engine, so an
+offspring-driven model gets them for nothing: `simulate(ModelSpec(MyModel(...);
+progression = [...], interventions = [...], attributes = attr))` applies each
+layer without your model storing a field or defining an accessor for it. The
+engine reads the composed progression and applies its transitions to each new
+contact, the same as for `BranchingProcess`.
+
+If your generation-time distribution is not stored in a field literally named
 `generation_time`, override [`model_generation_time`](@ref EpiBranch.model_generation_time)`(m)` to point at it —
 that accessor is what the engine calls.
 
-If your model carries a clinical natural history (incubation, onset,
-recovery), expose it as the model's progression: store the transitions in
-a field and define `EpiBranch._progression(m::MyModel) = m.progression`.
-The engine reads progression off the model and applies the transitions to
-each new contact. `BranchingProcess` does this for the `progression`
-keyword; a custom model opts in the same way.
+A **structure-driven** model that runs its own simulation loop (in
+infection-time order, rather than the generation-based engine) receives the
+composed layers as arguments instead: define
+`EpiBranch._simulate(m::MyModel, sim_opts; interventions, attributes,
+progression, observation, rng, condition, max_attempts)`, read the layers off
+the arguments, and derive any window state you need (the infectious-window
+`from`, say) from the `progression` there. The continuous-time household and
+network processes are the worked examples; `ModelSpec` routes `simulate` and
+`loglikelihood` to that method for you.
 
 ### Minimal sketch
 
@@ -829,16 +837,15 @@ loglikelihood(ChainSizes(data), MyModel(NegBin(0.8, 0.5), ...))
 
 ### Composing with the observation side
 
-Your model carries an observation like any other process: store it in a field,
-define `EpiBranch.observation(m) = m.observation` (see the accessors above), and
-the likelihood reads it automatically:
+An observation model is composed onto your process with a `ModelSpec`, like any
+other layer — your model stores nothing and defines nothing:
 
 ```julia
-MyModel(...; observation = PerCaseObservation(detection_prob = 0.7))
+simulate(ModelSpec(MyModel(...); observation = PerCaseObservation(detection_prob = 0.7)))
 ```
 
-works the same way as it does for `BranchingProcess`, which defines that
-accessor for you.
+The engine applies the observation after the run, and `loglikelihood(data,
+spec)` reads it off the spec — the same path `BranchingProcess` takes.
 
 ## A fixed-size population on the Sellke pool
 
@@ -901,23 +908,25 @@ force = (group, counts) -> begin
     sum(M[b, h] * get(counts, (h,), 0) / n[h] for h in 1:2)
 end
 
-# A HomogeneousProcess is used here only as a container for the natural-history
-# configuration (progression, interventions, attributes). Its transmission_rate
-# is ignored, because the force above replaces it, so any placeholder value does.
-# Tag each individual's :age_band as it is created; any attribute works, including
-# the built-in demographics (:age, :sex, :risk_group).
-carrier = HomogeneousProcess(; transmission_rate = 1.0, population_size = N,
-    infectious_period = Exponential(1.0))
+# A HomogeneousProcess supplies only the fixed pool and its removal states; the
+# force above replaces its transmission rate, so any placeholder value does. The
+# natural history (progression) and the empty forcing layers are handed to the
+# pool directly. Tag each individual's :age_band as it is created; any attribute
+# works, including the built-in demographics (:age, :sex, :risk_group).
+carrier = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
+progression = [Transition(:recovered; from = :infection,
+    delay = Exponential(1.0), terminal = true)]
 rng = MersenneTwister(1)
-state = EpiBranch.new_state(carrier, carrier.progression,
-    EpiBranch.attributes(carrier), rng)
-EpiBranch.add_individuals!(state, N, EpiBranch.interventions(carrier);
+state = EpiBranch.new_state(carrier, progression, NoAttributes(), rng)
+EpiBranch.add_individuals!(state, N, AbstractIntervention[];
     setup = (ind, i) -> (ind.state[:age_band] = band_of(i)))
 
 # Run the Sellke pool. `mixing_by = (:age_band,)` names the attribute that groups
 # individuals; each group is read from it, and the model supplies only the force.
 EpiBranch._sellke_pool!(state, collect(1:N), rng; mixing_by = (:age_band,),
-    force = force, n_initial = 5, from = carrier.from, until = carrier.until)
+    force = force, n_initial = 5,
+    from = EpiBranch._resolve_infectious_from(carrier.from, progression),
+    until = carrier.until)
 
 linelist(state)
 ```
@@ -977,7 +986,7 @@ end
 EpiBranch.observe(base, o::CensoredAtSize) = TruncatedChainSize(base, o.cap)
 ```
 
-Usage: `BranchingProcess(...; observation = CensoredAtSize(10))`. No
+Usage: `ModelSpec(BranchingProcess(...); observation = CensoredAtSize(10))`. No
 per-observation `loglikelihood` method is needed — returning a distribution
 from `observe` means the shared machinery evaluates `logpdf` on it.
 

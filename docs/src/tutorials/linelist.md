@@ -31,7 +31,7 @@ progression = [
     Recovery(delay = Exponential(14.0)),
 ]
 
-model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5);
+model = ModelSpec(BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5));
     progression = progression, attributes = attrs)
 
 rng = StableRNG(42)
@@ -59,7 +59,7 @@ attrs_demo = [
     demographics(age_distribution = Normal(40, 15), prob_female = 0.55),
 ]
 
-model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5);
+model = ModelSpec(BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5));
     progression = progression, attributes = attrs_demo)
 
 rng = StableRNG(42)
@@ -92,7 +92,7 @@ age_stratified = [
     Recovery(delay = Exponential(14.0)),
 ]
 
-model = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5);
+model = ModelSpec(BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5));
     progression = age_stratified, attributes = attrs_demo)
 
 rng = StableRNG(42)
@@ -128,7 +128,7 @@ first(ct, 5)
 Generate outbreaks of a specific size range:
 
 ```@example linelist
-plain = BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5); attributes = attrs)
+plain = ModelSpec(BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5)); attributes = attrs)
 
 rng = StableRNG(42)
 state = simulate(plain; condition = 100:150, max_cases = 200, rng = rng)

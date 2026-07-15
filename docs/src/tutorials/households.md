@@ -13,8 +13,9 @@ It lives in the companion `EpiHouseholds` package.
 
 ## Defining a household model
 
-The contact-interval kernel is the one required input. `sizes` gives the size of
-each household.
+The contact-interval kernel is the one required input to `HouseholdProcess`, which
+is a pure transmission kernel. `sizes` gives the size of each household. The
+disease's natural history is a `progression` attached with a [`ModelSpec`](@ref).
 
 ```@example households
 using EpiBranch
@@ -23,7 +24,8 @@ using Distributions
 using StableRNGs
 
 # 300 households of four, a Weibull contact interval, a six-day infectious period
-model = HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0); infectious_period = 6.0)
+model = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
+    progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])
 ```
 
 ## Simulating
@@ -40,16 +42,21 @@ df = linelist(state)
 
 ## A flexible natural history
 
-The infectious timeline is a `progression` of [`Transition`](@ref)s, exactly as
-for [`BranchingProcess`](@ref). `infectious_period` and `latent_period` are sugar
-for the two common transitions; pass a full `progression` for the general case.
-The progression's states become line-list columns, so symptom onset, testing and
-recovery come straight out of the simulation.
+The infectious timeline is a `progression` of [`Transition`](@ref)s on the
+[`ModelSpec`](@ref), exactly as for [`BranchingProcess`](@ref). A latent period is
+a `Transition(:infectious; from = :infection, …)`; an infectious period is a
+terminal removal transition timed from the state before it. The progression's
+states become line-list columns, so symptom onset, testing and recovery come
+straight out of the simulation. The kernel times each infectious contact from the
+infectious window's start; with a latent period present, that `from` state is
+derived as `:infectious`, otherwise `:infection`.
 
 ```@example households
-clinical = HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0);
-    latent_period = LogNormal(1.2, 0.4),     # infection → infectiousness
-    infectious_period = Gamma(6, 1))          # infectiousness → recovery
+clinical = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
+    progression = [
+        Transition(:infectious; from = :infection, delay = LogNormal(1.2, 0.4)),  # infection → infectiousness
+        Transition(:recovered; from = :infectious, delay = Gamma(6, 1),           # infectiousness → recovery
+            terminal = true)])
 sort(propertynames(linelist(simulate(clinical; rng = StableRNG(2)))))
 ```
 
@@ -66,7 +73,8 @@ model, `simulate → loglikelihood` is an exact round trip, so the simulated out
 recovers the kernel.
 
 ```@example households
-truth = HouseholdProcess(fill(4, 500), Exponential(4.0); infectious_period = 6.0)
+truth = ModelSpec(HouseholdProcess(fill(4, 500), Exponential(4.0));
+    progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])
 data = household_infections(simulate(truth; rng = StableRNG(3)), truth)
 
 ll(scale) = pairwise_surv_loglik(Exponential(scale), data)

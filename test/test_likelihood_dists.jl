@@ -44,8 +44,9 @@
 
     @testset "chain_size_distribution — per-case observation" begin
         data = [1, 2, 1, 3, 1]
-        obs = BranchingProcess(Poisson(0.5); observation = PerCaseObservation(;
-            detection_prob = 0.7))
+        obs = ModelSpec(
+            BranchingProcess(Poisson(0.5)); observation = PerCaseObservation(;
+                detection_prob = 0.7))
         d = chain_size_distribution(obs; n_sim = 0)
         # n_sim=0 forces the wrapper path; logpdf should still match the
         # analytical loglikelihood with no kwargs since there are no
@@ -84,7 +85,7 @@
         # Turing's `~` (a `Distribution`) or refuses with a user-facing
         # `ArgumentError`. No bare `MethodError`s, no developer-only hints.
         bp = BranchingProcess(Poisson(0.5))
-        bp_obs = BranchingProcess(Poisson(0.5);
+        bp_obs = ModelSpec(BranchingProcess(Poisson(0.5));
             observation = PerCaseObservation(detection_prob = 0.6))
         bp_cm = BranchingProcess(ClusterMixed(Poisson, Gamma(2.0, 0.4)))
         bp_mt = BranchingProcess([1.0 0.5; 0.5 1.0],

@@ -65,7 +65,7 @@ which needs the Volterra recursion of Thompson, Morgan & Jansen (2019)
 and is not implemented here. Evaluate on a model with no observation to
 get the full-reporting (`ρ = 1`) value.
 """
-function end_of_outbreak_probability(model::BranchingProcess, τ::Real)
+function end_of_outbreak_probability(model::Union{BranchingProcess, ModelSpec}, τ::Real)
     # Refuse under per-case under-reporting rather than silently using
     # the bare offspring: makes the missing `ρ < 1` case discoverable.
     _eoo_assert_full_reporting(observation(model))

@@ -1,10 +1,12 @@
 @testset "HomogeneousProcess (Sellke fixed pool)" begin
     @testset "deterministic final size (major outbreaks)" begin
-        # For R0 = 2 the deterministic attack rate solves z = 1 - exp(-R0·z),
-        # z ≈ 0.7968. Conditioning on major outbreaks, the mean should match.
+        # With β = 2 and mean infectious period 1, R0 = β·E[T] = 2; the
+        # deterministic attack rate solves z = 1 - exp(-R0·z), z ≈ 0.7968.
+        # Conditioning on major outbreaks, the mean should match.
         N = 3000
-        m = HomogeneousProcess(; R0 = 2.0, population_size = N,
-            infectious_period = Exponential(1.0))
+        m = ModelSpec(HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
+            progression = [Transition(:recovered; from = :infection,
+                delay = Exponential(1.0), terminal = true)])
         finals = [simulate(m; rng = StableRNG(s), n_initial = 5).cumulative_cases
                   for s in 1:40]
         z = 0.7968
@@ -15,9 +17,11 @@
     end
 
     @testset "sub-critical outbreaks stay small" begin
+        # β = 0.5 with mean infectious period 1 gives R0 = 0.5 < 1.
         N = 2000
-        m = HomogeneousProcess(; R0 = 0.5, population_size = N,
-            infectious_period = 1.0)
+        m = ModelSpec(HomogeneousProcess(; transmission_rate = 0.5, population_size = N);
+            progression = [Transition(:recovered; from = :infection, delay = 1.0,
+                terminal = true)])
         finals = [simulate(m; rng = StableRNG(s), n_initial = 1).cumulative_cases
                   for s in 1:100]
         @test mean(finals) < 0.1 * N
@@ -25,8 +29,9 @@
 
     @testset "saturation infects the whole pool" begin
         N = 200
-        m = HomogeneousProcess(; transmission_rate = 100.0, population_size = N,
-            infectious_period = 1.0)
+        m = ModelSpec(HomogeneousProcess(; transmission_rate = 100.0, population_size = N);
+            progression = [Transition(:recovered; from = :infection, delay = 1.0,
+                terminal = true)])
         finals = [simulate(m; rng = StableRNG(s), n_initial = 1).cumulative_cases
                   for s in 1:20]
         @test mean(finals) > 0.98 * N
@@ -35,8 +40,9 @@
 
     @testset "depletion is real (final size ≤ N)" begin
         N = 300
-        m = HomogeneousProcess(; transmission_rate = 5.0, population_size = N,
-            infectious_period = 1.0)
+        m = ModelSpec(HomogeneousProcess(; transmission_rate = 5.0, population_size = N);
+            progression = [Transition(:recovered; from = :infection, delay = 1.0,
+                terminal = true)])
         for s in 1:20
             @test simulate(m; rng = StableRNG(s), n_initial = 2).cumulative_cases <= N
         end
@@ -44,17 +50,17 @@
 
     @testset "isolation shortens the outbreak" begin
         N = 1000
-        base = HomogeneousProcess(; transmission_rate = 2.0, population_size = N,
-            infectious_period = Exponential(1.0))
+        base = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
+            progression = [Transition(:recovered; from = :infection,
+                delay = Exponential(1.0), terminal = true)])
         # An early isolation transition closes the infectious window (`:isolated`
         # is in the default `until`), curtailing spread.
-        iso = HomogeneousProcess(; transmission_rate = 2.0, population_size = N,
-            infectious_period = Exponential(1.0),
+        iso = ModelSpec(HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
             progression = [
                 Transition(:recovered; from = :infection,
                     delay = Exponential(1.0), terminal = true),
-                Transition(:isolated; from = :infection,
-                    delay = (rng, ind) -> 0.1)
+                Transition(:isolated; from = :infection, delay = (rng, ind) -> 0.1)
             ])
         base_mean = mean(simulate(base; rng = StableRNG(s), n_initial = 3).cumulative_cases
         for s in 1:30)
@@ -68,15 +74,17 @@
         # first (close_t <= open_t). Such a case is never infectious: it must be
         # skipped rather than pop a close event against an id never made infectious.
         N = 100
-        m = HomogeneousProcess(; transmission_rate = 5.0, population_size = N,
-            progression = [
-                Transition(:infectious; from = :infection,
-                    delay = (rng, ind) -> 5.0),
-                Transition(:recovered; from = :infectious,
-                    delay = (rng, ind) -> 1.0, terminal = true),
-                Transition(:isolated; from = :infection, delay = (rng, ind) -> 0.1)
-            ])
-        @test m.from === :infectious
+        progression = [
+            Transition(:infectious; from = :infection, delay = (rng, ind) -> 5.0),
+            Transition(:recovered; from = :infectious,
+                delay = (rng, ind) -> 1.0, terminal = true),
+            Transition(:isolated; from = :infection, delay = (rng, ind) -> 0.1)
+        ]
+        # The infectious window is derived to open at :infectious (a latent period
+        # produces it).
+        @test EpiBranch._resolve_infectious_from(nothing, progression) === :infectious
+        m = ModelSpec(HomogeneousProcess(; transmission_rate = 5.0, population_size = N);
+            progression = progression)
         # No index case reaches :infectious, so no secondary transmission occurs
         # and the run completes with only the seeds infected.
         state = simulate(m; rng = StableRNG(1), n_initial = 5)
@@ -84,9 +92,14 @@
     end
 
     @testset "line list and timing" begin
-        m = HomogeneousProcess(; R0 = 2.0, population_size = 500,
-            infectious_period = Exponential(2.0), latent_period = Exponential(1.0))
-        @test m.from === :infectious            # a latent period opens the window later
+        progression = [
+            Transition(:infectious; from = :infection, delay = Exponential(1.0)),
+            Transition(:recovered; from = :infectious, delay = Exponential(2.0),
+                terminal = true)
+        ]
+        @test EpiBranch._resolve_infectious_from(nothing, progression) === :infectious
+        m = ModelSpec(HomogeneousProcess(; transmission_rate = 2.0, population_size = 500);
+            progression = progression)
         state = simulate(m; rng = StableRNG(1), n_initial = 5)
         ll = linelist(state)
         @test size(ll, 1) == state.cumulative_cases
@@ -95,28 +108,26 @@
         @test :date_recovered in propertynames(ll)
     end
 
-    @testset "R0 versus transmission_rate" begin
-        # β = R0 / mean infectious period; with mean 1.0 the two agree.
-        m_r0 = HomogeneousProcess(; R0 = 2.0, population_size = 100,
-            infectious_period = 1.0)
-        m_beta = HomogeneousProcess(; transmission_rate = 2.0, population_size = 100,
-            infectious_period = 1.0)
-        @test m_r0.β == m_beta.β == 2.0
-        # A distribution mean is used when infectious_period is a Distribution.
-        m_dist = HomogeneousProcess(; R0 = 3.0, population_size = 100,
-            infectious_period = Exponential(2.0))
-        @test m_dist.β ≈ 3.0 / 2.0
-
-        # Exactly one of transmission_rate / R0 is required.
-        @test_throws ArgumentError HomogeneousProcess(; population_size = 10,
-            infectious_period = 1.0)
-        @test_throws ArgumentError HomogeneousProcess(; R0 = 2.0,
-            transmission_rate = 2.0, population_size = 10, infectious_period = 1.0)
-        # R0 without an infectious period cannot resolve β.
-        @test_throws ArgumentError HomogeneousProcess(; R0 = 2.0, population_size = 10)
+    @testset "transmission_rate is the transmission parameter" begin
+        # β is the per-infective rate, stored and used directly (no R0 map).
+        p = HomogeneousProcess(; transmission_rate = 2.0, population_size = 100)
+        @test p.transmission_rate == 2.0
+        # `transmission_rate` is required.
+        @test_throws UndefKeywordError HomogeneousProcess(; population_size = 10)
+        # β must be finite and non-negative; negative, infinite and NaN rates
+        # are rejected before they reach the Sellke hazard.
+        @test_throws ArgumentError HomogeneousProcess(; transmission_rate = -1.0,
+            population_size = 10)
+        @test_throws ArgumentError HomogeneousProcess(; transmission_rate = Inf,
+            population_size = 10)
+        @test_throws ArgumentError HomogeneousProcess(; transmission_rate = NaN,
+            population_size = 10)
+        # β = 0 (no transmission) is a valid degenerate model.
+        @test HomogeneousProcess(; transmission_rate = 0.0,
+            population_size = 10).transmission_rate == 0.0
         # A non-positive population is rejected at construction.
         @test_throws ArgumentError HomogeneousProcess(; transmission_rate = 2.0,
-            population_size = 0, infectious_period = 1.0)
+            population_size = 0)
     end
 
     # A small helper that runs the structured pool directly: tag a real
@@ -124,14 +135,16 @@
     # it as the mixing attribute with `mixing_by = (:age_band,)`, supply a force
     # keyed on the band value, and return the band each infected case fell in.
     function _run_pool(N, band_of, force; n_initial = 5, rng)
-        m = HomogeneousProcess(; transmission_rate = 1.0, population_size = N,
-            infectious_period = Exponential(1.0))
-        state = EpiBranch.new_state(m, m.progression, EpiBranch.attributes(m), rng)
-        EpiBranch.add_individuals!(state, N, EpiBranch.interventions(m);
+        process = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
+        prog = [Transition(:recovered; from = :infection, delay = Exponential(1.0),
+            terminal = true)]
+        state = EpiBranch.new_state(process, prog, NoAttributes(), rng)
+        EpiBranch.add_individuals!(state, N, AbstractIntervention[];
             setup = (ind, i) -> (ind.state[:age_band] = band_of(ind)))
         EpiBranch._sellke_pool!(state, collect(1:N), rng;
             mixing_by = (:age_band,), force = force,
-            n_initial = n_initial, from = m.from, until = m.until)
+            n_initial = n_initial, from = :infection,
+            until = (:recovered, :died, :isolated))
         return [ind.state[:age_band]
                 for ind in state.individuals
                 if get(ind.state, :infected, false)]
@@ -189,14 +202,48 @@
         # first infection draws its source from an empty pool: without a guard that
         # throws; with the guard it falls back to the index-case label 0.
         N = 50
-        m = HomogeneousProcess(; transmission_rate = 1.0, population_size = N,
-            infectious_period = Exponential(1.0))
+        process = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
+        prog = [Transition(:recovered; from = :infection, delay = Exponential(1.0),
+            terminal = true)]
         rng = StableRNG(1)
-        state = EpiBranch.new_state(m, m.progression, EpiBranch.attributes(m), rng)
-        EpiBranch.add_individuals!(state, N, EpiBranch.interventions(m))
+        state = EpiBranch.new_state(process, prog, NoAttributes(), rng)
+        EpiBranch.add_individuals!(state, N, AbstractIntervention[])
         EpiBranch._sellke_pool!(state, collect(1:N), rng; mixing_by = (),
             force = (type, counts) -> 0.5, n_initial = 0,
-            from = m.from, until = m.until)
+            from = :infection, until = (:recovered, :died, :isolated))
         @test count(ind -> get(ind.state, :infected, false), state.individuals) > 0
+    end
+
+    @testset "conditioned simulation and show" begin
+        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        spec = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 500);
+            progression = prog)
+        # `condition` retries until the final size falls in the range
+        state = simulate(spec; condition = 100:500, n_initial = 5, rng = StableRNG(1))
+        @test state.cumulative_cases in 100:500
+
+        # show renders the β form
+        @test occursin("β=",
+            repr(HomogeneousProcess(; transmission_rate = 2.0, population_size = 10)))
+    end
+
+    @testset "termination controls warn on the fixed pool" begin
+        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        spec = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 200);
+            progression = prog)
+        # A set termination control has no effect on the extinction-run pool, so
+        # `simulate` warns rather than silently ignoring it.
+        @test_logs (:warn, r"ignores termination controls") simulate(
+            spec; n_initial = 3, max_cases = 50, rng = StableRNG(1))
+        # No termination keyword set → no warning.
+        @test_logs simulate(spec; n_initial = 3, rng = StableRNG(1))
+        # The trait itself: the pool ignores the controls, the generation engine
+        # honours them.
+        @test !EpiBranch._honours_termination_controls(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 10))
+        @test EpiBranch._honours_termination_controls(
+            BranchingProcess(Poisson(1.5), Exponential(2.0)))
     end
 end

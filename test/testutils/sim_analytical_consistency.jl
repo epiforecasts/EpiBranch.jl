@@ -18,14 +18,15 @@
 # The generative model is what we simulate from. `chain_statistics`
 # counts all infected cases (the observation only flags `:reported`), so
 # simulating the model directly yields the true chain sizes.
-generative_model(m::TransmissionModel) = m
+generative_model(m::Union{TransmissionModel, ModelSpec}) = m
 
 """
 Transform simulated true chain sizes into the observed sizes matching
 the analytical distribution, by applying the model's observation. Default
 (no observation) is identity.
 """
-function observe_chain_sizes(m::TransmissionModel, true_sizes, rng::AbstractRNG)
+function observe_chain_sizes(m::Union{TransmissionModel, ModelSpec}, true_sizes,
+        rng::AbstractRNG)
     _observe_sizes(EpiBranch.observation(m), true_sizes, rng)
 end
 
@@ -49,7 +50,7 @@ Returns `(empirical, analytical)` — vectors indexed by `sizes`. Use
 `isapprox` / `@test` against a suitable `atol` (typically ≈0.02 for
 5000 chains).
 """
-function sim_analytical_consistent(model::TransmissionModel;
+function sim_analytical_consistent(model::Union{TransmissionModel, ModelSpec};
         n_chains::Int = 5000,
         sizes = 1:4,
         rng::AbstractRNG = Random.default_rng(),

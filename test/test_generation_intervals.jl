@@ -63,12 +63,14 @@
         opts = (; max_cases = 1000)
 
         free = realised_generation_intervals(
-            simulate(BranchingProcess(Poisson(2.5), Exponential(6.0); attributes = attrs),
+            simulate(
+            ModelSpec(BranchingProcess(Poisson(2.5), Exponential(6.0)); attributes = attrs),
             30; opts..., rng = rng_a))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         isolated = realised_generation_intervals(
             simulate(
-            BranchingProcess(Poisson(2.5), Exponential(6.0); interventions = [iso], attributes = attrs),
+            ModelSpec(BranchingProcess(Poisson(2.5), Exponential(6.0));
+                interventions = [iso], attributes = attrs),
             30;
             opts...,
             rng = rng_b))

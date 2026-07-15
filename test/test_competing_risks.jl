@@ -31,7 +31,7 @@ end
         end
         rng = StableRNG(42)
         state = simulate(
-            BranchingProcess(cap_after_20, Exponential(5.0); attributes = clinical);
+            ModelSpec(BranchingProcess(cap_after_20, Exponential(5.0)); attributes = clinical);
             max_cases = 200, rng = rng)
         # After the cap kicks in (cumulative_cases >= 20), every parent
         # should emit at most 2 contacts.
@@ -48,7 +48,7 @@ end
             delay_to_immunity = 0.0)
         for seed in 1:5
             state = simulate(
-                BranchingProcess(Poisson(3.0), Exponential(5.0);
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [mv], attributes = clinical);
                 max_cases = 500,
                 rng = StableRNG(seed))
@@ -63,7 +63,7 @@ end
         mv = MassVaccination(efficacy = 1.0, eligibility_time = 1.0e6,
             delay_to_immunity = 0.0)
         state = simulate(
-            BranchingProcess(Poisson(3.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                 interventions = [mv], attributes = clinical);
             condition = 50:500,
             max_cases = 500,
@@ -88,7 +88,7 @@ end
 
         rng = StableRNG(42)
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [mv], attributes = attrs);
             max_cases = 200, rng = rng)
         # No infected case should have age >= 65 (those got blocked).
@@ -106,7 +106,7 @@ end
         mv = MassVaccination(efficacy = Beta(8, 2),
             eligibility_time = 1.0e6, delay_to_immunity = 0.0)
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [mv], attributes = clinical);
             condition = 50:500,
             max_cases = 500,
@@ -128,7 +128,7 @@ end
             eligibility_time = 0.0, delay_to_immunity = 0.0
         )
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [mv], attributes = attrs);
             max_cases = 100,
             rng = StableRNG(2))
@@ -147,7 +147,7 @@ end
         boost = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
             delay_to_immunity = 0.0, dose_label = :boost)
         state = simulate(
-            BranchingProcess(Poisson(3.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                 interventions = [prime, boost], attributes = clinical);
             max_cases = 200,
             rng = StableRNG(3))
@@ -179,7 +179,7 @@ end
         attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         rng = StableRNG(42)
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [AgeConditionalBlock(50)], attributes = attrs);
             max_cases = 200, rng = rng)
         for ind in state.individuals
@@ -215,7 +215,7 @@ end
         frac = Float64[]
         for seed in 1:8
             s = simulate(
-                BranchingProcess((rng, ind) -> 6, Exponential(5.0); attributes = attrs);
+                ModelSpec(BranchingProcess((rng, ind) -> 6, Exponential(5.0)); attributes = attrs);
                 n_initial = 50, max_generations = 1, rng = StableRNG(seed))
             kids = filter(i -> i.parent_id != 0, s.individuals)
             push!(frac, count(is_infected, kids) / length(kids))
@@ -228,10 +228,10 @@ end
         attrs = transmission_traits(susceptibility = 0.5)
         opts = (; n_initial = 5, max_generations = 4)
         base = simulate(
-            BranchingProcess((rng, ind) -> 4, Exponential(5.0); attributes = attrs);
+            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0)); attributes = attrs);
             opts..., rng = StableRNG(1))
         grown = simulate(
-            BranchingProcess((rng, ind) -> 4, Exponential(5.0);
+            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
                 interventions = [KeepUninfectedActive()], attributes = attrs);
             opts..., rng = StableRNG(1))
 

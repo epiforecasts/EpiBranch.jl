@@ -13,47 +13,55 @@
 # and the result is an EpiBranch `SimulationState` that `linelist` renders.
 
 """
-    simulate(model::HouseholdProcess; rng = default_rng(), obs_end = Inf) -> SimulationState
+    _simulate(model::HouseholdProcess, sim_opts; interventions, attributes,
+              progression, observation, rng, condition, max_attempts)
 
 Simulate `model` by the Sellke construction in continuous time — the exact
-generative model of the pairwise likelihood. Returns an EpiBranch
-`SimulationState`; `linelist(state)` turns it into the one-row-per-case
-DataFrame, carrying the infection, infectiousness, onset and recovery times the
-model's `progression` stamps on each case.
+generative model of the pairwise likelihood — with the modelling layers supplied
+by the caller (a bare process, or a `ModelSpec`). The infectious window's `from`
+state is derived from the composed `progression`. Returns an EpiBranch
+`SimulationState`; `linelist(state)` renders the one-row-per-case DataFrame.
 
 With no external hazard each household is seeded with one index at time 0 and
 spreads only within the household. With an `external_hazard` — a positive scalar
 or a calendar-time distribution — community introductions emerge over
-`[0, obs_end]`; pass a finite `obs_end` in that case.
+`[0, model.obs_end]`; give the process a finite `obs_end` in that case.
 """
-function simulate(model::HouseholdProcess; rng::AbstractRNG = default_rng(),
-        obs_end::Real = Inf)
-    state = new_state(model, model.progression, attributes(model), rng)
-    add_individuals!(state, length(model.household_of), interventions(model);
+function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
+        interventions, attributes, progression, observation, rng, condition,
+        max_attempts)
+    condition !== nothing && return _retry_for_condition(
+        () -> _simulate(model, sim_opts; interventions, attributes, progression,
+            observation, rng, condition = nothing, max_attempts),
+        condition, max_attempts)
+
+    from = _resolve_infectious_from(model.from, progression)
+    Tobs = model.obs_end
+
+    # A community hazard over an unbounded window would introduce every member;
+    # require a finite observation window instead (as the network simulator does).
+    _ext_active(model.external_hazard) && !isfinite(Tobs) &&
+        throw(ArgumentError(
+            "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
+            "every household member); build the process with e.g. `obs_end = 30.0`"))
+
+    state = new_state(model, progression, attributes, rng)
+    add_individuals!(state, length(model.household_of), interventions;
         setup = (ind, i) -> (ind.state[:household] = model.household_of[i]))
 
-    Tobs = Float64(obs_end)
     for mem in model.members
         EpiBranch._sellke_race!(state, mem, rng;
-            from = model.from, until = model.until,
+            from = from, until = model.until,
             seed! = (best, members, r) -> _seed_clique!(
                 best, members, model.external_hazard, Tobs, r),
             targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid))
             for oid in mem if oid != inf))
     end
 
-    # The clique loop writes per-individual state directly, so reconcile the
-    # aggregate bookkeeping the engine would otherwise maintain, keeping the
-    # returned state consistent with core `simulate` for downstream consumers.
-    state.cumulative_cases = count(ind -> get(ind.state, :infected, false), state.individuals)
-    state.max_infection_time = maximum(
-        (ind.infection_time
-        for ind in state.individuals if get(ind.state, :infected, false));
-        init = 0.0)
-
-    # Apply the model's observation model (under-reporting, report delays), as
-    # core `simulate` does. A no-op for the default `NoObservation`.
-    apply_observation!(observation(model), state, rng)
+    _reconcile_sellke_bookkeeping!(state)
+    # Apply the observation model (under-reporting, report delays), as core
+    # `simulate` does. A no-op for the default `NoObservation`.
+    apply_observation!(observation, state, rng)
     return state
 end
 

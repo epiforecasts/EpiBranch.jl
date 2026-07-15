@@ -29,7 +29,7 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases())
         rng = StableRNG(42)
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [iso], attributes = clin_mixed);
             max_cases = 100,
             rng = rng)
@@ -47,7 +47,7 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         )
         rng = StableRNG(13)
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [iso], attributes = attrs);
             max_cases = 100,
             rng = rng)
@@ -74,7 +74,7 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         iso = Isolation(onset_to_isolation_delay = Exponential(0.1), eligibility = OnlyOlder(50))
         rng = StableRNG(17)
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 interventions = [iso], attributes = attrs);
             max_cases = 100,
             rng = rng)

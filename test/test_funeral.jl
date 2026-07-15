@@ -17,7 +17,7 @@
         from = :died, until = (:buried,), kernel = Gamma(2.0, 0.5))
     opts = (; n_initial = 30, max_cases = 3000)
 
-    s = simulate(BranchingProcess(community, funeral; progression = history);
+    s = simulate(ModelSpec(BranchingProcess(community, funeral); progression = history);
         opts..., rng = StableRNG(1))
 
     # An infected case transmitted at the funeral if its infector had died
@@ -47,7 +47,7 @@
 
     # The funeral window adds transmission: at least as many cases as the
     # community-only model on the same seed.
-    s_no = simulate(BranchingProcess(community; progression = history);
+    s_no = simulate(ModelSpec(BranchingProcess(community); progression = history);
         opts..., rng = StableRNG(1))
     @test s.cumulative_cases >= s_no.cumulative_cases
 end

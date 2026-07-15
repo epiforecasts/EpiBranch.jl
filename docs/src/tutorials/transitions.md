@@ -3,16 +3,20 @@
 Interventions are policy: isolation, contact tracing, vaccination.
 Clinical transitions are the case's own progression: symptoms,
 reporting, maybe admission, and recovery or death. **EpiBranch.jl**
-models them as a Markov chain on case state. The natural history is
-part of the model: set it as the [`BranchingProcess`](@ref)'s
-`progression`.
+models them as transitions between case states. The natural history is a
+layer on the model: attach it as the `progression` of a
+[`ModelSpec`](@ref) that wraps the transmission process. A
+structure-driven process derives its infectious-window `from` state
+from this progression.
 
 Transitions use the same two hooks as interventions
 ([`initialise_individual!`](@ref EpiBranch.initialise_individual!),
 [`resolve_individual!`](@ref EpiBranch.resolve_individual!)) but sit
 under their own abstract type, [`AbstractClinicalTransition`](@ref).
-This keeps the concerns tidy: the model's `interventions` for policy, its
-`progression` for biology.
+This keeps the concerns tidy: the spec's `interventions` for policy, its
+`progression` for biology. Each [`Transition`](@ref) takes either a
+`rate` (an exponential, Markovian step with mean `1/rate`) or a
+`delay` (a fixed scalar or a distribution).
 
 ## Built-in transitions
 
@@ -44,7 +48,7 @@ progression = [
     Recovery(delay = LogNormal(2.0, 0.4)),
 ]
 
-model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression, attributes = clinical)
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 200, rng = rng)
@@ -101,7 +105,7 @@ hosp_age = Hospitalisation(
 )
 
 progression = [hosp_age, death_age, Recovery(delay = LogNormal(2.0, 0.4))]
-model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression, attributes = attrs)
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = attrs)
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 300, rng = rng)
@@ -135,7 +139,7 @@ progression = [
     Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5),
     gated_hosp,
 ]
-model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression, attributes = clinical)
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 200, rng = rng)
@@ -194,7 +198,7 @@ reporting_post_test = Reporting(
 )
 
 progression = [testing, reporting_post_test]
-model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression, attributes = clinical)
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 100, rng = rng)
@@ -269,11 +273,12 @@ progression = [
 ]
 
 # Two-type model with asymmetric mixing between children and adults.
-multitype = BranchingProcess(
-    [2.0 0.5; 0.8 1.5],
-    R -> NegBin(R, 0.5),
-    LogNormal(1.6, 0.5),
-    type_labels = ["children", "adults"],
+multitype = ModelSpec(
+    BranchingProcess(
+        [2.0 0.5; 0.8 1.5],
+        R -> NegBin(R, 0.5),
+        LogNormal(1.6, 0.5),
+        type_labels = ["children", "adults"]);
     progression = progression, attributes = attrs_age)
 
 rng = StableRNG(42)
@@ -343,7 +348,7 @@ progression = [
     Recovery(delay = LogNormal(2.0, 0.4)),
     LostToFollowUp(LogNormal(1.5, 0.5), 0.1),
 ]
-model = BranchingProcess(Poisson(2.0), Exponential(5.0); progression = progression, attributes = clinical)
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 200, rng = rng)

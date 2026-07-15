@@ -66,15 +66,15 @@ println("NegBin(R=0.9, k=0.5): LL = $(round(ll, digits=2))")
 
 ### Imperfect observation
 
-Account for incomplete case ascertainment by giving the model a
-[`PerCaseObservation`](@ref): pass `observation = …` to the process
-constructor. Each case is detected independently with the given
-probability:
+Account for incomplete case ascertainment by attaching a
+[`PerCaseObservation`](@ref) to the process with a [`ModelSpec`](@ref):
+pass `observation = …` to the wrapper. Each case is detected
+independently with the given probability:
 
 ```@example chains
 data = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
-full = BranchingProcess(Poisson(0.9); observation = PerCaseObservation(detection_prob = 1.0))
-partial = BranchingProcess(Poisson(0.9); observation = PerCaseObservation(detection_prob = 0.7))
+full = ModelSpec(BranchingProcess(Poisson(0.9)); observation = PerCaseObservation(detection_prob = 1.0))
+partial = ModelSpec(BranchingProcess(Poisson(0.9)); observation = PerCaseObservation(detection_prob = 0.7))
 println("Full observation:  $(round(loglikelihood(data, full), digits=2))")
 println("70% observation:   $(round(loglikelihood(data, partial), digits=2))")
 ```
@@ -101,14 +101,15 @@ println("Chain length LL: $(round(ll, digits=2))")
 ## Simulation-based likelihood
 
 For models with interventions, use the simulation-based likelihood by
-passing a model instead of a distribution. Because the interventions and
-attributes live on the model, the likelihood is evaluated under
-exactly the process that produced the data, with nothing to pass twice:
+passing a [`ModelSpec`](@ref) instead of a distribution. Because the
+interventions and attributes are composed onto the process by the spec,
+the likelihood is evaluated under exactly the process that produced the
+data, with nothing to pass twice:
 
 ```@example chains
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 
-model = BranchingProcess(Poisson(2.0), Exponential(5.0);
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     interventions = [iso],
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
 )
@@ -164,11 +165,11 @@ end
 ```
 
 For a bare offspring law these return the analytical distribution
-(`Borel`, `GammaBorel`, …) where one exists; when the model carries
-interventions (or you pass `seeds`, `pi`, `n_sim`, …) they return a
-wrapper that routes through the simulation-based `loglikelihood`. Either
-way the model carries its own interventions and attributes, so the `~`
-line stays clean.
+(`Borel`, `GammaBorel`, …) where one exists; when the spec composes
+interventions onto the process (or you pass `seeds`, `pi`, `n_sim`, …)
+they return a wrapper that routes through the simulation-based
+`loglikelihood`. Either way the spec carries its own interventions and
+attributes, so the `~` line stays clean.
 
 ```julia
 data ~ chain_size_distribution(BranchingProcess(Poisson(R));

@@ -11,53 +11,54 @@
 # that `linelist` renders.
 
 """
-    simulate(model::NetworkProcess; rng = default_rng(), n_initial = 1,
-             obs_end = Inf) -> SimulationState
+    _simulate(model::NetworkProcess, sim_opts; interventions, attributes,
+              progression, observation, rng, condition, max_attempts)
 
-Simulate `model` by the Sellke construction in continuous time. Returns an
-EpiBranch `SimulationState`; `linelist(state)` turns it into the
-one-row-per-case DataFrame, carrying the infection, infectiousness, onset
-and removal times the model's `progression` stamps on each case.
+Simulate `model` by the Sellke construction in continuous time, with the
+modelling layers supplied by the caller (a bare process, or a `ModelSpec`). The
+infectious window's `from` state is derived from the composed `progression`.
+Returns an EpiBranch `SimulationState`; `linelist(state)` renders it.
 
-With no external hazard, `n_initial` distinct nodes are seeded at time 0 and
-the outbreak spreads along the edges. With an `external_hazard` — a positive
-scalar or a calendar-time distribution — community introductions emerge over
-`[0, obs_end]`, so a finite `obs_end` is required (an unbounded window would
-seed every node).
+With no external hazard, `sim_opts.n_initial` distinct nodes are seeded at time
+0 and the outbreak spreads along the edges. With an `external_hazard` — a
+positive scalar or a calendar-time distribution — community introductions emerge
+over `[0, model.obs_end]`, so a finite `obs_end` is required (an unbounded window
+would seed every node).
 """
-function simulate(model::NetworkProcess; rng::AbstractRNG = default_rng(),
-        n_initial::Integer = 1, obs_end::Real = Inf)
-    state = new_state(model, model.progression, attributes(model), rng)
-    n = length(model.adjacency)
-    add_individuals!(state, n, interventions(model); setup = (ind, i) -> nothing)
+function _simulate(model::NetworkProcess, sim_opts::SimOpts;
+        interventions, attributes, progression, observation, rng, condition,
+        max_attempts)
+    condition !== nothing && return _retry_for_condition(
+        () -> _simulate(model, sim_opts; interventions, attributes, progression,
+            observation, rng, condition = nothing, max_attempts),
+        condition, max_attempts)
 
-    Tobs = Float64(obs_end)
+    from = _resolve_infectious_from(model.from, progression)
+    Tobs = model.obs_end
+    n_initial = sim_opts.n_initial
+
+    state = new_state(model, progression, attributes, rng)
+    n = length(model.adjacency)
+    add_individuals!(state, n, interventions; setup = (ind, i) -> nothing)
+
     # A community hazard over an unbounded window would introduce every node,
     # swamping the graph. Require a finite observation window instead.
     _ext_active(model.external_hazard) && !isfinite(Tobs) &&
         throw(ArgumentError(
             "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
-            "the whole network); pass e.g. `obs_end = 30.0`"))
+            "the whole network); build the process with e.g. `obs_end = 30.0`"))
     EpiBranch._sellke_race!(state, collect(1:n), rng;
-        from = model.from, until = model.until,
+        from = from, until = model.until,
         seed! = (best, members, r) -> _seed_network!(
             best, members, model.external_hazard, n_initial, Tobs, r),
         targets = (inf, st) -> ((nb, _edge_kernel(model, inf, k))
         for (k, nb) in enumerate(model.adjacency[inf])
         if !is_infected(st.individuals[nb])))
 
-    # The race writes per-individual state directly, so reconcile the aggregate
-    # bookkeeping the engine would otherwise maintain, keeping the returned
-    # state consistent with core `simulate` for downstream consumers.
-    state.cumulative_cases = count(ind -> get(ind.state, :infected, false), state.individuals)
-    state.max_infection_time = maximum(
-        (ind.infection_time
-        for ind in state.individuals if get(ind.state, :infected, false));
-        init = 0.0)
-
-    # Apply the model's observation model (under-reporting, report delays), as
-    # core `simulate` does. A no-op for the default `NoObservation`.
-    apply_observation!(observation(model), state, rng)
+    _reconcile_sellke_bookkeeping!(state)
+    # Apply the observation model (under-reporting, report delays), as core
+    # `simulate` does. A no-op for the default `NoObservation`.
+    apply_observation!(observation, state, rng)
     return state
 end
 

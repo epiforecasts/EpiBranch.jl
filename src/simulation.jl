@@ -6,9 +6,10 @@
 
 Run a single outbreak simulation.
 
-The interventions, attributes and observation are carried by `model`, set
-on the process constructor, so the model alone determines the generative
-process. `simulate` takes only execution controls.
+`model` is a transmission process (a pure kernel) or a [`ModelSpec`](@ref)
+composing that process with modelling layers. The progression, interventions,
+attributes and observation come from the [`ModelSpec`](@ref); a bare process
+runs with the empty defaults. `simulate` itself takes only execution controls.
 
 Termination is set by `max_cases`, `max_generations`, and `max_time` (any
 of which may be `nothing` to drop that limit); the run always stops on
@@ -16,8 +17,8 @@ extinction. For finer control pass a `stopping_rules` vector of
 [`AbstractStoppingRule`](@ref). `n_initial` is the number of seed cases.
 
 The case's clinical timeline — the [`AbstractClinicalTransition`](@ref)s a
-case moves through (latent, onset, severity, death/recovery, burial) — is
-the model's `progression`, set on the [`BranchingProcess`](@ref). Each
+case moves through (latent, onset, severity, death/recovery, burial) — is the
+`progression` composed onto the process with a [`ModelSpec`](@ref). Each
 transition's `probability` and `delay` accept constants or
 `(rng, ind) -> value` functions, so age- or risk-conditional rates and
 delays are configured per-transition.
@@ -28,27 +29,38 @@ up to `max_attempts`.
 """
 function simulate(model::TransmissionModel;
         n_initial::Int = 1,
-        max_cases::Union{Int, Nothing} = 10_000,
-        max_generations::Union{Int, Nothing} = 100,
+        max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
+        max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
         condition::Union{UnitRange{Int}, Nothing} = nothing,
         max_attempts::Int = 10_000)
+    # A bare process is composed with no ModelSpec, so run the window check the
+    # spec constructor would otherwise do (a ModelSpec routes here via its own
+    # `simulate`, already validated at composition, so it never double-warns).
+    _validate_process_windows(model, _progression(model))
+    _warn_ignored_termination(
+        model, max_cases, max_generations, max_time, stopping_rules)
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
     return _simulate(model, sim_opts; interventions = interventions(model),
-        attributes = attributes(model), rng, condition, max_attempts)
+        attributes = attributes(model), progression = _progression(model),
+        observation = observation(model), rng, condition, max_attempts)
 end
 
-# Internal single run against a built `SimOpts`. The public methods build
-# the `SimOpts` from the flat termination keywords.
+# Internal single run against a built `SimOpts`. The forcing layers
+# (interventions, attributes, progression, observation) are passed in
+# explicitly, so a `ModelSpec` can supply its own while the process stays the
+# dispatched model. The public methods read them off a bare process, or off
+# the spec.
 function _simulate(model::TransmissionModel, sim_opts::SimOpts;
-        interventions, attributes, rng, condition, max_attempts)
+        interventions, attributes, progression, observation, rng, condition,
+        max_attempts)
     if condition !== nothing
         for _ in 1:max_attempts
-            state = _simulate(model, sim_opts; interventions, attributes, rng,
-                condition = nothing, max_attempts)
+            state = _simulate(model, sim_opts; interventions, attributes,
+                progression, observation, rng, condition = nothing, max_attempts)
             state.cumulative_cases in condition && return state
         end
         throw(ErrorException(
@@ -57,14 +69,14 @@ function _simulate(model::TransmissionModel, sim_opts::SimOpts;
     end
 
     state = initialise_state(
-        model, sim_opts, interventions, _progression(model), attributes, rng)
+        model, sim_opts, interventions, progression, attributes, rng)
     _resolve_new_transitions!(state, 0)
 
     while !should_terminate(state, sim_opts)
         _advance_generation!(model, state, interventions)
     end
 
-    apply_observation!(observation(model), state, rng)
+    apply_observation!(observation, state, rng)
     return state
 end
 
@@ -81,33 +93,105 @@ using independent RNG streams derived from the provided `rng`. Use
 """
 function simulate(model::TransmissionModel, n::Int;
         n_initial::Int = 1,
-        max_cases::Union{Int, Nothing} = 10_000,
-        max_generations::Union{Int, Nothing} = 100,
+        max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
+        max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false)
+    _validate_process_windows(model, _progression(model))
+    _warn_ignored_termination(
+        model, max_cases, max_generations, max_time, stopping_rules)
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
     return _simulate_n(model, n, sim_opts; interventions = interventions(model),
-        attributes = attributes(model), rng, parallel)
+        attributes = attributes(model), progression = _progression(model),
+        observation = observation(model), rng, parallel)
 end
 
 function _simulate_n(model::TransmissionModel, n::Int, sim_opts::SimOpts;
-        interventions, attributes, rng, parallel::Bool = false)
+        interventions, attributes, progression, observation, rng,
+        parallel::Bool = false)
     if parallel && Threads.nthreads() > 1
         seeds = [rand(rng, UInt64) for _ in 1:n]
         results = Vector{SimulationState}(undef, n)
         Threads.@threads for i in 1:n
             local_rng = Random.Xoshiro(seeds[i])
             results[i] = _simulate(model, sim_opts; interventions, attributes,
-                rng = local_rng, condition = nothing, max_attempts = 10_000)
+                progression, observation, rng = local_rng, condition = nothing,
+                max_attempts = 10_000)
         end
         return results
     else
-        return [_simulate(model, sim_opts; interventions, attributes, rng,
-                    condition = nothing, max_attempts = 10_000) for _ in 1:n]
+        return [_simulate(model, sim_opts; interventions, attributes, progression,
+                    observation, rng, condition = nothing, max_attempts = 10_000)
+                for _ in 1:n]
     end
+end
+
+# ── Shared helpers for the structure-driven (continuous-time) models ────
+# The homogeneous, household and network `_simulate` methods run their own
+# Sellke loop rather than the generation engine, so they share the same two
+# concerns: retrying until a `condition` is met, and reconciling the aggregate
+# bookkeeping the engine would otherwise maintain.
+
+# Whether a model's simulation honours the termination controls (`max_cases`,
+# `max_generations`, `max_time`, `stopping_rules`). The generation-based engine
+# does; the structure-driven pools always run to extinction over their fixed
+# population and ignore them, so passing a termination control to one has no
+# effect. Structure-driven models override this to `false`.
+_honours_termination_controls(::TransmissionModel) = true
+
+# Warn when a termination control is set on a model that ignores it, so the
+# silent no-op is discoverable. Compares against the keyword defaults, so only
+# an explicitly-set control triggers the warning; `simulate` on a pool with no
+# termination keywords stays quiet.
+function _warn_ignored_termination(
+        model, max_cases, max_generations, max_time, stopping_rules)
+    _honours_termination_controls(model) && return nothing
+    ignored = String[]
+    max_cases != _DEFAULT_MAX_CASES && push!(ignored, "max_cases")
+    max_generations != _DEFAULT_MAX_GENERATIONS && push!(ignored, "max_generations")
+    max_time !== nothing && push!(ignored, "max_time")
+    stopping_rules !== nothing && push!(ignored, "stopping_rules")
+    isempty(ignored) && return nothing
+    @warn "$(nameof(typeof(model))) runs to extinction over its fixed " *
+          "population and ignores termination controls; " *
+          "$(join(ignored, ", ")) had no effect (only n_initial and " *
+          "condition apply)."
+    return nothing
+end
+
+"""
+    _retry_for_condition(run, condition, max_attempts)
+
+Call `run()` (one simulation) until its `cumulative_cases` fall in `condition`,
+up to `max_attempts` times; error if none does.
+"""
+function _retry_for_condition(run, condition, max_attempts)
+    for _ in 1:max_attempts
+        state = run()
+        state.cumulative_cases in condition && return state
+    end
+    throw(ErrorException(
+        "No simulation produced an outbreak of size $condition within $max_attempts attempts"))
+end
+
+"""
+    _reconcile_sellke_bookkeeping!(state) -> state
+
+Set `cumulative_cases` and `max_infection_time` from the per-individual state a
+continuous-time (Sellke) loop writes directly, keeping the returned state
+consistent with the generation engine's bookkeeping.
+"""
+function _reconcile_sellke_bookkeeping!(state::SimulationState)
+    state.cumulative_cases = count(
+        ind -> get(ind.state, :infected, false), state.individuals)
+    state.max_infection_time = maximum(
+        (ind.infection_time
+        for ind in state.individuals if get(ind.state, :infected, false));
+        init = 0.0)
+    return state
 end
 
 # ── Unified generation step ─────────────────────────────────────────

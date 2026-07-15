@@ -8,11 +8,11 @@ vs when is the parent isolated (intervention time)?
 There is a connection to survival analysis. The generation time CDF is the
 survival function of remaining potential transmission, truncated by isolation.
 
-A policy lives on the model: pass `interventions = [iso]` to the process
-constructor, and `simulate` and `loglikelihood` read it from the model.
-This tutorial compares several policies against the same base
-process, so it defines a small builder (each scenario is its own model)
-and simulates each.
+A policy is a layer on a model: wrap the process in a `ModelSpec` and pass
+`interventions = [iso]` to it, and `simulate` and `loglikelihood` read the
+policy from the `ModelSpec`. This tutorial compares several policies against
+the same base process, so it defines a small builder (each scenario is its own
+`ModelSpec`) and simulates each.
 
 ## Without interventions
 
@@ -25,9 +25,9 @@ using StableRNGs
 
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
-# A scenario is a model: the base process under a given policy.
+# A scenario is a ModelSpec: the base process under a given policy.
 scenario(interventions = AbstractIntervention[], attributes = clinical) =
-    BranchingProcess(Poisson(3.0), Exponential(5.0); interventions, attributes)
+    ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0)); interventions, attributes)
 
 rng = StableRNG(42)
 results_baseline = simulate(scenario(), 200; max_cases = 500, rng = rng)
@@ -479,7 +479,7 @@ end
 
 # Test it
 gl = GatheringLimit(5)
-model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0); interventions = [gl])
+model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)); interventions = [gl])
 rng = StableRNG(42)
 results_gl = simulate(model, 200; max_cases = 500, rng = rng)
 println("With gathering limit (max 5): $(round(containment_probability(results_gl), digits=3))")

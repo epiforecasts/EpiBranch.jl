@@ -16,11 +16,9 @@
 # transmission — the thing a coin-flip-per-edge model cannot express.
 
 """
-    NetworkProcess(adjacency, kernel; infectious_period = nothing,
-                       latent_period = nothing, progression = [], from = nothing,
-                       until = (:recovered, :died, :isolated), external_hazard = 0.0,
-                       interventions = [], attributes = NoAttributes(),
-                       observation = NoObservation())
+    NetworkProcess(adjacency, kernel; from = nothing,
+                   until = (:recovered, :died, :isolated), external_hazard = 0.0,
+                   obs_end = Inf)
 
 Rate-based transmission over a fixed contact network. `adjacency[i]` lists
 the graph neighbours of node `i` (1-based); the graph is the population.
@@ -31,79 +29,52 @@ per-edge vector of distributions parallel to `adjacency`
 (`kernel[i][k]` for node `i`'s `k`-th listed neighbour). The kernel times
 each infectious contact from the infector's `from` state.
 
-The infectious timeline is a flexible `progression` of EpiBranch
-`Transition`s, exactly as for `HouseholdProcess`: a latent period is
-`Transition(:infectious, from = :infection, delay = …)`, an infectious
-period a removal transition, and onset, testing and the rest are further
-transitions the line list reads. `from` is the state the kernel times from
-(`:infectious` when the timeline has a latent period, `:infection`
-otherwise); `until` names the removal states that close the infectious
-window. Adding a `Transition(:isolated, …)` (or an intervention that writes
-`:isolated_time`) closes the window early and so cuts onward transmission.
+The process is a pure transmission kernel. The natural history is a
+`progression` of EpiBranch `Transition`s attached with a [`ModelSpec`](@ref),
+exactly as for `HouseholdProcess`: a latent period is
+`Transition(:infectious; from = :infection, delay = …)`, an infectious period
+a terminal removal transition, and onset, testing and the rest are further
+transitions the line list reads. `from` is the state the kernel times contacts
+from; left as `nothing` it is derived from the progression (`:infectious` when
+a latent period produces it, otherwise `:infection`); `until` names the removal
+states that close the window. Adding a `Transition(:isolated, …)` closes the
+window early and so cuts onward transmission.
 
-`infectious_period` and `latent_period` are sugar for the two common
-transitions, each a scalar (constant) or a `Distribution` (per-case).
-`external_hazard` is the community force of infection — a scalar for a
-constant hazard or a calendar-time distribution for a time-varying one.
+`external_hazard` is the community force of infection — a scalar for a constant
+hazard or a calendar-time distribution — and `obs_end` bounds the window
+`[0, obs_end]` over which those community introductions emerge.
 
 # Example
 
 ```julia
-using EpiNetwork, Distributions
+using EpiNetwork, EpiBranch, Distributions
 adjacency = [[2, 5], [1, 3], [2, 4], [3, 5], [4, 1]]   # ring of 5
-model = NetworkProcess(adjacency, Exponential(2.0); infectious_period = 6.0)
+model = ModelSpec(NetworkProcess(adjacency, Exponential(2.0));
+    progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])
 ```
 """
-struct NetworkProcess{K, E, A, O <: ObservationModel} <: TransmissionModel
+struct NetworkProcess{K, E} <: TransmissionModel
     adjacency::Vector{Vector{Int}}   # adjacency[i] = graph neighbours of node i
     edge_kernel::K                   # contact interval: shared, callable, or per-edge
-    from::Symbol                     # state the kernel times contacts from
+    from::Union{Symbol, Nothing}     # infectious-window start; nothing → derive from progression
     until::Tuple                     # removal states that close the infectious window
-    progression::Vector{AbstractClinicalTransition}  # natural-history timeline
     external_hazard::E               # community force of infection (0 = none)
-    interventions::Vector{AbstractIntervention}
-    attributes::A
-    observation::O
+    obs_end::Float64                 # end of the community-importation window
 end
 
 function NetworkProcess(adjacency::AbstractVector{<:AbstractVector{<:Integer}},
         kernel;
-        infectious_period = nothing,
-        latent_period = nothing,
-        progression = AbstractClinicalTransition[],
         from = nothing,
         until = (:recovered, :died, :isolated),
         external_hazard = 0.0,
-        interventions = AbstractIntervention[],
-        attributes = NoAttributes(),
-        observation::ObservationModel = NoObservation())
+        obs_end = Inf)
     adj = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
     edge_kernel = _validate_kernel(kernel, adj)
     _valid_external(external_hazard) ||
         throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
 
-    prog = convert(Vector{AbstractClinicalTransition}, progression)
-    # Desugar the common timeline shorthands when no explicit progression given:
-    # a latent period to :infectious, an infectious period to a recovery removal.
-    if isempty(prog)
-        latent_period === nothing ||
-            push!(prog, Transition(:infectious; from = :infection, delay = _as_delay(latent_period)))
-        anchor = latent_period === nothing ? :infection : :infectious
-        infectious_period === nothing ||
-            push!(prog,
-                Transition(:recovered; from = anchor, delay = _as_delay(infectious_period),
-                    terminal = true))
-    end
-
-    # The kernel times contacts from `from`: default to :infectious when the
-    # timeline produces it (a latent period), otherwise from infection.
-    kfrom = from === nothing ?
-            (any(t -> _writes_state(t, :infectious), prog) ? :infectious : :infection) :
-            from
-
-    return NetworkProcess(adj, edge_kernel, kfrom, Tuple(until),
-        prog, _normalise_external(external_hazard), _intervention_list(interventions),
-        attributes, observation)
+    return NetworkProcess(adj, edge_kernel, from, Tuple(until),
+        _normalise_external(external_hazard), Float64(obs_end))
 end
 
 """
@@ -128,21 +99,20 @@ function NetworkProcess(A::AbstractMatrix, kernel; kwargs...)
     return NetworkProcess(adjacency, kernel; kwargs...)
 end
 
-# The interventions/attributes/observation the model carries.
-interventions(m::NetworkProcess) = m.interventions
-attributes(m::NetworkProcess) = m.attributes
-observation(m::NetworkProcess) = m.observation
-
 # The population is the graph; there is no separate finite susceptible pool.
 population_size(::NetworkProcess) = NoPopulation()
+
+# The outbreak runs to extinction over the fixed graph, so the termination
+# controls do not apply; `simulate` warns if any is set.
+_honours_termination_controls(::NetworkProcess) = false
 
 function Base.show(io::IO, m::NetworkProcess)
     n = length(m.adjacency)
     n_edges = sum(length, m.adjacency; init = 0) ÷ 2
     kstr = m.edge_kernel isa Distribution ? nameof(typeof(m.edge_kernel)) :
            m.edge_kernel isa AbstractVector ? "per-edge" : "Function"
-    print(io, "NetworkProcess(nodes=$n, edges=$n_edges, kernel=$kstr, ",
-        "from=:$(m.from), $(length(m.progression)) transitions",
+    from = m.from === nothing ? "" : ", from=:$(m.from)"
+    print(io, "NetworkProcess(nodes=$n, edges=$n_edges, kernel=$kstr", from,
         _ext_active(m.external_hazard) ? ", external_hazard=$(m.external_hazard))" : ")")
 end
 
@@ -176,18 +146,10 @@ _resolve_kernel(k::ContinuousUnivariateDistribution, m, i, pos) = k
 _resolve_kernel(k::AbstractVector, m, i, pos) = k[i][pos]
 _resolve_kernel(k, m, i, pos) = k(i, m.adjacency[i][pos])
 
-# ── Timeline / external-hazard helpers ───────────────────────────────
+# ── External-hazard helpers ──────────────────────────────────────────
 #
 # Mirror the HouseholdProcess helpers: this model shares the same
-# structure-driven timeline sugar and community-introduction machinery.
-
-# A `Transition` delay is a `Distribution` or `(rng, ind) -> Real`; a scalar
-# period becomes a constant-delay closure so the sugar accepts both.
-_as_delay(d::Distribution) = d
-_as_delay(x::Real) = (rng, ind) -> float(x)
-
-# Does a clinical transition write the named state?
-_writes_state(t, s::Symbol) = hasproperty(t, :state) && getfield(t, :state) === s
+# community-introduction machinery.
 
 # The external community source: a non-negative scalar (constant hazard) or any
 # continuous distribution on the non-negative reals (a calendar-time hazard).
@@ -204,8 +166,3 @@ _ext_active(::ContinuousUnivariateDistribution) = true
 # its Exponential survival time, a distribution is sampled directly.
 _ext_draw(rng, α::Real) = rand(rng, Exponential(1 / α))
 _ext_draw(rng, d::ContinuousUnivariateDistribution) = rand(rng, d)
-
-# Normalise the `interventions` keyword to a vector: a bare intervention is
-# wrapped, a vector is converted to the common element type.
-_intervention_list(iv::AbstractVector) = convert(Vector{AbstractIntervention}, iv)
-_intervention_list(iv) = AbstractIntervention[iv]

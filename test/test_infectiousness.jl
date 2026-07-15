@@ -9,9 +9,9 @@
 
     @testset "from-state offsets the generation interval" begin
         latent = Transition(:infectious, from = :infection, delay = (rng, ind) -> 4.0)
-        m = BranchingProcess(
-            Infectiousness((rng, ind) -> 3;
-                from = :infectious, kernel = Exponential(0.5));
+        m = ModelSpec(
+            BranchingProcess(Infectiousness((rng, ind) -> 3;
+                from = :infectious, kernel = Exponential(0.5)));
             progression = [latent])
         s = simulate(m;
             n_initial = 30, max_generations = 1, rng = StableRNG(1))
@@ -22,10 +22,11 @@
 
     @testset "a window whose from-state is never reached produces no contacts" begin
         # `from = :died` but no death transition, so `:died_time` is never
-        # set and the window never opens: the outbreak cannot spread. The
-        # model warns about the unreachable from-state at construction.
-        m = @test_logs (:warn,) match_mode=:any BranchingProcess(
-            Infectiousness((rng, ind) -> 5; from = :died, kernel = Exponential(1.0)))
+        # set and the window never opens: the outbreak cannot spread.
+        # Composing the process with a progression warns about the
+        # unreachable from-state.
+        m = @test_logs (:warn,) match_mode=:any ModelSpec(BranchingProcess(
+            Infectiousness((rng, ind) -> 5; from = :died, kernel = Exponential(1.0))))
         s = simulate(m; n_initial = 10, max_generations = 3,
             rng = StableRNG(2))
         @test s.cumulative_cases == 10
@@ -49,14 +50,14 @@
 
         # Recovery far in the future: no contact is censored.
         rec_late = Transition(:recovered, from = :infection, delay = (rng, ind) -> 100.0)
-        s_late = simulate(BranchingProcess(win; progression = [rec_late]);
+        s_late = simulate(ModelSpec(BranchingProcess(win); progression = [rec_late]);
             opts..., rng = StableRNG(1))
         kids_late = count(i -> i.parent_id != 0 && is_infected(i), s_late.individuals)
         @test kids_late == 50   # 5 index × 10, nothing removed early
 
         # Near-instant recovery: almost every contact lands after removal.
         rec_early = Transition(:recovered, from = :infection, delay = (rng, ind) -> 0.001)
-        s_early = simulate(BranchingProcess(win; progression = [rec_early]);
+        s_early = simulate(ModelSpec(BranchingProcess(win); progression = [rec_early]);
             opts..., rng = StableRNG(1))
         kids_early = count(i -> i.parent_id != 0 && is_infected(i), s_early.individuals)
         @test kids_early < 5

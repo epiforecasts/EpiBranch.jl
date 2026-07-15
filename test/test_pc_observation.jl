@@ -21,7 +21,7 @@
             detection_prob = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0)
         rng = StableRNG(11)
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 observation = obs, attributes = attrs);
             max_cases = 100, rng = rng)
         for ind in state.individuals
@@ -41,7 +41,7 @@
             delay = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 7.0)
         rng = StableRNG(23)
         state = simulate(
-            BranchingProcess(Poisson(2.0), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
                 observation = obs, attributes = attrs);
             max_cases = 100, rng = rng)
         for ind in state.individuals
@@ -59,7 +59,7 @@
         obs = PerCaseObservation(delay = 2.0)
         rng = StableRNG(99)
         state = simulate(
-            BranchingProcess(Poisson(1.5), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0));
                 observation = obs, attributes = attrs);
             max_cases = 50, rng = rng)
         for ind in state.individuals
@@ -76,7 +76,7 @@
             from = ind -> ind.infection_time)
         rng = StableRNG(7)
         state = simulate(
-            BranchingProcess(Poisson(1.5), Exponential(5.0);
+            ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0));
                 observation = obs, attributes = attrs);
             max_cases = 50, rng = rng)
         for ind in state.individuals
@@ -87,7 +87,7 @@
     @testset "Distribution detection_prob varies per individual" begin
         # Beta-distributed reporting probability: aggregate over many runs.
         obs = PerCaseObservation(detection_prob = Beta(2.0, 2.0))
-        m = BranchingProcess(Poisson(2.0), Exponential(5.0); observation = obs)
+        m = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); observation = obs)
         rng = StableRNG(31)
         states = simulate(m, 50; max_cases = 50,
             rng = rng)
@@ -112,7 +112,7 @@
     end
 
     @testset "Closed-form chain_size_distribution refuses non-scalar" begin
-        m = BranchingProcess(Poisson(0.5), Exponential(5.0);
+        m = ModelSpec(BranchingProcess(Poisson(0.5), Exponential(5.0));
             observation = PerCaseObservation(
                 detection_prob = (rng, ind) -> 0.5))
         @test_throws ArgumentError chain_size_distribution(m)

@@ -86,7 +86,7 @@ from the model's offspring specification via `single_type_offspring`.
 Works for `BranchingProcess` and wrappers that delegate that accessor
 (e.g. `Observed`).
 """
-function extinction_probability(model::TransmissionModel; kwargs...)
+function extinction_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
     return extinction_probability(single_type_offspring(model); kwargs...)
 end
 
@@ -95,7 +95,7 @@ end
 
 Epidemic probability for a single-type transmission model.
 """
-function epidemic_probability(model::TransmissionModel; kwargs...)
+function epidemic_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
     1.0 - extinction_probability(model; kwargs...)
 end
 
@@ -175,6 +175,6 @@ Containment probability for a single-type transmission model. Delegates
 through `single_type_offspring`, so wrappers such as `Observed`
 work too.
 """
-function probability_contain(model::TransmissionModel; kwargs...)
+function probability_contain(model::Union{TransmissionModel, ModelSpec}; kwargs...)
     return probability_contain(single_type_offspring(model); kwargs...)
 end

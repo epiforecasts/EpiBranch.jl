@@ -1,8 +1,9 @@
 @testset "Generic Transition" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
-    bp(progression; attributes = NoAttributes()) = BranchingProcess(
-        Poisson(1.5), Exponential(5.0);
+    bp(progression;
+        attributes = NoAttributes()) = ModelSpec(
+        BranchingProcess(Poisson(1.5), Exponential(5.0));
         progression = progression, attributes = attributes)
 
     @testset "writes :state and :state_time, anchored on :infection" begin
@@ -68,5 +69,21 @@
         for ind in state.individuals
             @test ind.state[:severe] == false
         end
+    end
+
+    @testset "rate is an exponential alternative to delay" begin
+        # A rate r is an exponential (Markovian) transition with mean 1/r.
+        @test Transition(:recovered; from = :infectious, rate = 1 / 6).delay ==
+              Exponential(6.0)
+        # A fixed scalar delay is deterministic.
+        rec = Transition(:recovered; from = :infection, delay = 4.0, terminal = true)
+        state = simulate(bp([rec]); max_cases = 30, rng = StableRNG(8))
+        for ind in filter(is_infected, state.individuals)
+            @test ind.state[:recovered_time] ≈ ind.infection_time + 4.0
+        end
+        # Exactly one of delay/rate.
+        @test_throws ArgumentError Transition(:recovered; from = :infectious)
+        @test_throws ArgumentError Transition(:recovered; from = :infectious,
+            delay = 6.0, rate = 1 / 6)
     end
 end

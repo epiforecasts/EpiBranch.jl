@@ -48,7 +48,7 @@
         rng = StableRNG(33)
         init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         state = simulate(
-            BranchingProcess(Poisson(1.5), Exponential(5.0); attributes = init_fn);
+            ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0)); attributes = init_fn);
             max_cases = 50, rng = rng)
 
         for ind in filter(is_infected, state.individuals)
@@ -76,7 +76,9 @@
             ind.state[:onset_time] = ind.infection_time + scale
         end
         gt_fn = ind -> Exponential(ind.state[:gt_scale])
-        state = simulate(BranchingProcess(Poisson(1.2), gt_fn; attributes = init_fn); max_cases = 50, rng = rng)
+        state = simulate(
+            ModelSpec(BranchingProcess(Poisson(1.2), gt_fn); attributes = init_fn);
+            max_cases = 50, rng = rng)
 
         # Require secondary transmission so the generation_time function
         # is actually exercised, not just the index case.
