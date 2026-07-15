@@ -6,9 +6,10 @@
 
 Run a single outbreak simulation.
 
-The interventions, attributes and observation are carried by `model`, set
-on the process constructor, so the model alone determines the generative
-process. `simulate` takes only execution controls.
+`model` is a transmission process (a pure kernel) or a [`ModelSpec`](@ref)
+composing that process with modelling layers. The progression, interventions,
+attributes and observation come from the [`ModelSpec`](@ref); a bare process
+runs with the empty defaults. `simulate` itself takes only execution controls.
 
 Termination is set by `max_cases`, `max_generations`, and `max_time` (any
 of which may be `nothing` to drop that limit); the run always stops on
@@ -16,8 +17,8 @@ extinction. For finer control pass a `stopping_rules` vector of
 [`AbstractStoppingRule`](@ref). `n_initial` is the number of seed cases.
 
 The case's clinical timeline — the [`AbstractClinicalTransition`](@ref)s a
-case moves through (latent, onset, severity, death/recovery, burial) — is
-the model's `progression`, set on the [`BranchingProcess`](@ref). Each
+case moves through (latent, onset, severity, death/recovery, burial) — is the
+`progression` composed onto the process with a [`ModelSpec`](@ref). Each
 transition's `probability` and `delay` accept constants or
 `(rng, ind) -> value` functions, so age- or risk-conditional rates and
 delays are configured per-transition.
