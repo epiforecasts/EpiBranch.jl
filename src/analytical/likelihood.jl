@@ -1,6 +1,39 @@
 # ── Internal likelihood implementations ──────────────────────────────
 # These are called by the unified loglikelihood() interface in fitting.jl.
 
+"""
+    _chain_length_ll_pgf(data, G, ::Type{Tel})
+
+Analytical chain-length log-likelihood for a branching process whose
+offspring PGF is `G`. Iterating `q[n] = G(q[n-1])` from `q[1] = G(0)`
+gives `q[len + 1] = P(length ≤ len)`, so `P(length = len)` is the
+successive difference. Element-type generic in `Tel` (the offspring
+parameter type) so `ForwardDiff` gradients flow through.
+"""
+function _chain_length_ll_pgf(data, G, ::Type{Tel}) where {Tel}
+    max_len = maximum(data)
+
+    q = Vector{Tel}(undef, max_len + 1)
+    q[1] = G(zero(Tel))
+    for n in 2:(max_len + 1)
+        q[n] = G(q[n - 1])
+    end
+
+    # `len` ranges over `data`, so `len ≤ max_len` always holds and every
+    # index below is in bounds.
+    ll = zero(Tel)
+    for len in data
+        if len == 0
+            ll += log(q[1])
+        else
+            prob = q[len + 1] - q[len]
+            prob <= zero(prob) && return oftype(ll, -Inf)
+            ll += log(prob)
+        end
+    end
+    return ll
+end
+
 """Analytical chain length likelihood for NegBin offspring."""
 function _chain_length_ll_negbin(data, offspring::NegativeBinomial)
     k = offspring.r
@@ -9,27 +42,8 @@ function _chain_length_ll_negbin(data, offspring::NegativeBinomial)
         throw(ArgumentError("chain length distribution only defined for subcritical process (R < 1)"))
 
     p = k / (k + R)
-    max_len = maximum(data)
-
-    q = zeros(max_len + 1)
-    q[1] = (p / (1.0 - (1.0 - p) * 0.0))^k
-    for n in 2:(max_len + 1)
-        q[n] = (p / (1.0 - (1.0 - p) * q[n - 1]))^k
-    end
-
-    ll = 0.0
-    for len in data
-        if len == 0
-            ll += log(q[1])
-        elseif len <= max_len
-            prob = q[len + 1] - q[len]
-            prob <= 0.0 && return -Inf
-            ll += log(prob)
-        else
-            return -Inf
-        end
-    end
-    return ll
+    G(s) = (p / (one(p) - (one(p) - p) * s))^k
+    return _chain_length_ll_pgf(data, G, typeof(p))
 end
 
 # ── Utilities ────────────────────────────────────────────────────────
