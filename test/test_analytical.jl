@@ -362,7 +362,7 @@
             πs_vec = end_of_outbreak_probability(R, k, GT, collect(taus))
             @test πs_vec ≈ πs
 
-            # End-to-end: end_of_outbreak_probability feeds the pi kwarg
+            # End-to-end: end_of_outbreak_probability feeds the prob_concluded kwarg
             # and the mixture likelihood evaluates without error.
             sizes = [1, 2, 100, 1766]
             seeds = [1, 1, 3, 17]

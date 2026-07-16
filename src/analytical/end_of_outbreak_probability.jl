@@ -87,8 +87,8 @@ end
     end_of_outbreak_probability.(R, k, gt, τs::AbstractVector)
 
 Element-wise broadcast for a vector of τ values, returning a `Vector`
-of the same length. Useful for populating the `pi` field of
-[`ChainSizes`](@ref).
+of the same length. Useful as the per-cluster `prob_concluded` argument
+to `loglikelihood(::ChainSizes, …)`.
 """
 function end_of_outbreak_probability(R::Real, k::Real, generation_time::Distribution,
         τs::AbstractVector{<:Real})
