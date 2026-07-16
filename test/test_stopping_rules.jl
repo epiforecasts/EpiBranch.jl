@@ -58,4 +58,28 @@ end
             rng = rng)
         @test maximum(ind.generation for ind in state.individuals) <= 3
     end
+
+    @testset "Extinction is prepended to user-supplied rules" begin
+        # Per its docstring, Extinction is always included unless the user
+        # supplies their own — otherwise a rule set with no extinction check
+        # loops forever on an outbreak that goes extinct below the cap.
+        opts = SimOpts(stopping_rules = [MaxCases(1000)])
+        @test any(r isa Extinction for r in opts.stopping_rules)
+
+        # Not doubled when the user includes one.
+        opts2 = SimOpts(stopping_rules = [Extinction(), MaxCases(1000)])
+        @test count(r -> r isa Extinction, opts2.stopping_rules) == 1
+
+        # The caller's vector is left untouched.
+        user = AbstractStoppingRule[MaxCases(1000)]
+        SimOpts(stopping_rules = user)
+        @test length(user) == 1
+
+        # A subcritical outbreak with only a (never-reached) MaxCases rule still
+        # terminates on extinction rather than hanging.
+        model = BranchingProcess(Poisson(0.5), Exponential(5.0))
+        state = simulate(model; stopping_rules = [MaxCases(1_000_000)],
+            rng = StableRNG(1))
+        @test is_extinct(state)
+    end
 end

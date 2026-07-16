@@ -57,6 +57,28 @@
         @test all(ind -> ind.infection_time < 1000.0, state.individuals)
     end
 
+    @testset "reset!(Isolation) leaves another intervention's isolation intact" begin
+        # `:isolated`/`:isolation_time` are shared: ContactTracing's Quarantine
+        # writes them directly. A Scheduled(Isolation) resetting a pre-start
+        # isolation must not un-quarantine a contact Isolation never touched.
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+
+        # Isolation set by another intervention (no provenance marker).
+        traced = Individual(id = 1)
+        set_isolated!(traced, 3.0)
+        @test is_isolated(traced)
+        EpiBranch.reset!(iso, traced)
+        @test is_isolated(traced)               # preserved
+        @test isolation_time(traced) == 3.0
+
+        # An isolation Isolation itself set (marked) is still reset.
+        own = Individual(id = 2)
+        set_isolated!(own, 3.0)
+        own.state[:isolated_by_isolation] = true
+        EpiBranch.reset!(iso, own)
+        @test !is_isolated(own)
+    end
+
     @testset "Asymptomatic cases are not isolated" begin
         rng = StableRNG(42)
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
