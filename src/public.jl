@@ -11,6 +11,7 @@ public apply_post_transmission!
 public competing_risk
 public reset!
 public required_fields
+public infectious_removal_time
 
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:

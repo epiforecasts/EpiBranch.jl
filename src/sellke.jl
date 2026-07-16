@@ -20,6 +20,71 @@ function _window_close(ind::Individual{T}, until::Tuple) where {T}
     minimum(convert(T, get(ind.state, Symbol(s, :_time), T(Inf))) for s in until)
 end
 
+# ── Interventions on the continuous-time (Sellke) models ─────────────
+# These models run their own event loop rather than the generation engine, so
+# the engine's per-generation hook passes never fire. The one intervention seam
+# is the infectious window: an intervention that removes a case from onward
+# transmission (isolation) shortens it. After a case's natural history is
+# stamped, run each intervention's per-individual resolution (so `Isolation`
+# writes its isolation time), then close the window at the earliest removal
+# across interventions as well as the `until` states.
+
+# Run each intervention's per-individual resolution on a freshly-stamped case.
+function _resolve_interventions!(state::SimulationState, ind, interventions)
+    isempty(interventions) && return nothing
+    # Expose the running simulation clock and case count so a `Scheduled`
+    # intervention's `start_time` / `end_time` / `start_after_cases` gate
+    # evaluates correctly during the continuous-time loop. Cases are processed in
+    # increasing infection time, so this case's infection time is the current
+    # clock and it is the next case in sequence; the post-loop reconcile
+    # (`_reconcile_sellke_bookkeeping!`) sets the final values.
+    state.max_infection_time = ind.infection_time
+    state.cumulative_cases += 1
+    for iv in interventions
+        resolve_individual!(iv, ind, state)
+    end
+    return nothing
+end
+
+# Earliest time any intervention removes `ind` from onward transmission.
+function _intervention_removal_time(ind, interventions)
+    t = Inf
+    for iv in interventions
+        t = min(t, infectious_removal_time(iv, ind))
+    end
+    return t
+end
+
+# Whether a continuous-time model honours an intervention — i.e. can express it
+# through the infectious window. Perfect isolation shortens the window; a leaky
+# isolation (`post_isolation_transmission > 0`) only reduces transmission, which
+# the window cannot express, so it is not honoured. Interventions whose effect
+# is a per-contact competing risk (leaky vaccination, contact tracing) likewise
+# have no window representation. `Scheduled` delegates to its wrapped
+# intervention — the loop exposes the running clock/count (see
+# `_resolve_interventions!`), so its time/count gate is honoured whenever the
+# wrapped intervention is. The model warns for the unhonoured ones rather than
+# silently ignoring them.
+_sellke_honours(::AbstractIntervention) = false
+_sellke_honours(iso::Isolation) = iso.post_isolation_transmission == 0
+_sellke_honours(s::Scheduled) = _sellke_honours(s.intervention)
+
+# Warn once (per `simulate` call) when a continuous-time model is handed
+# interventions it cannot honour, so the limitation is loud rather than silent.
+# Gated on `_honours_termination_controls`, which is `false` for exactly the
+# structure-driven models that run their own Sellke loop.
+function _warn_unhonoured_interventions(model, interventions)
+    _honours_termination_controls(model) && return nothing
+    unhonoured = unique(String[string(nameof(typeof(iv)))
+                               for iv in interventions if !_sellke_honours(iv)])
+    isempty(unhonoured) && return nothing
+    @warn "$(nameof(typeof(model))) is a continuous-time model that expresses " *
+          "interventions only through the infectious window; it does not honour " *
+          "these, which will have no effect: $(join(unhonoured, ", ")). Express " *
+          "such control as a removal `Transition` in the progression instead."
+    return nothing
+end
+
 """
     _sellke_race!(state, members, rng; seed!, targets, from, until)
 
@@ -30,7 +95,9 @@ times `best` (indexed `1:length(members)`) with exogenous introductions or a see
 infective can reach, each with its pairwise contact-interval kernel. Members are
 processed in increasing infection time (each pop is final); on processing, the
 case's natural history is stamped and it exposes still-susceptible targets with a
-`from`-timed contact interval accepted inside its infectious window.
+`from`-timed contact interval accepted inside its infectious window. Each case's
+`interventions` are resolved after its natural history, and any that remove it
+from transmission (isolation) shorten that window.
 
 The contact-interval `kernel` must be a **non-negative** distribution: the
 "each pop is final" invariant relies on a candidate time `open_t + dt` never
@@ -38,7 +105,8 @@ preceding the infector's own window-open (`dt ≥ 0`). A kernel with support on
 the negatives would break the shortest-path race with no error.
 """
 function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
-        rng::AbstractRNG; seed!, targets, from::Symbol, until::Tuple)
+        rng::AbstractRNG; seed!, targets, from::Symbol, until::Tuple,
+        interventions = ())
     m = length(members)
     best = fill(Inf, m)
     src = zeros(Int, m)
@@ -70,10 +138,12 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             ind.chain_id = infector.chain_id
         end
         resolve_transitions!(state, ind)
+        _resolve_interventions!(state, ind, interventions)
 
         open_t = _window_open(ind, from)
         isfinite(open_t) || continue
-        close_t = _window_close(ind, until)
+        close_t = min(_window_close(ind, until),
+            _intervention_removal_time(ind, interventions))
 
         for (target_id, kernel) in targets(members[j], state)
             k = get(pos, target_id, 0)

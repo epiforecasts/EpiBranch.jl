@@ -38,6 +38,14 @@ states that close the infectious window.
 hazard or a calendar-time distribution for a time-varying one — and `obs_end`
 bounds the window `[0, obs_end]` over which those community introductions emerge.
 
+Interventions attach through the infectious window. An `Isolation` intervention
+removes a case from transmission at its isolation time, shortening the window and
+cutting secondary cases; an intervention whose effect is a per-contact competing
+risk (contact tracing, leaky vaccination) has no representation on the
+continuous-time path and is reported with a warning rather than applied.
+Non-pharmaceutical control expressed as a removal `Transition` in the progression
+always applies.
+
 # Example
 
 ```julia

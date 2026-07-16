@@ -35,6 +35,13 @@ onset, hospitalisation and death come from further transitions in the
 progression and appear in the line list. The model holds to two assumptions: a
 closed population, and one infection per person.
 
+Interventions attach through the infectious window. An `Isolation` intervention
+removes a case from transmission at its isolation time, shortening the window and
+curtailing spread; an intervention whose effect is a per-contact competing risk
+(contact tracing, leaky vaccination) has no representation on the continuous-time
+path and is reported with a warning rather than applied. Control expressed as a
+removal `Transition` in the progression always applies.
+
 The pool is always simulated to extinction over its fixed population, so the
 `simulate` termination controls (`max_cases`, `max_generations`, `max_time`,
 `stopping_rules`) do not apply; only `n_initial` (and `condition`) are used.
@@ -122,7 +129,7 @@ function _simulate(model::HomogeneousProcess, sim_opts::SimOpts;
     # β/N per infective (`sum(values(counts))` = number currently infectious).
     _sellke_pool!(state, collect(1:model.population_size), rng;
         force = (type, counts) -> β / model.population_size * sum(values(counts)),
-        n_initial = n_initial, from = from, until = model.until)
+        n_initial = n_initial, from = from, until = model.until, interventions)
 
     _reconcile_sellke_bookkeeping!(state)
     apply_observation!(observation, state, rng)

@@ -69,6 +69,100 @@
         @test iso_mean < base_mean
     end
 
+    @testset "Isolation intervention shortens the outbreak" begin
+        # The Isolation *intervention* (not a Transition) must act on the pool:
+        # its resolve_individual! runs in the Sellke loop and its isolation time
+        # closes the infectious window. Onset comes from a progression transition
+        # so it is anchored on the real infection time.
+        N = 1000
+        prog = [
+            Transition(:onset; from = :infection, delay = 0.1),
+            Transition(:recovered; from = :infection,
+                delay = Exponential(1.0), terminal = true)
+        ]
+        base = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
+            progression = prog)
+        iso = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
+            progression = prog,
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.1))])
+
+        base_mean = mean(simulate(base; rng = StableRNG(s), n_initial = 3).cumulative_cases
+        for s in 1:20)
+        iso_mean = mean(simulate(iso; rng = StableRNG(s), n_initial = 3).cumulative_cases
+        for s in 1:20)
+        # Fast isolation pushes R below 1: the outbreak is curtailed.
+        @test iso_mean < 0.1 * base_mean
+
+        # A case's isolation time is actually written (the hook ran).
+        state = simulate(iso; rng = StableRNG(1), n_initial = 3)
+        @test any(isfinite(EpiBranch.isolation_time(ind)) for ind in state.individuals)
+    end
+
+    @testset "Unhonoured intervention warns rather than silently ignoring" begin
+        prog = [Transition(:recovered; from = :infection,
+            delay = Exponential(1.0), terminal = true)]
+        ct = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);
+            progression = prog,
+            interventions = [ContactTracing(probability = 0.5,
+                isolation_to_trace_delay = Exponential(1.0))])
+        @test_logs (:warn, r"does not honour"i) match_mode=:any simulate(
+            ct; rng = StableRNG(1), n_initial = 2)
+
+        # Leaky isolation (residual transmission) also can't be expressed as a
+        # window close, so it warns too — only perfect isolation is honoured.
+        leaky = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);
+            progression = prog,
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.5),
+                post_isolation_transmission = 0.5)])
+        @test_logs (:warn, r"does not honour"i) match_mode=:any simulate(
+            leaky; rng = StableRNG(1), n_initial = 2)
+    end
+
+    @testset "Scheduled interventions gate on the running clock on the pool" begin
+        # The loop exposes each case's infection time as the running clock, so a
+        # Scheduled(Isolation; start_time) isolates only cases infected at/after
+        # start_time — curtailing when it activates, and gating by time.
+        N = 1000
+        prog = [
+            Transition(:onset; from = :infection, delay = 0.1),
+            Transition(:recovered; from = :infection,
+                delay = Exponential(1.0), terminal = true)
+        ]
+        mk(start_time) = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
+            progression = prog,
+            interventions = [Scheduled(
+                Isolation(onset_to_isolation_delay = Exponential(0.1)); start_time)])
+        mean_cc(m) = mean(simulate(m; rng = StableRNG(s), n_initial = 3).cumulative_cases
+        for s in 1:15)
+
+        base = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
+            progression = prog)
+        # Active from t = 0: curtails hard. Start far past the outbreak: barely.
+        @test mean_cc(mk(0.0)) < 0.1 * mean_cc(base)
+        @test mean_cc(mk(1000.0)) > 0.5 * mean_cc(base)
+
+        # Mid start_time gates on the case's own infection time.
+        st = simulate(mk(3.0); rng = StableRNG(1), n_initial = 3)
+        @test !any(ind -> ind.infection_time < 3.0 && is_isolated(ind), st.individuals)
+        @test any(ind -> ind.infection_time >= 3.0 && is_isolated(ind), st.individuals)
+
+        # A Scheduled wrapping an unhonoured intervention still warns.
+        sched_ct = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);
+            progression = prog,
+            interventions = [Scheduled(
+                ContactTracing(probability = 0.5,
+                    isolation_to_trace_delay = Exponential(1.0)); start_time = 5.0)])
+        @test_logs (:warn, r"does not honour"i) match_mode=:any simulate(
+            sched_ct; rng = StableRNG(1), n_initial = 2)
+    end
+
     @testset "removal before infectious onset never infects" begin
         # A latent period opens the window at :infectious, but isolation fires
         # first (close_t <= open_t). Such a case is never infectious: it must be

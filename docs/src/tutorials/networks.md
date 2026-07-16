@@ -106,8 +106,13 @@ spreads on is a modelling choice. A few that map onto common assumptions:
   mechanism spatial outbreak-network models use); it returns the graph and
   the distances, so take the first element.
 
-The kernel, progression, attributes and interventions attach exactly as
-before — only the source of the graph changes. Graphs.jl is an optional
+The kernel, progression and attributes attach exactly as before — only the
+source of the graph changes. Interventions attach through the infectious
+window: one that removes a case from transmission — `Isolation` — shortens
+that window and curtails spread (see below), while an intervention whose
+effect is a per-contact competing risk (contact tracing, leaky vaccination)
+has no representation on the continuous-time network path and is reported
+with a warning rather than applied. Graphs.jl is an optional
 dependency: this constructor becomes available once you load Graphs.jl,
 and the adjacency-list and matrix constructors need nothing extra. For a
 directed graph, a node's out-neighbours are the contacts it can infect.

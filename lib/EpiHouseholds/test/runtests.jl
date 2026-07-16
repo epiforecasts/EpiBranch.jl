@@ -84,6 +84,25 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test n_high > n_low
     end
 
+    @testset "Isolation intervention reduces household spread" begin
+        # The Isolation *intervention* runs on the continuous-time household
+        # path: its resolve_individual! fires in the Sellke race and its
+        # isolation time closes the infectious window, cutting secondary cases.
+        # Onset comes from a progression transition, anchored on infection time.
+        sizes = fill(6, 300)
+        prog = [
+            Transition(:onset; from = :infection, delay = 0.3),
+            Transition(:recovered; from = :infection,
+                delay = Exponential(6.0), terminal = true)]
+        base = ModelSpec(HouseholdProcess(sizes, Exponential(1.0)); progression = prog)
+        iso = ModelSpec(HouseholdProcess(sizes, Exponential(1.0)); progression = prog,
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.2))])
+
+        base_cases = sum(simulate(base; rng = StableRNG(s)).cumulative_cases for s in 1:10)
+        iso_cases = sum(simulate(iso; rng = StableRNG(s)).cumulative_cases for s in 1:10)
+        @test iso_cases < base_cases
+    end
+
     @testset "external force of infection introduces community cases" begin
         m = ModelSpec(
             HouseholdProcess(fill(4, 300), Exponential(3.0);

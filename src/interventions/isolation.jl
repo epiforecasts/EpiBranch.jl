@@ -89,6 +89,14 @@ end
 required_fields(iso::Isolation) = _required_for_eligibility(iso.eligibility)
 intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 
+# Perfect isolation removes a case from onward transmission at its isolation
+# time, so a continuous-time model closes the infectious window there. Leaky
+# isolation (`post_isolation_transmission > 0`) only reduces transmission, which
+# the window cannot express, so it contributes no removal in that setting.
+function infectious_removal_time(iso::Isolation, ind::Individual)
+    iso.post_isolation_transmission == 0 ? isolation_time(ind) : Inf
+end
+
 """Isolation blocks the parent → contact transmission when the parent's
 isolation time is earlier than the contact's transmission time.
 Residual transmission is governed by `post_isolation_transmission`:

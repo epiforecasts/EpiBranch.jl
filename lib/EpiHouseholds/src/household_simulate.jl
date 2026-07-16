@@ -51,7 +51,7 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
 
     for mem in model.members
         EpiBranch._sellke_race!(state, mem, rng;
-            from = from, until = model.until,
+            from = from, until = model.until, interventions = interventions,
             seed! = (best, members, r) -> _seed_clique!(
                 best, members, model.external_hazard, Tobs, r),
             targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid))
