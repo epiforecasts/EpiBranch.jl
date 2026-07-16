@@ -47,12 +47,14 @@ function _intervention_removal_time(ind, interventions)
 end
 
 # Whether a continuous-time model honours an intervention — i.e. can express it
-# through the infectious window. Isolation (and a Scheduled isolation) shortens
-# the window; interventions whose effect is a per-contact competing risk (leaky
-# vaccination, contact tracing) have no window representation and are not
-# honoured, so the model warns rather than silently ignoring them.
+# through the infectious window. Perfect isolation shortens the window; a leaky
+# isolation (`post_isolation_transmission > 0`) only reduces transmission, which
+# the window cannot express, so it is not honoured. Interventions whose effect
+# is a per-contact competing risk (leaky vaccination, contact tracing) likewise
+# have no window representation. The model warns for the unhonoured ones rather
+# than silently ignoring them.
 _sellke_honours(::AbstractIntervention) = false
-_sellke_honours(::Isolation) = true
+_sellke_honours(iso::Isolation) = iso.post_isolation_transmission == 0
 _sellke_honours(s::Scheduled) = _sellke_honours(s.intervention)
 
 # Warn once (per `simulate` call) when a continuous-time model is handed

@@ -110,6 +110,16 @@
                 isolation_to_trace_delay = Exponential(1.0))])
         @test_logs (:warn, r"does not honour"i) match_mode=:any simulate(
             ct; rng = StableRNG(1), n_initial = 2)
+
+        # Leaky isolation (residual transmission) also can't be expressed as a
+        # window close, so it warns too — only perfect isolation is honoured.
+        leaky = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);
+            progression = prog,
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.5),
+                post_isolation_transmission = 0.5)])
+        @test_logs (:warn, r"does not honour"i) match_mode=:any simulate(
+            leaky; rng = StableRNG(1), n_initial = 2)
     end
 
     @testset "Scheduled interventions delegate on the Sellke pool" begin
