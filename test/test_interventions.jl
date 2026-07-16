@@ -411,6 +411,30 @@
         end
     end
 
+    @testset "is_vaccinated respects dose_label namespacing" begin
+        ind = Individual(id = 1, state = Dict{Symbol, Any}(:vaccinated_boost => true))
+        @test is_vaccinated(ind; dose_label = :boost)
+        @test !is_vaccinated(ind)                       # default label is unset
+        @test !is_vaccinated(ind; dose_label = :prime)
+    end
+
+    @testset "RingVaccination fires under FlagOnly tracing" begin
+        # FlagOnly writes :traced_isolation_time, not :isolation_time. Ring
+        # vaccination keys on the trace-driven isolation time, so it must still
+        # fire (previously it silently no-op'd when tracing only flagged).
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        ct = ContactTracing(probability = 1.0,
+            isolation_to_trace_delay = Exponential(0.5), quarantine_on_trace = false)
+        rv = RingVaccination(efficacy = 0.8)
+        state = simulate(
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [iso, ct, rv], attributes = clinical);
+            max_cases = 300, rng = StableRNG(3))
+        # Contacts were flagged (not quarantined) and then ring-vaccinated.
+        @test any(ind -> is_traced(ind) && !is_quarantined(ind), state.individuals)
+        @test count(is_vaccinated, state.individuals) > 0
+    end
+
     @testset "Traced test-negative contacts isolate via tracing pathway" begin
         # Regression test: with test_sensitivity < 1 and FlagOnly tracing,
         # test-negative contacts must still be isolated via the tracing

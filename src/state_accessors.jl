@@ -33,8 +33,12 @@ is_traced(ind::Individual) = get(ind.state, :traced, false)::Bool
 """Whether the individual is quarantined."""
 is_quarantined(ind::Individual) = get(ind.state, :quarantined, false)::Bool
 
-"""Whether the individual is vaccinated."""
-is_vaccinated(ind::Individual) = get(ind.state, :vaccinated, false)::Bool
+"""Whether the individual is vaccinated under the given `dose_label`. The
+default label reads the plain `:vaccinated` key; a non-default label reads the
+namespaced key an `AbstractVaccination` with that `dose_label` writes."""
+function is_vaccinated(ind::Individual; dose_label::Symbol = :default)
+    get(ind.state, _vaccinated_key(dose_label), false)::Bool
+end
 
 """Whether the individual is asymptomatic."""
 is_asymptomatic(ind::Individual) = get(ind.state, :asymptomatic, false)::Bool
