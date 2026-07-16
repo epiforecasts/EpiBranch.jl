@@ -203,3 +203,52 @@ end
     grad = ForwardDiff.derivative(total_infection_time, θ0)
     @test isfinite(grad)
 end
+
+# Contact tracing carries dual timing too: FlagOnly writes a dual
+# `:traced_isolation_time` (from onset) that Isolation reads, and depth-2 tracing
+# reads the infector's dual `:trace_time`. Exercises the eltype-generic reads in
+# isolation.jl and contact_tracing.jl that the isolation-only test above misses.
+@testset "AD through the forward simulator (contact tracing + isolation)" begin
+    clinical = clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+    ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+        quarantine_on_trace = false, depth = 2)
+    function total_infection_time(μ)
+        model = BranchingProcess(NegBin(2.0, 0.5), LogNormal(μ, 0.5))
+        state = simulate(
+            ModelSpec(model; interventions = [iso, ct], attributes = clinical);
+            n_initial = 20, rng = StableRNG(20260701),
+            stopping_rules = [Extinction(), MaxGenerations(5)])
+        return sum(ind.infection_time for ind in state.individuals if is_infected(ind))
+    end
+
+    μ0 = 1.6
+    @test isfinite(total_infection_time(μ0))
+    grad = ForwardDiff.derivative(total_infection_time, μ0)
+    @test isfinite(grad)
+end
+
+# Ring vaccination stores a dual vaccination time (the trace-driven isolation
+# time) and reads it back on both the susceptibility and onward-transmission
+# sides — the `:vaccination_time` reads that were still pinned to Float64.
+@testset "AD through the forward simulator (ring vaccination)" begin
+    clinical = clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+    ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+    rv = RingVaccination(efficacy = 0.8, onward_efficacy = 0.5)
+    function total_infection_time(μ)
+        model = BranchingProcess(NegBin(2.0, 0.5), LogNormal(μ, 0.5))
+        state = simulate(
+            ModelSpec(model; interventions = [iso, ct, rv], attributes = clinical);
+            n_initial = 20, rng = StableRNG(20260701),
+            stopping_rules = [Extinction(), MaxGenerations(5)])
+        return sum(ind.infection_time for ind in state.individuals if is_infected(ind))
+    end
+
+    μ0 = 1.6
+    @test isfinite(total_infection_time(μ0))
+    grad = ForwardDiff.derivative(total_infection_time, μ0)
+    @test isfinite(grad)
+end

@@ -99,7 +99,7 @@ vaccine-induced immunity has developed by their transmission time."""
 function _susceptibility_risk(v::AbstractVaccination, contact)
     label = dose_label(v)
     get(contact.state, _vaccinated_key(label), false) || return nothing
-    vacc_t = get(contact.state, _vaccination_time_key(label), Inf)::Float64
+    vacc_t = get(contact.state, _vaccination_time_key(label), Inf)
     isfinite(vacc_t) || return nothing
     eff = get(contact.state, _vaccine_efficacy_key(label), nothing)
     eff === nothing && return nothing
@@ -189,7 +189,7 @@ function _onward_risk(rv::RingVaccination, parent)
     rv.onward_efficacy > 0.0 || return nothing
     label = dose_label(rv)
     get(parent.state, _vaccinated_key(label), false) || return nothing
-    vacc_t = get(parent.state, _vaccination_time_key(label), Inf)::Float64
+    vacc_t = get(parent.state, _vaccination_time_key(label), Inf)
     isfinite(vacc_t) || return nothing
     return Risk(event_time = vacc_t + delay_to_immunity(rv),
         block_probability = rv.onward_efficacy)
