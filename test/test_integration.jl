@@ -28,6 +28,22 @@ using Dates
         @test sum(df.cases) == state.cumulative_cases
     end
 
+    @testset "weekly_incidence by=:reporting excludes unreported (Inf) cases" begin
+        # A Reporting transition with probability < 1 leaves unreported cases
+        # with :reporting_time = Inf. Binning by :reporting must skip those
+        # rather than throw InexactError on Day(floor(Int, Inf)).
+        rng = StableRNG(42)
+        model = BranchingProcess(Poisson(2.0), Exponential(5.0))
+        rep = Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5)
+        state = simulate(ModelSpec(model; progression = [rep], attributes = clinical);
+            max_cases = 200, rng = rng)
+        df = weekly_incidence(state; by = :reporting)
+        @test df isa DataFrame
+        n_reported = count(ind -> get(ind.state, :reported, false), state.individuals)
+        @test sum(df.cases) == n_reported
+        @test 0 < n_reported < state.cumulative_cases    # some, not all, reported
+    end
+
     @testset "simulate with condition" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.2), Exponential(5.0))
@@ -102,6 +118,28 @@ using Dates
         @test state.cumulative_cases > 0
     end
 
+    @testset "incubation_linked_generation_time realises the presymptomatic fraction" begin
+        presymp = 0.3
+        gt_fn = incubation_linked_generation_time(presymptomatic_fraction = presymp)
+        # Incubation period ξ = 5 (≫ ω, so truncation barely perturbs the split).
+        ind = Individual(id = 1, infection_time = 0.0,
+            state = Dict{Symbol, Any}(:onset_time => 5.0))
+        d = gt_fn(ind)
+
+        # Realised fraction of generation times shorter than ξ ≈ presymptomatic.
+        rng = StableRNG(1)
+        draws = [rand(rng, d) for _ in 1:20_000]
+        @test isapprox(count(<(5.0), draws) / length(draws), presymp; atol = 0.02)
+
+        # logpdf is normalised over [0, ∞): the density integrates to ≈ 1
+        # (before the truncation constant it did not).
+        xs = range(0.0, 20.0; length = 4001)
+        dens = [exp(logpdf(d, x)) for x in xs]
+        integral = sum((dens[i] + dens[i + 1]) / 2 * step(xs)
+        for i in 1:(length(xs) - 1))
+        @test isapprox(integral, 1.0; atol = 1e-3)
+    end
+
     @testset "generation_R output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
@@ -149,5 +187,74 @@ using Dates
         q_simulated = containment_probability(results)
 
         @test abs(q_analytical - q_simulated) < 0.1
+    end
+
+    @testset "is_extinct classification" begin
+        # No kwargs mirrors state.extinct.
+        ext = simulate(BranchingProcess(Poisson(0.4), Exponential(5.0)); rng = StableRNG(3))
+        @test is_extinct(ext) == ext.extinct
+
+        # A capped run is not extinct under a matching max_cases.
+        capped = simulate(BranchingProcess(Poisson(3.0), Exponential(5.0));
+            max_cases = 30, rng = StableRNG(5))
+        @test !is_extinct(capped; max_cases = 30)
+
+        # by_week bins on onset (with infection fallback) in 7-day blocks from 0.
+        m = BranchingProcess(Poisson(1.0), Exponential(5.0))
+        st = EpiBranch.new_state(m, EpiBranch.AbstractClinicalTransition[],
+            NoAttributes(), StableRNG(1))
+        push!(st.individuals,
+            Individual(id = 1,
+                state = Dict{Symbol, Any}(:infected => true, :onset_time => 6.9)))  # week 1
+        push!(st.individuals,
+            Individual(id = 2,
+                state = Dict{Symbol, Any}(:infected => true, :onset_time => 7.0)))  # week 2
+        push!(st.individuals,
+            Individual(id = 3, infection_time = 14.0,
+                state = Dict{Symbol, Any}(:infected => true)))                      # week 3, fallback
+        @test !is_extinct(st; by_week = 1)      # onset 6.9 lands in week 1
+        @test !is_extinct(st; by_week = 2)      # onset 7.0 lands in week 2
+        @test !is_extinct(st; by_week = 3)      # infection-time fallback lands in week 3
+        @test is_extinct(st; by_week = 4)       # nothing in week 4
+        @test !is_extinct(st; by_week = 1:2)
+    end
+
+    @testset "scenario_sweep" begin
+        params = Dict(:offspring => [Poisson(0.8), Poisson(1.2)],
+            :generation_time => [Exponential(5.0)])
+        res = scenario_sweep(params; n_sim = 50, max_cases = 100, rng = StableRNG(1))
+        @test res isa DataFrame
+        @test nrow(res) == 2                                   # one row per combination
+        @test all(0.0 .<= res.containment_probability .<= 1.0)
+
+        # Reproducible with a fresh RNG of the same seed.
+        res2 = scenario_sweep(params; n_sim = 50, max_cases = 100, rng = StableRNG(1))
+        @test res.containment_probability == res2.containment_probability
+
+        # An unrecognised key (a simulation control, not a sweep axis) is rejected
+        # rather than silently producing a column that does not affect the run.
+        @test_throws ArgumentError scenario_sweep(
+            Dict(:offspring => [Poisson(0.8)], :max_cases => [50, 100]);
+            n_sim = 10, rng = StableRNG(1))
+    end
+
+    @testset "susceptible_fraction dispatches" begin
+        # NoPopulation → always 1.0.
+        m0 = BranchingProcess(Poisson(1.0), Exponential(5.0))
+        s0 = EpiBranch.new_state(m0, EpiBranch.AbstractClinicalTransition[],
+            NoAttributes(), StableRNG(1))
+        @test susceptible_fraction(s0) == 1.0
+        @test susceptible_fraction(s0, 1000) == 1.0     # unbounded ignores extra_infected
+
+        # Int population → global depletion, hitting zero at full attack.
+        mN = BranchingProcess(Poisson(1.0), Exponential(5.0); population_size = 100)
+        sN = EpiBranch.new_state(mN, EpiBranch.AbstractClinicalTransition[],
+            NoAttributes(), StableRNG(1))
+        @test susceptible_fraction(sN) == 1.0
+        sN.cumulative_cases = 40
+        @test susceptible_fraction(sN) ≈ 0.6
+        @test susceptible_fraction(sN, 60) == 0.0       # extra_infected drives it to 0
+        sN.cumulative_cases = 100
+        @test susceptible_fraction(sN) == 0.0
     end
 end

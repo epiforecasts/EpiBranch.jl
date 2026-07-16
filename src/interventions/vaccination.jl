@@ -99,7 +99,7 @@ vaccine-induced immunity has developed by their transmission time."""
 function _susceptibility_risk(v::AbstractVaccination, contact)
     label = dose_label(v)
     get(contact.state, _vaccinated_key(label), false) || return nothing
-    vacc_t = get(contact.state, _vaccination_time_key(label), Inf)::Float64
+    vacc_t = get(contact.state, _vaccination_time_key(label), Inf)
     isfinite(vacc_t) || return nothing
     eff = get(contact.state, _vaccine_efficacy_key(label), nothing)
     eff === nothing && return nothing
@@ -189,7 +189,7 @@ function _onward_risk(rv::RingVaccination, parent)
     rv.onward_efficacy > 0.0 || return nothing
     label = dose_label(rv)
     get(parent.state, _vaccinated_key(label), false) || return nothing
-    vacc_t = get(parent.state, _vaccination_time_key(label), Inf)::Float64
+    vacc_t = get(parent.state, _vaccination_time_key(label), Inf)
     isfinite(vacc_t) || return nothing
     return Risk(event_time = vacc_t + delay_to_immunity(rv),
         block_probability = rv.onward_efficacy)
@@ -223,7 +223,12 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
     for ind in new_contacts
         is_traced(ind) || continue
         get(ind.state, vacc_key, false) && continue
-        vacc_t = isolation_time(ind)
+        # Fire at the trace-driven isolation time. Quarantine writes
+        # `:isolation_time`; FlagOnly (for a traced contact with a known onset)
+        # writes `:traced_isolation_time`. Take whichever is set so ring
+        # vaccination is not silently skipped when tracing only flags contacts.
+        vacc_t = min(isolation_time(ind),
+            get(ind.state, :traced_isolation_time, Inf))
         isfinite(vacc_t) || continue
         _within_eligibility_window(rv.eligibility_window, ind, vacc_t, state.rng) ||
             continue

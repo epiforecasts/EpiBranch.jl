@@ -3,7 +3,14 @@
 
 Compute chain size and length for each transmission chain.
 Only infected individuals are counted. Returns a DataFrame with
-columns: chain_id, size, length.
+columns: `chain_id`, `size`, `length`.
+
+`size` is the number of cases in the chain. `length` is the number of
+generations of onward transmission — the maximum generation index reached,
+so a lone seed that never transmits has `length = 0` and `size = 1`. This is
+the same 0-based convention as [`ChainLengths`](@ref); note it is offset by one
+from epichains, whose `chain_length` counts generations inclusively (1 for a
+single-case chain).
 """
 function chain_statistics(state::SimulationState)
     # Single-pass aggregation: track size and max generation per chain

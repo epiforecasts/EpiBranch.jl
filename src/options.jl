@@ -97,8 +97,13 @@ function SimOpts(;
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing)
     if stopping_rules !== nothing
-        return SimOpts(n_initial,
-            convert(Vector{AbstractStoppingRule}, stopping_rules))
+        # Extinction is always included (per its docstring) unless the user
+        # supplied their own, so a custom rule set can't loop forever on an
+        # outbreak that goes extinct below the cap. `collect` makes a fresh
+        # vector, leaving the caller's untouched.
+        rules = collect(AbstractStoppingRule, stopping_rules)
+        any(r -> r isa Extinction, rules) || pushfirst!(rules, Extinction())
+        return SimOpts(n_initial, rules)
     end
     rules = AbstractStoppingRule[Extinction()]
     max_cases !== nothing && push!(rules, MaxCases(max_cases))

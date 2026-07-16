@@ -30,6 +30,10 @@ The returned function takes an `Individual` and produces a truncated
 skew-normal distribution SN(ξ, ω, α), where ξ is the individual's
 incubation period and α is chosen so that the fraction of generation
 times shorter than the incubation period equals `presymptomatic_fraction`.
+The inversion `α = tan(π(0.5 − presymptomatic_fraction))` is exact for the
+untruncated skew-normal; after truncation to `[0, ∞)` the realised fraction is
+approximate, holding closely when the incubation period is large relative to
+`omega` and diverging for short incubation periods.
 This is the generation time model used in Hellewell et al. (2020).
 Individuals with no usable incubation period (for example asymptomatic
 cases) fall back to a 5-day centre.
@@ -64,15 +68,20 @@ function incubation_linked_generation_time(; presymptomatic_fraction::Real = 0.3
     end
 end
 
-"""Skew-normal truncated to [0, ∞) via rejection sampling (cdf not available)."""
+"""Skew-normal truncated to [0, ∞) via rejection sampling (cdf not available).
+`logpdf` subtracts the retained-mass constant `log P(inner ≥ 0)`, computed
+lazily on first use so the simulation path (which only samples) never pays for
+the numerical integral."""
 struct _TruncatedSkewNormal{T <: AbstractFloat} <: ContinuousUnivariateDistribution
     ξ::T
     ω::T
     α::T
     inner::SkewNormal{T}
+    logZ::Base.RefValue{T}   # log P(inner ≥ 0); NaN until first computed
     function _TruncatedSkewNormal(ξ::Real, ω::Real, α::Real)
         T = float(promote_type(typeof(ξ), typeof(ω), typeof(α)))
-        new{T}(T(ξ), T(ω), T(α), SkewNormal(T(ξ), T(ω), T(α)))
+        inner = SkewNormal(T(ξ), T(ω), T(α))
+        new{T}(T(ξ), T(ω), T(α), inner, Ref(T(NaN)))
     end
 end
 
@@ -85,7 +94,20 @@ function Base.rand(rng::AbstractRNG, d::_TruncatedSkewNormal)
     return 0.0
 end
 
-Distributions.logpdf(d::_TruncatedSkewNormal, x::Real) = x < 0.0 ? -Inf : logpdf(d.inner, x)
+# The retained-mass constant `log P(inner ≥ 0)`, integrated lazily and cached on
+# first request — `rand` (the simulation path) never triggers it. SkewNormal has
+# no cdf in this Distributions.jl version, hence the numerical integral.
+function _trunc_logZ(d::_TruncatedSkewNormal{T}) where {T}
+    isnan(d.logZ[]) || return d.logZ[]
+    Z = first(quadgk(x -> pdf(d.inner, x), zero(T), T(Inf)))
+    return d.logZ[] = T(log(Z))
+end
+
+# Normalised over [0, ∞): subtract the retained-mass constant so the density
+# integrates to 1 (the bare inner density does not on the truncated support).
+function Distributions.logpdf(d::_TruncatedSkewNormal, x::Real)
+    x < 0.0 ? oftype(float(x), -Inf) : logpdf(d.inner, x) - _trunc_logZ(d)
+end
 
 """
     _sample_value(x, rng, args...) -> Float64

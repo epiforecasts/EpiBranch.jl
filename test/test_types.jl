@@ -62,5 +62,8 @@
         d_pois = Poisson(3.0)
         scaled_pois = scale_distribution(d_pois, 0.0)
         @test mean(scaled_pois) ≈ 0.0 atol=1e-10
+
+        # An unsupported family gives a clear ArgumentError, not a MethodError.
+        @test_throws ArgumentError scale_distribution(Geometric(0.3), 0.5)
     end
 end

@@ -36,10 +36,14 @@ Each individual carries a small typed core read by the engine plus an open
 attributes functions, clinical transitions, and observation models each own
 a few keys in that dictionary.
 
-Read a key through a one-line accessor that pins the result type and
-supplies a safe default: `onset_time(ind) = get(ind.state, :onset_time, NaN)::Float64`.
-New code should add an accessor in `src/state_accessors.jl` rather than
-calling `get(ind.state, …)` directly.
+Read a key through a one-line accessor that supplies a safe default. For a
+real-valued timing key, keep the accessor element-type generic so a gradient
+can flow through it under automatic differentiation:
+`onset_time(ind::Individual{T}) where {T} = convert(T, get(ind.state, :onset_time, T(NaN)))`.
+A Boolean, integer, or symbol key can pin a concrete type instead
+(`is_isolated(ind) = get(ind.state, :isolated, false)::Bool`). New code should
+add an accessor in `src/state_accessors.jl` rather than calling
+`get(ind.state, …)` directly.
 
 ### Reserved keys
 
@@ -57,6 +61,7 @@ downstream packages should pick names that do not collide.
 | `:risk_group` | `Symbol` | — | `demographics` | Init |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
+| `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
@@ -1022,10 +1027,13 @@ See `src/analytical/cluster_mixed.jl` for the full pattern, including how `Clust
 
 ## Adding per-observation metadata
 
-[`ChainSizes`](@ref) already supports two per-observation fields: `seeds`
-(multi-seed clusters) and `concluded` (right-censored ongoing clusters).
-Both are decisions made by the analyst, not properties the framework
-derives — and they show the pattern for any new field.
+[`ChainSizes`](@ref) carries one per-observation field, `seeds` (the number
+of index cases in each multi-seed cluster). A cluster's real-time "is it
+finished?" weight is a second analyst decision, but it is supplied at
+likelihood time through the `prob_concluded` keyword of `loglikelihood` rather
+than stored on the data — the mixture it drives is only defined against the
+analytical chain-size law. These two show the pattern for any per-cluster
+information.
 
 If your analysis needs different or richer per-cluster information, you
 have two options.
@@ -1034,17 +1042,18 @@ have two options.
 
 If the new information resolves to a flag or a count that the existing
 likelihood already handles, derive it upstream and pass it in. The Endo
-7-day time-censoring rule is an example: it looks like time censoring
-but is just a way to compute `concluded`.
+7-day time-censoring rule is an example: it looks like time censoring but is
+just a way to compute a per-cluster `prob_concluded` (`1.0` for a finished
+cluster, `0.0` for an ongoing one).
 
 ```julia
 using Dates
 is_ongoing(latest_case, cutoff; window_days = 7) =
     cutoff - latest_case < Day(window_days)
 
-data = ChainSizes(sizes;
-    seeds = imports_per_cluster,
-    concluded = .!is_ongoing.(last_case_dates, cutoff_date))
+prob_concluded = Float64.(.!is_ongoing.(last_case_dates, cutoff_date))
+data = ChainSizes(sizes; seeds = imports_per_cluster)
+loglikelihood(data, offspring; prob_concluded = prob_concluded)
 ```
 
 No new types or methods needed — the decision rule lives wherever it

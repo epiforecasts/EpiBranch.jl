@@ -187,6 +187,18 @@
             @test isfinite(ll)
         end
 
+        @testset "Supercritical Poisson uses the actual mean (no clamp)" begin
+            # The Poisson mean must not be clamped to the critical value 1:
+            # score the defective Borel PMF at the true μ, so the likelihood
+            # keeps varying for R > 1 rather than flattening.
+            ll = loglikelihood(ChainSizes([3]), Poisson(1.5))
+            @test ll ≈ EpiBranch._borel_logpdf(1.5, 3) atol=1e-10
+            @test !isapprox(ll, EpiBranch._borel_logpdf(1.0, 3); atol = 1e-3)
+            # Distinct means above 1 give distinct likelihoods (not a plateau).
+            data = ChainSizes([2, 3, 4])
+            @test loglikelihood(data, Poisson(1.5)) != loglikelihood(data, Poisson(2.5))
+        end
+
         @testset "With partial observation" begin
             mk(p) = ModelSpec(BranchingProcess(Poisson(0.5));
                 observation = PerCaseObservation(p, Dirac(0.0)))
@@ -501,6 +513,20 @@
             @test isfinite(ll)
         end
 
+        @testset "Poisson length-0 uses the PGF, not the Geometric law" begin
+            # For Poisson(λ) offspring P(length = 0) = P(0 offspring) = exp(−λ),
+            # which the earlier Geometric form (1 − λ) got wrong.
+            λ = 0.5
+            ll0 = loglikelihood(ChainLengths([0]), Poisson(λ))
+            @test ll0 ≈ -λ atol=1e-12          # log(exp(−λ))
+            @test !isapprox(ll0, log(1 - λ); atol = 1e-3)
+            # Consistency: exp of the per-length log-probabilities forms a
+            # normalised, non-negative distribution over lengths 0…N.
+            probs = [exp(loglikelihood(ChainLengths([n]), Poisson(λ))) for n in 0:40]
+            @test all(≥(0), probs)
+            @test sum(probs) ≈ 1.0 atol=1e-6
+        end
+
         @testset "NegBin offspring" begin
             ll = loglikelihood(ChainLengths([0, 1, 0, 2, 1]), NegBin(0.8, 0.5))
             @test isfinite(ll)
@@ -613,6 +639,13 @@
             @test_throws ArgumentError proportion_transmission(2.0, -0.5)
             @test_throws ArgumentError proportion_transmission(2.0, 0.5; prop_cases = 0.0)
             @test_throws ArgumentError proportion_transmission(2.0, 0.5; prop_cases = 1.0)
+        end
+
+        @testset "Depends only on k, not R (scale-invariant)" begin
+            # The Lorenz curve of Gamma(k, R/k) is scale-invariant in the mean,
+            # so R does not affect the result — documented, not a bug.
+            @test proportion_transmission(0.5, 0.3) ==
+                  proportion_transmission(100.0, 0.3)
         end
 
         @testset "Known approximate values" begin

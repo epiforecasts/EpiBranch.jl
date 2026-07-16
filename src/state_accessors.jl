@@ -24,8 +24,10 @@ incubation_period(ind::Individual) = onset_time(ind) - ind.infection_time
 """Whether the individual is isolated."""
 is_isolated(ind::Individual) = get(ind.state, :isolated, false)::Bool
 
-"""Time of isolation (Float64, Inf if not isolated)."""
-isolation_time(ind::Individual) = get(ind.state, :isolation_time, Inf)::Float64
+"""Time of isolation (Inf if not isolated); a dual under AD."""
+function isolation_time(ind::Individual{T}) where {T}
+    convert(T, get(ind.state, :isolation_time, T(Inf)))
+end
 
 """Whether the individual was traced via contact tracing."""
 is_traced(ind::Individual) = get(ind.state, :traced, false)::Bool
@@ -33,8 +35,12 @@ is_traced(ind::Individual) = get(ind.state, :traced, false)::Bool
 """Whether the individual is quarantined."""
 is_quarantined(ind::Individual) = get(ind.state, :quarantined, false)::Bool
 
-"""Whether the individual is vaccinated."""
-is_vaccinated(ind::Individual) = get(ind.state, :vaccinated, false)::Bool
+"""Whether the individual is vaccinated under the given `dose_label`. The
+default label reads the plain `:vaccinated` key; a non-default label reads the
+namespaced key an `AbstractVaccination` with that `dose_label` writes."""
+function is_vaccinated(ind::Individual; dose_label::Symbol = :default)
+    get(ind.state, _vaccinated_key(dose_label), false)::Bool
+end
 
 """Whether the individual is asymptomatic."""
 is_asymptomatic(ind::Individual) = get(ind.state, :asymptomatic, false)::Bool
@@ -48,8 +54,9 @@ is_infected(ind::Individual) = get(ind.state, :infected, true)::Bool
 """Type index for multi-type branching processes (default 1)."""
 individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 
-"""Mark an individual as isolated at the given time."""
-function set_isolated!(ind::Individual, time::Float64)
+"""Mark an individual as isolated at the given time (any `Real`, so an AD
+dual isolation time flows through)."""
+function set_isolated!(ind::Individual, time::Real)
     ind.state[:isolated] = true
     ind.state[:isolation_time] = time
 end

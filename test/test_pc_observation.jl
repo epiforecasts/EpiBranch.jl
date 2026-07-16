@@ -99,6 +99,25 @@
         @test 0.3 < frac < 0.7
     end
 
+    @testset "Uninfected contacts are not marked reported" begin
+        # Isolation blocks some transmissions, so uninfected contact nodes are
+        # kept in the state. Observation is a case property: those nodes must not
+        # receive a :reported flag.
+        clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        m = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.5),
+                post_isolation_transmission = 0.0)],
+            attributes = clinical,
+            observation = PerCaseObservation(detection_prob = 0.7))
+        state = simulate(m; max_cases = 200, rng = StableRNG(7))
+
+        uninfected = filter(ind -> !is_infected(ind), state.individuals)
+        @test !isempty(uninfected)                     # the scenario produced some
+        @test all(!haskey(ind.state, :reported) for ind in uninfected)
+        @test all(is_infected(ind)
+        for ind in state.individuals if get(ind.state, :reported, false))
+    end
+
     @testset "scalar_detection_prob rejects non-scalar fields" begin
         scalar = PerCaseObservation(detection_prob = 0.7)
         @test EpiBranch.scalar_detection_prob(scalar) == 0.7
