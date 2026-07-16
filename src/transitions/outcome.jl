@@ -52,7 +52,7 @@ semantics.
 `Distribution`, or a `Function (rng, ind) -> Real`. The probability is
 too pathogen-specific for a sensible default — pass an explicit value,
 even if it is `0.0`. Use the function form for age- or risk-conditional
-CFRs:
+rates:
 
 ```julia
 Death(delay = LogNormal(2.5, 0.4),
@@ -64,7 +64,13 @@ making time-to-death heterogeneity available the same way.
 
 Initialises `:death_candidate_time = Inf`.
 
-`Death` and [`Recovery`](@ref) compose as competing terminal events.
+`Death` and [`Recovery`](@ref) compose as competing terminal events, resolved
+by earliest candidate time. `probability` is the probability death *enters*
+that race, so the realised fraction dying equals it only when death's candidate
+time reliably precedes any competing recovery/removal — otherwise the realised
+case-fatality is lower (with equal delays and a competing `Recovery`, roughly
+halved). For an exact CFR, gate `Recovery`'s probability as `1 - CFR`, or make
+death's delay dominate the competing one.
 """
 Base.@kwdef struct Death{D, P, F} <: AbstractClinicalTransition
     delay::D

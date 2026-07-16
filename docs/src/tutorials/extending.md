@@ -1023,10 +1023,13 @@ See `src/analytical/cluster_mixed.jl` for the full pattern, including how `Clust
 
 ## Adding per-observation metadata
 
-[`ChainSizes`](@ref) already supports two per-observation fields: `seeds`
-(multi-seed clusters) and `concluded` (right-censored ongoing clusters).
-Both are decisions made by the analyst, not properties the framework
-derives — and they show the pattern for any new field.
+[`ChainSizes`](@ref) carries one per-observation field, `seeds` (the number
+of index cases in each multi-seed cluster). A cluster's real-time "is it
+finished?" weight is a second analyst decision, but it is supplied at
+likelihood time through the `prob_concluded` keyword of `loglikelihood` rather
+than stored on the data — the mixture it drives is only defined against the
+analytical chain-size law. These two show the pattern for any per-cluster
+information.
 
 If your analysis needs different or richer per-cluster information, you
 have two options.
@@ -1035,17 +1038,18 @@ have two options.
 
 If the new information resolves to a flag or a count that the existing
 likelihood already handles, derive it upstream and pass it in. The Endo
-7-day time-censoring rule is an example: it looks like time censoring
-but is just a way to compute `concluded`.
+7-day time-censoring rule is an example: it looks like time censoring but is
+just a way to compute a per-cluster `prob_concluded` (`1.0` for a finished
+cluster, `0.0` for an ongoing one).
 
 ```julia
 using Dates
 is_ongoing(latest_case, cutoff; window_days = 7) =
     cutoff - latest_case < Day(window_days)
 
-data = ChainSizes(sizes;
-    seeds = imports_per_cluster,
-    concluded = .!is_ongoing.(last_case_dates, cutoff_date))
+prob_concluded = Float64.(.!is_ongoing.(last_case_dates, cutoff_date))
+data = ChainSizes(sizes; seeds = imports_per_cluster)
+loglikelihood(data, offspring; prob_concluded = prob_concluded)
 ```
 
 No new types or methods needed — the decision rule lives wherever it
