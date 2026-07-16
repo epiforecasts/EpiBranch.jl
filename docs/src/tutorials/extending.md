@@ -57,6 +57,7 @@ downstream packages should pick names that do not collide.
 | `:risk_group` | `Symbol` | — | `demographics` | Init |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
+| `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |

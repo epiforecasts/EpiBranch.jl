@@ -31,6 +31,11 @@ infective can reach, each with its pairwise contact-interval kernel. Members are
 processed in increasing infection time (each pop is final); on processing, the
 case's natural history is stamped and it exposes still-susceptible targets with a
 `from`-timed contact interval accepted inside its infectious window.
+
+The contact-interval `kernel` must be a **non-negative** distribution: the
+"each pop is final" invariant relies on a candidate time `open_t + dt` never
+preceding the infector's own window-open (`dt ≥ 0`). A kernel with support on
+the negatives would break the shortest-path race with no error.
 """
 function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; seed!, targets, from::Symbol, until::Tuple)

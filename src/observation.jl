@@ -28,6 +28,10 @@ apply_observation!(::NoObservation, state, rng) = state
 
 function apply_observation!(o::PerCaseObservation, state, rng)
     for ind in state.individuals
+        # Observation is a property of cases: skip uninfected contact nodes
+        # (kept for the contact-tracing table) so no RNG is spent on non-cases
+        # and no `:reported` flag lands on a record that isn't a case.
+        is_infected(ind) || continue
         ρ = _sample_value(o.detection_prob, rng, ind)
         d = _sample_value(o.delay, rng, ind)
         anchor = _percase_anchor(o.from, ind)
