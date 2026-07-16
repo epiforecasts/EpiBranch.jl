@@ -134,7 +134,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     #     (for symptomatic traced contacts), fires iff contact was traced
     # Isolation fires at the earlier of any active pathway. A
     # test-negative-but-traced contact is still isolated via tracing.
-    traced_time = get(individual.state, :traced_isolation_time, Inf)::Float64
+    traced_time = get(individual.state, :traced_isolation_time, Inf)
     test_time = if is_test_positive(individual)
         onset_time(individual) + rand(state.rng, iso.onset_to_isolation_delay)
     else

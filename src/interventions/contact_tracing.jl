@@ -456,7 +456,7 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
         if seed
             trace_time = trigger_time(ct.eligibility, infector, state) + trace_delay
         else
-            base = get(infector.state, :trace_time, isolation_time(infector))::Float64
+            base = get(infector.state, :trace_time, isolation_time(infector))
             trace_time = base + trace_delay
         end
         apply_trace!(ct.action, ind, state, trace_time, rng)

@@ -36,10 +36,14 @@ Each individual carries a small typed core read by the engine plus an open
 attributes functions, clinical transitions, and observation models each own
 a few keys in that dictionary.
 
-Read a key through a one-line accessor that pins the result type and
-supplies a safe default: `onset_time(ind) = get(ind.state, :onset_time, NaN)::Float64`.
-New code should add an accessor in `src/state_accessors.jl` rather than
-calling `get(ind.state, …)` directly.
+Read a key through a one-line accessor that supplies a safe default. For a
+real-valued timing key, keep the accessor element-type generic so a gradient
+can flow through it under automatic differentiation:
+`onset_time(ind::Individual{T}) where {T} = convert(T, get(ind.state, :onset_time, T(NaN)))`.
+A Boolean, integer, or symbol key can pin a concrete type instead
+(`is_isolated(ind) = get(ind.state, :isolated, false)::Bool`). New code should
+add an accessor in `src/state_accessors.jl` rather than calling
+`get(ind.state, …)` directly.
 
 ### Reserved keys
 
