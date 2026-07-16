@@ -32,8 +32,9 @@ Fields:
 
 By default every cluster is treated as concluded (final-size
 likelihood). For real-time data with still-active clusters, pass a
-per-cluster `pi` vector of "is finished" probabilities to
-`loglikelihood`; see the `pi` kwarg on `loglikelihood(::ChainSizes, ::Distribution)`.
+per-cluster `prob_concluded` vector of "is finished" probabilities to
+`loglikelihood`; see the `prob_concluded` kwarg on
+`loglikelihood(::ChainSizes, ::Distribution)`.
 
 # Examples
 

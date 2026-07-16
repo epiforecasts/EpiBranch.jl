@@ -310,33 +310,35 @@
                 @test tail_below≈pmf + tail_above atol=1e-9
             end
 
-            # pi == ones reproduces the concluded-only likelihood.
+            # prob_concluded == ones reproduces the concluded-only likelihood.
             data = ChainSizes([1, 1, 2, 3])
             @test loglikelihood(data, NegBin(0.8, 0.5)) ≈
-                  loglikelihood(data, NegBin(0.8, 0.5); pi = [1.0, 1.0, 1.0, 1.0])
+                  loglikelihood(data, NegBin(0.8, 0.5);
+                prob_concluded = [1.0, 1.0, 1.0, 1.0])
 
-            # pi == zeros ⇒ all clusters treated as ongoing (right-tail only).
+            # prob_concluded == zeros ⇒ all clusters ongoing (right-tail only).
             ll_ongoing = loglikelihood(data, NegBin(0.8, 0.5);
-                pi = [0.0, 0.0, 0.0, 0.0])
+                prob_concluded = [0.0, 0.0, 0.0, 0.0])
             d = GammaBorel(0.5, 0.8)
             ll_expected = sum(
                 EpiBranch._chain_size_right_tail_logprob(d, x, 1)
             for x in data.data)
             @test ll_ongoing ≈ ll_expected
 
-            # Mixture: ll bounded between pi=1 and pi=0 ends for pi in (0, 1).
-            ll_mid = loglikelihood(data, NegBin(0.8, 0.5); pi = [0.5, 0.5, 0.5, 0.5])
+            # Mixture: ll bounded between the all-concluded and all-ongoing ends.
+            ll_mid = loglikelihood(data, NegBin(0.8, 0.5);
+                prob_concluded = [0.5, 0.5, 0.5, 0.5])
             ll_concluded = loglikelihood(data, NegBin(0.8, 0.5))
             @test min(ll_concluded, ll_ongoing) <= ll_mid <=
                   max(ll_concluded, ll_ongoing)
 
-            # Likelihood-time validation of `pi`.
+            # Likelihood-time validation of `prob_concluded`.
             @test_throws ArgumentError loglikelihood(
-                data, NegBin(0.8, 0.5); pi = [0.5, 0.5])     # wrong length
+                data, NegBin(0.8, 0.5); prob_concluded = [0.5, 0.5])     # wrong length
             @test_throws ArgumentError loglikelihood(
-                data, NegBin(0.8, 0.5); pi = [0.5, 0.5, 0.5, 1.1])  # out of [0, 1]
+                data, NegBin(0.8, 0.5); prob_concluded = [0.5, 0.5, 0.5, 1.1])  # out of [0, 1]
             @test_throws ArgumentError loglikelihood(
-                data, NegBin(0.8, 0.5); pi = [-0.1, 0.5, 0.5, 0.5])
+                data, NegBin(0.8, 0.5); prob_concluded = [-0.1, 0.5, 0.5, 0.5])
 
             # end_of_outbreak_probability: G(0) at τ=0, → 1 as τ → ∞, monotone.
             GT = Gamma(2.78, 1.8)
@@ -372,14 +374,14 @@
             πs_vec = end_of_outbreak_probability(R, k, GT, collect(taus))
             @test πs_vec ≈ πs
 
-            # End-to-end: end_of_outbreak_probability feeds the pi kwarg
+            # End-to-end: end_of_outbreak_probability feeds the prob_concluded kwarg
             # and the mixture likelihood evaluates without error.
             sizes = [1, 2, 100, 1766]
             seeds = [1, 1, 3, 17]
             taus_data = [0.0, 7.0, 0.0, 0.0]
             π_vals = [end_of_outbreak_probability(R, k, GT, τ) for τ in taus_data]
             data_endo = ChainSizes(sizes; seeds = seeds)
-            ll = loglikelihood(data_endo, NegBin(R, k); pi = π_vals)
+            ll = loglikelihood(data_endo, NegBin(R, k); prob_concluded = π_vals)
             @test isfinite(ll)
         end
 
