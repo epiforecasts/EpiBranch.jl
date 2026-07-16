@@ -69,21 +69,19 @@ function incubation_linked_generation_time(; presymptomatic_fraction::Real = 0.3
 end
 
 """Skew-normal truncated to [0, ∞) via rejection sampling (cdf not available).
-Carries `logZ = log P(inner ≥ 0)` so `logpdf` is properly normalised over the
-truncated support."""
+`logpdf` subtracts the retained-mass constant `log P(inner ≥ 0)`, computed
+lazily on first use so the simulation path (which only samples) never pays for
+the numerical integral."""
 struct _TruncatedSkewNormal{T <: AbstractFloat} <: ContinuousUnivariateDistribution
     ξ::T
     ω::T
     α::T
     inner::SkewNormal{T}
-    logZ::T
+    logZ::Base.RefValue{T}   # log P(inner ≥ 0); NaN until first computed
     function _TruncatedSkewNormal(ξ::Real, ω::Real, α::Real)
         T = float(promote_type(typeof(ξ), typeof(ω), typeof(α)))
         inner = SkewNormal(T(ξ), T(ω), T(α))
-        # SkewNormal has no cdf in this Distributions.jl version, so integrate
-        # the retained mass on [0, ∞) numerically for the truncation constant.
-        Z = first(quadgk(x -> pdf(inner, x), zero(T), T(Inf)))
-        new{T}(T(ξ), T(ω), T(α), inner, T(log(Z)))
+        new{T}(T(ξ), T(ω), T(α), inner, Ref(T(NaN)))
     end
 end
 
@@ -96,10 +94,19 @@ function Base.rand(rng::AbstractRNG, d::_TruncatedSkewNormal)
     return 0.0
 end
 
+# The retained-mass constant `log P(inner ≥ 0)`, integrated lazily and cached on
+# first request — `rand` (the simulation path) never triggers it. SkewNormal has
+# no cdf in this Distributions.jl version, hence the numerical integral.
+function _trunc_logZ(d::_TruncatedSkewNormal{T}) where {T}
+    isnan(d.logZ[]) || return d.logZ[]
+    Z = first(quadgk(x -> pdf(d.inner, x), zero(T), T(Inf)))
+    return d.logZ[] = T(log(Z))
+end
+
 # Normalised over [0, ∞): subtract the retained-mass constant so the density
 # integrates to 1 (the bare inner density does not on the truncated support).
 function Distributions.logpdf(d::_TruncatedSkewNormal, x::Real)
-    x < 0.0 ? oftype(float(x), -Inf) : logpdf(d.inner, x) - d.logZ
+    x < 0.0 ? oftype(float(x), -Inf) : logpdf(d.inner, x) - _trunc_logZ(d)
 end
 
 """
