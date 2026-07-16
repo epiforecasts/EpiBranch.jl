@@ -20,31 +20,34 @@ _check_max_cases(::SimulationState, ::NoCases) = false
 _check_max_cases(state::SimulationState, cap::Int) = state.cumulative_cases >= cap
 
 """
-    is_extinct(state::SimulationState; by_week=nothing, reference_date=Date(2020,1,1),
-               max_cases=nothing)
+    is_extinct(state::SimulationState; by_week=nothing, max_cases=nothing)
 
 Extinction classification for a single simulation with optional criteria.
 
 - No keyword args: returns `state.extinct`
-- `by_week::Int`: extinct if no cases with onset in that week
-- `by_week::UnitRange{Int}`: extinct if no cases with onset in that week range
+- `by_week::Int`: extinct if no case has its onset in that week
+- `by_week::UnitRange{Int}`: extinct if no case has its onset in that week range
 - `max_cases::Int`: outbreaks hitting this cap are not considered extinct
+
+Weeks are 7-day blocks numbered from `t = 0` (week 1 is days 0–6), binned on
+onset time with a fall-back to infection time for any case without a recorded
+onset — the same timing field as [`weekly_incidence`](@ref).
 """
 function is_extinct(state::SimulationState;
         by_week::Union{Int, UnitRange{Int}, Nothing} = nothing,
-        reference_date::Date = Date(2020, 1, 1),
         max_cases::Union{Int, NoCases} = NoCases())
     _check_max_cases(state, max_cases) && return false
 
     by_week === nothing && return state.extinct
 
-    # Week-based extinction
+    # Week-based extinction, binned on onset (with infection fallback) to match
+    # the docstring and `weekly_incidence`.
     weeks = by_week isa Int ? (by_week:by_week) : by_week
     for ind in state.individuals
         !is_infected(ind) && continue
-        isnan(ind.infection_time) && continue
-        day = floor(Int, ind.infection_time)
-        week_num = div(day, 7) + 1
+        t = _weekly_time(:onset, ind)
+        isfinite(t) || continue
+        week_num = div(floor(Int, t), 7) + 1
         week_num in weeks && return false
     end
     return true
@@ -165,10 +168,14 @@ Run a parameter sweep over all combinations of parameters and return a
 DataFrame of results. Each row contains the parameter values and the
 containment probability.
 
-`params` must include `:offspring` (vector of offspring distributions) and
-may include `:generation_time`, `:interventions`, `:attributes`, and any
-other named parameters. `:interventions` values should be vectors of
-intervention stacks (each element is a `Vector{<:AbstractIntervention}`).
+`params` must include `:offspring` (vector of offspring distributions) and may
+include `:generation_time`, `:interventions`, `:attributes` and
+`:population_size` — the only recognised sweep axes. An unrecognised key is
+rejected rather than silently producing a column that does not affect the run.
+`:interventions` values should be vectors of intervention stacks (each element
+is a `Vector{<:AbstractIntervention}`). The swept process is a
+[`BranchingProcess`](@ref); a simulation control such as `max_cases` is not a
+sweep axis — pass it once through `sim_kwargs`.
 
 ```julia
 results = scenario_sweep(Dict(
@@ -183,6 +190,13 @@ function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
         rng::AbstractRNG = Random.default_rng(),
         sim_kwargs...)
     haskey(params, :offspring) || throw(ArgumentError("params must include :offspring"))
+    recognised = (:offspring, :generation_time, :interventions, :attributes,
+        :population_size)
+    unknown = setdiff(keys(params), recognised)
+    isempty(unknown) || throw(ArgumentError(
+        "scenario_sweep: unrecognised parameter key(s) $(collect(unknown)). " *
+        "Recognised sweep axes are $(collect(recognised)); a simulation control " *
+        "(e.g. max_cases) is not swept — pass it once through the keyword arguments."))
 
     keys_ordered = collect(keys(params))
     value_lists = [params[k] for k in keys_ordered]

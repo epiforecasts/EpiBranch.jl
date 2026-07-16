@@ -1,4 +1,21 @@
 @testset "Finite population (density-dependent)" begin
+    @testset "major outbreaks match the SIR final-size law" begin
+        # Quantitative check the qualitative-bounds tests below cannot make: the
+        # finite-population BP's susceptibility depletion must reproduce the
+        # deterministic attack rate z = 1 - exp(-R0 z); at R0 = 2, z ≈ 0.7968.
+        N = 3000
+        finals = Int[]
+        for s in 1:200
+            st = simulate(
+                BranchingProcess(Poisson(2.0), Exponential(5.0); population_size = N);
+                max_cases = N, rng = StableRNG(s))
+            push!(finals, st.cumulative_cases)
+        end
+        major = filter(x -> x > 0.2N, finals)
+        @test !isempty(major)
+        @test isapprox(mean(major) / N, 0.7968; atol = 0.03)
+    end
+
     @testset "Finite population limits outbreak" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0); population_size = 100)
