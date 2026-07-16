@@ -71,6 +71,7 @@ function simulate(spec::ModelSpec;
         max_attempts::Int = 10_000)
     _warn_ignored_termination(
         spec.process, max_cases, max_generations, max_time, stopping_rules)
+    _warn_unhonoured_interventions(spec.process, spec.interventions)
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
     return _simulate(spec.process, sim_opts; interventions = spec.interventions,
@@ -88,6 +89,7 @@ function simulate(spec::ModelSpec, n::Int;
         parallel::Bool = false)
     _warn_ignored_termination(
         spec.process, max_cases, max_generations, max_time, stopping_rules)
+    _warn_unhonoured_interventions(spec.process, spec.interventions)
     sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
         stopping_rules)
     return _simulate_n(spec.process, n, sim_opts;

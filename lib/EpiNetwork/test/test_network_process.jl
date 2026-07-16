@@ -100,6 +100,26 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test k_iso < k_base                        # isolation curtails the outbreak
     end
 
+    @testset "Isolation intervention curtails the outbreak" begin
+        # The Isolation *intervention* (not a Transition) now runs on the
+        # continuous-time network path: its resolve_individual! fires in the
+        # Sellke race and its isolation time closes the infectious window.
+        n = 60
+        ring = ring_adjacency(n)
+        kernel = Exponential(0.5)
+        prog = [
+            Transition(:onset; from = :infection, delay = 0.1),
+            Transition(:recovered; from = :infection,
+                delay = (rng, ind) -> 20.0, terminal = true)]
+
+        baseline = ModelSpec(NetworkProcess(ring, kernel); progression = prog)
+        isolating = ModelSpec(NetworkProcess(ring, kernel); progression = prog,
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.2))])
+
+        @test n_infected(simulate(isolating; rng = StableRNG(3))) <
+              n_infected(simulate(baseline; rng = StableRNG(3)))
+    end
+
     @testset "state carries Float64 timing and renders a line list" begin
         m = ModelSpec(NetworkProcess(ring_adjacency(20), Exponential(1.0));
             progression = [

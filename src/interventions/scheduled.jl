@@ -118,6 +118,12 @@ end
 required_fields(s::Scheduled) = required_fields(s.intervention)
 intervention_time(s::Scheduled, ind::Individual) = intervention_time(s.intervention, ind)
 reset!(s::Scheduled, ind::Individual) = reset!(s.intervention, ind)
+# A scheduled wrapper removes a case exactly when the wrapped intervention does
+# (the `start_time` gate is enforced by `resolve_individual!`'s `_maybe_reset!`,
+# which pushes the isolation time back when it falls before the policy start).
+function infectious_removal_time(s::Scheduled, ind::Individual)
+    infectious_removal_time(s.intervention, ind)
+end
 function competing_risk(s::Scheduled, parent, contact, state)
     is_active(s, state) ? competing_risk(s.intervention, parent, contact, state) : nothing
 end

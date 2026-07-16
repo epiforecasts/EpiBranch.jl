@@ -106,6 +106,21 @@ Default: `-Inf` (effect always applies).
 intervention_time(::AbstractIntervention, ::Individual) = -Inf
 
 """
+    infectious_removal_time(intervention, individual) -> Real
+
+The time at which this intervention takes `individual` out of onward
+transmission. The continuous-time (Sellke) transmission models
+([`HomogeneousProcess`](@ref), and the network/household processes) express
+interventions only through the infectious window, closing it at the earliest
+removal time across the interventions. `Isolation` removes a case at its
+isolation time; the default is `Inf` (no removal), so an intervention whose
+effect is a per-contact competing risk rather than a removal — leaky
+vaccination, contact tracing — contributes nothing to the window and has no
+continuous-time representation. Not read by the generation-based engine.
+"""
+infectious_removal_time(::AbstractIntervention, ::Individual) = Inf
+
+"""
     reset!(intervention, individual)
 
 Undo the effect of an intervention on an individual. Called by

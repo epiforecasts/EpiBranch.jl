@@ -69,6 +69,49 @@
         @test iso_mean < base_mean
     end
 
+    @testset "Isolation intervention shortens the outbreak" begin
+        # The Isolation *intervention* (not a Transition) must act on the pool:
+        # its resolve_individual! runs in the Sellke loop and its isolation time
+        # closes the infectious window. Onset comes from a progression transition
+        # so it is anchored on the real infection time.
+        N = 1000
+        prog = [
+            Transition(:onset; from = :infection, delay = 0.1),
+            Transition(:recovered; from = :infection,
+                delay = Exponential(1.0), terminal = true)
+        ]
+        base = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
+            progression = prog)
+        iso = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
+            progression = prog,
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.1))])
+
+        base_mean = mean(simulate(base; rng = StableRNG(s), n_initial = 3).cumulative_cases
+        for s in 1:20)
+        iso_mean = mean(simulate(iso; rng = StableRNG(s), n_initial = 3).cumulative_cases
+        for s in 1:20)
+        # Fast isolation pushes R below 1: the outbreak is curtailed.
+        @test iso_mean < 0.1 * base_mean
+
+        # A case's isolation time is actually written (the hook ran).
+        state = simulate(iso; rng = StableRNG(1), n_initial = 3)
+        @test any(isfinite(EpiBranch.isolation_time(ind)) for ind in state.individuals)
+    end
+
+    @testset "Unhonoured intervention warns rather than silently ignoring" begin
+        prog = [Transition(:recovered; from = :infection,
+            delay = Exponential(1.0), terminal = true)]
+        ct = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);
+            progression = prog,
+            interventions = [ContactTracing(probability = 0.5,
+                isolation_to_trace_delay = Exponential(1.0))])
+        @test_logs (:warn, r"does not honour"i) match_mode=:any simulate(
+            ct; rng = StableRNG(1), n_initial = 2)
+    end
+
     @testset "removal before infectious onset never infects" begin
         # A latent period opens the window at :infectious, but isolation fires
         # first (close_t <= open_t). Such a case is never infectious: it must be

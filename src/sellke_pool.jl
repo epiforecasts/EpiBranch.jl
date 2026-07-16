@@ -21,8 +21,9 @@
 # closed-form time, and the candidate events (each group's next infection, the
 # next window-open, the next window-close) are raced. Every other concern is the
 # shared engine: each infected member's natural history is stamped through
-# `resolve_transitions!`, so interventions act only by shortening the infectious
-# window through `_window_close`, exactly as in `_sellke_race!`.
+# `resolve_transitions!` and its interventions resolved, so a removing
+# intervention (isolation) acts by shortening the infectious window through the
+# window-close, exactly as in `_sellke_race!`.
 
 # A minimal binary min-heap over `(time, id)` pairs — tuples compare
 # lexicographically, so ties break deterministically on id. Avoids a
@@ -100,7 +101,7 @@ reconciles aggregate bookkeeping and applies observation.
 """
 function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; mixing_by::Tuple = (), force, n_initial::Integer,
-        from::Symbol, until::Tuple)
+        from::Symbol, until::Tuple, interventions = ())
     N = length(members)
     N == 0 && return nothing
 
@@ -125,6 +126,7 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             ind.chain_id = infector.chain_id
         end
         resolve_transitions!(state, ind)
+        _resolve_interventions!(state, ind, interventions)
         return nothing
     end
 
@@ -159,7 +161,8 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     push_windows! = function (ind)
         open_t = _window_open(ind, from)
         isfinite(open_t) || return nothing
-        close_t = _window_close(ind, until)
+        close_t = min(_window_close(ind, until),
+            _intervention_removal_time(ind, interventions))
         (isfinite(close_t) && close_t <= open_t) && return nothing
         _pool_heap_push!(open_heap, (open_t, ind.id))
         isfinite(close_t) && _pool_heap_push!(close_heap, (close_t, ind.id))
