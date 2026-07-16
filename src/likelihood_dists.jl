@@ -13,7 +13,7 @@ struct _ChainSizeLaw{M, S, P, K} <:
        Distributions.Distribution{Multivariate, Discrete}
     model::M
     seeds::S
-    pi::P
+    prob_concluded::P
     kwargs::K
 end
 
@@ -25,17 +25,28 @@ end
 function Distributions.logpdf(
         d::_ChainSizeLaw, data::AbstractVector{<:Integer})
     cs = _chain_sizes(data, d.seeds)
-    # The pi mixture is only defined against the analytical chain-size
-    # distribution. If we were handed a transmission model, route pi
-    # through its offspring so the analytical multi-seed/pi method
-    # picks it up instead of the simulation-based one (which doesn't
-    # accept pi).
-    if d.pi === nothing
+    # The real-time `prob_concluded` mixture is only defined against the
+    # analytical chain-size distribution. If we were handed a transmission
+    # model, route `prob_concluded` through its offspring so the analytical
+    # multi-seed method picks it up instead of the simulation-based one (which
+    # has no `prob_concluded` path).
+    if d.prob_concluded === nothing
         return loglikelihood(cs, d.model; d.kwargs...)
+    end
+    # A model carrying interventions has no closed form here: dropping to its
+    # bare offspring would silently ignore the interventions. Refuse rather
+    # than compute a wrong likelihood.
+    if d.model isa Union{TransmissionModel, ModelSpec} &&
+       !isempty(interventions(d.model))
+        throw(ArgumentError(
+            "prob_concluded (the real-time per-cluster finished weight) has no " *
+            "closed form when the model carries interventions; the simulation-" *
+            "based likelihood has no prob_concluded path. Remove the interventions " *
+            "or omit prob_concluded."))
     end
     target = d.model isa Union{TransmissionModel, ModelSpec} ?
              single_type_offspring(d.model) : d.model
-    return loglikelihood(cs, target; pi = d.pi, d.kwargs...)
+    return loglikelihood(cs, target; prob_concluded = d.prob_concluded, d.kwargs...)
 end
 
 function Distributions.loglikelihood(
@@ -50,7 +61,7 @@ function Base.rand(rng::AbstractRNG, d::_ChainSizeLaw, n::Int)
     # Each simulation is one cluster of `n_initial` seeds; its
     # observed size is the total infected across all seed chains, so a
     # multi-seed cluster is summed rather than having every chain but the
-    # first silently dropped. `seeds`/`pi` describe the grouping of
+    # first silently dropped. `seeds`/`prob_concluded` describe the grouping of
     # *observed* data and have no role in generating new draws.
     return [sum(chain_statistics(s).size) for s in states]
 end
@@ -86,35 +97,62 @@ end
 # Extend the existing `chain_size_distribution` so that — with no
 # kwargs and an offspring that has a closed-form distribution — it
 # still returns the analytical `Borel` / `GammaBorel`. With `seeds`,
-# `pi`, or anything else passed through, it returns the wrapper.
+# `prob_concluded`, or anything else passed through, it returns the wrapper.
 # `chain_length_distribution` and `offspring_distribution` are new
 # entry points.
 
+"""
+    chain_size_distribution(model; seeds=nothing, prob_concluded=nothing, kwargs...)
+    chain_size_distribution(spec::ModelSpec; seeds=nothing, prob_concluded=nothing, kwargs...)
+
+Distribution over observed chain (cluster) sizes under `model`, the primary
+entry point for Bayesian inference on chain-size data with Turing's `~`:
+
+```julia
+@model function fit(sizes)
+    R ~ Gamma(2, 1)
+    sizes ~ chain_size_distribution(BranchingProcess(NegBin(R, 0.5)))
+end
+```
+
+With no keyword arguments, no interventions and a single-type offspring law,
+the analytical chain-size distribution (`Borel` / `GammaBorel`) is returned
+directly; otherwise a wrapper that scores via `loglikelihood`. Keyword
+arguments:
+
+- `seeds`: per-cluster number of index cases, for multi-seed clusters.
+- `prob_concluded`: per-cluster probability the cluster is finished (its
+  observed size is its final size), for real-time data with ongoing clusters —
+  see `end_of_outbreak_probability`. Defined only against the analytical law,
+  so it is not supported alongside interventions.
+- `n_sim`, `interventions`, …: forwarded to the underlying simulation-based
+  `loglikelihood` when the analytical fast path does not apply.
+"""
 function chain_size_distribution(model::TransmissionModel;
-        seeds = nothing, pi = nothing, kwargs...)
+        seeds = nothing, prob_concluded = nothing, kwargs...)
     # The analytical fast path is only valid when nothing perturbs the
     # bare offspring law. A model that carries interventions must route
     # through the simulation-based wrapper, even with no explicit kwargs,
     # or its interventions would be silently dropped. The model's
     # observation is applied analytically via `observe`.
-    if seeds === nothing && pi === nothing && isempty(kwargs) &&
+    if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
        isempty(interventions(model))
         return observe(
             chain_size_distribution(single_type_offspring(model)),
             observation(model))
     end
-    return _ChainSizeLaw(model, seeds, pi, NamedTuple(kwargs))
+    return _ChainSizeLaw(model, seeds, prob_concluded, NamedTuple(kwargs))
 end
 
-function chain_size_distribution(spec::ModelSpec; seeds = nothing, pi = nothing,
-        kwargs...)
-    if seeds === nothing && pi === nothing && isempty(kwargs) &&
+function chain_size_distribution(spec::ModelSpec; seeds = nothing,
+        prob_concluded = nothing, kwargs...)
+    if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
        isempty(interventions(spec))
         return observe(
             chain_size_distribution(single_type_offspring(spec.process)),
             observation(spec))
     end
-    return _ChainSizeLaw(spec, seeds, pi, NamedTuple(kwargs))
+    return _ChainSizeLaw(spec, seeds, prob_concluded, NamedTuple(kwargs))
 end
 
 """

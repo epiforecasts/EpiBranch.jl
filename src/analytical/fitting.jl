@@ -13,75 +13,76 @@ function loglikelihood(data::OffspringCounts, offspring::Distribution)
 end
 
 """
-    loglikelihood(data::ChainSizes, offspring::Distribution; pi = nothing)
+    loglikelihood(data::ChainSizes, offspring::Distribution; prob_concluded = nothing)
 
 Log-likelihood of observed chain sizes under the analytical chain size
 distribution implied by the offspring distribution. Multi-seed clusters
 are handled via the `seeds` field of [`ChainSizes`](@ref).
 
-With `pi === nothing` (default), every cluster is treated as concluded
-and the likelihood is the standard final-size sum
+With `prob_concluded === nothing` (default), every cluster is treated as
+concluded and the likelihood is the standard final-size sum
 `Σ_i log P(X = x_i | seeds_i)`.
 
-With `pi::AbstractVector` (length `length(data.data)`, values in `[0, 1]`),
-cluster `i` contributes the real-time mixture
+With `prob_concluded::AbstractVector` (length `length(data.data)`, values in
+`[0, 1]`), cluster `i` contributes the real-time mixture
 
-    L_i = pi[i] · P(X = x_i | seeds_i) + (1 − pi[i]) · P(X ≥ x_i | seeds_i)
+    L_i = π_i · P(X = x_i | seeds_i) + (1 − π_i) · P(X ≥ x_i | seeds_i)
 
-i.e. `pi[i]` is the probability that cluster `i` is finished
-(observed size = final size). See `end_of_outbreak_probability` for a
-principled `pi` based on the generation-time distribution.
+where `π_i = prob_concluded[i]` is the probability that cluster `i` is
+finished (observed size = final size). See `end_of_outbreak_probability` for a
+principled `prob_concluded` based on the generation-time distribution.
 """
 function loglikelihood(data::ChainSizes, offspring::Distribution;
-        pi::Union{Nothing, AbstractVector{<:Real}} = nothing)
+        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing)
     dist = chain_size_distribution(offspring)
-    return _chain_size_loglik(dist, data; pi)
+    return _chain_size_loglik(dist, data; prob_concluded)
 end
 
 # AD-compatible methods: use shared _borel_logpdf / _gammaborel_logpdf
 # which accept any numeric type for parameters (ForwardDiff Dual compatible)
 function loglikelihood(data::ChainSizes, offspring::Poisson{T};
-        pi::Union{Nothing, AbstractVector{<:Real}} = nothing) where {T}
+        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing) where {T}
     μ = min(mean(offspring), one(mean(offspring)))
-    if pi === nothing && all(==(1), data.seeds)
+    if prob_concluded === nothing && all(==(1), data.seeds)
         return sum(n -> _borel_logpdf(μ, n), data.data)
     end
-    return _chain_size_loglik(Borel(μ), data; pi)
+    return _chain_size_loglik(Borel(μ), data; prob_concluded)
 end
 
 function loglikelihood(data::ChainSizes, offspring::NegativeBinomial{T};
-        pi::Union{Nothing, AbstractVector{<:Real}} = nothing) where {T}
-    if pi === nothing && all(==(1), data.seeds)
+        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing) where {T}
+    if prob_concluded === nothing && all(==(1), data.seeds)
         return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
     end
-    return _chain_size_loglik(GammaBorel(offspring.r, mean(offspring)), data; pi)
+    return _chain_size_loglik(GammaBorel(offspring.r, mean(offspring)), data; prob_concluded)
 end
 
 """
-    _chain_size_loglik(dist, data::ChainSizes; pi = nothing)
+    _chain_size_loglik(dist, data::ChainSizes; prob_concluded = nothing)
 
-Per-cluster chain-size log-likelihood. With `pi === nothing` every
+Per-cluster chain-size log-likelihood. With `prob_concluded === nothing` every
 cluster contributes its concluded PMF
-`log P(X = x_i | seeds_i)`; with `pi::AbstractVector` the mixture
-`pi[i] · P(X = x_i) + (1 − pi[i]) · P(X ≥ x_i)` is summed.
+`log P(X = x_i | seeds_i)`; with `prob_concluded::AbstractVector` the mixture
+`π_i · P(X = x_i) + (1 − π_i) · P(X ≥ x_i)` is summed.
 """
 function _chain_size_loglik(dist, data::ChainSizes;
-        pi::Union{Nothing, AbstractVector{<:Real}} = nothing)
-    if pi !== nothing && length(pi) != length(data.data)
+        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing)
+    if prob_concluded !== nothing && length(prob_concluded) != length(data.data)
         throw(ArgumentError(
-            "pi must have the same length as data ($(length(data.data))); got $(length(pi))"))
+            "prob_concluded must have the same length as data " *
+            "($(length(data.data))); got $(length(prob_concluded))"))
     end
     first_val = _chain_size_logpdf(dist, data.data[1], data.seeds[1])
     total = zero(first_val)
     for i in eachindex(data.data)
         lc = _chain_size_logpdf(dist, data.data[i], data.seeds[i])
-        if pi === nothing
+        if prob_concluded === nothing
             total += lc
             continue
         end
-        π_i = pi[i]
+        π_i = prob_concluded[i]
         (0 <= π_i <= 1) ||
-            throw(ArgumentError("pi[$i] = $(π_i) is not in [0, 1]"))
+            throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
         if π_i >= one(π_i)
             total += lc
         elseif π_i <= zero(π_i)

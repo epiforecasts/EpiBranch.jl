@@ -166,12 +166,12 @@ end
 
 For a bare offspring law these return the analytical distribution
 (`Borel`, `GammaBorel`, …) where one exists; when the spec composes
-interventions onto the process (or you pass `seeds`, `pi`, `n_sim`, …)
-they return a wrapper that routes through the simulation-based
+interventions onto the process (or you pass `seeds`, `prob_concluded`,
+`n_sim`, …) they return a wrapper that routes through the simulation-based
 `loglikelihood`. Either way the spec carries its own interventions and
 attributes, so the `~` line stays clean.
 
 ```julia
 data ~ chain_size_distribution(BranchingProcess(Poisson(R));
-    seeds = seeds, pi = pi)
+    seeds = seeds, prob_concluded = prob_concluded)
 ```

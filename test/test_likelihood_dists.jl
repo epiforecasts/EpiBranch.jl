@@ -29,10 +29,20 @@
         @test logpdf(d, data) ≈
               loglikelihood(ChainSizes(data; seeds = seeds), Poisson(0.5))
 
-        pi = [1.0, 0.5, 0.0, 0.7]
-        d_pi = chain_size_distribution(bp; seeds = seeds, pi = pi)
-        @test logpdf(d_pi, data) ≈
-              loglikelihood(ChainSizes(data; seeds = seeds), Poisson(0.5); pi = pi)
+        pc = [1.0, 0.5, 0.0, 0.7]
+        d_pc = chain_size_distribution(bp; seeds = seeds, prob_concluded = pc)
+        @test logpdf(d_pc, data) ≈
+              loglikelihood(ChainSizes(data; seeds = seeds), Poisson(0.5);
+            prob_concluded = pc)
+
+        # prob_concluded has no closed form under interventions: refuse rather
+        # than silently drop them.
+        clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        d_iv = chain_size_distribution(
+            ModelSpec(bp; interventions = [iso], attributes = clinical);
+            seeds = seeds, prob_concluded = pc)
+        @test_throws ArgumentError logpdf(d_iv, data)
     end
 
     @testset "chain_length_distribution" begin
