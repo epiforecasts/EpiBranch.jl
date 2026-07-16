@@ -894,7 +894,7 @@ function competing_risk(::WindowCensor, parent, contact, state)
     isempty(until) && return nothing
     t_end = Inf
     for s in until
-        st = get(parent.state, Symbol(s, :_time), Inf)::Float64
+        st = get(parent.state, Symbol(s, :_time), Inf)
         st < t_end && (t_end = st)
     end
     isfinite(t_end) || return nothing
@@ -1079,7 +1079,7 @@ present on the individual.
 """
 function _set_onset_from_incubation!(ind::Individual)
     haskey(ind.state, :incubation_period) || return nothing
-    inc = ind.state[:incubation_period]::Float64
+    inc = ind.state[:incubation_period]
     ind.state[:onset_time] = isnan(inc) ? NaN : ind.infection_time + inc
     return nothing
 end

@@ -153,3 +153,53 @@ end
     fd = (total_infection_time(β0 + h) - total_infection_time(β0 - h)) / (2h)
     @test isapprox(grad, fd; rtol = 1e-4)
 end
+
+# Interventions act on the timing layer, so a run carrying an `Isolation`
+# intervention must still differentiate: the isolation time is `onset + delay`,
+# a dual under AD, and `set_isolated!`/`isolation_time` have to carry it rather
+# than pin `Float64`. Before the eltype-generic accessors this threw a
+# MethodError at `set_isolated!(::Individual, ::Dual)`.
+@testset "AD through the forward simulator (isolation timing)" begin
+    clinical = clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+    function total_infection_time(μ)
+        model = BranchingProcess(NegBin(2.0, 0.5), LogNormal(μ, 0.5))
+        state = simulate(ModelSpec(model; interventions = [iso], attributes = clinical);
+            n_initial = 20, rng = StableRNG(20260701),
+            stopping_rules = [Extinction(), MaxGenerations(5)])
+        return sum(ind.infection_time for ind in state.individuals if is_infected(ind))
+    end
+
+    μ0 = 1.6
+    @test isfinite(total_infection_time(μ0))
+    grad = ForwardDiff.derivative(total_infection_time, μ0)
+    @test isfinite(grad)
+end
+
+# The `until`-window censor reads the infector's removal time (`:died_time` /
+# `:recovered_time`), which is a dual once a timing parameter is differentiated.
+# Before dropping the `::Float64` assertion in `WindowCensor.competing_risk`,
+# any censored/funeral-route model threw a TypeError under AD.
+@testset "AD through the forward simulator (until-window censoring)" begin
+    history = [
+        Transition(:infectious, from = :infection, delay = LogNormal(1.0, 0.3)),
+        Transition(:onset, from = :infection, delay = LogNormal(1.6, 0.4)),
+        Transition(:died, from = :onset, delay = Gamma(2.0, 3.0),
+            probability = 0.6, terminal = true),
+        Transition(:recovered, from = :onset, delay = Gamma(2.0, 5.0), terminal = true)
+    ]
+    function total_infection_time(θ)
+        community = Infectiousness(NegBin(1.5, 0.5);
+            from = :infectious, until = (:recovered, :died), kernel = Gamma(2.0, θ))
+        state = simulate(ModelSpec(BranchingProcess(community); progression = history);
+            n_initial = 20, rng = StableRNG(20260701),
+            stopping_rules = [Extinction(), MaxGenerations(5)])
+        return sum(ind.infection_time for ind in state.individuals if is_infected(ind))
+    end
+
+    θ0 = 2.0
+    @test isfinite(total_infection_time(θ0))
+    grad = ForwardDiff.derivative(total_infection_time, θ0)
+    @test isfinite(grad)
+end
