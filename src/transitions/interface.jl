@@ -90,6 +90,14 @@ function _resolve_anchor(s::Symbol, ind::Individual{T}) where {T}
 end
 _resolve_anchor(f, ind) = float(f(ind))
 
+# A transition fires only from a finite anchor. An anchor is missing (`NaN`)
+# when the `from` key was never written, and non-finite (`Inf`) when the
+# upstream transition initialised the key but never fired — both mean "the
+# `from` state was not reached", so the transition must be skipped. Guarding
+# on `isfinite` (not `isnan`) keeps the two subsystems in step; the generic
+# `Transition` uses the same check.
+_anchor_ok(anchor) = isfinite(anchor)
+
 # By default each transition's `required_fields` returns `[:onset_time]`
 # so the simulation start-up validator catches missing
 # `clinical_presentation` setup. When the user overrides `from` to

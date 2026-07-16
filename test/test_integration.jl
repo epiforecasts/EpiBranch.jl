@@ -28,6 +28,22 @@ using Dates
         @test sum(df.cases) == state.cumulative_cases
     end
 
+    @testset "weekly_incidence by=:reporting excludes unreported (Inf) cases" begin
+        # A Reporting transition with probability < 1 leaves unreported cases
+        # with :reporting_time = Inf. Binning by :reporting must skip those
+        # rather than throw InexactError on Day(floor(Int, Inf)).
+        rng = StableRNG(42)
+        model = BranchingProcess(Poisson(2.0), Exponential(5.0))
+        rep = Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5)
+        state = simulate(ModelSpec(model; progression = [rep], attributes = clinical);
+            max_cases = 200, rng = rng)
+        df = weekly_incidence(state; by = :reporting)
+        @test df isa DataFrame
+        n_reported = count(ind -> get(ind.state, :reported, false), state.individuals)
+        @test sum(df.cases) == n_reported
+        @test 0 < n_reported < state.cumulative_cases    # some, not all, reported
+    end
+
     @testset "simulate with condition" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.2), Exponential(5.0))

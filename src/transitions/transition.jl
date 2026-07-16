@@ -91,7 +91,7 @@ end
 
 function resolve_individual!(t::Transition, individual, state)
     anchor = _state_time(individual, t.from)
-    isfinite(anchor) || return nothing
+    _anchor_ok(anchor) || return nothing
     p = _resolve_probability(t.probability, state.rng, individual)
     rand(state.rng) < p || return nothing
     individual.state[t.state] = true
