@@ -4,3 +4,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Hold a new release for a week before opening a PR, so a compromised or
+    # broken version has time to be caught and yanked before it can auto-merge.
+    cooldown:
+      default-days: 7
