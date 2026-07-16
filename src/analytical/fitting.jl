@@ -42,9 +42,6 @@ end
 # which accept any numeric type for parameters (ForwardDiff Dual compatible)
 function loglikelihood(data::ChainSizes, offspring::Poisson{T};
         pi::Union{Nothing, AbstractVector{<:Real}} = nothing) where {T}
-    # The Borel PMF is valid (defective, total mass < 1) for supercritical
-    # μ > 1, so score at the actual mean rather than clamping to the critical
-    # value — clamping would flatten the likelihood for all R ≥ 1.
     μ = mean(offspring)
     if pi === nothing && all(==(1), data.seeds)
         return sum(n -> _borel_logpdf(μ, n), data.data)
@@ -111,8 +108,6 @@ Analytical log-likelihood of observed chain lengths. Only defined for
 subcritical processes (R < 1).
 """
 # AD-compatible chain length: Poisson — PGF iteration on G(s) = exp(λ(s − 1)).
-# (The closed form (1−λ)λ^n is the Geometric law for Bernoulli offspring, not
-# Poisson: for Poisson offspring P(length = 0) = exp(−λ), not 1 − λ.)
 function loglikelihood(data::ChainLengths, offspring::Poisson{T}) where {T}
     λ = mean(offspring)
     λ < 1 ||
