@@ -3,11 +3,13 @@ name: Dependabot auto-merge
 # Auto-merge Dependabot updates once CI passes. Only the `github-actions`
 # ecosystem is watched here (Julia deps go through CompatHelper), and those
 # actions are SHA-pinned, so the residual risk is a freshly-published malicious
-# release — the `cooldown` in dependabot.yml holds updates for a few days before
+# release — the `cooldown` in dependabot.yml holds updates for 7 days before
 # a PR is even opened, and CI must pass before the merge fires. Patch and minor
 # bumps merge automatically; major bumps are left for a manual merge.
 
-on: pull_request
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
 
 permissions:
   contents: write
