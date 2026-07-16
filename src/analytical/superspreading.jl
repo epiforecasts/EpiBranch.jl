@@ -9,6 +9,11 @@ This is the "80/20 rule" metric for superspreading: with `prop_cases=0.2`,
 returns the proportion of all transmission events caused by the top 20% of
 transmitters.
 
+The result depends only on the dispersion `k`; `R` is accepted for interface
+consistency but does not affect it, because the Lorenz curve of the underlying
+`Gamma(k, R/k)` is scale-invariant in the mean. Two calls with the same `k` and
+different `R` return the same value.
+
 Computed via the regularised incomplete beta function.
 """
 function proportion_transmission(R::Real, k::Real; prop_cases::Real = 0.2)
@@ -17,7 +22,7 @@ function proportion_transmission(R::Real, k::Real; prop_cases::Real = 0.2)
     0.0 < prop_cases < 1.0 ||
         throw(ArgumentError("prop_cases must be in (0, 1), got $prop_cases"))
 
-    # The proportion of transmission from the top (1 - prop_cases) fraction
+    # The proportion of transmission from the top `prop_cases` fraction
     # is 1 - I_x(k+1, 0) where x is the quantile of the Gamma distribution
     # and I_x is the regularised incomplete beta function.
     #

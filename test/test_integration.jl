@@ -102,6 +102,28 @@ using Dates
         @test state.cumulative_cases > 0
     end
 
+    @testset "incubation_linked_generation_time realises the presymptomatic fraction" begin
+        presymp = 0.3
+        gt_fn = incubation_linked_generation_time(presymptomatic_fraction = presymp)
+        # Incubation period ξ = 5 (≫ ω, so truncation barely perturbs the split).
+        ind = Individual(id = 1, infection_time = 0.0,
+            state = Dict{Symbol, Any}(:onset_time => 5.0))
+        d = gt_fn(ind)
+
+        # Realised fraction of generation times shorter than ξ ≈ presymptomatic.
+        rng = StableRNG(1)
+        draws = [rand(rng, d) for _ in 1:20_000]
+        @test isapprox(count(<(5.0), draws) / length(draws), presymp; atol = 0.02)
+
+        # logpdf is normalised over [0, ∞): the density integrates to ≈ 1
+        # (before the truncation constant it did not).
+        xs = range(0.0, 20.0; length = 4001)
+        dens = [exp(logpdf(d, x)) for x in xs]
+        integral = sum((dens[i] + dens[i + 1]) / 2 * step(xs)
+        for i in 1:(length(xs) - 1))
+        @test isapprox(integral, 1.0; atol = 1e-3)
+    end
+
     @testset "generation_R output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))

@@ -613,6 +613,13 @@
             @test_throws ArgumentError proportion_transmission(2.0, 0.5; prop_cases = 1.0)
         end
 
+        @testset "Depends only on k, not R (scale-invariant)" begin
+            # The Lorenz curve of Gamma(k, R/k) is scale-invariant in the mean,
+            # so R does not affect the result — documented, not a bug.
+            @test proportion_transmission(0.5, 0.3) ==
+                  proportion_transmission(100.0, 0.3)
+        end
+
         @testset "Known approximate values" begin
             # For k → ∞ (Poisson limit), distribution is nearly uniform
             # Top 20% should cause ≈ 20% of transmission
