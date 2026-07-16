@@ -122,30 +122,24 @@
             leaky; rng = StableRNG(1), n_initial = 2)
     end
 
-    @testset "Scheduled interventions delegate on the Sellke pool" begin
-        # A Scheduled wrapper delegates both its removal time and its
-        # honoured-ness to the wrapped intervention, so a Scheduled(Isolation)
-        # shortens the outbreak and a Scheduled(ContactTracing) still warns.
-        N = 1000
+    @testset "Scheduled interventions are not honoured on the Sellke pool" begin
+        # A Scheduled wrapper's time/count gate reads population state the Sellke
+        # loop only reconciles after the run, so a start_time would never
+        # activate during it. Rather than silently no-op, it warns — for both a
+        # wrapped Isolation and a wrapped ContactTracing.
         prog = [
             Transition(:onset; from = :infection, delay = 0.1),
             Transition(:recovered; from = :infection,
                 delay = Exponential(1.0), terminal = true)
         ]
-        base = ModelSpec(
-            HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
-            progression = prog)
         sched_iso = ModelSpec(
-            HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 200);
             progression = prog,
             interventions = [Scheduled(
                 Isolation(onset_to_isolation_delay = Exponential(0.1));
-                start_time = 0.0)])
-        base_mean = mean(simulate(base; rng = StableRNG(s), n_initial = 3).cumulative_cases
-        for s in 1:15)
-        iso_mean = mean(simulate(sched_iso; rng = StableRNG(s), n_initial = 3).cumulative_cases
-        for s in 1:15)
-        @test iso_mean < 0.5 * base_mean
+                start_time = 5.0)])
+        @test_logs (:warn, r"does not honour"i) match_mode=:any simulate(
+            sched_iso; rng = StableRNG(1), n_initial = 2)
 
         sched_ct = ModelSpec(
             HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);

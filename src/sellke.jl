@@ -51,11 +51,14 @@ end
 # isolation (`post_isolation_transmission > 0`) only reduces transmission, which
 # the window cannot express, so it is not honoured. Interventions whose effect
 # is a per-contact competing risk (leaky vaccination, contact tracing) likewise
-# have no window representation. The model warns for the unhonoured ones rather
-# than silently ignoring them.
+# have no window representation. `Scheduled` is not honoured either: its
+# time/count gate reads population state (`max_infection_time`, `cumulative_cases`)
+# that the Sellke loop only reconciles after the run, so a `start_time` would
+# never activate during it. The model warns for the unhonoured ones rather than
+# silently ignoring them.
 _sellke_honours(::AbstractIntervention) = false
 _sellke_honours(iso::Isolation) = iso.post_isolation_transmission == 0
-_sellke_honours(s::Scheduled) = _sellke_honours(s.intervention)
+_sellke_honours(::Scheduled) = false
 
 # Warn once (per `simulate` call) when a continuous-time model is handed
 # interventions it cannot honour, so the limitation is loud rather than silent.
