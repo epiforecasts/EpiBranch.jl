@@ -118,10 +118,13 @@ end
 required_fields(s::Scheduled) = required_fields(s.intervention)
 intervention_time(s::Scheduled, ind::Individual) = intervention_time(s.intervention, ind)
 reset!(s::Scheduled, ind::Individual) = reset!(s.intervention, ind)
-# No `infectious_removal_time` method: `Scheduled`'s time/count gate cannot be
-# honoured on the continuous-time (Sellke) models (its population-state reads are
-# only reconciled after the run), so it falls back to the `Inf` default there —
-# i.e. it closes no window and the model warns instead.
+# On the continuous-time models a Scheduled removes a case when the wrapped
+# intervention does. The loop resolves it against the running clock, so a case
+# whose infection time is before `start_time` never has its wrapped intervention
+# run (its gate is closed) and so is not removed.
+function infectious_removal_time(s::Scheduled, ind::Individual)
+    infectious_removal_time(s.intervention, ind)
+end
 function competing_risk(s::Scheduled, parent, contact, state)
     is_active(s, state) ? competing_risk(s.intervention, parent, contact, state) : nothing
 end

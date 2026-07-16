@@ -122,25 +122,37 @@
             leaky; rng = StableRNG(1), n_initial = 2)
     end
 
-    @testset "Scheduled interventions are not honoured on the Sellke pool" begin
-        # A Scheduled wrapper's time/count gate reads population state the Sellke
-        # loop only reconciles after the run, so a start_time would never
-        # activate during it. Rather than silently no-op, it warns — for both a
-        # wrapped Isolation and a wrapped ContactTracing.
+    @testset "Scheduled interventions gate on the running clock on the pool" begin
+        # The loop exposes each case's infection time as the running clock, so a
+        # Scheduled(Isolation; start_time) isolates only cases infected at/after
+        # start_time — curtailing when it activates, and gating by time.
+        N = 1000
         prog = [
             Transition(:onset; from = :infection, delay = 0.1),
             Transition(:recovered; from = :infection,
                 delay = Exponential(1.0), terminal = true)
         ]
-        sched_iso = ModelSpec(
-            HomogeneousProcess(; transmission_rate = 2.0, population_size = 200);
+        mk(start_time) = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
             progression = prog,
             interventions = [Scheduled(
-                Isolation(onset_to_isolation_delay = Exponential(0.1));
-                start_time = 5.0)])
-        @test_logs (:warn, r"does not honour"i) match_mode=:any simulate(
-            sched_iso; rng = StableRNG(1), n_initial = 2)
+                Isolation(onset_to_isolation_delay = Exponential(0.1)); start_time)])
+        mean_cc(m) = mean(simulate(m; rng = StableRNG(s), n_initial = 3).cumulative_cases
+        for s in 1:15)
 
+        base = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
+            progression = prog)
+        # Active from t = 0: curtails hard. Start far past the outbreak: barely.
+        @test mean_cc(mk(0.0)) < 0.1 * mean_cc(base)
+        @test mean_cc(mk(1000.0)) > 0.5 * mean_cc(base)
+
+        # Mid start_time gates on the case's own infection time.
+        st = simulate(mk(3.0); rng = StableRNG(1), n_initial = 3)
+        @test !any(ind -> ind.infection_time < 3.0 && is_isolated(ind), st.individuals)
+        @test any(ind -> ind.infection_time >= 3.0 && is_isolated(ind), st.individuals)
+
+        # A Scheduled wrapping an unhonoured intervention still warns.
         sched_ct = ModelSpec(
             HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);
             progression = prog,

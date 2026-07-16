@@ -31,6 +31,15 @@ end
 
 # Run each intervention's per-individual resolution on a freshly-stamped case.
 function _resolve_interventions!(state::SimulationState, ind, interventions)
+    isempty(interventions) && return nothing
+    # Expose the running simulation clock and case count so a `Scheduled`
+    # intervention's `start_time` / `end_time` / `start_after_cases` gate
+    # evaluates correctly during the continuous-time loop. Cases are processed in
+    # increasing infection time, so this case's infection time is the current
+    # clock and it is the next case in sequence; the post-loop reconcile
+    # (`_reconcile_sellke_bookkeeping!`) sets the final values.
+    state.max_infection_time = ind.infection_time
+    state.cumulative_cases += 1
     for iv in interventions
         resolve_individual!(iv, ind, state)
     end
@@ -51,14 +60,14 @@ end
 # isolation (`post_isolation_transmission > 0`) only reduces transmission, which
 # the window cannot express, so it is not honoured. Interventions whose effect
 # is a per-contact competing risk (leaky vaccination, contact tracing) likewise
-# have no window representation. `Scheduled` is not honoured either: its
-# time/count gate reads population state (`max_infection_time`, `cumulative_cases`)
-# that the Sellke loop only reconciles after the run, so a `start_time` would
-# never activate during it. The model warns for the unhonoured ones rather than
+# have no window representation. `Scheduled` delegates to its wrapped
+# intervention — the loop exposes the running clock/count (see
+# `_resolve_interventions!`), so its time/count gate is honoured whenever the
+# wrapped intervention is. The model warns for the unhonoured ones rather than
 # silently ignoring them.
 _sellke_honours(::AbstractIntervention) = false
 _sellke_honours(iso::Isolation) = iso.post_isolation_transmission == 0
-_sellke_honours(::Scheduled) = false
+_sellke_honours(s::Scheduled) = _sellke_honours(s.intervention)
 
 # Warn once (per `simulate` call) when a continuous-time model is handed
 # interventions it cannot honour, so the limitation is loud rather than silent.
