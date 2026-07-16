@@ -3,7 +3,7 @@ Terminal transition: the case recovers. A candidate recovery time is
 drawn from `delay` and added to the value of `from`. `from` defaults
 to `:onset_time` but accepts any `Symbol` (state-dict key) or
 `Function (ind) -> Real` — see [`Reporting`](@ref) for the anchor
-semantics. If the anchor is `NaN`, no recovery candidate is produced.
+semantics. If the anchor is not finite, no recovery candidate is produced.
 
 `delay` is a `Distribution` or a `Function (rng, ind) -> Real` for
 per-individual heterogeneity (e.g. age-conditional recovery delay).
@@ -30,7 +30,7 @@ end
 
 function resolve_individual!(r::Recovery, individual, state)
     anchor = _resolve_anchor(r.from, individual)
-    isnan(anchor) && return nothing
+    _anchor_ok(anchor) || return nothing
     delay = _resolve_delay(r.delay, state.rng, individual)
     individual.state[:recovery_candidate_time] = anchor + delay
     return nothing
@@ -52,7 +52,7 @@ semantics.
 `Distribution`, or a `Function (rng, ind) -> Real`. The probability is
 too pathogen-specific for a sensible default — pass an explicit value,
 even if it is `0.0`. Use the function form for age- or risk-conditional
-CFRs:
+rates:
 
 ```julia
 Death(delay = LogNormal(2.5, 0.4),
@@ -64,7 +64,13 @@ making time-to-death heterogeneity available the same way.
 
 Initialises `:death_candidate_time = Inf`.
 
-`Death` and [`Recovery`](@ref) compose as competing terminal events.
+`Death` and [`Recovery`](@ref) compose as competing terminal events, resolved
+by earliest candidate time. `probability` is the probability death *enters*
+that race, so the realised fraction dying equals it only when death's candidate
+time reliably precedes any competing recovery/removal — otherwise the realised
+case-fatality is lower (with equal delays and a competing `Recovery`, roughly
+halved). For an exact CFR, gate `Recovery`'s probability as `1 - CFR`, or make
+death's delay dominate the competing one.
 """
 Base.@kwdef struct Death{D, P, F} <: AbstractClinicalTransition
     delay::D
@@ -82,7 +88,7 @@ end
 
 function resolve_individual!(d::Death, individual, state)
     anchor = _resolve_anchor(d.from, individual)
-    isnan(anchor) && return nothing
+    _anchor_ok(anchor) || return nothing
     p = _resolve_probability(d.probability, state.rng, individual)
     rand(state.rng) < p || return nothing
     delay = _resolve_delay(d.delay, state.rng, individual)

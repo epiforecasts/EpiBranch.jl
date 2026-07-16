@@ -202,6 +202,10 @@ function BranchingProcess(offspring_matrix::Matrix{Float64},
 
     offspring_fn = function (rng::AbstractRNG, individual)
         pt = individual_type(individual)
+        # A sink type (all-zero offspring column) produces no offspring. Short-
+        # circuit before `dist_fn`, which the documented `R -> NegBin(R, k)` form
+        # rejects at R = 0 (`NegBin` requires R > 0).
+        R_by_type[pt] <= 0.0 && return zeros(Int, n)
         dist = dist_fn(R_by_type[pt])
         total = rand(rng, dist)
         total == 0 && return zeros(Int, n)

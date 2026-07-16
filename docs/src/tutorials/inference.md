@@ -242,12 +242,13 @@ println("k: $(round(mean(k_post), digits=2)) (95% CI: " *
 
 Two largely independent questions:
 
-1. **Point estimate or full posterior?** Turing supports both
-   (`maximum_likelihood`, `maximum_a_posteriori`, or NUTS for the full
-   posterior with quantified uncertainty). `fit` is a convenience
-   wrapper for MLE only, in the `Distributions.fit` style — closed
-   form where possible, score-equation or grid search otherwise.
-   Useful for quick exploration or initialising a sampler.
+1. **Point estimate or full posterior?** For a maximum-likelihood point
+   estimate, maximise `loglikelihood` over the parameter — with Turing's
+   `maximum_likelihood`, with Optim.jl, or, for a single parameter, over a
+   grid (as in the [chains tutorial](chains.md)). For a full posterior with
+   quantified uncertainty, put the data on the right-hand side of `~` through
+   the distribution wrappers and sample with NUTS; `maximum_a_posteriori`
+   gives the MAP point.
 2. **Is the analytical likelihood available?** With no interventions
    and a supported offspring/data combination, the analytical
    likelihood gives fast, exact evaluations. With interventions or
@@ -255,11 +256,10 @@ Two largely independent questions:
    likelihood takes over — same `loglikelihood` interface, but each
    call runs many simulations, so sampling is markedly slower.
 
-The `loglikelihood` methods are the shared backend: `fit` minimises
-`-loglikelihood` over a bracket; Turing models route through the
-distribution wrappers, which call the same methods. Switching between
-MLE, MAP, and posterior is a question of which Turing entry point you
-call, not which package.
+The `loglikelihood` methods are the shared backend throughout: an optimiser
+maximises them directly, and Turing models route through the distribution
+wrappers, which call the same methods. Switching between MLE, MAP, and
+posterior is a question of which entry point you call, not which package.
 
 ## Live diagnostics during long fits
 

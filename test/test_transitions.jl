@@ -135,6 +135,23 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         end
     end
 
+    @testset "Chained transition skips an un-reached (Inf) anchor" begin
+        # Hospitalisation never fires (probability 0), so :admission_time stays
+        # at its Inf default. A Reporting anchored on :admission_time must not
+        # fire either — an Inf anchor means the upstream state was never
+        # reached. (Previously the isnan guard let Inf through, reporting the
+        # case at time Inf.)
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        hosp = Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.0)
+        rep = Reporting(delay = LogNormal(1.0, 0.3), probability = 1.0,
+            from = :admission_time)
+        state = tsim(model; attributes = clinical, transitions = [hosp, rep],
+            max_cases = 200, rng = StableRNG(11))
+        @test all(!ind.state[:admitted] for ind in state.individuals)
+        @test all(!ind.state[:reported] for ind in state.individuals)
+        @test all(!isfinite(ind.state[:reporting_time]) for ind in state.individuals)
+    end
+
     @testset "Death/Recovery: terminal arbitration sets :outcome" begin
         rng = StableRNG(7)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))

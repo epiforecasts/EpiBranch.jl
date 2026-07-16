@@ -1,6 +1,23 @@
 using DataFrames
 
 @testset "Multi-type branching process" begin
+    @testset "Sink type (zero-total column) does not crash mid-run" begin
+        # Type 2 is a dead end: its offspring column is all zeros, so
+        # R_by_type[2] == 0. The documented dist_fn `R -> NegBin(R, k)` rejects
+        # R = 0, so the offspring function must short-circuit a sink type before
+        # calling it, rather than crashing partway through the simulation.
+        M = [2.0 0.0;
+             1.0 0.0]
+        model = BranchingProcess(M, R -> NegBin(R, 0.16), Exponential(5.0))
+        # Draw offspring for a type-2 (sink) parent directly: no offspring, no throw.
+        fn = model.infectiousness[1].offspring
+        parent2 = Individual(id = 1, state = Dict{Symbol, Any}(:type => 2))
+        @test fn(StableRNG(1), parent2) == [0, 0]
+        # And a full run with such a matrix completes.
+        state = simulate(model; max_cases = 100, rng = StableRNG(2))
+        @test state.cumulative_cases >= 1
+    end
+
     @testset "Offspring matrix construction" begin
         # 2x2 offspring matrix: type 1 infects mostly type 1, type 2 mostly type 2
         M = [1.5 0.3;

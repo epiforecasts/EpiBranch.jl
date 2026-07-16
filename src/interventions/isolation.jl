@@ -109,14 +109,21 @@ function competing_risk(iso::Isolation, parent, contact, state)
 end
 
 function reset!(::Isolation, ind::Individual)
+    # Only undo an isolation this Isolation set. `:isolated`/`:isolation_time`
+    # are shared keys — ContactTracing's Quarantine writes them directly too —
+    # so resetting unconditionally would un-quarantine a validly-traced contact
+    # when a Scheduled(Isolation) sees its pre-start isolation time.
+    get(ind.state, :isolated_by_isolation, false) || return nothing
     ind.state[:isolated] = false
     ind.state[:isolation_time] = Inf
+    ind.state[:isolated_by_isolation] = false
     return nothing
 end
 
 function initialise_individual!(iso::Isolation, individual, state)
     individual.state[:isolated] = false
     individual.state[:isolation_time] = Inf
+    individual.state[:isolated_by_isolation] = false
     if is_eligible_for_isolation(iso.eligibility, individual, state)
         sens = _sample_value(iso.test_sensitivity, state.rng, individual)
         individual.state[:test_positive] = rand(state.rng) < sens
@@ -135,7 +142,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     #     (for symptomatic traced contacts), fires iff contact was traced
     # Isolation fires at the earlier of any active pathway. A
     # test-negative-but-traced contact is still isolated via tracing.
-    traced_time = get(individual.state, :traced_isolation_time, Inf)::Float64
+    traced_time = get(individual.state, :traced_isolation_time, Inf)
     test_time = if is_test_positive(individual)
         onset_time(individual) + rand(state.rng, iso.onset_to_isolation_delay)
     else
@@ -144,5 +151,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     final = min(test_time, traced_time)
     isfinite(final) || return nothing
     set_isolated!(individual, final)
+    # Mark provenance so a Scheduled reset undoes only Isolation's own effect.
+    individual.state[:isolated_by_isolation] = true
     return nothing
 end

@@ -57,6 +57,28 @@
         @test all(ind -> ind.infection_time < 1000.0, state.individuals)
     end
 
+    @testset "reset!(Isolation) leaves another intervention's isolation intact" begin
+        # `:isolated`/`:isolation_time` are shared: ContactTracing's Quarantine
+        # writes them directly. A Scheduled(Isolation) resetting a pre-start
+        # isolation must not un-quarantine a contact Isolation never touched.
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+
+        # Isolation set by another intervention (no provenance marker).
+        traced = Individual(id = 1)
+        set_isolated!(traced, 3.0)
+        @test is_isolated(traced)
+        EpiBranch.reset!(iso, traced)
+        @test is_isolated(traced)               # preserved
+        @test isolation_time(traced) == 3.0
+
+        # An isolation Isolation itself set (marked) is still reset.
+        own = Individual(id = 2)
+        set_isolated!(own, 3.0)
+        own.state[:isolated_by_isolation] = true
+        EpiBranch.reset!(iso, own)
+        @test !is_isolated(own)
+    end
+
     @testset "Asymptomatic cases are not isolated" begin
         rng = StableRNG(42)
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
@@ -387,6 +409,30 @@
             traced = filter(is_traced, state.individuals)
             @test !any(is_quarantined, traced)
         end
+    end
+
+    @testset "is_vaccinated respects dose_label namespacing" begin
+        ind = Individual(id = 1, state = Dict{Symbol, Any}(:vaccinated_boost => true))
+        @test is_vaccinated(ind; dose_label = :boost)
+        @test !is_vaccinated(ind)                       # default label is unset
+        @test !is_vaccinated(ind; dose_label = :prime)
+    end
+
+    @testset "RingVaccination fires under FlagOnly tracing" begin
+        # FlagOnly writes :traced_isolation_time, not :isolation_time. Ring
+        # vaccination keys on the trace-driven isolation time, so it must still
+        # fire (previously it silently no-op'd when tracing only flagged).
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        ct = ContactTracing(probability = 1.0,
+            isolation_to_trace_delay = Exponential(0.5), quarantine_on_trace = false)
+        rv = RingVaccination(efficacy = 0.8)
+        state = simulate(
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [iso, ct, rv], attributes = clinical);
+            max_cases = 300, rng = StableRNG(3))
+        # Contacts were flagged (not quarantined) and then ring-vaccinated.
+        @test any(ind -> is_traced(ind) && !is_quarantined(ind), state.individuals)
+        @test count(is_vaccinated, state.individuals) > 0
     end
 
     @testset "Traced test-negative contacts isolate via tracing pathway" begin
