@@ -124,7 +124,10 @@ function weekly_incidence(state::SimulationState;
     times = Float64[]
     for ind in infected
         t = _weekly_time(by, ind)
-        isnan(t) && continue
+        # Skip non-finite times: `NaN` (no such field) and `Inf` (an
+        # unreached state, e.g. an unreported case whose `:reporting_time`
+        # keeps its default). `Day(floor(Int, Inf))` would otherwise throw.
+        isfinite(t) || continue
         push!(times, t)
     end
     isempty(times) && return DataFrame(week = Date[], cases = Int[])

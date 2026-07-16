@@ -3,7 +3,7 @@ Cases are admitted to hospital with probability `probability` after a
 `delay` drawn per case, measured from `from`. `from` defaults to
 `:onset_time` but accepts any `Symbol` (state-dict key) or
 `Function (ind) -> Real` — see [`Reporting`](@ref) for the anchor
-semantics. If the anchor is `NaN`, the case is skipped.
+semantics. If the anchor is not finite, the case is skipped.
 
 Both `probability` and `delay` accept the heterogeneity shapes shared
 across transitions: `Real`/`Distribution` for constants,
@@ -42,7 +42,7 @@ end
 
 function resolve_individual!(h::Hospitalisation, individual, state)
     anchor = _resolve_anchor(h.from, individual)
-    isnan(anchor) && return nothing
+    _anchor_ok(anchor) || return nothing
     p = _resolve_probability(h.probability, state.rng, individual)
     rand(state.rng) < p || return nothing
     delay = _resolve_delay(h.delay, state.rng, individual)

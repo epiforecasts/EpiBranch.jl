@@ -3,7 +3,7 @@ Terminal transition: the case recovers. A candidate recovery time is
 drawn from `delay` and added to the value of `from`. `from` defaults
 to `:onset_time` but accepts any `Symbol` (state-dict key) or
 `Function (ind) -> Real` — see [`Reporting`](@ref) for the anchor
-semantics. If the anchor is `NaN`, no recovery candidate is produced.
+semantics. If the anchor is not finite, no recovery candidate is produced.
 
 `delay` is a `Distribution` or a `Function (rng, ind) -> Real` for
 per-individual heterogeneity (e.g. age-conditional recovery delay).
@@ -30,7 +30,7 @@ end
 
 function resolve_individual!(r::Recovery, individual, state)
     anchor = _resolve_anchor(r.from, individual)
-    isnan(anchor) && return nothing
+    _anchor_ok(anchor) || return nothing
     delay = _resolve_delay(r.delay, state.rng, individual)
     individual.state[:recovery_candidate_time] = anchor + delay
     return nothing
@@ -82,7 +82,7 @@ end
 
 function resolve_individual!(d::Death, individual, state)
     anchor = _resolve_anchor(d.from, individual)
-    isnan(anchor) && return nothing
+    _anchor_ok(anchor) || return nothing
     p = _resolve_probability(d.probability, state.rng, individual)
     rand(state.rng) < p || return nothing
     delay = _resolve_delay(d.delay, state.rng, individual)
