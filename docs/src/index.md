@@ -1,6 +1,6 @@
 # EpiBranch.jl
 
-**EpiBranch.jl** is a composable [Julia](https://julialang.org/) engine for
+**EpiBranch.jl** is a [Julia](https://julialang.org/) package for
 branching-process models in epidemiology. It does both stochastic simulation and
 analytical inference, and uses closed-form results where they exist. A flexible
 extension interface includes interventions, host attributes, and structured

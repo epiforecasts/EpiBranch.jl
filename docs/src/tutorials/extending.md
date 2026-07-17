@@ -783,7 +783,7 @@ For optional **state accessors**, override `population_size` and
 `n_types` if your model has values for them. The defaults
 (`NoPopulation()`, `1`) are fine if not.
 
-Your process is a pure transmission kernel — it does **not** carry the modelling
+Your process describes the transmission alone — it does **not** carry the modelling
 layers (a clinical `progression`, `interventions`, `attributes`, or an
 `observation` model). Those are composed onto it by the user with a
 [`ModelSpec`](@ref) and threaded into the run by the engine, so an

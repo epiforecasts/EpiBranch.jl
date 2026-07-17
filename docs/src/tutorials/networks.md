@@ -19,7 +19,7 @@ elsewhere.
 
 ## Defining a network
 
-The process is a pure transmission kernel: pass an adjacency list, where
+The process takes the contact network directly: pass an adjacency list, where
 `adjacency[i]` holds the nodes connected to node `i`, and the
 contact-interval kernel — a `Distributions.jl` distribution shared by
 every edge. The disease natural history is a `progression` of
@@ -36,7 +36,7 @@ using EpiNetwork
 using Distributions
 using StableRNGs
 
-# Twenty households of four, wired into a ring of households by one
+# Twenty households of four, linked into a ring of households by one
 # bridge edge between consecutive households.
 function household_ring(n_households, household_size)
     n = n_households * household_size

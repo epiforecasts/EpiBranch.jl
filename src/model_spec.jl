@@ -23,7 +23,7 @@ end
 """
     ModelSpec(process; progression, interventions, attributes, observation)
 
-Compose a transmission `process` (the pure kernel) with the modelling layers
+Compose a transmission `process` with the modelling layers
 that force and observe it: the within-host `progression`, the `interventions`,
 the per-individual `attributes`, and the `observation` model. Each keyword
 defaults to the value already on `process`, so `ModelSpec(process)` wraps it

@@ -25,7 +25,7 @@ within-household **contact interval** — the one required input — any continu
 `(infector, susceptible) -> Distribution` for covariate models. The kernel times
 each infectious contact from the infector's `from` state.
 
-The process is a pure transmission kernel. The natural history is a `progression`
+The process describes the transmission alone. The natural history is a `progression`
 of EpiBranch `Transition`s attached with a [`ModelSpec`](@ref): a latent period
 is `Transition(:infectious; from = :infection, delay = …)`, an infectious period
 a terminal removal transition, and onset, testing and the rest are further

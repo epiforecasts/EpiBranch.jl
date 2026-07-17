@@ -114,8 +114,8 @@ samples `θ` once per chain at the index case and reuses it for every
 descendant via `parent_id` lookup. The per-individual draw is
 `rand(build(θ))`.
 
-The process is a pure kernel; attach interventions, attributes or an
-observation model with a [`ModelSpec`](@ref).
+The process describes the transmission alone; attach interventions, attributes
+or an observation model with a [`ModelSpec`](@ref).
 """
 function BranchingProcess(offspring::ClusterMixed, gt::Union{Distribution, Function};
         population_size::Union{Int, NoPopulation} = NoPopulation())

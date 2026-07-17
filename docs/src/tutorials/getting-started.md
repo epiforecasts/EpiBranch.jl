@@ -20,11 +20,11 @@ model = BranchingProcess(
 )
 ```
 
-This is already a complete model. The transmission process is a pure
-kernel. The population it acts on (attributes), the policy in force
-(interventions), and how cases are observed (observation) are modelling
-layers you compose with a [`ModelSpec`](@ref) wrapper below; `simulate`
-and `loglikelihood` then read them off the resulting specification.
+This is already a complete model. The transmission process describes how
+infection spreads. The population it acts on (attributes), the policy in
+force (interventions), and how cases are observed (observation) are
+separate parts you add with a [`ModelSpec`](@ref) below, and `simulate`
+and `loglikelihood` then account for all of them.
 
 [`NegBin`](@ref) is a convenience constructor for the Negative Binomial,
 parameterised by mean (R) and dispersion (k), matching the epidemiological

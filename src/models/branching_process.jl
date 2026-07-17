@@ -51,7 +51,7 @@ contact interval (generation-time distribution); with the default single
 window and no natural-history states it is the generation interval, exactly
 as before.
 
-The process is a pure transmission kernel: the modelling layers
+The process describes the transmission alone: the modelling layers
 (progression, interventions, attributes, observation) are attached with a
 [`ModelSpec`](@ref), not on the constructor.
 

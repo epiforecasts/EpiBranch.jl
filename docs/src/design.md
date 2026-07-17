@@ -15,7 +15,7 @@ should be reviewed against them periodically.
 
 ### 1. Simple but rigorous
 
-Express only what we need. New machinery earns its place only when an
+Express only what we need. A new mechanism earns its place only when an
 analysis we actually do can't be done without it. Prefer closed-form
 likelihoods over simulation when both are available and equivalent. One
 verb (`loglikelihood`, `simulate`) does the dispatch, without
@@ -60,14 +60,14 @@ interventions. Who infects whom is a pure probabilistic object; when
 transmission happens, and whether a control measure stops it, are separate
 layers laid on top. This separation is what connects the package to
 survival analysis: the competing-risks framework on the transmission
-hazard is the same machinery as Kenah's pairwise survival analysis and
+hazard is the same mechanism as Kenah's pairwise survival analysis and
 dynamic survival analysis.
 
 ## The model is a composition of layers
 
 A *model* is the whole generative specification of how data arises, built by
 composing a transmission process with the modelling layers laid on top of it.
-The transmission process is a *pure kernel* — the between-host mechanism, how
+The transmission process is the between-host mechanism alone — how
 infection spreads — and it carries nothing else. Onto it compose four layers:
 
 - **disease** — the within-host natural history: the timed states a case moves
@@ -104,8 +104,8 @@ others it needs, resolving those couplings where both sides are in hand rather
 than by fusing the tiers. A structure-driven process, for one, derives its
 infectious window — and, where transmission is given as a reproduction number,
 its rate — from the composed disease when the model is simulated or scored, so
-the process stays a pure kernel and the disease stays a single, separately
-specified layer.
+the process stays purely the transmission and the disease stays a single,
+separately specified layer.
 
 ## Three separated stages
 
@@ -189,7 +189,7 @@ type.
 This holds on every axis:
 
 - **Transmission models** — spatial, network, and immunity dynamics enter
-  through new model subtypes or composable wrappers, not flags on the
+  through new model subtypes or reusable wrapper types, not flags on the
   branching process.
 - **Interventions** are orchestrators of smaller dispatched pieces. An
   intervention struct is a thin shell wiring together independently
