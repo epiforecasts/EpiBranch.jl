@@ -72,9 +72,12 @@ function NetworkProcess(adjacency::AbstractVector{<:AbstractVector{<:Integer}},
     edge_kernel = _validate_kernel(kernel, adj)
     _valid_external(external_hazard) ||
         throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
+    obs_end_value = Float64(obs_end)
+    (!isnan(obs_end_value) && obs_end_value >= 0) || throw(ArgumentError(
+        "obs_end must be a non-negative number (Inf allowed), got $obs_end"))
 
     return NetworkProcess(adj, edge_kernel, from, Tuple(until),
-        _normalise_external(external_hazard), Float64(obs_end))
+        _normalise_external(external_hazard), obs_end_value)
 end
 
 """
