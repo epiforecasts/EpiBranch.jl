@@ -64,4 +64,26 @@
         # batch simulation through a spec
         @test length(simulate(spec, 20; max_cases = 100, rng = StableRNG(3))) == 20
     end
+
+    @testset "analytical chain likelihood ignores non-transmission layers" begin
+        # Chain size/length depend only on the offspring law, so composing a
+        # progression and attributes (which don't alter the offspring) must
+        # leave the analytical likelihood unchanged — only interventions, which
+        # thin transmission, route the score through simulation instead.
+        bp = BranchingProcess(Poisson(0.8))
+        data = ChainSizes([1, 1, 2, 1, 3, 1, 2, 1, 1, 5])
+        composed = ModelSpec(bp;
+            progression = [
+                Transition(:onset; from = :infection, delay = Exponential(3.0)),
+                Transition(:recovered; from = :infection, delay = Exponential(5.0),
+                    terminal = true)],
+            attributes = (age = (rng, ind) -> rand(rng) < 0.5 ? :young : :old,))
+        @test loglikelihood(data, composed) == loglikelihood(data, ModelSpec(bp))
+
+        # A structured (depleting) model has no single-type offspring, so the
+        # analytical path can't be taken — `single_type_offspring` throws and the
+        # score falls through to simulation.
+        @test_throws ArgumentError single_type_offspring(
+            HomogeneousProcess(; transmission_rate = 1.0, population_size = 100))
+    end
 end

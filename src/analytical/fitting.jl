@@ -191,6 +191,12 @@ function _chain_size_model_loglik(data::ChainSizes, process, ivs, attrs, prog, o
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         n_sim::Int = 10_000,
         rng::AbstractRNG = Random.default_rng())
+    # Chain size depends only on the offspring law (and the observation), so the
+    # analytical form is exact whenever the offspring is the single-type one and
+    # nothing thins transmission. Interventions thin it, hence the `ivs` check;
+    # progression and attributes don't touch the offspring, so they need none.
+    # Structured/depleting models have no single-type offspring, so
+    # `single_type_offspring` throws and the score falls through to simulation.
     if isempty(ivs)
         try
             d = observe(chain_size_distribution(single_type_offspring(process)), obs)
@@ -249,6 +255,8 @@ function _chain_length_model_loglik(data::ChainLengths, process, ivs, attrs, pro
         "loglikelihood(ChainLengths, model with $(typeof(obs))) " *
         "is not defined: per-case detection does not give a well-defined chain " *
         "length. Use ChainSizes, or a model with no observation."))
+    # Analytical iff no interventions thin transmission, as for chain size above;
+    # progression and attributes don't affect the offspring law.
     if isempty(ivs)
         try
             return loglikelihood(data, single_type_offspring(process))
