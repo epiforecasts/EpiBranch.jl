@@ -6,7 +6,7 @@
 
 Run a single outbreak simulation.
 
-`model` is a transmission process (a pure kernel) or a [`ModelSpec`](@ref)
+`model` is a transmission process or a [`ModelSpec`](@ref)
 composing that process with modelling layers. The progression, interventions,
 attributes and observation come from the [`ModelSpec`](@ref); a bare process
 runs with the empty defaults. `simulate` itself takes only execution controls.

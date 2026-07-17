@@ -17,7 +17,7 @@ not just a final count.
 
 ## Defining a model
 
-`HomogeneousProcess` is a pure transmission kernel: the per-infective rate β
+`HomogeneousProcess` describes the transmission alone: the per-infective rate β
 and the population size are its only inputs. The natural history, here just an
 infectious period, is a `progression` of [`Transition`](@ref)s attached with a
 [`ModelSpec`](@ref). `simulate` seeds `n_initial` index cases at time 0 and

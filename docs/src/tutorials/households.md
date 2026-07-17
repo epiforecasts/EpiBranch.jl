@@ -13,9 +13,9 @@ It lives in the companion `EpiHouseholds` package.
 
 ## Defining a household model
 
-The contact-interval kernel is the one required input to `HouseholdProcess`, which
-is a pure transmission kernel. `sizes` gives the size of each household. The
-disease's natural history is a `progression` attached with a [`ModelSpec`](@ref).
+The contact-interval kernel is the one required input to `HouseholdProcess`.
+`sizes` gives the size of each household. The disease's natural history is a
+`progression` attached with a [`ModelSpec`](@ref).
 
 ```@example households
 using EpiBranch

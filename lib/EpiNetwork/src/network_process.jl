@@ -29,7 +29,7 @@ per-edge vector of distributions parallel to `adjacency`
 (`kernel[i][k]` for node `i`'s `k`-th listed neighbour). The kernel times
 each infectious contact from the infector's `from` state.
 
-The process is a pure transmission kernel. The natural history is a
+The process describes the transmission alone. The natural history is a
 `progression` of EpiBranch `Transition`s attached with a [`ModelSpec`](@ref),
 exactly as for `HouseholdProcess`: a latent period is
 `Transition(:infectious; from = :infection, delay = …)`, an infectious period

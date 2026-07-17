@@ -5,8 +5,8 @@
 # outbreak is a finite, depleting pool with no structure beyond its size. It is
 # simulated by the Sellke threshold construction (`_sellke_pool!`), which
 # reproduces the exact stochastic SIR final-size law and yields infection times,
-# not just the final size. It is a pure transmission kernel: the natural history
-# (progression), interventions, attributes and observation are composed onto it
+# not just the final size. It describes the transmission alone: the natural
+# history (progression), interventions, attributes and observation are composed onto it
 # with a `ModelSpec`, and the infectious window is resolved from that progression
 # when the model is simulated.
 
@@ -20,7 +20,7 @@ It is simulated by the Sellke threshold construction, which reproduces the exact
 stochastic SIR final-size law. Transmission is the per-infective rate
 `transmission_rate` (β, so β/N to each susceptible).
 
-The process is a pure transmission kernel. The natural history is a
+The process describes the transmission alone. The natural history is a
 `progression` of [`Transition`](@ref)s attached with a [`ModelSpec`](@ref),
 exactly as for [`BranchingProcess`](@ref): a latent period is a transition to
 `:infectious`, an infectious period a terminal removal transition (to

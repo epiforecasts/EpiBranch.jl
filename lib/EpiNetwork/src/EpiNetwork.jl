@@ -4,7 +4,7 @@ using EpiBranch
 using Distributions
 using Random
 
-# `NetworkProcess` is a pure transmission kernel over EpiBranch's continuous-time
+# `NetworkProcess` describes the transmission alone over EpiBranch's continuous-time
 # simulation surface: it builds a population with `new_state`/`add_individuals!`
 # and runs the shared `_simulate` seam, deriving the infectious window from the
 # progression composed onto it with a `ModelSpec`. `import` is needed for the
