@@ -53,6 +53,12 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test NetworkProcess(ring, edge_k) isa NetworkProcess
         bad = [[Exponential(2.0)] for _ in ring]   # wrong per-node lengths
         @test_throws ArgumentError NetworkProcess(ring, bad)
+
+        # obs_end must be non-negative (Inf allowed); negative and NaN are rejected
+        @test NetworkProcess(ring, Exponential(2.0); obs_end = Inf) isa NetworkProcess
+        @test NetworkProcess(ring, Exponential(2.0); obs_end = 0.0) isa NetworkProcess
+        @test_throws ArgumentError NetworkProcess(ring, Exponential(2.0); obs_end = -1.0)
+        @test_throws ArgumentError NetworkProcess(ring, Exponential(2.0); obs_end = NaN)
     end
 
     @testset "moderate contact rate spreads to some of a ring" begin
