@@ -47,9 +47,17 @@ containment_probability(results)
 
 ## Installation
 
-**EpiBranch.jl** is not yet registered. It can be installed from the repository:
+**EpiBranch.jl** is in the General registry:
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/epiforecasts/EpiBranch.jl")
+Pkg.add("EpiBranch")
+```
+
+The household and network models live in the same repository as companion
+packages; install them from their subdirectories:
+
+```julia
+Pkg.add(url = "https://github.com/epiforecasts/EpiBranch.jl", subdir = "lib/EpiHouseholds")
+Pkg.add(url = "https://github.com/epiforecasts/EpiBranch.jl", subdir = "lib/EpiNetwork")
 ```

@@ -15,11 +15,19 @@ It started as a unification of five R packages ([ringbp](https://github.com/epif
 
 ## Installation
 
-The package can be installed using
+The package is in the General registry:
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/epiforecasts/EpiBranch.jl")
+Pkg.add("EpiBranch")
+```
+
+The household and network models live in the same repository as companion
+packages; install them from their subdirectories:
+
+```julia
+Pkg.add(url="https://github.com/epiforecasts/EpiBranch.jl", subdir="lib/EpiHouseholds")
+Pkg.add(url="https://github.com/epiforecasts/EpiBranch.jl", subdir="lib/EpiNetwork")
 ```
 
 ## Quick start
