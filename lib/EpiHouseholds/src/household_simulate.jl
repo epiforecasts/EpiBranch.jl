@@ -55,7 +55,10 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
             seed! = (best, members, r) -> _seed_clique!(
                 best, members, model.external_hazard, Tobs, r),
             targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid))
-            for oid in mem if oid != inf))
+            for oid in mem if oid != inf),
+            # A case's contacts are its household-mates, traced whether or not
+            # transmission reached them.
+            contacts = (inf, st) -> (oid for oid in mem if oid != inf))
     end
 
     _reconcile_sellke_bookkeeping!(state)

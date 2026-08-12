@@ -53,7 +53,10 @@ function _simulate(model::NetworkProcess, sim_opts::SimOpts;
             best, members, model.external_hazard, n_initial, Tobs, r),
         targets = (inf, st) -> ((nb, _edge_kernel(model, inf, k))
         for (k, nb) in enumerate(model.adjacency[inf])
-        if !is_infected(st.individuals[nb])))
+        if !is_infected(st.individuals[nb])),
+        # Tracing reaches every neighbour, infected or not, so it reads the
+        # adjacency directly rather than the susceptible-only `targets`.
+        contacts = (inf, st) -> model.adjacency[inf])
 
     _reconcile_sellke_bookkeeping!(state)
     # Apply the observation model (under-reporting, report delays), as core

@@ -58,16 +58,61 @@ end
 # Whether a continuous-time model honours an intervention — i.e. can express it
 # through the infectious window. Perfect isolation shortens the window; a leaky
 # isolation (`post_isolation_transmission > 0`) only reduces transmission, which
-# the window cannot express, so it is not honoured. Interventions whose effect
-# is a per-contact competing risk (leaky vaccination, contact tracing) likewise
-# have no window representation. `Scheduled` delegates to its wrapped
-# intervention — the loop exposes the running clock/count (see
-# `_resolve_interventions!`), so its time/count gate is honoured whenever the
-# wrapped intervention is. The model warns for the unhonoured ones rather than
-# silently ignoring them.
-_sellke_honours(::AbstractIntervention) = false
-_sellke_honours(iso::Isolation) = iso.post_isolation_transmission == 0
-_sellke_honours(s::Scheduled) = _sellke_honours(s.intervention)
+# the window cannot express, so it is not honoured. Contact tracing is honoured:
+# quarantining a traced contact removes it from transmission, which is a window
+# close (see `trace_contacts!` and `infectious_removal_time(::ContactTracing,…)`).
+# Interventions whose effect is purely a per-contact competing risk against the
+# infection event itself, such as leaky vaccination, still have no window
+# representation. `Scheduled` delegates to its wrapped intervention — the loop
+# exposes the running clock/count (see `_resolve_interventions!`), so its
+# time/count gate is honoured whenever the wrapped intervention is. The model
+# warns for the unhonoured ones rather than silently ignoring them.
+#
+# Tracing needs one thing more than a window: the model has to be able to name
+# the contacts a case reached, which is what `supplies_contacts` reports. A
+# graph names a node's neighbours and a household its members, but the
+# mass-action pool has no pairwise contact structure, so tracing has nothing to
+# act along there and stays unhonoured.
+_sellke_honours(model, ::AbstractIntervention) = false
+_sellke_honours(model, iso::Isolation) = iso.post_isolation_transmission == 0
+_sellke_honours(model, ::ContactTracing) = supplies_contacts(model)
+_sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
+
+"""
+    supplies_contacts(model) -> Bool
+
+Whether a continuous-time model can name the contacts each case reached, so
+that [`trace_contacts!`](@ref EpiBranch.trace_contacts!) has something to act
+on. True for the structure-driven processes, whose contacts are a node's
+neighbours or a household's members; false by default, and in particular for
+the mass-action pool, which has no pairwise contact structure. A model that
+returns `true` must pass a `contacts` closure to `_sellke_race!`.
+"""
+supplies_contacts(::TransmissionModel) = false
+
+# Tracing on the continuous-time path. A case's trace time follows from its own
+# timeline, so it can only be stamped once the race has finalised that case —
+# which is also the point at which its contacts are known. Only contacts that
+# are not yet final can be affected: popping a case fixes its infectious window
+# and its onward proposals, so a trace arriving later has nothing left to
+# shorten. The generation engine behaves the same way, tracing a case's contacts
+# and never an earlier generation, so the two paths agree; tracing *backwards*
+# to an already-final infector is a separate capability neither engine has.
+function _trace_from!(state, infector, interventions, contacts, pos, processed)
+    contacts === nothing && return nothing
+    any(traces_contacts, interventions) || return nothing
+    pending = Individual[]
+    for cid in contacts(infector.id, state)
+        k = get(pos, cid, 0)
+        (k == 0 || processed[k]) && continue
+        push!(pending, state.individuals[cid])
+    end
+    isempty(pending) && return nothing
+    for iv in interventions
+        trace_contacts!(iv, state, infector, pending)
+    end
+    return nothing
+end
 
 # Warn once (per `simulate` call) when a continuous-time model is handed
 # interventions it cannot honour, so the limitation is loud rather than silent.
@@ -76,7 +121,7 @@ _sellke_honours(s::Scheduled) = _sellke_honours(s.intervention)
 function _warn_unhonoured_interventions(model, interventions)
     _honours_termination_controls(model) && return nothing
     unhonoured = unique(String[string(nameof(typeof(iv)))
-                               for iv in interventions if !_sellke_honours(iv)])
+                               for iv in interventions if !_sellke_honours(model, iv)])
     isempty(unhonoured) && return nothing
     @warn "$(nameof(typeof(model))) is a continuous-time model that expresses " *
           "interventions only through the infectious window; it does not honour " *
@@ -97,7 +142,12 @@ processed in increasing infection time (each pop is final); on processing, the
 case's natural history is stamped and it exposes still-susceptible targets with a
 `from`-timed contact interval accepted inside its infectious window. Each case's
 `interventions` are resolved after its natural history, and any that remove it
-from transmission (isolation) shorten that window.
+from transmission (isolation, quarantine on being traced) shorten that window.
+
+`contacts(infective_id, state)` yields the ids of everyone that case was in
+contact with, whether or not transmission followed, which is what contact
+tracing acts on; it is therefore usually wider than `targets`, which yields only
+those still susceptible. Omit it when the model has no interventions that trace.
 
 The contact-interval `kernel` must be a **non-negative** distribution: the
 "each pop is final" invariant relies on a candidate time `open_t + dt` never
@@ -106,7 +156,7 @@ the negatives would break the shortest-path race with no error.
 """
 function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; seed!, targets, from::Symbol, until::Tuple,
-        interventions = ())
+        interventions = (), contacts = nothing)
     m = length(members)
     best = fill(Inf, m)
     src = zeros(Int, m)
@@ -139,6 +189,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         end
         resolve_transitions!(state, ind)
         _resolve_interventions!(state, ind, interventions)
+        _trace_from!(state, ind, interventions, contacts, pos, processed)
 
         open_t = _window_open(ind, from)
         isfinite(open_t) || continue

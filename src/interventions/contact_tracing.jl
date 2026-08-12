@@ -425,59 +425,89 @@ function initialise_individual!(::ContactTracing, individual, state)
     return nothing
 end
 
+# One trace attempt for a single infector → contact pair. Both engines funnel
+# through this, so the generation-based and continuous-time paths apply exactly
+# the same eligibility, rate, delay and action policy.
+function _trace_pair!(ct::ContactTracing, state, infector, ind, rng)
+    # A contact enters the ring two ways. As a *seed*, when its
+    # infector is an infected case meeting the eligibility condition
+    # (a symptomatic case, say): this starts a fresh ring of radius
+    # `depth` around that case. By *propagation*, when its infector is
+    # itself a traced ring node with budget left: this is how the ring
+    # reaches contacts-of-contacts. The seed path is the original
+    # behaviour; propagation only happens when `depth > 1`.
+    #
+    # Requiring the seed's infector to be infected is a no-op at
+    # `depth == 1` (only infected cases ever generate contacts there),
+    # but it stops an uninfected ring member, which carries its own
+    # clinical state, from re-seeding a fresh full-radius ring and
+    # letting the fringe grow without bound.
+    seed = is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state)
+    propagate = ct.depth > 1 && !seed && is_traced(infector) &&
+                get(infector.state, :ring_remaining, 0)::Int > 0
+    (seed || propagate) || return nothing
+    traces(ct.trace_rate, infector, ind, state, rng) || return nothing
+
+    trace_delay = draw_trace_delay(
+        ct.isolation_to_trace_delay, infector, ind, state, rng)
+    if seed
+        trace_time = trigger_time(ct.eligibility, infector, state) + trace_delay
+    else
+        base = get(infector.state, :trace_time, isolation_time(infector))
+        trace_time = base + trace_delay
+    end
+    apply_trace!(ct.action, ind, state, trace_time, rng)
+
+    # Record the source this contact was traced from. The engine makes
+    # one trace attempt per node, from the earliest-exposure infector, so
+    # this is the *first* tracer: exact (the parent) on a tree,
+    # first-reached on a cyclic network. `compute_trace_level!` walks it
+    # back to the index case post-run; see issue #150.
+    ind.state[:traced_by] = infector.id
+
+    # Record how far the ring can still grow from this contact, and
+    # when it was traced, so a contact-of-contact one hop further out
+    # can time its own trace from here. Only `depth > 1` rings expand.
+    if ct.depth > 1
+        ind.state[:trace_time] = trace_time
+        ind.state[:ring_remaining] = seed ? ct.depth - 1 :
+                                     get(infector.state, :ring_remaining, 0)::Int - 1
+    end
+    return nothing
+end
+
 function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
     rng = state.rng
     for ind in new_contacts
         ind.parent_id == 0 && continue
         ind.parent_id > length(state.individuals) && continue
-        infector = state.individuals[ind.parent_id]
-
-        # A contact enters the ring two ways. As a *seed*, when its
-        # infector is an infected case meeting the eligibility condition
-        # (a symptomatic case, say): this starts a fresh ring of radius
-        # `depth` around that case. By *propagation*, when its infector is
-        # itself a traced ring node with budget left: this is how the ring
-        # reaches contacts-of-contacts. The seed path is the original
-        # behaviour; propagation only happens when `depth > 1`.
-        #
-        # Requiring the seed's infector to be infected is a no-op at
-        # `depth == 1` (only infected cases ever generate contacts there),
-        # but it stops an uninfected ring member, which carries its own
-        # clinical state, from re-seeding a fresh full-radius ring and
-        # letting the fringe grow without bound.
-        seed = is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state)
-        propagate = ct.depth > 1 && !seed && is_traced(infector) &&
-                    get(infector.state, :ring_remaining, 0)::Int > 0
-        (seed || propagate) || continue
-        traces(ct.trace_rate, infector, ind, state, rng) || continue
-
-        trace_delay = draw_trace_delay(
-            ct.isolation_to_trace_delay, infector, ind, state, rng)
-        if seed
-            trace_time = trigger_time(ct.eligibility, infector, state) + trace_delay
-        else
-            base = get(infector.state, :trace_time, isolation_time(infector))
-            trace_time = base + trace_delay
-        end
-        apply_trace!(ct.action, ind, state, trace_time, rng)
-
-        # Record the source this contact was traced from. The engine makes
-        # one trace attempt per node, from the earliest-exposure infector, so
-        # this is the *first* tracer: exact (the parent) on a tree,
-        # first-reached on a cyclic network. `compute_trace_level!` walks it
-        # back to the index case post-run; see issue #150.
-        ind.state[:traced_by] = infector.id
-
-        # Record how far the ring can still grow from this contact, and
-        # when it was traced, so a contact-of-contact one hop further out
-        # can time its own trace from here. Only `depth > 1` rings expand.
-        if ct.depth > 1
-            ind.state[:trace_time] = trace_time
-            ind.state[:ring_remaining] = seed ? ct.depth - 1 :
-                                         get(infector.state, :ring_remaining, 0)::Int - 1
-        end
+        _trace_pair!(ct, state, state.individuals[ind.parent_id], ind, rng)
     end
     return nothing
+end
+
+traces_contacts(::ContactTracing) = true
+
+"""Trace the contacts a case reaches on the continuous-time path. The
+generation engine reads each contact's infector off its `parent_id`; here the
+nodes pre-exist and the infector is the case the race has just finalised, so it
+is passed in and the same per-pair policy applied."""
+function trace_contacts!(ct::ContactTracing, state, infector, contacts)
+    rng = state.rng
+    for ind in contacts
+        ind.id == infector.id && continue
+        _trace_pair!(ct, state, infector, ind, rng)
+    end
+    return nothing
+end
+
+"""A quarantined contact is out of onward transmission from its quarantine
+time, which is how tracing reaches the infectious window on the continuous-time
+models. Contacts merely flagged (`FlagOnly`) write `:traced_isolation_time`
+instead, and [`Isolation`](@ref) turns that into the removal, exactly as on the
+generation-based path."""
+function infectious_removal_time(::ContactTracing, ind::Individual)
+    get(ind.state, :quarantined, false) ? isolation_time(ind) : Inf
 end
 
 """Keep uninfected ring members generating contacts so the ring can

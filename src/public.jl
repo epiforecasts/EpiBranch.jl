@@ -8,6 +8,9 @@
 public initialise_individual!
 public resolve_individual!
 public apply_post_transmission!
+public trace_contacts!
+public traces_contacts
+public supplies_contacts
 public competing_risk
 public reset!
 public required_fields

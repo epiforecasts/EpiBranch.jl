@@ -38,13 +38,36 @@ states that close the infectious window.
 hazard or a calendar-time distribution for a time-varying one — and `obs_end`
 bounds the window `[0, obs_end]` over which those community introductions emerge.
 
-Interventions attach through the infectious window. An `Isolation` intervention
-removes a case from transmission at its isolation time, shortening the window and
-cutting secondary cases; an intervention whose effect is a per-contact competing
-risk (contact tracing, leaky vaccination) has no representation on the
-continuous-time path and is reported with a warning rather than applied.
-Non-pharmaceutical control expressed as a removal `Transition` in the progression
-always applies.
+!!! warning "What isolation means here"
+    The only transmission this process represents is *within* a household;
+    community infection enters as unstructured `external_hazard`
+    introductions, and there is no between-household contact. So an
+    intervention that closes a case's infectious window here stops it
+    infecting its own household-mates, which physically means removing it
+    from the household — hospitalisation, or transfer to an isolation
+    facility. It does **not** model self-isolation at home, which would
+    leave household transmission running and, in most settings, raise it.
+    Nor is there a community route for a case to be isolated *from* while it
+    stays infectious to the people it lives with, which is what
+    self-isolation actually does. Representing that needs transmission
+    separated into a household route and a community route, so a control
+    measure can cut one and leave the other; see the route windows in the
+    [design notes](@ref "Host timeline and transmission-route windows").
+    Read isolation and quarantine on this process as removal from the
+    household, and size the parameters accordingly.
+
+With that reading, interventions attach through the infectious window. An
+`Isolation` intervention removes a case at its isolation time, shortening the
+window and cutting secondary cases. `ContactTracing` also applies: a case's
+household-mates are its contacts, and quarantining a traced contact closes that
+contact's window in turn. Because a case's trace time is only known once the
+race has settled its timeline, tracing reaches the contacts that are not yet
+themselves settled, which in a fast-mixing household means the ones infected
+later. An intervention whose effect is purely a per-contact competing risk
+against the infection event, such as leaky vaccination, has no window
+representation and is reported with a warning rather than applied.
+Non-pharmaceutical control expressed as a removal `Transition` in the
+progression always applies.
 
 # Example
 
@@ -100,6 +123,10 @@ household_sizes(m::HouseholdProcess) = length.(m.members)
 # Each household runs to extinction over its finite membership, so the
 # termination controls do not apply; `simulate` warns if any is set.
 _honours_termination_controls(::HouseholdProcess) = false
+
+# A case's contacts are its household-mates, so contact tracing has a set to act
+# along here (see `EpiBranch.trace_contacts!`).
+EpiBranch.supplies_contacts(::HouseholdProcess) = true
 
 function Base.show(io::IO, m::HouseholdProcess)
     n = length(m.household_of)

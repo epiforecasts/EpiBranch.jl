@@ -63,12 +63,12 @@ downstream packages should pick names that do not collide.
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
 | `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
-| `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
-| `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
+| `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
+| `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff |
-| `:trace_time` | `Float64` | — | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
-| `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
-| `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` |
+| `:trace_time` | `Float64` | — | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` / `trace_contacts!` |
+| `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` / `trace_contacts!` |
+| `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | Post-simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
@@ -96,6 +96,12 @@ colliding.
 sets it from a probability gate) and `PerCaseObservation` (which sets it
 post-simulation from a detection-probability draw). Composing both in the
 same simulation is not supported, because they will overwrite each other.
+
+The tracing keys name two hooks because the two engines reach them
+differently: `apply_post_transmission!` on the generation-based engine, and
+`trace_contacts!` on the continuous-time models. Both funnel through the same
+per-pair policy, so the keys and their meanings are identical either way; see
+[Which hooks fire on which engine](#which-hooks-fire-on-which-engine).
 
 `:traced_by` is the source a node was traced from — the *first*,
 earliest-exposure tracer, since the engine makes one trace attempt per node.
@@ -134,6 +140,66 @@ ones your intervention needs (all default to no-ops).
 | `apply_post_transmission!(iv, state, new_contacts)` | Once per generation after all contacts for that generation have been created (across every active parent) | A `Vector{Individual}` of the new contacts | `nothing` (mutate any of the contacts' `state` in place) |
 | `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair during infection resolution, after `apply_post_transmission!` has run | The parent and a single new contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
 | `keep_active(iv, state, targets, is_new)` | Once per generation after infection is resolved, while the engine builds the next active set | This generation's `targets` and an `is_new` flag per target | An iterable of contact ids to keep generating contacts into the next generation (default: none) |
+| `trace_contacts!(iv, state, infector, contacts)` | Continuous-time models only: once per case, when the race settles it | The case, and the contacts it reached that are not yet settled | `nothing` (mutate the contacts' `state` in place) |
+| `traces_contacts(iv)` | Whenever a continuous-time model decides whether to gather contacts at all | Nothing | `true` if this intervention implements `trace_contacts!` (default `false`) |
+| `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
+
+### Which hooks fire on which engine
+
+The hooks above are not all available everywhere, because the engines are
+built differently. The generation-based engine creates a fresh `Individual`
+for every contact, infected or not, so it can hand you contact objects and
+resolve a per-pair decision for each. The continuous-time (Sellke) models
+have no such objects: every node exists from the start and the simulation
+only settles *when* each is infected, by a race between contact-interval
+draws. There is no per-pair decision point to hang a `Risk` on, and the one
+seam an intervention has is the infectious window.
+
+| Hook | Generation engine | Network / household (Sellke race) | Homogeneous pool |
+|---|---|---|---|
+| `initialise_individual!` | yes | yes | yes |
+| `resolve_individual!` | yes | yes | yes |
+| `infectious_removal_time` | not read | yes | yes |
+| `trace_contacts!` | not called | yes | no contact set |
+| `apply_post_transmission!` | yes | not called | not called |
+| `competing_risk` | yes | not called | not called |
+| `keep_active` | yes | not called | not called |
+
+What this means in practice:
+
+- An intervention whose effect is a **removal** — isolation, quarantine on
+  being traced, hospitalisation — works everywhere. It shortens the
+  infectious window, which every engine has.
+- An intervention whose effect is a **per-contact competing risk** against
+  the infection event — leaky vaccination, a partial-efficacy prophylaxis —
+  works only on the generation-based engine. On the continuous-time models
+  it is reported with a warning and has no effect, rather than being
+  silently ignored.
+- **Contact tracing** spans the two. Its action is a removal, so it applies
+  on both, but it needs to know who a case's contacts were. The generation
+  engine reads that off each contact's `parent_id`; the continuous-time
+  models get it from the process, which must report
+  `EpiBranch.supplies_contacts(model) = true` and pass a `contacts` closure.
+  A graph names a node's neighbours and a household its members; the
+  homogeneous pool is mass-action and has no pairwise contact structure, so
+  tracing stays unhonoured there.
+
+Two ordering differences follow from this, and they matter when you write an
+intervention that has to work on both:
+
+- On the generation engine, a contact resolves its own state
+  (`resolve_individual!`) **before** tracing runs. On the continuous-time
+  models the order inverts: a contact is traced when its *infector* settles,
+  which is before the contact settles anything of its own. An intervention
+  that writes onto a contact must therefore not assume the contact is
+  unwritten, and one that reads a contact's own state must not assume it is
+  already set. This is why `Isolation` treats a standing quarantine as a
+  competing pathway and keeps the earliest time, instead of returning early.
+- Tracing on the continuous-time path reaches only contacts that have not
+  themselves settled. Settling a case fixes its window and its onward
+  proposals, so a trace arriving afterwards has nothing left to shorten.
+  Tracing *backwards*, to the already-settled neighbour a case was infected
+  by, is not supported on either engine.
 
 Ordering guarantees:
 
