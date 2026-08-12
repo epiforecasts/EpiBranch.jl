@@ -412,10 +412,7 @@ function reset!(::ContactTracing, ind::Individual)
     ind.state[:quarantined] = false
     haskey(ind.state, :traced_by) && delete!(ind.state, :traced_by)
     haskey(ind.state, :trace_level) && delete!(ind.state, :trace_level)
-    if is_isolated(ind)
-        ind.state[:isolated] = false
-        ind.state[:isolation_time] = Inf
-    end
+    is_isolated(ind) && clear_isolated!(ind)
     return nothing
 end
 

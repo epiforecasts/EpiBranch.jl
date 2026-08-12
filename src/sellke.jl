@@ -55,6 +55,37 @@ function _intervention_removal_time(ind, interventions)
     return t
 end
 
+"""
+    INTERVENTION_REMOVAL
+
+The reserved state a [`RouteWindow`](@ref) lists in its `until` to be cut by
+whatever the composed interventions remove the case at.
+
+Route censoring is otherwise expressed in states the natural history writes, so
+a route ends when the case recovers, dies, or is buried. An intervention
+removal cannot be read off a state key alone, because whether it removes at all
+depends on the intervention: perfect isolation takes a case out of transmission
+entirely, whereas leaky isolation only reduces it and an infectious window
+cannot express that. `infectious_removal_time` is what resolves this, and this
+pseudo-state is how a window opts into it.
+
+Listing it is what makes a route one that control measures can cut. A community
+route lists it, so isolating a case ends its community transmission; a
+household route does not, so the case goes on infecting the people it lives
+with. That difference is the whole reason routes are separated.
+"""
+const INTERVENTION_REMOVAL = :intervention_removal
+
+# Close a window: the earliest of its `until` states' times, plus the
+# intervention removal when the window opted into it.
+function _route_close(ind, w::RouteWindow, interventions)
+    t = _window_close(ind, w.until)
+    if INTERVENTION_REMOVAL in w.until
+        t = min(t, _intervention_removal_time(ind, interventions))
+    end
+    return t
+end
+
 # Whether a continuous-time model honours an intervention — i.e. can express it
 # through the infectious window. Perfect isolation shortens the window; a leaky
 # isolation (`post_isolation_transmission > 0`) only reduces transmission, which
@@ -155,8 +186,18 @@ preceding the infector's own window-open (`dt ≥ 0`). A kernel with support on
 the negatives would break the shortest-path race with no error.
 """
 function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
-        rng::AbstractRNG; seed!, targets, from::Symbol, until::Tuple,
+        rng::AbstractRNG; seed!, targets = nothing,
+        from::Symbol = :infection, until::Tuple = (), routes = nothing,
         interventions = (), contacts = nothing)
+    # A model either passes `routes`, a collection of `(RouteWindow, targets)`
+    # pairs, or the single-route shorthand `from`/`until`/`targets`. The
+    # shorthand's one window opts into intervention removal, which is what a
+    # model with no route structure of its own means by isolation.
+    rts = routes === nothing ?
+          ((
+        RouteWindow(:transmission; from = from,
+            until = (until..., INTERVENTION_REMOVAL), kernel = nothing),
+        targets),) : routes
     m = length(members)
     best = fill(Inf, m)
     src = zeros(Int, m)
@@ -191,19 +232,24 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         _resolve_interventions!(state, ind, interventions)
         _trace_from!(state, ind, interventions, contacts, pos, processed)
 
-        open_t = _window_open(ind, from)
-        isfinite(open_t) || continue
-        close_t = min(_window_close(ind, until),
-            _intervention_removal_time(ind, interventions))
+        # Each route opens and closes on its own states, so a case can still be
+        # transmitting on one while another has been cut. A route whose `from`
+        # state was never reached contributes nothing, which is how a survivor
+        # never materialises funeral contacts.
+        for (w, route_targets) in rts
+            open_t = _window_open(ind, w.from)
+            isfinite(open_t) || continue
+            close_t = _route_close(ind, w, interventions)
 
-        for (target_id, kernel) in targets(members[j], state)
-            k = get(pos, target_id, 0)
-            (k == 0 || processed[k]) && continue
-            dt = rand(rng, kernel)
-            cand = open_t + dt
-            (cand <= close_t && cand < best[k]) || continue
-            best[k] = cand
-            src[k] = members[j]
+            for (target_id, kernel) in route_targets(members[j], state)
+                k = get(pos, target_id, 0)
+                (k == 0 || processed[k]) && continue
+                dt = rand(rng, kernel)
+                cand = open_t + dt
+                (cand <= close_t && cand < best[k]) || continue
+                best[k] = cand
+                src[k] = members[j]
+            end
         end
     end
     return nothing
