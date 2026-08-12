@@ -75,8 +75,8 @@ for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan
                 end
 
                 # Each (R0, delay, tracing, initial-cases) cell is its own
-                # model — a Scenario the simulator reads the policy from.
-                model = Scenario(process; interventions, attributes = clinical)
+                # model: the base process composed with the policy in force.
+                model = ModelSpec(process; interventions, attributes = clinical)
 
                 batch = simulate(model, n_sim;
                     max_cases = 5000,
