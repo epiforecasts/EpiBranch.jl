@@ -21,3 +21,29 @@ updates:
     commit-message:
       prefix: "ci"
       include: "scope"
+
+  # Julia dependencies. This repo has no `[workspace]` in the root
+  # Project.toml, so a single "/" would only reach the main package; the
+  # environments are listed instead. Grouped, so a run produces one PR across
+  # all of them rather than one per environment per package.
+  - package-ecosystem: "julia"
+    directories:
+      - "/"
+      - "/test"
+      - "/docs"
+      - "/lib/EpiNetwork"
+      - "/lib/EpiHouseholds"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      julia:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "sbfnk"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
