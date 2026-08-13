@@ -8,42 +8,26 @@ updates:
     # broken version has time to be caught and yanked before it can auto-merge.
     cooldown:
       default-days: 7
-    # Bundle every github-actions bump into a single grouped PR per run. Without
-    # this, one upstream release opens a separate PR per workflow file that
-    # references it, which buries real review work under version bumps.
+    # Bundle bumps so a run produces two PRs rather than one per action.
+    #
+    # Two groups, not one: `dependabot/fetch-metadata` reports a group's
+    # update-type as the highest semver level in it, so batching a major in with
+    # patch and minor bumps would make the whole batch read as major and stop
+    # dependabot-auto-merge.yml taking any of it. Splitting keeps the routine
+    # bumps on the automatic path and leaves majors for review.
     groups:
-      github-actions:
+      actions-minor-patch:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
     open-pull-requests-limit: 10
-    reviewers:
-      - "sbfnk"
     commit-message:
       prefix: "ci"
-      include: "scope"
-
-  # Julia dependencies. This repo has no `[workspace]` in the root
-  # Project.toml, so a single "/" would only reach the main package; the
-  # environments are listed instead. Grouped, so a run produces one PR across
-  # all of them rather than one per environment per package.
-  - package-ecosystem: "julia"
-    directories:
-      - "/"
-      - "/test"
-      - "/docs"
-      - "/lib/EpiNetwork"
-      - "/lib/EpiHouseholds"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
-    groups:
-      julia:
-        patterns:
-          - "*"
-    open-pull-requests-limit: 10
-    reviewers:
-      - "sbfnk"
-    commit-message:
-      prefix: "chore"
       include: "scope"
