@@ -114,15 +114,13 @@ function reset!(::Isolation, ind::Individual)
     # so resetting unconditionally would un-quarantine a validly-traced contact
     # when a Scheduled(Isolation) sees its pre-start isolation time.
     get(ind.state, :isolated_by_isolation, false) || return nothing
-    ind.state[:isolated] = false
-    ind.state[:isolation_time] = Inf
+    clear_isolated!(ind)
     ind.state[:isolated_by_isolation] = false
     return nothing
 end
 
 function initialise_individual!(iso::Isolation, individual, state)
-    individual.state[:isolated] = false
-    individual.state[:isolation_time] = Inf
+    clear_isolated!(individual)
     individual.state[:isolated_by_isolation] = false
     if is_eligible_for_isolation(iso.eligibility, individual, state)
         sens = _sample_value(iso.test_sensitivity, state.rng, individual)

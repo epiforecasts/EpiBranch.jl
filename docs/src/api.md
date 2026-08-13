@@ -125,6 +125,15 @@ EpiBranch.reset!
 is_active
 ```
 
+## Transmission-route windows
+
+```@docs
+RouteWindow
+window_open
+window_close
+EpiBranch.INTERVENTION_REMOVAL
+```
+
 ## Natural history (progression)
 
 ```@docs
