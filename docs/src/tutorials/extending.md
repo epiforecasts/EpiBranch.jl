@@ -20,6 +20,9 @@ much you write:
 - **Add a transmission model** — subtype `TransmissionModel` to add a whole new
   transmission *process* (network-, household- or metapopulation-structured, a
   continuous-time alternative). The deepest surface. Covered below.
+- **Add a transmission route** — give a process a `RouteWindow` so a case
+  transmits over several routes at once, each opening and closing on different
+  states of its natural history. Covered below.
 - **Add an observation or data type** — subtype `ObservationModel`, or define a
   `loglikelihood` method for a new data type. Covered below.
 
@@ -61,6 +64,7 @@ downstream packages should pick names that do not collide.
 | `:risk_group` | `Symbol` | — | `demographics` | Init |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
+| `:isolated_time` | `Float64` | `Inf` | `set_isolated!` | Alongside `:isolation_time` |
 | `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
@@ -96,6 +100,14 @@ colliding.
 sets it from a probability gate) and `PerCaseObservation` (which sets it
 post-simulation from a detection-probability draw). Composing both in the
 same simulation is not supported, because they will overwrite each other.
+
+`:isolated_time` is the same value as `:isolation_time` under a different name.
+`set_isolated!` writes both: the first follows the `<state>_time` convention that
+`Transition` writes and that infectiousness windows read, which is what lets
+`:isolated` be used as a removal state in a [`RouteWindow`](@ref)'s `until`; the
+second is the name the intervention layer has always used. Clear them together
+with `clear_isolated!` — a stale `:isolated_time` goes on censoring routes after
+the isolation itself has been undone.
 
 The tracing keys name two hooks because the two engines reach them
 differently: `apply_post_transmission!` on the generation-based engine, and
@@ -744,6 +756,71 @@ Two constraints:
 - If a window's `from` is a state that nothing writes, the window never opens.
   The constructor warns when it can detect this.
 
+## Transmission routes
+
+A case need not have one infectiousness profile and one set of people it can
+reach. Real transmission is often several routes at once, each open over a
+different stretch of the case's natural history and each ended by different
+things. A [`RouteWindow`](@ref) is the unit that makes those one mechanism:
+
+```julia
+RouteWindow(name; from, until, kernel, reach = name)
+```
+
+- `from` is the state at which this route's infectiousness begins. `:infection`
+  opens it at the infection time; any other state opens it at that state's
+  `<state>_time`. A route whose `from` state is never reached contributes
+  nothing, so a case that recovers never opens a funeral route and nothing is
+  created only to be censored.
+- `until` names the states that end the route, and the window closes at the
+  earliest of their times. **A state listed by one window and not another
+  censors only the first.** That is the whole point: it is how a control measure
+  cuts one route and leaves another.
+- `kernel` times contacts within the window, measured from its opening.
+- `reach` tags who the route reaches, for the model to resolve — only the model
+  knows its own structure.
+
+### Being cut by an intervention
+
+Route censoring is otherwise written in states the natural history produces, but
+an intervention removal cannot be read off a state key alone: perfect isolation
+takes a case out of transmission, whereas leaky isolation only reduces it and a
+window cannot express that. `infectious_removal_time` resolves the difference,
+and a window opts into it by listing the reserved
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`.
+
+So self-isolation is two routes differing in one tuple:
+
+```julia
+community = RouteWindow(:community;
+    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
+    kernel = Exponential(12.0), reach = community_adjacency)
+household = RouteWindow(:household; until = (:recovered,),
+    kernel = Weibull(1.5, 3.0), reach = household_adjacency)
+```
+
+A case that isolates stops transmitting in the community and goes on infecting
+the people it lives with, to the end of its infectious period.
+
+### What stays fixed
+
+`R` remains the intrinsic reproduction number a case would achieve if never
+removed, and the realised figure falls out of which routes were cut and when.
+The dispersion `k` remains the intrinsic offspring dispersion and is
+deliberately kept separate from the shape of the infectious period, so a count
+is never drawn from a duration — that would couple the offspring draw to timing
+and break the decoupling the engine rests on.
+
+### Reading them in a process
+
+A process that carries routes passes them to the continuous-time race as
+`(window, targets)` pairs instead of a single `from`/`until`/`targets`, and
+resolves each window's `reach` into its own targets closure. `RoutedNetwork` in
+`EpiNetwork` is the worked example: each route carries an adjacency list, and
+`supplies_contacts` is `true` so tracing sees the union across routes. A model
+passing no routes gets a single window that opts into intervention removal,
+which is the behaviour every process had before routes existed.
+
 ## Adding a transmission model
 
 Most use cases stay inside `BranchingProcess` and customise via the
@@ -1166,6 +1243,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
+| Transmission route | `RouteWindow(name; from, until, kernel, reach)` on a process that reads them | Continuous-time race, per case |
 | Structured fixed-size pool | Reuse the Sellke pool: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply a `force(group, counts)` | Simulation |
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
