@@ -218,6 +218,81 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test state.cumulative_cases in 5:40
     end
 
+    @testset "RoutedNetwork: per-route censoring" begin
+        # Two routes over the same 120 people: households of 4 as cliques, and a
+        # ring of community contacts. The only difference between the scenarios
+        # is which routes isolation is allowed to cut.
+        nh, hs = 30, 4
+        n = nh * hs
+        hh = [Int[] for _ in 1:n]
+        for h in 0:(nh - 1), i in (h * hs + 1):(h * hs + hs),
+            j in (h * hs + 1):(h * hs + hs)
+            i != j && push!(hh[i], j)
+        end
+        comm = ring_adjacency(n)
+
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0),
+            test_sensitivity = 1.0)
+        hk, ck = Weibull(1.5, 4.0), Exponential(20.0)
+        REM = EpiBranch.INTERVENTION_REMOVAL
+
+        routes(hh_until) = [
+            RouteWindow(:household; until = hh_until, kernel = hk, reach = hh),
+            RouteWindow(:community; until = (:recovered, REM), kernel = ck,
+                reach = comm)]
+
+        run(ws, ivs) = sum(simulate(
+                               ModelSpec(RoutedNetwork(ws);
+                                   progression = _sir(10.0), interventions = ivs,
+                                   attributes = clinical);
+                               n_initial = 2, rng = StableRNG(s)).cumulative_cases
+        for s in 1:40) / 40
+
+        removed = run(routes((:recovered, REM)), [iso])   # isolation cuts both
+        selfiso = run(routes((:recovered,)), [iso])       # household route survives
+
+        # Self-isolation must be strictly worse than being removed outright:
+        # the household route keeps running either way it is cut.
+        @test selfiso > removed
+
+        # Both must beat no control at all.
+        @test removed < run(routes((:recovered,)), AbstractIntervention[])
+
+        # Under self-isolation the surviving transmission is mostly within
+        # households, which is the whole point of separating the routes.
+        st = simulate(
+            ModelSpec(RoutedNetwork(routes((:recovered,)));
+                progression = _sir(10.0), interventions = [iso],
+                attributes = clinical);
+            n_initial = 2,
+            rng = StableRNG(3))
+        hh_of(i) = (i - 1) ÷ hs
+        pairs = [(ind.id, ind.parent_id)
+                 for ind in st.individuals
+                 if is_infected(ind) && ind.parent_id != 0]
+        @test !isempty(pairs)
+        @test count(p -> hh_of(p[1]) == hh_of(p[2]), pairs) > length(pairs) ÷ 2
+    end
+
+    @testset "RoutedNetwork: construction" begin
+        a = ring_adjacency(6)
+        w(name, adj) = RouteWindow(name; until = (:recovered,),
+            kernel = Exponential(2.0), reach = adj)
+        m = RoutedNetwork([w(:a, a), w(:b, a)])
+        @test m.n == 6
+        @test occursin("RoutedNetwork", repr(m))
+        @test occursin(":a", repr(m))
+        @test EpiBranch.supplies_contacts(m)
+        # routes must agree on the node set, and there must be at least one
+        @test_throws ArgumentError RoutedNetwork([w(:a, a), w(:b, ring_adjacency(5))])
+        @test_throws ArgumentError RoutedNetwork(RouteWindow[])
+        # a reach that is not an adjacency list is rejected
+        @test_throws ArgumentError RoutedNetwork([RouteWindow(:x;
+            kernel = Exponential(1.0), reach = :not_an_adjacency)])
+    end
+
     @testset "contact tracing" begin
         # A node's contacts are its graph neighbours, so tracing reaches them
         # and quarantining closes their own infectious window in turn.
