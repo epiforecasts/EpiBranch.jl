@@ -8,3 +8,16 @@ updates:
     # broken version has time to be caught and yanked before it can auto-merge.
     cooldown:
       default-days: 7
+    # Bundle every github-actions bump into a single grouped PR per run. Without
+    # this, one upstream release opens a separate PR per workflow file that
+    # references it, which buries real review work under version bumps.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "sbfnk"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
