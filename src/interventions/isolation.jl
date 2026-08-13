@@ -114,8 +114,17 @@ function reset!(::Isolation, ind::Individual)
     # so resetting unconditionally would un-quarantine a validly-traced contact
     # when a Scheduled(Isolation) sees its pre-start isolation time.
     get(ind.state, :isolated_by_isolation, false) || return nothing
-    ind.state[:isolated] = false
-    ind.state[:isolation_time] = Inf
+    # If this isolation was layered over a quarantine, restore that quarantine
+    # rather than clearing the individual outright — undoing Isolation's own
+    # effect must not also undo another intervention's.
+    previous = get(ind.state, :isolation_time_before_isolation, Inf)
+    if isfinite(previous)
+        set_isolated!(ind, previous)
+        delete!(ind.state, :isolation_time_before_isolation)
+    else
+        ind.state[:isolated] = false
+        ind.state[:isolation_time] = Inf
+    end
     ind.state[:isolated_by_isolation] = false
     return nothing
 end
@@ -147,6 +156,11 @@ function resolve_individual!(iso::Isolation, individual, state)
         is_test_positive(individual) || return nothing
         self_t = onset_time(individual) + rand(state.rng, iso.onset_to_isolation_delay)
         self_t < isolation_time(individual) || return nothing
+        # Remember what we are overwriting. Claiming provenance below tells a
+        # `Scheduled` reset that this isolation is Isolation's to undo, but the
+        # standing quarantine underneath it belongs to ContactTracing and must
+        # survive that reset, so stash it for `reset!` to restore.
+        individual.state[:isolation_time_before_isolation] = isolation_time(individual)
         set_isolated!(individual, self_t)
         individual.state[:isolated_by_isolation] = true
         return nothing
