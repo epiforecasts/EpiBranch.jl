@@ -1,3 +1,7 @@
+# A minimal intervention that overrides nothing, used to check the protocol's
+# defaults are inert.
+struct _NoTraceIntervention <: AbstractIntervention end
+
 @testset "Interventions" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
@@ -77,6 +81,74 @@
         own.state[:isolated_by_isolation] = true
         EpiBranch.reset!(iso, own)
         @test !is_isolated(own)
+    end
+
+    @testset "Continuous-time tracing hooks" begin
+        # The hooks the Sellke models call. Exercised here directly because the
+        # only processes that drive them live in the companion packages, so the
+        # core suite would otherwise never touch this code.
+        ct = ContactTracing(TraceEveryone(), 1.0, Exponential(0.5))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+
+        # Only interventions that trace declare themselves, so the race can skip
+        # gathering contacts entirely when nothing needs them.
+        @test EpiBranch.traces_contacts(ct)
+        @test !EpiBranch.traces_contacts(iso)
+        @test EpiBranch.traces_contacts(Scheduled(ct; start_time = 5.0))
+        @test !EpiBranch.traces_contacts(Scheduled(iso; start_time = 5.0))
+
+        # Models declare whether they can name a case's contacts at all.
+        @test !EpiBranch.supplies_contacts(BranchingProcess(Poisson(1.0)))
+
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+        function pair()
+            infector = Individual(id = 1)
+            infector.state[:infected] = true
+            infector.state[:onset_time] = 1.0
+            set_isolated!(infector, 2.0)
+            contact = Individual(id = 2)
+            EpiBranch.initialise_individual!(ct, contact, state)
+            return infector, contact
+        end
+
+        # The bare intervention traces the contacts it is handed.
+        infector, contact = pair()
+        EpiBranch.trace_contacts!(ct, state, infector, [contact])
+        @test is_traced(contact)
+        @test is_quarantined(contact)
+        @test contact.state[:traced_by] == infector.id
+
+        # A case never traces itself, even when handed to itself.
+        solo, _ = pair()
+        EpiBranch.trace_contacts!(ct, state, solo, [solo])
+        @test !is_traced(solo)
+
+        # Scheduled delegates when active and stays out of the way when not.
+        infector, contact = pair()
+        EpiBranch.trace_contacts!(Scheduled(ct; start_time = 0.0), state, infector,
+            [contact])
+        @test is_traced(contact)
+
+        infector, contact = pair()
+        state.max_infection_time = 0.0
+        EpiBranch.trace_contacts!(Scheduled(ct; start_time = 100.0), state, infector,
+            [contact])
+        @test !is_traced(contact)
+
+        # A quarantined contact reports its quarantine as the time it leaves
+        # onward transmission; an untraced one contributes no removal.
+        traced = Individual(id = 3)
+        traced.state[:quarantined] = true
+        set_isolated!(traced, 4.0)
+        @test EpiBranch.infectious_removal_time(ct, traced) == 4.0
+        @test EpiBranch.infectious_removal_time(ct, Individual(id = 4)) == Inf
+
+        # Defaults are inert, so an intervention that does not trace costs
+        # nothing on the continuous-time path.
+        @test !EpiBranch.traces_contacts(_NoTraceIntervention())
+        @test EpiBranch.trace_contacts!(
+            _NoTraceIntervention(), state, Individual(id = 5), Individual[]) === nothing
     end
 
     @testset "Isolation keeps the earliest pathway when already isolated" begin
