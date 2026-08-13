@@ -248,6 +248,79 @@ An intervention whose effect is a competing risk against the infection event
 rather than a removal, such as leaky `RingVaccination`, still has no
 representation here and is reported with a warning.
 
+## Several routes at once
+
+Everything above gives every edge the same status: one kernel, one infectious
+window. So anything that closes the window cuts all transmission at once — which
+is the wrong shape for the most ordinary control measure there is. Someone who
+self-isolates stops mixing in the community and goes on infecting the people they
+live with.
+
+`RoutedNetwork` separates the edges into routes. Each is a
+[`RouteWindow`](@ref) with its own adjacency, kernel and set of states that end
+it, so isolation can cut one and leave another running. Households are cliques,
+community contact a sparser graph over the same people:
+
+```@example networks
+function households_and_community(n_households, household_size, rng)
+    n = n_households * household_size
+    hh = [Int[] for _ in 1:n]
+    for h in 0:(n_households - 1)
+        members = (h * household_size + 1):(h * household_size + household_size)
+        for i in members, j in members
+            i != j && push!(hh[i], j)
+        end
+    end
+    comm = [Int[] for _ in 1:n]
+    for _ in 1:(3 * n)
+        a, b = rand(rng, 1:n), rand(rng, 1:n)
+        if a != b && !(b in comm[a])
+            push!(comm[a], b); push!(comm[b], a)
+        end
+    end
+    return hh, comm
+end
+
+hh_adj, comm_adj = households_and_community(150, 4, StableRNG(99))
+
+clinical2 = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+    prob_asymptomatic = 0.0)
+iso2 = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 1.0)
+REM = EpiBranch.INTERVENTION_REMOVAL
+
+# The household route differs from the community route in one tuple: whether
+# isolation is allowed to end it.
+routes(household_until) = [
+    RouteWindow(:household; until = household_until,
+        kernel = Weibull(1.5, 4.0), reach = hh_adj),
+    RouteWindow(:community; until = (:recovered, REM),
+        kernel = Exponential(30.0), reach = comm_adj)]
+
+function mean_size(ws, ivs)
+    m = ModelSpec(RoutedNetwork(ws);
+        progression = [Transition(:recovered; from = :infection, delay = 10.0,
+            terminal = true)],
+        interventions = ivs, attributes = clinical2)
+    sum(simulate(m; n_initial = 3, rng = StableRNG(s)).cumulative_cases
+        for s in 1:80) / 80
+end
+
+println("no control:                    ",
+    round(mean_size(routes((:recovered,)), AbstractIntervention[]), digits = 1))
+println("isolation removes the case:     ",
+    round(mean_size(routes((:recovered, REM)), [iso2]), digits = 1))
+println("self-isolation at home:         ",
+    round(mean_size(routes((:recovered,)), [iso2]), digits = 1))
+```
+
+Self-isolation is markedly worse than removing the case outright, because the
+household route keeps running. A single-window model can only produce the second
+number, which is why reading window closure as "isolation" overstates what
+self-isolation achieves.
+
+`R` is unchanged by any of this. It stays what a case would achieve if never
+removed; the realised figure falls out of which routes were cut.
+
 ## Community introductions
 
 Without an external hazard the outbreak starts from the seeded index
