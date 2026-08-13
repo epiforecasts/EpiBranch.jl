@@ -11,7 +11,7 @@
 using EpiBranch
 using Distributions
 using DataFrames
-using StableRNGs
+using Random
 
 # ── Scenario parameters (matching ringbp vignette) ───────────────────
 
@@ -53,7 +53,7 @@ results = DataFrame(
 )
 
 n_sim = 500
-rng = StableRNG(2020)
+rng = Xoshiro(2020)
 
 for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan_delay)]
     for R0 in [1.5, 2.5]
