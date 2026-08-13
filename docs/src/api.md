@@ -114,8 +114,12 @@ EpiBranch.InfectiousSource
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
+EpiBranch.trace_contacts!
+EpiBranch.traces_contacts
+EpiBranch.supplies_contacts
 EpiBranch.keep_active
 EpiBranch.competing_risk
+EpiBranch.infectious_removal_time
 EpiBranch.intervention_time
 EpiBranch.reset!
 is_active
