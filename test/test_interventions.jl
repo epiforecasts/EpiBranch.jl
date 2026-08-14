@@ -327,6 +327,54 @@
             end
         end
 
+        @testset "Doses are timed at the trace, whatever the trace action" begin
+            # A ring member is vaccinated when the tracing team reaches
+            # them, so `:vaccination_time` is the trace time regardless of
+            # what the trace action wrote on their isolation state.
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+            for quarantine in (true, false)
+                ct = ContactTracing(probability = 1.0,
+                    isolation_to_trace_delay = Exponential(1.0),
+                    quarantine_on_trace = quarantine)
+                rv = RingVaccination(efficacy = 0.9)
+                state = simulate(
+                    ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+                        interventions = [iso, ct, rv], attributes = clinical);
+                    condition = 50:200, max_cases = 200, rng = StableRNG(11))
+                n_checked = 0
+                for ind in state.individuals
+                    is_vaccinated(ind) || continue
+                    n_checked += 1
+                    @test ind.state[:vaccination_time] == ind.state[:trace_time]
+                end
+                @test n_checked > 0  # otherwise the test is vacuous
+            end
+        end
+
+        @testset "Asymptomatic traced contacts are vaccinated" begin
+            # Without a quarantine, tracing records an isolation time only
+            # for contacts with a known onset. Vaccination must not inherit
+            # that restriction: an asymptomatic ring member gets a dose.
+            clinical_asymp = clinical_presentation(
+                incubation_period = LogNormal(1.5, 0.5),
+                prob_asymptomatic = 0.3)
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+            ct = ContactTracing(probability = 1.0,
+                isolation_to_trace_delay = Exponential(1.0),
+                quarantine_on_trace = false)
+            rv = RingVaccination(efficacy = 0.9)
+
+            state = simulate(
+                ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical_asymp);
+                condition = 50:200, max_cases = 200, rng = StableRNG(1))
+            traced_asymp = filter(
+                ind -> is_traced(ind) && get(ind.state, :asymptomatic, false),
+                state.individuals)
+            @test !isempty(traced_asymp)  # otherwise the test is vacuous
+            @test all(is_vaccinated, traced_asymp)
+        end
+
         @testset "Onward efficacy blocks next-generation transmission" begin
             # With onward_efficacy = 1.0 and delay_to_immunity = 0.0,
             # any infected child of a vaccinated parent must have been

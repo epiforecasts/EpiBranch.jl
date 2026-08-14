@@ -182,8 +182,8 @@ required_fields(::RingVaccination) = [:traced]
 # Onward-infectiousness risk: blocks the parent → contact transmission
 # iff this dose has been administered to the *parent* and the parent's
 # immunity has developed by their (the parent's) transmission time. The
-# parent's `:vaccination_time` is set by ring vaccination at the parent's
-# isolation time; the onward immunity comes online at that time plus
+# parent's `:vaccination_time` is set by ring vaccination when the parent
+# was traced; the onward immunity comes online at that time plus
 # `delay_to_immunity`, exactly as for the susceptibility side.
 function _onward_risk(rv::RingVaccination, parent)
     rv.onward_efficacy > 0.0 || return nothing
@@ -223,12 +223,11 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
     for ind in new_contacts
         is_traced(ind) || continue
         get(ind.state, vacc_key, false) && continue
-        # Fire at the trace-driven isolation time. Quarantine writes
-        # `:isolation_time`; FlagOnly (for a traced contact with a known onset)
-        # writes `:traced_isolation_time`. Take whichever is set so ring
-        # vaccination is not silently skipped when tracing only flags contacts.
-        vacc_t = min(isolation_time(ind),
-            get(ind.state, :traced_isolation_time, Inf))
+        # Fire when the tracing team reached the contact. `ContactTracing`
+        # records that as `:trace_time`; the isolation-derived times are a
+        # fallback for a custom `TraceAction` that sets `:traced` without it.
+        vacc_t = get(ind.state, :trace_time,
+            min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf)))
         isfinite(vacc_t) || continue
         _within_eligibility_window(rv.eligibility_window, ind, vacc_t, state.rng) ||
             continue
