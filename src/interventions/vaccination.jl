@@ -70,6 +70,10 @@ struct AllOrNothingMode <: AbstractEffectMode end
 to the vaccination time to give the event time of the competing risk."""
 delay_to_immunity(v::AbstractVaccination) = v.delay_to_immunity
 
+"""Dose label this vaccination requires a contact to already carry before
+it is given, or `nothing` when the dose stands on its own."""
+required_dose(::AbstractVaccination) = nothing
+
 """Label namespacing the vaccination's per-contact state (`:vaccinated`,
 `:vaccination_time`, `:vaccine_efficacy`). `:default` writes to the
 unsuffixed keys for backwards compatibility; other labels write to
@@ -163,14 +167,56 @@ setting only `onward_efficacy` gives a pure PEP effect.
 
 Requires `:traced` (set by [`ContactTracing`](@ref)).
 
+!!! warning "Redundant on top of quarantine"
+    A dose is given when the contact is traced, which is also when
+    `ContactTracing`'s default `Quarantine` action isolates them. Isolation
+    then blocks every transmission the dose would have blocked, and adding
+    this intervention leaves the results unchanged. Measure ring vaccination
+    against tracing that follows contacts up without confining them
+    (`quarantine_on_trace = false`), or against a delayed or leaky isolation.
+
 Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
 `:vaccine_efficacy` for the default dose label. With a non-default
 `dose_label`, the keys carry the label as a suffix.
+
+# Second and later doses
+
+A dose is given at the trace. `dose_delay` moves it later by a fixed
+number of days, and `requires_dose` names a dose label the contact must
+already carry for this one to be given at all, so a prime-boost schedule
+is two `RingVaccination`s:
+
+```julia
+[
+    RingVaccination(efficacy = 0.6, delay_to_immunity = 21.0,
+        coverage = 0.8, dose_label = :prime),
+    RingVaccination(efficacy = 0.5, dose_delay = 28.0,
+        delay_to_immunity = 14.0, coverage = 0.9,
+        requires_dose = :prime, dose_label = :boost),
+]
+```
+
+The boost is given 28 days after the trace to 90% of those primed (the
+remaining 10% being lost to follow-up), and protects 14 days later. List
+a dose after the dose it requires: the stack is applied in order, so a
+boost placed first sees no prime and never fires.
+
+Doses compose as competing risks, so a schedule reaching 80% protection
+in total from a prime at 60% needs `efficacy = 0.5` on the boost
+(`(0.8 - 0.6) / (1 - 0.6)`), the protection the second dose adds among
+those the first left unprotected.
+
+A dose is recorded when it falls due, whether or not the contact was
+infected in the meantime — infection is resolved after the doses are
+given and is not knowable at that point. Dose counts for later doses are
+therefore doses scheduled.
 """
 Base.@kwdef struct RingVaccination{E, C, W, M <: AbstractEffectMode} <: AbstractVaccination
     efficacy::E
     coverage::C = 1.0
     delay_to_immunity::Float64 = 0.0
+    dose_delay::Float64 = 0.0
+    requires_dose::Union{Nothing, Symbol} = nothing
     eligibility_window::W = Inf
     onward_efficacy::Float64 = 0.0
     mode::M = LeakyMode()
@@ -178,6 +224,7 @@ Base.@kwdef struct RingVaccination{E, C, W, M <: AbstractEffectMode} <: Abstract
 end
 
 required_fields(::RingVaccination) = [:traced]
+required_dose(rv::RingVaccination) = rv.requires_dose
 
 # Onward-infectiousness risk: blocks the parent → contact transmission
 # iff this dose has been administered to the *parent* and the parent's
@@ -217,17 +264,53 @@ end
 _covers(p::Real, ind, rng) = p >= 1.0 || rand(rng) < p
 _covers(p, ind, rng) = rand(rng) < _sample_value(p, rng, ind)
 
+# A dose that requires an earlier one is given only to contacts already
+# carrying it, so `coverage` on the later dose reads as retention among
+# those who got the earlier one.
+_has_required_dose(v::AbstractVaccination, ind) = _has_required_dose(required_dose(v), ind)
+_has_required_dose(::Nothing, ind) = true
+_has_required_dose(label::Symbol, ind) = get(ind.state, _vaccinated_key(label), false)
+
+"""
+    _validate_dose_schedule(interventions)
+
+Check that every vaccination requiring an earlier dose is listed after the
+dose it requires. The stack is applied in order, so a dose placed before
+the one it requires would silently never be given.
+"""
+function _validate_dose_schedule(interventions)
+    given = Set{Symbol}()
+    for iv in interventions
+        vacc = _unwrap_scheduled(iv)
+        vacc isa AbstractVaccination || continue
+        req = required_dose(vacc)
+        if req !== nothing && !(req in given)
+            throw(ArgumentError(
+                "vaccination with dose_label = :$(dose_label(vacc)) requires dose " *
+                ":$req, which is not given earlier in the intervention stack. " *
+                "List a dose after the dose it requires."))
+        end
+        push!(given, dose_label(vacc))
+    end
+    return nothing
+end
+
+# The intervention a wrapper stands in for; `Scheduled` adds its method.
+_unwrap_scheduled(iv) = iv
+
 function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
     label = dose_label(rv)
     vacc_key = _vaccinated_key(label)
     for ind in new_contacts
         is_traced(ind) || continue
         get(ind.state, vacc_key, false) && continue
+        _has_required_dose(rv, ind) || continue
         # Fire when the tracing team reached the contact. `ContactTracing`
         # records that as `:trace_time`; the isolation-derived times are a
         # fallback for a custom `TraceAction` that sets `:traced` without it.
-        vacc_t = get(ind.state, :trace_time,
+        trace_t = get(ind.state, :trace_time,
             min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf)))
+        vacc_t = trace_t + rv.dose_delay
         isfinite(vacc_t) || continue
         _within_eligibility_window(rv.eligibility_window, ind, vacc_t, state.rng) ||
             continue

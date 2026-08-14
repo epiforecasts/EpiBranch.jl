@@ -182,6 +182,16 @@ results = simulate(scenario([iso, ct, rv]), 200; max_cases = 500, rng = rng)
 println("Iso + tracing + ring vaccination: $(round(containment_probability(results), digits=3))")
 ```
 
+!!! warning "Ring vaccination adds nothing on top of quarantine"
+    That number is the same as for isolation and tracing alone, and it is
+    meant to be. `ContactTracing` quarantines traced contacts by default,
+    and the quarantine takes effect at the same moment the dose is given, so
+    isolation blocks every transmission the vaccine would have blocked.
+    Measure ring vaccination against tracing that follows contacts up
+    without confining them (`quarantine_on_trace = false`), or against an
+    isolation that is delayed or leaky. The examples below keep the
+    quarantine, so they show the machinery rather than a vaccine effect.
+
 A delay between vaccination and protective immunity can be specified.
 If transmission occurs before immunity develops, there is no protection:
 
@@ -335,6 +345,55 @@ Both single-dose and multi-dose state can be queried via the
 dose-suffixed keys: `ind.state[:vaccinated_prime]`,
 `ind.state[:vaccination_time_boost]`, `ind.state[:vaccine_efficacy_prime]`,
 and so on.
+
+#### Two doses in a ring
+
+Ring doses are given at the trace, so a second dose sets `dose_delay`
+(days from the trace to that dose) and names the dose it follows with
+`requires_dose`. Only contacts carrying the earlier dose get the later
+one, which makes the boost's `coverage` the retention between doses:
+
+```@example interventions
+prime_ring = RingVaccination(efficacy = 0.6, delay_to_immunity = 21.0,
+    coverage = 0.8, dose_label = :prime)
+boost_ring = RingVaccination(efficacy = 0.5, dose_delay = 28.0,
+    delay_to_immunity = 14.0, coverage = 0.9,
+    requires_dose = :prime, dose_label = :boost)
+
+rng = StableRNG(42)
+results = simulate(scenario([iso, ct, prime_ring, boost_ring]), 200;
+    max_cases = 500, rng = rng)
+println("Two-dose ring: $(round(containment_probability(results), digits=3))")
+```
+
+The boost's `efficacy` is the protection it adds among those the prime
+left unprotected, because doses compose as competing risks. A schedule
+described as 60% after one dose and 80% after two therefore takes
+`efficacy = 0.5` on the boost: `(0.8 - 0.6) / (1 - 0.6)`.
+
+Doses are cheap to count, and a schedule's second dose is where the cost
+sits:
+
+```@example interventions
+rng = StableRNG(42)
+results = simulate(scenario([iso, ct, prime_ring, boost_ring]), 200;
+    max_cases = 500, rng = rng)
+doses(key) = mean(count(i -> i.state[key], s.individuals) for s in results)
+println("Primed: $(round(doses(:vaccinated_prime), digits = 1)), ",
+    "boosted: $(round(doses(:vaccinated_boost), digits = 1))")
+```
+
+Whether those doses buy anything is a question about timing, and for a
+second dose the answer is usually no. A dose protects a ring member only
+if its immunity arrives before that member's own exposures, and those
+exposures are concentrated in the weeks right after the trace. With
+generation times of `Exponential(5.0)`, protection arriving 42 days after
+the trace has nothing left to prevent, so containment here is the same
+with the boost as without it.
+
+Against tracing that does not quarantine, where a dose has something left
+to do, speed decides it: protection arriving the day of the trace raises
+containment, and the same efficacy arriving a week later does not.
 
 ## Effort tracking
 
