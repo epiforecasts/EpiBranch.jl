@@ -1,0 +1,4 @@
+# Quarto build artefacts — regenerate with `quarto render paper.qmd`
+paper.tex
+paper.pdf
+_files/

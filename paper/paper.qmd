@@ -1,0 +1,597 @@
+---
+title: "EpiBranch.jl: A composable branching-process engine for epidemiology"
+author:
+  - name: Sebastian Funk
+    affiliation: London School of Hygiene & Tropical Medicine
+    orcid: 0000-0002-2842-3406
+    email: sebastian.funk@lshtm.ac.uk
+abstract: |
+  Branching processes are the natural generative model for outbreak
+  transmission before depletion of susceptibles comes to dominate the
+  dynamics, and they underlie a family of widely used R packages for outbreak
+  modelling. These packages share the same mathematical core but reimplement
+  it for whichever analysis they address, so an analyst combining simulation,
+  analytical likelihoods and intervention modelling usually has to switch
+  between tools and reconcile parameter conventions. EpiBranch.jl unifies the
+  offspring draw, transmission timing and competing-risks resolution behind a
+  single dispatched interface, and treats interventions, host attributes and
+  observation models as first-class composable components. A model is here
+  understood as the whole generative specification of how data arise, and
+  simulation and likelihood share the same machinery rather than drifting
+  apart.
+  Where closed-form chain-size distributions exist they plug in by dispatch
+  and inherit gradient-based inference, while the remaining cases fall back to
+  simulation with gradient-free samplers. We describe the design, the
+  cross-package composition with EpiAware.jl that it enables, and operational
+  use in the 2026 Ebola virus disease outbreak in the Democratic Republic of
+  the Congo.
+bibliography: refs.bib
+number-sections: true
+format:
+  pdf:
+    documentclass: article
+    keep-tex: true
+---
+
+# Introduction
+
+Branching processes describe how individual cases give rise to further
+infections and provide the natural generative model for the early phase of an
+outbreak, before depletion of susceptibles comes to dominate the dynamics
+[CITE: Farrington 1999; Lloyd-Smith 2005; Blumberg & Lloyd-Smith 2013].
+A parent case produces offspring according to an offspring distribution, each
+offspring in turn produces its own offspring, and the chain terminates when no
+further infections occur.
+The mean of the offspring distribution is the reproduction number, while its
+dispersion captures the heterogeneity in onward transmission that drives
+superspreading and chain extinction.
+The timing of transmission within the infectious period of a parent adds a
+survival structure on top of this branching skeleton, and interventions act on
+the timing or on the offspring count to alter who infects whom.
+
+Several R packages implement variants of this model for specific outbreak
+analyses.
+`ringbp` simulates ring-based containment of contact-traced outbreaks
+[CITE: Hellewell 2020], `epichains` computes chain-size and chain-length
+distributions and their likelihoods [CITE: epichains], and `superspreading`
+estimates offspring overdispersion from chain-size data
+[CITE: superspreading].
+`simulist` simulates outbreak line lists with attached natural-history
+information for software testing and downstream analysis [CITE: simulist], and
+`pepbp` models post-exposure prophylaxis in ring vaccination
+[CITE: Meakin 2024 / pepbp].
+Each of these packages addresses its target question well, and most are
+actively maintained by the same community.
+However, they share the same mathematical core, namely an offspring
+distribution, a generation-time distribution and an intervention layer, and
+each reimplements it for whichever analysis it addresses.
+
+The cost of this duplication is largely operational.
+An analyst combining simulation, analytical likelihoods and intervention
+modelling within a single outbreak response has to switch between tools,
+reconcile parameter conventions and intervention semantics across them and
+write glue code that the underlying mathematics does not require.
+Rapid recomposition under the time pressure of a response then becomes harder
+than it should be: a scenario that adds isolation on top of an existing
+simulation may need a different package from the one used for the original
+chain-size fit, and intervention parameters in one package may not have direct
+equivalents in another.
+The 2026 Ebola virus disease outbreak in the Democratic Republic of the Congo,
+where transmission of *Bundibugyo ebolavirus* required rapid parameter refits
+and intervention scenario sweeps within days of the outbreak being declared,
+made this cost concrete for our team.
+
+EpiBranch.jl unifies the offspring draw, transmission timing and
+competing-risks resolution behind a single dispatched interface in Julia, and
+treats interventions, host attributes and observation models as first-class
+composable components.
+A model is here understood as the whole generative specification of how data
+arise, that is a transmission process, the population it acts on, the policy in
+force and how cases are observed.
+The same model object answers both what the model could produce, through
+`simulate`, and how likely observed data were, through `loglikelihood`.
+The two entry points cannot disagree.
+Where closed-form chain-size distributions exist
+[CITE: Borel; Farrington gborel; epichains] they plug in by dispatch and
+inherit gradient-based inference, while the remaining cases fall back to
+simulation with gradient-free samplers.
+Composition with other Julia probabilistic programming packages, including the
+renewal-process modelling in EpiAware.jl [CITE: EpiAware], works through
+Turing.jl submodels [CITE: Turing; Fjelde 2025] without changes to either
+package.
+We implement the package in Julia rather than R because the type system
+supports the dispatched composition on which the design rests, and because the
+Julia probabilistic programming ecosystem provides the submodel interfaces that
+the cross-package composition relies on.
+
+The remainder of this paper sets out the design (@sec-design), the
+composability properties that follow from it (@sec-composability), the duality
+between analytical and simulation-based approaches and its connection to
+survival analysis (@sec-duality and @sec-survival), and operational use in the
+2026 Ebola outbreak in the Democratic Republic of the Congo (@sec-drc).
+
+# Design {#sec-design}
+
+## Design principles
+
+Five principles govern what enters the package and where its seams fall.
+
+1. *Simple but rigorous.*
+   The aim is to express only what the analyses we conduct require, and a new
+   mechanism earns its place only when an analysis cannot be done without it.
+   Where a closed-form likelihood and a simulation-based one are both
+   available and equivalent, the closed form is preferred.
+   A single verb performs the dispatch (`loglikelihood` to score data,
+   `simulate` to generate it), and no family of wrapper functions is needed
+   for each data type or model variant.
+
+2. *Self-explanatory.*
+   Type and function names should, as far as possible, match the intuition
+   that the epidemiology already supplies.
+   Mathematical names such as `Borel` and `GammaBorel` are appropriate where
+   they match the literature a user is likely to come from, whereas
+   operational names should read the way the epidemiology describes what is
+   happening.
+   If a public name can only be understood by reading the source, it is
+   generally the wrong name.
+
+3. *Cleanly separable concerns.*
+   The process model, observation model, data, inference, simulation and
+   output each own one thing behind an explicit interface.
+   A new alternative, such as a network process, multi-stream observation,
+   time-varying reporting or aggregated counts, can then be
+   introduced by implementing the relevant interface, and each concern
+   remains replaceable on its own.
+
+4. *Extensible from outside.*
+   A transmission model, observation model, intervention or data type can be
+   added from a separate package or a single script while reusing the whole
+   framework infrastructure, and the contracts that such a component has to
+   satisfy are documented and small.
+
+5. *Documented with examples.*
+   Every public extension point comes with a worked example, and the
+   tutorials are executed when the documentation is built, which stops the
+   prose drifting from the code.
+   Without this, the previous principle is empty.
+
+We judge the architecture set out below against these five principles, and
+return to them whenever anything substantial is added.
+
+## The model as a generative specification
+
+A model in EpiBranch.jl is the whole generative account of how data arise,
+built by composing a transmission process with the modelling layers that force
+and observe it.
+The transmission process is the between-host mechanism alone, that is how
+infection passes from one host to the next, and it carries nothing else.
+Onto this we compose four further layers:
+
+- *disease*: the within-host natural history, or the timed states a case moves
+  through (latent, infectious, symptom onset, severe, recovered or died), with
+  treatment expressible as a state it may pass through;
+- *attributes*: who the people are (age, susceptibility, infectiousness),
+  which can bear on transmission, on the disease course and on how
+  interventions find their targets;
+- *interventions*: what is done about it (isolation, contact tracing,
+  vaccination);
+- *observation*: how cases come to be seen (under-reporting, reporting
+  delays).
+
+Together with the process, these five parts correspond to the way in which
+epidemiology usually decomposes an outbreak, in which a pathogen spreads,
+infection causes disease, in a population of people, under a response, watched
+through surveillance.
+Keeping them distinct allows each to be replaced on its own, and allows the
+same layer to sit on any process.
+An isolation policy that truncates infectiousness in a homogeneous branching
+process, for example, is the same object when the process underneath it is a
+network.
+
+Both entry points read the composed model rather than the bare process.
+`simulate` answers the question of what the model could produce and
+`loglikelihood` the question of how likely observed data were, and because
+both consume the same composition they cannot disagree.
+A simulation-based likelihood therefore reproduces the same generative
+specification that produced the data.
+In particular, this matters where interventions are present, as the likelihood
+of a set of observed chain sizes is only correct if the composition that
+scores them applies the same isolation that suppressed transmission in the
+observed outbreak.
+A scenario sweep is then a map over compositions, each scenario being the same
+process under a different response, and a counterfactual is a fresh
+composition carrying the layer of interest.
+We deliberately provide no helper for swapping a single input in place, and the
+layers of a model always remain explicit.
+
+These layers are not independent of one another.
+Attributes can bear on transmission, disease and intervention targeting at
+once, the infectious window is defined by disease states, and a transmission
+rate expressed as a reproduction number depends on the mean infectious period.
+Composing the layers gives each of them access to the others it needs, and
+resolves these couplings once both sides are in hand.
+A structure-driven process, for example, derives its infectious window, and
+where transmission is given as a reproduction number also its rate, from the
+composed disease layer at the moment the model is simulated or scored.
+The process then stays purely the transmission, and the disease remains a
+single, separately specified layer.
+
+## Three separated stages
+
+The engine resolves every potential transmission in three stages, of which
+only the first is specific to the model.
+
+### Stage 1: offspring draw
+
+This stage is the pure branching process, with no time and no interventions in
+it.
+For a given parent, contacts are drawn from an offspring distribution, either
+as a single count or as a count per type in a multi-type model.
+The reproduction number $R$ and the overdispersion $k$ are properties of that
+distribution, and where a contact matrix is supplied it sets the mixing pattern
+across types.
+A transmission model defines this stage and nothing else, and it can do so in
+one of two ways.
+An *offspring-driven* model, that is the branching process and its variants,
+can produce its candidates one parent at a time and returns a count.
+A *structure-driven* model, such as a network, household or metapopulation
+process, cannot do this, because a susceptible may be reachable by several
+infectious neighbours in the same generation and infections deplete a fixed
+pool.
+Instead, such a model names the candidate contacts that each infectious node
+reaches, and the engine resolves a node reached several times in one generation
+only once.
+The network process in the companion `EpiNetwork.jl` package is the worked
+example.
+Either way, the model only says who contacts whom.
+
+### Stage 2: timing
+
+Each candidate is given a potential transmission time drawn from the
+infectiousness profile of the parent, that is the generation-time
+distribution.
+That distribution can be fixed or constructed per individual, and the timing
+can read any per-individual quantity, for example the incubation period of the
+parent or anything that the attributes layer has stored.
+In the language of survival analysis, this stage supplies the hazard $h(t)$.
+
+### Stage 3: competing risks
+
+Each candidate is resolved to infected or not by a single per-pair decision
+composed from a list of risk sources.
+Parent infectiousness and contact susceptibility are not privileged checks in
+the engine but default risk sources on the same surface that an intervention
+uses, and isolation truncation, or any other risk that an intervention
+contributes, joins the same list.
+A model can also contribute sources here, for a transmission term that belongs
+to the edge rather than to either node.
+A per-edge probability in a network model is perhaps the most obvious example,
+as per-node
+susceptibility and infectiousness cannot carry a per-pair quantity without
+forcing one shared value across all the edges of a node.
+A contact is infected only if no risk blocks it, and the earliest removal
+before the transmission time of a contact wins without the engine taking an
+explicit minimum.
+
+Contacts that fail a check are still stored.
+They are contacts that were made but did not transmit, and they carry the
+contact-tracing table and the accounting of intervention effort (contacts
+traced, vaccines administered, tests used) without separate bookkeeping.
+
+### Why the separation matters
+
+Keeping the first stage free of time and policy opens the model to analysis.
+Because the offspring draw is a pure probabilistic object, standard tools apply
+to it, such as the extinction probability from the dominant
+eigenvalue of the offspring mean, chain-size distributions and analytical
+likelihoods.
+None of these depends on timing or on interventions, and the draw remains
+differentiable wherever the distribution permits.
+Interventions instead act on the timing and competing-risks stages, where
+isolation truncates the hazard, contact tracing moves the truncation earlier
+and vaccination lowers susceptibility.
+Because the generation-time CDF evaluated at an intervention time is the
+survival function, the same objects appear in simulation and in the pairwise
+likelihood of @kenah2008, and intervention effectiveness can be estimated from
+observed generation times using the same quantities that were used to simulate
+them (@sec-survival).
+
+## Extension by dispatch
+
+We add new behaviour by defining a new type and a method on it.
+If one wants a variant, it should generally be enough to write a small struct
+and one or two methods, without editing the package source and without copying
+the body of an existing function.
+A `Union` field whose members trigger different branches, a `Symbol` that
+switches behaviour inside a function or a `Bool` that selects a policy are all
+signs that a seam sits in the wrong place and should instead become a type that
+is dispatched on.
+
+This holds on every axis.
+Spatial, network and immunity dynamics enter as new model subtypes or as
+reusable wrapper types.
+Interventions are largely orchestrators of smaller dispatched pieces.
+An intervention struct is a thin shell wiring together independently dispatched
+components (eligibility, rate, delay and effect), each of which is a type with
+a method, and the body of the intervention holds no hardcoded policy
+branching.
+Composition then operates at two levels, between the interventions that a model
+carries and within the pieces of each intervention.
+We express time-dependent policies by wrapping an intervention in a schedule,
+and no intervention needs its own start-time field.
+The gate applies to the time of the action, and an individual infected before a
+policy begins can still be affected if the time at which they would be tested
+falls after it.
+Output, observation and outcome rules take the same shape, and mortality,
+hospitalisation, reporting, stopping conditions and line-list columns are all
+typed objects with methods.
+The test we apply to any component is whether a plausible new variant can be
+added without editing the source of that component, and where it cannot, the
+varying part is lifted into a trait that is dispatched on.
+
+Each individual carries a small typed core that the engine reads, holding its
+place in the transmission tree, its infection time and the two universal
+modifiers of susceptibility and infectiousness, alongside an open dictionary
+for everything else.
+The dictionary is a deliberate extension hatch, where interventions, attribute
+builders, clinical transitions and observation models each own a small set of
+documented keys which the engine never inspects.
+A fully typed core would couple the individual to the state shape of every
+intervention, and would break the dose-label namespacing that allows
+multi-dose vaccination schedules to coexist.
+
+# Composability {#sec-composability}
+
+Within the package, composability rests largely on the competing-risks
+resolution of the third stage.
+Because every risk source is resolved on the same per-pair surface,
+interventions usually stack without any need for pairwise interaction logic.
+Isolation contributes a truncation of the transmission hazard, contact tracing
+an earlier truncation for traced contacts and ring vaccination a reduction in
+susceptibility, and a contact is infected if it survives all of them.
+Cases that would otherwise require explicit handling, such as a contact that is
+both traced and vaccinated, or a case isolated before its vaccine takes effect,
+follow from the ordering of the times and the product of the survival terms.
+Heterogeneity composes on a separate axis, where multiple types (age groups,
+risk groups or spatial patches) enter in the offspring draw while interventions
+and output need no changes because they read individual-level state.
+Observation composes on a third, as an observation model returns a transformed
+distribution of the latent chain-size law, and travels the same likelihood
+path as the latent law without needing a likelihood method of its own.
+
+Across packages, composition works through Turing.jl submodels
+[CITE: Turing; Fjelde 2025].
+The connection to the renewal-process modelling in EpiAware.jl
+[CITE: EpiAware] follows from a mathematical identity, namely that the renewal
+equation is the mean of a branching process with Poisson offspring.
+A branching process can therefore be exposed as an EpiAware epidemic model
+whose latent incidence is the renewal projection of its offspring distribution
+and generation interval, after which the latent and observation models of
+EpiAware apply unchanged, for example a random walk on $\log R(t)$, a
+negative-binomial observation with a reporting delay and NUTS over the whole
+model.
+Moreover, the same identity provides a free consistency check, as one can
+simulate
+the individual-level process, aggregate it to incidence and compare the result
+against the renewal mean.
+Composition in the other direction requires no adaptor at all.
+Because the analytical chain-size likelihoods are exposed as distributions, an
+individual-level or outbreak-level likelihood can be added to a
+population-level Turing model with `@addlogprob!`.
+This is what a joint fit of community incidence and household line lists
+requires, with a single shared time-varying reproduction number, community
+infectious pressure entering the household model as an external hazard, and a
+household contribution scored through the same objects that were used to
+simulate it.
+At the same time, the one family of models that we do not attempt to provide
+here is that of time-varying parameters with their own process priors, which is
+the domain of EpiAware and which we borrow through the bridge rather than
+reimplement.
+
+We reviewed the design against a set of composability requirements drawn up for
+a wider Julia modelling programme.
+The separation of concerns, the per-individual heterogeneity, the single
+specification behind simulation and inference and the analytical/simulation
+duality as a means of validation all hold up.
+However, three requirements are not met.
+Components carry structure but not priors, so parameters are fixed inputs while
+priors live in the Turing model written by the user.
+There is no hierarchical primitive for partial pooling across groups, and
+nothing first-class for composition with machine-learning components such as
+neural networks or Gaussian processes.
+Nesting is also somewhat uneven, as route windows, the treatment of a household
+as a window and multi-type offspring each provide a form of it without there
+being a uniform rule that any model may occupy any slot.
+
+# Analytical and simulation duality {#sec-duality}
+
+Where a closed form exists we use it, simulation covers the remaining cases,
+and the two are kept consistent.
+
+We extend the simulation side through the model and intervention protocols
+described above.
+The analytical side dispatches on the existing model types and adds no new
+abstract type.
+Two kinds of extension plug in.
+*Offspring specifications* replace what a branching process draws for each
+individual, for example by letting the offspring parameters vary from chain to
+chain.
+They participate in simulation through the offspring draw and in the
+analytical path by returning a chain-size distribution.
+*Observation models* capture how the latent process gives rise to data and
+return a transformed distribution of the latent chain-size law.
+We write each of them once, as a transform, and on the simulation side the same
+object marks the observed cases on a finished run.
+Some combinations have closed forms.
+Poisson offspring with a Gamma-distributed rate, for example, gives the
+Gamma-Borel law used by `epichains`
+[CITE: Borel; Farrington gborel; epichains], and such cases specialise the
+chain-size distribution on the relevant combination of types, and dispatch
+picks the closed form without one having to ask for it.
+The generic case falls back to quadrature and the intractable case to
+simulation.
+
+We enforce consistency between the two paths in the test suite.
+Of any extension that provides both an analytical chain-size distribution and a
+simulation path we expect a regression test confirming that the two agree, and
+we provide a helper for writing such tests.
+In practice this doubles as a debugging tool, as a discrepancy between the
+closed form and the Monte Carlo estimate localises an error to one of the two
+implementations of what should be a single specification.
+
+The duality has a direct consequence for the choice of sampler.
+An analytical likelihood is a deterministic scalar function of the parameters,
+so it works with any automatic differentiation backend and with gradient-based
+samplers such as NUTS.
+A simulation-based likelihood, on the other hand, draws random numbers, so its
+output is a noisy estimate and the gradient of a single realisation is not a
+useful estimate of the gradient of the expected likelihood.
+Gradient-free samplers such as Metropolis-Hastings or particle methods should
+be used instead.
+The choice between a closed form and simulation is therefore also a choice of
+sampler, and the dispatch that selects the closed form wherever it exists keeps
+the more efficient path available whenever a model admits it.
+
+# Connection to survival analysis {#sec-survival}
+
+The generation-time distribution $g(t) = h(t)/R$ is the normalised
+infectiousness profile and its CDF $G(t)$ is the cumulative hazard.
+If isolation occurs at time $t_{\mathrm{iso}}$, the probability that
+transmission has already occurred is $G(t_{\mathrm{iso}})$ and the probability
+that it has not is $1 - G(t_{\mathrm{iso}})$, that is the transmission process
+is right-censored at the time of isolation.
+These are exactly the quantities computed in the timing and competing-risks
+stages.
+The same two objects, the generation-time distribution and the censoring time,
+appear in the pairwise likelihood of @kenah2008 and @kenah2011 and in the
+dynamic survival analysis of @khudabukhsh2020, and inference built on this
+framework fits the same quantities that it simulates from.
+The generation-time distribution also connects the individual scale to the
+population growth rate through the Euler-Lotka equation $R = 1/M_g(-r)$
+[@wallinga2007], where $M_g$ is the moment-generating function of $g$.
+
+The survival view generalises the three stages beyond a single offspring law
+and a single generation-time distribution.
+Composing a *host timeline*, that is the disease layer understood as a sequence
+of timed states running from infection through infectiousness, symptom onset,
+severe disease, death or recovery and burial, lets us treat transmission as a
+set of *route windows* keyed off that timeline.
+A route window consists of an offspring law, a `from` state at which
+infectiousness begins, the states that end it and a survival kernel for the
+timing within it.
+Because the timeline is a separate layer, the `from` state of a window is
+resolved against the composed disease.
+
+A number of mechanisms then become variants of the same window.
+A funeral route runs between death and burial
+[CITE: Weitz & Dushoff post-death Ebola], a nosocomial route between admission
+and discharge, and isolation lowering $R$ becomes a route cut short by a
+removal state.
+The community route is the simplest window, running from infection with no
+censoring, and recovers the basic model unchanged.
+The latent period becomes the transition from infection to infectiousness, the
+generation interval is derived from the latent period plus the kernel draw, and
+isolation truncation becomes one removal state alongside death, recovery and
+burial.
+
+The generalisation lands entirely in the timing and competing-risks stages,
+leaving the offspring draw as the pure, analysable layer.
+$R$ remains the intrinsic reproduction number that a case would generate if
+never removed, and the realised reproduction number follows from the censoring,
+as shortening the infectious window blocks more contacts and lowers it.
+The dispersion $k$ remains the intrinsic offspring dispersion and is
+deliberately kept separate from the shape of the infectious period.
+A count is never drawn from a duration, which would couple the offspring draw
+to timing and break the decoupling on which the engine rests.
+A window contributes contacts only once its `from` state has occurred, so a
+survivor never materialises funeral contacts and nothing is created only to be
+censored.
+The offspring law that drives outbreak size is therefore a mixture over fates,
+with community offspring for everyone and funeral offspring for the fraction
+who die.
+This stays closed-form where each branch is negative binomial and falls back to
+simulation otherwise, and the duality described in @sec-duality carries over to
+the generalised model.
+
+The same construction extends to structure at a smaller scale.
+A household can be treated as one route window scoped to a clique, with a
+contact-interval kernel as the window kernel and the infectious period as its
+censoring, which is how a household- or metapopulation-structured model
+elsewhere in the ecosystem can reuse these survival objects
+[CITE: Ball 1997 households; House & Keeling 2009].
+
+# Operational use: DRC 2026 Ebola outbreak {#sec-drc}
+
+[From `~/code/ebola-drc-2026` and the linked org-roam file. Workstream 003:
+ring vaccination and contact tracing scenarios under BDBV, varying CT
+efficacy, proportion traced and transmission-blocking vaccine efficacy.
+One figure. Frame honestly as preliminary scenarios produced under outbreak
+time pressure, not as published analyses.]
+
+# Discussion
+
+EpiBranch.jl covers the individual-level stochastic and network paradigms.
+We deliberately leave compartmental models and general agent-based models out
+of scope, as both are already well served in Julia, the former by the
+differential-equation ecosystem [CITE: DifferentialEquations.jl / SciML] and
+the latter by Agents.jl [CITE: Agents.jl], whose natural unit of specification
+is an individual decision rule in a space.
+The intervention layer here sits above individual rules, as a policy is
+generally a function of population state that modifies transmission
+probabilities, delays and statuses.
+In a branching process in which individuals neither move nor interact
+spatially, a scheduler and a space add relatively little, whereas a minimal
+stepping function keeps the offspring draw an analysable object.
+
+Each of the three requirements that are not met in @sec-composability is an
+open problem that maps onto ongoing development.
+Components currently carry structure alone, and priors live in the Turing model
+written by the user.
+Carrying a default prior alongside the structure of a component would allow a
+composed model to be sampled from directly, and would make the prior
+predictive a property of the composition itself.
+There is no hierarchical primitive, so one has to write partial pooling across
+groups by hand in the enclosing model, for example where schools, households or
+districts share a reproduction number with group-level deviations.
+Nor is there anything first-class for composition with learned components, in
+which a neural network or Gaussian process supplies a rate or a delay
+distribution.
+Beyond this, a modelling language above the Julia API would be a further step,
+and one with a specific motivation, as a small validated vocabulary is a more
+tractable target for automated model construction than a general-purpose API,
+and the
+tutorials that are checked at build time together with the duality regression
+tests already give such a layer something to validate against.
+
+The wider aim is a set of composable components for infectious disease
+modelling in Julia in which the scale at which a question is posed does not
+determine which package can answer it.
+The bridge to EpiAware is a first instance of this, as the offspring
+distribution and generation interval that drive an individual-level simulation
+with interventions also define the renewal projection that is fitted to
+aggregate incidence, and a household likelihood can enter the same joint model.
+The composability requirements against which we reviewed the design were drawn
+up for that wider programme, and the gaps they expose in priors, pooling and
+learned components are gaps across it.
+
+# Software availability
+
+EpiBranch.jl is available at <https://github.com/epiforecasts/EpiBranch.jl>
+under the MIT license.
+[Add Zenodo DOI once minted.]
+Documentation, tutorials and the full design rationale are at
+<https://epiforecasts.github.io/EpiBranch.jl/>.
+
+# Acknowledgements
+
+We thank Sam Abbott for the composability requirements against which the design
+is reviewed in @sec-composability, and for the comparison with EpiAware.jl that
+shaped the bridge described there [MOVE TO AUTHOR LIST IF CO-AUTHORING].
+We also thank the authors and maintainers of `epichains`, `superspreading`,
+`simulist`, `ringbp` and `pepbp`, on whose R implementations the design draws,
+and the developers of Turing.jl, whose submodel interface the cross-package
+composition relies on.
+[SF acknowledges support from ... (add current fellowship or grant number).]
+[Contributors: add from repository history before submission.]
+
+# References
