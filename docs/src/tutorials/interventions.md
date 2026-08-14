@@ -391,9 +391,40 @@ generation times of `Exponential(5.0)`, protection arriving 42 days after
 the trace has nothing left to prevent, so containment here is the same
 with the boost as without it.
 
-Against tracing that does not quarantine, where a dose has something left
-to do, speed decides it: protection arriving the day of the trace raises
-containment, and the same efficacy arriving a week later does not.
+### Protecting a contact who has already been exposed
+
+`efficacy` blocks an exposure that comes *after* immunity. A traced
+contact was exposed at the moment they entered the simulation, so on a
+branching process that condition is almost never met and the parameter
+does nothing. The dose can still abort the infection, as long as immunity
+arrives before the infection declares itself, and that is what
+`post_exposure_efficacy` models — immunity racing the contact's symptom
+onset rather than their exposure:
+
+```@example interventions
+ct_flag = ContactTracing(probability = 0.7,
+    isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = false)
+
+for (label, rv) in [
+    ("no vaccine", nothing),
+    ("efficacy = 0.9", RingVaccination(efficacy = 0.9)),
+    ("post_exposure_efficacy = 0.9",
+        RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9)),
+]
+    stack = rv === nothing ? [iso, ct_flag] : [iso, ct_flag, rv]
+    rng = StableRNG(42)
+    results = simulate(scenario(stack), 400; max_cases = 500, rng = rng)
+    println(rpad(label, 30), round(containment_probability(results), digits = 3))
+end
+```
+
+Speed is what decides it. Immunity has to arrive within the incubation
+period to be worth anything, so a vaccine taking three weeks to protect
+does nothing for the ring it was given to, whatever its efficacy.
+
+Contacts with no onset to beat — asymptomatic ones, whose incubation
+period is `NaN` — gain no post-exposure protection. Requires
+`:incubation_period`, from [`clinical_presentation`](@ref).
 
 ## Effort tracking
 

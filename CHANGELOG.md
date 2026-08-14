@@ -15,6 +15,12 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   stochastic SIR final-size law (`R0 = β·E[infectious period]`) and an infection
   time for every case.
 
+- `RingVaccination` gains `post_exposure_efficacy`, the probability that a dose
+  given to an already-exposed contact aborts that infection, which it can do
+  whenever immunity arrives before the contact's symptom onset. On a branching
+  process this is the operative parameter: a traced contact was exposed when
+  they entered the simulation, so `efficacy`, which requires immunity before
+  the exposure, has nothing to gate.
 - `RingVaccination` can schedule a second dose: `dose_delay` gives it that many
   days after the trace, and `requires_dose` restricts it to contacts already
   carrying the named earlier dose, so its `coverage` reads as the retention

@@ -99,7 +99,16 @@ end
 
 """Susceptibility-side risk: blocks the parent → contact transmission
 iff this dose has been administered to the contact and the contact's
-vaccine-induced immunity has developed by their transmission time."""
+vaccine-induced immunity has developed by their transmission time.
+
+Note that a dose has to *precede* the exposure it blocks. On a branching
+process each individual enters the simulation at their own exposure, so
+this fires only where a trace can outrun an exposure: a wider ring
+reaching past infected members who never become eligible to seed a ring
+of their own, or an isolation leaky enough that an infector keeps
+transmitting after the ring has gone out. For the ordinary case of a
+dose given to a contact already exposed, see `post_exposure_efficacy` on
+[`RingVaccination`](@ref)."""
 function _susceptibility_risk(v::AbstractVaccination, contact)
     label = dose_label(v)
     get(contact.state, _vaccinated_key(label), false) || return nothing
@@ -153,6 +162,24 @@ at vaccination time, not at immunity-onset time, so a contact
 vaccinated near the window's end with a long `delay_to_immunity` is
 still recorded as vaccinated (whether immunity arrives before that
 contact's own transmission time is then decided by competing risks).
+
+`post_exposure_efficacy` is the probability that a dose given to an
+already-exposed contact aborts that infection, which it can do so long
+as immunity arrives before the infection declares itself (vaccination +
+`delay_to_immunity` before the contact's symptom onset). This is the
+mechanism post-exposure ring vaccination works through, and on a
+branching process it is normally the parameter you want: a traced
+contact was exposed at the moment they entered the simulation, so
+`efficacy` — which asks for immunity *before* the exposure — has
+nothing to gate. Defaults to `0.0`. Contacts with no onset to beat
+(asymptomatic, `NaN` incubation period) gain no protection from it.
+Requires `:incubation_period`, set by
+[`clinical_presentation`](@ref).
+
+Immunity before onset is a weaker condition than immunity before
+exposure, so `post_exposure_efficacy` already covers the contacts
+`efficacy` would have protected. Set one or the other; setting both
+composes them as independent risks and double-counts.
 
 `onward_efficacy` is the per-exposure probability that a *vaccinated
 parent's* onward transmission is blocked once the parent's
@@ -218,12 +245,15 @@ Base.@kwdef struct RingVaccination{E, C, W, M <: AbstractEffectMode} <: Abstract
     dose_delay::Float64 = 0.0
     requires_dose::Union{Nothing, Symbol} = nothing
     eligibility_window::W = Inf
+    post_exposure_efficacy::Float64 = 0.0
     onward_efficacy::Float64 = 0.0
     mode::M = LeakyMode()
     dose_label::Symbol = :default
 end
 
-required_fields(::RingVaccination) = [:traced]
+function required_fields(rv::RingVaccination)
+    rv.post_exposure_efficacy > 0.0 ? [:traced, :incubation_period] : [:traced]
+end
 required_dose(rv::RingVaccination) = rv.requires_dose
 
 # Onward-infectiousness risk: blocks the parent → contact transmission
@@ -242,15 +272,45 @@ function _onward_risk(rv::RingVaccination, parent)
         block_probability = rv.onward_efficacy)
 end
 
-# Combine the susceptibility risk (acting on the contact) with the
-# optional onward-infectiousness risk (acting on the parent). Returning
-# a tuple of risks is supported by the engine's `_iter_risks` helper.
+# Post-exposure risk: a dose given after the contact was exposed can still
+# abort that infection, so long as immunity arrives before the infection
+# declares itself. The engine asks whether a risk's `event_time` falls at or
+# before the transmission time, so shifting the immunity time back by the
+# contact's incubation period turns that test into
+#
+#     vaccination + delay_to_immunity <= exposure + incubation
+#
+# which is immunity arriving before symptom onset. A contact with no onset to
+# beat (asymptomatic, `NaN` incubation) gains no post-exposure protection.
+function _post_exposure_risk(rv::RingVaccination, contact)
+    rv.post_exposure_efficacy > 0.0 || return nothing
+    label = dose_label(rv)
+    get(contact.state, _vaccinated_key(label), false) || return nothing
+    vacc_t = get(contact.state, _vaccination_time_key(label), Inf)
+    isfinite(vacc_t) || return nothing
+    incubation = get(contact.state, :incubation_period, NaN)
+    isnan(incubation) && return nothing
+    return Risk(event_time = vacc_t + delay_to_immunity(rv) - incubation,
+        block_probability = rv.post_exposure_efficacy)
+end
+
+# Drop the mechanisms this vaccination does not use, so the engine sees only
+# the risks that can fire.
+_compact_risks() = ()
+_compact_risks(::Nothing, rest...) = _compact_risks(rest...)
+_compact_risks(risk::Risk, rest...) = (risk, _compact_risks(rest...)...)
+
+# Ring vaccination gates a transmission through three mechanisms: protection
+# of the contact before exposure, protection of the contact after exposure but
+# before their infection declares itself, and reduced onward transmission from
+# a vaccinated parent. Returning a tuple of risks is supported by the engine's
+# `_iter_risks` helper, which applies each independently.
 function competing_risk(rv::RingVaccination, parent, contact, state)
-    susceptibility = _susceptibility_risk(rv, contact)
-    onward = _onward_risk(rv, parent)
-    susceptibility === nothing && return onward
-    onward === nothing && return susceptibility
-    return (susceptibility, onward)
+    risks = _compact_risks(_susceptibility_risk(rv, contact),
+        _post_exposure_risk(rv, contact),
+        _onward_risk(rv, parent))
+    isempty(risks) && return nothing
+    return risks
 end
 
 # Scalar defaults short-circuit without drawing from the rng so that
