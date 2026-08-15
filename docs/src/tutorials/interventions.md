@@ -422,8 +422,10 @@ Speed is what decides it. Immunity has to arrive within the incubation
 period to be worth anything, so a vaccine taking three weeks to protect
 does nothing for the ring it was given to, whatever its efficacy.
 
-Contacts with no onset to beat — asymptomatic ones, whose incubation
-period is `NaN` — gain no post-exposure protection. Requires
+A contact with no onset to race — an asymptomatic one, whose incubation
+period is `NaN` — falls back to needing immunity before their exposure.
+So `post_exposure_efficacy` covers every contact `efficacy` would have
+protected, and setting both double-counts. Requires
 `:incubation_period`, from [`clinical_presentation`](@ref).
 
 ## Effort tracking

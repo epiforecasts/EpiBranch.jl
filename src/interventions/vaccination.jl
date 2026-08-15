@@ -171,15 +171,15 @@ mechanism post-exposure ring vaccination works through, and on a
 branching process it is normally the parameter you want: a traced
 contact was exposed at the moment they entered the simulation, so
 `efficacy` — which asks for immunity *before* the exposure — has
-nothing to gate. Defaults to `0.0`. Contacts with no onset to beat
-(asymptomatic, `NaN` incubation period) gain no protection from it.
-Requires `:incubation_period`, set by
-[`clinical_presentation`](@ref).
+nothing to gate. Defaults to `0.0`. A contact with no onset to race
+(asymptomatic, `NaN` incubation period) is protected only if immunity
+was in place before their exposure. Requires `:incubation_period`, set
+by [`clinical_presentation`](@ref).
 
 Immunity before onset is a weaker condition than immunity before
-exposure, so `post_exposure_efficacy` already covers the contacts
-`efficacy` would have protected. Set one or the other; setting both
-composes them as independent risks and double-counts.
+exposure, so `post_exposure_efficacy` already covers every contact
+`efficacy` would have protected. Set one or the other: setting both
+composes them as independent risks, which double-counts.
 
 `onward_efficacy` is the per-exposure probability that a *vaccinated
 parent's* onward transmission is blocked once the parent's
@@ -280,17 +280,23 @@ end
 #
 #     vaccination + delay_to_immunity <= exposure + incubation
 #
-# which is immunity arriving before symptom onset. A contact with no onset to
-# beat (asymptomatic, `NaN` incubation) gains no post-exposure protection.
+# which is immunity arriving before symptom onset.
+#
+# A contact with no onset to race (asymptomatic, `NaN` incubation) falls back
+# to the stricter pre-exposure condition rather than dropping out. Dropping out
+# would leave asymptomatic contacts reachable only by `efficacy`, so the two
+# fields would be complementary and a user would have to set both — and then
+# double-count on every symptomatic contact protected before exposure.
 function _post_exposure_risk(rv::RingVaccination, contact)
     rv.post_exposure_efficacy > 0.0 || return nothing
     label = dose_label(rv)
     get(contact.state, _vaccinated_key(label), false) || return nothing
     vacc_t = get(contact.state, _vaccination_time_key(label), Inf)
     isfinite(vacc_t) || return nothing
+    immunity = vacc_t + delay_to_immunity(rv)
     incubation = get(contact.state, :incubation_period, NaN)
-    isnan(incubation) && return nothing
-    return Risk(event_time = vacc_t + delay_to_immunity(rv) - incubation,
+    event_time = isnan(incubation) ? immunity : immunity - incubation
+    return Risk(event_time = event_time,
         block_probability = rv.post_exposure_efficacy)
 end
 

@@ -518,9 +518,12 @@
                 @test EpiBranch._post_exposure_risk(rv, contact).event_time >
                       contact.infection_time
 
-                # No onset to beat: asymptomatic contacts get no protection.
+                # No onset to race: asymptomatic contacts fall back to needing
+                # immunity before the exposure, which at 14 > 10 fails here.
                 contact.state[:incubation_period] = NaN
-                @test EpiBranch._post_exposure_risk(rv, contact) === nothing
+                asymp_risk = EpiBranch._post_exposure_risk(rv, contact)
+                @test asymp_risk.event_time == 14.0
+                @test asymp_risk.event_time > contact.infection_time
 
                 # Unvaccinated contacts are untouched.
                 unvaccinated = Individual(id = 2, infection_time = 10.0)
