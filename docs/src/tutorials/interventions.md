@@ -429,8 +429,31 @@ end
 ```
 
 Speed is what decides it. Immunity has to arrive within the incubation
-period to be worth anything, so a vaccine taking three weeks to protect
-does nothing for the ring it was given to, whatever its efficacy.
+period to be worth anything, and incubation periods here average about
+five days:
+
+```@example interventions
+rng = StableRNG(42)
+baseline = simulate(scenario([iso, ct_flag]), 400; max_cases = 500, rng = rng)
+println("No vaccine:                ",
+    round(containment_probability(baseline), digits = 3))
+for days in [0.0, 5.0, 21.0]
+    let rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9,
+            delay_to_immunity = days),
+        rng = StableRNG(42)
+        results = simulate(scenario([iso, ct_flag, rv]), 400;
+            max_cases = 500, rng = rng)
+        println("Immunity after $(lpad(Int(days), 2)) days:    ",
+            round(containment_probability(results), digits = 3))
+    end
+end
+```
+
+Same-day protection roughly doubles containment. By five days most of
+that is gone, and by three weeks the vaccine is back at the no-vaccine
+figure — the two are within Monte Carlo noise of each other at 400
+replicates, and blocking a transmission diverges the run, so read the
+last row as "no measurable effect" rather than as harm.
 
 A contact with no onset to race — an asymptomatic one, whose incubation
 period is `NaN` — falls back to needing immunity before their exposure.
