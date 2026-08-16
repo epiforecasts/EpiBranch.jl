@@ -40,7 +40,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   `:trace_time` that `ContactTracing` records for every traced contact. It
   previously read the contact's isolation state instead, which under
   `quarantine_on_trace = false` timed doses at symptom onset and gave no
-  dose at all to traced contacts drawn asymptomatic.
+  dose at all to traced contacts drawn asymptomatic. Because `:trace_time` is
+  now recorded at every tracing depth, `linelist` gains a `date_trace` column
+  for runs at the default `depth = 1`, which previously had none.
 
 ## [0.1.0] - 2026-06-16
 
