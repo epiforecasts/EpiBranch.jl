@@ -589,6 +589,20 @@
                 @test EpiBranch._post_exposure_risk(rv, unvaccinated) === nothing
             end
 
+            @testset "Setting both efficacies warns" begin
+                both = RingVaccination(efficacy = 0.9, post_exposure_efficacy = 0.9)
+                @test_logs (:warn, r"both `efficacy` and `post_exposure_efficacy`") ModelSpec(
+                    process; interventions = [iso, ct, both], attributes = clinical)
+                # Either alone is silent.
+                @test_logs ModelSpec(process;
+                    interventions = [iso, ct,
+                        RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9)],
+                    attributes = clinical)
+                @test_logs ModelSpec(process;
+                    interventions = [iso, ct, RingVaccination(efficacy = 0.9)],
+                    attributes = clinical)
+            end
+
             @testset "Requires an incubation period" begin
                 rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9)
                 @test :incubation_period in EpiBranch.required_fields(rv)

@@ -391,7 +391,25 @@ function _validate_dose_schedule(interventions)
             end
         end
         given[label] = _dose_offset(vacc)
+        _warn_double_counted_efficacy(vacc)
     end
+    return nothing
+end
+
+# Immunity before onset is weaker than immunity before exposure, so a dose
+# setting both fields blocks with `1 - (1 - e1)(1 - e2)` for any contact
+# vaccinated ahead of its exposure — which is routine once isolation is leaky,
+# since a contact's trace time comes from its infector's course rather than
+# its own. Only checkable for the scalar forms; a function or distribution
+# efficacy is left alone.
+_warn_double_counted_efficacy(::AbstractVaccination) = nothing
+function _warn_double_counted_efficacy(rv::RingVaccination)
+    rv.post_exposure_efficacy > 0.0 || return nothing
+    rv.efficacy isa Real && rv.efficacy > 0.0 || return nothing
+    @warn "RingVaccination sets both `efficacy` and `post_exposure_efficacy`, "*
+          "which compose as independent risks and so over-protect any contact "*
+          "vaccinated before its exposure. `post_exposure_efficacy` already "*
+          "covers those contacts; set one or the other." dose_label=dose_label(rv) maxlog=1
     return nothing
 end
 
