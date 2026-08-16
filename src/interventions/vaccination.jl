@@ -306,10 +306,16 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
         get(ind.state, vacc_key, false) && continue
         _has_required_dose(rv, ind) || continue
         # Fire when the tracing team reached the contact. `ContactTracing`
-        # records that as `:trace_time`; the isolation-derived times are a
-        # fallback for a custom `TraceAction` that sets `:traced` without it.
-        trace_t = get(ind.state, :trace_time,
-            min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf)))
+        # records that as `:trace_time` whatever its trace action, so the
+        # isolation-derived times below are reached only when something
+        # other than `ContactTracing` set `:traced` — or when the trace time
+        # was not finite and so was not recorded. Branch rather than passing
+        # a `get` default, which Julia would evaluate on every contact.
+        trace_t = if haskey(ind.state, :trace_time)
+            ind.state[:trace_time]
+        else
+            min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
+        end
         vacc_t = trace_t + rv.dose_delay
         isfinite(vacc_t) || continue
         _within_eligibility_window(rv.eligibility_window, ind, vacc_t, state.rng) ||
