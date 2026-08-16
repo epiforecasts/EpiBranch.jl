@@ -475,7 +475,12 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
         # contact time themselves from this rather than from whatever the
         # trace action wrote on the contact's isolation state, which depends
         # on the action and on the contact's own clinical course.
-        ind.state[:trace_time] = trace_time
+        #
+        # Keep the earliest across tracing systems, matching how `Quarantine`
+        # keeps the earliest isolation time: with several `ContactTracing`
+        # interventions in the stack, a contact is reached when the *first*
+        # of them gets there, not when the last one in the list does.
+        ind.state[:trace_time] = min(get(ind.state, :trace_time, Inf), trace_time)
 
         # Record how far the ring can still grow from this contact, so a
         # contact-of-contact one hop further out can time its own trace from
