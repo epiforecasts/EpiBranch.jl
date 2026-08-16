@@ -603,6 +603,48 @@
                     attributes = clinical)
             end
 
+            @testset "Every combination of risks is returned" begin
+                # The branch ladder in `competing_risk` is written out for
+                # inference, so each shape needs exercising — including the
+                # three-risk case, which no simulation test reaches.
+                function risks(rv; contact_dosed = true, parent_dosed = true,
+                        incubation = 6.0)
+                    parent = Individual(id = 1, infection_time = 0.0)
+                    contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+                    for (ind, dosed) in ((contact, contact_dosed), (parent, parent_dosed))
+                        ind.state[:vaccinated] = dosed
+                        ind.state[:vaccination_time] = dosed ? 2.0 : Inf
+                        ind.state[:vaccine_efficacy] = rv.efficacy
+                        ind.state[:incubation_period] = incubation
+                    end
+                    r = EpiBranch.competing_risk(rv, parent, contact, nothing)
+                    r === nothing ? 0 : (r isa EpiBranch.Risk ? 1 : length(r))
+                end
+
+                susceptibility_only = RingVaccination(efficacy = 0.5)
+                post_only = RingVaccination(efficacy = 0.0,
+                    post_exposure_efficacy = 0.5)
+                onward_only = RingVaccination(efficacy = 0.0, onward_efficacy = 0.5)
+                all_three = RingVaccination(efficacy = 0.5,
+                    post_exposure_efficacy = 0.5, onward_efficacy = 0.5)
+
+                @test risks(susceptibility_only; parent_dosed = false) == 1
+                @test risks(post_only; parent_dosed = false) == 1
+                @test risks(onward_only; contact_dosed = false) == 1
+                @test risks(RingVaccination(efficacy = 0.5, onward_efficacy = 0.5)) == 2
+                @test risks(RingVaccination(efficacy = 0.0,
+                    post_exposure_efficacy = 0.5, onward_efficacy = 0.5)) == 2
+                @test risks(RingVaccination(efficacy = 0.5,
+                        post_exposure_efficacy = 0.5);
+                    parent_dosed = false) == 2
+                @test risks(all_three) == 3
+                # Nobody dosed: no risk at all.
+                @test risks(all_three; contact_dosed = false, parent_dosed = false) == 0
+                # An asymptomatic contact still gets the post-exposure risk, at
+                # the stricter pre-exposure event time.
+                @test risks(post_only; parent_dosed = false, incubation = NaN) == 1
+            end
+
             @testset "Requires an incubation period" begin
                 rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9)
                 @test :incubation_period in EpiBranch.required_fields(rv)

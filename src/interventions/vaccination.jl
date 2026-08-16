@@ -116,6 +116,11 @@ function _susceptibility_risk(v::AbstractVaccination, contact)
     isfinite(vacc_t) || return nothing
     eff = get(contact.state, _vaccine_efficacy_key(label), nothing)
     eff === nothing && return nothing
+    # A zero-efficacy dose can never block, and the engine would skip the risk
+    # anyway. Returning nothing keeps it out of the returned tuple, which
+    # matters for the recommended post-exposure-only setup (`efficacy = 0.0`)
+    # where it would otherwise be built and discarded for every contact.
+    eff <= 0 && return nothing
     return Risk(event_time = vacc_t + delay_to_immunity(v), block_probability = eff)
 end
 
