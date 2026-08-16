@@ -66,7 +66,7 @@ downstream packages should pick names that do not collide.
 | `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
 | `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff |
-| `:trace_time` | `Float64` | — | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
+| `:trace_time` | `Float64` | — | `ContactTracing` | `apply_post_transmission!` |
 | `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
 | `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | Post-simulation |

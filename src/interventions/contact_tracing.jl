@@ -317,8 +317,10 @@ to vaccinate the whole ring:
 
 Needs `:asymptomatic`, `:onset_time` from `clinical_presentation()` and optionally
 `:isolated`, `:isolation_time`, `:test_positive` depending on eligibility type.
-Sets `:traced`, `:quarantined`. With `depth > 1` also sets `:trace_time`
-and `:ring_remaining` to carry the ring outward.
+Sets `:traced`, `:quarantined` and `:trace_time` (when the contact was
+reached, which is what interventions acting on traced contacts time
+themselves from). With `depth > 1` also sets `:ring_remaining` to carry
+the ring outward.
 """
 struct ContactTracing{
     E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction} <:
@@ -412,6 +414,7 @@ function reset!(::ContactTracing, ind::Individual)
     ind.state[:quarantined] = false
     haskey(ind.state, :traced_by) && delete!(ind.state, :traced_by)
     haskey(ind.state, :trace_level) && delete!(ind.state, :trace_level)
+    haskey(ind.state, :trace_time) && delete!(ind.state, :trace_time)
     if is_isolated(ind)
         ind.state[:isolated] = false
         ind.state[:isolation_time] = Inf
@@ -468,11 +471,28 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
         # back to the index case post-run; see issue #150.
         ind.state[:traced_by] = infector.id
 
-        # Record how far the ring can still grow from this contact, and
-        # when it was traced, so a contact-of-contact one hop further out
-        # can time its own trace from here. Only `depth > 1` rings expand.
+        # When the contact was reached. Interventions that act on a traced
+        # contact time themselves from this rather than from whatever the
+        # trace action wrote on the contact's isolation state, which depends
+        # on the action and on the contact's own clinical course.
+        #
+        # Keep the earliest across tracing systems, matching how `Quarantine`
+        # keeps the earliest isolation time: with several `ContactTracing`
+        # interventions in the stack, a contact is reached when the first of
+        # them gets there.
+        #
+        # A non-finite trace time carries no information about when that was,
+        # and `min` propagates `NaN`, so it would destroy a good time another
+        # tracing system had already written. Such times exist today: see
+        # issue #248 for the `trigger_time` reduction that produces them.
+        if isfinite(trace_time)
+            ind.state[:trace_time] = min(get(ind.state, :trace_time, Inf), trace_time)
+        end
+
+        # Record how far the ring can still grow from this contact, so a
+        # contact-of-contact one hop further out can time its own trace from
+        # here. Only `depth > 1` rings expand.
         if ct.depth > 1
-            ind.state[:trace_time] = trace_time
             ind.state[:ring_remaining] = seed ? ct.depth - 1 :
                                          get(infector.state, :ring_remaining, 0)::Int - 1
         end
