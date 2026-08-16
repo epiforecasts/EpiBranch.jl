@@ -275,25 +275,41 @@ _has_required_dose(label::Symbol, ind) = get(ind.state, _vaccinated_key(label), 
     _validate_dose_schedule(interventions)
 
 Check that every vaccination requiring an earlier dose is listed after the
-dose it requires. The stack is applied in order, so a dose placed before
-the one it requires would silently never be given.
+dose it requires, and is not scheduled to arrive before it. The stack is
+applied in order, so a dose placed before the one it requires would silently
+never be given; and because the required dose's flag is set at the trace
+whatever its own `dose_delay`, a shorter `dose_delay` on the later dose would
+otherwise let it be administered first.
 """
 function _validate_dose_schedule(interventions)
-    given = Set{Symbol}()
+    given = Dict{Symbol, Float64}()
     for iv in interventions
         vacc = _unwrap_scheduled(iv)
         vacc isa AbstractVaccination || continue
+        label = dose_label(vacc)
         req = required_dose(vacc)
-        if req !== nothing && !(req in given)
-            throw(ArgumentError(
-                "vaccination with dose_label = :$(dose_label(vacc)) requires dose " *
-                ":$req, which is not given earlier in the intervention stack. " *
+        if req !== nothing
+            haskey(given, req) || throw(ArgumentError(
+                "vaccination with dose_label = :$label requires dose :$req, " *
+                "which is not given earlier in the intervention stack. " *
                 "List a dose after the dose it requires."))
+            if _dose_offset(vacc) < given[req]
+                throw(ArgumentError(
+                    "vaccination with dose_label = :$label requires dose :$req " *
+                    "but is scheduled earlier than it ($(_dose_offset(vacc)) days " *
+                    "after the trace against $(given[req])). A dose cannot be " *
+                    "given before the dose it requires."))
+            end
         end
-        push!(given, dose_label(vacc))
+        given[label] = _dose_offset(vacc)
     end
     return nothing
 end
+
+"""Days from the triggering event to this dose being administered. Only
+[`RingVaccination`](@ref) delays a dose relative to its trigger."""
+_dose_offset(::AbstractVaccination) = 0.0
+_dose_offset(rv::RingVaccination) = rv.dose_delay
 
 # The intervention a wrapper stands in for; `Scheduled` adds its method.
 _unwrap_scheduled(iv) = iv

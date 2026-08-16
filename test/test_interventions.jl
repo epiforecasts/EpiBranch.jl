@@ -484,6 +484,24 @@
                 end
             end
 
+            @testset "A dose scheduled before the one it requires is rejected" begin
+                # List order is right, but the boost arrives at the trace while
+                # the prime does not arrive until 28 days later.
+                late_prime = RingVaccination(efficacy = 0.6, dose_delay = 28.0,
+                    dose_label = :prime)
+                early_boost = RingVaccination(efficacy = 0.5, dose_delay = 0.0,
+                    requires_dose = :prime, dose_label = :boost)
+                @test_throws ArgumentError ModelSpec(process;
+                    interventions = [iso, ct, late_prime, early_boost],
+                    attributes = clinical)
+                # Same instant is allowed: both doses fire at the trace.
+                same_instant = RingVaccination(efficacy = 0.5,
+                    requires_dose = :prime, dose_label = :boost)
+                @test ModelSpec(process;
+                    interventions = [iso, ct, prime, same_instant],
+                    attributes = clinical) isa ModelSpec
+            end
+
             @testset "A dose listed before the one it requires is rejected" begin
                 boost = RingVaccination(efficacy = 0.5, requires_dose = :prime,
                     dose_label = :boost)
