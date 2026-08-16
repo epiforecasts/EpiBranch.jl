@@ -40,8 +40,9 @@ function ModelSpec(process::TransmissionModel;
         observation = observation(process))
     prog = _progvec(progression)
     _validate_process_windows(process, prog)
-    return ModelSpec(process, prog,
-        _intervention_vector(interventions), attributes, observation)
+    ivs = _intervention_vector(interventions)
+    _validate_dose_schedule(ivs)
+    return ModelSpec(process, prog, ivs, attributes, observation)
 end
 
 # Convenience accessors — the spec's own modelling layers.

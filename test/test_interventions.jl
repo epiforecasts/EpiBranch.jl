@@ -415,6 +415,108 @@
             @test all(is_vaccinated, traced_asymp)
         end
 
+        @testset "Second dose" begin
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+            ct = ContactTracing(probability = 1.0,
+                isolation_to_trace_delay = Exponential(1.0))
+            prime = RingVaccination(efficacy = 0.6, delay_to_immunity = 21.0,
+                dose_label = :prime)
+            process = BranchingProcess(Poisson(2.0), Exponential(5.0))
+
+            @testset "Given dose_delay days after the prime" begin
+                boost = RingVaccination(efficacy = 0.5, dose_delay = 28.0,
+                    delay_to_immunity = 14.0, requires_dose = :prime,
+                    dose_label = :boost)
+                state = simulate(
+                    ModelSpec(process; interventions = [iso, ct, prime, boost],
+                        attributes = clinical);
+                    condition = 50:200, max_cases = 200, rng = StableRNG(5))
+                n_boosted = 0
+                for ind in state.individuals
+                    get(ind.state, :vaccinated_boost, false) || continue
+                    n_boosted += 1
+                    @test ind.state[:vaccination_time_boost] ==
+                          ind.state[:vaccination_time_prime] + 28.0
+                end
+                @test n_boosted > 0  # otherwise the test is vacuous
+            end
+
+            @testset "requires_dose gates the boost on the prime" begin
+                # Nobody is primed, so nobody can be boosted.
+                prime_none = RingVaccination(efficacy = 0.6, coverage = 0.0,
+                    dose_label = :prime)
+                boost = RingVaccination(efficacy = 0.5, requires_dose = :prime,
+                    dose_label = :boost)
+                state = simulate(
+                    ModelSpec(process;
+                        interventions = [iso, ct, prime_none, boost],
+                        attributes = clinical);
+                    condition = 50:200, max_cases = 200, rng = StableRNG(5))
+                @test count(is_traced, state.individuals) > 0
+                @test !any(i -> get(i.state, :vaccinated_boost, false),
+                    state.individuals)
+            end
+
+            @testset "Boost coverage thins the boosted among the primed" begin
+                # Full coverage boosts everyone primed; partial coverage
+                # boosts a strict subset. Compared within each run, since
+                # the coverage draws move the rng stream between them.
+                full = RingVaccination(efficacy = 0.5, requires_dose = :prime,
+                    dose_label = :boost)
+                partial = RingVaccination(efficacy = 0.5, coverage = 0.5,
+                    requires_dose = :prime, dose_label = :boost)
+                for (boost, boosts_everyone) in ((full, true), (partial, false))
+                    states = simulate(
+                        ModelSpec(process; interventions = [iso, ct, prime, boost],
+                            attributes = clinical),
+                        30; max_cases = 100, rng = StableRNG(9))
+                    primed = sum(count(i -> i.state[:vaccinated_prime], s.individuals)
+                    for s in states)
+                    boosted = sum(count(i -> i.state[:vaccinated_boost], s.individuals)
+                    for s in states)
+                    @test primed > 0  # otherwise the test is vacuous
+                    for s in states, ind in s.individuals
+
+                        ind.state[:vaccinated_boost] && @test ind.state[:vaccinated_prime]
+                    end
+                    boosts_everyone ? (@test boosted == primed) :
+                    (@test 0 < boosted < primed)
+                end
+            end
+
+            @testset "A dose scheduled before the one it requires is rejected" begin
+                # List order is right, but the boost arrives at the trace while
+                # the prime does not arrive until 28 days later.
+                late_prime = RingVaccination(efficacy = 0.6, dose_delay = 28.0,
+                    dose_label = :prime)
+                early_boost = RingVaccination(efficacy = 0.5, dose_delay = 0.0,
+                    requires_dose = :prime, dose_label = :boost)
+                @test_throws ArgumentError ModelSpec(process;
+                    interventions = [iso, ct, late_prime, early_boost],
+                    attributes = clinical)
+                # Same instant is allowed: both doses fire at the trace.
+                same_instant = RingVaccination(efficacy = 0.5,
+                    requires_dose = :prime, dose_label = :boost)
+                @test ModelSpec(process;
+                    interventions = [iso, ct, prime, same_instant],
+                    attributes = clinical) isa ModelSpec
+            end
+
+            @testset "A dose listed before the one it requires is rejected" begin
+                boost = RingVaccination(efficacy = 0.5, requires_dose = :prime,
+                    dose_label = :boost)
+                @test_throws ArgumentError ModelSpec(process;
+                    interventions = [iso, ct, boost, prime], attributes = clinical)
+                # Wrapping in `Scheduled` must not hide the requirement.
+                @test_throws ArgumentError ModelSpec(process;
+                    interventions = [iso, ct, Scheduled(boost; start_time = 10.0),
+                        prime], attributes = clinical)
+                @test ModelSpec(process;
+                    interventions = [iso, ct, prime, boost],
+                    attributes = clinical) isa ModelSpec
+            end
+        end
+
         @testset "Onward efficacy blocks next-generation transmission" begin
             # With onward_efficacy = 1.0 and delay_to_immunity = 0.0,
             # any infected child of a vaccinated parent must have been

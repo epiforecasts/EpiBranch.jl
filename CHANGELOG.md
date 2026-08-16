@@ -15,6 +15,12 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   stochastic SIR final-size law (`R0 = β·E[infectious period]`) and an infection
   time for every case.
 
+- `RingVaccination` can schedule a second dose: `dose_delay` gives it that many
+  days after the trace, and `requires_dose` restricts it to contacts already
+  carrying the named earlier dose, so its `coverage` reads as the retention
+  between doses. A dose listed before the dose it requires is rejected when the
+  `ModelSpec` is built.
+
 ### Changed
 
 - The fixed-size population pool's mixing structure is now keyed on the
