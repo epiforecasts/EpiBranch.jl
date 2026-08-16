@@ -401,9 +401,65 @@ the trace has nothing left to prevent.
     exactly. Otherwise, compare across many seeds, or reason from the
     timing as here.
 
-Against tracing that does not quarantine, where a dose has something left
-to do, speed decides it: protection arriving the day of the trace raises
-containment, and the same efficacy arriving a week later does not.
+### Protecting a contact who has already been exposed
+
+`efficacy` blocks an exposure that comes *after* immunity. A traced
+contact was exposed at the moment they entered the simulation, so on a
+branching process that condition is almost never met and the parameter
+does nothing. The dose can still abort the infection, as long as immunity
+arrives before the infection declares itself, and that is what
+`post_exposure_efficacy` models — immunity racing the contact's symptom
+onset rather than their exposure:
+
+```@example interventions
+ct_flag = ContactTracing(probability = 0.7,
+    isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = false)
+
+for (label, rv) in [
+    ("no vaccine", nothing),
+    ("efficacy = 0.9", RingVaccination(efficacy = 0.9)),
+    ("post_exposure_efficacy = 0.9",
+        RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9)),
+]
+    stack = rv === nothing ? [iso, ct_flag] : [iso, ct_flag, rv]
+    rng = StableRNG(42)
+    results = simulate(scenario(stack), 400; max_cases = 500, rng = rng)
+    println(rpad(label, 30), round(containment_probability(results), digits = 3))
+end
+```
+
+Speed is what decides it. Immunity has to arrive within the incubation
+period to be worth anything, and incubation periods here average about
+five days:
+
+```@example interventions
+rng = StableRNG(42)
+baseline = simulate(scenario([iso, ct_flag]), 400; max_cases = 500, rng = rng)
+println("No vaccine:                ",
+    round(containment_probability(baseline), digits = 3))
+for days in [0.0, 5.0, 21.0]
+    let rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9,
+            delay_to_immunity = days),
+        rng = StableRNG(42)
+        results = simulate(scenario([iso, ct_flag, rv]), 400;
+            max_cases = 500, rng = rng)
+        println("Immunity after $(lpad(Int(days), 2)) days:    ",
+            round(containment_probability(results), digits = 3))
+    end
+end
+```
+
+Same-day protection roughly doubles containment. By five days most of
+that is gone, and by three weeks the vaccine is back at the no-vaccine
+figure — the two are within Monte Carlo noise of each other at 400
+replicates, and blocking a transmission diverges the run, so read the
+last row as "no measurable effect" rather than as harm.
+
+A contact with no onset to race — an asymptomatic one, whose incubation
+period is `NaN` — falls back to needing immunity before their exposure.
+So `post_exposure_efficacy` covers every contact `efficacy` would have
+protected, and setting both double-counts. Requires
+`:incubation_period`, from [`clinical_presentation`](@ref).
 
 ## Effort tracking
 

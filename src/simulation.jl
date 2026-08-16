@@ -1200,6 +1200,7 @@ function _field_hint(field::Symbol)
     hints = Dict(
         :onset_time => "Provide attributes = clinical_presentation(incubation_period = ...).",
         :asymptomatic => "Provide attributes = clinical_presentation(incubation_period = ...).",
+        :incubation_period => "Provide attributes = clinical_presentation(incubation_period = ...).",
         :age => "Provide attributes = demographics(age_distribution = ...).",
         :sex => "Provide attributes = demographics(...)."
     )

@@ -517,6 +517,142 @@
             end
         end
 
+        @testset "Post-exposure efficacy" begin
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+            ct = ContactTracing(probability = 0.7,
+                isolation_to_trace_delay = Exponential(1.0),
+                quarantine_on_trace = false)
+            process = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            scen(iv, attrs = clinical) = ModelSpec(process;
+                interventions = iv, attributes = attrs)
+
+            @testset "Protects contacts a pre-exposure dose cannot reach" begin
+                # `efficacy` asks for immunity before the exposure, which a dose
+                # given at the trace never achieves here; `post_exposure_efficacy`
+                # asks for immunity before onset, which it often does.
+                base = simulate(scen([iso, ct]), 400; max_cases = 200,
+                    rng = StableRNG(42))
+                pre = simulate(scen([iso, ct, RingVaccination(efficacy = 0.9)]),
+                    400; max_cases = 200, rng = StableRNG(42))
+                post = simulate(
+                    scen([
+                        iso, ct, RingVaccination(efficacy = 0.0,
+                            post_exposure_efficacy = 0.9)]),
+                    400; max_cases = 200, rng = StableRNG(42))
+
+                @test containment_probability(pre) == containment_probability(base)
+                @test containment_probability(post) > containment_probability(base)
+            end
+
+            @testset "Immunity arriving after onset protects nobody" begin
+                # Incubation periods here average about 5 days, so immunity 100
+                # days after the trace can never beat an onset.
+                slow = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0,
+                    delay_to_immunity = 100.0)
+                base = simulate(scen([iso, ct]), 200; max_cases = 200,
+                    rng = StableRNG(3))
+                results = simulate(scen([iso, ct, slow]), 200; max_cases = 200,
+                    rng = StableRNG(3))
+                @test containment_probability(results) ==
+                      containment_probability(base)
+            end
+
+            @testset "The risk is immunity racing the contact's onset" begin
+                rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9,
+                    delay_to_immunity = 2.0)
+                contact = Individual(id = 1, infection_time = 10.0)
+                contact.state[:vaccinated] = true
+                contact.state[:vaccination_time] = 12.0
+                contact.state[:incubation_period] = 6.0
+
+                # Immunity at 14 beats an onset at 16, so the risk's event time
+                # falls at or before the exposure the engine is resolving.
+                risk = EpiBranch._post_exposure_risk(rv, contact)
+                @test risk.event_time <= contact.infection_time
+                @test risk.block_probability == 0.9
+
+                # A shorter incubation puts onset at 13, before immunity at 14.
+                contact.state[:incubation_period] = 3.0
+                @test EpiBranch._post_exposure_risk(rv, contact).event_time >
+                      contact.infection_time
+
+                # No onset to race: asymptomatic contacts fall back to needing
+                # immunity before the exposure, which at 14 > 10 fails here.
+                contact.state[:incubation_period] = NaN
+                asymp_risk = EpiBranch._post_exposure_risk(rv, contact)
+                @test asymp_risk.event_time == 14.0
+                @test asymp_risk.event_time > contact.infection_time
+
+                # Unvaccinated contacts are untouched.
+                unvaccinated = Individual(id = 2, infection_time = 10.0)
+                unvaccinated.state[:vaccinated] = false
+                @test EpiBranch._post_exposure_risk(rv, unvaccinated) === nothing
+            end
+
+            @testset "Setting both efficacies warns" begin
+                both = RingVaccination(efficacy = 0.9, post_exposure_efficacy = 0.9)
+                @test_logs (:warn, r"both `efficacy` and `post_exposure_efficacy`") ModelSpec(
+                    process; interventions = [iso, ct, both], attributes = clinical)
+                # Either alone is silent.
+                @test_logs ModelSpec(process;
+                    interventions = [iso, ct,
+                        RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9)],
+                    attributes = clinical)
+                @test_logs ModelSpec(process;
+                    interventions = [iso, ct, RingVaccination(efficacy = 0.9)],
+                    attributes = clinical)
+            end
+
+            @testset "Every combination of risks is returned" begin
+                # The branch ladder in `competing_risk` is written out for
+                # inference, so each shape needs exercising — including the
+                # three-risk case, which no simulation test reaches.
+                function risks(rv; contact_dosed = true, parent_dosed = true,
+                        incubation = 6.0)
+                    parent = Individual(id = 1, infection_time = 0.0)
+                    contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+                    for (ind, dosed) in ((contact, contact_dosed), (parent, parent_dosed))
+                        ind.state[:vaccinated] = dosed
+                        ind.state[:vaccination_time] = dosed ? 2.0 : Inf
+                        ind.state[:vaccine_efficacy] = rv.efficacy
+                        ind.state[:incubation_period] = incubation
+                    end
+                    r = EpiBranch.competing_risk(rv, parent, contact, nothing)
+                    r === nothing ? 0 : (r isa EpiBranch.Risk ? 1 : length(r))
+                end
+
+                susceptibility_only = RingVaccination(efficacy = 0.5)
+                post_only = RingVaccination(efficacy = 0.0,
+                    post_exposure_efficacy = 0.5)
+                onward_only = RingVaccination(efficacy = 0.0, onward_efficacy = 0.5)
+                all_three = RingVaccination(efficacy = 0.5,
+                    post_exposure_efficacy = 0.5, onward_efficacy = 0.5)
+
+                @test risks(susceptibility_only; parent_dosed = false) == 1
+                @test risks(post_only; parent_dosed = false) == 1
+                @test risks(onward_only; contact_dosed = false) == 1
+                @test risks(RingVaccination(efficacy = 0.5, onward_efficacy = 0.5)) == 2
+                @test risks(RingVaccination(efficacy = 0.0,
+                    post_exposure_efficacy = 0.5, onward_efficacy = 0.5)) == 2
+                @test risks(RingVaccination(efficacy = 0.5,
+                        post_exposure_efficacy = 0.5);
+                    parent_dosed = false) == 2
+                @test risks(all_three) == 3
+                # Nobody dosed: no risk at all.
+                @test risks(all_three; contact_dosed = false, parent_dosed = false) == 0
+                # An asymptomatic contact still gets the post-exposure risk, at
+                # the stricter pre-exposure event time.
+                @test risks(post_only; parent_dosed = false, incubation = NaN) == 1
+            end
+
+            @testset "Requires an incubation period" begin
+                rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9)
+                @test :incubation_period in EpiBranch.required_fields(rv)
+                @test :incubation_period ∉
+                      EpiBranch.required_fields(RingVaccination(efficacy = 0.9))
+            end
+        end
+
         @testset "Onward efficacy blocks next-generation transmission" begin
             # With onward_efficacy = 1.0 and delay_to_immunity = 0.0,
             # any infected child of a vaccinated parent must have been
