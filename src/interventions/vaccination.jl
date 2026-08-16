@@ -312,23 +312,34 @@ function _post_exposure_risk(rv::RingVaccination, contact)
         block_probability = rv.post_exposure_efficacy)
 end
 
-# Drop the mechanisms this vaccination does not use, so the engine sees only
-# the risks that can fire.
-_compact_risks() = ()
-_compact_risks(::Nothing, rest...) = _compact_risks(rest...)
-_compact_risks(risk::Risk, rest...) = (risk, _compact_risks(rest...)...)
-
 # Ring vaccination gates a transmission through three mechanisms: protection
 # of the contact before exposure, protection of the contact after exposure but
 # before their infection declares itself, and reduced onward transmission from
 # a vaccinated parent. Returning a tuple of risks is supported by the engine's
 # `_iter_risks` helper, which applies each independently.
+#
+# The branches are written out rather than compacted generically. Each risk is
+# a `Union{Nothing, Risk}`, so a generic compaction infers as
+# `Tuple{Vararg{Risk}}` — abstract, of unknown length — and the engine then
+# iterates a non-inferrable tuple once per contact. Enumerating the cases keeps
+# the return type a small union of concrete tuple lengths, which matters
+# because this sits on the per-contact hot path of every simulation carrying a
+# vaccination.
 function competing_risk(rv::RingVaccination, parent, contact, state)
-    risks = _compact_risks(_susceptibility_risk(rv, contact),
-        _post_exposure_risk(rv, contact),
-        _onward_risk(rv, parent))
-    isempty(risks) && return nothing
-    return risks
+    susceptibility = _susceptibility_risk(rv, contact)
+    post_exposure = _post_exposure_risk(rv, contact)
+    onward = _onward_risk(rv, parent)
+    if susceptibility === nothing
+        post_exposure === nothing && return onward
+        onward === nothing && return post_exposure
+        return (post_exposure, onward)
+    elseif post_exposure === nothing
+        onward === nothing && return susceptibility
+        return (susceptibility, onward)
+    elseif onward === nothing
+        return (susceptibility, post_exposure)
+    end
+    return (susceptibility, post_exposure, onward)
 end
 
 # Scalar defaults short-circuit without drawing from the rng so that
