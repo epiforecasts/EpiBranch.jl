@@ -85,6 +85,29 @@ end
             @test all(≈(0.5), lags)
         end
     end
+
+    @testset "A non-finite trace time is never recorded" begin
+        # `OnSymptomOnset() | OnLabConfirmation()` reduces to a NaN trigger
+        # time for an asymptomatic infector (issue #248), and `min`
+        # propagates NaN, so such a time must not be written at all.
+        asymp = clinical_presentation(incubation_period = LogNormal(1.5, 0.5),
+            prob_asymptomatic = 0.6)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            eligibility = AllCases())
+        ct = ContactTracing(OnSymptomOnset() | OnLabConfirmation(), 1.0,
+            Exponential(1.0))
+        state = simulate(
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [iso, ct], attributes = asymp);
+            max_cases = 300, rng = StableRNG(11))
+        traced = filter(is_traced, state.individuals)
+        @test !isempty(traced)  # otherwise the test is vacuous
+        # The guard has to have fired, or this proves nothing about it.
+        @test any(ind -> !haskey(ind.state, :trace_time), traced)
+        for ind in traced
+            @test isfinite(get(ind.state, :trace_time, 0.0))
+        end
+    end
 end
 
 @testset "ContactTracing ring depth" begin

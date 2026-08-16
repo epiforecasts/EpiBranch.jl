@@ -478,9 +478,16 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
         #
         # Keep the earliest across tracing systems, matching how `Quarantine`
         # keeps the earliest isolation time: with several `ContactTracing`
-        # interventions in the stack, a contact is reached when the *first*
-        # of them gets there, not when the last one in the list does.
-        ind.state[:trace_time] = min(get(ind.state, :trace_time, Inf), trace_time)
+        # interventions in the stack, a contact is reached when the first of
+        # them gets there.
+        #
+        # A non-finite trace time carries no information about when that was,
+        # and `min` propagates `NaN`, so it would destroy a good time another
+        # tracing system had already written. Such times exist today: see
+        # issue #248 for the `trigger_time` reduction that produces them.
+        if isfinite(trace_time)
+            ind.state[:trace_time] = min(get(ind.state, :trace_time, Inf), trace_time)
+        end
 
         # Record how far the ring can still grow from this contact, so a
         # contact-of-contact one hop further out can time its own trace from
