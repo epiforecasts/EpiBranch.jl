@@ -154,6 +154,15 @@ vaccinated near the window's end with a long `delay_to_immunity` is
 still recorded as vaccinated (whether immunity arrives before that
 contact's own transmission time is then decided by competing risks).
 
+!!! warning "The window is measured to *this* dose, `dose_delay` included"
+    A second dose is administered `dose_delay` days after the trace, and
+    that is the time the window is checked against. Copying a prime's
+    `eligibility_window` onto a boost therefore rejects almost every
+    boost, since `dose_delay` alone usually exceeds the window. A window
+    belongs on the dose whose timing it describes, so leave a later dose
+    at the default `Inf` unless the protocol really does have a deadline
+    on the second dose itself.
+
 `onward_efficacy` is the per-exposure probability that a *vaccinated
 parent's* onward transmission is blocked once the parent's
 vaccine-induced immunity has developed — the post-exposure
