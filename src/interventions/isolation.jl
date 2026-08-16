@@ -114,8 +114,17 @@ function reset!(::Isolation, ind::Individual)
     # so resetting unconditionally would un-quarantine a validly-traced contact
     # when a Scheduled(Isolation) sees its pre-start isolation time.
     get(ind.state, :isolated_by_isolation, false) || return nothing
-    ind.state[:isolated] = false
-    ind.state[:isolation_time] = Inf
+    # If this isolation was layered over a quarantine, restore that quarantine
+    # rather than clearing the individual outright — undoing Isolation's own
+    # effect must not also undo another intervention's.
+    previous = get(ind.state, :isolation_time_before_isolation, Inf)
+    if isfinite(previous)
+        set_isolated!(ind, previous)
+        delete!(ind.state, :isolation_time_before_isolation)
+    else
+        ind.state[:isolated] = false
+        ind.state[:isolation_time] = Inf
+    end
     ind.state[:isolated_by_isolation] = false
     return nothing
 end
@@ -134,7 +143,28 @@ function initialise_individual!(iso::Isolation, individual, state)
 end
 
 function resolve_individual!(iso::Isolation, individual, state)
-    is_isolated(individual) && return nothing
+    # An isolation already standing on the individual is a quarantine written by
+    # `ContactTracing`. On the generation-based path that cannot happen here,
+    # because isolation resolves before tracing runs; on the continuous-time
+    # path it routinely does, because a case's contacts are traced when the
+    # *infector* is finalised, which is before the contact itself resolves. The
+    # quarantine is then a competing pathway rather than a reason to stop:
+    # without this the contact would keep a trace time later than the onset it
+    # would have self-reported on, and tracing would delay isolation instead of
+    # advancing it.
+    if is_isolated(individual)
+        is_test_positive(individual) || return nothing
+        self_t = onset_time(individual) + rand(state.rng, iso.onset_to_isolation_delay)
+        self_t < isolation_time(individual) || return nothing
+        # Remember what we are overwriting. Claiming provenance below tells a
+        # `Scheduled` reset that this isolation is Isolation's to undo, but the
+        # standing quarantine underneath it belongs to ContactTracing and must
+        # survive that reset, so stash it for `reset!` to restore.
+        individual.state[:isolation_time_before_isolation] = isolation_time(individual)
+        set_isolated!(individual, self_t)
+        individual.state[:isolated_by_isolation] = true
+        return nothing
+    end
 
     # Three isolation pathways, each independent:
     #   - test_isolation_time:  onset + delay, fires iff test_positive

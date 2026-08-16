@@ -375,9 +375,6 @@ Doses are cheap to count, and a schedule's second dose is where the cost
 sits:
 
 ```@example interventions
-rng = StableRNG(42)
-results = simulate(scenario([iso, ct, prime_ring, boost_ring]), 200;
-    max_cases = 500, rng = rng)
 doses(key) = mean(count(i -> i.state[key], s.individuals) for s in results)
 println("Primed: $(round(doses(:vaccinated_prime), digits = 1)), ",
     "boosted: $(round(doses(:vaccinated_boost), digits = 1))")
@@ -388,8 +385,21 @@ second dose the answer is usually no. A dose protects a ring member only
 if its immunity arrives before that member's own exposures, and those
 exposures are concentrated in the weeks right after the trace. With
 generation times of `Exponential(5.0)`, protection arriving 42 days after
-the trace has nothing left to prevent, so containment here is the same
-with the boost as without it.
+the trace has nothing left to prevent.
+
+!!! tip "Adding an intervention is not a controlled comparison"
+    Re-running with the boost removed will not confirm that, and may
+    suggest the opposite. `boost_ring` has `coverage = 0.9`, so it draws
+    from the rng for every primed contact and shifts the whole stream:
+    the two runs are different samples, not the same outbreak with and
+    without a dose. Here that reads as containment 0.255 with the boost
+    against 0.295 without, a difference that is Monte Carlo noise rather
+    than the boost doing harm. An intervention that consumes no rng
+    (`coverage = 1.0`, scalar efficacy, no eligibility window) leaves the
+    stream untouched and does support the comparison — which is why the
+    `RingVaccination(efficacy = 0.8)` case above reproduces its baseline
+    exactly. Otherwise, compare across many seeds, or reason from the
+    timing as here.
 
 ### Protecting a contact who has already been exposed
 

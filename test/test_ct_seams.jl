@@ -54,6 +54,60 @@ end
             Individual(id = 2, chain_id = 8, parent_id = 1),
             nothing)
     end
+
+    @testset "Stacked tracing keeps the earliest trace time" begin
+        # A contact reached by two tracing systems was reached when the
+        # first of them got there, so the recorded trace time must not
+        # depend on the order the interventions sit in the stack.
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        fast = ContactTracing(probability = 1.0,
+            isolation_to_trace_delay = Dirac(0.5), quarantine_on_trace = false)
+        slow = ContactTracing(probability = 1.0,
+            isolation_to_trace_delay = Dirac(20.0), quarantine_on_trace = false)
+
+        # Each tracer draws its own delay, so the two stack orders consume the
+        # rng differently and their runs diverge. The invariant to check is
+        # within a run: every traced contact carries the fast system's lag
+        # from its infector's isolation, whichever order the stack is in.
+        function trace_lags(stack)
+            state = simulate(
+                ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+                    interventions = stack, attributes = clinical);
+                max_cases = 50, rng = StableRNG(9))
+            by_id = Dict(ind.id => ind for ind in state.individuals)
+            [ind.state[:trace_time] - isolation_time(by_id[ind.state[:traced_by]])
+             for ind in state.individuals if is_traced(ind)]
+        end
+
+        for stack in ([iso, fast, slow], [iso, slow, fast])
+            lags = trace_lags(stack)
+            @test !isempty(lags)  # otherwise the test is vacuous
+            @test all(≈(0.5), lags)
+        end
+    end
+
+    @testset "A non-finite trace time is never recorded" begin
+        # `OnSymptomOnset() | OnLabConfirmation()` reduces to a NaN trigger
+        # time for an asymptomatic infector (issue #248), and `min`
+        # propagates NaN, so such a time must not be written at all.
+        asymp = clinical_presentation(incubation_period = LogNormal(1.5, 0.5),
+            prob_asymptomatic = 0.6)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            eligibility = AllCases())
+        ct = ContactTracing(OnSymptomOnset() | OnLabConfirmation(), 1.0,
+            Exponential(1.0))
+        state = simulate(
+            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [iso, ct], attributes = asymp);
+            max_cases = 300, rng = StableRNG(11))
+        traced = filter(is_traced, state.individuals)
+        @test !isempty(traced)  # otherwise the test is vacuous
+        # The guard has to have fired, or this proves nothing about it.
+        @test any(ind -> !haskey(ind.state, :trace_time), traced)
+        for ind in traced
+            @test isfinite(get(ind.state, :trace_time, 0.0))
+        end
+    end
 end
 
 @testset "ContactTracing ring depth" begin

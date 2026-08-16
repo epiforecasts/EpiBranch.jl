@@ -79,6 +79,46 @@
         @test !is_isolated(own)
     end
 
+    @testset "Isolation keeps the earliest pathway when already isolated" begin
+        # A quarantine written by ContactTracing leaves `:isolated` set before
+        # Isolation resolves the individual. That is the ordering the
+        # continuous-time models produce, where a contact is traced when its
+        # infector settles rather than when it settles itself. Isolation must
+        # treat the standing quarantine as a competing pathway: if the
+        # individual would have self-reported earlier, the earlier time wins.
+        # Otherwise tracing *delays* isolation instead of advancing it.
+        iso = Isolation(onset_to_isolation_delay = Exponential(1e-9))
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+
+        # Quarantined late, but onset was early: the self-reported time wins.
+        late = Individual(id = 1)
+        late.state[:onset_time] = 2.0
+        late.state[:test_positive] = true
+        set_isolated!(late, 50.0)
+        EpiBranch.resolve_individual!(iso, late, state)
+        @test isolation_time(late) ≈ 2.0 atol=1e-6
+        @test get(late.state, :isolated_by_isolation, false)
+
+        # Quarantined early: the quarantine stands and is left untouched.
+        early = Individual(id = 2)
+        early.state[:onset_time] = 40.0
+        early.state[:test_positive] = true
+        set_isolated!(early, 1.0)
+        EpiBranch.resolve_individual!(iso, early, state)
+        @test isolation_time(early) == 1.0
+        @test !get(early.state, :isolated_by_isolation, false)
+
+        # A test-negative quarantined contact has no self-reporting pathway,
+        # so the quarantine stands.
+        negative = Individual(id = 3)
+        negative.state[:onset_time] = 2.0
+        negative.state[:test_positive] = false
+        set_isolated!(negative, 50.0)
+        EpiBranch.resolve_individual!(iso, negative, state)
+        @test isolation_time(negative) == 50.0
+    end
+
     @testset "Asymptomatic cases are not isolated" begin
         rng = StableRNG(42)
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
@@ -442,6 +482,24 @@
                     boosts_everyone ? (@test boosted == primed) :
                     (@test 0 < boosted < primed)
                 end
+            end
+
+            @testset "A dose scheduled before the one it requires is rejected" begin
+                # List order is right, but the boost arrives at the trace while
+                # the prime does not arrive until 28 days later.
+                late_prime = RingVaccination(efficacy = 0.6, dose_delay = 28.0,
+                    dose_label = :prime)
+                early_boost = RingVaccination(efficacy = 0.5, dose_delay = 0.0,
+                    requires_dose = :prime, dose_label = :boost)
+                @test_throws ArgumentError ModelSpec(process;
+                    interventions = [iso, ct, late_prime, early_boost],
+                    attributes = clinical)
+                # Same instant is allowed: both doses fire at the trace.
+                same_instant = RingVaccination(efficacy = 0.5,
+                    requires_dose = :prime, dose_label = :boost)
+                @test ModelSpec(process;
+                    interventions = [iso, ct, prime, same_instant],
+                    attributes = clinical) isa ModelSpec
             end
 
             @testset "A dose listed before the one it requires is rejected" begin

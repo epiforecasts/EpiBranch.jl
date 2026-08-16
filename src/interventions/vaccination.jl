@@ -163,6 +163,15 @@ vaccinated near the window's end with a long `delay_to_immunity` is
 still recorded as vaccinated (whether immunity arrives before that
 contact's own transmission time is then decided by competing risks).
 
+!!! warning "The window is measured to *this* dose, `dose_delay` included"
+    A second dose is administered `dose_delay` days after the trace, and
+    that is the time the window is checked against. Copying a prime's
+    `eligibility_window` onto a boost therefore rejects almost every
+    boost, since `dose_delay` alone usually exceeds the window. A window
+    belongs on the dose whose timing it describes, so leave a later dose
+    at the default `Inf` unless the protocol really does have a deadline
+    on the second dose itself.
+
 `post_exposure_efficacy` is the probability that a dose given to an
 already-exposed contact aborts that infection, which it can do so long
 as immunity arrives before the infection declares itself (vaccination +
@@ -194,13 +203,16 @@ setting only `onward_efficacy` gives a pure PEP effect.
 
 Requires `:traced` (set by [`ContactTracing`](@ref)).
 
-!!! warning "Redundant on top of quarantine"
-    A dose is given when the contact is traced, which is also when
-    `ContactTracing`'s default `Quarantine` action isolates them. Isolation
-    then blocks every transmission the dose would have blocked, and adding
-    this intervention leaves the results unchanged. Measure ring vaccination
-    against tracing that follows contacts up without confining them
-    (`quarantine_on_trace = false`), or against a delayed or leaky isolation.
+!!! warning "Redundant on top of an airtight quarantine"
+    Against `ContactTracing`'s default `Quarantine` action combined with a
+    non-leaky `Isolation`, adding this intervention leaves the results
+    unchanged: the dose is given when the contact is traced, which is also
+    when the quarantine starts, so isolation already blocks every
+    transmission the dose would have. Measure ring vaccination against
+    tracing that follows contacts up without confining them
+    (`quarantine_on_trace = false`), or against an isolation that is
+    delayed or leaky (`post_isolation_transmission > 0`), where a dose
+    still has something left to do.
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
 `:vaccine_efficacy` for the default dose label. With a non-default
@@ -341,25 +353,41 @@ _has_required_dose(label::Symbol, ind) = get(ind.state, _vaccinated_key(label), 
     _validate_dose_schedule(interventions)
 
 Check that every vaccination requiring an earlier dose is listed after the
-dose it requires. The stack is applied in order, so a dose placed before
-the one it requires would silently never be given.
+dose it requires, and is not scheduled to arrive before it. The stack is
+applied in order, so a dose placed before the one it requires would silently
+never be given; and because the required dose's flag is set at the trace
+whatever its own `dose_delay`, a shorter `dose_delay` on the later dose would
+otherwise let it be administered first.
 """
 function _validate_dose_schedule(interventions)
-    given = Set{Symbol}()
+    given = Dict{Symbol, Float64}()
     for iv in interventions
         vacc = _unwrap_scheduled(iv)
         vacc isa AbstractVaccination || continue
+        label = dose_label(vacc)
         req = required_dose(vacc)
-        if req !== nothing && !(req in given)
-            throw(ArgumentError(
-                "vaccination with dose_label = :$(dose_label(vacc)) requires dose " *
-                ":$req, which is not given earlier in the intervention stack. " *
+        if req !== nothing
+            haskey(given, req) || throw(ArgumentError(
+                "vaccination with dose_label = :$label requires dose :$req, " *
+                "which is not given earlier in the intervention stack. " *
                 "List a dose after the dose it requires."))
+            if _dose_offset(vacc) < given[req]
+                throw(ArgumentError(
+                    "vaccination with dose_label = :$label requires dose :$req " *
+                    "but is scheduled earlier than it ($(_dose_offset(vacc)) days " *
+                    "after the trace against $(given[req])). A dose cannot be " *
+                    "given before the dose it requires."))
+            end
         end
-        push!(given, dose_label(vacc))
+        given[label] = _dose_offset(vacc)
     end
     return nothing
 end
+
+"""Days from the triggering event to this dose being administered. Only
+[`RingVaccination`](@ref) delays a dose relative to its trigger."""
+_dose_offset(::AbstractVaccination) = 0.0
+_dose_offset(rv::RingVaccination) = rv.dose_delay
 
 # The intervention a wrapper stands in for; `Scheduled` adds its method.
 _unwrap_scheduled(iv) = iv
@@ -372,10 +400,16 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
         get(ind.state, vacc_key, false) && continue
         _has_required_dose(rv, ind) || continue
         # Fire when the tracing team reached the contact. `ContactTracing`
-        # records that as `:trace_time`; the isolation-derived times are a
-        # fallback for a custom `TraceAction` that sets `:traced` without it.
-        trace_t = get(ind.state, :trace_time,
-            min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf)))
+        # records that as `:trace_time` whatever its trace action, so the
+        # isolation-derived times below are reached only when something
+        # other than `ContactTracing` set `:traced` — or when the trace time
+        # was not finite and so was not recorded. Branch rather than passing
+        # a `get` default, which Julia would evaluate on every contact.
+        trace_t = if haskey(ind.state, :trace_time)
+            ind.state[:trace_time]
+        else
+            min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
+        end
         vacc_t = trace_t + rv.dose_delay
         isfinite(vacc_t) || continue
         _within_eligibility_window(rv.eligibility_window, ind, vacc_t, state.rng) ||
