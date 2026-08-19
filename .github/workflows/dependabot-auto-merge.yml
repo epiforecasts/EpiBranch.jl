@@ -1,8 +1,11 @@
 name: Dependabot auto-merge
 
-# Auto-merge Dependabot updates once CI passes. Only the `github-actions`
-# ecosystem is watched here (Julia deps go through CompatHelper), and those
-# actions are SHA-pinned, so the residual risk is a freshly-published malicious
+# Auto-merge Dependabot updates once CI passes. Restricted to the
+# `github-actions` ecosystem, and enforced below rather than merely assumed:
+# the job gates on `package-ecosystem`, so adding another ecosystem to
+# dependabot.yml cannot silently opt its bumps into automatic merging. Julia
+# deps go through CompatHelper. Actions are SHA-pinned, so the residual risk is
+# a freshly-published malicious
 # release — the `cooldown` in dependabot.yml holds updates for 7 days before
 # a PR is even opened, and CI must pass before the merge fires. Patch and minor
 # bumps merge automatically; major bumps are left for a manual merge.
@@ -24,7 +27,10 @@ jobs:
         id: meta
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
       - name: Enable auto-merge for patch and minor updates
-        if: steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor'
+        if: |
+          steps.meta.outputs.package-ecosystem == 'github_actions' &&
+          (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+           steps.meta.outputs.update-type == 'version-update:semver-minor')
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

@@ -8,3 +8,57 @@ updates:
     # broken version has time to be caught and yanked before it can auto-merge.
     cooldown:
       default-days: 7
+    # Bundle bumps so a run produces two PRs rather than one per action.
+    #
+    # Two groups, not one: `dependabot/fetch-metadata` reports a group's
+    # update-type as the highest semver level in it, so batching a major in with
+    # patch and minor bumps would make the whole batch read as major and stop
+    # dependabot-auto-merge.yml taking any of it. Splitting keeps the routine
+    # bumps on the automatic path and leaves majors for review.
+    groups:
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  # Julia dependencies, replacing CompatHelper. Grouped so a run produces one PR
+  # per environment rather than one per package.
+  #
+  # Only the three environments with `[compat]` entries are listed: `test/` and
+  # `docs/` have none and their manifests are gitignored, so they would cost a
+  # resolve per run for nothing. Grouping applies within a directory, so this is
+  # up to three PRs per run — still far quieter than CompatHelper's one per
+  # dependency.
+  #
+  # These deliberately do NOT auto-merge: dependabot-auto-merge.yml gates on the
+  # github-actions ecosystem, and it must stay that way. Under Julia's 0.x
+  # convention a 0.25 -> 0.26 bump is breaking but reports as semver-minor, so
+  # automatic merging would let a breaking change through.
+  - package-ecosystem: "julia"
+    directories:
+      - "/"
+      - "/lib/EpiNetwork"
+      - "/lib/EpiHouseholds"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      julia:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore"
+      include: "scope"
