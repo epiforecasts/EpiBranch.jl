@@ -293,6 +293,15 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
             kernel = Exponential(1.0), reach = :not_an_adjacency)])
     end
 
+    @testset "RoutedNetwork: conditioned simulation" begin
+        # `condition` retries until the outbreak size falls in the range
+        route = RouteWindow(:ring; until = (:recovered,), kernel = Exponential(0.5),
+            reach = ring_adjacency(40))
+        m = ModelSpec(RoutedNetwork([route]); progression = _sir(20.0))
+        state = simulate(m; condition = 5:40, n_initial = 1, rng = StableRNG(1))
+        @test state.cumulative_cases in 5:40
+    end
+
     @testset "contact tracing" begin
         # A node's contacts are its graph neighbours, so tracing reaches them
         # and quarantining closes their own infectious window in turn.

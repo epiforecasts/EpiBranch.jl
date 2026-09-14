@@ -109,12 +109,11 @@ function Base.show(io::IO, m::RoutedNetwork)
 end
 
 function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attributes,
-        progression, observation, rng, condition, kwargs...)
-    if condition !== nothing
-        return _retry_for_condition(condition, sim_opts,
-            () -> _simulate(model, sim_opts; interventions, attributes, progression,
-                observation, rng, condition = nothing, kwargs...))
-    end
+        progression, observation, rng, condition, max_attempts)
+    condition !== nothing && return _retry_for_condition(
+        () -> _simulate(model, sim_opts; interventions, attributes, progression,
+            observation, rng, condition = nothing, max_attempts),
+        condition, max_attempts)
     EpiBranch._warn_unhonoured_interventions(model, interventions)
 
     # Every route that did not name its own start takes the one the progression
