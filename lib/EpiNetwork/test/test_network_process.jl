@@ -374,6 +374,24 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
             @test isolation_time(st.individuals[2]) < died
         end
         @test checked > 0
+
+        # A safe burial: the funeral route is cut by isolation too, so a case
+        # isolated before it dies never holds a funeral and its funeral
+        # neighbour is never traced.
+        safe = RouteWindow(:funeral; from = :died, until = (REM,),
+            kernel = Exponential(1.0), reach = [[3], Int[], [1]])
+        m_safe = ModelSpec(RoutedNetwork([household, safe]);
+            progression = m.progression, interventions = m.interventions)
+        isolated_first = 0
+        for s in 1:60
+            st = simulate(m_safe; n_initial = 1, rng = StableRNG(s))
+            case = st.individuals[1]
+            get(case.state, :index, false) || continue
+            isolation_time(case) < case.state[:died_time] || continue
+            isolated_first += 1
+            @test !is_traced(st.individuals[3])
+        end
+        @test isolated_first > 0
     end
 
     @testset "contact tracing" begin
