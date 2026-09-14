@@ -252,3 +252,24 @@ end
     grad = ForwardDiff.derivative(total_infection_time, μ0)
     @test isfinite(grad)
 end
+
+# Multi-type analytics stay generic in the number type: a dual dispersion enters
+# through `dist_fn`, and a dual scale on the offspring mean puts a dual matrix
+# through the spectral radius, which then takes the power-iteration path.
+@testset "AD through multi-type analytics" begin
+    M = [1.5 0.6;
+         0.5 0.9]
+    fdm = central_fdm(5, 1)
+
+    q1(k) = extinction_probability(
+        BranchingProcess(M, R -> NegBin(R, k), Exponential(5.0)))[1]
+    @test ForwardDiff.derivative(q1, 0.5) ≈ fdm(q1, 0.5) rtol = 1e-5
+
+    rstar(θ) = reproduction_number(
+        BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0)))
+    @test ForwardDiff.derivative(rstar, 1.2) ≈ rstar(1.0) rtol = 1e-6
+
+    q2(θ) = extinction_probability(
+        BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0)))[2]
+    @test ForwardDiff.derivative(q2, 1.2) ≈ fdm(q2, 1.2) rtol = 1e-5
+end

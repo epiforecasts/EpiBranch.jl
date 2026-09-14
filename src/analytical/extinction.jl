@@ -81,22 +81,25 @@ end
 """
     extinction_probability(model::TransmissionModel; kwargs...)
 
-Extinction probability for a single-type transmission model, extracted
-from the model's offspring specification via `single_type_offspring`.
-Works for `BranchingProcess` and wrappers that delegate that accessor
-(e.g. `Observed`).
+Extinction probability for a transmission model, computed from the model's
+offspring specification. A single-type model returns a number, via
+`single_type_offspring`, so it works for `BranchingProcess` and wrappers that
+delegate that accessor (e.g. `Observed`). A multi-type model built from an
+offspring matrix returns a vector with one entry per type of index case.
 """
 function extinction_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
-    return extinction_probability(single_type_offspring(model); kwargs...)
+    return extinction_probability(_analytic_offspring(model); kwargs...)
 end
 
 """
     epidemic_probability(model::TransmissionModel; kwargs...)
 
-Epidemic probability for a single-type transmission model.
+Epidemic probability for a transmission model: the complement of
+[`extinction_probability`](@ref), per type of index case for a multi-type
+model.
 """
 function epidemic_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
-    1.0 - extinction_probability(model; kwargs...)
+    1.0 .- extinction_probability(model; kwargs...)
 end
 
 # ── Containment probability (analytical) ─────────────────────────────

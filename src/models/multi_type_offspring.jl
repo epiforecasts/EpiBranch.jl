@@ -41,6 +41,17 @@ _n_types(o::MultiTypeOffspring) = size(o.offspring_matrix, 1)
 
 _offspring_label(o::MultiTypeOffspring) = "MultiTypeOffspring($(_n_types(o)) types)"
 
+# A single-window branching process hands its multi-type offspring to the
+# analytics that have a multi-type form; any other offspring goes through the
+# single-type accessor.
+function _analytic_offspring(m::BranchingProcess)
+    # Several windows have no closed form; the single-type accessor says so.
+    length(m.infectiousness) == 1 || return single_type_offspring(m)
+    return _analytic_offspring(m, m.infectiousness[1].offspring)
+end
+_analytic_offspring(m::BranchingProcess, ::Any) = single_type_offspring(m)
+_analytic_offspring(::BranchingProcess, o::MultiTypeOffspring) = o
+
 function _single_type(::MultiTypeOffspring)
     throw(ArgumentError(
         "This function only works with single-type models; for a multi-type model " *

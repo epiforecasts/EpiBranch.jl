@@ -3,6 +3,7 @@ module EpiBranch
 using DataFrames
 using Dates
 using Distributions
+using LinearAlgebra: LinearAlgebra, eigvals
 using QuadGK
 using Random
 using SpecialFunctions
@@ -100,6 +101,7 @@ include("output/summary.jl")
 
 # Analytical
 include("analytical/extinction.jl")
+include("analytical/multi_type.jl")
 include("analytical/chain_distributions.jl")
 include("analytical/data_types.jl")
 include("analytical/likelihood.jl")
@@ -166,7 +168,7 @@ export realised_generation_interval, realised_generation_intervals
 export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
 
 # Exports — analytical
-export extinction_probability, epidemic_probability
+export extinction_probability, epidemic_probability, reproduction_number
 export proportion_transmission, proportion_cluster_size, heterogeneous_contact_R
 export probability_contain
 
