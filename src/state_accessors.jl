@@ -57,26 +57,20 @@ individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 """Mark an individual as isolated at the given time (any `Real`, so an AD
 dual isolation time flows through).
 
-Writes the time under two keys. `:isolation_time` is the name the intervention
-layer has always used and everything reading isolation directly still reads.
-`:isolated_time` is the same value under the `<state>_time` convention that
-[`Transition`](@ref) writes and that infectiousness windows read, which is what
-makes `:isolated` usable as a removal state in a [`RouteWindow`](@ref)'s
-`until`. Keeping both means a route can be censored by isolation without the
-intervention layer needing a separate removal channel."""
+This deliberately does not write `:isolated_time`. Infectiousness windows read
+`<state>_time` keys, so writing it would let `:isolated` in a window's `until`
+close the window hard even when the isolation is leaky. A route that isolation
+should cut lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) instead, which
+respects leakiness, and `:isolated` stays free for a `Transition(:isolated, …)`
+in the natural history."""
 function set_isolated!(ind::Individual, time::Real)
     ind.state[:isolated] = true
     ind.state[:isolation_time] = time
-    ind.state[:isolated_time] = time
 end
 
-"""Clear an individual's isolation, the inverse of [`set_isolated!`](@ref).
-Both time keys have to go: leaving a stale `:isolated_time` behind would keep
-censoring any route window listing `:isolated` in its `until`, long after the
-isolation itself had been undone."""
+"""Clear an individual's isolation, the inverse of [`set_isolated!`](@ref)."""
 function clear_isolated!(ind::Individual)
     ind.state[:isolated] = false
     ind.state[:isolation_time] = Inf
-    ind.state[:isolated_time] = Inf
     return nothing
 end

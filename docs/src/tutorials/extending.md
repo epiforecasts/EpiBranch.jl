@@ -64,7 +64,6 @@ downstream packages should pick names that do not collide.
 | `:risk_group` | `Symbol` | — | `demographics` | Init |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
-| `:isolated_time` | `Float64` | `Inf` | `set_isolated!` | Alongside `:isolation_time` |
 | `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
@@ -101,13 +100,14 @@ sets it from a probability gate) and `PerCaseObservation` (which sets it
 post-simulation from a detection-probability draw). Composing both in the
 same simulation is not supported, because they will overwrite each other.
 
-`:isolated_time` is the same value as `:isolation_time` under a different name.
-`set_isolated!` writes both: the first follows the `<state>_time` convention that
-`Transition` writes and that infectiousness windows read, which is what lets
-`:isolated` be used as a removal state in a [`RouteWindow`](@ref)'s `until`; the
-second is the name the intervention layer has always used. Clear them together
-with `clear_isolated!` — a stale `:isolated_time` goes on censoring routes after
-the isolation itself has been undone.
+Isolation is recorded under `:isolation_time` only. Infectiousness windows read
+`<state>_time` keys, so an `:isolated_time` written by the intervention would
+close any window listing `:isolated` in its `until`, even when the isolation is
+leaky. A window that isolation should cut lists
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref) instead (see
+[Transmission routes](#Transmission-routes)), and `:isolated` in an `until`
+refers to a `Transition(:isolated, …)` in the natural history. Set and undo
+isolation with `set_isolated!` and `clear_isolated!`.
 
 The tracing keys name two hooks because the two engines reach them
 differently: `apply_post_transmission!` on the generation-based engine, and
@@ -776,7 +776,9 @@ RouteWindow(name; from, until, kernel, reach = name)
   earliest of their times. **A state listed by one window and not another
   censors only the first.** That is the whole point: it is how a control measure
   cuts one route and leaves another.
-- `kernel` times contacts within the window, measured from its opening.
+- `kernel` is the route's contact-interval distribution, measured from the
+  window opening. The model reads it when it builds the route's targets, which
+  is where the race takes each contact's kernel from.
 - `reach` tags who the route reaches, for the model to resolve — only the model
   knows its own structure.
 
@@ -815,11 +817,12 @@ and break the decoupling the engine rests on.
 
 A process that carries routes passes them to the continuous-time race as
 `(window, targets)` pairs instead of a single `from`/`until`/`targets`, and
-resolves each window's `reach` into its own targets closure. `RoutedNetwork` in
-`EpiNetwork` is the worked example: each route carries an adjacency list, and
-`supplies_contacts` is `true` so tracing sees the union across routes. A model
-passing no routes gets a single window that opts into intervention removal,
-which is the behaviour every process had before routes existed.
+resolves each window's `reach` into its own targets closure, yielding
+`(target_id, kernel)` pairs. Passing both `routes` and the shorthand is an
+error, because the routes would otherwise drop the shorthand's censoring
+without notice. A model passing no routes gets a single window that opts into
+intervention removal, which is the behaviour every process had before routes
+existed.
 
 ## Adding a transmission model
 

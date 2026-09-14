@@ -164,6 +164,7 @@ is_test_positive
 is_infected
 individual_type
 set_isolated!
+clear_isolated!
 ```
 
 ## Output

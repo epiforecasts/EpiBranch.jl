@@ -162,7 +162,7 @@ function _warn_unhonoured_interventions(model, interventions)
 end
 
 """
-    _sellke_race!(state, members, rng; seed!, targets, from, until)
+    _sellke_race!(state, members, rng; seed!, targets, from, until, routes)
 
 Run the Sellke/Dijkstra continuous-time competing-risks race over the individuals
 `members` (global ids). `seed!(best, members, rng)` fills the candidate infection
@@ -174,6 +174,11 @@ case's natural history is stamped and it exposes still-susceptible targets with 
 `from`-timed contact interval accepted inside its infectious window. Each case's
 `interventions` are resolved after its natural history, and any that remove it
 from transmission (isolation, quarantine on being traced) shorten that window.
+
+A model with several transmission routes passes `routes`, a collection of
+`(RouteWindow, targets)` pairs, in place of `from`/`until`/`targets`. Each route
+opens and closes on its own window, and only a route listing
+`INTERVENTION_REMOVAL` in its `until` is cut by the interventions.
 
 `contacts(infective_id, state)` yields the ids of everyone that case was in
 contact with, whether or not transmission followed, which is what contact
@@ -187,17 +192,29 @@ the negatives would break the shortest-path race with no error.
 """
 function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; seed!, targets = nothing,
-        from::Symbol = :infection, until::Tuple = (), routes = nothing,
-        interventions = (), contacts = nothing)
+        from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
+        routes = nothing, interventions = (), contacts = nothing)
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
     # shorthand's one window opts into intervention removal, which is what a
-    # model with no route structure of its own means by isolation.
-    rts = routes === nothing ?
-          ((
-        RouteWindow(:transmission; from = from,
-            until = (until..., INTERVENTION_REMOVAL), kernel = nothing),
-        targets),) : routes
+    # model with no route structure of its own means by isolation. Mixing the
+    # two is rejected: a routed model's windows would silently drop the
+    # shorthand's censoring, including intervention removal.
+    if routes === nothing
+        targets === nothing && throw(ArgumentError(
+            "_sellke_race! needs either `routes` or the `targets` shorthand"))
+        rts = ((
+            RouteWindow(:transmission; from = something(from, :infection),
+                until = (something(until, ())..., INTERVENTION_REMOVAL),
+                kernel = nothing),
+            targets),)
+    else
+        (targets === nothing && from === nothing && until === nothing) ||
+            throw(ArgumentError(
+                "_sellke_race! takes either `routes` or `from`/`until`/`targets`, " *
+                "not both; list the censoring states in each route's `until`"))
+        rts = routes
+    end
     m = length(members)
     best = fill(Inf, m)
     src = zeros(Int, m)
