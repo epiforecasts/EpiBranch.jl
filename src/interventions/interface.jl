@@ -26,7 +26,7 @@ resolve_individual!(::AbstractIntervention, individual, state) = nothing
 apply_post_transmission!(::AbstractIntervention, state, new_contacts) = nothing
 
 """
-    trace_contacts!(intervention, state, infector, contacts)
+    trace_contacts!(intervention, state, infector, contacts[, not_before])
 
 Act on the `contacts` that `infector` reaches, on the continuous-time (Sellke)
 path. The counterpart of [`apply_post_transmission!`](@ref), which the
@@ -38,10 +38,23 @@ is infected, so the infector has to be passed explicitly.
 Called once per case, when the race finalises it and its timeline is therefore
 known, with the contacts it can still affect. Default: no-op.
 
+`not_before[i]`, when given, is the earliest time `contacts[i]` can be sought:
+when that person became a contact of `infector`. A contact met only at a
+funeral cannot be traced before the funeral, while a household member is a
+contact from the start and has `not_before = -Inf`. On `RoutedNetwork` it is the
+time of the linking route's `contacts_from` state. The race calls this method
+whenever the model yields `(id, time)` contacts and the four-argument method
+otherwise; by default the five-argument method calls the four-argument one, so
+an intervention that does not time its action from the contact need not handle
+it.
+
 Pair with [`traces_contacts`](@ref EpiBranch.traces_contacts), which tells the
 race whether an intervention needs this hook at all.
 """
 trace_contacts!(::AbstractIntervention, state, infector, contacts) = nothing
+function trace_contacts!(iv::AbstractIntervention, state, infector, contacts, not_before)
+    trace_contacts!(iv, state, infector, contacts)
+end
 
 """
     traces_contacts(intervention) -> Bool

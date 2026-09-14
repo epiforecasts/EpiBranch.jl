@@ -132,9 +132,13 @@ end
 # Tracing on the continuous-time path, gated by the schedule exactly as
 # `apply_post_transmission!` is on the generation-based one.
 traces_contacts(s::Scheduled) = traces_contacts(s.intervention)
-function trace_contacts!(s::Scheduled, state, infector, contacts)
+function trace_contacts!(s::Scheduled, state, infector, contacts, not_before = nothing)
     is_active(s, state) || return nothing
-    trace_contacts!(s.intervention, state, infector, contacts)
+    if not_before === nothing
+        trace_contacts!(s.intervention, state, infector, contacts)
+    else
+        trace_contacts!(s.intervention, state, infector, contacts, not_before)
+    end
     for c in contacts
         _maybe_reset!(s, c)
     end

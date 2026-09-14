@@ -9,12 +9,20 @@
         @test w.from === :infectious
         @test w.until == (:recovered,)
         @test w.reach === :community          # defaults to the route name
+        @test w.contacts_from === :infection  # standing relationships by default
+        @test !occursin("contacts_from", repr(w))
+        f = RouteWindow(:funeral; from = :died, kernel = Exponential(1.0),
+            contacts_from = :died)
+        @test f.contacts_from === :died
+        @test occursin("contacts_from=:died", repr(f))
         @test occursin("RouteWindow(:community", repr(w))
         @test occursin("from=:infectious", repr(w))
 
-        # defaults: opens at infection, never censored, reach follows the name
+        # defaults: start derived from the progression, never censored, reach
+        # follows the name
         d = RouteWindow(:household; kernel = Exponential(1.0), reach = [[2], [1]])
-        @test d.from === :infection
+        @test d.from === nothing
+        @test occursin("from=nothing", repr(d))
         @test d.until == ()
         @test d.reach == [[2], [1]]
     end
@@ -26,8 +34,15 @@
         ind.state[:recovered_time] = 20.0
         ind.state[:died_time] = 14.0
 
-        # from :infection opens at the infection time itself
-        @test window_open(ind, RouteWindow(:c; kernel = nothing)) == 5.0
+        # from :infection opens at the infection time itself, even when the
+        # individual has a later infectious time
+        @test window_open(ind, RouteWindow(:c; from = :infection, kernel = nothing)) == 5.0
+        # the default derives the start: infectious time when there is one...
+        @test window_open(ind, RouteWindow(:c; kernel = nothing)) == 7.0
+        # ...and the infection time when there is not
+        no_latent = Individual(id = 2)
+        no_latent.infection_time = 3.0
+        @test window_open(no_latent, RouteWindow(:c; kernel = nothing)) == 3.0
         # any other state opens at that state's `<state>_time`
         @test window_open(ind, RouteWindow(:c; from = :infectious, kernel = nothing)) == 7.0
         # a state never reached never opens the route, so it contributes nothing

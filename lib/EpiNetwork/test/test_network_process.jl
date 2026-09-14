@@ -218,6 +218,245 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test state.cumulative_cases in 5:40
     end
 
+    @testset "RoutedNetwork: per-route censoring" begin
+        # Two routes over the same 120 people: households of 4 as cliques, and a
+        # ring of community contacts. The only difference between the scenarios
+        # is which routes isolation is allowed to cut.
+        nh, hs = 30, 4
+        n = nh * hs
+        hh = [Int[] for _ in 1:n]
+        for h in 0:(nh - 1), i in (h * hs + 1):(h * hs + hs),
+            j in (h * hs + 1):(h * hs + hs)
+            i != j && push!(hh[i], j)
+        end
+        comm = ring_adjacency(n)
+
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0),
+            test_sensitivity = 1.0)
+        hk, ck = Weibull(1.5, 4.0), Exponential(20.0)
+        REM = EpiBranch.INTERVENTION_REMOVAL
+
+        routes(hh_until) = [
+            RouteWindow(:household; until = hh_until, kernel = hk, reach = hh),
+            RouteWindow(:community; until = (:recovered, REM), kernel = ck,
+                reach = comm)]
+
+        run(ws, ivs) = sum(simulate(
+                               ModelSpec(RoutedNetwork(ws);
+                                   progression = _sir(10.0), interventions = ivs,
+                                   attributes = clinical);
+                               n_initial = 2, rng = StableRNG(s)).cumulative_cases
+        for s in 1:40) / 40
+
+        removed = run(routes((:recovered, REM)), [iso])   # isolation cuts both
+        selfiso = run(routes((:recovered,)), [iso])       # household route survives
+
+        # Self-isolation must be strictly worse than being removed outright:
+        # the household route keeps running either way it is cut.
+        @test selfiso > removed
+
+        # Both must beat no control at all.
+        @test removed < run(routes((:recovered,)), AbstractIntervention[])
+
+        # Under self-isolation the surviving transmission is mostly within
+        # households, which is the whole point of separating the routes.
+        st = simulate(
+            ModelSpec(RoutedNetwork(routes((:recovered,)));
+                progression = _sir(10.0), interventions = [iso],
+                attributes = clinical);
+            n_initial = 2,
+            rng = StableRNG(3))
+        hh_of(i) = (i - 1) ÷ hs
+        pairs = [(ind.id, ind.parent_id)
+                 for ind in st.individuals
+                 if is_infected(ind) && ind.parent_id != 0]
+        @test !isempty(pairs)
+        @test count(p -> hh_of(p[1]) == hh_of(p[2]), pairs) > length(pairs) ÷ 2
+    end
+
+    @testset "RoutedNetwork: route start under a latent period" begin
+        # Two nodes, a fixed 5-day latent period and near-immediate contact. A
+        # route left at the default opens when the case becomes infectious; an
+        # explicit `from = :infection` opens at infection.
+        seir = [Transition(:infectious; from = :infection, delay = 5.0),
+            Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
+        contact_time(from) = begin
+            w = RouteWindow(:pair; from, until = (:recovered,),
+                kernel = Exponential(0.1), reach = [[2], [1]])
+            st = simulate(ModelSpec(RoutedNetwork([w]); progression = seir);
+                n_initial = 1, rng = StableRNG(1))
+            maximum(ind.infection_time for ind in st.individuals)
+        end
+        @test contact_time(nothing) >= 5.0
+        @test contact_time(:infection) < 5.0
+    end
+
+    @testset "RoutedNetwork: construction" begin
+        a = ring_adjacency(6)
+        w(name, adj) = RouteWindow(name; until = (:recovered,),
+            kernel = Exponential(2.0), reach = adj)
+        m = RoutedNetwork([w(:a, a), w(:b, a)])
+        @test m.n == 6
+        @test occursin("RoutedNetwork", repr(m))
+        @test occursin(":a", repr(m))
+        @test EpiBranch.supplies_contacts(m)
+        # a model-level start fills in routes that leave theirs unset, so the
+        # stored routes are the ones the simulation runs
+        mf = RoutedNetwork(
+            [w(:a, a), RouteWindow(:b; from = :died, kernel = Exponential(1.0),
+                reach = a)];
+            from = :onset)
+        @test mf.windows[1].from === :onset
+        @test mf.windows[2].from === :died
+        # routes must agree on the node set, and there must be at least one
+        @test_throws ArgumentError RoutedNetwork([w(:a, a), w(:b, ring_adjacency(5))])
+        @test_throws ArgumentError RoutedNetwork(RouteWindow[])
+        # a reach that is not an adjacency list is rejected
+        @test_throws ArgumentError RoutedNetwork([RouteWindow(:x;
+            kernel = Exponential(1.0), reach = :not_an_adjacency)])
+        # as on NetworkProcess, the importation window must be non-negative
+        @test_throws ArgumentError RoutedNetwork([w(:a, a)]; obs_end = -1.0)
+        @test_throws ArgumentError RoutedNetwork([w(:a, a)]; obs_end = NaN)
+    end
+
+    @testset "RoutedNetwork: conditioned simulation" begin
+        # `condition` retries until the outbreak size falls in the range
+        route = RouteWindow(:ring; until = (:recovered,), kernel = Exponential(0.5),
+            reach = ring_adjacency(40))
+        m = ModelSpec(RoutedNetwork([route]); progression = _sir(20.0))
+        state = simulate(m; condition = 5:40, n_initial = 1, rng = StableRNG(1))
+        @test state.cumulative_cases in 5:40
+    end
+
+    @testset "RoutedNetwork: one route traces as NetworkProcess" begin
+        # A single route opening at the infectious start is a NetworkProcess, so
+        # isolation and tracing must give the same outbreaks, including under a
+        # latent period where a case can isolate before it becomes infectious.
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        adj = ring_adjacency(80)
+        k = Exponential(1.0)
+        prog = [Transition(:onset; from = :infection, delay = 1.0),
+            Transition(:infectious; from = :infection, delay = 3.0),
+            Transition(:recovered; from = :infection, delay = 12.0, terminal = true)]
+        ivs = [Isolation(onset_to_isolation_delay = Exponential(0.5)),
+            ContactTracing(probability = 1.0,
+                isolation_to_trace_delay = Exponential(0.5))]
+        routed = RoutedNetwork([RouteWindow(:all; until = (:recovered, REM),
+            kernel = k, reach = adj)])
+        plain = NetworkProcess(adj, k; until = (:recovered,))
+        run(proc, s) = simulate(ModelSpec(proc; progression = prog, interventions = ivs);
+            n_initial = 2, rng = StableRNG(s))
+        for s in 1:10
+            a, b = run(routed, s), run(plain, s)
+            @test a.cumulative_cases == b.cumulative_cases
+            @test count(is_traced, a.individuals) == count(is_traced, b.individuals)
+        end
+        @test sum(count(is_traced, run(routed, s).individuals) for s in 1:10) > 0
+    end
+
+    @testset "RoutedNetwork: a route's infectiousness start does not delay tracing" begin
+        # Setting `from = :onset` on each route or on the model describes the
+        # same outbreak, and both trace household and community contacts from
+        # infection, as NetworkProcess does.
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        adj = ring_adjacency(80)
+        k = Exponential(1.0)
+        prog = [Transition(:onset; from = :infection, delay = Uniform(2.0, 6.0)),
+            Transition(:recovered; from = :infection, delay = 12.0, terminal = true)]
+        ivs = [Isolation(onset_to_isolation_delay = Exponential(1.0)),
+            ContactTracing(probability = 1.0,
+                isolation_to_trace_delay = Exponential(0.5))]
+        on_route = RoutedNetwork([RouteWindow(:all; from = :onset,
+            until = (:recovered, REM), kernel = k, reach = adj)])
+        on_model = RoutedNetwork(
+            [RouteWindow(:all; until = (:recovered, REM),
+                kernel = k, reach = adj)];
+            from = :onset)
+        run(proc, s) = simulate(ModelSpec(proc; progression = prog, interventions = ivs);
+            n_initial = 2, rng = StableRNG(s))
+        for s in 1:10
+            a, b = run(on_route, s), run(on_model, s)
+            @test a.cumulative_cases == b.cumulative_cases
+            @test count(is_traced, a.individuals) == count(is_traced, b.individuals)
+        end
+    end
+
+    @testset "RoutedNetwork: tracing follows only opened routes" begin
+        # Node 1 lives with node 2 and would meet node 3 only at its funeral.
+        # Nobody dies, so no funeral route ever opens and node 3 is never a
+        # contact of anyone: tracing must not reach it, whichever node is the
+        # index case.
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        household = RouteWindow(:household; until = (:recovered, REM),
+            kernel = Exponential(1.0), reach = [[2], [1], Int[]])
+        funeral = RouteWindow(:funeral; from = :died, until = (:recovered,),
+            kernel = Exponential(1.0), reach = [[3], Int[], [1]], contacts_from = :died)
+        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
+            prob_asymptomatic = 0.0)
+        m = ModelSpec(RoutedNetwork([household, funeral]);
+            progression = _sir(10.0), attributes = clinical,
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.5)),
+                ContactTracing(probability = 1.0,
+                    isolation_to_trace_delay = Exponential(0.5))])
+        for s in 1:20
+            st = simulate(m; n_initial = 1, rng = StableRNG(s))
+            @test !is_traced(st.individuals[3])
+            # node 3's own funeral route never opens either
+            is_infected(st.individuals[3]) && @test !is_traced(st.individuals[1])
+        end
+    end
+
+    @testset "RoutedNetwork: a late-opening route is traced once it opens" begin
+        # Node 1 dies on day 8 and meets node 3 only at its funeral. It isolates
+        # and is traced long before that, but node 3 cannot be reached before
+        # the funeral, while its household contact node 2 is reached at once.
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        household = RouteWindow(:household; until = (:died, REM),
+            kernel = Exponential(1.0), reach = [[2], [1], Int[]])
+        funeral = RouteWindow(:funeral; from = :died, until = (),
+            kernel = Exponential(1.0), reach = [[3], Int[], [1]], contacts_from = :died)
+        m = ModelSpec(RoutedNetwork([household, funeral]);
+            progression = [Transition(:onset; from = :infection, delay = 0.5),
+                Transition(:died; from = :infection, delay = 8.0, terminal = true)],
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.5)),
+                ContactTracing(probability = 1.0,
+                    isolation_to_trace_delay = Exponential(0.5))])
+        checked = 0
+        for s in 1:60
+            st = simulate(m; n_initial = 1, rng = StableRNG(s))
+            case = st.individuals[1]
+            (get(case.state, :index, false) && is_traced(st.individuals[3])) || continue
+            checked += 1
+            died = case.state[:died_time]
+            # a quarantined contact's isolation time is its trace time, and the
+            # trace delay runs from the funeral rather than being absorbed by
+            # the case's much earlier isolation
+            @test isolation_time(st.individuals[3]) > died
+            @test isolation_time(st.individuals[2]) < died
+        end
+        @test checked > 0
+
+        # A safe burial: the funeral route is cut by isolation too, so a case
+        # isolated before it dies never holds a funeral and its funeral
+        # neighbour is never traced.
+        safe = RouteWindow(:funeral; from = :died, until = (REM,),
+            kernel = Exponential(1.0), reach = [[3], Int[], [1]], contacts_from = :died)
+        m_safe = ModelSpec(RoutedNetwork([household, safe]);
+            progression = m.progression, interventions = m.interventions)
+        isolated_first = 0
+        for s in 1:60
+            st = simulate(m_safe; n_initial = 1, rng = StableRNG(s))
+            case = st.individuals[1]
+            get(case.state, :index, false) || continue
+            isolation_time(case) < case.state[:died_time] || continue
+            isolated_first += 1
+            @test !is_traced(st.individuals[3])
+        end
+        @test isolated_first > 0
+    end
+
     @testset "contact tracing" begin
         # A node's contacts are its graph neighbours, so tracing reaches them
         # and quarantining closes their own infectious window in turn.
