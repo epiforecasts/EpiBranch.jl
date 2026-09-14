@@ -26,6 +26,47 @@ resolve_individual!(::AbstractIntervention, individual, state) = nothing
 apply_post_transmission!(::AbstractIntervention, state, new_contacts) = nothing
 
 """
+    trace_contacts!(intervention, state, infector, contacts[, not_before])
+
+Act on the `contacts` that `infector` reaches, on the continuous-time (Sellke)
+path. The counterpart of [`apply_post_transmission!`](@ref), which the
+generation engine calls with freshly created contact individuals whose
+`parent_id` names their infector. The continuous-time models have no such
+objects: every node exists from the start and the race only settles when each
+is infected, so the infector has to be passed explicitly.
+
+Called once per case, when the race finalises it and its timeline is therefore
+known, with the contacts it can still affect. Default: no-op.
+
+`not_before[i]`, when given, is the earliest time `contacts[i]` can be sought:
+when that person became a contact of `infector`. A contact met only at a
+funeral cannot be traced before the funeral, while a household member is a
+contact from the start and has `not_before = -Inf`. On `RoutedNetwork` it is the
+time of the linking route's `contacts_from` state. The race calls this method
+whenever the model yields `(id, time)` contacts and the four-argument method
+otherwise; by default the five-argument method calls the four-argument one, so
+an intervention that does not time its action from the contact need not handle
+it.
+
+Pair with [`traces_contacts`](@ref EpiBranch.traces_contacts), which tells the
+race whether an intervention needs this hook at all.
+"""
+trace_contacts!(::AbstractIntervention, state, infector, contacts) = nothing
+function trace_contacts!(iv::AbstractIntervention, state, infector, contacts, not_before)
+    trace_contacts!(iv, state, infector, contacts)
+end
+
+"""
+    traces_contacts(intervention) -> Bool
+
+Whether `intervention` implements [`trace_contacts!`](@ref
+EpiBranch.trace_contacts!). The continuous-time race gathers a case's
+reachable contacts only when some intervention says `true`, so an
+intervention that does not trace costs nothing. Default: `false`.
+"""
+traces_contacts(::AbstractIntervention) = false
+
+"""
     keep_active(intervention, state, targets, is_new) -> iterable of Int
 
 The ids of this generation's contacts that should stay *active* into the
@@ -113,9 +154,10 @@ transmission. The continuous-time (Sellke) transmission models
 ([`HomogeneousProcess`](@ref), and the network/household processes) express
 interventions only through the infectious window, closing it at the earliest
 removal time across the interventions. `Isolation` removes a case at its
-isolation time; the default is `Inf` (no removal), so an intervention whose
-effect is a per-contact competing risk rather than a removal — leaky
-vaccination, contact tracing — contributes nothing to the window and has no
+isolation time, and `ContactTracing` removes a quarantined contact at its trace
+time. The default is `Inf` (no removal), so an intervention whose effect is a
+per-contact competing risk against the infection event rather than a removal,
+such as leaky vaccination, contributes nothing to the window and has no
 continuous-time representation. Not read by the generation-based engine.
 """
 infectious_removal_time(::AbstractIntervention, ::Individual) = Inf

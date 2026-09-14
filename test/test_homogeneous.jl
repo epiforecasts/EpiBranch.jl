@@ -120,6 +120,23 @@
                 post_isolation_transmission = 0.5)])
         @test_logs (:warn, r"does not honour"i) match_mode=:any simulate(
             leaky; rng = StableRNG(1), n_initial = 2)
+
+        # The warning holds: the process's default `until` lists `:isolated`,
+        # and isolating a case must not close its window through that state.
+        pool = HomogeneousProcess(; transmission_rate = 2.0, population_size = 500)
+        onsets = clinical_presentation(incubation_period = LogNormal(-1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        nearly_leaky = [Isolation(onset_to_isolation_delay = Exponential(0.5),
+            post_isolation_transmission = 0.9)]
+        mean_size(ivs) = sum(
+            simulate(
+                ModelSpec(pool; progression = prog, interventions = ivs,
+                    attributes = onsets);
+                rng = StableRNG(s), n_initial = 5).cumulative_cases
+        for s in 1:20) / 20
+        base_mean = mean_size(AbstractIntervention[])
+        leaky_mean = @test_logs (:warn, r"does not honour"i) match_mode=:any mean_size(nearly_leaky)
+        @test leaky_mean > 0.8 * base_mean
     end
 
     @testset "Scheduled interventions gate on the running clock on the pool" begin
