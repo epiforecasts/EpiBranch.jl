@@ -18,7 +18,7 @@
 
 """
     RouteWindow(name; from = nothing, until, kernel, reach = name,
-                contacts_from = :infection)
+                contacts_from = :infection, traceable = 1.0)
 
 One transmission route, open over part of a case's natural history.
 
@@ -48,6 +48,19 @@ One transmission route, open over part of a case's natural history.
   contacts come about through an event names that event's state, such as
   `:died` for a funeral: its contacts exist only if the event happens before the
   route is cut, and cannot be traced before it.
+- `traceable` is the probability that a case can name a given contact made on
+  this route, so that contact tracing can find it. People can name the people
+  they live with but not the strangers they stood next to, so a household route
+  might keep the default `1.0` and a community route of casual encounters take
+  something much lower. `true` and `false` are accepted as `1.0` and `0.0`.
+
+  Naming comes before the tracing policy: a contact is traced only if the case
+  names it and [`ContactTracing`](@ref) then succeeds in tracing it, so the
+  overall probability is `traceable` times the tracing probability. Use
+  `traceable` for what the relationship allows and the tracing probability for
+  how well the programme performs, and set each only once. A model decides
+  how the probability is applied to its contacts (see
+  `EpiNetwork.RoutedNetwork`).
 
 # Examples
 
@@ -73,6 +86,15 @@ Because the window contributes contacts only once its `from` state has
 occurred, a case that recovers never opens the funeral route at all, so nothing
 is created only to be censored. `contacts_from = :died` tells contact tracing
 the same: the survivor had no funeral contacts to trace.
+
+A community route whose contacts are mostly strangers, of whom a case can name
+one in five:
+
+```julia
+community = RouteWindow(:community;
+    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
+    kernel = Exponential(4.0), traceable = 0.2)
+```
 """
 struct RouteWindow{K, R}
     name::Symbol
@@ -81,18 +103,31 @@ struct RouteWindow{K, R}
     kernel::K
     reach::R
     contacts_from::Symbol
+    traceable::Float64
+
+    function RouteWindow(name::Symbol, from::Union{Symbol, Nothing}, until::Tuple,
+            kernel::K, reach::R, contacts_from::Symbol,
+            traceable::Real) where {K, R}
+        0 <= traceable <= 1 || throw(ArgumentError(
+            "route :$name has traceable = $traceable; it is a probability and " *
+            "must lie in [0, 1]"))
+        return new{K, R}(name, from, until, kernel, reach, contacts_from,
+            Float64(traceable))
+    end
 end
 
 function RouteWindow(
         name::Symbol; from::Union{Symbol, Nothing} = nothing, until::Tuple = (),
-        kernel, reach = name, contacts_from::Symbol = :infection)
-    return RouteWindow(name, from, until, kernel, reach, contacts_from)
+        kernel, reach = name, contacts_from::Symbol = :infection,
+        traceable::Real = 1.0)
+    return RouteWindow(name, from, until, kernel, reach, contacts_from, traceable)
 end
 
 function Base.show(io::IO, w::RouteWindow)
     print(io, "RouteWindow(:", w.name, ", from=", repr(w.from),
         ", until=", w.until, ", kernel=", nameof(typeof(w.kernel)))
     w.contacts_from === :infection || print(io, ", contacts_from=:", w.contacts_from)
+    w.traceable == 1 || print(io, ", traceable=", w.traceable)
     print(io, ")")
 end
 
