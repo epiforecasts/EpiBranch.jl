@@ -99,6 +99,70 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         @test tt(OnSymptomOnset() & OnIsolation(), infector) == 9.0
     end
 
+    @testset "Combinators time only the conditions the infector meets" begin
+        tt(policy, infector) = EpiBranch.trigger_time(policy, infector, nothing)
+        # Asymptomatic, so onset is NaN, but confirmed and isolated at 6.
+        confirmed_asymptomatic = infector_with(asymptomatic = true, onset_time = NaN,
+            test_positive = true, isolated = true, isolation_time = 6.0)
+        @test tt(OnSymptomOnset() | OnLabConfirmation(), confirmed_asymptomatic) == 6.0
+        @test tt(OnLabConfirmation() | OnSymptomOnset(), confirmed_asymptomatic) == 6.0
+        @test tt(TraceEveryone() | OnSymptomOnset(), confirmed_asymptomatic) == 6.0
+        # AllOf needs every condition, and onset never happens.
+        @test tt(OnSymptomOnset() & OnLabConfirmation(), confirmed_asymptomatic) == Inf
+
+        # An unmet condition must not pull the time earlier either: this
+        # infector was quarantined at 2 before onset at 4 but never tested positive.
+        quarantined_negative = infector_with(asymptomatic = false, onset_time = 4.0,
+            test_positive = false, isolated = true, isolation_time = 2.0)
+        @test tt(OnLabConfirmation() | OnSymptomOnset(), quarantined_negative) == 4.0
+        @test tt(TraceNobody() | OnSymptomOnset(), quarantined_negative) == 4.0
+
+        # AnyOf with nothing met never triggers.
+        unconfirmed_asymptomatic = infector_with(asymptomatic = true, onset_time = NaN,
+            test_positive = false, isolated = false)
+        @test tt(OnSymptomOnset() | OnLabConfirmation(), unconfirmed_asymptomatic) == Inf
+
+        # A negation holds from infection, so inside AllOf the other
+        # conditions set the time; once its condition is met it never triggers.
+        unisolated = Individual(id = 1, infection_time = 1.0,
+            state = Dict{Symbol, Any}(:asymptomatic => false, :onset_time => 4.0,
+                :isolated => false))
+        @test tt(!OnIsolation(), unisolated) == 1.0
+        @test tt(OnSymptomOnset() & !OnIsolation(), unisolated) == 4.0
+        @test tt(!OnSymptomOnset(), unisolated) == Inf
+        @test tt(OnSymptomOnset() & !OnIsolation(),
+            infector_with(
+                asymptomatic = false, onset_time = 4.0, isolated = true, isolation_time = 9.0)) ==
+              Inf
+
+        # A custom policy may depend on the contact, so it is taken at its
+        # trigger time (isolation by default) while built-ins alongside are checked.
+        custom = infector_with(asymptomatic = false, age = 70, onset_time = 4.0,
+            test_positive = false, isolated = true, isolation_time = 3.0)
+        @test tt(SymptomaticOver65() | OnSymptomOnset(), custom) == 3.0
+        @test tt(SymptomaticOver65() & OnLabConfirmation(), custom) == Inf
+    end
+
+    @testset "Tracing through a non-onset branch of AnyOf" begin
+        # Asymptomatic cases are traced only through lab confirmation, which
+        # makes the onset branch NaN for them.
+        clinical = clinical_presentation(
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases())
+        ct = ContactTracing(OnSymptomOnset() | OnLabConfirmation(), 1.0, Exponential(1.0))
+        state = simulate(
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [iso, ct], attributes = clinical);
+            n_initial = 20, max_cases = 300, rng = StableRNG(42))
+
+        traced = filter(is_traced, state.individuals)
+        @test !isempty(traced)
+        @test !any(ind -> isnan(isolation_time(ind)), traced)
+        via_asymptomatic = filter(
+            ind -> is_asymptomatic(state.individuals[ind.parent_id]), traced)
+        @test count(ind -> isfinite(isolation_time(ind)), via_asymptomatic) > 0
+    end
+
     @testset "Integration with ContactTracing constructors" begin
         # Terse positional form wraps probability/delay automatically.
         ct = ContactTracing(OnSymptomOnset(), 0.7, Exponential(1.5))

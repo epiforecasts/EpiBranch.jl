@@ -131,9 +131,12 @@ Base.:!(a::TraceEligibility) = NoneOf(a)
 # condition. `OnSymptomOnset` times from symptom onset, so tracing can
 # start before lab confirmation (or without it), while the historical
 # default and the isolation/confirmation policies time from isolation.
-# `ContactTracing` adds its delay on top. Combinators compose: an `AllOf`
-# triggers once its last condition is met (the latest time), an `AnyOf`
-# once its first is.
+# `ContactTracing` adds its delay on top. Combinators compose over the
+# conditions the infector actually meets: an `AnyOf` triggers once its
+# first met condition is, an `AllOf` once its last is. A condition the
+# infector does not meet has no trigger time of its own (an asymptomatic
+# case has no onset), so letting it into the reduction would either pull
+# the time earlier than any real event or poison it with `NaN`.
 
 """
     trigger_time(eligibility, infector, state) -> Float64
@@ -143,14 +146,79 @@ The time the trace starts for `infector` under this eligibility policy;
 isolation time (the historical default). [`OnSymptomOnset`](@ref) overrides
 this to onset time, so suspicion-based tracing starts at symptom onset
 instead of waiting for isolation or confirmation.
+
+The combinators reduce over the wrapped conditions the infector meets:
+
+- [`AnyOf`](@ref) takes the earliest trigger time among its met
+  conditions, and `Inf` (never) if none is met.
+- [`AllOf`](@ref) takes the latest trigger time, the moment its last
+  condition is met, and `Inf` if any condition is not met.
+- [`NoneOf`](@ref) marks no event of its own: a negation holds from the
+  outset, so it triggers at the infector's infection time when none of
+  its conditions is met, and `Inf` otherwise. Inside an `AllOf` it
+  therefore leaves the timing to the other conditions.
+
+A `NaN` trigger time from a wrapped condition counts as never met. The
+built-in policies test only the infector, so whether they are met is
+decided from `is_eligible`; a custom policy may depend on the contact,
+which is not available here, so it is taken at its trigger time.
 """
 trigger_time(::TraceEligibility, infector, state) = isolation_time(infector)
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
-function trigger_time(e::AllOf, infector, state)
-    maximum(trigger_time(c, infector, state) for c in e.conditions)
-end
+
 function trigger_time(e::AnyOf, infector, state)
-    minimum(trigger_time(c, infector, state) for c in e.conditions)
+    t = _never(infector)
+    for condition in e.conditions
+        _holds(condition, infector, state) === false && continue
+        t = min(t, _met_time(condition, infector, state))
+    end
+    return t
+end
+
+function trigger_time(e::AllOf, infector, state)
+    # With no conditions an `AllOf` holds from the outset, like a negation.
+    isempty(e.conditions) && return infector.infection_time
+    t = -_never(infector)
+    for condition in e.conditions
+        _holds(condition, infector, state) === false && return _never(infector)
+        t = max(t, _met_time(condition, infector, state))
+    end
+    return t
+end
+
+function trigger_time(e::NoneOf, infector, state)
+    _holds(e, infector, state) === false ? _never(infector) : infector.infection_time
+end
+
+# `Inf` in the infector's time type, so an AD dual flows through.
+_never(infector) = oftype(isolation_time(infector), Inf)
+
+function _met_time(condition, infector, state)
+    t = trigger_time(condition, infector, state)
+    return isnan(t) ? _never(infector) : t
+end
+
+# Whether `condition` holds for `infector` without reference to a contact:
+# `true`, `false`, or `missing` when that cannot be told. The built-in
+# atomic predicates read only the infector, so `is_eligible` settles them;
+# a custom policy may read the contact, so it stays `missing`. The
+# combinators use three-valued logic, so a known answer still decides
+# them when a custom policy sits alongside.
+const _InfectorPredicate = Union{OnSymptomOnset, OnLabConfirmation, OnIsolation,
+    TraceEveryone, TraceNobody, SymptomaticParent}
+
+_holds(::TraceEligibility, infector, state) = missing
+function _holds(condition::_InfectorPredicate, infector, state)
+    is_eligible(condition, infector, nothing, state)
+end
+function _holds(e::AnyOf, infector, state)
+    reduce(|, (_holds(c, infector, state) for c in e.conditions); init = false)
+end
+function _holds(e::AllOf, infector, state)
+    reduce(&, (_holds(c, infector, state) for c in e.conditions); init = true)
+end
+function _holds(e::NoneOf, infector, state)
+    !reduce(|, (_holds(c, infector, state) for c in e.conditions); init = false)
 end
 
 """
