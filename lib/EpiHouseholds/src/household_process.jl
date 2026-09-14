@@ -141,8 +141,8 @@ end
 # ── Helpers (public-surface only) ────────────────────────────────────
 
 # The external community source: a non-negative scalar (constant hazard) or any
-# continuous distribution (a calendar-time hazard). `_ext_active` separates "no
-# source" (a zero scalar) from a real one.
+# continuous distribution (a calendar-time hazard). EpiBranch's `_ext_active`
+# separates "no source" (a zero scalar) from a real one.
 _valid_external(α::Real) = α >= 0
 # A calendar-time hazard must live on the non-negative reals: introductions
 # cannot happen before time 0, so reject distributions with negative support.
@@ -150,6 +150,3 @@ _valid_external(d::ContinuousUnivariateDistribution) = minimum(d) >= 0
 _valid_external(_) = false
 _normalise_external(α::Real) = Float64(α)
 _normalise_external(d::ContinuousUnivariateDistribution) = d
-
-_ext_active(α::Real) = α > 0
-_ext_active(::ContinuousUnivariateDistribution) = true
