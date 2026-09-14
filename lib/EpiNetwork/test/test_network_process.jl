@@ -302,6 +302,14 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test occursin("RoutedNetwork", repr(m))
         @test occursin(":a", repr(m))
         @test EpiBranch.supplies_contacts(m)
+        # a model-level start fills in routes that leave theirs unset, so the
+        # stored routes are the ones the simulation runs
+        mf = RoutedNetwork(
+            [w(:a, a), RouteWindow(:b; from = :died, kernel = Exponential(1.0),
+                reach = a)];
+            from = :onset)
+        @test mf.windows[1].from === :onset
+        @test mf.windows[2].from === :died
         # routes must agree on the node set, and there must be at least one
         @test_throws ArgumentError RoutedNetwork([w(:a, a), w(:b, ring_adjacency(5))])
         @test_throws ArgumentError RoutedNetwork(RouteWindow[])
@@ -422,8 +430,10 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
             (get(case.state, :index, false) && is_traced(st.individuals[3])) || continue
             checked += 1
             died = case.state[:died_time]
-            # a quarantined contact's isolation time is its trace time
-            @test isolation_time(st.individuals[3]) >= died
+            # a quarantined contact's isolation time is its trace time, and the
+            # trace delay runs from the funeral rather than being absorbed by
+            # the case's much earlier isolation
+            @test isolation_time(st.individuals[3]) > died
             @test isolation_time(st.individuals[2]) < died
         end
         @test checked > 0
