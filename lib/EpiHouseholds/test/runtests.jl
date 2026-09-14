@@ -277,6 +277,61 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
               pairwise_surv_loglik(kern, data)
     end
 
+    @testset "covariate kernel: simulate → likelihood round trip recovers both scales" begin
+        # Roles are fixed by host id: in each household of four, the first two
+        # members are adults and the last two children. An adult infects a
+        # household-mate faster than a child does, so the kernel depends on the
+        # infector's role. The simulator and both likelihood forms call
+        # `kernel(infector, susceptible)`; fitting the two scales recovers them
+        # only if all three agree on that order. `by_infector = false` reads the
+        # role off the susceptible instead, which is what a reversed order would
+        # fit; a flag keeps one closure type, so both fits share compiled code.
+        is_adult(i) = (i - 1) % 4 < 2
+        function kernel(adult_scale, child_scale; by_infector = true)
+            return (infector, susceptible) -> Exponential(
+                is_adult(by_infector ? infector : susceptible) ?
+                adult_scale : child_scale)
+        end
+        truth = [3.0, 12.0]
+        m = ModelSpec(HouseholdProcess(fill(4, 600), kernel(truth...));
+            progression = _sir(6.0))
+        data = household_infections(simulate(m; rng = StableRNG(230)), m)
+        layout = compile_household_pairs(data)
+
+        ll(θ; by_infector = true) = pairwise_surv_loglik(
+            kernel(exp.(θ)...; by_infector), data, layout)
+        # the layout and the dynamic form agree for the structured kernel, and the
+        # dispatched loglikelihood routes the model's own kernel the same way
+        for θ in (log.(truth), log.([2.0, 5.0]), log.([6.0, 3.0]))
+            @test ll(θ) ≈ pairwise_surv_loglik(kernel(exp.(θ)...), data)
+        end
+        @test loglikelihood(data, m) ≈ ll(log.(truth))
+
+        # Newton maximisation on the log scales, from a start that does not
+        # distinguish the roles
+        function newton(f, θ)
+            for _ in 1:8
+                θ = θ - ForwardDiff.hessian(f, θ) \ ForwardDiff.gradient(f, θ)
+            end
+            return θ
+        end
+        θ̂ = newton(ll, log.([4.0, 4.0]))
+        @test all(abs.(ForwardDiff.gradient(ll, θ̂)) .< 1e-6)
+
+        # With about 2,000 cases the standard errors of the log scales, from the
+        # observed information, are roughly 0.03 (adult) and 0.06 (child); both
+        # estimates must fall within three of them of the truth.
+        info = -ForwardDiff.hessian(ll, θ̂)
+        se = sqrt.([inv(info)[k, k] for k in 1:2])
+        @test all(se .< 0.1)
+        @test all(abs.(θ̂ .- log.(truth)) .< 3 .* se)
+
+        # the data tell the roles apart: a susceptible-role kernel fits far worse
+        # at its own optimum, so the recovery above is sensitive to the id order
+        swapped(θ) = ll(θ; by_infector = false)
+        @test ll(θ̂) > swapped(newton(swapped, log.([4.0, 4.0]))) + 10
+    end
+
     @testset "compiled pair layout: differentiable and matches dynamic gradient" begin
         # the fast path exists to be differentiated in the kernel parameters
         # (its whole reason for being reused across gradient evaluations). The

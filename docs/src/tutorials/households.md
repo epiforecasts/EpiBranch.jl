@@ -82,6 +82,12 @@ grid = 2.0:0.5:6.0
 grid[argmax([ll(s) for s in grid])]   # ≈ the true scale, 4.0
 ```
 
+The kernel can also be a callable `(infector, susceptible) -> Distribution` of
+host ids, for covariate models such as adults transmitting faster than children.
+The simulator and every `pairwise_surv_loglik` form that takes household data call
+it with the ids in that order, so the same callable simulates and fits, and the
+round trip recovers each of its parameters.
+
 ## Fitting with Turing
 
 When the infection layer is observed (here it comes directly from the simulation),
