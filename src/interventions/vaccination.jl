@@ -208,16 +208,20 @@ setting only `onward_efficacy` gives a pure PEP effect.
 
 Requires `:traced` (set by [`ContactTracing`](@ref)).
 
-!!! warning "Redundant on top of an airtight quarantine"
-    Against `ContactTracing`'s default `Quarantine` action combined with a
-    non-leaky `Isolation`, adding this intervention leaves the results
-    unchanged: the dose is given when the contact is traced, which is also
-    when the quarantine starts, so isolation already blocks every
-    transmission the dose would have. Measure ring vaccination against
-    tracing that follows contacts up without confining them
-    (`quarantine_on_trace = false`), or against an isolation that is
-    delayed or leaky (`post_isolation_transmission > 0`), where a dose
-    still has something left to do.
+!!! warning "Redundant when contacts are traced after their infector isolates"
+    `ContactTracing` by default traces a contact once its infector has been
+    isolated, and a non-leaky `Isolation` then already blocks every later
+    transmission to the contact. A dose given at the trace or after it
+    leaves the results unchanged, with or without quarantine
+    (`quarantine_on_trace = false`). `efficacy` has infections left to
+    prevent only when a contact can still be infected after being traced:
+    under leaky isolation (`post_isolation_transmission > 0`), when tracing
+    starts before the infector is isolated (for example
+    `eligibility = OnSymptomOnset()`), or in a `depth > 1` ring passing
+    through members who keep transmitting after they are traced.
+    `onward_efficacy` acts on the traced contact's own later transmission,
+    which a quarantine already blocks, so it does act under tracing without
+    quarantine.
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
 `:vaccine_efficacy` for the default dose label. With a non-default
@@ -227,8 +231,8 @@ Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
 
 A dose is given at the trace. `dose_delay` moves it later by a fixed
 number of days, and `requires_dose` names a dose label the contact must
-already carry for this one to be given at all, so a prime-boost schedule
-is two `RingVaccination`s:
+have received by the time this one falls due for it to be given at all,
+so a prime-boost schedule is two `RingVaccination`s:
 
 ```julia
 [
@@ -243,7 +247,12 @@ is two `RingVaccination`s:
 The boost is given 28 days after the trace to 90% of those primed (the
 remaining 10% being lost to follow-up), and protects 14 days later. List
 a dose after the dose it requires: the stack is applied in order, so a
-boost placed first sees no prime and never fires.
+boost placed first sees no prime and never fires. The required dose may
+come from any vaccination, such as a [`MassVaccination`](@ref) prime; a
+contact whose prime falls after the boost's due date is not boosted.
+Between two ring doses, a `dose_delay` shorter than the required dose's
+is rejected when the `ModelSpec` is built, since such a boost could never
+be given.
 
 Doses compose as competing risks, so a schedule reaching 80% protection
 in total from a prime at 60% needs `efficacy = 0.5` on the boost
@@ -358,44 +367,55 @@ end
 _covers(p::Real, ind, rng) = p >= 1.0 || rand(rng) < p
 _covers(p, ind, rng) = rand(rng) < _sample_value(p, rng, ind)
 
-# A dose that requires an earlier one is given only to contacts already
-# carrying it, so `coverage` on the later dose reads as retention among
-# those who got the earlier one.
-_has_required_dose(v::AbstractVaccination, ind) = _has_required_dose(required_dose(v), ind)
-_has_required_dose(::Nothing, ind) = true
-_has_required_dose(label::Symbol, ind) = get(ind.state, _vaccinated_key(label), false)
+# A dose that requires an earlier one is given only to contacts who
+# received it by the time this dose falls due, so `coverage` on the later
+# dose reads as retention among those who got the earlier one. The gate
+# reads the required dose's stored time, because a vaccination such as
+# `MassVaccination` records a dose as soon as it draws a time, and that
+# time can lie after the later dose.
+function _has_required_dose(v::AbstractVaccination, ind, vacc_t)
+    _has_required_dose(required_dose(v), ind, vacc_t)
+end
+_has_required_dose(::Nothing, ind, vacc_t) = true
+function _has_required_dose(label::Symbol, ind, vacc_t)
+    required_t = get(ind.state, _vaccination_time_key(label), Inf)
+    return isfinite(required_t) && required_t <= vacc_t
+end
 
 """
     _validate_dose_schedule(interventions)
 
 Check that every vaccination requiring an earlier dose is listed after the
-dose it requires, and is not scheduled to arrive before it. The stack is
-applied in order, so a dose placed before the one it requires would silently
-never be given; and because the required dose's flag is set at the trace
-whatever its own `dose_delay`, a shorter `dose_delay` on the later dose would
-otherwise let it be administered first.
+dose it requires, and, when both are ring doses, is not scheduled to arrive
+before it. The stack is applied in order, so a dose placed before the one it
+requires would silently never be given. Two ring doses are timed from the
+same trace, so a shorter `dose_delay` on the later dose would likewise mean
+it is never given. Other schedules are checked per contact when the dose
+falls due.
 """
 function _validate_dose_schedule(interventions)
-    given = Dict{Symbol, Float64}()
+    given = Dict{Symbol, Union{Nothing, Float64}}()
     for iv in interventions
         vacc = _unwrap_scheduled(iv)
         vacc isa AbstractVaccination || continue
         label = dose_label(vacc)
         req = required_dose(vacc)
+        offset = _dose_offset(vacc)
         if req !== nothing
             haskey(given, req) || throw(ArgumentError(
                 "vaccination with dose_label = :$label requires dose :$req, " *
                 "which is not given earlier in the intervention stack. " *
                 "List a dose after the dose it requires."))
-            if _dose_offset(vacc) < given[req]
+            req_offset = given[req]
+            if offset !== nothing && req_offset !== nothing && offset < req_offset
                 throw(ArgumentError(
                     "vaccination with dose_label = :$label requires dose :$req " *
-                    "but is scheduled earlier than it ($(_dose_offset(vacc)) days " *
-                    "after the trace against $(given[req])). A dose cannot be " *
-                    "given before the dose it requires."))
+                    "but is scheduled earlier than it ($offset days after the " *
+                    "trace against $req_offset). A dose cannot be given before " *
+                    "the dose it requires."))
             end
         end
-        given[label] = _dose_offset(vacc)
+        given[label] = offset
         _warn_double_counted_efficacy(vacc)
     end
     return nothing
@@ -418,9 +438,9 @@ function _warn_double_counted_efficacy(rv::RingVaccination)
     return nothing
 end
 
-"""Days from the triggering event to this dose being administered. Only
-[`RingVaccination`](@ref) delays a dose relative to its trigger."""
-_dose_offset(::AbstractVaccination) = 0.0
+"""Days from the trace to this dose being administered, or `nothing` for a
+vaccination not timed from the trace. Only [`RingVaccination`](@ref) is."""
+_dose_offset(::AbstractVaccination) = nothing
 _dose_offset(rv::RingVaccination) = rv.dose_delay
 
 # The intervention a wrapper stands in for; `Scheduled` adds its method.
@@ -432,7 +452,6 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
     for ind in new_contacts
         is_traced(ind) || continue
         get(ind.state, vacc_key, false) && continue
-        _has_required_dose(rv, ind) || continue
         # Fire when the tracing team reached the contact. `ContactTracing`
         # records that as `:trace_time` whatever its trace action, so the
         # isolation-derived times below are reached only when something
@@ -447,6 +466,7 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
         end
         vacc_t = trace_t + rv.dose_delay
         isfinite(vacc_t) || continue
+        _has_required_dose(rv, ind, vacc_t) || continue
         _within_eligibility_window(rv.eligibility_window, ind, vacc_t, state.rng) ||
             continue
         _covers(rv.coverage, ind, state.rng) || continue

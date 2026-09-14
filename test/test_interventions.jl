@@ -575,6 +575,33 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 end
             end
 
+            @testset "A dose is not given before the dose it requires" begin
+                # A mass prime is recorded as soon as its eligibility time is
+                # drawn, and on day 60 that time lies after most boosts fall
+                # due. Day 20 checks that boosts after the prime still happen.
+                n_boosted = 0
+                n_early = 0
+                for eligibility_time in (60.0, 20.0)
+                    mass_prime = MassVaccination(efficacy = 0.6,
+                        eligibility_time = eligibility_time, dose_label = :prime)
+                    boost = RingVaccination(efficacy = 0.5, dose_delay = 7.0,
+                        requires_dose = :prime, dose_label = :boost)
+                    states = simulate(
+                        ModelSpec(process; interventions = [iso, ct, mass_prime, boost],
+                            attributes = clinical),
+                        20; max_cases = 300, rng = StableRNG(3))
+                    for s in states, ind in s.individuals
+
+                        get(ind.state, :vaccinated_boost, false) || continue
+                        n_boosted += 1
+                        n_early += ind.state[:vaccination_time_boost] <
+                                   ind.state[:vaccination_time_prime]
+                    end
+                end
+                @test n_boosted > 0  # otherwise the test is vacuous
+                @test n_early == 0
+            end
+
             @testset "A dose scheduled before the one it requires is rejected" begin
                 # List order is right, but the boost arrives at the trace while
                 # the prime does not arrive until 28 days later.
