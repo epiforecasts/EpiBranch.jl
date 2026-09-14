@@ -17,7 +17,7 @@
 # one falls out of which windows were cut and when.
 
 """
-    RouteWindow(name; from, until, kernel, reach = name)
+    RouteWindow(name; from = nothing, until, kernel, reach = name)
 
 One transmission route, open over part of a case's natural history.
 
@@ -25,7 +25,10 @@ One transmission route, open over part of a case's natural history.
 - `from` is the state at which this route's infectiousness begins. `:infection`
   opens it at the infection time itself; any other state opens it at that
   state's time, following the `<state>_time` convention that
-  [`Transition`](@ref) writes.
+  [`Transition`](@ref) writes. The default, `nothing`, takes the start the
+  model derives from its progression, as the continuous-time processes do for
+  their own `from`: `:infectious` when a transition writes it, otherwise the
+  infection time.
 - `until` is the tuple of states that end the route. The window closes at the
   earliest of their times. A state that no window lists never censors
   anything, and a state listed by one window and not another censors only the
@@ -64,19 +67,20 @@ is created only to be censored.
 """
 struct RouteWindow{K, R}
     name::Symbol
-    from::Symbol
+    from::Union{Symbol, Nothing}
     until::Tuple
     kernel::K
     reach::R
 end
 
-function RouteWindow(name::Symbol; from::Symbol = :infection, until::Tuple = (),
+function RouteWindow(
+        name::Symbol; from::Union{Symbol, Nothing} = nothing, until::Tuple = (),
         kernel, reach = name)
     return RouteWindow(name, from, until, kernel, reach)
 end
 
 function Base.show(io::IO, w::RouteWindow)
-    print(io, "RouteWindow(:", w.name, ", from=:", w.from,
+    print(io, "RouteWindow(:", w.name, ", from=", repr(w.from),
         ", until=", w.until, ", kernel=", nameof(typeof(w.kernel)), ")")
 end
 
@@ -85,8 +89,17 @@ end
 
 Time at which `window` opens for `individual`, or `Inf` if its `from` state has
 not been reached. A route that never opened contributes no contacts.
+
+A window with `from = nothing` opens at the individual's `:infectious_time` when
+it has one and at its infection time otherwise, which is the start a model
+derives from a progression with or without an `:infectious` transition.
 """
-window_open(ind::Individual, w::RouteWindow) = _window_open(ind, w.from)
+window_open(ind::Individual, w::RouteWindow) = _window_open(ind, _open_state(ind, w.from))
+
+_open_state(ind::Individual, from::Symbol) = from
+function _open_state(ind::Individual, ::Nothing)
+    haskey(ind.state, :infectious_time) ? :infectious : :infection
+end
 
 """
     window_close(individual, window, interventions = ())

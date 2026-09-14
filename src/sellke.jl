@@ -254,7 +254,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         # state was never reached contributes nothing, which is how a survivor
         # never materialises funeral contacts.
         for (w, route_targets) in rts
-            open_t = _window_open(ind, w.from)
+            open_t = window_open(ind, w)
             isfinite(open_t) || continue
             close_t = _route_close(ind, w, interventions)
 

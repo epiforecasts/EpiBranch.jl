@@ -761,12 +761,14 @@ different stretch of the case's natural history and each ended by different
 things. A [`RouteWindow`](@ref) is the unit that makes those one mechanism:
 
 ```julia
-RouteWindow(name; from, until, kernel, reach = name)
+RouteWindow(name; from = nothing, until, kernel, reach = name)
 ```
 
 - `from` is the state at which this route's infectiousness begins. `:infection`
   opens it at the infection time; any other state opens it at that state's
-  `<state>_time`. A route whose `from` state is never reached contributes
+  `<state>_time`. The default, `nothing`, takes the start the model derives from
+  its progression, as the continuous-time processes do for their own `from`.
+  A route whose `from` state is never reached contributes
   nothing, so a case that recovers never opens a funeral route and nothing is
   created only to be censored.
 - `until` names the states that end the route, and the window closes at the

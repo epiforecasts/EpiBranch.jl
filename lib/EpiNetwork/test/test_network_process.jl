@@ -276,6 +276,23 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test count(p -> hh_of(p[1]) == hh_of(p[2]), pairs) > length(pairs) ÷ 2
     end
 
+    @testset "RoutedNetwork: route start under a latent period" begin
+        # Two nodes, a fixed 5-day latent period and near-immediate contact. A
+        # route left at the default opens when the case becomes infectious; an
+        # explicit `from = :infection` opens at infection.
+        seir = [Transition(:infectious; from = :infection, delay = 5.0),
+            Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
+        contact_time(from) = begin
+            w = RouteWindow(:pair; from, until = (:recovered,),
+                kernel = Exponential(0.1), reach = [[2], [1]])
+            st = simulate(ModelSpec(RoutedNetwork([w]); progression = seir);
+                n_initial = 1, rng = StableRNG(1))
+            maximum(ind.infection_time for ind in st.individuals)
+        end
+        @test contact_time(nothing) >= 5.0
+        @test contact_time(:infection) < 5.0
+    end
+
     @testset "RoutedNetwork: construction" begin
         a = ring_adjacency(6)
         w(name, adj) = RouteWindow(name; until = (:recovered,),

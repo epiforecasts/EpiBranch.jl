@@ -24,10 +24,11 @@ Network transmission over several routes at once.
 - `until`: the states that end this route, which is what lets one route be cut
   and another left alone. Include `EpiBranch.INTERVENTION_REMOVAL` for a route
   that a composed `Isolation` should end;
-- `from`: where the route's infectiousness starts. Leave at the default
-  `:infection` to take the same start the progression implies (`:infectious`
-  when a latent period produces it), or name a state for a route that opens
-  later, such as a funeral route from `:died`.
+- `from`: where the route's infectiousness starts. Leave it at the default
+  `nothing` to take the model's `from`, or, if that is also `nothing`, the start
+  the progression implies (`:infectious` when a latent period produces it).
+  Name `:infection` for a route open from the moment of infection, or a later
+  state for a route that opens later, such as a funeral route from `:died`.
 
 All routes run over the same node set, so every adjacency must have the same
 length.
@@ -121,8 +122,8 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
             observation, rng, condition = nothing, max_attempts),
         condition, max_attempts)
 
-    # Every route that did not name its own start takes the one the progression
-    # implies, so a latent period delays all of them together.
+    # Every route that did not name its own start takes the model's, or the one
+    # the progression implies, so a latent period delays all of them together.
     derived = _resolve_infectious_from(model.from, progression)
     Tobs = model.obs_end
 
@@ -134,7 +135,7 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
             "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
             "the whole network); build the process with e.g. `obs_end = 30.0`"))
 
-    windows = [w.from === :infection ?
+    windows = [w.from === nothing ?
                RouteWindow(w.name, derived, w.until, w.kernel, w.reach) : w
                for w in model.windows]
     routes = Tuple((w, _route_targets(w)) for w in windows)
