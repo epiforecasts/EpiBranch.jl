@@ -20,6 +20,9 @@ much you write:
 - **Add a transmission model** — subtype `TransmissionModel` to add a whole new
   transmission *process* (network-, household- or metapopulation-structured, a
   continuous-time alternative). The deepest surface. Covered below.
+- **Add a transmission route** — give a process a `RouteWindow` so a case
+  transmits over several routes at once, each opening and closing on different
+  states of its natural history. Covered below.
 - **Add an observation or data type** — subtype `ObservationModel`, or define a
   `loglikelihood` method for a new data type. Covered below.
 
@@ -63,12 +66,12 @@ downstream packages should pick names that do not collide.
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
 | `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
-| `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
-| `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` |
+| `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
+| `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff |
-| `:trace_time` | `Float64` | — | `ContactTracing` | `apply_post_transmission!` |
-| `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` |
-| `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` |
+| `:trace_time` | `Float64` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
+| `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` / `trace_contacts!` |
+| `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | Post-simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
@@ -96,6 +99,18 @@ colliding.
 sets it from a probability gate) and `PerCaseObservation` (which sets it
 post-simulation from a detection-probability draw). Composing both in the
 same simulation is not supported, because they will overwrite each other.
+
+Isolation is recorded under `:isolation_time`. A window that isolation should
+end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
+[Transmission routes](#Transmission-routes)), which respects leaky isolation.
+`:isolated` in an `until` refers to a `Transition(:isolated, …)` in the natural
+history. Set and undo isolation with `set_isolated!` and `clear_isolated!`.
+
+The tracing keys name two hooks because the two engines reach them
+differently: `apply_post_transmission!` on the generation-based engine, and
+`trace_contacts!` on the continuous-time models. Both funnel through the same
+per-pair policy, so the keys and their meanings are identical either way; see
+[Which hooks fire on which engine](#which-hooks-fire-on-which-engine).
 
 `:traced_by` is the source a node was traced from — the *first*,
 earliest-exposure tracer, since the engine makes one trace attempt per node.
@@ -134,6 +149,66 @@ ones your intervention needs (all default to no-ops).
 | `apply_post_transmission!(iv, state, new_contacts)` | Once per generation after all contacts for that generation have been created (across every active parent) | A `Vector{Individual}` of the new contacts | `nothing` (mutate any of the contacts' `state` in place) |
 | `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair during infection resolution, after `apply_post_transmission!` has run | The parent and a single new contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
 | `keep_active(iv, state, targets, is_new)` | Once per generation after infection is resolved, while the engine builds the next active set | This generation's `targets` and an `is_new` flag per target | An iterable of contact ids to keep generating contacts into the next generation (default: none) |
+| `trace_contacts!(iv, state, infector, contacts)` | Continuous-time models only: once per case, when the race settles it | The case, and the contacts it reached that are not yet settled | `nothing` (mutate the contacts' `state` in place) |
+| `traces_contacts(iv)` | Whenever a continuous-time model decides whether to gather contacts at all | Nothing | `true` if this intervention implements `trace_contacts!` (default `false`) |
+| `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
+
+### Which hooks fire on which engine
+
+The hooks above are not all available everywhere, because the engines are
+built differently. The generation-based engine creates a fresh `Individual`
+for every contact, infected or not, so it can hand you contact objects and
+resolve a per-pair decision for each. The continuous-time (Sellke) models
+have no such objects: every node exists from the start and the simulation
+only settles *when* each is infected, by a race between contact-interval
+draws. There is no per-pair decision point to hang a `Risk` on, and the one
+seam an intervention has is the infectious window.
+
+| Hook | Generation engine | Network / household (Sellke race) | Homogeneous pool |
+|---|---|---|---|
+| `initialise_individual!` | yes | yes | yes |
+| `resolve_individual!` | yes | yes | yes |
+| `infectious_removal_time` | not read | yes | yes |
+| `trace_contacts!` | not called | yes | no contact set |
+| `apply_post_transmission!` | yes | not called | not called |
+| `competing_risk` | yes | not called | not called |
+| `keep_active` | yes | not called | not called |
+
+What this means in practice:
+
+- An intervention whose effect is a **removal** — isolation, quarantine on
+  being traced, hospitalisation — works everywhere. It shortens the
+  infectious window, which every engine has.
+- An intervention whose effect is a **per-contact competing risk** against
+  the infection event — leaky vaccination, a partial-efficacy prophylaxis —
+  works only on the generation-based engine. On the continuous-time models
+  it is reported with a warning and has no effect, rather than being
+  silently ignored.
+- **Contact tracing** spans the two. Its action is a removal, so it applies
+  on both, but it needs to know who a case's contacts were. The generation
+  engine reads that off each contact's `parent_id`; the continuous-time
+  models get it from the process, which must report
+  `EpiBranch.supplies_contacts(model) = true` and pass a `contacts` closure.
+  A graph names a node's neighbours and a household its members; the
+  homogeneous pool is mass-action and has no pairwise contact structure, so
+  tracing stays unhonoured there.
+
+Two ordering differences follow from this, and they matter when you write an
+intervention that has to work on both:
+
+- On the generation engine, a contact resolves its own state
+  (`resolve_individual!`) **before** tracing runs. On the continuous-time
+  models the order inverts: a contact is traced when its *infector* settles,
+  which is before the contact settles anything of its own. An intervention
+  that writes onto a contact must therefore not assume the contact is
+  unwritten, and one that reads a contact's own state must not assume it is
+  already set. This is why `Isolation` treats a standing quarantine as a
+  competing pathway and keeps the earliest time, instead of returning early.
+- Tracing on the continuous-time path reaches only contacts that have not
+  themselves settled. Settling a case fixes its window and its onward
+  proposals, so a trace arriving afterwards has nothing left to shorten.
+  Tracing *backwards*, to the already-settled neighbour a case was infected
+  by, is not supported on either engine.
 
 Ordering guarantees:
 
@@ -678,6 +753,73 @@ Two constraints:
 - If a window's `from` is a state that nothing writes, the window never opens.
   The constructor warns when it can detect this.
 
+## Transmission routes
+
+A case need not have one infectiousness profile and one set of people it can
+reach. Real transmission is often several routes at once, each open over a
+different stretch of the case's natural history and each ended by different
+things. A [`RouteWindow`](@ref) is the unit that makes those one mechanism:
+
+```julia
+RouteWindow(name; from, until, kernel, reach = name)
+```
+
+- `from` is the state at which this route's infectiousness begins. `:infection`
+  opens it at the infection time; any other state opens it at that state's
+  `<state>_time`. A route whose `from` state is never reached contributes
+  nothing, so a case that recovers never opens a funeral route and nothing is
+  created only to be censored.
+- `until` names the states that end the route, and the window closes at the
+  earliest of their times. **A state listed by one window and not another
+  censors only the first.** That is the whole point: it is how a control measure
+  cuts one route and leaves another.
+- `kernel` is the route's contact-interval distribution, measured from the
+  window opening. A model reads it when it resolves `reach` into the route's
+  contacts.
+- `reach` tags who the route reaches, for the model to resolve — only the model
+  knows its own structure.
+
+### Being cut by an intervention
+
+Route censoring is otherwise written in states the natural history produces, but
+an intervention removal cannot be read off a state key alone: perfect isolation
+takes a case out of transmission, whereas leaky isolation only reduces it and a
+window cannot express that. `infectious_removal_time` resolves the difference,
+and a window opts into it by listing the reserved
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`.
+
+So self-isolation is two routes differing in one tuple:
+
+```julia
+community = RouteWindow(:community;
+    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
+    kernel = Exponential(12.0), reach = community_adjacency)
+household = RouteWindow(:household; until = (:recovered,),
+    kernel = Weibull(1.5, 3.0), reach = household_adjacency)
+```
+
+A case that isolates stops transmitting in the community and goes on infecting
+the people it lives with, to the end of its infectious period.
+
+### What stays fixed
+
+`R` remains the intrinsic reproduction number a case would achieve if never
+removed, and the realised figure falls out of which routes were cut and when.
+The dispersion `k` remains the intrinsic offspring dispersion and is
+deliberately kept separate from the shape of the infectious period, so a count
+is never drawn from a duration — that would couple the offspring draw to timing
+and break the decoupling the engine rests on.
+
+### Reading them in a process
+
+A process that carries routes passes them to the continuous-time race as
+`(window, targets)` pairs instead of a single `from`/`until`/`targets`, and
+resolves each window's `reach` into its own targets closure, yielding
+`(target_id, kernel)` pairs. Passing both `routes` and the shorthand is an
+error, because the routes would silently drop the shorthand's censoring. A
+model that passes no routes gets a single window that is cut by intervention
+removal.
+
 ## Adding a transmission model
 
 Most use cases stay inside `BranchingProcess` and customise via the
@@ -1100,6 +1242,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Multi-type offspring | Function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
+| Transmission route | `RouteWindow(name; from, until, kernel, reach)` on a process that reads them | Continuous-time race, per case |
 | Structured fixed-size pool | Reuse the Sellke pool: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply a `force(group, counts)` | Simulation |
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |

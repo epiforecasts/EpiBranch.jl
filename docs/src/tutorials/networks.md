@@ -109,10 +109,13 @@ spreads on is a modelling choice. A few that map onto common assumptions:
 The kernel, progression and attributes attach exactly as before — only the
 source of the graph changes. Interventions attach through the infectious
 window: one that removes a case from transmission — `Isolation` — shortens
-that window and curtails spread (see below), while an intervention whose
-effect is a per-contact competing risk (contact tracing, leaky vaccination)
-has no representation on the continuous-time network path and is reported
-with a warning rather than applied. Graphs.jl is an optional
+that window and curtails spread (see below). `ContactTracing` applies too,
+because a node's contacts are its graph neighbours and quarantining a traced
+neighbour closes that neighbour's own window; see
+[Contact tracing on a network](#Contact-tracing-on-a-network). An intervention
+whose effect is purely a per-contact competing risk against the infection event,
+such as leaky vaccination, has no representation on the continuous-time network
+path and is reported with a warning rather than applied. Graphs.jl is an optional
 dependency: this constructor becomes available once you load Graphs.jl,
 and the adjacency-list and matrix constructors need nothing extra. For a
 directed graph, a node's out-neighbours are the contacts it can infect.
@@ -199,6 +202,51 @@ println("Mean size, no isolation:   ",
 println("Mean size, with isolation: ",
     round(sum(iso_sizes) / length(iso_sizes), digits = 1))
 ```
+
+## Contact tracing on a network
+
+On a branching process a case's contacts are drawn fresh from an offspring
+distribution, so tracing reaches people who exist only as that case's
+offspring. On a network they are the node's graph neighbours, which is a
+stronger statement: neighbourhoods overlap, so the same person can be a
+contact of several cases, and tracing a clustered graph repeatedly finds
+people who have already been found.
+
+`ContactTracing` composes onto `NetworkProcess` unchanged. A traced neighbour
+is quarantined at its trace time, which closes that neighbour's own infectious
+window if and when it is infected, so tracing acts on the same window that
+isolation does.
+
+```@example networks
+clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+    prob_asymptomatic = 0.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 1.0)
+
+ws = watts_strogatz(400, 6, 0.1)
+build(ivs) = ModelSpec(NetworkProcess(ws, Exponential(16.0));
+    progression = [Transition(:recovered; from = :infection, delay = 7.0,
+        terminal = true)],
+    interventions = ivs, attributes = clinical)
+
+meansize(ivs) = sum(simulate(build(ivs); n_initial = 1,
+                        rng = StableRNG(s)).cumulative_cases for s in 1:100) / 100
+
+println("no control:              ", round(meansize(AbstractIntervention[]), digits = 1))
+println("isolation:               ", round(meansize([iso]), digits = 1))
+for p in (0.5, 1.0)
+    ct = ContactTracing(probability = p, isolation_to_trace_delay = Exponential(1.0))
+    println("isolation + $(round(Int, 100p))% tracing:  ", round(meansize([iso, ct]), digits = 1))
+end
+```
+
+Tracing runs when the race settles a case, which is the first point at which
+that case's trace time is known. It therefore reaches the neighbours that are
+not yet settled themselves. Tracing *backwards*, to the already-settled
+neighbour a case was infected by, is not supported on either engine.
+
+An intervention whose effect is a competing risk against the infection event
+rather than a removal, such as leaky `RingVaccination`, still has no
+representation here and is reported with a warning.
 
 ## Community introductions
 

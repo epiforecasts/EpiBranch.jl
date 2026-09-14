@@ -122,16 +122,14 @@ function reset!(::Isolation, ind::Individual)
         set_isolated!(ind, previous)
         delete!(ind.state, :isolation_time_before_isolation)
     else
-        ind.state[:isolated] = false
-        ind.state[:isolation_time] = Inf
+        clear_isolated!(ind)
     end
     ind.state[:isolated_by_isolation] = false
     return nothing
 end
 
 function initialise_individual!(iso::Isolation, individual, state)
-    individual.state[:isolated] = false
-    individual.state[:isolation_time] = Inf
+    clear_isolated!(individual)
     individual.state[:isolated_by_isolation] = false
     if is_eligible_for_isolation(iso.eligibility, individual, state)
         sens = _sample_value(iso.test_sensitivity, state.rng, individual)

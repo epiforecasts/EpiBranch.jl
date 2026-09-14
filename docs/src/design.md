@@ -314,6 +314,14 @@ this framework fits the same quantities it simulates from.
 
 ## Host timeline and transmission-route windows
 
+!!! note "State of implementation"
+    The continuous-time half of this is built: `RouteWindow` carries a route's
+    `from` state, the states that end it, its kernel and its reach, and the
+    continuous-time race resolves several routes per case with per-route
+    censoring for any model that supplies them. What remains designed but unbuilt is the offspring-driven half —
+    the fate-mixture offspring law and its closed forms — so the analytical side
+    of the duality below does not yet carry over to multi-route models.
+
 The three stages above describe the simplest model: one offspring law, one
 generation-time distribution. The branching process generalises this against a
 **host timeline** (the disease layer: the case's natural history as a sequence

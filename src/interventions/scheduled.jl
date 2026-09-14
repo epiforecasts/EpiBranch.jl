@@ -128,3 +128,15 @@ end
 function competing_risk(s::Scheduled, parent, contact, state)
     is_active(s, state) ? competing_risk(s.intervention, parent, contact, state) : nothing
 end
+
+# Tracing on the continuous-time path, gated by the schedule exactly as
+# `apply_post_transmission!` is on the generation-based one.
+traces_contacts(s::Scheduled) = traces_contacts(s.intervention)
+function trace_contacts!(s::Scheduled, state, infector, contacts)
+    is_active(s, state) || return nothing
+    trace_contacts!(s.intervention, state, infector, contacts)
+    for c in contacts
+        _maybe_reset!(s, c)
+    end
+    return nothing
+end
