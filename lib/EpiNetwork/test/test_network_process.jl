@@ -348,6 +348,33 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test sum(count(is_traced, run(routed, s).individuals) for s in 1:10) > 0
     end
 
+    @testset "RoutedNetwork: a route's infectiousness start does not delay tracing" begin
+        # Setting `from = :onset` on each route or on the model describes the
+        # same outbreak, and both trace household and community contacts from
+        # infection, as NetworkProcess does.
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        adj = ring_adjacency(80)
+        k = Exponential(1.0)
+        prog = [Transition(:onset; from = :infection, delay = Uniform(2.0, 6.0)),
+            Transition(:recovered; from = :infection, delay = 12.0, terminal = true)]
+        ivs = [Isolation(onset_to_isolation_delay = Exponential(1.0)),
+            ContactTracing(probability = 1.0,
+                isolation_to_trace_delay = Exponential(0.5))]
+        on_route = RoutedNetwork([RouteWindow(:all; from = :onset,
+            until = (:recovered, REM), kernel = k, reach = adj)])
+        on_model = RoutedNetwork(
+            [RouteWindow(:all; until = (:recovered, REM),
+                kernel = k, reach = adj)];
+            from = :onset)
+        run(proc, s) = simulate(ModelSpec(proc; progression = prog, interventions = ivs);
+            n_initial = 2, rng = StableRNG(s))
+        for s in 1:10
+            a, b = run(on_route, s), run(on_model, s)
+            @test a.cumulative_cases == b.cumulative_cases
+            @test count(is_traced, a.individuals) == count(is_traced, b.individuals)
+        end
+    end
+
     @testset "RoutedNetwork: tracing follows only opened routes" begin
         # Node 1 lives with node 2 and would meet node 3 only at its funeral.
         # Nobody dies, so no funeral route ever opens and node 3 is never a
@@ -357,7 +384,7 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         household = RouteWindow(:household; until = (:recovered, REM),
             kernel = Exponential(1.0), reach = [[2], [1], Int[]])
         funeral = RouteWindow(:funeral; from = :died, until = (:recovered,),
-            kernel = Exponential(1.0), reach = [[3], Int[], [1]])
+            kernel = Exponential(1.0), reach = [[3], Int[], [1]], contacts_from = :died)
         clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
             prob_asymptomatic = 0.0)
         m = ModelSpec(RoutedNetwork([household, funeral]);
@@ -381,7 +408,7 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         household = RouteWindow(:household; until = (:died, REM),
             kernel = Exponential(1.0), reach = [[2], [1], Int[]])
         funeral = RouteWindow(:funeral; from = :died, until = (),
-            kernel = Exponential(1.0), reach = [[3], Int[], [1]])
+            kernel = Exponential(1.0), reach = [[3], Int[], [1]], contacts_from = :died)
         m = ModelSpec(RoutedNetwork([household, funeral]);
             progression = [Transition(:onset; from = :infection, delay = 0.5),
                 Transition(:died; from = :infection, delay = 8.0, terminal = true)],
@@ -405,7 +432,7 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         # isolated before it dies never holds a funeral and its funeral
         # neighbour is never traced.
         safe = RouteWindow(:funeral; from = :died, until = (REM,),
-            kernel = Exponential(1.0), reach = [[3], Int[], [1]])
+            kernel = Exponential(1.0), reach = [[3], Int[], [1]], contacts_from = :died)
         m_safe = ModelSpec(RoutedNetwork([household, safe]);
             progression = m.progression, interventions = m.interventions)
         isolated_first = 0

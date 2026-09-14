@@ -764,7 +764,8 @@ different stretch of the case's natural history and each ended by different
 things. A [`RouteWindow`](@ref) is the unit that makes those one mechanism:
 
 ```julia
-RouteWindow(name; from = nothing, until, kernel, reach = name)
+RouteWindow(name; from = nothing, until, kernel, reach = name,
+            contacts_from = :infection)
 ```
 
 - `from` is the state at which this route's infectiousness begins. `:infection`
@@ -783,6 +784,12 @@ RouteWindow(name; from = nothing, until, kernel, reach = name)
   contacts.
 - `reach` tags who the route reaches, for the model to resolve — only the model
   knows its own structure.
+- `contacts_from` is the state from which the people the route reaches count as
+  the case's contacts for tracing. The default, `:infection`, suits standing
+  relationships such as a household. A funeral route sets `contacts_from =
+  :died`, so its contacts are traced only if the funeral happened before the
+  route was cut, and not before it. This is separate from `from`: a route whose
+  infectiousness starts at onset still reaches the same household from infection.
 
 ### Being cut by an intervention
 

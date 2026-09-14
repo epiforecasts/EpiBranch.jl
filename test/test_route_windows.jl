@@ -9,6 +9,12 @@
         @test w.from === :infectious
         @test w.until == (:recovered,)
         @test w.reach === :community          # defaults to the route name
+        @test w.contacts_from === :infection  # standing relationships by default
+        @test !occursin("contacts_from", repr(w))
+        f = RouteWindow(:funeral; from = :died, kernel = Exponential(1.0),
+            contacts_from = :died)
+        @test f.contacts_from === :died
+        @test occursin("contacts_from=:died", repr(f))
         @test occursin("RouteWindow(:community", repr(w))
         @test occursin("from=:infectious", repr(w))
 
