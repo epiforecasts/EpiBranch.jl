@@ -197,8 +197,8 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
     # shorthand's one window opts into intervention removal, which is what a
-    # model with no route structure of its own means by isolation. Mixing the
-    # two is rejected: a routed model's windows would silently drop the
+    # model with no route structure of its own means by isolation. Passing both
+    # is an error, because a routed model's windows would silently drop the
     # shorthand's censoring, including intervention removal.
     if routes === nothing
         targets === nothing && throw(ArgumentError(

@@ -33,8 +33,8 @@ One transmission route, open over part of a case's natural history.
   List [`EpiBranch.INTERVENTION_REMOVAL`](@ref) for a route that the composed
   interventions (isolation, quarantine on being traced) should end.
 - `kernel` is the route's contact-interval distribution, measured from the
-  window opening. The race takes each contact's kernel from the targets a model
-  builds for the route, so the model reads `kernel` when it resolves `reach`.
+  window opening. A model reads it when it resolves `reach` into the route's
+  contacts.
 - `reach` tags who the route reaches, for the model to resolve. Defaults to
   `name`, which is usually what a model keys its structure on.
 
@@ -96,8 +96,8 @@ states' times, or `Inf` if none has been reached. Censoring is per window, so
 the same removal can end one route and leave another running.
 
 A window listing [`EpiBranch.INTERVENTION_REMOVAL`](@ref) also closes when the
-composed `interventions` remove the case, so pass the same interventions the
-simulation ran with to get the close the race used.
+composed `interventions` remove the case. Pass the interventions the simulation
+used to get the same closing time as the simulation.
 """
 function window_close(ind::Individual, w::RouteWindow, interventions = ())
     return _route_close(ind, w, interventions)

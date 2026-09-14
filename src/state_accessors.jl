@@ -57,12 +57,10 @@ individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 """Mark an individual as isolated at the given time (any `Real`, so an AD
 dual isolation time flows through).
 
-This deliberately does not write `:isolated_time`. Infectiousness windows read
-`<state>_time` keys, so writing it would let `:isolated` in a window's `until`
-close the window hard even when the isolation is leaky. A route that isolation
-should cut lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) instead, which
-respects leakiness, and `:isolated` stays free for a `Transition(:isolated, …)`
-in the natural history."""
+The time is stored under `:isolation_time`. A route window that isolation should
+end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which
+respects leaky isolation. `:isolated` in an `until` refers to a
+`Transition(:isolated, …)` in the natural history."""
 function set_isolated!(ind::Individual, time::Real)
     ind.state[:isolated] = true
     ind.state[:isolation_time] = time

@@ -100,14 +100,11 @@ sets it from a probability gate) and `PerCaseObservation` (which sets it
 post-simulation from a detection-probability draw). Composing both in the
 same simulation is not supported, because they will overwrite each other.
 
-Isolation is recorded under `:isolation_time` only. Infectiousness windows read
-`<state>_time` keys, so an `:isolated_time` written by the intervention would
-close any window listing `:isolated` in its `until`, even when the isolation is
-leaky. A window that isolation should cut lists
-[`EpiBranch.INTERVENTION_REMOVAL`](@ref) instead (see
-[Transmission routes](#Transmission-routes)), and `:isolated` in an `until`
-refers to a `Transition(:isolated, …)` in the natural history. Set and undo
-isolation with `set_isolated!` and `clear_isolated!`.
+Isolation is recorded under `:isolation_time`. A window that isolation should
+end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
+[Transmission routes](#Transmission-routes)), which respects leaky isolation.
+`:isolated` in an `until` refers to a `Transition(:isolated, …)` in the natural
+history. Set and undo isolation with `set_isolated!` and `clear_isolated!`.
 
 The tracing keys name two hooks because the two engines reach them
 differently: `apply_post_transmission!` on the generation-based engine, and
@@ -777,8 +774,8 @@ RouteWindow(name; from, until, kernel, reach = name)
   censors only the first.** That is the whole point: it is how a control measure
   cuts one route and leaves another.
 - `kernel` is the route's contact-interval distribution, measured from the
-  window opening. The model reads it when it builds the route's targets, which
-  is where the race takes each contact's kernel from.
+  window opening. A model reads it when it resolves `reach` into the route's
+  contacts.
 - `reach` tags who the route reaches, for the model to resolve — only the model
   knows its own structure.
 
@@ -819,10 +816,9 @@ A process that carries routes passes them to the continuous-time race as
 `(window, targets)` pairs instead of a single `from`/`until`/`targets`, and
 resolves each window's `reach` into its own targets closure, yielding
 `(target_id, kernel)` pairs. Passing both `routes` and the shorthand is an
-error, because the routes would otherwise drop the shorthand's censoring
-without notice. A model passing no routes gets a single window that opts into
-intervention removal, which is the behaviour every process had before routes
-existed.
+error, because the routes would silently drop the shorthand's censoring. A
+model that passes no routes gets a single window that is cut by intervention
+removal.
 
 ## Adding a transmission model
 
