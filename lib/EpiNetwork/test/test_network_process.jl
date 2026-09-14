@@ -305,6 +305,31 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test state.cumulative_cases in 5:40
     end
 
+    @testset "RoutedNetwork: tracing follows only opened routes" begin
+        # Node 1 lives with node 2 and would meet node 3 only at its funeral.
+        # Nobody dies, so no funeral route ever opens and node 3 is never a
+        # contact of anyone: tracing must not reach it, whichever node is the
+        # index case.
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        household = RouteWindow(:household; until = (:recovered, REM),
+            kernel = Exponential(1.0), reach = [[2], [1], Int[]])
+        funeral = RouteWindow(:funeral; from = :died, until = (:recovered,),
+            kernel = Exponential(1.0), reach = [[3], Int[], [1]])
+        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
+            prob_asymptomatic = 0.0)
+        m = ModelSpec(RoutedNetwork([household, funeral]);
+            progression = _sir(10.0), attributes = clinical,
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.5)),
+                ContactTracing(probability = 1.0,
+                    isolation_to_trace_delay = Exponential(0.5))])
+        for s in 1:20
+            st = simulate(m; n_initial = 1, rng = StableRNG(s))
+            @test !is_traced(st.individuals[3])
+            # node 3's own funeral route never opens either
+            is_infected(st.individuals[3]) && @test !is_traced(st.individuals[1])
+        end
+    end
+
     @testset "contact tracing" begin
         # A node's contacts are its graph neighbours, so tracing reaches them
         # and quarantining closes their own infectious window in turn.

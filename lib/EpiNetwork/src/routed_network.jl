@@ -91,16 +91,19 @@ end
 population_size(::RoutedNetwork) = NoPopulation()
 _honours_termination_controls(::RoutedNetwork) = false
 
-# Contacts for tracing are the union of every route's neighbours: someone you
-# live with and also see in the community is one contact, traced once.
 EpiBranch.supplies_contacts(::RoutedNetwork) = true
 
-function _all_neighbours(m::RoutedNetwork, i::Integer)
-    length(m.windows) == 1 && return m.windows[1].reach[i]
+# Contacts for tracing are the union of the neighbours on every route the case
+# opened. Someone you live with and also see in the community is one contact,
+# traced once, and a route whose `from` state was never reached made no contacts,
+# so a survivor's funeral contacts are not traced.
+function _opened_neighbours(windows, ind::Individual, i::Integer)
     seen = Int[]
-    for w in m.windows, nb in w.reach[i]
-
-        nb in seen || push!(seen, nb)
+    for w in windows
+        isfinite(window_open(ind, w)) || continue
+        for nb in w.reach[i]
+            nb in seen || push!(seen, nb)
+        end
     end
     return seen
 end
@@ -131,17 +134,16 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
             "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
             "the whole network); build the process with e.g. `obs_end = 30.0`"))
 
-    routes = Tuple((
-                       w.from === :infection ?
-                       RouteWindow(w.name, derived, w.until, w.kernel, w.reach) : w,
-                       _route_targets(w))
-    for w in model.windows)
+    windows = [w.from === :infection ?
+               RouteWindow(w.name, derived, w.until, w.kernel, w.reach) : w
+               for w in model.windows]
+    routes = Tuple((w, _route_targets(w)) for w in windows)
 
     EpiBranch._sellke_race!(state, collect(1:model.n), rng;
         routes = routes, interventions = interventions,
         seed! = (best, members, r) -> _seed_network!(
             best, members, model.external_hazard, sim_opts.n_initial, Tobs, r),
-        contacts = (inf, st) -> _all_neighbours(model, inf))
+        contacts = (inf, st) -> _opened_neighbours(windows, st.individuals[inf], inf))
 
     _reconcile_sellke_bookkeeping!(state)
     apply_observation!(observation, state, rng)
