@@ -149,7 +149,7 @@ ones your intervention needs (all default to no-ops).
 | `apply_post_transmission!(iv, state, new_contacts)` | Once per generation after all contacts for that generation have been created (across every active parent) | A `Vector{Individual}` of the new contacts | `nothing` (mutate any of the contacts' `state` in place) |
 | `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair during infection resolution, after `apply_post_transmission!` has run | The parent and a single new contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
 | `keep_active(iv, state, targets, is_new)` | Once per generation after infection is resolved, while the engine builds the next active set | This generation's `targets` and an `is_new` flag per target | An iterable of contact ids to keep generating contacts into the next generation (default: none) |
-| `trace_contacts!(iv, state, infector, contacts)` | Continuous-time models only: once per case, when the race settles it | The case, and the contacts it reached that are not yet settled | `nothing` (mutate the contacts' `state` in place) |
+| `trace_contacts!(iv, state, infector, contacts[, not_before])` | Continuous-time models only: once per case, when the race settles it | The case, the contacts it reached that are not yet settled, and, from a model whose contacts can come about after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing` (mutate the contacts' `state` in place) |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to gather contacts at all | Nothing | `true` if this intervention implements `trace_contacts!` (default `false`) |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
 
@@ -189,6 +189,11 @@ What this means in practice:
   engine reads that off each contact's `parent_id`; the continuous-time
   models get it from the process, which must report
   `EpiBranch.supplies_contacts(model) = true` and pass a `contacts` closure.
+  The closure yields contact ids, or `(id, time)` pairs when some contacts come
+  about only after the case's infection, such as at a funeral
+  (`contacts_from = :died` on a `RoutedNetwork` route). `time` is when each
+  person became a contact, and `ContactTracing` runs that contact's trace delay
+  from no earlier than it.
   A graph names a node's neighbours and a household its members; the
   homogeneous pool is mass-action and has no pairwise contact structure, so
   tracing stays unhonoured there.
@@ -761,12 +766,15 @@ different stretch of the case's natural history and each ended by different
 things. A [`RouteWindow`](@ref) is the unit that makes those one mechanism:
 
 ```julia
-RouteWindow(name; from, until, kernel, reach = name)
+RouteWindow(name; from = nothing, until, kernel, reach = name,
+            contacts_from = :infection)
 ```
 
 - `from` is the state at which this route's infectiousness begins. `:infection`
   opens it at the infection time; any other state opens it at that state's
-  `<state>_time`. A route whose `from` state is never reached contributes
+  `<state>_time`. The default, `nothing`, takes the start the model derives from
+  its progression, as the continuous-time processes do for their own `from`.
+  A route whose `from` state is never reached contributes
   nothing, so a case that recovers never opens a funeral route and nothing is
   created only to be censored.
 - `until` names the states that end the route, and the window closes at the
@@ -778,6 +786,12 @@ RouteWindow(name; from, until, kernel, reach = name)
   contacts.
 - `reach` tags who the route reaches, for the model to resolve — only the model
   knows its own structure.
+- `contacts_from` is the state from which the people the route reaches count as
+  the case's contacts for tracing. The default, `:infection`, suits standing
+  relationships such as a household. A funeral route sets `contacts_from =
+  :died`, so its contacts are traced only if the funeral happened before the
+  route was cut, and not before it. This is separate from `from`: a route whose
+  infectiousness starts at onset still reaches the same household from infection.
 
 ### Being cut by an intervention
 

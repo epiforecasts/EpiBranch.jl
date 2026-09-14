@@ -7,6 +7,7 @@ BranchingProcess
 Infectiousness
 HomogeneousProcess
 NetworkProcess
+RoutedNetwork
 HouseholdProcess
 ModelSpec
 single_type_offspring

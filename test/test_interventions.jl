@@ -144,11 +144,30 @@ struct _NoTraceIntervention <: AbstractIntervention end
         @test EpiBranch.infectious_removal_time(ct, traced) == 4.0
         @test EpiBranch.infectious_removal_time(ct, Individual(id = 4)) == Inf
 
+        # A contact on a route that opens later is traced no earlier than the
+        # route opens, directly or through Scheduled; an earlier bound leaves
+        # the case's own trace time alone.
+        infector, contact = pair()
+        EpiBranch.trace_contacts!(ct, state, infector, [contact], [50.0])
+        @test is_quarantined(contact)
+        # the trace delay runs from when the contact could first be reached
+        @test isolation_time(contact) > 50.0
+        infector, contact = pair()
+        EpiBranch.trace_contacts!(Scheduled(ct; start_time = 0.0), state, infector,
+            [contact], [50.0])
+        @test isolation_time(contact) >= 50.0
+        infector, early = pair()
+        EpiBranch.trace_contacts!(ct, state, infector, [early], [-Inf])
+        @test isolation_time(early) < 50.0
+
         # Defaults are inert, so an intervention that does not trace costs
-        # nothing on the continuous-time path.
+        # nothing on the continuous-time path, with or without trace bounds.
         @test !EpiBranch.traces_contacts(_NoTraceIntervention())
         @test EpiBranch.trace_contacts!(
             _NoTraceIntervention(), state, Individual(id = 5), Individual[]) === nothing
+        @test EpiBranch.trace_contacts!(
+            _NoTraceIntervention(), state, Individual(id = 5), Individual[],
+            Float64[]) === nothing
     end
 
     @testset "Isolation keeps the earliest pathway when already isolated" begin
