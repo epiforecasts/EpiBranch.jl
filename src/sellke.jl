@@ -133,14 +133,23 @@ function _trace_from!(state, infector, interventions, contacts, pos, processed)
     contacts === nothing && return nothing
     any(traces_contacts, interventions) || return nothing
     pending = Individual[]
-    for cid in contacts(infector.id, state)
+    not_before = typeof(infector.infection_time)[]
+    timed = false
+    for c in contacts(infector.id, state)
+        cid, t0 = c isa Tuple ? (c[1], c[2]) : (c, -Inf)
+        timed |= c isa Tuple
         k = get(pos, cid, 0)
         (k == 0 || processed[k]) && continue
         push!(pending, state.individuals[cid])
+        push!(not_before, t0)
     end
     isempty(pending) && return nothing
     for iv in interventions
-        trace_contacts!(iv, state, infector, pending)
+        if timed
+            trace_contacts!(iv, state, infector, pending, not_before)
+        else
+            trace_contacts!(iv, state, infector, pending)
+        end
     end
     return nothing
 end
@@ -184,6 +193,9 @@ opens and closes on its own window, and only a route listing
 contact with, whether or not transmission followed, which is what contact
 tracing acts on; it is therefore usually wider than `targets`, which yields only
 those still susceptible. Omit it when the model has no interventions that trace.
+A model whose contacts start on routes that open later yields `(id, time)`
+pairs instead, where `time` is the earliest the contact can be traced; it
+reaches the interventions as `trace_contacts!`'s `not_before`.
 
 The contact-interval `kernel` must be a **non-negative** distribution: the
 "each pop is final" invariant relies on a candidate time `open_t + dt` never

@@ -425,7 +425,7 @@ end
 # One trace attempt for a single infector → contact pair. Both engines funnel
 # through this, so the generation-based and continuous-time paths apply exactly
 # the same eligibility, rate, delay and action policy.
-function _trace_pair!(ct::ContactTracing, state, infector, ind, rng)
+function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before = -Inf)
     # A contact enters the ring two ways. As a *seed*, when its
     # infector is an infected case meeting the eligibility condition
     # (a symptomatic case, say): this starts a fresh ring of radius
@@ -453,6 +453,9 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng)
         base = get(infector.state, :trace_time, isolation_time(infector))
         trace_time = base + trace_delay
     end
+    # A contact cannot be reached before the route that links it to the case
+    # opens, whatever the case's own trace time.
+    trace_time = max(trace_time, not_before)
     apply_trace!(ct.action, ind, state, trace_time, rng)
 
     # Record the source this contact was traced from. The engine makes
@@ -488,12 +491,15 @@ traces_contacts(::ContactTracing) = true
 """Trace the contacts a case reaches on the continuous-time path. The
 generation engine reads each contact's infector off its `parent_id`; here the
 nodes pre-exist and the infector is the case the race has just finalised, so it
-is passed in and the same per-pair policy applied."""
-function trace_contacts!(ct::ContactTracing, state, infector, contacts)
+is passed in and the same per-pair policy applied, with each contact traced no
+earlier than its `not_before` time when one is given."""
+function trace_contacts!(
+        ct::ContactTracing, state, infector, contacts, not_before = nothing)
     rng = state.rng
-    for ind in contacts
+    for (i, ind) in enumerate(contacts)
         ind.id == infector.id && continue
-        _trace_pair!(ct, state, infector, ind, rng)
+        _trace_pair!(ct, state, infector, ind, rng;
+            not_before = not_before === nothing ? -Inf : not_before[i])
     end
     return nothing
 end

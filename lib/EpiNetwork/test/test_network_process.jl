@@ -347,6 +347,35 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         end
     end
 
+    @testset "RoutedNetwork: a late-opening route is traced once it opens" begin
+        # Node 1 dies on day 8 and meets node 3 only at its funeral. It isolates
+        # and is traced long before that, but node 3 cannot be reached before
+        # the funeral, while its household contact node 2 is reached at once.
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        household = RouteWindow(:household; until = (:died, REM),
+            kernel = Exponential(1.0), reach = [[2], [1], Int[]])
+        funeral = RouteWindow(:funeral; from = :died, until = (),
+            kernel = Exponential(1.0), reach = [[3], Int[], [1]])
+        m = ModelSpec(RoutedNetwork([household, funeral]);
+            progression = [Transition(:onset; from = :infection, delay = 0.5),
+                Transition(:died; from = :infection, delay = 8.0, terminal = true)],
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.5)),
+                ContactTracing(probability = 1.0,
+                    isolation_to_trace_delay = Exponential(0.5))])
+        checked = 0
+        for s in 1:60
+            st = simulate(m; n_initial = 1, rng = StableRNG(s))
+            case = st.individuals[1]
+            (get(case.state, :index, false) && is_traced(st.individuals[3])) || continue
+            checked += 1
+            died = case.state[:died_time]
+            # a quarantined contact's isolation time is its trace time
+            @test isolation_time(st.individuals[3]) >= died
+            @test isolation_time(st.individuals[2]) < died
+        end
+        @test checked > 0
+    end
+
     @testset "contact tracing" begin
         # A node's contacts are its graph neighbours, so tracing reaches them
         # and quarantining closes their own infectious window in turn.

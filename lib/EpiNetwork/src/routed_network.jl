@@ -95,18 +95,28 @@ _honours_termination_controls(::RoutedNetwork) = false
 EpiBranch.supplies_contacts(::RoutedNetwork) = true
 
 # Contacts for tracing are the union of the neighbours on every route the case
-# opened. Someone you live with and also see in the community is one contact,
-# traced once, and a route whose `from` state was never reached made no contacts,
-# so a survivor's funeral contacts are not traced.
-function _opened_neighbours(windows, ind::Individual, i::Integer)
-    seen = Int[]
+# opened, each paired with the earliest time it can be traced: when the first
+# route linking it to the case opened. Someone you live with and also see in the
+# community is one contact, traced once. A route whose `from` state was never
+# reached made no contacts, so a survivor's funeral contacts are not traced, and
+# a case that dies has its funeral contacts traced no earlier than its death.
+function _opened_contacts(windows, ind::Individual, i::Integer)
+    ids = Int[]
+    opens = typeof(ind.infection_time)[]
     for w in windows
-        isfinite(window_open(ind, w)) || continue
+        t = window_open(ind, w)
+        isfinite(t) || continue
         for nb in w.reach[i]
-            nb in seen || push!(seen, nb)
+            k = findfirst(==(nb), ids)
+            if k === nothing
+                push!(ids, nb)
+                push!(opens, t)
+            else
+                opens[k] = min(opens[k], t)
+            end
         end
     end
-    return seen
+    return zip(ids, opens)
 end
 
 function Base.show(io::IO, m::RoutedNetwork)
@@ -144,7 +154,7 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
         routes = routes, interventions = interventions,
         seed! = (best, members, r) -> _seed_network!(
             best, members, model.external_hazard, sim_opts.n_initial, Tobs, r),
-        contacts = (inf, st) -> _opened_neighbours(windows, st.individuals[inf], inf))
+        contacts = (inf, st) -> _opened_contacts(windows, st.individuals[inf], inf))
 
     _reconcile_sellke_bookkeeping!(state)
     apply_observation!(observation, state, rng)
