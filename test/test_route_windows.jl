@@ -42,23 +42,20 @@
         @test window_close(ind, RouteWindow(:c; kernel = nothing)) == Inf
     end
 
-    @testset "isolation is a removal state readable by a window" begin
+    @testset "isolation reaches a window only through INTERVENTION_REMOVAL" begin
         ind = Individual(id = 1)
         set_isolated!(ind, 4.0)
         @test is_isolated(ind)
-        # both keys carry the time: the intervention layer's name and the
-        # `<state>_time` convention a window's `until` reads
         @test isolation_time(ind) == 4.0
-        @test ind.state[:isolated_time] == 4.0
+        # `:isolated_time` is left to a `Transition(:isolated, …)`, so a window
+        # listing `:isolated` is not closed by the intervention, leaky or not
+        @test !haskey(ind.state, :isolated_time)
         @test window_close(ind, RouteWindow(:c; until = (:isolated,), kernel = nothing)) ==
-              4.0
+              Inf
 
-        # clearing must clear both, or a stale removal time keeps censoring
         clear_isolated!(ind)
         @test !is_isolated(ind)
         @test isolation_time(ind) == Inf
-        @test window_close(ind, RouteWindow(:c; until = (:isolated,), kernel = nothing)) ==
-              Inf
     end
 
     @testset "INTERVENTION_REMOVAL is opt-in per route" begin
@@ -86,5 +83,65 @@
 
         # With no interventions composed, opting in changes nothing.
         @test EpiBranch._route_close(ind, community, ()) == 10.0
+
+        # The public accessor gives the close the race uses once it is handed
+        # the same interventions.
+        @test window_close(ind, community, (iso,)) == 3.0
+        @test window_close(ind, community) == 10.0
+        @test window_close(ind, household, (iso,)) == 10.0
+    end
+
+    @testset "the race censors each route on its own window" begin
+        # Node 1 is seeded at time 0 and reaches node 2 on a community route and
+        # node 3 on a household route, each contact 5 days after infection. It
+        # recovers at 10 and, with onset at 1 and immediate isolation, isolates
+        # at 1.
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        prog = [Transition(:recovered; from = :infection, delay = 10.0,
+            terminal = true)]
+        onsets = clinical_presentation(incubation_period = Dirac(1.0),
+            prob_asymptomatic = 0.0)
+        function infected_after(routes, interventions)
+            rng = StableRNG(1)
+            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, onsets, rng)
+            EpiBranch.add_individuals!(state, 3, interventions)
+            EpiBranch._sellke_race!(state, [1, 2, 3], rng; routes = routes,
+                interventions = interventions, seed! = (
+                    best, members, r) -> (best[1] = 0.0))
+            return [get(ind.state, :infected, false) for ind in state.individuals]
+        end
+        edge(to) = (inf, st) -> inf == 1 &&
+                                !get(st.individuals[to].state, :infected, false) ?
+                                ((to, Dirac(5.0)),) : ()
+
+        community = RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(5.0))
+        household = RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0))
+        routes = ((community, edge(2)), (household, edge(3)))
+        isolate = [Isolation(onset_to_isolation_delay = Dirac(0.0))]
+
+        @test infected_after(routes, AbstractIntervention[]) == [true, true, true]
+        # isolation at 1 cuts the community contact at 5; the household one runs on
+        @test infected_after(routes, isolate) == [true, false, true]
+
+        # a route whose `from` state is never reached contributes no contacts
+        funeral = RouteWindow(:funeral; from = :died, until = (:buried,),
+            kernel = Dirac(5.0))
+        @test infected_after(((funeral, edge(2)), (household, edge(3))),
+            AbstractIntervention[]) == [true, false, true]
+    end
+
+    @testset "the race takes routes or the shorthand, not both" begin
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+            AbstractClinicalTransition[], nothing, StableRNG(1))
+        seed! = (best, members, r) -> nothing
+        w = RouteWindow(:c; until = (:recovered,), kernel = Dirac(1.0))
+        targets = (inf, st) -> ()
+        @test_throws ArgumentError EpiBranch._sellke_race!(state, Int[], StableRNG(1);
+            seed!, routes = ((w, targets),), until = (:recovered,))
+        @test_throws ArgumentError EpiBranch._sellke_race!(state, Int[], StableRNG(1);
+            seed!, routes = ((w, targets),), targets)
+        @test_throws ArgumentError EpiBranch._sellke_race!(state, Int[], StableRNG(1);
+            seed!)
     end
 end

@@ -30,8 +30,11 @@ One transmission route, open over part of a case's natural history.
   earliest of their times. A state that no window lists never censors
   anything, and a state listed by one window and not another censors only the
   first — which is how a control measure cuts one route and leaves another.
-- `kernel` times contacts within the window, as a contact-interval
-  distribution measured from the window opening.
+  List [`EpiBranch.INTERVENTION_REMOVAL`](@ref) for a route that the composed
+  interventions (isolation, quarantine on being traced) should end.
+- `kernel` is the route's contact-interval distribution, measured from the
+  window opening. The race takes each contact's kernel from the targets a model
+  builds for the route, so the model reads `kernel` when it resolves `reach`.
 - `reach` tags who the route reaches, for the model to resolve. Defaults to
   `name`, which is usually what a model keys its structure on.
 
@@ -42,7 +45,7 @@ the people it lives with:
 
 ```julia
 community = RouteWindow(:community; from = :infectious,
-    until = (:recovered, :isolated), kernel = Exponential(4.0))
+    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL), kernel = Exponential(4.0))
 household = RouteWindow(:household; from = :infectious,
     until = (:recovered,), kernel = Weibull(1.5, 3.0))
 ```
@@ -86,10 +89,16 @@ not been reached. A route that never opened contributes no contacts.
 window_open(ind::Individual, w::RouteWindow) = _window_open(ind, w.from)
 
 """
-    window_close(individual, window)
+    window_close(individual, window, interventions = ())
 
 Time at which `window` closes for `individual`: the earliest of its `until`
 states' times, or `Inf` if none has been reached. Censoring is per window, so
 the same removal can end one route and leave another running.
+
+A window listing [`EpiBranch.INTERVENTION_REMOVAL`](@ref) also closes when the
+composed `interventions` remove the case, so pass the same interventions the
+simulation ran with to get the close the race used.
 """
-window_close(ind::Individual, w::RouteWindow) = _window_close(ind, w.until)
+function window_close(ind::Individual, w::RouteWindow, interventions = ())
+    return _route_close(ind, w, interventions)
+end
