@@ -258,6 +258,10 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
         end
+        # The node was created, and its onset first drawn, at time 0; onset
+        # follows from the infection time, so recompute it before transitions
+        # and interventions (onset-triggered isolation) read it.
+        _set_onset_from_incubation!(ind)
         resolve_transitions!(state, ind)
         _resolve_interventions!(state, ind, interventions)
         _trace_from!(state, ind, interventions, contacts, pos, processed)

@@ -126,6 +126,38 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
               n_infected(simulate(baseline; rng = StableRNG(3)))
     end
 
+    @testset "onset is measured from each case's own infection time" begin
+        # Nodes are created, and their incubation periods drawn, before the
+        # race sets their infection times; onset must still follow from the
+        # time each case was actually infected, since isolation keys off it.
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0)
+        m = ModelSpec(NetworkProcess(ring_adjacency(200), Exponential(2.0));
+            progression = _sir(10.0), attributes = clinical, interventions = [iso])
+        state = simulate(m; n_initial = 1, rng = StableRNG(3))
+        secondary = [ind
+                     for ind in state.individuals
+                     if is_infected(ind) && ind.parent_id != 0]
+        @test !isempty(secondary)
+        @test all(onset_time(ind) >= ind.infection_time for ind in secondary)
+        @test all(onset_time(ind) - ind.infection_time ≈ ind.state[:incubation_period]
+        for ind in secondary)
+        @test all(isolation_time(ind) >= onset_time(ind) for ind in secondary)
+
+        routed = ModelSpec(
+            RoutedNetwork([RouteWindow(:contact; until = (:recovered,),
+                kernel = Exponential(2.0), reach = ring_adjacency(200))]);
+            progression = _sir(10.0), attributes = clinical)
+        state = simulate(routed; n_initial = 1, rng = StableRNG(3))
+        secondary = [ind
+                     for ind in state.individuals
+                     if is_infected(ind) && ind.parent_id != 0]
+        @test !isempty(secondary)
+        @test all(onset_time(ind) - ind.infection_time ≈ ind.state[:incubation_period]
+        for ind in secondary)
+    end
+
     @testset "state carries Float64 timing and renders a line list" begin
         m = ModelSpec(NetworkProcess(ring_adjacency(20), Exponential(1.0));
             progression = [

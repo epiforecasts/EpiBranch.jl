@@ -202,6 +202,28 @@
         @test state.cumulative_cases == 5
     end
 
+    @testset "onset is measured from each case's own infection time" begin
+        # Pool members are created, and their incubation periods drawn, before
+        # the pool sets their infection times; onset must still follow from the
+        # time each case was actually infected, since isolation keys off it.
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0)
+        m = ModelSpec(HomogeneousProcess(; transmission_rate = 1.0, population_size = 500);
+            progression = [Transition(:recovered; from = :infection, delay = 10.0,
+                terminal = true)],
+            attributes = clinical, interventions = [iso])
+        state = simulate(m; n_initial = 1, rng = StableRNG(3))
+        secondary = [ind
+                     for ind in state.individuals
+                     if is_infected(ind) && ind.parent_id != 0]
+        @test !isempty(secondary)
+        @test all(onset_time(ind) >= ind.infection_time for ind in secondary)
+        @test all(onset_time(ind) - ind.infection_time ≈ ind.state[:incubation_period]
+        for ind in secondary)
+        @test all(isolation_time(ind) >= onset_time(ind) for ind in secondary)
+    end
+
     @testset "line list and timing" begin
         progression = [
             Transition(:infectious; from = :infection, delay = Exponential(1.0)),
