@@ -217,4 +217,48 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         state = simulate(m; condition = 5:40, n_initial = 1, rng = StableRNG(1))
         @test state.cumulative_cases in 5:40
     end
+
+    @testset "contact tracing" begin
+        # A node's contacts are its graph neighbours, so tracing reaches them
+        # and quarantining closes their own infectious window in turn.
+        adj = ring_adjacency(120)
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0),
+            test_sensitivity = 1.0)
+        ct = ContactTracing(probability = 1.0,
+            isolation_to_trace_delay = Exponential(0.5))
+
+        build(ivs) = ModelSpec(NetworkProcess(adj, Exponential(2.0));
+            progression = _sir(12.0), interventions = ivs, attributes = clinical)
+        meansize(ivs) = sum(simulate(build(ivs); n_initial = 1,
+                                rng = StableRNG(s)).cumulative_cases for s in 1:60) / 60
+
+        # Tracing is honoured on the continuous-time path, so no warning and a
+        # real reduction on top of isolation alone.
+        @test meansize([iso, ct]) < meansize([iso])
+
+        # Contacts are actually marked, and a quarantined contact carries a
+        # finite isolation time for the window to close on.
+        st = simulate(build([iso, ct]); n_initial = 1, rng = StableRNG(3))
+        traced = filter(is_traced, st.individuals)
+        @test !isempty(traced)
+        @test all(is_quarantined, traced)
+        @test all(t -> isfinite(isolation_time(t)), traced)
+
+        # Tracing must never *delay* isolation. A quarantine is written on a
+        # contact before that contact resolves its own isolation, so unless the
+        # self-reporting pathway is still allowed to win, a late trace would
+        # replace an earlier self-report and make the outbreak bigger. With a
+        # trace delay long enough that tracing can never help, the outbreak must
+        # be no worse than isolation alone.
+        late = ContactTracing(probability = 1.0,
+            isolation_to_trace_delay = Exponential(500.0))
+        @test meansize([iso, late]) <= meansize([iso]) * 1.05
+
+        # An intervention with no window representation still warns.
+        @test_logs (:warn, r"RingVaccination") match_mode=:any simulate(
+            build([iso, ct, RingVaccination(efficacy = 0.8)]);
+            n_initial = 1, rng = StableRNG(4))
+    end
 end
