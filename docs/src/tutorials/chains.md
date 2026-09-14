@@ -116,6 +116,7 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
 
 ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2]), model;
     n_sim = 1000,
+    max_cases = 100,
     rng = StableRNG(42),
 )
 println("LL with interventions: $(round(ll, digits=2))")

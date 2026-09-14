@@ -162,7 +162,7 @@ true_model = ModelSpec(BranchingProcess(Poisson(true_R), Exponential(5.0));
     interventions=[iso], attributes=clinical)
 
 observed_states = simulate(true_model, 100;
-    max_cases=500, rng=rng)
+    max_cases=50, rng=rng)
 observed_sizes = Int[]
 for s in observed_states
     cs = chain_statistics(s)
@@ -183,13 +183,13 @@ P(size = cap).
     model = ModelSpec(BranchingProcess(Poisson(R), Exponential(5.0));
         interventions = [iso], attributes = clinical)
     data ~ chain_size_distribution(model;
-        max_cases = 500,
-        n_sim = 500, rng = StableRNG(hash(R)))
+        max_cases = 50,
+        n_sim = 100, rng = StableRNG(hash(R)))
 end
 
 chain = sample(
     intervention_model(observed_sizes, iso, clinical),
-    MH(), 2000; progress=false
+    MH(), 1000; progress=false
 )
 println("True R = $true_R")
 println("Posterior R: $(round(mean(chain[:R]), digits=2)) " *
