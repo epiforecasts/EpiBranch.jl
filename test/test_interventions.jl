@@ -150,7 +150,8 @@ struct _NoTraceIntervention <: AbstractIntervention end
         infector, contact = pair()
         EpiBranch.trace_contacts!(ct, state, infector, [contact], [50.0])
         @test is_quarantined(contact)
-        @test isolation_time(contact) >= 50.0
+        # the trace delay runs from when the contact could first be reached
+        @test isolation_time(contact) > 50.0
         infector, contact = pair()
         EpiBranch.trace_contacts!(Scheduled(ct; start_time = 0.0), state, infector,
             [contact], [50.0])

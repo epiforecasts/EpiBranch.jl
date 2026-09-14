@@ -447,15 +447,11 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
 
     trace_delay = draw_trace_delay(
         ct.isolation_to_trace_delay, infector, ind, state, rng)
-    if seed
-        trace_time = trigger_time(ct.eligibility, infector, state) + trace_delay
-    else
-        base = get(infector.state, :trace_time, isolation_time(infector))
-        trace_time = base + trace_delay
-    end
-    # A contact cannot be reached before the route that links it to the case
-    # opens, whatever the case's own trace time.
-    trace_time = max(trace_time, not_before)
+    base = seed ? trigger_time(ct.eligibility, infector, state) :
+           get(infector.state, :trace_time, isolation_time(infector))
+    # A contact cannot be sought before it exists, such as a funeral contact
+    # before the funeral, so the delay runs from whichever comes later.
+    trace_time = max(base, not_before) + trace_delay
     apply_trace!(ct.action, ind, state, trace_time, rng)
 
     # Record the source this contact was traced from. The engine makes
