@@ -1,0 +1,8 @@
+# Default code owners, requested automatically for review on every pull request.
+#
+# This is what replaced the `reviewers` key in dependabot.yml, which GitHub
+# removed in August 2025. Without a CODEOWNERS file, dependency-update PRs get
+# no review request at all.
+#
+# See https://docs.github.com/articles/about-code-owners
+* @sbfnk
