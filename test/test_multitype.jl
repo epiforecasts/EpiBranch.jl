@@ -10,9 +10,10 @@ using DataFrames
              1.0 0.0]
         model = BranchingProcess(M, R -> NegBin(R, 0.16), Exponential(5.0))
         # Draw offspring for a type-2 (sink) parent directly: no offspring, no throw.
-        fn = model.infectiousness[1].offspring
+        off = model.infectiousness[1].offspring
         parent2 = Individual(id = 1, state = Dict{Symbol, Any}(:type => 2))
-        @test fn(StableRNG(1), parent2) == [0, 0]
+        state = EpiBranch.new_state(model, [], NoAttributes(), StableRNG(1))
+        @test EpiBranch.draw_offspring(StableRNG(1), off, parent2, state) == [0, 0]
         # And a full run with such a matrix completes.
         state = simulate(model; max_cases = 100, rng = StableRNG(2))
         @test state.cumulative_cases >= 1
@@ -25,7 +26,39 @@ using DataFrames
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         @test model.n_types == 2
-        @test model.infectiousness[1].offspring isa Function
+        @test model.infectiousness[1].offspring isa EpiBranch.MultiTypeOffspring
+        @test model.infectiousness[1].offspring.offspring_matrix == M
+    end
+
+    @testset "Offspring matrix draws match the equivalent offspring function" begin
+        # The matrix constructor draws a total count per parent and splits it
+        # multinomially. Writing that rule out as an offspring function must give
+        # the same run under the same seed, so the stored representation leaves
+        # the random stream untouched.
+        M = [1.2 0.4 0.0;
+             0.6 1.0 0.0;
+             0.3 0.5 0.0]
+        dist_fn = R -> NegBin(R, 0.5)
+        R_by_type = vec(sum(M, dims = 1))
+        function matrix_rule(rng, individual)
+            pt = individual_type(individual)
+            R_by_type[pt] <= 0.0 && return zeros(Int, 3)
+            total = rand(rng, dist_fn(R_by_type[pt]))
+            total == 0 && return zeros(Int, 3)
+            return rand(rng, Multinomial(total, M[:, pt] ./ R_by_type[pt]))
+        end
+        from_matrix = BranchingProcess(M, dist_fn, Exponential(5.0))
+        from_function = BranchingProcess(matrix_rule, Exponential(5.0); n_types = 3)
+        for seed in 1:5
+            a = simulate(from_matrix; max_cases = 200, rng = StableRNG(seed))
+            b = simulate(from_function; max_cases = 200, rng = StableRNG(seed))
+            @test length(a.individuals) == length(b.individuals)
+            @test individual_type.(a.individuals) == individual_type.(b.individuals)
+            @test [i.infection_time for i in a.individuals] ==
+                  [i.infection_time for i in b.individuals]
+            @test [i.parent_id for i in a.individuals] ==
+                  [i.parent_id for i in b.individuals]
+        end
     end
 
     @testset "Non-square matrix throws" begin

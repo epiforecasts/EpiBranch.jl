@@ -65,6 +65,7 @@ include("model_inputs.jl")
 
 # Transmission models
 include("models/branching_process.jl")
+include("models/multi_type_offspring.jl")
 
 # Observation helpers (thinned chain-size distribution, dispatch on the
 # model's observation model)
