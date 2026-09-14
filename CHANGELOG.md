@@ -34,6 +34,15 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   infectious window — through recovery or isolation — now genuinely curtails
   onward spread.
 
+### Fixed
+
+- On the continuous-time models (`HomogeneousProcess`, and `NetworkProcess`,
+  `RoutedNetwork` and `HouseholdProcess` in the companion packages), symptom
+  onset from `clinical_presentation` is now measured from each case's own
+  infection time. It was measured from time 0, because each individual is
+  created before it is infected, so onset-triggered isolation came too early
+  and its effect was overstated.
+
 ## [0.1.0] - 2026-06-16
 
 Initial release. EpiBranch brings together the branching-process cores of

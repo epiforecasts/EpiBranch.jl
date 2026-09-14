@@ -283,9 +283,9 @@ end
 
 hh_adj, comm_adj = households_and_community(150, 4, StableRNG(99))
 
-clinical2 = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+clinical2 = clinical_presentation(incubation_period = LogNormal(0.5, 0.3),
     prob_asymptomatic = 0.0)
-iso2 = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 1.0)
+iso2 = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 1.0)
 REM = EpiBranch.INTERVENTION_REMOVAL
 
 # The household route differs from the community route in one tuple: whether
