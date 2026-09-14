@@ -131,6 +131,49 @@
             AbstractIntervention[]) == [true, false, true]
     end
 
+    @testset "the race traces a settled case's contacts" begin
+        # Node 1 infects node 2 on a household route at 5; node 2 infects node 3
+        # half a day later on a community route. Every case has onset one day
+        # after infection and isolates at onset, so node 2 would isolate at 6,
+        # too late to stop the contact at 5.5. Tracing node 1's contacts at its
+        # isolation (time 1) quarantines node 2 before it is infected, which
+        # closes node 2's community window and spares node 3.
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        prog = [Transition(:onset; from = :infection, delay = 1.0),
+            Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
+        function race(interventions; contacts = nothing)
+            rng = StableRNG(1)
+            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, EpiBranch.NoAttributes(), rng)
+            EpiBranch.add_individuals!(state, 3, interventions)
+            edge(from, to, t) = (inf, st) -> inf == from &&
+                                             !get(st.individuals[to].state, :infected, false) ?
+                                             ((to, Dirac(t)),) : ()
+            routes = (
+                (RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0)),
+                    edge(1, 2, 5.0)),
+                (RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(0.5)),
+                    edge(2, 3, 0.5)))
+            EpiBranch._sellke_race!(state, [1, 2, 3], rng; routes, interventions,
+                contacts, seed! = (best, members, r) -> (best[1] = 0.0))
+            return state
+        end
+        infected(state) = [get(ind.state, :infected, false) for ind in state.individuals]
+        iso = Isolation(onset_to_isolation_delay = Dirac(0.0))
+        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Dirac(0.0))
+        node1_contacts = (inf, st) -> inf == 1 ? (2,) : ()
+
+        @test infected(race([iso])) == [true, true, true]
+        traced = race([iso, ct]; contacts = node1_contacts)
+        @test infected(traced) == [true, true, false]
+        @test is_quarantined(traced.individuals[2])
+        # with no contacts supplied there is nothing to trace along
+        @test infected(race([iso, ct])) == [true, true, true]
+
+        # an intervention with no window representation is not honoured
+        @test !EpiBranch._sellke_honours(nothing, RingVaccination(efficacy = 0.9))
+    end
+
     @testset "the race takes routes or the shorthand, not both" begin
         state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
             AbstractClinicalTransition[], nothing, StableRNG(1))
