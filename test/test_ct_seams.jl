@@ -1,3 +1,8 @@
+# Seeds rings only from cases with an odd id, timed from isolation by default, so
+# a ring member with an even id can extend a ring but never start one.
+struct OddIdSeeds <: EpiBranch.TraceEligibility end
+EpiBranch.is_eligible(::OddIdSeeds, infector, contact, state) = isodd(infector.id)
+
 # Custom TraceEligibility used by the user-extension test below.
 struct WithinChain <: EpiBranch.TraceEligibility end
 function EpiBranch.is_eligible(::WithinChain, infector, contact, state)
@@ -86,7 +91,7 @@ end
         end
     end
 
-    @testset "A non-finite trace time is never recorded" begin
+    @testset "A NaN trace time is never recorded" begin
         # `OnSymptomOnset() | OnLabConfirmation()` reduces to a NaN trigger
         # time for an asymptomatic infector (issue #248), and `min`
         # propagates NaN, so such a time must not be written at all.
@@ -105,7 +110,7 @@ end
         # The guard has to have fired, or this proves nothing about it.
         @test any(ind -> !haskey(ind.state, :trace_time), traced)
         for ind in traced
-            @test isfinite(get(ind.state, :trace_time, 0.0))
+            @test !isnan(get(ind.state, :trace_time, 0.0))
         end
     end
 end
@@ -143,6 +148,33 @@ end
     # is what a level-2 ring has to reach past.
     attrs = [clinical, transmission_traits(susceptibility = 0.5)]
     opts = (; n_initial = 3, max_generations = 4)
+
+    @testset "a never-reached ring member does not extend the ring" begin
+        # With imperfect testing some seeding cases never isolate, so the
+        # default trigger gives their contacts an infinite trace time: never
+        # reached. That time is recorded, so a ring member that cannot seed
+        # its own ring extends the ring only at a finite time when it was
+        # itself reached at a finite time, whatever its own isolation.
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 0.5)
+        ct = ContactTracing(OddIdSeeds(), 1.0, Exponential(0.5); depth = 2)
+        checked = 0
+        for s in 1:20
+            state = simulate(
+                ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                    interventions = [iso, ct], attributes = attrs);
+                opts..., rng = StableRNG(s))
+            for ind in state.individuals
+                t = get(ind.state, :trace_time, Inf)
+                (is_traced(ind) && isfinite(t)) || continue
+                tracer = state.individuals[ind.state[:traced_by]]
+                isodd(tracer.id) && continue
+                checked += 1
+                @test isfinite(get(tracer.state, :trace_time, Inf))
+            end
+        end
+        @test checked > 0
+    end
 
     @testset "depth 1 traces direct contacts only; the fringe does not grow" begin
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 1)

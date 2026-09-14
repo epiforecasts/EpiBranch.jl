@@ -436,8 +436,9 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
         # Fire when the tracing team reached the contact. `ContactTracing`
         # records that as `:trace_time` whatever its trace action, so the
         # isolation-derived times below are reached only when something
-        # other than `ContactTracing` set `:traced` — or when the trace time
-        # was not finite and so was not recorded. Branch rather than passing
+        # other than `ContactTracing` set `:traced`, or when the trace time
+        # was `NaN` and so was not recorded. A contact recorded as never
+        # reached (an infinite trace time) is not vaccinated. Branch rather than passing
         # a `get` default, which Julia would evaluate on every contact.
         trace_t = if haskey(ind.state, :trace_time)
             ind.state[:trace_time]
