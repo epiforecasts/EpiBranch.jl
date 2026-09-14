@@ -66,6 +66,19 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test :date_recovered in propertynames(df)     # the removal transition
     end
 
+    @testset "a fixed seed reproduces a pinned outbreak" begin
+        # The race is order-sensitive through the RNG stream, so this pins the
+        # order in which each household's members settle.
+        st = simulate(
+            ModelSpec(HouseholdProcess([3, 4], Exponential(2.0));
+                progression = _sir(4.0));
+            rng = StableRNG(7))
+        @test [ind.infection_time for ind in st.individuals] ≈
+              [1.1701609052240476, 0.0, 1.2332841100671945, 0.0, 0.3297017722468899,
+            1.4196539602204872, 1.0835818339525922]
+        @test [ind.parent_id for ind in st.individuals] == [2, 0, 2, 0, 4, 7, 5]
+    end
+
     @testset "no within-household spread when the kernel is far out of the period" begin
         # contact intervals almost never fall within a tiny infectious period,
         # so only the index cases are infected.
