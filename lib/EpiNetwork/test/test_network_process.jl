@@ -291,6 +291,9 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         # a reach that is not an adjacency list is rejected
         @test_throws ArgumentError RoutedNetwork([RouteWindow(:x;
             kernel = Exponential(1.0), reach = :not_an_adjacency)])
+        # as on NetworkProcess, the importation window must be non-negative
+        @test_throws ArgumentError RoutedNetwork([w(:a, a)]; obs_end = -1.0)
+        @test_throws ArgumentError RoutedNetwork([w(:a, a)]; obs_end = NaN)
     end
 
     @testset "RoutedNetwork: conditioned simulation" begin
