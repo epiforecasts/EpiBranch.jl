@@ -182,15 +182,22 @@ results = simulate(scenario([iso, ct, rv]), 200; max_cases = 500, rng = rng)
 println("Iso + tracing + ring vaccination: $(round(containment_probability(results), digits=3))")
 ```
 
-!!! warning "Ring vaccination adds nothing on top of quarantine"
+!!! warning "Ring vaccination adds nothing under this tracing"
     That number is the same as for isolation and tracing alone, and it is
-    meant to be. `ContactTracing` quarantines traced contacts by default,
-    and the quarantine takes effect at the same moment the dose is given, so
-    isolation blocks every transmission the vaccine would have blocked.
-    Measure ring vaccination against tracing that follows contacts up
-    without confining them (`quarantine_on_trace = false`), or against an
-    isolation that is delayed or leaky. The examples below keep the
-    quarantine, so they show the machinery rather than a vaccine effect.
+    meant to be. By default `ContactTracing` traces a contact once its
+    infector has been isolated, and that isolation already blocks every
+    later transmission to the contact, so a dose given at the trace or
+    after it has nothing left to prevent. This holds with or without
+    quarantine (`quarantine_on_trace = false`). A dose protects only a
+    contact who can still be infected after being traced: under leaky
+    isolation (`post_isolation_transmission > 0`), when tracing starts
+    before the infector is isolated (for example
+    `eligibility = OnSymptomOnset()`), or in a `depth > 1` ring passing
+    through members who keep transmitting after they are traced.
+    `onward_efficacy` acts on the traced contact's own later transmission
+    instead, which a quarantine already blocks, so it does act when
+    tracing does not quarantine. The examples below keep the default
+    tracing, so they show the machinery rather than a vaccine effect.
 
 A delay between vaccination and protective immunity can be specified.
 If transmission occurs before immunity develops, there is no protection:
@@ -232,12 +239,15 @@ doses_depth2 = count(is_vaccinated, state.individuals)
 println("Doses with a level-2 ring: $doses_depth2")
 ```
 
-A wider ring reaches more people, so it costs more doses. Whether the
-extra reach buys extra control depends on how much transmission the
-direct-contact ring already caught. For a tightly traced outbreak the
-second ring is often mostly doses with little added containment. Compare
-dose counts and `containment_probability` across depths to see the
-trade-off for a given setting.
+A wider ring reaches more people, so it costs more doses, and the extra
+doses protect only contacts still exposed after they are traced. Here
+every infected ring member with symptoms is isolated and seeds a ring of
+its own, so its contacts are traced after that isolation and the second
+ring adds doses without adding protection. Its doses have exposures to
+prevent when the ring passes through members who keep transmitting after
+they are traced, such as asymptomatic members under tracing without
+quarantine. Compare dose counts and `containment_probability` across
+depths to see the trade-off for a given setting.
 
 ### Post-exposure prophylaxis
 
@@ -350,8 +360,9 @@ and so on.
 
 Ring doses are given at the trace, so a second dose sets `dose_delay`
 (days from the trace to that dose) and names the dose it follows with
-`requires_dose`. Only contacts carrying the earlier dose get the later
-one, which makes the boost's `coverage` the retention between doses:
+`requires_dose`. Only contacts who have had the earlier dose by the time
+the later one falls due get it, which makes the boost's `coverage` the
+retention between doses:
 
 ```@example interventions
 prime_ring = RingVaccination(efficacy = 0.6, delay_to_immunity = 21.0,
@@ -380,30 +391,54 @@ println("Primed: $(round(doses(:vaccinated_prime), digits = 1)), ",
     "boosted: $(round(doses(:vaccinated_boost), digits = 1))")
 ```
 
-Whether those doses buy anything is a question about timing, and for a
-second dose the answer is usually no. A dose protects a ring member only
-if its immunity arrives before that member's own exposures, and those
-exposures are concentrated in the weeks right after the trace. With
-generation times of `Exponential(5.0)`, protection arriving 42 days after
-the trace has nothing left to prevent.
+Whether those doses buy anything is a question about timing. A dose
+protects a ring member only against infection after its immunity
+arrives. Under the tracing used here no ring member is infected after
+being traced (see the warning above), so neither dose changes the
+outbreak. Where infections do follow the trace, as when tracing starts at
+the infector's symptom onset and does not quarantine, they follow within
+days:
+
+```@example interventions
+ct_onset = ContactTracing(probability = 0.7,
+    isolation_to_trace_delay = Exponential(1.0),
+    eligibility = OnSymptomOnset(), quarantine_on_trace = false)
+
+for (label, tracing) in (("after isolation", ct), ("at symptom onset", ct_onset))
+    let rng = StableRNG(42)
+        runs = simulate(scenario([iso, tracing]), 200; max_cases = 500, rng = rng)
+        # Days from the trace to infection, for contacts infected after their trace
+        days_after = [ind.infection_time - ind.state[:trace_time]
+                      for s in runs for ind in s.individuals
+                      if is_traced(ind) && is_infected(ind) &&
+                         ind.infection_time > get(ind.state, :trace_time, Inf)]
+        println("Tracing $label: $(length(days_after)) infected after their trace, ",
+            "$(count(>(7.0), days_after)) of them more than a week after")
+    end
+end
+```
+
+Those infections come from infectors who have not yet isolated, which
+they do within days of onset. A dose on the day of the trace can still
+prevent them, while protection arriving a week later, let alone a boost
+given 28 days after the trace, comes too late for almost all of them.
+Across many simulated outbreaks under this tracing, a trace-day dose
+raises containment and the same efficacy a week later does not.
 
 !!! tip "Adding an intervention is not a controlled comparison"
-    Re-running with the boost removed will not confirm that, and may
+    Re-running with the boost removed will not show this, and may
     suggest the opposite. `boost_ring` has `coverage = 0.9`, so it draws
     from the rng for every primed contact and shifts the whole stream:
     the two runs are different samples, not the same outbreak with and
     without a dose. Here that reads as containment 0.255 with the boost
     against 0.295 without, a difference that is Monte Carlo noise rather
-    than the boost doing harm. An intervention that consumes no rng
-    (`coverage = 1.0`, scalar efficacy, no eligibility window) leaves the
-    stream untouched and does support the comparison — which is why the
+    than the boost doing harm. A dose with `coverage = 1.0`, scalar
+    efficacy and no eligibility window draws from the rng only when it
+    meets an exposure it could block, so a dose with nothing to block
+    leaves the stream untouched, which is why the
     `RingVaccination(efficacy = 0.8)` case above reproduces its baseline
     exactly. Otherwise, compare across many seeds, or reason from the
     timing as here.
-
-Against tracing that does not quarantine, where a dose has something left
-to do, speed decides it: protection arriving the day of the trace raises
-containment, and the same efficacy arriving a week later does not.
 
 ## Effort tracking
 

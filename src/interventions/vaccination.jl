@@ -176,16 +176,20 @@ setting only `onward_efficacy` gives a pure PEP effect.
 
 Requires `:traced` (set by [`ContactTracing`](@ref)).
 
-!!! warning "Redundant on top of an airtight quarantine"
-    Against `ContactTracing`'s default `Quarantine` action combined with a
-    non-leaky `Isolation`, adding this intervention leaves the results
-    unchanged: the dose is given when the contact is traced, which is also
-    when the quarantine starts, so isolation already blocks every
-    transmission the dose would have. Measure ring vaccination against
-    tracing that follows contacts up without confining them
-    (`quarantine_on_trace = false`), or against an isolation that is
-    delayed or leaky (`post_isolation_transmission > 0`), where a dose
-    still has something left to do.
+!!! warning "Redundant when contacts are traced after their infector isolates"
+    `ContactTracing` by default traces a contact once its infector has been
+    isolated, and a non-leaky `Isolation` then already blocks every later
+    transmission to the contact. A dose given at the trace or after it
+    leaves the results unchanged, with or without quarantine
+    (`quarantine_on_trace = false`). `efficacy` has infections left to
+    prevent only when a contact can still be infected after being traced:
+    under leaky isolation (`post_isolation_transmission > 0`), when tracing
+    starts before the infector is isolated (for example
+    `eligibility = OnSymptomOnset()`), or in a `depth > 1` ring passing
+    through members who keep transmitting after they are traced.
+    `onward_efficacy` acts on the traced contact's own later transmission,
+    which a quarantine already blocks, so it does act under tracing without
+    quarantine.
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
 `:vaccine_efficacy` for the default dose label. With a non-default
