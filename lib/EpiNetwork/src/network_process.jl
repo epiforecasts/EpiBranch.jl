@@ -166,9 +166,6 @@ _valid_external(_) = false
 _normalise_external(α::Real) = Float64(α)
 _normalise_external(d::ContinuousUnivariateDistribution) = d
 
-_ext_active(α::Real) = α > 0
-_ext_active(::ContinuousUnivariateDistribution) = true
-
 # A community introduction time under the external hazard: the constant case is
 # its Exponential survival time, a distribution is sampled directly.
 _ext_draw(rng, α::Real) = rand(rng, Exponential(1 / α))
