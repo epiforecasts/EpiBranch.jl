@@ -14,15 +14,31 @@ single_type_offspring
 EpiBranch.draw_offspring
 ```
 
-## Household likelihood
+## Pairwise survival likelihood
+
+```@docs
+pairwise_surv_loglik
+PairwiseSurvivalData
+InfectionLayer
+EpiBranch.contact_structure
+ContactPairsLayout
+compile_contact_pairs
+```
+
+### Household likelihood
 
 ```@docs
 household_infections
 HouseholdInfections
-pairwise_surv_loglik
-PairwiseSurvivalData
 HouseholdPairsLayout
 compile_household_pairs
+```
+
+### Network likelihood
+
+```@docs
+network_infections
+NetworkInfections
 ```
 
 ## Types

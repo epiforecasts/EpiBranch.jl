@@ -111,7 +111,11 @@ gradient loop: [`compile_household_pairs`](@ref) enumerates the ordered
 (susceptible, infector) rows once — everything that doesn't depend on the sampled
 parameters — and the three-argument `pairwise_surv_loglik(kernel, data, layout)`
 then evaluates the density in two allocation-free passes, reading the (possibly
-augmented) times on the fly. The two forms agree up to row order.
+augmented) times on the fly. The two forms agree up to row order. The layout and
+its evaluation are EpiBranch's structure-agnostic [`ContactPairsLayout`](@ref)
+and [`compile_contact_pairs`](@ref) applied to the household partition, which is
+how a contact network is fitted too (see
+[Fitting on a network](@ref "Fitting on a network")).
 
 In real data the infection times are unobserved. A household `@model` then augments
 them and conditions the observed onsets and tests through the progression's delays,
