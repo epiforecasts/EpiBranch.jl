@@ -193,9 +193,10 @@ opens and closes on its own window, and only a route listing
 contact with, whether or not transmission followed, which is what contact
 tracing acts on; it is therefore usually wider than `targets`, which yields only
 those still susceptible. Omit it when the model has no interventions that trace.
-A model whose contacts start on routes that open later yields `(id, time)`
-pairs instead, where `time` is the earliest the contact can be traced; it
-reaches the interventions as `trace_contacts!`'s `not_before`.
+A model whose contacts can come about later than the case's infection, such as
+at a funeral, yields `(id, time)` pairs instead, where `time` is when that
+person became a contact (`-Inf` for a standing relationship); it reaches the
+interventions as `trace_contacts!`'s `not_before`.
 
 The contact-interval `kernel` must be a **non-negative** distribution: the
 "each pop is final" invariant relies on a candidate time `open_t + dt` never

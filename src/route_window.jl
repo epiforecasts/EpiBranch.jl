@@ -100,7 +100,7 @@ end
     window_open(individual, window)
 
 Time at which `window` opens for `individual`, or `Inf` if its `from` state has
-not been reached. A route that never opened contributes no contacts.
+not been reached. A route that never opened transmits nothing.
 
 A window with `from = nothing` opens at the individual's `:infectious_time` when
 it has one and at its infection time otherwise, which is the start a model

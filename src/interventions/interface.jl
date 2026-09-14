@@ -38,12 +38,15 @@ is infected, so the infector has to be passed explicitly.
 Called once per case, when the race finalises it and its timeline is therefore
 known, with the contacts it can still affect. Default: no-op.
 
-`not_before[i]`, when given, is the earliest time `contacts[i]` can be reached:
-the time the route linking it to `infector` opened. A contact met only at a
-funeral cannot be traced before the funeral. Models whose contacts all start
-at the case's infection pass none, and by default the five-argument method
-calls the four-argument one, so an intervention that does not time its action
-from the contact need not handle it.
+`not_before[i]`, when given, is the earliest time `contacts[i]` can be sought:
+when that person became a contact of `infector`. A contact met only at a
+funeral cannot be traced before the funeral, while a household member is a
+contact from the start and has `not_before = -Inf`. On `RoutedNetwork` it is the
+time of the linking route's `contacts_from` state. The race calls this method
+whenever the model yields `(id, time)` contacts and the four-argument method
+otherwise; by default the five-argument method calls the four-argument one, so
+an intervention that does not time its action from the contact need not handle
+it.
 
 Pair with [`traces_contacts`](@ref EpiBranch.traces_contacts), which tells the
 race whether an intervention needs this hook at all.
