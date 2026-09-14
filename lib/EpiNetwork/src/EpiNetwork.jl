@@ -15,9 +15,10 @@ import EpiBranch: population_size, new_state, add_individuals!, apply_observatio
                   _retry_for_condition, _reconcile_sellke_bookkeeping!,
                   _honours_termination_controls
 
-export NetworkProcess
+export NetworkProcess, RoutedNetwork
 
 include("network_process.jl")
+include("routed_network.jl")
 include("network_simulate.jl")
 
 end # module

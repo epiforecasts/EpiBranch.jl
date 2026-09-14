@@ -7,6 +7,7 @@ BranchingProcess
 Infectiousness
 HomogeneousProcess
 NetworkProcess
+RoutedNetwork
 HouseholdProcess
 ModelSpec
 single_type_offspring
@@ -114,11 +115,24 @@ EpiBranch.InfectiousSource
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
+EpiBranch.trace_contacts!
+EpiBranch.traces_contacts
+EpiBranch.supplies_contacts
 EpiBranch.keep_active
 EpiBranch.competing_risk
+EpiBranch.infectious_removal_time
 EpiBranch.intervention_time
 EpiBranch.reset!
 is_active
+```
+
+## Transmission-route windows
+
+```@docs
+RouteWindow
+window_open
+window_close
+EpiBranch.INTERVENTION_REMOVAL
 ```
 
 ## Natural history (progression)
@@ -150,6 +164,7 @@ is_test_positive
 is_infected
 individual_type
 set_isolated!
+clear_isolated!
 ```
 
 ## Output

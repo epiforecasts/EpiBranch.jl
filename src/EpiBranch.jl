@@ -73,6 +73,11 @@ include("observation.jl")
 # Simulation engine
 include("simulation.jl")
 
+# Transmission-route windows: the unit that lets one case carry several routes,
+# each opening and closing on different states of its natural history. Defined
+# before the race, which dispatches on them.
+include("route_window.jl")
+
 # Sellke/Dijkstra continuous-time race primitive (shared by structure-driven
 # models over a finite, depleting set of nodes, e.g. household cliques).
 include("sellke.jl")
@@ -122,6 +127,7 @@ export TraceAction, Quarantine, FlagOnly
 export AbstractVaccination, RingVaccination, MassVaccination
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
+export RouteWindow, window_open, window_close
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event
@@ -135,7 +141,7 @@ export NoAgeDistribution, NoCases
 # Exports — accessors
 export onset_time, incubation_period, is_isolated, isolation_time, is_traced, is_quarantined
 export is_vaccinated, is_asymptomatic, is_test_positive, is_infected
-export individual_type, set_isolated!
+export individual_type, set_isolated!, clear_isolated!
 
 # Exports — distributions
 export NegBin, scale_distribution, incubation_linked_generation_time

@@ -55,8 +55,20 @@ is_infected(ind::Individual) = get(ind.state, :infected, true)::Bool
 individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 
 """Mark an individual as isolated at the given time (any `Real`, so an AD
-dual isolation time flows through)."""
+dual isolation time flows through).
+
+The time is stored under `:isolation_time`. A route window that isolation should
+end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which
+respects leaky isolation. `:isolated` in an `until` refers to a
+`Transition(:isolated, …)` in the natural history."""
 function set_isolated!(ind::Individual, time::Real)
     ind.state[:isolated] = true
     ind.state[:isolation_time] = time
+end
+
+"""Clear an individual's isolation, the inverse of [`set_isolated!`](@ref)."""
+function clear_isolated!(ind::Individual)
+    ind.state[:isolated] = false
+    ind.state[:isolation_time] = Inf
+    return nothing
 end

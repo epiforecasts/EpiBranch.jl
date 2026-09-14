@@ -448,6 +448,40 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
               ForwardDiff.gradient(e_fast, xe)
     end
 
+    @testset "contact tracing" begin
+        # A case's contacts are its household-mates, so tracing reaches them and
+        # quarantine closes their own infectious window.
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0),
+            test_sensitivity = 1.0)
+        ct = ContactTracing(probability = 1.0,
+            isolation_to_trace_delay = Exponential(0.5))
+
+        build(ivs) = ModelSpec(HouseholdProcess(fill(6, 200), Weibull(1.5, 6.0));
+            progression = _sir(7.0), interventions = ivs, attributes = clinical)
+        meansize(ivs) = sum(simulate(build(ivs);
+                                rng = StableRNG(s)).cumulative_cases for s in 1:15) / 15
+
+        @test meansize([iso, ct]) < meansize([iso])
+
+        st = simulate(build([iso, ct]); rng = StableRNG(2))
+        traced = filter(is_traced, st.individuals)
+        @test !isempty(traced)
+        @test all(is_quarantined, traced)
+        # Everyone traced is a household-mate of whoever traced them.
+        for t in traced
+            src = st.individuals[t.state[:traced_by]]
+            @test t.state[:household] == src.state[:household]
+        end
+
+        # A trace too late to help must not make things worse (see the network
+        # suite for the isolation-pathway interaction this guards).
+        late = ContactTracing(probability = 1.0,
+            isolation_to_trace_delay = Exponential(500.0))
+        @test meansize([iso, late]) <= meansize([iso]) * 1.05
+    end
+
     @testset "conditioned simulation and bare-process household_infections" begin
         m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
             progression = _sir(6.0))
