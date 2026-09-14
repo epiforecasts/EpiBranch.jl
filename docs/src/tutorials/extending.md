@@ -149,7 +149,7 @@ ones your intervention needs (all default to no-ops).
 | `apply_post_transmission!(iv, state, new_contacts)` | Once per generation after all contacts for that generation have been created (across every active parent) | A `Vector{Individual}` of the new contacts | `nothing` (mutate any of the contacts' `state` in place) |
 | `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair during infection resolution, after `apply_post_transmission!` has run | The parent and a single new contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
 | `keep_active(iv, state, targets, is_new)` | Once per generation after infection is resolved, while the engine builds the next active set | This generation's `targets` and an `is_new` flag per target | An iterable of contact ids to keep generating contacts into the next generation (default: none) |
-| `trace_contacts!(iv, state, infector, contacts)` | Continuous-time models only: once per case, when the race settles it | The case, and the contacts it reached that are not yet settled | `nothing` (mutate the contacts' `state` in place) |
+| `trace_contacts!(iv, state, infector, contacts[, not_before])` | Continuous-time models only: once per case, when the race settles it | The case, the contacts it reached that are not yet settled, and, from a model whose routes open late, the earliest time each contact can be traced (the four-argument method is called when there are none, and by default for interventions that ignore them) | `nothing` (mutate the contacts' `state` in place) |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to gather contacts at all | Nothing | `true` if this intervention implements `trace_contacts!` (default `false`) |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
 
@@ -189,6 +189,9 @@ What this means in practice:
   engine reads that off each contact's `parent_id`; the continuous-time
   models get it from the process, which must report
   `EpiBranch.supplies_contacts(model) = true` and pass a `contacts` closure.
+  The closure yields contact ids, or `(id, time)` pairs when a contact can
+  only be reached later than the case's own trace, as on a route that opens at
+  death; `ContactTracing` then traces that contact no earlier than `time`.
   A graph names a node's neighbours and a household its members; the
   homogeneous pool is mass-action and has no pairwise contact structure, so
   tracing stays unhonoured there.
