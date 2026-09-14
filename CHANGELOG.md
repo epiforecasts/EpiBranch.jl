@@ -14,6 +14,13 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   exerts the same force of infection on every susceptible, giving the exact
   stochastic SIR final-size law (`R0 = β·E[infectious period]`) and an infection
   time for every case.
+- Analytical results for multi-type branching processes built from an offspring
+  matrix. `reproduction_number(model)` returns R*, the dominant eigenvalue of the
+  next-generation matrix (the offspring mean for a single-type model), and
+  `extinction_probability(model)` returns the extinction probability for each
+  type of index case. The extinction probability solves the vector PGF of the
+  simulator's draw, a total count from the distribution family split
+  multinomially across types, and reduces to the single-type result for one type.
 
 ### Changed
 

@@ -50,6 +50,35 @@ for (i, label) in enumerate(["0-14", "15-64", "65+"])
 end
 ```
 
+## Threshold and extinction probability
+
+The model stores the matrix and the distribution family, so the threshold and
+the extinction probability follow analytically. `reproduction_number` returns
+R\*, the dominant eigenvalue of the next-generation matrix: an outbreak can
+only take off if it exceeds 1. `extinction_probability` returns one value per
+type, the probability that an outbreak seeded by a single case of that type
+dies out.
+
+```@example multitype
+println("R* = $(round(reproduction_number(model), digits = 2))")
+q = extinction_probability(model)
+for (label, q_j) in zip(["0-14", "15-64", "65+"], q)
+    println("  extinction from one $label case: $(round(q_j, digits = 3))")
+end
+```
+
+A parent draws its total offspring from the distribution family and splits it
+across types in proportion to its column of `M`, and the extinction
+probability accounts for that joint draw. Simulation agrees: each run starts
+from one case of a random type, so the simulated containment probability
+estimates the average over types.
+
+```@example multitype
+results = simulate(model, 1000; max_cases = 200, rng = StableRNG(1))
+println("Analytical: $(round(sum(q) / length(q), digits = 3))")
+println("Simulated:  $(round(containment_probability(results), digits = 3))")
+```
+
 ## Custom offspring function
 
 For full control, pass a function `(rng, individual) → Vector{Int}`:
