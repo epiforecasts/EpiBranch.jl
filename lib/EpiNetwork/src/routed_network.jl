@@ -117,7 +117,6 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
         () -> _simulate(model, sim_opts; interventions, attributes, progression,
             observation, rng, condition = nothing, max_attempts),
         condition, max_attempts)
-    EpiBranch._warn_unhonoured_interventions(model, interventions)
 
     # Every route that did not name its own start takes the one the progression
     # implies, so a latent period delays all of them together.
