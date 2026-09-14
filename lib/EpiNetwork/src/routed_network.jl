@@ -29,6 +29,10 @@ Network transmission over several routes at once.
   the progression implies (`:infectious` when a latent period produces it).
   Name `:infection` for a route open from the moment of infection, or a later
   state for a route that opens later, such as a funeral route from `:died`.
+  Contact tracing reaches the neighbours on a route that opens at infection or
+  at the infectious start as it does on `NetworkProcess`. On a route that opens
+  at a later event it reaches them only if the route opened, and no earlier
+  than when it did.
 
 All routes run over the same node set, so every adjacency must have the same
 length.
@@ -94,19 +98,31 @@ _honours_termination_controls(::RoutedNetwork) = false
 
 EpiBranch.supplies_contacts(::RoutedNetwork) = true
 
-# Contacts for tracing are the union of the neighbours on every route that was
-# open for the case, each paired with the earliest time it can be traced: when
-# the first route linking it to the case opened. Someone you live with and also
-# see in the community is one contact, traced once. A route that never opened,
-# or closed before it opened, made no contacts: a survivor's funeral contacts are
-# not traced, nor are a safe burial's once isolation has cut the funeral route,
-# and a case that dies has its funeral contacts traced no earlier than its death.
-function _opened_contacts(windows, interventions, ind::Individual, i::Integer)
+# Contacts for tracing are the union of the neighbours on every route, each
+# paired with the earliest time it can be traced. Someone you live with and also
+# see in the community is one contact, traced once.
+#
+# A route's `from` means one of two things. On a route that opens at infection
+# or at the infectious start, it marks only when infectiousness begins: the
+# people it reaches are the case's contacts from the start, so they are traced
+# as on `NetworkProcess`, whenever the case's trace happens, even if the case
+# was isolated before it became infectious. On a route that opens at a later
+# event, such as `:died` for a funeral, the contacts exist only once that event
+# happens. Such a route contributes nothing if it never opened or was cut
+# before it opened (a survivor's funeral, or a safe burial after isolation),
+# and its contacts are traced no earlier than it opened.
+function _opened_contacts(windows, event_routes, interventions, ind::Individual,
+        i::Integer)
+    T = typeof(ind.infection_time)
     ids = Int[]
-    opens = typeof(ind.infection_time)[]
-    for w in windows
-        t = window_open(ind, w)
-        (isfinite(t) && window_close(ind, w, interventions) > t) || continue
+    opens = T[]
+    for (w, event) in zip(windows, event_routes)
+        if event
+            t = window_open(ind, w)
+            (isfinite(t) && window_close(ind, w, interventions) > t) || continue
+        else
+            t = T(-Inf)
+        end
         for nb in w.reach[i]
             k = findfirst(==(nb), ids)
             if k === nothing
@@ -150,13 +166,16 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
                RouteWindow(w.name, derived, w.until, w.kernel, w.reach) : w
                for w in model.windows]
     routes = Tuple((w, _route_targets(w)) for w in windows)
+    # Routes that open at a later event than the infectious start, whose
+    # contacts only exist from that event (see `_opened_contacts`).
+    event_routes = [w.from !== :infection && w.from !== derived for w in windows]
 
     EpiBranch._sellke_race!(state, collect(1:model.n), rng;
         routes = routes, interventions = interventions,
         seed! = (best, members, r) -> _seed_network!(
             best, members, model.external_hazard, sim_opts.n_initial, Tobs, r),
         contacts = (inf, st) -> _opened_contacts(
-            windows, interventions, st.individuals[inf], inf))
+            windows, event_routes, interventions, st.individuals[inf], inf))
 
     _reconcile_sellke_bookkeeping!(state)
     apply_observation!(observation, state, rng)

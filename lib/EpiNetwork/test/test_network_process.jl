@@ -322,6 +322,32 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test state.cumulative_cases in 5:40
     end
 
+    @testset "RoutedNetwork: one route traces as NetworkProcess" begin
+        # A single route opening at the infectious start is a NetworkProcess, so
+        # isolation and tracing must give the same outbreaks, including under a
+        # latent period where a case can isolate before it becomes infectious.
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        adj = ring_adjacency(80)
+        k = Exponential(1.0)
+        prog = [Transition(:onset; from = :infection, delay = 1.0),
+            Transition(:infectious; from = :infection, delay = 3.0),
+            Transition(:recovered; from = :infection, delay = 12.0, terminal = true)]
+        ivs = [Isolation(onset_to_isolation_delay = Exponential(0.5)),
+            ContactTracing(probability = 1.0,
+                isolation_to_trace_delay = Exponential(0.5))]
+        routed = RoutedNetwork([RouteWindow(:all; until = (:recovered, REM),
+            kernel = k, reach = adj)])
+        plain = NetworkProcess(adj, k; until = (:recovered,))
+        run(proc, s) = simulate(ModelSpec(proc; progression = prog, interventions = ivs);
+            n_initial = 2, rng = StableRNG(s))
+        for s in 1:10
+            a, b = run(routed, s), run(plain, s)
+            @test a.cumulative_cases == b.cumulative_cases
+            @test count(is_traced, a.individuals) == count(is_traced, b.individuals)
+        end
+        @test sum(count(is_traced, run(routed, s).individuals) for s in 1:10) > 0
+    end
+
     @testset "RoutedNetwork: tracing follows only opened routes" begin
         # Node 1 lives with node 2 and would meet node 3 only at its funeral.
         # Nobody dies, so no funeral route ever opens and node 3 is never a
