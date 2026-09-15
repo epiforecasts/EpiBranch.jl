@@ -71,9 +71,9 @@ end
             isolation_to_trace_delay = Dirac(20.0), quarantine_on_trace = false)
 
         # Each tracer draws its own delay, so the two stack orders consume the
-        # rng differently and their runs diverge. The invariant to check is
-        # within a run: every traced contact carries the fast system's lag
-        # from its infector's isolation, whichever order the stack is in.
+        # rng differently and their runs diverge, so the check is within a
+        # run: every traced contact has the fast system's lag from its
+        # infector's isolation, whichever order the stack is in.
         function trace_lags(stack)
             state = simulate(
                 ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
@@ -107,7 +107,7 @@ end
             max_cases = 300, rng = StableRNG(11))
         traced = filter(is_traced, state.individuals)
         @test !isempty(traced)  # otherwise the test is vacuous
-        # The guard has to have fired, or this proves nothing about it.
+        # Some trace time has to have been skipped, or this proves nothing.
         @test any(ind -> !haskey(ind.state, :trace_time), traced)
         for ind in traced
             @test !isnan(get(ind.state, :trace_time, 0.0))

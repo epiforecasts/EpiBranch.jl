@@ -460,8 +460,7 @@ struct _NoTraceIntervention <: AbstractIntervention end
 
         @testset "Doses are timed at the trace, whatever the trace action" begin
             # A ring member is vaccinated when the tracing team reaches
-            # them, so `:vaccination_time` is the trace time regardless of
-            # what the trace action wrote on their isolation state.
+            # them, so `:vaccination_time` is the trace time.
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
             for quarantine in (true, false)
                 ct = ContactTracing(probability = 1.0,
@@ -484,8 +483,8 @@ struct _NoTraceIntervention <: AbstractIntervention end
 
         @testset "Asymptomatic traced contacts are vaccinated" begin
             # Without a quarantine, tracing records an isolation time only
-            # for contacts with a known onset. Vaccination must not inherit
-            # that restriction: an asymptomatic ring member gets a dose.
+            # for contacts with a known onset, and an asymptomatic ring
+            # member still gets a dose.
             clinical_asymp = clinical_presentation(
                 incubation_period = LogNormal(1.5, 0.5),
                 prob_asymptomatic = 0.3)

@@ -317,10 +317,9 @@ to vaccinate the whole ring:
 
 Needs `:asymptomatic`, `:onset_time` from `clinical_presentation()` and optionally
 `:isolated`, `:isolation_time`, `:test_positive` depending on eligibility type.
-Sets `:traced`, `:quarantined` and `:trace_time` (when the contact was
-reached, which is what interventions acting on traced contacts time
-themselves from). With `depth > 1` also sets `:ring_remaining` to carry
-the ring outward.
+Sets `:traced`, `:quarantined` and `:trace_time`, the time the contact was
+reached, from which interventions acting on traced contacts are timed. With
+`depth > 1` it also sets `:ring_remaining`, which lets the ring grow outward.
 """
 struct ContactTracing{
     E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction} <:
@@ -465,9 +464,8 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     ind.state[:traced_by] = infector.id
 
     # When the contact was reached. Interventions that act on a traced
-    # contact time themselves from this rather than from whatever the
-    # trace action wrote on the contact's isolation state, which depends
-    # on the action and on the contact's own clinical course.
+    # contact time themselves from this, which is the same whatever the
+    # trace action and the contact's own clinical course.
     #
     # Keep the earliest across tracing systems, matching how `Quarantine`
     # keeps the earliest isolation time: with several `ContactTracing`
@@ -475,11 +473,10 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # them gets there.
     #
     # An infinite trace time is recorded: it says the contact is never
-    # reached, which stops a ring from growing past it. A `NaN` carries no
-    # information about when that was, and `min` propagates it, so it would
-    # destroy a good time another tracing system had already written. Such
-    # times exist today: see issue #248 for the `trigger_time` reduction that
-    # produces them.
+    # reached, which stops a ring from growing past it. A `NaN` says nothing
+    # about when the contact was reached, and `min` propagates it, so it would
+    # overwrite a good time another tracing system had already written. The
+    # `trigger_time` reduction can produce such times (issue #248).
     if !isnan(trace_time)
         ind.state[:trace_time] = min(get(ind.state, :trace_time, Inf), trace_time)
     end

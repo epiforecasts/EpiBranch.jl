@@ -36,13 +36,12 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Fixed
 
-- `RingVaccination` now times each dose at the trace, taking it from the
-  `:trace_time` that `ContactTracing` records for every traced contact. It
-  previously read the contact's isolation state instead, which under
-  `quarantine_on_trace = false` timed doses at symptom onset and gave no
-  dose at all to traced contacts drawn asymptomatic. Because `:trace_time` is
-  now recorded at every tracing depth, `linelist` gains a `date_trace` column
-  for runs at the default `depth = 1`, which previously had none.
+- `RingVaccination` now gives each dose at the trace, using the `:trace_time`
+  that `ContactTracing` records for every traced contact. It used to read the
+  contact's isolation state, so under `quarantine_on_trace = false` doses came
+  at symptom onset and traced contacts who were asymptomatic got no dose. With
+  `:trace_time` recorded at every tracing depth, `linelist` now has a
+  `date_trace` column at the default `depth = 1` as well.
 
 ## [0.1.0] - 2026-06-16
 
