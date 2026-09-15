@@ -36,6 +36,12 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Fixed
 
+- On the continuous-time models (`HomogeneousProcess`, and `NetworkProcess`,
+  `RoutedNetwork` and `HouseholdProcess` in the companion packages), symptom
+  onset from `clinical_presentation` is now measured from each case's own
+  infection time. Previously it was measured from time 0, because each
+  individual is created before it is infected, so onset-triggered isolation
+  started too early and simulations overstated its effect.
 - `RingVaccination` now gives each dose at the trace, using the `:trace_time`
   that `ContactTracing` records for every traced contact. It used to read the
   contact's isolation state, so under `quarantine_on_trace = false` doses came
