@@ -111,11 +111,19 @@ gradient loop: [`compile_household_pairs`](@ref) enumerates the ordered
 (susceptible, infector) rows once — everything that doesn't depend on the sampled
 parameters — and the three-argument `pairwise_surv_loglik(kernel, data, layout)`
 then evaluates the density in two allocation-free passes, reading the (possibly
-augmented) times on the fly. The two forms agree up to row order.
+augmented) times on the fly. The two forms agree up to row order. The layout is
+EpiBranch's [`ContactPairsLayout`](@ref), built by
+[`compile_contact_pairs`](@ref) from the household partition. Both work for any
+contact structure, and a contact network is fitted the same way (see
+[Fitting on a network](@ref "Fitting on a network")).
 
 In real data the infection times are unobserved. A household `@model` then augments
 them and conditions the observed onsets and tests through the progression's delays,
 with `pairwise_surv_loglik` supplying the contact-process density of the augmented
 configuration. The layout stays valid across draws as long as the household
 structure and the set of ever-infected hosts are fixed — only the latent times
-move — so it is compiled once, outside the model, and reused.
+move — so it is compiled once, outside the model, and reused. A configuration the
+model cannot produce has zero density, and `pairwise_surv_loglik` returns `-Inf`
+for it: for example, a case infected when none of its household-mates is
+infectious and no community hazard can reach it. Without a community hazard the
+density conditions on index cases, so they need no possible infector.

@@ -935,6 +935,36 @@ specification (`extinction_probability`, `epidemic_probability`,
 For **likelihoods** on data types that don't go through the offspring
 spec, define methods on `loglikelihood` directly.
 
+The continuous-time race is the generative model of the pairwise survival
+likelihood, so a structure-driven model simulated by that race can reuse the
+likelihood. Beyond the infection times, the density needs to know who could have
+infected whom. Define an infection-layer type that subtypes
+[`InfectionLayer`](@ref) and give it a
+[`contact_structure`](@ref EpiBranch.contact_structure) method that returns a
+membership vector for groups whose members all mix, or an adjacency list for
+anything else. [`compile_contact_pairs`](@ref) and [`pairwise_surv_loglik`](@ref)
+then work on it with no further methods, including the per-edge, covariate and
+community-hazard terms, and `loglikelihood` needs one method that forwards to
+them:
+
+```julia
+struct MyInfections{T <: Real} <: InfectionLayer
+    contacts::Vector{Vector{Int}}    # contacts[i]: who host i can infect
+    infection_time::Vector{T}        # NaN if never infected
+    infectious_time::Vector{T}       # the infectious window opens
+    removal_time::Vector{T}          # and closes (Inf if right-censored)
+    is_index::Vector{Bool}           # introduced from outside
+    obs_end::T                       # community introductions stop
+end
+EpiBranch.contact_structure(d::MyInfections) = d.contacts
+
+Distributions.loglikelihood(d::MyInfections, m::MyModel) =
+    pairwise_surv_loglik(m.kernel, d; external_hazard = m.external_hazard)
+```
+
+`HouseholdInfections` in `EpiHouseholds` and `NetworkInfections` in `EpiNetwork`
+are the worked examples.
+
 For optional **state accessors**, override `population_size` and
 `n_types` if your model has values for them. The defaults
 (`NoPopulation()`, `1`) are fine if not.
@@ -1258,6 +1288,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
 | Transmission route | `RouteWindow(name; from, until, kernel, reach)` on a process that reads them | Continuous-time race, per case |
 | Structured fixed-size pool | Reuse the Sellke pool: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply a `force(group, counts)` | Simulation |
+| Pairwise likelihood for a structure | Struct `<: InfectionLayer` + `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood evaluation |
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |

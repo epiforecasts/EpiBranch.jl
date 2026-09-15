@@ -3,26 +3,28 @@ module EpiHouseholds
 using EpiBranch
 using Distributions
 using Random
-using SurvivalDistributions: hazard, cumhazard, loghazard
 
 # Accessor seam methods extended for `HouseholdProcess`; imported because they
 # are part of EpiBranch's public extension API but not brought into scope by
 # `using EpiBranch`. Everything else this package builds on (`TransmissionModel`,
 # `Transition`, `Individual`, `linelist`, …) is exported by EpiBranch, and the
-# population/progression helpers are called qualified. The one deliberate reach
-# into EpiBranch internals is the shared continuous-time engine: the
-# `_window_open`/`_window_close` helpers imported below and
-# `EpiBranch._sellke_race!` used by the simulator, reused rather than
-# reimplemented so the household simulate and pairwise likelihood stay aligned
-# with the shared engine.
+# population/progression helpers are called qualified. The package also uses two
+# sets of EpiBranch internals on purpose: the shared continuous-time engine (the
+# `_shorthand_window` helper imported below and `EpiBranch._sellke_race!` used by
+# the simulator) and the community-hazard helpers. Reusing them keeps the
+# household simulator and pairwise likelihood consistent with the shared engine.
 import EpiBranch: new_state, add_individuals!, apply_observation!,
                   _simulate, SimOpts, _resolve_infectious_from,
                   _retry_for_condition, _reconcile_sellke_bookkeeping!,
                   _honours_termination_controls
-# The infectious-window helpers moved to EpiBranch alongside the shared
-# `_sellke_race!` primitive; the pairwise likelihood reuses them to read each
-# case's window from the same `from`/`until` states the simulator uses.
-import EpiBranch: _window_open, _window_close
+# The pairwise likelihood reads each case's infectious window through the same
+# window the simulator's race builds, including its intervention removal.
+import EpiBranch: _shorthand_window
+# The pairwise survival likelihood works for any contact structure and lives in
+# EpiBranch. This package adds household methods and uses EpiBranch's
+# community-hazard helpers, so the simulator and the likelihood agree on when
+# that term is on.
+import EpiBranch: pairwise_surv_loglik, _ext_active, _ext_survival
 
 export HouseholdProcess, household_sizes
 export HouseholdInfections, household_infections

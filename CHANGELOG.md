@@ -14,6 +14,20 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   exerts the same force of infection on every susceptible, giving the exact
   stochastic SIR final-size law (`R0 = β·E[infectious period]`) and an infection
   time for every case.
+- `NetworkProcess` (in `EpiNetwork`) can be fitted as well as simulated.
+  `network_infections` reads the infection layer out of a simulation, and
+  `loglikelihood(data, model)` scores it with the pairwise survival likelihood,
+  whose generative model is the network's continuous-time race. Each node's
+  possible infectors are its in-neighbours. Shared, covariate and per-edge
+  kernels and a community hazard are supported. Each case's infectious window
+  ends where the simulation ends it, including removal by the model's
+  interventions such as isolation.
+- The pairwise survival likelihood now lives in EpiBranch and works over any
+  contact structure. `compile_contact_pairs` enumerates the (susceptible,
+  possible infector) rows from a membership vector or an adjacency list into a
+  `ContactPairsLayout`, and `pairwise_surv_loglik` evaluates it on any
+  `InfectionLayer` subtype. `EpiHouseholds` now uses it and keeps its API:
+  `HouseholdPairsLayout` is another name for `ContactPairsLayout`.
 
 ### Changed
 
@@ -33,6 +47,30 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   replacing the earlier coin-flip-per-edge version. Shortening a case's
   infectious window — through recovery or isolation — now genuinely curtails
   onward spread.
+- With a community hazard, the pairwise survival likelihood treats `obs_end` as
+  the time community introductions stop, as the household and network
+  simulations do. A host accrues community hazard until the earlier of its
+  infection and `obs_end`, a host infected after `obs_end` adds no community
+  hazard at its infection time, and a host that is never infected is exposed
+  over each possible infector's whole infectious window. Household likelihood
+  values with a community hazard change as a result; values without one are
+  unchanged.
+
+### Fixed
+
+- `household_infections` (in `EpiHouseholds`) ends each case's infectious window
+  when the model's interventions remove it from transmission, such as by
+  isolation or quarantine after tracing, as the simulation does. Fitting an
+  outbreak simulated under isolation then recovers the kernel.
+- The pairwise survival likelihood evaluated on a compiled layout counts a
+  community infection at time 0, as the form without a layout does, so an index
+  case at time 0 contributes the community hazard at 0. When every hazard at an
+  infection time is zero, both forms return `-Inf`.
+- The pairwise survival likelihood returns `-Inf` for an infected host that is
+  not conditioned on and that no possible infector or community hazard could
+  have infected at its infection time, including a host with no possible
+  infector at all, so a sampler over latent infection times rejects such
+  configurations.
 
 ### Fixed
 

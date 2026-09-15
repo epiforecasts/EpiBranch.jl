@@ -151,6 +151,37 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test loglikelihood(data, m) ≈ ll(true_scale)
     end
 
+    @testset "isolation ends the infectious window in the infection layer" begin
+        # the race closes a case's window when it is isolated, so the data must
+        # too, or the likelihood sees cases infectious after isolation and
+        # overestimates the kernel scale
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0)
+        m = ModelSpec(HouseholdProcess(fill(4, 1500), Exponential(4.0));
+            progression = _sir(8.0), interventions = [iso], attributes = clinical)
+        state = simulate(m; rng = StableRNG(201))
+        data = household_infections(state, m)
+
+        infected = findall(!isnan, data.infection_time)
+        expected = [min(data.infection_time[i] + 8.0,
+                        EpiBranch.isolation_time(state.individuals[i])) for i in infected]
+        @test data.removal_time[infected] == expected
+        @test count(data.removal_time[infected] .< data.infection_time[infected] .+ 8.0) >
+              length(infected) / 2
+
+        layout = compile_household_pairs(data)
+        f(θ) = pairwise_surv_loglik(Exponential(exp(θ)), data, layout)
+        d2(z) = ForwardDiff.derivative(y -> ForwardDiff.derivative(f, y), z)
+        θhat = log(4.0)
+        for _ in 1:20
+            θhat -= ForwardDiff.derivative(f, θhat) / d2(θhat)
+        end
+        se = 1 / sqrt(-d2(θhat))
+        @test abs(θhat - log(4.0)) < 3 * se
+    end
+
     @testset "external (community) term: round trip recovers the kernel" begin
         # with a community hazard, indexes emerge from it and the within-household
         # kernel scale is still recovered through the same likelihood.
@@ -172,6 +203,35 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         ll(s) = pairwise_surv_loglik(r -> is_ext[r] ? extdist : Exponential(s), rows)
         grid = 1.5:0.5:5.0
         @test abs(grid[argmax([ll(s) for s in grid])] - true_scale) <= 1.5
+    end
+
+    @testset "community introductions stop at obs_end and household spread goes on" begin
+        # with a short obs_end most infections come later, within households; the
+        # likelihood must give them no community hazard and keep uninfected
+        # members exposed over their household-mates' whole windows
+        Tobs = 2.0
+        m = ModelSpec(
+            HouseholdProcess(fill(6, 1500), Exponential(10.0);
+                external_hazard = 0.1, obs_end = Tobs);
+            progression = _sir(12.0))
+        data = household_infections(simulate(m; rng = StableRNG(71)), m)
+        inf = filter(!isnan, data.infection_time)
+        @test count(>(Tobs), inf) > length(inf) / 2
+
+        layout = compile_household_pairs(data; external = true)
+        @test loglikelihood(data, m) ≈
+              pairwise_surv_loglik(Exponential(10.0), data, layout;
+            external_hazard = 0.1)
+        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout;
+            external_hazard = exp(θ[2]))
+        θ = [log(10.0), log(0.1)]
+        θhat = copy(θ)
+        for _ in 1:20
+            θhat -= ForwardDiff.hessian(g, θhat) \ ForwardDiff.gradient(g, θhat)
+        end
+        Σ = inv(-ForwardDiff.hessian(g, θhat))
+        se = sqrt.([Σ[1, 1], Σ[2, 2]])
+        @test all(abs.(θhat - θ) .< 3 .* se)
     end
 
     @testset "inference-friendly likelihood: kernel varies over a fixed infection layer" begin
@@ -382,6 +442,90 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         # mismatched input lengths are rejected at compile time
         @test_throws ArgumentError compile_household_pairs([1, 1], [true],
             [true, false])
+    end
+
+    @testset "compiled pair layout: community cases at time 0" begin
+        # 1 and 3 are community cases at 0 in households {1, 2} and {3}; both
+        # forms count them, adding log α each
+        data = HouseholdInfections([1, 1, 2], [0.0, NaN, 0.0], [0.0, NaN, 0.0],
+            [3.0, Inf, 3.0], [true, false, true]; obs_end = 5.0)
+        layout = compile_household_pairs(data; external = true)
+        k = Exponential(2.0)
+        expected = 2 * log(0.1) - 0.1 * 5 - 3 / 2
+        @test pairwise_surv_loglik(k, data; external_hazard = 0.1) ≈ expected
+        @test pairwise_surv_loglik(k, data, layout; external_hazard = 0.1) ≈ expected
+        # a community hazard that is zero at 0 cannot have introduced them
+        zero_at_0 = Gamma(2.0, 5.0)
+        @test pairwise_surv_loglik(k, data; external_hazard = zero_at_0) == -Inf
+        @test pairwise_surv_loglik(k, data, layout; external_hazard = zero_at_0) == -Inf
+
+        # an infection where every possible infector has zero hazard
+        zero_hazard = HouseholdInfections([1, 1, 1], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0],
+            [5.0, 5.0, 6.0], [true, true, false])
+        kz = Uniform(2.0, 10.0)
+        @test pairwise_surv_loglik(kz, zero_hazard) == -Inf
+        @test pairwise_surv_loglik(kz, zero_hazard, compile_household_pairs(zero_hazard)) ==
+              -Inf
+
+        # index cases simulated at 0 without a community hazard, scored with one
+        m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
+            progression = _sir(5.0))
+        sim = household_infections(simulate(m; rng = StableRNG(1)), m)
+        d = HouseholdInfections(sim.household_of, sim.infection_time,
+            sim.infectious_time, sim.removal_time, sim.is_index; obs_end = 20.0)
+        @test count(==(0.0), filter(!isnan, d.infection_time)) == 300
+        ld = compile_household_pairs(d; external = true)
+        for α in (0.001, 0.01, 0.1, 1.0)
+            @test pairwise_surv_loglik(Exponential(3.0), d, ld; external_hazard = α) ≈
+                  pairwise_surv_loglik(Exponential(3.0), d; external_hazard = α)
+        end
+    end
+
+    @testset "an infection no household-mate or community can explain" begin
+        k = Exponential(2.0)
+        both(d; kw...) = (pairwise_surv_loglik(k, d; kw...),
+            pairwise_surv_loglik(k, d,
+                compile_household_pairs(d; external = haskey(kw, :external_hazard));
+                kw...))
+        # index 1 is infectious over [0, 3], so 2 cannot be infected after 3
+        for (t, expected) in ((2.9, log(1 / 2) - 2.9 / 2), (3.5, -Inf), (5.0, -Inf))
+            d = HouseholdInfections([1, 1], [0.0, t], [0.0, t], [3.0, t + 3.0],
+                [true, false])
+            @test all(both(d) .≈ expected)
+        end
+        # community hazard 0.1 up to obs_end = 4, and 1 infectious over [0.5, 3]
+        for (t, expected) in ((3.5, 2 * log(0.1) - 0.05 - 0.35 - 2.5 / 2),
+            (4.5, -Inf), (6.0, -Inf))
+            d = HouseholdInfections([1, 1], [0.5, t], [0.5, t], [3.0, t + 3.0],
+                [false, false]; obs_end = 4.0)
+            @test all(both(d; external_hazard = 0.1) .≈ expected)
+        end
+        # a lone member is conditioned on as an index case and impossible otherwise
+        lone(is_index) = HouseholdInfections([1, 1, 2], [0.0, 1.0, 2.0],
+            [0.0, 1.0, 2.0], [4.0, 5.0, 6.0], [true, false, is_index])
+        @test all(both(lone(true)) .≈ log(1 / 2) - 1 / 2)
+        @test all(both(lone(false)) .== -Inf)
+    end
+
+    @testset "simulated infection layers never have zero density" begin
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0)
+        latent = [Transition(:infectious; from = :infection, delay = LogNormal(0.3, 0.3)),
+            Transition(:recovered; from = :infectious, delay = 5.0, terminal = true)]
+        for seed in 1:4, (ext, Tobs) in ((0.0, Inf), (0.03, 10.0)),
+            interventions in ([], [iso])
+            m = ModelSpec(
+                HouseholdProcess(rand(StableRNG(seed), 1:6, 200), Weibull(1.5, 4.0);
+                    external_hazard = ext, obs_end = Tobs);
+                progression = latent, interventions, attributes = clinical)
+            d = household_infections(simulate(m; n_initial = 2, rng = StableRNG(seed)), m)
+            layout = compile_household_pairs(d; external = ext > 0)
+            @test isfinite(loglikelihood(d, m))
+            @test isfinite(pairwise_surv_loglik(Weibull(1.5, 4.0), d, layout;
+                external_hazard = ext))
+        end
     end
 
     @testset "compiled pair layout: inference workflow (compile once, reuse)" begin
