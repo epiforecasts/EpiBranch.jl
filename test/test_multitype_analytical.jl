@@ -65,6 +65,42 @@ using LinearAlgebra: eigvals
         @test q[1] ≈ EpiBranch._pgf(NegBin(3.0, 0.5), (2q[1] + q[2]) / 3)
     end
 
+    @testset "Reducible matrix" begin
+        # Type 2 infects only type 2, so its outbreaks die out for certain
+        # when its own reproduction number is at most 1.
+        for r in (0.99, 0.999, 1.0)
+            closed = BranchingProcess([2.0 0.0; 0.0 r], R -> Poisson(R), Exponential(1.0))
+            q = extinction_probability(closed)
+            @test q[2] == 1.0
+            @test q[1] ≈ extinction_probability(Poisson(2.0)) atol = 1e-8
+        end
+
+        # Type 1 also infects type 2, which is critical on its own.
+        feeds_critical = BranchingProcess(
+            [2.0 0.0; 1.0 1.0], R -> Poisson(R), Exponential(1.0))
+        q = extinction_probability(feeds_critical)
+        @test q[2] == 1.0
+        @test q[1] ≈ EpiBranch._pgf(Poisson(3.0), (2q[1] + 1) / 3) atol = 1e-9
+
+        # Type 3 infects type 2, which infects type 1; only type 1 infects
+        # its own type with R > 1, and every type can reach it.
+        chain = [2.0 0.5 0.0;
+                 0.0 0.3 0.4;
+                 0.0 0.0 0.2]
+        q = extinction_probability(BranchingProcess(chain, R -> Poisson(R), Exponential(1.0)))
+        q1 = extinction_probability(Poisson(2.0))
+        q2 = q1
+        for _ in 1:1000
+            q2 = exp(0.5 * (q1 - 1) + 0.3 * (q2 - 1))
+        end
+        q3 = q2
+        for _ in 1:1000
+            q3 = exp(0.4 * (q2 - 1) + 0.2 * (q3 - 1))
+        end
+        @test all(q .< 1)
+        @test q ≈ [q1, q2, q3] atol = 1e-8
+    end
+
     @testset "Poisson totals: analytic matches simulation" begin
         model = BranchingProcess(M, R -> Poisson(R), Exponential(1.0))
         q = extinction_probability(model)

@@ -121,8 +121,12 @@ case dies out.
 It is the smallest fixed point in `[0, 1]` of the vector PGF,
 `q_j = G_j(Σ_i a_ij q_i)`, where `G_j` is the PGF of `dist_fn(R_j)` and
 `a_ij = M[i, j] / R_j` the proportions in which a type-`j` parent's offspring
-are split across types. Fixed-point iteration from zero converges to it. When
-[`reproduction_number`](@ref) is at most 1, every entry is 1.
+are split across types. Fixed-point iteration from zero converges to it.
+
+A type-`j` outbreak can grow only if type-`j` cases lead, through some chain
+of transmission, to a group of types that infect each other with a
+reproduction number above 1. Types without such a chain, and every type when
+[`reproduction_number`](@ref) is at most 1, get exactly 1.
 
 To use it on a model built with
 `BranchingProcess(offspring_matrix, dist_fn, generation_time)`, call
@@ -134,14 +138,37 @@ function extinction_probability(o::MultiTypeOffspring; tol::Real = 1e-10,
     laws = _total_count_laws(o)
     M = _mean_matrix(o, laws)
     T = eltype(M)
-    _spectral_radius(M) <= 1 && return ones(T, n)
+    can_grow = _reaches_supercritical_class(M)
+    any(can_grow) || return ones(T, n)
 
-    q = zeros(T, n)
+    q = T[can_grow[j] ? 0 : 1 for j in 1:n]
     for _ in 1:max_iter
-        q_new = T[_pgf(laws[j], sum(o.alloc_probs[i, j] * q[i] for i in 1:n))
+        q_new = T[can_grow[j] ?
+                  _pgf(laws[j], sum(o.alloc_probs[i, j] * q[i] for i in 1:n)) : 1
                   for j in 1:n]
         maximum(abs.(q_new .- q)) < tol && return q_new
         q = q_new
     end
     return q
+end
+
+# Whether each type can lead to a communicating class of types whose mean
+# matrix restricted to the class has spectral radius above 1. A type-`j` parent
+# has type-`i` offspring when `M[i, j] > 0`. Only such types have extinction
+# probability below 1.
+function _reaches_supercritical_class(M::AbstractMatrix)
+    n = size(M, 1)
+    # reach[i, j]: a type-`j` case has type-`i` descendants (or i == j).
+    reach = [i == j || M[i, j] > 0 for i in 1:n, j in 1:n]
+    for k in 1:n, j in 1:n, i in 1:n
+        reach[i, j] = reach[i, j] || (reach[i, k] && reach[k, j])
+    end
+    supercritical = falses(n)
+    for i in 1:n
+        class = [j for j in 1:n if reach[i, j] && reach[j, i]]
+        supercritical[i] = i == first(class) ?
+                           _spectral_radius(M[class, class]) > 1 :
+                           supercritical[first(class)]
+    end
+    return [any(supercritical[i] && reach[i, j] for i in 1:n) for j in 1:n]
 end

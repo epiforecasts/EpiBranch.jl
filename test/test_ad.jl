@@ -289,4 +289,10 @@ end
     q2(θ) = extinction_probability(
         BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0)))[2]
     @test ForwardDiff.derivative(q2, 1.2) ≈ fdm(q2, 1.2) rtol = 1e-5
+
+    # A reducible matrix whose second type reaches no class with R > 1.
+    qred(θ) = extinction_probability(
+        BranchingProcess([2.0 0.0; 1.0 1.0], R -> Poisson(θ * R), Exponential(5.0)))
+    @test ForwardDiff.derivative(θ -> qred(θ)[1], 0.9) ≈ fdm(θ -> qred(θ)[1], 0.9) rtol = 1e-5
+    @test ForwardDiff.derivative(θ -> qred(θ)[2], 0.9) == 0
 end
