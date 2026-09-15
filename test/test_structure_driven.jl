@@ -161,6 +161,56 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
     @test abort_before_infection == 0
 end
 
+# Records the generation of each node's latest exposure and of the first one in
+# which it was found vaccinated. Listed after the ring vaccination, so a node
+# dosed at an exposure records that exposure's generation.
+struct ExposureGenerations <: AbstractIntervention end
+function EpiBranch.apply_post_transmission!(::ExposureGenerations, state, targets)
+    for t in targets
+        t.state[:exposure_generation] = state.current_generation
+        get(t.state, :vaccinated, false) || continue
+        get!(t.state, :vaccination_generation, state.current_generation)
+    end
+    return nothing
+end
+
+@testset "A dose given at an earlier exposure can abort the infecting one" begin
+    # A node dosed when exposed in one generation, escaping, and infected in a
+    # later one before its immunity arrives, with onset still to come, is
+    # aborted with the post-exposure efficacy like any other.
+    spec = ModelSpec(AbortPoolModel(300, 4, 0.4);
+        interventions = [
+            Isolation(onset_to_isolation_delay = Exponential(1.0)),
+            ContactTracing(probability = 1.0,
+                isolation_to_trace_delay = Exponential(0.5),
+                quarantine_on_trace = false),
+            RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
+            ExposureGenerations()],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
+    aborted = 0
+    not_aborted = 0
+    for seed in 1:300
+        state = simulate(spec; n_initial = 3, rng = StableRNG(seed),
+            stopping_rules = [Extinction(), MaxGenerations(30)])
+        for ind in state.individuals
+            EpiBranch.is_infected(ind) || continue
+            dosed = get(ind.state, :vaccination_generation, nothing)
+            dosed !== nothing && dosed < ind.state[:exposure_generation] || continue
+            # Immunity is immediate (`delay_to_immunity = 0`).
+            immunity = ind.state[:vaccination_time]
+            onset = ind.infection_time + ind.state[:incubation_period]
+            ind.infection_time < immunity < onset || continue
+            if haskey(ind.state, :infection_aborted_time)
+                aborted += 1
+            else
+                not_aborted += 1
+            end
+        end
+    end
+    @test aborted + not_aborted >= 50
+    @test 0.35 < aborted / (aborted + not_aborted) < 0.65
+end
+
 @testset "An abort is dropped when resolution does not bear its exposure out" begin
     function exposed(infected, infection_time)
         ind = Individual(id = 1, infection_time = infection_time)

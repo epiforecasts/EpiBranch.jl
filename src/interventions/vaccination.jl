@@ -342,16 +342,21 @@ end
 # nothing (the engine's `AbortedInfection` risk source). It has no onset, and
 # `resolve_transitions!` ends its clinical course at the abort time.
 #
-# The draw is made when the dose is recorded, because a contact's onset and
+# The draw is made in the intervention phase, because a contact's onset and
 # clinical course are resolved together with its infection, leaving no later
-# point to make it. It is made only when immunity falls between the exposure
-# and onset, so a dose that cannot abort anything leaves the random stream
-# untouched. The exposure is the contact's provisional infection time, its
-# earliest exposure when several infectors reach it; the engine removes the
-# abort again if that exposure does not turn out to be the infection
-# (`_drop_stale_abort!`).
+# point to make it: when the dose is recorded, and again each time a contact
+# already given the dose is exposed anew. It is made only when immunity falls
+# between the exposure and onset, so a dose that cannot abort anything leaves
+# the random stream untouched. The exposure is the contact's provisional
+# infection time, its earliest exposure when several infectors reach it; the
+# engine removes the abort again if that exposure does not turn out to be the
+# infection (`_drop_stale_abort!`), which leaves a contact that escaped it free
+# to be drawn for afresh at its next exposure.
+#
+# Callers check `post_exposure_efficacy > 0` first: the vaccination time comes
+# untyped from the contact's state, so an unconditional call would dispatch
+# dynamically for every vaccinated contact of a dose that cannot abort.
 function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
-    rv.post_exposure_efficacy > 0.0 || return nothing
     incubation = get(contact.state, :incubation_period, NaN)
     isnan(incubation) && return nothing
     immunity = vacc_t + delay_to_immunity(rv)
@@ -475,7 +480,15 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
     vacc_key = _vaccinated_key(label)
     for ind in new_contacts
         is_traced(ind) || continue
-        get(ind.state, vacc_key, false) && continue
+        if get(ind.state, vacc_key, false)
+            # Given the dose in an earlier generation and exposed again: the
+            # dose stands, and whether it aborts this infection is decided
+            # against this exposure.
+            rv.post_exposure_efficacy > 0.0 &&
+                _abort_infection!(rv, ind, ind.state[_vaccination_time_key(label)],
+                    state.rng)
+            continue
+        end
         # Fire when the tracing team reached the contact. `ContactTracing`
         # records that as `:trace_time` whatever its trace action, so the
         # isolation-derived times below are reached only when something
@@ -495,7 +508,7 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
             continue
         _covers(rv.coverage, ind, state.rng) || continue
         _record_vaccination!(rv, ind, vacc_t, state.rng)
-        _abort_infection!(rv, ind, vacc_t, state.rng)
+        rv.post_exposure_efficacy > 0.0 && _abort_infection!(rv, ind, vacc_t, state.rng)
     end
     return nothing
 end
