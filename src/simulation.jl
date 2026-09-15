@@ -901,8 +901,21 @@ function competing_risk(::WindowCensor, parent, contact, state)
     return Risk(event_time = t_end, block_probability = 1.0)
 end
 
+"""Default risk source: the end of an aborted infection. An infector whose
+infection was aborted (`:infection_aborted_time`, written by a post-exposure
+dose of [`RingVaccination`](@ref)) transmits nothing from that time on. The
+block reads the infector's state and nothing else, so it lasts exactly as long
+as the abort is recorded, whether or not the intervention that recorded it is
+still active. A no-op on every infector without the key."""
+struct AbortedInfection end
+function competing_risk(::AbortedInfection, parent, contact, state)
+    aborted_t = get(parent.state, :infection_aborted_time, nothing)
+    aborted_t === nothing && return nothing
+    return Risk(event_time = aborted_t, block_probability = 1.0)
+end
+
 const _BUILTIN_RISK_SOURCES = (InfectiousSource(), WindowCensor(),
-    HostSusceptibility(), InfectorInfectiousness())
+    AbortedInfection(), HostSusceptibility(), InfectorInfectiousness())
 
 """Apply one risk source's [`competing_risk`](@ref)(s) to a transmission;
 return `true` if any active risk blocks it. Built-in risk sources and

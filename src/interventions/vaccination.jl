@@ -335,8 +335,8 @@ end
 # A dose given after the exposure can still abort the infection, so long as
 # immunity arrives before symptom onset. The contact then stays infected up to
 # its immunity time and transmits as usual until then; after it, it transmits
-# nothing (`_aborted_infection_risk`) and never develops disease, since its
-# onset, and everything timed from onset, is never reached.
+# nothing (the engine's `AbortedInfection` risk source) and never develops
+# disease, since its onset, and everything timed from onset, is never reached.
 #
 # The draw is made when the dose is recorded, because a contact's onset and
 # clinical course are resolved together with its infection, leaving no later
@@ -361,44 +361,18 @@ function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     return nothing
 end
 
-# Parent-side risk: an aborted infection transmits nothing from the time it
-# was aborted, the way isolation stops a parent's transmission from its
-# isolation time.
-function _aborted_infection_risk(rv::RingVaccination, parent)
-    rv.post_exposure_efficacy > 0.0 || return nothing
-    aborted_t = get(parent.state, :infection_aborted_time, nothing)
-    aborted_t === nothing && return nothing
-    return Risk(event_time = aborted_t, block_probability = 1.0)
-end
-
-# Ring vaccination gates a transmission through three mechanisms: protection
-# of the contact against the exposure, the end of an infection the parent had
-# aborted, and reduced onward transmission from a vaccinated parent. Returning
-# a tuple of risks is supported by the engine's `_iter_risks` helper, which
-# applies each independently.
-#
-# The branches are written out rather than compacted generically. Each risk is
-# a `Union{Nothing, Risk}`, so a generic compaction infers as
-# `Tuple{Vararg{Risk}}` — abstract, of unknown length — and the engine then
-# iterates a non-inferrable tuple once per contact. Enumerating the cases keeps
-# the return type a small union of concrete tuple lengths, which matters
-# because this sits on the per-contact hot path of every simulation carrying a
-# vaccination.
+# Combine the contact-side risk with the optional onward-infectiousness risk
+# (acting on the parent). Returning a tuple of risks is supported by the
+# engine's `_iter_risks` helper. The end of an infection a dose aborted is not
+# one of them: the engine's `AbortedInfection` risk source applies it for as
+# long as the abort is recorded, so a `Scheduled` wrapper that switches this
+# intervention off does not switch it off too.
 function competing_risk(rv::RingVaccination, parent, contact, state)
     exposure = _contact_risk(rv, contact)
-    aborted = _aborted_infection_risk(rv, parent)
     onward = _onward_risk(rv, parent)
-    if exposure === nothing
-        aborted === nothing && return onward
-        onward === nothing && return aborted
-        return (aborted, onward)
-    elseif aborted === nothing
-        onward === nothing && return exposure
-        return (exposure, onward)
-    elseif onward === nothing
-        return (exposure, aborted)
-    end
-    return (exposure, aborted, onward)
+    exposure === nothing && return onward
+    onward === nothing && return exposure
+    return (exposure, onward)
 end
 
 # Scalar defaults short-circuit without drawing from the rng so that

@@ -821,11 +821,7 @@ struct _NoTraceIntervention <: AbstractIntervention end
             end
 
             @testset "Every combination of risks is returned" begin
-                # The branch ladder in `competing_risk` is written out for
-                # inference, so each shape needs exercising — including the
-                # three-risk case, which no simulation test reaches.
-                function risks(rv; contact_dosed = true, parent_dosed = true,
-                        parent_aborted = true)
+                function risks(rv; contact_dosed = true, parent_dosed = true)
                     parent = Individual(id = 1, infection_time = 0.0)
                     contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
                     for (ind, dosed) in ((contact, contact_dosed), (parent, parent_dosed))
@@ -833,7 +829,6 @@ struct _NoTraceIntervention <: AbstractIntervention end
                         ind.state[:vaccination_time] = dosed ? 2.0 : Inf
                         ind.state[:vaccine_efficacy] = rv.efficacy
                     end
-                    parent_aborted && (parent.state[:infection_aborted_time] = 4.0)
                     r = EpiBranch.competing_risk(rv, parent, contact, nothing)
                     r === nothing ? 0 : (r isa EpiBranch.Risk ? 1 : length(r))
                 end
@@ -845,21 +840,53 @@ struct _NoTraceIntervention <: AbstractIntervention end
                     post_exposure_efficacy = 0.5, onward_efficacy = 0.5)
 
                 @test risks(susceptibility_only) == 1
-                @test risks(post; parent_aborted = false) == 1
-                @test risks(post; contact_dosed = false) == 1
+                @test risks(post) == 1
+                @test risks(post; contact_dosed = false) == 0
                 @test risks(onward_only; contact_dosed = false) == 1
                 @test risks(RingVaccination(efficacy = 0.5, onward_efficacy = 0.5)) == 2
-                @test risks(post) == 2
-                @test risks(post_onward; contact_dosed = false) == 2
-                @test risks(post_onward; parent_aborted = false) == 2
-                @test risks(post_onward) == 3
+                @test risks(post_onward) == 2
+                @test risks(post_onward; contact_dosed = false) == 1
                 # Efficacy and post-exposure efficacy share one contact-side
                 # block at the same immunity time.
                 both = RingVaccination(efficacy = 0.5, post_exposure_efficacy = 0.5)
-                @test risks(both; parent_aborted = false) == 1
-                # Nobody dosed or aborted: no risk at all.
-                @test risks(post_onward; contact_dosed = false, parent_dosed = false,
-                    parent_aborted = false) == 0
+                @test risks(both) == 1
+                @test risks(post_onward; contact_dosed = false, parent_dosed = false) == 0
+            end
+
+            @testset "The engine ends an aborted infection" begin
+                parent = Individual(id = 1, infection_time = 0.0)
+                contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+                @test EpiBranch.competing_risk(EpiBranch.AbortedInfection(),
+                    parent, contact, nothing) === nothing
+                parent.state[:infection_aborted_time] = 4.0
+                risk = EpiBranch.competing_risk(EpiBranch.AbortedInfection(),
+                    parent, contact, nothing)
+                @test risk.event_time == 4.0
+                @test risk.block_probability == 1.0
+            end
+
+            @testset "An aborted infection stays ended after a scheduled dose stops" begin
+                # The abort is state on the case, so its end of transmission
+                # cannot depend on whether the ring vaccination that recorded it
+                # is still active.
+                scheduled = Scheduled(post_only(); end_time = 15.0)
+                results = simulate(scen([iso, ct, scheduled]), 100;
+                    max_cases = 300, rng = StableRNG(1))
+                aborted = 0
+                after_abort = 0
+                for s in results
+                    for ind in filter(is_infected, s.individuals)
+                        t = get(ind.state, :infection_aborted_time, nothing)
+                        t === nothing && continue
+                        aborted += 1
+                        after_abort += count(ind.secondary_case_ids) do id
+                            child = s.individuals[id]
+                            is_infected(child) && child.infection_time >= t
+                        end
+                    end
+                end
+                @test aborted > 0
+                @test after_abort == 0
             end
 
             @testset "Requires an incubation period" begin

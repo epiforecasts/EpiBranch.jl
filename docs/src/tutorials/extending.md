@@ -98,7 +98,8 @@ colliding.
 
 `:infection_aborted_time` marks an infection that a post-exposure dose ended
 before symptom onset. The individual is still infected, transmits nothing from
-that time, and has no onset: `:onset_time` is `NaN` while `:asymptomatic` stays
+that time, a block the engine applies for as long as the key is present, and has
+no onset: `:onset_time` is `NaN` while `:asymptomatic` stays
 `false`, so isolation, tracing and clinical transitions triggered by onset never
 fire. Like the dose, it is recorded before infection is resolved, so it can also
 sit on a contact that was never infected, where it has no effect.
@@ -230,7 +231,7 @@ Ordering guarantees:
 - `keep_active` runs after infection is resolved, so it can read each target's `:infected` and anything `apply_post_transmission!` wrote on it this generation.
 - Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
 
-A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms — `RingVaccination` returns a susceptibility risk on the contact alongside risks on the parent for an infection it aborted and for reduced onward infectiousness.
+A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms — `RingVaccination` returns a susceptibility risk on the contact alongside a risk on the parent for reduced onward infectiousness.
 
 Tree-shaping changes — capping offspring per parent, gathering-size limits, anything that's really "this parent produces fewer contacts than its natural offspring distribution would say" — belong in the offspring distribution itself, not in the intervention protocol. See [Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution) below.
 
@@ -331,7 +332,7 @@ privileges neither, so `competing_risk` is the whole vocabulary for
 gating transmission: a vaccine, a border closure, and the host's own
 susceptibility all speak it.
 
-Three defaults ship, each contributing a block probability:
+Four defaults ship, each contributing a block probability:
 
 - [`EpiBranch.HostSusceptibility`](@ref) — `1 - susceptibility` on the contact.
 - [`EpiBranch.InfectorInfectiousness`](@ref) — `1 - infectiousness` on the parent.
@@ -339,6 +340,10 @@ Three defaults ship, each contributing a block probability:
   not infected, so an uninfected node can stay active (see below) and
   generate contacts without infecting them. A no-op in the usual case
   where every active node is infected.
+- [`EpiBranch.AbortedInfection`](@ref) — a full block on an infector's
+  transmissions from its `:infection_aborted_time`, so an infection a
+  post-exposure dose aborted stays ended whether or not the intervention
+  that aborted it is still active.
 
 A trait of `1.0` contributes no risk, so the defaults are silent unless
 an attributes function sets a susceptibility or infectiousness below one.
