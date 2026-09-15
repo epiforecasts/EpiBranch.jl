@@ -381,7 +381,9 @@ three-argument `pairwise_surv_loglik` reuses them while the kernel parameters
 change. That form is differentiable in those parameters, so it can be optimised
 with Optim or added to a Turing `@model` through `@addlogprob!`, as the
 households tutorial shows. With an `external_hazard`, pass it to
-`pairwise_surv_loglik` and compile the layout with `external = true`.
+`pairwise_surv_loglik` and compile the layout with `external = true`. As in the
+simulation, the community hazard introduces cases up to the data's `obs_end`
+and spread along the edges continues after it.
 
 Because the possible infectors are read off the graph, a structure that is not a
 partition fits the same way. A network *within* households, where not every

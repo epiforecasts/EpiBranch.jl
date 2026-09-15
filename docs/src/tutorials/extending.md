@@ -954,7 +954,7 @@ struct MyInfections{T <: Real} <: InfectionLayer
     infectious_time::Vector{T}       # the infectious window opens
     removal_time::Vector{T}          # and closes (Inf if right-censored)
     is_index::Vector{Bool}           # introduced from outside
-    obs_end::T                       # end of follow-up for a community hazard
+    obs_end::T                       # community introductions stop
 end
 EpiBranch.contact_structure(d::MyInfections) = d.contacts
 

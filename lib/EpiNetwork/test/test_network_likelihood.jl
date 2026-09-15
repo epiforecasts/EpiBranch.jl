@@ -200,6 +200,32 @@ end
         @test all(abs.(θhat - θ) .< 3 .* se)
     end
 
+    @testset "community introductions stop at obs_end and edge spread goes on" begin
+        # most infections here come after obs_end, along edges; the likelihood
+        # must give them no community hazard and keep uninfected nodes exposed
+        # over their neighbours' whole windows, as the simulation does
+        adj = _random_graph(2000, 4000, StableRNG(16))
+        m = ModelSpec(
+            NetworkProcess(adj, Exponential(8.0);
+                external_hazard = 0.01, obs_end = 10.0);
+            progression = _seir(4.0))
+        data = network_infections(simulate(m; rng = StableRNG(17)), m)
+        inf = filter(!isnan, data.infection_time)
+        @test count(>(10.0), inf) > length(inf) / 2
+
+        layout = compile_contact_pairs(data; external = true)
+        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout;
+            external_hazard = exp(θ[2]))
+        θ = [log(8.0), log(0.01)]
+        θhat = copy(θ)
+        for _ in 1:20
+            θhat -= ForwardDiff.hessian(g, θhat) \ ForwardDiff.gradient(g, θhat)
+        end
+        Σ = inv(-ForwardDiff.hessian(g, θhat))
+        se = sqrt.([Σ[1, 1], Σ[2, 2]])
+        @test all(abs.(θhat - θ) .< 3 .* se)
+    end
+
     @testset "differentiable in the kernel parameters (ForwardDiff, Mooncake)" begin
         adj = _random_graph(300, 900, StableRNG(12))
         m = ModelSpec(NetworkProcess(adj, Exponential(3.0)); progression = _seir(4.0))

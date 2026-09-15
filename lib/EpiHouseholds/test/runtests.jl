@@ -205,6 +205,35 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test abs(grid[argmax([ll(s) for s in grid])] - true_scale) <= 1.5
     end
 
+    @testset "community introductions stop at obs_end and household spread goes on" begin
+        # with a short obs_end most infections come later, within households; the
+        # likelihood must give them no community hazard and keep uninfected
+        # members exposed over their household-mates' whole windows
+        Tobs = 2.0
+        m = ModelSpec(
+            HouseholdProcess(fill(6, 1500), Exponential(10.0);
+                external_hazard = 0.1, obs_end = Tobs);
+            progression = _sir(12.0))
+        data = household_infections(simulate(m; rng = StableRNG(71)), m)
+        inf = filter(!isnan, data.infection_time)
+        @test count(>(Tobs), inf) > length(inf) / 2
+
+        layout = compile_household_pairs(data; external = true)
+        @test loglikelihood(data, m) ≈
+              pairwise_surv_loglik(Exponential(10.0), data, layout;
+            external_hazard = 0.1)
+        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout;
+            external_hazard = exp(θ[2]))
+        θ = [log(10.0), log(0.1)]
+        θhat = copy(θ)
+        for _ in 1:20
+            θhat -= ForwardDiff.hessian(g, θhat) \ ForwardDiff.gradient(g, θhat)
+        end
+        Σ = inv(-ForwardDiff.hessian(g, θhat))
+        se = sqrt.([Σ[1, 1], Σ[2, 2]])
+        @test all(abs.(θhat - θ) .< 3 .* se)
+    end
+
     @testset "inference-friendly likelihood: kernel varies over a fixed infection layer" begin
         # the form a household @model evaluates each iteration: the kernel carries
         # the fitted parameter, the infection layer is the augmented latent state.

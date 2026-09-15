@@ -172,6 +172,28 @@ end
         end
     end
 
+    @testset "a community hazard introduces cases only up to obs_end" begin
+        # 1 is a community case at 1; 2 is infected by 1 at 4, after obs_end = 3;
+        # 3 is never infected and can be reached by 1 and 2; 4 has no contacts
+        contacts = [[2, 3], [3], [1], Int[]]
+        data = _TestInfections(contacts, [1.0, 4.0, NaN, NaN], [1.0, 4.0, NaN, NaN],
+            [6.0, 8.0, Inf, Inf], [true, false, false, false]; obs_end = 3.0)
+        L = compile_contact_pairs(data; external = true)
+        k = Weibull(1.5, 3.0)
+        # community rows stop at the earlier of infection and obs_end, and 2 has no
+        # community event; 3 is exposed to 1 over [1, 6] and to 2 over [4, 8]
+        rows = PairwiseSurvivalData([1, 2, 2, 3, 3, 3, 4],
+            zeros(7), [1.0, 3.0, 3.0, 3.0, 5.0, 4.0, 3.0],
+            [true, false, true, false, false, false, false])
+        is_ext = [true, true, false, true, false, false, true]
+        for ext in (0.05, Gamma(2.0, 5.0))
+            extdist = ext isa Real ? Exponential(1 / ext) : ext
+            rowk = r -> is_ext[r] ? extdist : k
+            @test pairwise_surv_loglik(k, data, L; external_hazard = ext) ≈
+                  pairwise_surv_loglik(rowk, rows)
+        end
+    end
+
     @testset "differentiable in the kernel parameters" begin
         _, adjacency = _cliques([3, 4, 2, 4])
         inf = [0.0, 1.2, NaN, 0.0, 2.1, 3.5, NaN, 0.0, NaN, 0.0, 0.7, NaN, 4.2]

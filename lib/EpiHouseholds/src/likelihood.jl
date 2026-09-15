@@ -30,8 +30,9 @@ struct HouseholdInfections{T <: Real} <: InfectionLayer
     obs_end::T
 end
 
-# `obs_end` is the end of follow-up — the window the community hazard acts over;
-# only used when the model carries an external hazard, and may be left `Inf`.
+# `obs_end` is when community introductions stop; spread within households goes
+# on after it. Only used when the model has an external hazard, and may be left
+# `Inf`.
 function HouseholdInfections(household_of, infection_time, infectious_time,
         removal_time, is_index; obs_end = Inf)
     T = promote_type(eltype(infection_time), eltype(infectious_time),
@@ -93,9 +94,12 @@ end
 
 # Counting-process rows for one household's pairs, with — per row — the global
 # infector id (so a covariate kernel can be routed) and whether the row is the
-# community term (`infector = 0`, calendar-time at-risk over `[0, tend]`). Without
-# a community term index cases are conditioned on (they appear only as infectors);
-# with one they are explained like any other case, so they get rows too.
+# community term (`infector = 0`, calendar-time at-risk until the earlier of the
+# infection and `obs_end`). Without a community term index cases are conditioned
+# on (they appear only as infectors); with one they are explained like any other
+# case, so they get rows too. `obs_end` ends community introductions only, so a
+# member who is never infected is exposed over its household-mates' whole
+# infectious windows.
 function _survival_rows(d::HouseholdInfections{T}; external::Bool = false,
         obs_end::T = T(Inf)) where {T <: Real}
     # Bucket hosts by household into a `Vector{Vector{Int}}` indexed by id
@@ -122,7 +126,7 @@ function _survival_rows(d::HouseholdInfections{T}; external::Bool = false,
             (!external && d.is_index[j]) && continue
             tj = d.infection_time[j]
             infected_j = !isnan(tj)
-            tend = infected_j ? tj : (external ? obs_end : T(Inf))
+            tend = infected_j ? tj : T(Inf)
             external && (n_rows += 1)
             for i in mem
                 isfinite(d.infectious_time[i]) || continue
@@ -151,13 +155,13 @@ function _survival_rows(d::HouseholdInfections{T}; external::Bool = false,
             (!external && d.is_index[j]) && continue
             tj = d.infection_time[j]
             infected_j = !isnan(tj)
-            tend = infected_j ? tj : (external ? obs_end : T(Inf))
+            tend = infected_j ? tj : T(Inf)
             if external
                 r += 1
                 sus[r] = j
                 start[r] = zero(T)
-                stop[r] = tend
-                event[r] = infected_j
+                stop[r] = min(tend, obs_end)
+                event[r] = infected_j && tj <= obs_end
                 infector[r] = 0
                 is_ext[r] = true
             end
@@ -186,11 +190,12 @@ end
 
 The household contact-process log-density for a `kernel` and (latent) infection
 layer `data` — the **inference-friendly** form. In a household `@model` the
-`kernel` and `external_hazard` carry the parameters being fit while `data` is
+`kernel` and `external_hazard` hold the parameters being fit while `data` is
 the augmented infection layer, so neither a `HouseholdProcess` nor the household
 structure is rebuilt per evaluation. Differentiable in the kernel's parameters,
 so it drops into Turing's `@addlogprob!`. With `external_hazard` set a community
-term explains index cases over `data.obs_end`; otherwise they are conditioned on.
+term explains index cases, which it introduces up to `data.obs_end`; otherwise
+they are conditioned on. Spread within households continues after `obs_end`.
 """
 function pairwise_surv_loglik(kernel, data::HouseholdInfections; external_hazard = 0.0)
     external = _ext_active(external_hazard)

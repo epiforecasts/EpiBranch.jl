@@ -47,6 +47,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   replacing the earlier coin-flip-per-edge version. Shortening a case's
   infectious window — through recovery or isolation — now genuinely curtails
   onward spread.
+- With a community hazard, the pairwise survival likelihood treats `obs_end` as
+  the time community introductions stop, as the household and network
+  simulations do. A host accrues community hazard until the earlier of its
+  infection and `obs_end`, a host infected after `obs_end` adds no community
+  hazard at its infection time, and a host that is never infected is exposed
+  over each possible infector's whole infectious window. Household likelihood
+  values with a community hazard change as a result; values without one are
+  unchanged.
 
 ### Fixed
 

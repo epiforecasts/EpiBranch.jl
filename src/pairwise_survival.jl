@@ -105,8 +105,9 @@ holds, per host `i` (numbered `1:n`):
 - `removal_time[i]`: when it closes (`Inf` when right-censored);
 - `is_index[i]`: whether the host was introduced from outside the structure;
 
-and a scalar `obs_end`, the end of follow-up over which a community hazard acts
-(only read when there is one). A subtype also defines
+and a scalar `obs_end`, the time community introductions stop (only read when
+there is a community hazard). Spread along the contact structure continues after
+it. A subtype also defines
 [`contact_structure`](@ref EpiBranch.contact_structure), which says who could
 have infected whom. [`compile_contact_pairs`](@ref) and
 [`pairwise_surv_loglik`](@ref) then work on it with no further methods.
@@ -409,8 +410,13 @@ adds the log of the summed hazard at its infection time.
 `(infector, susceptible) -> Distribution` for covariates, or a per-edge vector
 parallel to an adjacency list (`kernel[i][k]` for host `i`'s `k`-th listed
 contact). `external_hazard` is a community hazard (a positive rate or a
-calendar-time distribution) acting over `[0, data.obs_end]`. With one, index
-cases are explained like any other case; without one they are conditioned on.
+calendar-time distribution) that introduces cases over `[0, data.obs_end]`. With
+one, index cases are explained like any other case; without one they are
+conditioned on. Each host accrues the community hazard until the earlier of its
+infection and `data.obs_end`, so a host infected after `obs_end` can only have
+been infected by a possible infector. Spread along the contact structure
+continues after `obs_end`, so a host that is never infected accrues hazard over
+each possible infector's whole infectious window.
 
 Use the layout form in inference: compile the layout once with
 [`compile_contact_pairs`](@ref) and reuse it while the latent times move. Its
@@ -451,14 +457,17 @@ function _pairwise_surv_loglik(kernel, extdist, data, layout, external,
     is_ext = layout.is_ext
     ll = zero(T)
 
-    # Pass 1: cumulative-hazard contribution per row, each at risk from 0.
+    # Pass 1: cumulative-hazard contribution per row, each at risk from 0. A
+    # susceptible is exposed to its possible infectors until it is infected, and
+    # to the community hazard until the earlier of that and `obs_end`, after
+    # which there are no more introductions.
     @inbounds for r in eachindex(sus)
         j = sus[r]
         tj = data.infection_time[j]
         infected_j = !isnan(tj)
-        tend = infected_j ? tj : (external ? data.obs_end : T(Inf))
+        tend = infected_j ? tj : T(Inf)
         if is_ext[r]
-            stop = tend
+            stop = min(tend, data.obs_end)
             stop > 0 || continue
             ll -= cumhazard(extdist, stop)
         else
@@ -489,8 +498,9 @@ function _pairwise_surv_loglik(kernel, extdist, data, layout, external,
             infected_j = !isnan(tj)
             infected_j || continue
             if is_ext[r]
+                # a host infected after `obs_end` was infected along a contact
                 stop = tj
-                stop > 0 || continue
+                (stop > 0 && stop <= data.obs_end) || continue
                 _push!(acc, loghazard(extdist, stop))
                 had_event = true
             else
