@@ -850,12 +850,16 @@ function resolve_transitions!(state::SimulationState, individual)
     for transition in transitions
         initialise_individual!(transition, individual, state)
     end
-    aborted_t = get(individual.state, :infection_aborted_time, nothing)
-    for transition in transitions
-        if aborted_t === nothing
-            resolve_individual!(transition, individual, state)
-        else
+    # Branch once per case: a check inside the loop measurably slows every
+    # progression model, although almost no case is aborted.
+    if haskey(individual.state, :infection_aborted_time)
+        aborted_t = individual.state[:infection_aborted_time]
+        for transition in transitions
             _resolve_before_abort!(transition, individual, state, aborted_t)
+        end
+    else
+        for transition in transitions
+            resolve_individual!(transition, individual, state)
         end
     end
     _finalise_terminal!(individual, transitions)
@@ -970,8 +974,23 @@ function competing_risk(::AbortedInfection, parent, contact, state)
     return Risk(event_time = aborted_t, block_probability = 1.0)
 end
 
-const _BUILTIN_RISK_SOURCES = (InfectiousSource(), WindowCensor(),
-    AbortedInfection(), HostSusceptibility(), InfectorInfectiousness())
+# The built-in risk sources, in the order they apply. The calls are written out
+# rather than looped over a tuple: a tuple of more than four distinct types is
+# not union-split, so the loop would dispatch dynamically on every edge, for
+# every model.
+function _builtin_risk_blocks(parent, contact, state, transmission_time)
+    _risk_blocks(InfectiousSource(), parent, contact, state, transmission_time) &&
+        return true
+    _risk_blocks(WindowCensor(), parent, contact, state, transmission_time) &&
+        return true
+    _risk_blocks(AbortedInfection(), parent, contact, state, transmission_time) &&
+        return true
+    _risk_blocks(HostSusceptibility(), parent, contact, state, transmission_time) &&
+        return true
+    _risk_blocks(InfectorInfectiousness(), parent, contact, state, transmission_time) &&
+        return true
+    return false
+end
 
 """Apply one risk source's [`competing_risk`](@ref)(s) to a transmission;
 return `true` if any active risk blocks it. Built-in risk sources and
@@ -1027,9 +1046,7 @@ function _decide_infected(state::SimulationState, contact::Individual,
     # All transmission risks — susceptibility and infectiousness, then any the
     # model contributes, then interventions — on one surface, applied in order;
     # first to block wins.
-    for source in _BUILTIN_RISK_SOURCES
-        _risk_blocks(source, parent, contact, state, transmission_time) && return false
-    end
+    _builtin_risk_blocks(parent, contact, state, transmission_time) && return false
     for source in model_risks
         _risk_blocks(source, parent, contact, state, transmission_time) && return false
     end
