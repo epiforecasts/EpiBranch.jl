@@ -141,14 +141,25 @@ Base.:!(a::TraceEligibility) = NoneOf(a)
 # `AllOf`.
 
 """
+    trigger_time(eligibility, infector, contact, state) -> Float64
     trigger_time(eligibility, infector, state) -> Float64
 
-The time the trace starts for `infector` under this eligibility policy;
-[`ContactTracing`](@ref) adds its delay to it. Defaults to the infector's
-isolation time (the historical default). [`OnSymptomOnset`](@ref) overrides
-this to onset time, so suspicion-based tracing starts at symptom onset
-instead of waiting for isolation or confirmation. A custom policy that
-times its trace from another event defines a method of this function.
+The time tracing from `infector` starts under this eligibility policy,
+for `contact` in the four-argument form; [`ContactTracing`](@ref) adds
+its delay to it.
+Defaults to the infector's isolation time (the historical default).
+[`OnSymptomOnset`](@ref) overrides this to onset time, so suspicion-based
+tracing starts at symptom onset instead of waiting for isolation or
+confirmation.
+
+`ContactTracing` calls the four-argument form with the contact being
+traced, as it does for [`is_eligible`](@ref EpiBranch.is_eligible),
+[`traces`](@ref EpiBranch.traces) and
+[`draw_trace_delay`](@ref EpiBranch.draw_trace_delay). For a single
+policy the four-argument form defaults to the three-argument one. A
+custom policy timed from another event of the infector defines a
+three-argument method, and one timed from the contact defines a
+four-argument method.
 
 The combinators take their time from the wrapped conditions, as decided
 by [`is_eligible`](@ref EpiBranch.is_eligible). Each condition is either
@@ -178,25 +189,23 @@ from a wrapped condition counts as never met. Policies that are equal by
 De Morgan's laws, or by distributing `&` over `|`, get the same trigger
 time, and `TraceNobody() | p` is timed as `p`.
 
-Contact tracing checks each condition against the contact being traced.
-This method has no contact, so it passes `nothing` to `is_eligible`
-instead.
+The four-argument form checks each wrapped condition against the contact.
+The three-argument form evaluates a combinator without a contact, passing
+`nothing` in its place. A combinator that wraps a policy reading the
+contact, in `is_eligible` or `trigger_time`, therefore cannot be
+evaluated through the three-argument form; use the four-argument form.
 """
 trigger_time(::TraceEligibility, infector, state) = isolation_time(infector)
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
 function trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, state)
-    _trigger_time(e, infector, nothing, state)
+    trigger_time(e, infector, nothing, state)
 end
 
-# The trigger time for tracing `contact` from `infector`. A combinator
-# needs the contact to decide which of its conditions are met, because a
-# custom policy may read it. An atomic policy is timed by its
-# `trigger_time` method, so a custom policy defines only that.
-function _trigger_time(e::TraceEligibility, infector, contact, state)
+function trigger_time(e::TraceEligibility, infector, contact, state)
     trigger_time(e, infector, state)
 end
 
-function _trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, contact, state)
+function trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, contact, state)
     t, untimed = _met_time(e, infector, contact, state, false)
     untimed || return t
     default = first(_met_time(TraceEveryone(), infector, contact, state, false))
@@ -217,7 +226,7 @@ function _met_time(condition::TraceEligibility, infector, contact, state, negate
     met = is_eligible(condition, infector, contact, state)
     negated && return (never, !met)
     met || return (never, false)
-    t = trigger_time(condition, infector, state)
+    t = trigger_time(condition, infector, contact, state)
     return (isnan(t) ? never : t, false)
 end
 
@@ -566,7 +575,7 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
 
     trace_delay = draw_trace_delay(
         ct.isolation_to_trace_delay, infector, ind, state, rng)
-    base = seed ? _trigger_time(ct.eligibility, infector, ind, state) :
+    base = seed ? trigger_time(ct.eligibility, infector, ind, state) :
            get(infector.state, :trace_time, isolation_time(infector))
     # A contact cannot be sought before it exists, such as a funeral contact
     # before the funeral, so the delay runs from whichever comes later.

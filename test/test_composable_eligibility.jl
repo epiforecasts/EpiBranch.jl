@@ -13,6 +13,12 @@ function EpiBranch.is_eligible(::ContactOver65, infector, contact, state)
     get(contact.state, :age, 0) >= 65
 end
 
+# Custom eligibility timed from the contact: half a day after its infection.
+struct AfterContactInfected <: EpiBranch.TraceEligibility end
+function EpiBranch.trigger_time(::AfterContactInfected, infector, contact, state)
+    contact.infection_time + 0.5
+end
+
 # Custom trace action that records the trace time it receives.
 struct RecordTraceTime <: EpiBranch.TraceAction end
 function EpiBranch.apply_trace!(::RecordTraceTime, contact, state, trace_time, rng)
@@ -180,13 +186,33 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
 
         # A policy that reads the contact is checked against the contact traced.
         function ttc(policy, contact_age)
-            contact = Individual(
-                id = 2, parent_id = 1, state = Dict{Symbol, Any}(:age => contact_age))
-            return EpiBranch._trigger_time(policy, young, contact, nothing)
+            contact = Individual(id = 2, parent_id = 1, infection_time = 3.0,
+                state = Dict{Symbol, Any}(:age => contact_age))
+            return EpiBranch.trigger_time(policy, young, contact, nothing)
         end
         @test ttc(ContactOver65() | OnSymptomOnset(), 80) == 2.0
         @test ttc(ContactOver65() | OnSymptomOnset(), 30) == 4.0
         @test ttc(ContactOver65() & OnSymptomOnset(), 30) == Inf
+        # A policy timed from the contact is timed with the contact traced.
+        @test ttc(AfterContactInfected() | OnSymptomOnset(), 30) == 3.5
+        @test ttc(AfterContactInfected() & OnSymptomOnset(), 30) == 4.0
+        @test ttc(AfterContactInfected(), 30) == 3.5
+        # Without a contact the atomic policies still time a combinator.
+        @test EpiBranch.trigger_time(SymptomaticOver65() | OnSymptomOnset(), young, nothing) ==
+              4.0
+    end
+
+    @testset "Contact tracing times the trace with the contact" begin
+        ct = ContactTracing(AfterContactInfected() | TraceNobody(), ConstantRate(1.0),
+            ConstantDelay(Dirac(0.0)), RecordTraceTime())
+        state = simulate(
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [ct]);
+            n_initial = 5, max_cases = 100, rng = StableRNG(3))
+        traced = filter(ind -> haskey(ind.state, :recorded_trace_time), state.individuals)
+        @test !isempty(traced)
+        @test all(ind -> ind.state[:recorded_trace_time] == ind.infection_time + 0.5,
+            traced)
     end
 
     @testset "Logically equal policies get the same trigger time" begin

@@ -14,6 +14,12 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   exerts the same force of infection on every susceptible, giving the exact
   stochastic SIR final-size law (`R0 = β·E[infectious period]`) and an infection
   time for every case.
+- `trigger_time(eligibility, infector, contact, state)` gives the trace's
+  trigger time for the contact being traced, and `ContactTracing` calls it. A
+  custom policy can define it to time the trace from the contact, and combinators
+  check wrapped policies that read the contact against it. The
+  three-argument form evaluates combinators without a contact, so it cannot
+  evaluate a combinator that wraps such a policy.
 
 ### Changed
 
