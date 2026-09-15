@@ -151,6 +151,31 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test size(df, 1) > count(df.index)              # plus onward spread on the graph
     end
 
+    @testset "a fixed seed reproduces a pinned outbreak" begin
+        # The race draws from the RNG stream in settling order, so these tests pin
+        # that order, including ties. Several index cases share time 0, and a
+        # deterministic kernel makes most candidate times coincide. Equal times
+        # settle in member order.
+        ring = ring_adjacency(10)
+        st = simulate(
+            ModelSpec(NetworkProcess(ring, Exponential(1.0));
+                progression = _sir(3.0));
+            n_initial = 3, rng = StableRNG(42))
+        @test [ind.infection_time for ind in st.individuals] ≈
+              [0.9132388449809826, 0.0, 1.4907960097331951, 3.0946387152619605,
+            1.5146027102204256, 0.02580085388107159, 0.0, 0.6196859650483677,
+            0.7149127125395202, 0.0]
+        @test [ind.parent_id for ind in st.individuals] == [10, 0, 2, 5, 6, 7, 0, 7, 10, 0]
+
+        st = simulate(
+            ModelSpec(NetworkProcess(ring, (i, j) -> Dirac(1.0));
+                progression = _sir(3.0));
+            n_initial = 3, rng = StableRNG(42))
+        @test [ind.infection_time for ind in st.individuals] ≈
+              [1.0, 0.0, 1.0, 2.0, 2.0, 1.0, 0.0, 1.0, 1.0, 0.0]
+        @test [ind.parent_id for ind in st.individuals] == [2, 0, 2, 3, 6, 7, 0, 7, 10, 0]
+    end
+
     @testset "seeding multiple index nodes" begin
         n = 40
         m = ModelSpec(NetworkProcess(ring_adjacency(n), Exponential(50.0));

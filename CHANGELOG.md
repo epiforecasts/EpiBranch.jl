@@ -33,6 +33,11 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   replacing the earlier coin-flip-per-edge version. Shortening a case's
   infectious window — through recovery or isolation — now genuinely curtails
   onward spread.
+- The continuous-time race behind `NetworkProcess`, `RoutedNetwork` and
+  `HouseholdProcess` picks the next case to settle from a binary heap, so a race
+  over `n` members with `E` contacts costs O(E log n) where it previously cost
+  O(n²). A 100,000-node sparse network now simulates in about a second, down
+  from about half a minute. Results for a given seed are unchanged.
 
 ### Fixed
 
