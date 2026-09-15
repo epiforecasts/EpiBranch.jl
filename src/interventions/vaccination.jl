@@ -303,8 +303,8 @@ required_dose(rv::RingVaccination) = rv.requires_dose
 # iff this dose has been administered to the *parent* and the parent's
 # immunity has developed by their (the parent's) transmission time. The
 # parent's `:vaccination_time` is set by ring vaccination when the parent
-# was traced; the onward immunity comes online at that time plus
-# `delay_to_immunity`, exactly as for the susceptibility side.
+# was traced, and the onward immunity takes effect at that time plus
+# `delay_to_immunity`, as on the susceptibility side.
 function _onward_risk(rv::RingVaccination, parent)
     rv.onward_efficacy > 0.0 || return nothing
     label = dose_label(rv)
@@ -489,13 +489,14 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
                     state.rng)
             continue
         end
-        # Fire when the tracing team reached the contact. `ContactTracing`
-        # records that as `:trace_time` whatever its trace action, so the
-        # isolation-derived times below are reached only when something
-        # other than `ContactTracing` set `:traced`, or when the trace time
-        # was `NaN` and so was not recorded. A contact recorded as never
-        # reached (an infinite trace time) is not vaccinated. Branch rather than passing
-        # a `get` default, which Julia would evaluate on every contact.
+        # The dose follows the time the tracing team reached the contact by
+        # `dose_delay`. `ContactTracing` records that time as `:trace_time`
+        # whatever its trace action, so the isolation-derived times below are
+        # reached only when something other than `ContactTracing` set
+        # `:traced`, or when the trace time was `NaN` and so was not recorded.
+        # A contact recorded as never reached (an infinite trace time) is not
+        # vaccinated. The `haskey` branch avoids evaluating a `get` default for
+        # every contact.
         trace_t = if haskey(ind.state, :trace_time)
             ind.state[:trace_time]
         else
