@@ -50,28 +50,27 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   quarantined earlier. `OnSymptomOnset() | OnLabConfirmation()` traces an
   asymptomatic, lab-confirmed case from its isolation. Previously it gave a
   `NaN` trace time, and quarantining the case's contacts had no effect. An
-  `AnyOf` with no condition met, or an `AllOf` with any condition unmet, triggers
-  at `Inf` (never). A negation that holds is met with no trigger time of its
-  own, and a negated combinator is timed as its De Morgan form. An `AllOf`
-  triggers at the latest time among its timed conditions, so
-  `OnSymptomOnset() & !OnIsolation()` traces from onset; with no timed
-  condition it has no time of its own. An `AnyOf` with a condition that has no
-  time of its own has none either, so inside an `AllOf` it sets no time;
-  otherwise it triggers at the earliest time among its met conditions. A policy
-  with no time of its own traces from the earlier of the infector's isolation,
-  the default for `TraceEveryone`, and any of its timed branches, so
-  `OnSymptomOnset() | !OnIsolation()` traces a case that is never isolated from
-  onset. Policies rewritten into each other by De Morgan's laws, double
-  negation, commutativity, associativity or distributing `&` over `|` outside a
-  negation get the same trigger time, as do `TraceNobody() | p` and `p`, unless
+  `AnyOf` with no condition met, or an `AllOf` with any condition unmet,
+  triggers at `Inf` (never). A negation that holds is met with no trigger time
+  of its own, and a negated combinator is timed as its De Morgan form. An
+  `AllOf` triggers at the latest time among its timed conditions, so
+  `OnSymptomOnset() & !OnIsolation()` traces from onset; with no timed condition
+  it has no time of its own. An `AnyOf` with a condition that has no time of its
+  own has none either, so inside an `AllOf` it sets no time; otherwise it
+  triggers at the earliest time among its met conditions. A policy with no time
+  of its own traces from the earlier of the infector's isolation, the default
+  for `TraceEveryone`, and any of its timed branches, so `OnSymptomOnset() |
+  !OnIsolation()` traces a case that is never isolated from onset. Policies that
+  are met and rewritten into each other by De Morgan's laws, double negation,
+  commutativity, associativity or distributing `&` over `|` outside a negation
+  get the same trigger time, as do `TraceNobody() | p` and a met `p`, unless
   `p`'s own trigger time is `NaN`, which a combinator turns into `Inf`. Other
   logically equal policies can differ, because a negation that holds has no time
   of its own and `TraceEveryone()` is timed at isolation: distributing inside a
   negation, absorption by a negation that holds, a condition joined with its
-  negation as in `p & (q | !q)`, joining `TraceEveryone()` as in
-  `p & TraceEveryone()`, and `!TraceNobody()`, which behaves as
-  `TraceEveryone()` only at the top level. The `trigger_time`
-  docstring gives an example of each.
+  negation as in `p & (q | !q)`, joining `TraceEveryone()` as in `p &
+  TraceEveryone()`, and `!TraceNobody()`, which behaves as `TraceEveryone()`
+  only at the top level. The `trigger_time` docstring gives an example of each.
 
 ## [0.1.0] - 2026-06-16
 

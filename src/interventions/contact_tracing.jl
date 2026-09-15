@@ -183,21 +183,25 @@ not met, met at a time, or met with no time of its own:
   `OnSymptomOnset() | !OnIsolation()` traces a case that is never
   isolated from its onset.
 
-A policy that is not met gives `Inf` (never), and a `NaN` trigger time
-from a wrapped condition counts as never met.
+A combinator that is not met gives `Inf` (never), and a `NaN` trigger
+time from a wrapped condition counts as never met. A single policy's
+`trigger_time` does not check [`is_eligible`](@ref EpiBranch.is_eligible),
+so for a policy that is not met it still returns the policy's usual time.
+`ContactTracing` only times a contact once `is_eligible` holds.
 
-Two policies get the same trigger time if one is rewritten into the other
-by De Morgan's laws, double negation, commutativity, associativity or
-distributing `&` over `|` outside a negation. `TraceNobody() | p` is
-timed as `p`. The one exception is a policy whose own trigger time is
-`NaN`: wrapped in a combinator it gives `Inf`.
+Two policies that are met get the same trigger time if one is rewritten
+into the other by De Morgan's laws, double negation, commutativity,
+associativity or distributing `&` over `|` outside a negation, and
+`TraceNobody() | p` is timed as `p`. The exception is a
+policy whose own trigger time is `NaN`, which gives `Inf` once wrapped in
+a combinator.
 
 Other logically equal policies can differ, for two reasons. A negation
-that holds has no time of its own, so a rewrite that adds or removes such a branch changes
-which times count, and `TraceEveryone()` is timed at isolation, so adding
-or removing it can move the time. With `S = OnSymptomOnset()`,
-`L = OnLabConfirmation()` and `I = OnIsolation()`, for a case with onset
-at 4 that is isolated at 9 and never lab-confirmed:
+that holds has no time of its own, so a rewrite that adds or removes such
+a branch changes which times count, and `TraceEveryone()` is timed at
+isolation, so adding or removing it can move the time. With
+`S = OnSymptomOnset()`, `L = OnLabConfirmation()` and `I = OnIsolation()`,
+for a case with onset at 4 that is isolated at 9 and never lab-confirmed:
 
 - Distributing inside a negation: `!(L & (!I | !S))` triggers at 9 and
   `!((L & !I) | (L & !S))` at 4.
@@ -216,11 +220,10 @@ and times it with its four-argument method. The three-argument form times
 each wrapped condition with its three-argument method and checks it with
 `nothing` in place of the contact, so `trigger_time(p, infector, state)`,
 `trigger_time(!!p, infector, state)` and
-`trigger_time(AllOf(p), infector, state)` agree for any policy `p` whose
-own trigger time is not `NaN`. A
-combinator that wraps a policy whose `is_eligible` reads the contact
-therefore cannot be evaluated through the three-argument form; use the
-four-argument form.
+`trigger_time(AllOf(p), infector, state)` agree for any policy `p` that
+is met and whose own trigger time is not `NaN`. A combinator that wraps
+a policy whose `is_eligible` reads the contact therefore cannot be
+evaluated through the three-argument form; use the four-argument form.
 """
 trigger_time(::TraceEligibility, infector, state) = isolation_time(infector)
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
