@@ -853,10 +853,8 @@ function resolve_transitions!(state::SimulationState, individual)
     # Branch once per case: a check inside the loop measurably slows every
     # progression model, although almost no case is aborted.
     if haskey(individual.state, :infection_aborted_time)
-        aborted_t = individual.state[:infection_aborted_time]
-        for transition in transitions
-            _resolve_before_abort!(transition, individual, state, aborted_t)
-        end
+        _resolve_before_abort!(transitions, individual, state,
+            individual.state[:infection_aborted_time])
     else
         for transition in transitions
             resolve_individual!(transition, individual, state)
@@ -866,28 +864,58 @@ function resolve_transitions!(state::SimulationState, individual)
     return nothing
 end
 
-# Resolve one transition on an aborted infection, undoing it if it takes effect
-# at or after the abort. Transitions record when they happen under `_time` keys
-# (`:hospitalised_time`, `:admission_time`, `:death_candidate_time`, ...), so
-# reading those keys applies the same check to every transition, built-in or
-# user-defined, whatever state it is timed from.
-function _resolve_before_abort!(transition, individual, state, aborted_t)
-    before = copy(individual.state)
-    resolve_individual!(transition, individual, state)
-    _writes_time_from(individual.state, before, aborted_t) || return nothing
-    empty!(individual.state)
-    merge!(individual.state, before)
+# Resolve the transitions of an aborted infection in order, undoing each one
+# that takes effect at or after the abort. Transitions record when they happen
+# under `_time` keys (`:hospitalised_time`, `:admission_time`,
+# `:death_candidate_time`, ...), so reading those keys applies the same check to
+# every transition, built-in or user-defined, whatever state it is timed from.
+#
+# `kept` holds the state as the transitions that stood left it: copied once per
+# case, then brought up to date with only the keys each such transition
+# changed.
+function _resolve_before_abort!(transitions, individual, state, aborted_t)
+    kept = copy(individual.state)
+    for transition in transitions
+        resolve_individual!(transition, individual, state)
+        if _writes_time_from(individual.state, kept, aborted_t)
+            empty!(individual.state)
+            merge!(individual.state, kept)
+        else
+            _catch_up!(kept, individual.state)
+        end
+    end
     return nothing
 end
 
+# Marks a key a transition did not have before it ran. A private instance
+# compares unequal to anything a transition could store.
+struct _Absent end
+const _ABSENT = _Absent()
+
 function _writes_time_from(after, before, t)
     for (key, value) in after
-        endswith(String(key), "_time") || continue
+        # Identity first: it needs no dispatch on the stored value and rules
+        # out almost every key.
+        get(before, key, _ABSENT) === value && continue
         value isa Real && isfinite(value) && value >= t || continue
         isequal(get(before, key, nothing), value) && continue
+        # Only a changed value at or after the abort gets this far, so building the
+        # key's name here costs nothing on the other keys.
+        endswith(String(key), "_time") || continue
         return true
     end
     return false
+end
+
+# Bring `kept` up to date with `current` after a transition that stood.
+function _catch_up!(kept, current)
+    for (key, value) in current
+        get(kept, key, _ABSENT) === value || (kept[key] = value)
+    end
+    # Every key of `current` is now in `kept`, so a surplus means the
+    # transition deleted keys.
+    length(kept) > length(current) && filter!(kv -> haskey(current, first(kv)), kept)
+    return nothing
 end
 
 """Decide whether a single contact is infected along one edge by
