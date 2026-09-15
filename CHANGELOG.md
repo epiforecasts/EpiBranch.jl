@@ -63,11 +63,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   `OnSymptomOnset() | !OnIsolation()` traces a case that is never isolated from
   onset. Policies rewritten into each other by De Morgan's laws, double
   negation, commutativity, associativity or distributing `&` over `|` outside a
-  negation get the same trigger time, as do `TraceNobody() | p` and `p`. Other
+  negation get the same trigger time, as do `TraceNobody() | p` and `p`, unless
+  `p`'s own trigger time is `NaN`, which a combinator turns into `Inf`. Other
   logically equal policies can differ, because a negation that holds has no time
-  of its own: distributing inside a negation, absorption by such a branch, a
-  condition joined with its negation as in `p & (q | !q)`, and `!TraceNobody()`,
-  which behaves as `TraceEveryone()` only at the top level. The `trigger_time`
+  of its own and `TraceEveryone()` is timed at isolation: distributing inside a
+  negation, absorption by a negation that holds, a condition joined with its
+  negation as in `p & (q | !q)`, joining `TraceEveryone()` as in
+  `p & TraceEveryone()`, and `!TraceNobody()`, which behaves as
+  `TraceEveryone()` only at the top level. The `trigger_time`
   docstring gives an example of each.
 
 ## [0.1.0] - 2026-06-16
