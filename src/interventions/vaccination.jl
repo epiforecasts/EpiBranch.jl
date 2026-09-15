@@ -340,11 +340,12 @@ end
 #
 # The draw is made when the dose is recorded, because a contact's onset and
 # clinical course are resolved together with its infection, leaving no later
-# point to make it. Like the dose, it is therefore also recorded on contacts
-# that turn out not to be infected, where it has no effect. It is made only when
-# immunity falls between the exposure and onset, so a dose that cannot abort
-# anything leaves the random stream untouched. The exposure is the contact's
-# infection time, its earliest exposure when several infectors reach it.
+# point to make it. It is made only when immunity falls between the exposure
+# and onset, so a dose that cannot abort anything leaves the random stream
+# untouched. The exposure is the contact's provisional infection time, its
+# earliest exposure when several infectors reach it; the engine removes the
+# abort again if that exposure does not turn out to be the infection
+# (`_drop_stale_abort!`).
 function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     rv.post_exposure_efficacy > 0.0 || return nothing
     incubation = get(contact.state, :incubation_period, NaN)

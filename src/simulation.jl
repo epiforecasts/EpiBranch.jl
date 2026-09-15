@@ -546,6 +546,7 @@ function _resolve!(model::TransmissionModel, state::SimulationState,
             target.parent_id = 0
             target.infection_time = 0.0
         end
+        _drop_stale_abort!(target)
     end
 
     for target in newly_infected
@@ -575,6 +576,24 @@ function _resolve!(model::TransmissionModel, state::SimulationState,
 end
 
 # ── Internal helpers ───────────────────────────────────────────────
+
+# A post-exposure abort (`:infection_aborted_time`) is drawn in the
+# intervention phase against a target's provisional exposure, its earliest
+# exposing edge, and describes only the infection that exposure starts. When
+# resolution does not bear that exposure out, the flag would otherwise act on
+# something it was not drawn for, so it is removed and the onset it suppressed
+# restored. That covers a target that escapes infection, which on a
+# pre-created node could otherwise be infected in a later generation and have
+# its dose counted twice, and a target infected through a later edge at or
+# after the abort time, where the dose's contact-side risk already applied.
+function _drop_stale_abort!(target::Individual)
+    aborted_t = get(target.state, :infection_aborted_time, nothing)
+    aborted_t === nothing && return nothing
+    is_infected(target) && target.infection_time < aborted_t && return nothing
+    delete!(target.state, :infection_aborted_time)
+    _set_onset_from_incubation!(target)
+    return nothing
+end
 
 # ── Population-building helpers for a model's `initialise_state` ──────
 # A model defines `initialise_state` to set up its starting population.

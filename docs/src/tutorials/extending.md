@@ -101,8 +101,13 @@ before symptom onset. The individual is still infected, transmits nothing from
 that time, a block the engine applies for as long as the key is present, and has
 no onset: `:onset_time` is `NaN` while `:asymptomatic` stays
 `false`, so isolation, tracing and clinical transitions triggered by onset never
-fire. Like the dose, it is recorded before infection is resolved, so it can also
-sit on a contact that was never infected, where it has no effect.
+fire. It is drawn when the dose is given, before infection is resolved, and
+belongs to the exposure the contact has at that point. When resolution does not
+bear that exposure out, the engine removes the key and restores the onset: on a
+contact the exposure did not infect, and on one infected through a later
+exposure at or after the abort time. It therefore only sits on an infected
+individual whose infection it ended, and a pre-created node that escapes one
+exposure carries no abort into a later infection.
 
 `:reported` is shared between the `Reporting` clinical transition (which
 sets it from a probability gate) and `PerCaseObservation` (which sets it
