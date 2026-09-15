@@ -14,6 +14,13 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   exerts the same force of infection on every susceptible, giving the exact
   stochastic SIR final-size law (`R0 = β·E[infectious period]`) and an infection
   time for every case.
+- `RouteWindow` takes a `traceable` probability (default `1.0`): the chance that
+  a case can name a contact made on that route, such as `1.0` for a household
+  and something lower for casual community contact. On `RoutedNetwork` a contact
+  is traced only if the case names it and the tracing intervention then traces
+  it. A contact reachable on several routes is named with the highest of those
+  routes' probabilities. Routes left at the default give the same outbreaks as
+  before for the same seed.
 
 ### Changed
 

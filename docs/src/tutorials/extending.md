@@ -767,7 +767,7 @@ things. A [`RouteWindow`](@ref) is the unit that makes those one mechanism:
 
 ```julia
 RouteWindow(name; from = nothing, until, kernel, reach = name,
-            contacts_from = :infection)
+            contacts_from = :infection, traceable = 1.0)
 ```
 
 - `from` is the state at which this route's infectiousness begins. `:infection`
@@ -792,6 +792,33 @@ RouteWindow(name; from = nothing, until, kernel, reach = name,
   :died`, so its contacts are traced only if the funeral happened before the
   route was cut, and not before it. This is separate from `from`: a route whose
   infectiousness starts at onset still reaches the same household from infection.
+- `traceable` is the probability that a case can name a contact made on the
+  route. People can name the people they live with and cannot name the strangers
+  they stood next to, so a household route keeps the default `1.0` and an
+  anonymous community route might take `0.0`. `true` and `false` also work, as
+  `1.0` and `0.0`.
+
+### Traceability and contact tracing
+
+Naming and tracing are two steps. A route's `traceable` is the chance that the
+case can identify a contact at all. The tracing intervention's own probability
+(its `TraceRate`) is the chance that the programme then reaches a contact it has
+been told about. A contact is traced only if both succeed, so the probabilities
+multiply. With a community route at `traceable = 0.5` and
+`ContactTracing(probability = 0.8)`, 40% of the contacts a case meets only in
+the community are traced. Set each probability for what it describes: a limit
+on naming belongs in `traceable` alone, and counting it again in the tracing
+probability would reduce tracing twice.
+
+A model applies `traceable` when it assembles the contacts it hands to
+[`trace_contacts!`](@ref EpiBranch.trace_contacts!), so tracing interventions
+never see the routes. Each model sets its own rule for a contact reachable on
+several routes. `RoutedNetwork` makes one draw per pair of case and contact,
+names the contact with the highest of its routes' probabilities, and traces it
+no earlier than the routes it was named on allow. Draws use the simulation's
+random number generator, so runs are reproducible. A route at exactly `0.0` or
+`1.0` needs no draw, so a model that leaves every route at the default uses no
+random numbers for naming.
 
 ### Being cut by an intervention
 

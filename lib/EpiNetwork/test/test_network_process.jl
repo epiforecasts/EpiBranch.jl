@@ -457,6 +457,122 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test isolated_first > 0
     end
 
+    @testset "RoutedNetwork: naming contacts draws only when a route is uncertain" begin
+        ind = Individual(id = 1)
+        ind.infection_time = 0.0
+        named(ws, rng) = EpiNetwork._route_contacts(ws, (), ind, 1, rng)
+        route(name, adj, p) = RouteWindow(name; until = (:recovered,),
+            kernel = Exponential(1.0), reach = adj, traceable = p)
+        # node 2 is on both routes, node 3 only on the first, node 4 only on the second
+        a = [[2, 3], Int[], Int[], Int[]]
+        b = [[2, 4], Int[], Int[], Int[]]
+
+        # routes at 1 and 0 decide without using the random number generator
+        rng, untouched = StableRNG(7), StableRNG(7)
+        @test first.(named([route(:a, a, 1.0), route(:b, b, 0.0)], rng)) == [2, 3]
+        @test rand(rng) == rand(untouched)
+        rng, untouched = StableRNG(7), StableRNG(7)
+        @test first.(named([route(:a, a, 1.0), route(:b, b, 1.0)], rng)) == [2, 3, 4]
+        @test rand(rng) == rand(untouched)
+        rng, untouched = StableRNG(7), StableRNG(7)
+        @test isempty(named([route(:a, a, false), route(:b, b, false)], rng))
+        @test rand(rng) == rand(untouched)
+
+        # node 2 is certain through the first route, so only node 4 needs a draw
+        rng, untouched = StableRNG(7), StableRNG(7)
+        named([route(:a, a, 1.0), route(:b, b, 0.5)], rng)
+        rand(untouched)
+        @test rand(rng) == rand(untouched)
+    end
+
+    @testset "RoutedNetwork: a contact is named with the highest route probability" begin
+        # Node 2 is a standing contact on a route naming it 20% of the time, and
+        # a funeral contact from day 5 on a route naming it 90% of the time. One
+        # draw decides both, so it is named 90% of the time: from infection
+        # whenever the first route names it, and otherwise from the funeral.
+        ind = Individual(id = 1)
+        ind.infection_time = 0.0
+        ind.state[:died_time] = 5.0
+        standing = RouteWindow(:household; kernel = Exponential(1.0),
+            reach = [[2], [1]], traceable = 0.2)
+        funeral = RouteWindow(:funeral; from = :died, kernel = Exponential(1.0),
+            reach = [[2], [1]], contacts_from = :died, traceable = 0.9)
+        rng = StableRNG(11)
+        reps = 20_000
+        draws = [EpiNetwork._route_contacts([standing, funeral], (), ind, 1, rng)
+                 for _ in 1:reps]
+        @test all(d -> length(d) <= 1, draws)
+        named = count(!isempty, draws) / reps
+        from_infection = count(d -> !isempty(d) && d[1][2] == -Inf, draws) / reps
+        from_funeral = count(d -> !isempty(d) && d[1][2] == 5.0, draws) / reps
+        @test isapprox(named, 0.9; atol = 0.015)
+        @test isapprox(from_infection, 0.2; atol = 0.015)
+        @test isapprox(from_funeral, 0.7; atol = 0.015)
+    end
+
+    @testset "RoutedNetwork: an untraceable route's contacts are never traced" begin
+        # Households of four, and a community route linking each node to one node
+        # in each neighbouring household. With the community route untraceable,
+        # every traced contact must have been traced from a household member.
+        nh, hs = 30, 4
+        n = nh * hs
+        hh_of(i) = (i - 1) ÷ hs
+        hh = [[j for j in (hh_of(i) * hs + 1):(hh_of(i) * hs + hs) if j != i] for i in 1:n]
+        comm = [[mod1(i + hs, n), mod1(i - hs, n)] for i in 1:n]
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        ivs = [
+            Isolation(onset_to_isolation_delay = Exponential(1.0),
+                test_sensitivity = 1.0),
+            ContactTracing(probability = 1.0,
+                isolation_to_trace_delay = Exponential(0.5))]
+        build(p) = ModelSpec(
+            RoutedNetwork([
+                RouteWindow(:household; until = (:recovered,),
+                    kernel = Weibull(1.5, 4.0), reach = hh),
+                RouteWindow(:community; until = (:recovered, REM),
+                    kernel = Exponential(3.0), reach = comm, traceable = p)]);
+            progression = _sir(10.0), interventions = ivs, attributes = clinical)
+        pairs(p) = [(ind.id, ind.state[:traced_by])
+                    for s in 1:30
+                    for ind in simulate(build(p); n_initial = 2,
+                            rng = StableRNG(s)).individuals if is_traced(ind)]
+
+        untraceable = pairs(0.0)
+        @test !isempty(untraceable)
+        @test all(p -> hh_of(p[1]) == hh_of(p[2]), untraceable)
+        # with the community route traceable, tracing also crosses households
+        @test any(p -> hh_of(p[1]) != hh_of(p[2]), pairs(1.0))
+    end
+
+    @testset "RoutedNetwork: route and tracing probabilities multiply" begin
+        # A seed on a complete graph with contact too slow to transmit: none of
+        # its neighbours is infected before tracing reaches them, so the fraction
+        # traced is the route's naming probability times the tracing probability.
+        n = 60
+        adj = [[j for j in 1:n if j != i] for i in 1:n]
+        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
+            prob_asymptomatic = 0.0)
+        ivs = [
+            Isolation(onset_to_isolation_delay = Exponential(0.5),
+                test_sensitivity = 1.0),
+            ContactTracing(probability = 0.5,
+                isolation_to_trace_delay = Exponential(0.5))]
+        m = ModelSpec(
+            RoutedNetwork([RouteWindow(:all; until = (:recovered,),
+                kernel = Exponential(1e9), reach = adj, traceable = 0.4)]);
+            progression = _sir(5.0), interventions = ivs, attributes = clinical)
+        seeds = 200
+        traced = sum(count(is_traced,
+                         simulate(m; n_initial = 1,
+                             rng = StableRNG(s)).individuals)
+        for s in 1:seeds)
+        # 11,800 contacts at probability 0.2; the tolerance is about five
+        # standard deviations
+        @test isapprox(traced / (seeds * (n - 1)), 0.2; atol = 0.02)
+    end
+
     @testset "contact tracing" begin
         # A node's contacts are its graph neighbours, so tracing reaches them
         # and quarantining closes their own infectious window in turn.
