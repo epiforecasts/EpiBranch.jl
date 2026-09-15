@@ -39,8 +39,11 @@ _spectral_radius(A::AbstractMatrix{<:LinearAlgebra.BlasReal}) = maximum(abs, eig
 # parts of the iterates may still be far from their limits when it passes. The
 # method therefore iterates on `A + I` and its transpose together and returns
 # the quotient uᵀAv / uᵀv of the right (`v`) and left (`u`) eigenvectors. This
-# quotient is stationary in `u` and `v` at the eigenvectors, so its first
-# derivative is uᵀ(dA)v / uᵀv whatever the derivative parts of `u` and `v` are.
+# quotient is stationary in `u` and `v` at the eigenvectors, so once `u` and `v`
+# have converged in value its first derivative is uᵀ(dA)v / uᵀv, whatever their
+# derivative parts are. Convergence slows as the top two eigenvalues approach
+# each other, and the method warns if it stops at `max_iter` before converging,
+# since the value and derivative are then unreliable.
 # When `u` and `v` are nearly orthogonal, as for a defective dominant
 # eigenvalue, the quotient is unstable and the method returns the growth of the
 # largest entry of `v` instead.
@@ -52,6 +55,7 @@ function _spectral_radius(A::AbstractMatrix{<:Real}; tol::Real = 1e-12,
     v = ones(eltype(B), n)
     u = ones(eltype(B), n)
     λ = one(eltype(B))
+    converged = false
     for _ in 1:max_iter
         w = B * v
         λ = maximum(w)
@@ -63,6 +67,11 @@ function _spectral_radius(A::AbstractMatrix{<:Real}; tol::Real = 1e-12,
         v, u = v_new, u_new
         converged && break
     end
+    converged ||
+        @warn "Power iteration for the spectral radius stopped after $max_iter " *
+              "iterations without converging, which happens when the two largest " *
+              "eigenvalues are nearly equal. Its value and derivative may be " *
+              "inaccurate." maxlog=1
     uv = sum(u .* v)
     uv > sqrt(tol * sum(abs2, u) * sum(abs2, v)) || return λ - 1
     return sum(u .* (A * v)) / uv

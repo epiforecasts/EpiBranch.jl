@@ -56,6 +56,15 @@ using LinearAlgebra: eigvals
         @test only(extinction_probability(geom)) ≈ extinction_probability(2.0, 1.0) atol = 1e-8
     end
 
+    @testset "Power iteration warns when it does not converge" begin
+        # Nearly equal top eigenvalues slow the iteration used for number types
+        # without `eigvals`; stopping early is reported.
+        near_tie = BigFloat[2 0; 1 1.99999]
+        @test_logs (:warn, r"without converging") match_mode=:any EpiBranch._spectral_radius(
+            near_tie; max_iter = 10)
+        @test_logs EpiBranch._spectral_radius(BigFloat[1.5 0.6; 0.5 0.9])
+    end
+
     @testset "Sink type" begin
         sink = BranchingProcess([2.0 0.0; 1.0 0.0], R -> NegBin(R, 0.5), Exponential(5.0))
         @test reproduction_number(sink) ≈ 2.0
