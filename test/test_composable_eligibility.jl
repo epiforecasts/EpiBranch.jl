@@ -7,6 +7,12 @@ function EpiBranch.is_eligible(::SymptomaticOver65, infector, contact, state)
     !EpiBranch.is_asymptomatic(infector) && get(infector.state, :age, 0) >= 65
 end
 
+# Custom eligibility that reads the contact instead of the infector.
+struct ContactOver65 <: EpiBranch.TraceEligibility end
+function EpiBranch.is_eligible(::ContactOver65, infector, contact, state)
+    get(contact.state, :age, 0) >= 65
+end
+
 # Build an infector Individual carrying the given state keys.
 infector_with(; kwargs...) = Individual(id = 1, state = Dict{Symbol, Any}(kwargs...))
 
@@ -135,12 +141,28 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
                 asymptomatic = false, onset_time = 4.0, isolated = true, isolation_time = 9.0)) ==
               Inf
 
-        # A custom policy may depend on the contact, so it counts as met at its
-        # trigger time (isolation by default). Built-in conditions beside it are checked.
+        # A custom policy is timed at its trigger time (isolation by default)
+        # when its `is_eligible` method says it is met, and skipped otherwise.
         custom = infector_with(asymptomatic = false, age = 70, onset_time = 4.0,
             test_positive = false, isolated = true, isolation_time = 3.0)
         @test tt(SymptomaticOver65() | OnSymptomOnset(), custom) == 3.0
         @test tt(SymptomaticOver65() & OnLabConfirmation(), custom) == Inf
+        # Aged 40, so the custom condition is not met and quarantine at 2 does
+        # not make the trace earlier than onset.
+        young = infector_with(asymptomatic = false, age = 40, onset_time = 4.0,
+            test_positive = false, isolated = true, isolation_time = 2.0)
+        @test tt(SymptomaticOver65() | OnSymptomOnset(), young) == 4.0
+        @test tt(SymptomaticOver65() & OnSymptomOnset(), young) == Inf
+
+        # A policy that reads the contact is checked against the contact traced.
+        function ttc(policy, contact_age)
+            contact = Individual(
+                id = 2, parent_id = 1, state = Dict{Symbol, Any}(:age => contact_age))
+            return EpiBranch._trigger_time(policy, young, contact, nothing)
+        end
+        @test ttc(ContactOver65() | OnSymptomOnset(), 80) == 2.0
+        @test ttc(ContactOver65() | OnSymptomOnset(), 30) == 4.0
+        @test ttc(ContactOver65() & OnSymptomOnset(), 30) == Inf
     end
 
     @testset "Tracing through a non-onset branch of AnyOf" begin

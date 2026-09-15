@@ -132,11 +132,11 @@ Base.:!(a::TraceEligibility) = NoneOf(a)
 # start before lab confirmation (or without it), while the historical
 # default and the isolation/confirmation policies time from isolation.
 # `ContactTracing` adds its delay on top. Combinators reduce over the
-# conditions the infector meets: an `AnyOf` triggers when its first met
-# condition is met, an `AllOf` when its last one is. A condition the
-# infector does not meet has no trigger time of its own (an asymptomatic
-# case has no onset). Including it in the reduction could make the time
-# earlier than any real event, or `NaN`.
+# conditions that are met for the infector and contact: an `AnyOf`
+# triggers when its first met condition is met, an `AllOf` when its last
+# one is. A condition that is not met has no trigger time of its own (an
+# asymptomatic case has no onset). Including it in the reduction could
+# make the time earlier than any real event, or `NaN`.
 
 """
     trigger_time(eligibility, infector, state) -> Float64
@@ -145,9 +145,11 @@ The time the trace starts for `infector` under this eligibility policy;
 [`ContactTracing`](@ref) adds its delay to it. Defaults to the infector's
 isolation time (the historical default). [`OnSymptomOnset`](@ref) overrides
 this to onset time, so suspicion-based tracing starts at symptom onset
-instead of waiting for isolation or confirmation.
+instead of waiting for isolation or confirmation. A custom policy that
+times its trace from another event defines a method of this function.
 
-The combinators reduce over the wrapped conditions the infector meets:
+The combinators reduce over the wrapped conditions that are met, as
+decided by [`is_eligible`](@ref EpiBranch.is_eligible):
 
 - [`AnyOf`](@ref) takes the earliest trigger time among its met
   conditions, and `Inf` (never) if none is met.
@@ -158,68 +160,54 @@ The combinators reduce over the wrapped conditions the infector meets:
   its conditions is met, and `Inf` otherwise. Inside an `AllOf` the
   other conditions therefore set the time.
 
-A `NaN` trigger time from a wrapped condition counts as never met. The
-built-in policies test only the infector, so `is_eligible` decides
-whether they are met. A custom policy may depend on the contact, which
-`trigger_time` does not receive, so it counts as met at its own trigger
-time.
+A `NaN` trigger time from a wrapped condition counts as never met. Contact
+tracing checks each condition against the contact being traced. This
+method has no contact, so it passes `nothing` to `is_eligible` instead.
 """
 trigger_time(::TraceEligibility, infector, state) = isolation_time(infector)
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
+function trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, state)
+    _trigger_time(e, infector, nothing, state)
+end
 
-function trigger_time(e::AnyOf, infector, state)
+# The trigger time for tracing `contact` from `infector`. A combinator
+# needs the contact to decide which of its conditions are met, because a
+# custom policy may read it. An atomic policy is timed by its
+# `trigger_time` method, so a custom policy defines only that.
+function _trigger_time(e::TraceEligibility, infector, contact, state)
+    trigger_time(e, infector, state)
+end
+
+function _trigger_time(e::AnyOf, infector, contact, state)
     t = _never(infector)
     for condition in e.conditions
-        _holds(condition, infector, state) === false && continue
-        t = min(t, _met_time(condition, infector, state))
+        is_eligible(condition, infector, contact, state) || continue
+        t = min(t, _met_time(condition, infector, contact, state))
     end
     return t
 end
 
-function trigger_time(e::AllOf, infector, state)
+function _trigger_time(e::AllOf, infector, contact, state)
     # With no conditions an `AllOf` holds from the outset, like a negation.
     isempty(e.conditions) && return infector.infection_time
     t = -_never(infector)
     for condition in e.conditions
-        _holds(condition, infector, state) === false && return _never(infector)
-        t = max(t, _met_time(condition, infector, state))
+        is_eligible(condition, infector, contact, state) || return _never(infector)
+        t = max(t, _met_time(condition, infector, contact, state))
     end
     return t
 end
 
-function trigger_time(e::NoneOf, infector, state)
-    _holds(e, infector, state) === false ? _never(infector) : infector.infection_time
+function _trigger_time(e::NoneOf, infector, contact, state)
+    is_eligible(e, infector, contact, state) ? infector.infection_time : _never(infector)
 end
 
 # `Inf` in the infector's time type, so AD dual numbers pass through.
 _never(infector) = oftype(isolation_time(infector), Inf)
 
-function _met_time(condition, infector, state)
-    t = trigger_time(condition, infector, state)
+function _met_time(condition, infector, contact, state)
+    t = _trigger_time(condition, infector, contact, state)
     return isnan(t) ? _never(infector) : t
-end
-
-# Whether `condition` holds for `infector` without reference to a contact:
-# `true`, `false`, or `missing` when the infector alone cannot decide it.
-# The built-in atomic predicates read only the infector, so `is_eligible`
-# decides them. A custom policy may read the contact, so it gives
-# `missing`. The combinators use three-valued logic, so a known answer
-# can still decide a combination that also contains a custom policy.
-const _InfectorPredicate = Union{OnSymptomOnset, OnLabConfirmation, OnIsolation,
-    TraceEveryone, TraceNobody, SymptomaticParent}
-
-_holds(::TraceEligibility, infector, state) = missing
-function _holds(condition::_InfectorPredicate, infector, state)
-    is_eligible(condition, infector, nothing, state)
-end
-function _holds(e::AnyOf, infector, state)
-    reduce(|, (_holds(c, infector, state) for c in e.conditions); init = false)
-end
-function _holds(e::AllOf, infector, state)
-    reduce(&, (_holds(c, infector, state) for c in e.conditions); init = true)
-end
-function _holds(e::NoneOf, infector, state)
-    !reduce(|, (_holds(c, infector, state) for c in e.conditions); init = false)
 end
 
 """
@@ -516,7 +504,7 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
 
     trace_delay = draw_trace_delay(
         ct.isolation_to_trace_delay, infector, ind, state, rng)
-    base = seed ? trigger_time(ct.eligibility, infector, state) :
+    base = seed ? _trigger_time(ct.eligibility, infector, ind, state) :
            get(infector.state, :trace_time, isolation_time(infector))
     # A contact cannot be sought before it exists, such as a funeral contact
     # before the funeral, so the delay runs from whichever comes later.

@@ -37,7 +37,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 ### Fixed
 
 - Combined tracing eligibility policies now time the trace from the conditions
-  the infector meets. `OnSymptomOnset() | OnLabConfirmation()` traces an
+  that are met. Each condition, custom policies included, is checked with
+  `is_eligible` against the contact being traced. With a custom `Over65` policy,
+  `Over65() | OnSymptomOnset()` traces a younger case from onset even if it was
+  quarantined earlier. `OnSymptomOnset() | OnLabConfirmation()` traces an
   asymptomatic, lab-confirmed case from its isolation. Previously it gave a
   `NaN` trace time, and quarantining the case's contacts had no effect. An
   `AnyOf` with no condition met, or an `AllOf` with any condition unmet, triggers
