@@ -84,7 +84,7 @@ using Graphs
 
 # A small-world network: mostly local contacts (high clustering) with a
 # few long-range links, from the Watts–Strogatz model.
-g = watts_strogatz(400, 6, 0.1)
+g = watts_strogatz(400, 6, 0.1; rng = StableRNG(1))
 
 model_ws = ModelSpec(NetworkProcess(g, Exponential(3.0));
     progression = [Transition(:recovered; from = :infection, delay = 7.0, terminal = true)])
@@ -222,7 +222,7 @@ clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
     prob_asymptomatic = 0.0)
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 1.0)
 
-ws = watts_strogatz(400, 6, 0.1)
+ws = watts_strogatz(400, 6, 0.1; rng = StableRNG(1))
 build(ivs) = ModelSpec(NetworkProcess(ws, Exponential(16.0));
     progression = [Transition(:recovered; from = :infection, delay = 7.0,
         terminal = true)],
