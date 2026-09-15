@@ -475,8 +475,8 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # An infinite trace time is recorded: it says the contact is never
     # reached, which stops a ring from growing past it. A `NaN` says nothing
     # about when the contact was reached, and `min` propagates it, so it would
-    # overwrite a good time another tracing system had already written. The
-    # `trigger_time` reduction can produce such times (issue #248).
+    # overwrite a good time another tracing system had already written. A
+    # custom `trigger_time` can return one.
     if !isnan(trace_time)
         ind.state[:trace_time] = min(get(ind.state, :trace_time, Inf), trace_time)
     end

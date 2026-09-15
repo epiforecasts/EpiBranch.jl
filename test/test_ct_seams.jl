@@ -3,6 +3,13 @@
 struct OddIdSeeds <: EpiBranch.TraceEligibility end
 EpiBranch.is_eligible(::OddIdSeeds, infector, contact, state) = isodd(infector.id)
 
+# Traces every case, but from a NaN trigger time when the infector has an even id:
+# a custom trigger time that says nothing about when tracing started.
+struct NaNForEvenIds <: EpiBranch.TraceEligibility end
+function EpiBranch.trigger_time(::NaNForEvenIds, infector, state)
+    iseven(infector.id) ? NaN : EpiBranch.isolation_time(infector)
+end
+
 # Custom TraceEligibility used by the user-extension test below.
 struct WithinChain <: EpiBranch.TraceEligibility end
 function EpiBranch.is_eligible(::WithinChain, infector, contact, state)
@@ -92,18 +99,13 @@ end
     end
 
     @testset "A NaN trace time is never recorded" begin
-        # `OnSymptomOnset() | OnLabConfirmation()` reduces to a NaN trigger
-        # time for an asymptomatic infector (issue #248), and `min`
-        # propagates NaN, so such a time must not be written at all.
-        asymp = clinical_presentation(incubation_period = LogNormal(1.5, 0.5),
-            prob_asymptomatic = 0.6)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
-            eligibility = AllCases())
-        ct = ContactTracing(OnSymptomOnset() | OnLabConfirmation(), 1.0,
-            Exponential(1.0))
+        # A trigger time can be NaN, and `min` propagates NaN, so such a
+        # time must not be written at all.
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        ct = ContactTracing(NaNForEvenIds(), 1.0, Exponential(1.0))
         state = simulate(
             ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                interventions = [iso, ct], attributes = asymp);
+                interventions = [iso, ct], attributes = clinical);
             max_cases = 300, rng = StableRNG(11))
         traced = filter(is_traced, state.individuals)
         @test !isempty(traced)  # otherwise the test is vacuous
