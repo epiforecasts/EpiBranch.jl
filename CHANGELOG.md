@@ -15,6 +15,27 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   stochastic SIR final-size law (`R0 = β·E[infectious period]`) and an infection
   time for every case.
 
+- `RingVaccination` gains `post_exposure_efficacy`, the probability that a dose
+  given to an already-exposed contact aborts that infection, which it can do
+  whenever immunity arrives before the contact's symptom onset. An aborted
+  infection keeps the transmissions made before immunity arrives, makes none
+  after it, and has no symptom onset. Its clinical course ends at the abort, so
+  no transition (hospitalisation, death or any other outcome) takes effect at or
+  after that time, whatever it is timed from. The abort is recorded as
+  `:infection_aborted_time`, and the infection still counts as a case. Unlike
+  `efficacy`, `post_exposure_efficacy` acts under default tracing without
+  quarantine. There a contact is traced once its infector has been isolated,
+  which already blocks any later exposure, so `efficacy`, which needs immunity
+  before the exposure, acts only with leaky isolation, tracing triggered by
+  symptom onset, or rings deeper than one contact. `onward_efficacy` differs in
+  reducing each later transmission of a vaccinated contact without ending its
+  infection or disease; the two compose.
+- `RingVaccination` can schedule a second dose. `dose_delay` sets the number of
+  days from the trace to the dose, and `requires_dose` restricts the dose to
+  contacts who have received the named earlier dose by then, so its `coverage`
+  is the retention between doses. A dose listed before the dose it requires is
+  rejected when the `ModelSpec` is built.
+
 ### Changed
 
 - The fixed-size population pool's mixing structure is now keyed on the

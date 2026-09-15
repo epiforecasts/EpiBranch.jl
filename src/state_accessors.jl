@@ -45,6 +45,18 @@ end
 """Whether the individual is asymptomatic."""
 is_asymptomatic(ind::Individual) = get(ind.state, :asymptomatic, false)::Bool
 
+"""Whether the individual's infection was aborted before symptom onset, as a
+post-exposure dose of [`RingVaccination`](@ref) can do. The infection lasts
+until `:infection_aborted_time` and ends there, before any onset. The abort is
+recorded against the contact's exposure at the time the dose is given, or at a
+later exposure of a contact already given it. It is removed when infection is
+resolved if that exposure does not infect the contact before the abort time."""
+_infection_aborted(ind::Individual) = haskey(ind.state, :infection_aborted_time)
+
+"""Whether the individual develops symptoms: it is not asymptomatic and its
+infection was not aborted before onset."""
+_develops_symptoms(ind::Individual) = !is_asymptomatic(ind) && !_infection_aborted(ind)
+
 """Whether the individual tested positive."""
 is_test_positive(ind::Individual) = get(ind.state, :test_positive, false)::Bool
 
