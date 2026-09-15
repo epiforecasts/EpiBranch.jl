@@ -59,10 +59,15 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   otherwise it triggers at the earliest time among its met conditions. A policy
   with no time of its own traces from the earlier of the infector's isolation,
   the default for `TraceEveryone`, and any of its timed branches, so
-  `!TraceNobody()` behaves as `TraceEveryone()` and
   `OnSymptomOnset() | !OnIsolation()` traces a case that is never isolated from
-  onset. Policies that are equal by De Morgan's laws or by distributing `&` over
-  `|` get the same trigger time, as do `TraceNobody() | p` and `p`.
+  onset. Policies rewritten into each other by De Morgan's laws, double
+  negation, commutativity, associativity or distributing `&` over `|` outside a
+  negation get the same trigger time, as do `TraceNobody() | p` and `p`. Other
+  logically equal policies can differ, because a negation that holds has no time
+  of its own: distributing inside a negation, absorption by such a branch, a
+  condition joined with its negation as in `p & (q | !q)`, and `!TraceNobody()`,
+  which behaves as `TraceEveryone()` only at the top level. The `trigger_time`
+  docstring gives an example of each.
 
 ## [0.1.0] - 2026-06-16
 

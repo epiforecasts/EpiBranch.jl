@@ -245,8 +245,12 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
             # `TraceNobody()` is the identity of `|`
             (S & (N | !L), S & !L),
             (N | (S | !I), S | !I),
-            # Grouping
-            ((S | L) | !I, S | (L | !I))
+            # Double negation, order and grouping
+            (!!(S | !I), S | !I),
+            (!I | S, S | !I),
+            (!L & S, S & !L),
+            ((S | L) | !I, S | (L | !I)),
+            ((S & !L) & !I, S & (!L & !I))
         ]
         for (a, b) in equivalent
             @test all(infector -> isequal(tt(a, infector), tt(b, infector)), infectors)
@@ -261,6 +265,18 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         @test tt(S | !I, unisolated) == 4.0
         @test tt((S | !L) & !N, isolated_late) == 4.0
         @test tt(!L & !N, isolated_late) == 9.0
+
+        # Logically equal policies that differ because a negation that holds
+        # has no time of its own, as documented for `trigger_time`.
+        @test tt(!(L & (!I | !S)), isolated_late) == 9.0
+        @test tt(!((L & !I) | (L & !S)), isolated_late) == 4.0
+        @test tt(!L | (!L & S), isolated_late) == 4.0
+        @test tt(!L, isolated_late) == 9.0
+        @test tt(S & (I | !I), isolated_late) == 9.0
+        @test tt(S, isolated_late) == 4.0
+        @test tt(S & !N, isolated_late) == 4.0
+        @test tt(S & TraceEveryone(), isolated_late) == 9.0
+        @test tt(!N, isolated_late) == tt(TraceEveryone(), isolated_late) == 9.0
     end
 
     @testset "Nested and flat policies trace alike" begin

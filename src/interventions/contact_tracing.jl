@@ -180,14 +180,30 @@ not met, met at a time, or met with no time of its own:
 - A policy met with no time of its own starts the trace at the default
   trigger time, the infector's isolation as for [`TraceEveryone`](@ref),
   or earlier if one of its timed branches is met earlier. So
-  `!TraceNobody()` behaves as `TraceEveryone()`, and
   `OnSymptomOnset() | !OnIsolation()` traces a case that is never
   isolated from its onset.
 
 A policy that is not met gives `Inf` (never), and a `NaN` trigger time
-from a wrapped condition counts as never met. Policies that are equal by
-De Morgan's laws, or by distributing `&` over `|`, get the same trigger
-time, and `TraceNobody() | p` is timed as `p`.
+from a wrapped condition counts as never met.
+
+Two policies get the same trigger time if one is rewritten into the other
+by De Morgan's laws, double negation, commutativity, associativity or
+distributing `&` over `|` outside a negation. `TraceNobody() | p` is
+timed as `p`. Other logically equal policies can differ, because a
+negation that holds has no time of its own, so a rewrite that adds or
+removes such a branch changes which times count. With
+`S = OnSymptomOnset()`, `L = OnLabConfirmation()` and
+`I = OnIsolation()`, for a case with onset at 4 that is isolated at 9
+and never lab-confirmed:
+
+- Distributing inside a negation: `!(L & (!I | !S))` triggers at 9 and
+  `!((L & !I) | (L & !S))` at 4.
+- Absorption by a branch with no time of its own: `!L | (!L & S)`
+  triggers at 4 and `!L` at 9.
+- A condition joined with its negation: `S & (I | !I)` triggers at 9 and
+  `S` at 4.
+- `!TraceNobody()` behaves as `TraceEveryone()` only at the top level:
+  `S & !TraceNobody()` triggers at 4 and `S & TraceEveryone()` at 9.
 
 The four-argument form checks each wrapped condition against the contact.
 The three-argument form evaluates a combinator without a contact, passing
