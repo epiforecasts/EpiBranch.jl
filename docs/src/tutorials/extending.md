@@ -109,13 +109,14 @@ resolved, restoring the keys it wrote, so no hospitalisation, death or
 the `_time` keys a transition writes, so a custom transition is covered as long
 as it records when it happens under a `_time` key, as the built-ins do.
 
-The key is drawn when the dose is given, before infection is resolved, and
-belongs to the exposure the contact has at that point. When resolution does not
-bear that exposure out, the engine removes the key and restores the onset: on a
+The key is drawn against a particular exposure, before infection is resolved:
+when the dose is given, and again each time a contact that already has the dose
+is exposed, using its recorded vaccination time. When resolution does not bear
+that exposure out, the engine removes the key and restores the onset: on a
 contact the exposure did not infect, and on one infected through a later
 exposure at or after the abort time. It therefore only sits on an infected
 individual whose infection it ended, and a pre-created node that escapes one
-exposure carries no abort into a later infection.
+exposure gets a fresh draw against the exposure that later infects it.
 
 `:reported` is shared between the `Reporting` clinical transition (which
 sets it from a probability gate) and `PerCaseObservation` (which sets it
