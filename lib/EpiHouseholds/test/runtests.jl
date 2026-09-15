@@ -282,10 +282,11 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         # are adults and the last two children. An adult infects a household-mate
         # faster than a child does, so the kernel depends on the infector's role.
         # The simulator and both likelihood forms call
-        # `kernel(infector, susceptible)`, and fitting recovers the two scales only
-        # if all three use that order. With `by_infector = false` the kernel reads
-        # the role from the susceptible, which is what a reversed order would fit.
-        # The flag keeps a single closure type, so both fits share compiled code.
+        # `kernel(infector, susceptible)`. Fitting checks that all three agree on
+        # that order, and the final sizes below check which order the simulator
+        # uses. With `by_infector = false` the kernel reads the role from the
+        # susceptible, which is what a reversed order would fit. The flag keeps a
+        # single closure type, so both fits share compiled code.
         is_adult(i) = (i - 1) % 4 < 2
         function kernel(adult_scale, child_scale; by_infector = true)
             return (infector, susceptible) -> Exponential(
@@ -297,6 +298,16 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
             progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(230)), m)
         layout = compile_household_pairs(data)
+
+        # The simulator applies the infector's role: households whose index case is
+        # an adult, the faster infector, end with more cases than those whose
+        # index case is a child. A simulator reading the susceptible's role would
+        # reverse this.
+        final_size(adult_index) = mean(
+            count(i -> !isnan(data.infection_time[i]), mem)
+        for mem in (findall(==(h), data.household_of) for h in 1:600)
+        if is_adult(only(filter(i -> data.is_index[i], mem))) == adult_index)
+        @test final_size(true) > final_size(false) + 0.3
 
         ll(θ; by_infector = true) = pairwise_surv_loglik(
             kernel(exp.(θ)...; by_infector), data, layout)
