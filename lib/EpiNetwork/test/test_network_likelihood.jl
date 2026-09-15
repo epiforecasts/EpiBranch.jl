@@ -168,6 +168,26 @@ end
         @test abs(θhat - log(4.0)) < 3 * se
     end
 
+    @testset "simulated infection layers never have zero density" begin
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0)
+        for seed in 1:4, (ext, Tobs) in ((0.0, Inf), (0.03, 10.0)),
+            interventions in ([], [iso])
+            adj = _random_graph(400, 900, StableRNG(seed))
+            m = ModelSpec(
+                NetworkProcess(adj, Weibull(1.5, 4.0); external_hazard = ext,
+                    obs_end = Tobs);
+                progression = _seir(5.0), interventions, attributes = clinical)
+            d = network_infections(simulate(m; n_initial = 3, rng = StableRNG(seed)), m)
+            layout = compile_contact_pairs(d; external = ext > 0)
+            @test isfinite(loglikelihood(d, m))
+            @test isfinite(pairwise_surv_loglik(Weibull(1.5, 4.0), d, layout;
+                external_hazard = ext))
+        end
+    end
+
     @testset "community hazard" begin
         adj = _random_graph(1000, 3000, StableRNG(10))
         m = ModelSpec(

@@ -122,4 +122,8 @@ them and conditions the observed onsets and tests through the progression's dela
 with `pairwise_surv_loglik` supplying the contact-process density of the augmented
 configuration. The layout stays valid across draws as long as the household
 structure and the set of ever-infected hosts are fixed — only the latent times
-move — so it is compiled once, outside the model, and reused.
+move — so it is compiled once, outside the model, and reused. A configuration the
+model cannot produce has zero density, and `pairwise_surv_loglik` returns `-Inf`
+for it: for example, a case infected when none of its household-mates is
+infectious and no community hazard can reach it. Without a community hazard the
+density conditions on index cases, so they need no possible infector.

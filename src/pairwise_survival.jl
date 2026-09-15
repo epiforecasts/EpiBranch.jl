@@ -165,6 +165,7 @@ struct ContactPairsLayout
     sus_unique::Vector{Int}                # susceptibles that have ≥1 row
     sus_row_ranges::Vector{UnitRange{Int}} # row indices in `sus_row_order`
     sus_row_order::Vector{Int}             # row indices, susceptible-grouped
+    no_rows::Vector{Int}                   # hosts not conditioned on that have no row
     external::Bool
     nhosts::Int                            # population the layout was compiled for
 end
@@ -178,7 +179,11 @@ function _check_host_masks(n, is_index, infected)
 end
 
 # Group rows by susceptible for the per-susceptible log-sum-exp, and wrap up.
-function _contact_pairs_layout(sus, infector, contact_index, is_ext, external, n)
+# Hosts that are explained (all of them with a community hazard, all but the
+# index cases without one) and have no possible infector are listed apart, since
+# an infection of one has zero density.
+function _contact_pairs_layout(sus, infector, contact_index, is_ext, external,
+        is_index, n)
     n_rows = length(sus)
     sus_row_order = sortperm(sus)
     sus_unique = Int[]
@@ -198,8 +203,11 @@ function _contact_pairs_layout(sus, infector, contact_index, is_ext, external, n
         end
         push!(sus_row_ranges, range_lo:n_rows)
     end
+    has_rows = falses(n)
+    has_rows[sus_unique] .= true
+    no_rows = [j for j in 1:n if !has_rows[j] && (external || !is_index[j])]
     return ContactPairsLayout(sus, infector, contact_index, is_ext, sus_unique,
-        sus_row_ranges, sus_row_order, external, n)
+        sus_row_ranges, sus_row_order, no_rows, external, n)
 end
 
 """
@@ -232,7 +240,7 @@ function compile_contact_pairs(membership::AbstractVector{<:Integer},
     n = length(membership)
     _check_host_masks(n, is_index, infected)
     isempty(membership) && return _contact_pairs_layout(
-        Int[], Int[], Int[], Bool[], external, 0)
+        Int[], Int[], Int[], Bool[], external, is_index, 0)
 
     # Bucket hosts by label into a `Vector{Vector{Int}}` indexed by label offset,
     # which avoids hashing; offsetting by `lo` allows any integer labels.
@@ -267,7 +275,8 @@ function compile_contact_pairs(membership::AbstractVector{<:Integer},
     end
     # A group has no per-edge list for a kernel to index into.
     contact_index = zeros(Int, length(sus))
-    return _contact_pairs_layout(sus, infector, contact_index, is_ext, external, n)
+    return _contact_pairs_layout(sus, infector, contact_index, is_ext, external,
+        is_index, n)
 end
 
 function compile_contact_pairs(contacts::AbstractVector{<:AbstractVector{<:Integer}},
@@ -328,7 +337,8 @@ function compile_contact_pairs(contacts::AbstractVector{<:AbstractVector{<:Integ
             is_ext[r] = false
         end
     end
-    return _contact_pairs_layout(sus, infector, contact_index, is_ext, external, n)
+    return _contact_pairs_layout(sus, infector, contact_index, is_ext, external,
+        is_index, n)
 end
 
 function compile_contact_pairs(data::InfectionLayer; external::Bool = false)
@@ -413,7 +423,9 @@ The contact-process log-density of the infection layer `data` under a
 contact-interval `kernel`, marginal over who infected whom. Each susceptible
 accrues cumulative hazard from every possible infector over the overlap of that
 infector's infectious window with its own time at risk, and each infected one
-adds the log of the summed hazard at its infection time.
+adds the log of the summed hazard at its infection time. An infected host that
+is not conditioned on and has no positive hazard at its infection time, such as
+one infected when none of its possible infectors is infectious, gives `-Inf`.
 
 `kernel` is a `Distributions.jl` distribution shared by every pair, a callable
 `(infector, susceptible) -> Distribution` for covariates, or a per-edge vector
@@ -464,6 +476,13 @@ function _pairwise_surv_loglik(kernel, extdist, data, layout, external,
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
+
+    # An infected host that is not conditioned on and has no possible infector
+    # cannot have been infected.
+    @inbounds for j in layout.no_rows
+        isnan(data.infection_time[j]) || return T(-Inf)
+    end
+
     ll = zero(T)
 
     # Pass 1: cumulative-hazard contribution per row, each at risk from 0. A
@@ -492,39 +511,33 @@ function _pairwise_surv_loglik(kernel, extdist, data, layout, external,
 
     # Pass 2: per-susceptible log-sum-exp over event rows. A single accumulator
     # is reused across groups (reset per group) so the reduction stays
-    # allocation-free on the AD tape.
+    # allocation-free on the AD tape. Every host in the layout is explained, so
+    # an infected one with no positive hazard at its infection time adds the log
+    # of zero, -Inf.
     acc = _LogSumExpAcc{T}()
     @inbounds for g in eachindex(layout.sus_unique)
-        rng = layout.sus_row_ranges[g]
+        tj = data.infection_time[layout.sus_unique[g]]
+        isnan(tj) && continue
         acc.m = T(-Inf)
         acc.s = zero(T)
         acc.nseen = 0
-        had_event = false
-        for k in rng
+        for k in layout.sus_row_ranges[g]
             r = layout.sus_row_order[k]
-            j = sus[r]
-            tj = data.infection_time[j]
-            infected_j = !isnan(tj)
-            infected_j || continue
             if is_ext[r]
                 # a host infected after `obs_end` was infected along a contact;
                 # one infected at 0 is a community case like any other
-                stop = tj
-                (stop >= 0 && stop <= data.obs_end) || continue
-                _push!(acc, loghazard(extdist, stop))
-                had_event = true
+                (tj >= 0 && tj <= data.obs_end) || continue
+                _push!(acc, loghazard(extdist, tj))
             else
                 i = infector[r]
                 oi = data.infectious_time[i]
                 isfinite(oi) || continue
                 if oi < tj && tj <= data.removal_time[i]
-                    stop = tj - oi
-                    _push!(acc, loghazard(_pair_kernel(kernel, layout, r), stop))
-                    had_event = true
+                    _push!(acc, loghazard(_pair_kernel(kernel, layout, r), tj - oi))
                 end
             end
         end
-        had_event && (ll += _value(acc))
+        ll += _value(acc)
     end
 
     return ll

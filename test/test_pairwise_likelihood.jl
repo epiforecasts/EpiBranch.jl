@@ -60,6 +60,7 @@ end
         @test !any(L.is_ext)
         @test L.sus_unique == [2, 3, 5]
         @test L.sus_row_ranges == [1:1, 2:3, 4:4]
+        @test isempty(L.no_rows)
 
         # with a community hazard every host is explained and gets an external row
         Le = compile_contact_pairs(membership, is_index, infected; external = true)
@@ -86,11 +87,14 @@ end
         # 3 is 2's first
         @test L.contact_index == [1, 2, 1]
         @test L.sus_unique == [2, 3]
+        # 4 is not conditioned on but no infected host lists it as a contact
+        @test L.no_rows == [4]
 
         Le = compile_contact_pairs(contacts, is_index, infected; external = true)
         @test Le.sus == [1, 2, 2, 3, 3, 3, 4]
         @test Le.infector == [0, 0, 1, 0, 1, 2, 0]
         @test Le.contact_index == [0, 0, 1, 0, 2, 1, 0]
+        @test isempty(Le.no_rows)
 
         # a self-loop is never a row; an out-of-range contact is rejected
         @test length(compile_contact_pairs([[1, 2], Int[]], [true, false],
@@ -216,6 +220,40 @@ end
         data = _TestInfections([1, 1, 1], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0],
             [5.0, 5.0, 6.0], [true, true, false])
         @test pairwise_surv_loglik(Uniform(2.0, 10.0), data) == -Inf
+    end
+
+    @testset "an infection no source can explain has zero density" begin
+        k = Exponential(2.0)
+        # without a community hazard: index 1 is infectious over [0, 3] and 2 is
+        # infected at t, which 1 can explain only up to 3
+        for (t, expected) in ((2.9, log(1 / 2) - 2.9 / 2), (3.5, -Inf), (5.0, -Inf))
+            data = _TestInfections([1, 1], [0.0, t], [0.0, t], [3.0, t + 3.0],
+                [true, false])
+            @test pairwise_surv_loglik(k, data) ≈ expected
+        end
+
+        # with a community hazard 0.1 up to obs_end = 4: 1 is a community case at
+        # 0.5, infectious over [0.5, 3], and after 4 only 1 could infect 2
+        for (t, expected) in ((3.5, 2 * log(0.1) - 0.05 - 0.35 - 2.5 / 2),
+            (4.5, -Inf), (6.0, -Inf))
+            data = _TestInfections([1, 1], [0.5, t], [0.5, t], [3.0, t + 3.0],
+                [false, false]; obs_end = 4.0)
+            @test pairwise_surv_loglik(k, data; external_hazard = 0.1) ≈ expected
+        end
+
+        # a host with no possible infector at all: 1 infects 2 and nobody lists 3
+        contacts = [[2], Int[], Int[]]
+        infected_3 = _TestInfections(contacts, [0.0, 1.0, 2.0], [0.0, 1.0, 2.0],
+            [4.0, 5.0, 6.0], [true, false, false])
+        @test pairwise_surv_loglik(k, infected_3) == -Inf
+        escaped_3 = _TestInfections(contacts, [0.0, 1.0, NaN], [0.0, 1.0, NaN],
+            [4.0, 5.0, Inf], [true, false, false])
+        @test pairwise_surv_loglik(k, escaped_3) ≈ log(1 / 2) - 1 / 2
+        # an index case is conditioned on, so it needs no possible infector
+        index_3 = _TestInfections(contacts, [0.0, 1.0, 2.0], [0.0, 1.0, 2.0],
+            [4.0, 5.0, 6.0], [true, false, true])
+        @test isempty(compile_contact_pairs(index_3).no_rows)
+        @test pairwise_surv_loglik(k, index_3) ≈ log(1 / 2) - 1 / 2
     end
 
     @testset "differentiable in the kernel parameters" begin

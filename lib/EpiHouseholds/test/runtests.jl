@@ -481,6 +481,53 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         end
     end
 
+    @testset "an infection no household-mate or community can explain" begin
+        k = Exponential(2.0)
+        both(d; kw...) = (pairwise_surv_loglik(k, d; kw...),
+            pairwise_surv_loglik(k, d,
+                compile_household_pairs(d; external = haskey(kw, :external_hazard));
+                kw...))
+        # index 1 is infectious over [0, 3], so 2 cannot be infected after 3
+        for (t, expected) in ((2.9, log(1 / 2) - 2.9 / 2), (3.5, -Inf), (5.0, -Inf))
+            d = HouseholdInfections([1, 1], [0.0, t], [0.0, t], [3.0, t + 3.0],
+                [true, false])
+            @test all(both(d) .≈ expected)
+        end
+        # community hazard 0.1 up to obs_end = 4, and 1 infectious over [0.5, 3]
+        for (t, expected) in ((3.5, 2 * log(0.1) - 0.05 - 0.35 - 2.5 / 2),
+            (4.5, -Inf), (6.0, -Inf))
+            d = HouseholdInfections([1, 1], [0.5, t], [0.5, t], [3.0, t + 3.0],
+                [false, false]; obs_end = 4.0)
+            @test all(both(d; external_hazard = 0.1) .≈ expected)
+        end
+        # a lone member is conditioned on as an index case and impossible otherwise
+        lone(is_index) = HouseholdInfections([1, 1, 2], [0.0, 1.0, 2.0],
+            [0.0, 1.0, 2.0], [4.0, 5.0, 6.0], [true, false, is_index])
+        @test all(both(lone(true)) .≈ log(1 / 2) - 1 / 2)
+        @test all(both(lone(false)) .== -Inf)
+    end
+
+    @testset "simulated infection layers never have zero density" begin
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0)
+        latent = [Transition(:infectious; from = :infection, delay = LogNormal(0.3, 0.3)),
+            Transition(:recovered; from = :infectious, delay = 5.0, terminal = true)]
+        for seed in 1:4, (ext, Tobs) in ((0.0, Inf), (0.03, 10.0)),
+            interventions in ([], [iso])
+            m = ModelSpec(
+                HouseholdProcess(rand(StableRNG(seed), 1:6, 200), Weibull(1.5, 4.0);
+                    external_hazard = ext, obs_end = Tobs);
+                progression = latent, interventions, attributes = clinical)
+            d = household_infections(simulate(m; n_initial = 2, rng = StableRNG(seed)), m)
+            layout = compile_household_pairs(d; external = ext > 0)
+            @test isfinite(loglikelihood(d, m))
+            @test isfinite(pairwise_surv_loglik(Weibull(1.5, 4.0), d, layout;
+                external_hazard = ext))
+        end
+    end
+
     @testset "compiled pair layout: inference workflow (compile once, reuse)" begin
         # the documented workflow: the household structure is fixed, so the layout
         # is compiled once and reused across every gradient evaluation of the fit.

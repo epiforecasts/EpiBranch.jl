@@ -200,12 +200,28 @@ they are conditioned on. Spread within households continues after `obs_end`.
 function pairwise_surv_loglik(kernel, data::HouseholdInfections; external_hazard = 0.0)
     external = _ext_active(external_hazard)
     rows, infector, is_ext = _survival_rows(data; external, obs_end = data.obs_end)
-    if !external && kernel isa ContinuousUnivariateDistribution
-        return pairwise_surv_loglik(kernel, rows)   # shared-kernel fast path
+    ll = if !external && kernel isa ContinuousUnivariateDistribution
+        pairwise_surv_loglik(kernel, rows)   # shared-kernel fast path
+    else
+        extdist = external ? _ext_survival(external_hazard) : kernel
+        rowkernel = r -> is_ext[r] ? extdist : _pair(kernel, infector[r], rows.sus[r])
+        pairwise_surv_loglik(rowkernel, rows)
     end
-    extdist = external ? _ext_survival(external_hazard) : kernel
-    rowkernel = r -> is_ext[r] ? extdist : _pair(kernel, infector[r], rows.sus[r])
-    return pairwise_surv_loglik(rowkernel, rows)
+    return _unexplained_infection(data, rows, external) ? oftype(ll, -Inf) : ll
+end
+
+# Whether an infected member that is not conditioned on has no event row, so
+# that no source could have infected it at its infection time. The rows then
+# record it as escaping, and its density is zero.
+function _unexplained_infection(data::HouseholdInfections, rows, external)
+    explained = falses(length(data.infection_time))
+    for r in eachindex(rows.event)
+        rows.event[r] && (explained[rows.sus[r]] = true)
+    end
+    return any(eachindex(data.infection_time)) do j
+        !isnan(data.infection_time[j]) && (external || !data.is_index[j]) &&
+            !explained[j]
+    end
 end
 
 """

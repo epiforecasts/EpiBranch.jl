@@ -66,6 +66,11 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   community infection at time 0, as the form without a layout does, so an index
   case at time 0 contributes the community hazard at 0. When every hazard at an
   infection time is zero, both forms return `-Inf`.
+- The pairwise survival likelihood returns `-Inf` for an infected host that is
+  not conditioned on and that no possible infector or community hazard could
+  have infected at its infection time, including a host with no possible
+  infector at all, so a sampler over latent infection times rejects such
+  configurations.
 
 ## [0.1.0] - 2026-06-16
 
