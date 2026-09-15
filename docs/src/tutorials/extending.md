@@ -795,27 +795,30 @@ RouteWindow(name; from = nothing, until, kernel, reach = name,
 - `traceable` is the probability that a case can name a contact made on the
   route. People can name the people they live with and cannot name the strangers
   they stood next to, so a household route keeps the default `1.0` and an
-  anonymous community route might take `0.0`; `true` and `false` are accepted.
+  anonymous community route might take `0.0`. `true` and `false` also work, as
+  `1.0` and `0.0`.
 
-### How traceability meets contact tracing
+### Traceability and contact tracing
 
-Naming and tracing are two steps. A route's `traceable` says whether the case
-can identify a contact at all; the tracing intervention's own probability (its
-`TraceRate`) says whether the programme then reaches a contact it has been told
-about. A contact is traced only if both succeed, so the probabilities multiply:
-a community route at `traceable = 0.5` under `ContactTracing(probability =
-0.8)` traces 40% of the contacts a case meets only in the community. Set each for what it describes, and do
-not fold the route's limit into the tracing probability as well.
+Naming and tracing are two steps. A route's `traceable` is the chance that the
+case can identify a contact at all. The tracing intervention's own probability
+(its `TraceRate`) is the chance that the programme then reaches a contact it has
+been told about. A contact is traced only if both succeed, so the probabilities
+multiply. With a community route at `traceable = 0.5` and
+`ContactTracing(probability = 0.8)`, 40% of the contacts a case meets only in
+the community are traced. Set each probability for what it describes: a limit
+on naming belongs in `traceable` alone, and counting it again in the tracing
+probability would reduce tracing twice.
 
 A model applies `traceable` when it assembles the contacts it hands to
 [`trace_contacts!`](@ref EpiBranch.trace_contacts!), so tracing interventions
-never see the routes and need no changes. The rule for a contact reachable on
-several routes is the model's to state; `RoutedNetwork` names such a contact
-with the highest of its routes' probabilities, from one draw per pair of case
-and contact, and traces it no earlier than the routes it was named on allow.
-Draws use the simulation's random number generator, so runs stay reproducible,
-and a route at exactly `0.0` or `1.0` takes none, so a model that leaves every
-route at the default draws no extra random numbers.
+never see the routes. Each model sets its own rule for a contact reachable on
+several routes. `RoutedNetwork` makes one draw per pair of case and contact,
+names the contact with the highest of its routes' probabilities, and traces it
+no earlier than the routes it was named on allow. Draws use the simulation's
+random number generator, so runs are reproducible. A route at exactly `0.0` or
+`1.0` needs no draw, so a model that leaves every route at the default uses no
+random numbers for naming.
 
 ### Being cut by an intervention
 

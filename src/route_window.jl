@@ -52,14 +52,14 @@ One transmission route, open over part of a case's natural history.
   this route, so that contact tracing can find it. People can name the people
   they live with but not the strangers they stood next to, so a household route
   might keep the default `1.0` and a community route of casual encounters take
-  something much lower. `true` and `false` are accepted as `1.0` and `0.0`.
+  something much lower. `true` and `false` also work, as `1.0` and `0.0`.
 
   Naming comes before the tracing policy: a contact is traced only if the case
-  names it and [`ContactTracing`](@ref) then succeeds in tracing it, so the
-  overall probability is `traceable` times the tracing probability. Use
-  `traceable` for what the relationship allows and the tracing probability for
-  how well the programme performs, and set each only once. A model decides
-  how the probability is applied to its contacts (see
+  names it and [`ContactTracing`](@ref) then traces it, so the overall
+  probability is `traceable` times the tracing probability. Use `traceable` for
+  what the relationship allows and the tracing probability for how well the
+  programme performs, and count each limit in only one of them. Each model
+  applies the probability to its contacts in its own way (see
   `EpiNetwork.RoutedNetwork`).
 
 # Examples

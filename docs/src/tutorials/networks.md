@@ -325,7 +325,7 @@ removed; the realised figure falls out of which routes were cut.
 
 Routes also differ in who a case can name. Everyone in the household can be
 named, but most community contacts are strangers. `traceable` on a route is the
-probability that a case can name a contact made on it, and contact tracing then
+probability that a case can name a contact made on it. Contact tracing then
 reaches a named contact with its own probability, so the two multiply. A
 neighbour on both routes is named with the higher probability, since someone you
 live with can be named whether or not you also meet them elsewhere.

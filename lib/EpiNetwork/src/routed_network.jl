@@ -33,24 +33,23 @@ Network transmission over several routes at once.
   tracing. Leave it at `:infection` for standing relationships, which tracing
   reaches as on `NetworkProcess`; give a funeral route `contacts_from = :died`
   so its contacts are traced only if the funeral happened, and not before it.
-- `traceable`: the probability that a case can name a neighbour on this route,
-  which contact tracing needs before it can act. Keep the default `1.0` for
+- `traceable`: the probability that a case can name a neighbour on this route.
+  Contact tracing reaches only named neighbours. Keep the default `1.0` for
   people a case can always name, such as its household, and lower it for a
   route of casual contact.
 
-Naming is decided once for each pair of case and neighbour, when the case's
-contacts are handed to tracing. A neighbour reachable on several routes is
-named with the highest of their `traceable` probabilities: someone a case both
-lives with and sees in the community can be named because they live together.
-The draw is a single uniform number `u` from the simulation's random number
-generator, and the neighbour is nameable on every route whose `traceable`
-exceeds `u`; the time from which it can be traced is the earliest
-`contacts_from` time among those routes. Each route on its own therefore names
-the neighbour with its own probability, and together they name it with the
-highest. A named neighbour is then traced with the intervention's own
-probability, so the two multiply. A neighbour offered only by routes at `1.0`
-or `0.0` needs no draw, so routes left at the default draw no extra random
-numbers.
+The model decides naming once for each pair of case and neighbour, when it
+passes the case's contacts to tracing. A neighbour reachable on several routes
+is named with the highest of their `traceable` probabilities: someone a case
+both lives with and sees in the community can be named because they live
+together. The model draws a single uniform number `u` from the simulation's
+random number generator, and the neighbour is nameable on every route whose
+`traceable` exceeds `u`. It can be traced from the earliest `contacts_from` time
+among those routes. Each route on its own therefore names the neighbour with its
+own probability, and together they name it with the highest. The intervention
+then traces a named neighbour with its own probability, so the two multiply. A
+neighbour reachable only on routes at `1.0` or `0.0` needs no draw, so routes
+left at the default use no random numbers for naming.
 
 All routes run over the same node set, so every adjacency must have the same
 length.
@@ -83,9 +82,9 @@ which is what self-isolation at home actually does. `R` is unchanged by any of
 this: it stays what the case would achieve if never removed, and the realised
 figure falls out of which routes were cut.
 
-With contact tracing, `traceable = 0.2` on the community route says a case can
-name only one community contact in five, while everyone it lives with can be
-named. A household member who is also a community contact is always nameable.
+With contact tracing, `traceable = 0.2` on the community route means a case can
+name only one community contact in five, while it can name everyone it lives
+with. A household member who is also a community contact is always nameable.
 """
 struct RoutedNetwork{W <: AbstractVector, E} <: TransmissionModel
     windows::W                       # RouteWindows; each `reach` is an adjacency list
@@ -148,8 +147,8 @@ EpiBranch.supplies_contacts(::RoutedNetwork) = true
 # route whose `traceable` exceeds the draw, so it is named with the highest
 # route probability and traced from the earliest time among the routes it was
 # named on. Routes at exactly 0 or 1 decide without a draw, as does a neighbour
-# that a route at 1 already names from its earliest time, which keeps the
-# random number stream of a fully traceable model unchanged.
+# that a route at 1 already names from its earliest time, so a fully traceable
+# model uses no random numbers here.
 function _route_contacts(windows, interventions, ind::Individual, i::Integer,
         rng::AbstractRNG)
     T = typeof(ind.infection_time)

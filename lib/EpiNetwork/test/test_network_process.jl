@@ -467,7 +467,7 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         a = [[2, 3], Int[], Int[], Int[]]
         b = [[2, 4], Int[], Int[], Int[]]
 
-        # routes at 1 and 0 decide without touching the random number stream
+        # routes at 1 and 0 decide without using the random number generator
         rng, untouched = StableRNG(7), StableRNG(7)
         @test first.(named([route(:a, a, 1.0), route(:b, b, 0.0)], rng)) == [2, 3]
         @test rand(rng) == rand(untouched)
@@ -511,9 +511,9 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
     end
 
     @testset "RoutedNetwork: an untraceable route's contacts are never traced" begin
-        # Households of four, and a community route linking each node to one in
-        # the next household. With the community route untraceable, every traced
-        # contact must have been traced from a household member.
+        # Households of four, and a community route linking each node to one node
+        # in each neighbouring household. With the community route untraceable,
+        # every traced contact must have been traced from a household member.
         nh, hs = 30, 4
         n = nh * hs
         hh_of(i) = (i - 1) ÷ hs
@@ -542,13 +542,13 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         untraceable = pairs(0.0)
         @test !isempty(untraceable)
         @test all(p -> hh_of(p[1]) == hh_of(p[2]), untraceable)
-        # the same model with the community route traceable does reach across
+        # with the community route traceable, tracing also crosses households
         @test any(p -> hh_of(p[1]) != hh_of(p[2]), pairs(1.0))
     end
 
     @testset "RoutedNetwork: route and tracing probabilities multiply" begin
-        # A seed on a complete graph with contact too slow to transmit: all of
-        # its neighbours are still waiting when it is traced, so the fraction
+        # A seed on a complete graph with contact too slow to transmit: none of
+        # its neighbours is infected before tracing reaches them, so the fraction
         # traced is the route's naming probability times the tracing probability.
         n = 60
         adj = [[j for j in 1:n if j != i] for i in 1:n]
