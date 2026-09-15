@@ -241,15 +241,27 @@ function _single_time(::_WithoutContact, e, infector, contact, state)
     trigger_time(e, infector, state)
 end
 
-function _combined_time(form, e, infector, contact, state)
-    t, untimed = _met_time(form, e, infector, contact, state, false)
-    untimed || return t
-    default = first(_met_time(form, TraceEveryone(), infector, contact, state, false))
-    return min(t, default)
+# What every node of a combinator is evaluated against. `never` is `Inf` in
+# the infector's time type, so AD dual numbers pass through, and is computed
+# once per evaluation.
+struct _TimingContext{F, T, I, C, S}
+    form::F
+    never::T
+    infector::I
+    contact::C
+    state::S
 end
 
-# `Inf` in the infector's time type, so AD dual numbers pass through.
+_never(::Individual{T}) where {T} = T(Inf)
 _never(infector) = oftype(isolation_time(infector), Inf)
+
+function _combined_time(form, e, infector, contact, state)
+    cx = _TimingContext(form, _never(infector), infector, contact, state)
+    t, untimed = _met_time(cx, e, false)
+    untimed || return t
+    default = _single_time(form, TraceEveryone(), infector, contact, state)
+    return min(t, isnan(default) ? cx.never : default)
+end
 
 # How `condition`, or its negation if `negated`, is met, as
 # `(time, untimed)`. `time` is the earliest time at which it is met through
@@ -257,42 +269,38 @@ _never(infector) = oftype(isolation_time(infector), Inf)
 # holds with no time of its own, as a negation that holds does. A
 # condition that is not met gives `(Inf, false)`. Negations are pushed
 # inwards by De Morgan's laws, so equal policies get equal times.
-function _met_time(form, condition::TraceEligibility, infector, contact, state, negated)
-    never = _never(infector)
-    met = is_eligible(condition, infector, contact, state)
-    negated && return (never, !met)
-    met || return (never, false)
-    t = _single_time(form, condition, infector, contact, state)
-    return (isnan(t) ? never : t, false)
+function _met_time(cx::_TimingContext, condition::TraceEligibility, negated::Bool)
+    met = is_eligible(condition, cx.infector, cx.contact, cx.state)::Bool
+    negated && return (cx.never, !met)
+    met || return (cx.never, false)
+    t = _single_time(cx.form, condition, cx.infector, cx.contact, cx.state)
+    return (isnan(t) ? cx.never : t, false)
 end
 
-function _met_time(form, e::AnyOf, infector, contact, state, negated)
-    reduce_met = negated ? _all_met : _any_met
-    return reduce_met(form, e.conditions, infector, contact, state, negated)
+function _met_time(cx::_TimingContext, e::AnyOf, negated::Bool)
+    negated ? _all_met(cx, e.conditions, true) : _any_met(cx, e.conditions, false)
 end
 
-function _met_time(form, e::AllOf, infector, contact, state, negated)
-    reduce_met = negated ? _any_met : _all_met
-    return reduce_met(form, e.conditions, infector, contact, state, negated)
+function _met_time(cx::_TimingContext, e::AllOf, negated::Bool)
+    negated ? _any_met(cx, e.conditions, true) : _all_met(cx, e.conditions, false)
 end
 
 # `NoneOf(a, b)` is `!a & !b`, and its negation is `a | b`.
-function _met_time(form, e::NoneOf, infector, contact, state, negated)
-    negated && return _any_met(form, e.conditions, infector, contact, state, false)
-    return _all_met(form, e.conditions, infector, contact, state, true)
+function _met_time(cx::_TimingContext, e::NoneOf, negated::Bool)
+    negated ? _any_met(cx, e.conditions, false) : _all_met(cx, e.conditions, true)
 end
+
+# The reductions below walk the conditions tuple one element at a time, so
+# each step is compiled for that condition's type and the times stay
+# unboxed.
 
 # Met through any condition: the earliest of their times, and untimed if
 # any condition is.
-function _any_met(form, conditions, infector, contact, state, negated)
-    t = _never(infector)
-    untimed = false
-    for condition in conditions
-        tc, uc = _met_time(form, condition, infector, contact, state, negated)
-        t = min(t, tc)
-        untimed |= uc
-    end
-    return (t, untimed)
+_any_met(cx, conditions, negated) = _any_met(cx, conditions, negated, cx.never, false)
+_any_met(cx, ::Tuple{}, negated, t, untimed) = (t, untimed)
+function _any_met(cx, conditions::Tuple, negated, t, untimed)
+    tc, uc = _met_time(cx, first(conditions), negated)
+    return _any_met(cx, Base.tail(conditions), negated, min(t, tc), untimed | uc)
 end
 
 # Met when every condition is. A condition that holds with no time of its
@@ -300,21 +308,17 @@ end
 # condition is timed, the whole holds with no time of its own and keeps
 # the earliest of their timed branches: `(a | !b) & !c` is met at `a`'s
 # time through `a & !c`.
-function _all_met(form, conditions, infector, contact, state, negated)
-    never = _never(infector)
-    latest = oftype(never, -Inf)
-    earliest = never
-    timed = false
-    for condition in conditions
-        tc, uc = _met_time(form, condition, infector, contact, state, negated)
-        if uc
-            earliest = min(earliest, tc)
-        else
-            timed = true
-            latest = max(latest, tc)
-        end
-    end
-    return timed ? (latest, false) : (earliest, true)
+function _all_met(cx, conditions, negated)
+    _all_met(cx, conditions, negated, oftype(cx.never, -Inf), cx.never, false)
+end
+function _all_met(cx, ::Tuple{}, negated, latest, earliest, timed)
+    timed ? (latest, false) : (earliest, true)
+end
+function _all_met(cx, conditions::Tuple, negated, latest, earliest, timed)
+    tc, uc = _met_time(cx, first(conditions), negated)
+    rest = Base.tail(conditions)
+    uc && return _all_met(cx, rest, negated, latest, min(earliest, tc), timed)
+    return _all_met(cx, rest, negated, max(latest, tc), earliest, true)
 end
 
 """
