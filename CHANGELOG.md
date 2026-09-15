@@ -18,9 +18,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   matrix. `reproduction_number(model)` returns R*, the dominant eigenvalue of the
   next-generation matrix (the offspring mean for a single-type model), and
   `extinction_probability(model)` returns the extinction probability for each
-  type of index case. The extinction probability solves the vector PGF of the
-  simulator's draw, a total count from the distribution family split
-  multinomially across types, and reduces to the single-type result for one type.
+  type of index case. The extinction probability is the fixed point of the vector
+  PGF of the simulator's draw (a total count from the distribution family, split
+  multinomially across types) and equals the single-type result when there is
+  one type.
 
 ### Changed
 

@@ -32,9 +32,9 @@ using DataFrames
 
     @testset "Offspring matrix draws match the equivalent offspring function" begin
         # The matrix constructor draws a total count per parent and splits it
-        # multinomially. Writing that rule out as an offspring function must give
-        # the same run under the same seed, so the stored representation leaves
-        # the random stream untouched.
+        # multinomially. The same rule written as an offspring function must give
+        # the same run under the same seed, which checks that storing the offspring
+        # as `MultiTypeOffspring` uses the random stream in the same way.
         M = [1.2 0.4 0.0;
              0.6 1.0 0.0;
              0.3 0.5 0.0]

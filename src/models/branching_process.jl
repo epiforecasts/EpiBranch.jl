@@ -120,8 +120,8 @@ function single_type_offspring(m::BranchingProcess)
     return _single_type(m.infectiousness[1].offspring)
 end
 
-# Multi-type offspring has no single-type law to hand back, so the analytical
-# helpers built on this accessor refuse it.
+# Multi-type offspring has no single-type law to return, so analytical helpers
+# that use this accessor throw an error for it.
 _single_type(off) = off
 function _single_type(::Function)
     throw(ArgumentError(

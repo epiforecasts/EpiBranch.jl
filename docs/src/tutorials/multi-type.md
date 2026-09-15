@@ -54,10 +54,9 @@ end
 
 The model stores the matrix and the distribution family, so the threshold and
 the extinction probability follow analytically. `reproduction_number` returns
-R\*, the dominant eigenvalue of the next-generation matrix: an outbreak can
-only take off if it exceeds 1. `extinction_probability` returns one value per
-type, the probability that an outbreak seeded by a single case of that type
-dies out.
+R\*, the dominant eigenvalue of the next-generation matrix. An outbreak can take
+off only if R\* exceeds 1. `extinction_probability` returns one value per type:
+the probability that an outbreak seeded by a single case of that type dies out.
 
 ```@example multitype
 println("R* = $(round(reproduction_number(model), digits = 2))")
@@ -69,9 +68,9 @@ end
 
 A parent draws its total offspring from the distribution family and splits it
 across types in proportion to its column of `M`, and the extinction
-probability accounts for that joint draw. Simulation agrees: each run starts
-from one case of a random type, so the simulated containment probability
-estimates the average over types.
+probability accounts for that joint draw. Each simulated run starts from one
+case of a random type, so the simulated containment probability estimates the
+average of the per-type values, and the two agree.
 
 ```@example multitype
 results = simulate(model, 1000; max_cases = 200, rng = StableRNG(1))

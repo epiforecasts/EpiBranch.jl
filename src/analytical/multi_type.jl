@@ -1,14 +1,14 @@
 # ── Multi-type analytics ─────────────────────────────────────────────
 #
-# Threshold and extinction results for the offspring matrix construction:
-# a type-j parent draws a total count from G_j = dist_fn(R_j) and splits it
+# Threshold and extinction results for a process built from an offspring
+# matrix. A type-j parent draws a total count from G_j = dist_fn(R_j) and splits it
 # multinomially with proportions a_ij = M[i, j] / R_j. Its vector PGF is
 # therefore f_j(s) = G_j(Σ_i a_ij s_i). This agrees with a product of
 # independent per-type PGFs only when G_j is Poisson.
 
 # Total-count law of a type-`j` parent. A sink type (zero column) has no
-# offspring; `Dirac(0)` stands in so `dist_fn`, which may reject R = 0, is
-# never called with it.
+# offspring. Its law is `Dirac(0)`, so `dist_fn`, which may reject R = 0, is
+# never called with R = 0.
 function _total_count_law(o::MultiTypeOffspring, j::Integer)
     R = o.R_by_type[j]
     return R > 0 ? o.dist_fn(R) : Dirac(0)
@@ -16,9 +16,10 @@ end
 
 _total_count_laws(o::MultiTypeOffspring) = [_total_count_law(o, j) for j in 1:_n_types(o)]
 
-# Mean matrix of the process, `[i, j]` the expected type-`i` offspring of a
-# type-`j` parent. Built from the laws' own means so that it describes what
-# the simulator draws even if `dist_fn` does not preserve the column sum.
+# Mean matrix of the process: entry `[i, j]` is the expected number of type-`i`
+# offspring of a type-`j` parent. The entries use the means of the total-count
+# laws, so the matrix matches what the simulator draws even if the mean of
+# `dist_fn(R_j)` differs from the column sum `R_j`.
 function _mean_matrix(o::MultiTypeOffspring, laws = _total_count_laws(o))
     means = [mean(law) for law in laws]
     T = float(promote_type(eltype(o.alloc_probs), map(typeof, means)...))
@@ -28,8 +29,8 @@ end
 # Spectral radius of a non-negative matrix.
 _spectral_radius(A::AbstractMatrix{<:LinearAlgebra.BlasReal}) = maximum(abs, eigvals(A))
 
-# Generic element types (e.g. dual numbers under ForwardDiff) have no `eigvals`.
-# Power iteration on `A + I` is used for them: the shift makes the dominant
+# Generic element types (e.g. dual numbers under ForwardDiff) have no `eigvals`,
+# so this method uses power iteration on `A + I`. The shift makes the dominant
 # eigenvalue of a non-negative matrix the unique one of largest modulus, and the
 # unit diagonal keeps every iterate strictly positive, so the growth of the
 # largest entry converges to it even when `A` is reducible.
@@ -49,8 +50,9 @@ function _spectral_radius(A::AbstractMatrix{<:Real}; tol::Real = 1e-12,
     return λ - 1
 end
 
-# Probability generating functions of total-count laws. Closed forms where
-# Distributions.jl has a named family; otherwise a truncated series.
+# Probability generating functions of total-count laws: closed forms for
+# Poisson, negative binomial and Dirac, and a truncated series for any other
+# discrete distribution.
 _pgf(d::Poisson, s) = exp(mean(d) * (s - 1))
 function _pgf(d::NegativeBinomial, s)
     r, p = params(d)
@@ -73,7 +75,8 @@ For a single-type model this is the mean of the offspring distribution. For a
 multi-type model built from an offspring matrix it is R*, the dominant
 eigenvalue (spectral radius) of the mean next-generation matrix, whose
 `[i, j]` entry is the expected number of type-`i` offspring from a type-`j`
-parent. An outbreak can grow with positive probability only if it exceeds 1.
+parent. An outbreak can grow with positive probability only if the
+reproduction number exceeds 1.
 
 # Examples
 
@@ -100,11 +103,12 @@ case dies out.
 It is the smallest fixed point in `[0, 1]` of the vector PGF,
 `q_j = G_j(Σ_i a_ij q_i)`, where `G_j` is the PGF of `dist_fn(R_j)` and
 `a_ij = M[i, j] / R_j` the proportions in which a type-`j` parent's offspring
-are split across types. Iterating from zero converges to it. When
-[`reproduction_number`](@ref) is at most 1 every entry is 1.
+are split across types. Fixed-point iteration from zero converges to it. When
+[`reproduction_number`](@ref) is at most 1, every entry is 1.
 
-Call it on the model, `extinction_probability(model)`, for a model built with
-`BranchingProcess(offspring_matrix, dist_fn, generation_time)`.
+To use it on a model built with
+`BranchingProcess(offspring_matrix, dist_fn, generation_time)`, call
+`extinction_probability(model)`.
 """
 function extinction_probability(o::MultiTypeOffspring; tol::Real = 1e-10,
         max_iter::Int = 1000)

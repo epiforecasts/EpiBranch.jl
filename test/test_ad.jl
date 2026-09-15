@@ -253,9 +253,9 @@ end
     @test isfinite(grad)
 end
 
-# Multi-type analytics stay generic in the number type: a dual dispersion enters
-# through `dist_fn`, and a dual scale on the offspring mean puts a dual matrix
-# through the spectral radius, which then takes the power-iteration path.
+# The multi-type analytics accept any number type. A dual dispersion enters
+# through `dist_fn`. A dual scale on the offspring mean gives a dual mean matrix,
+# so the spectral radius uses power iteration.
 @testset "AD through multi-type analytics" begin
     M = [1.5 0.6;
          0.5 0.9]

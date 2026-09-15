@@ -50,7 +50,8 @@ using LinearAlgebra: eigvals
         # Subcritical: certain extinction for every type.
         sub = BranchingProcess([0.5 0.2; 0.2 0.5], R -> NegBin(R, 0.5), Exponential(5.0))
         @test extinction_probability(sub) == [1.0, 1.0]
-        # A family without a closed-form PGF: Geometric is NegBin with k = 1.
+        # Geometric has no `_pgf` method of its own, so it uses the truncated
+        # series; it is NegBin with k = 1.
         geom = BranchingProcess([2.0;;], R -> Geometric(1 / (1 + R)), Exponential(5.0))
         @test only(extinction_probability(geom)) ≈ extinction_probability(2.0, 1.0) atol = 1e-8
     end
@@ -87,7 +88,7 @@ using LinearAlgebra: eigvals
         @test simulated_extinction(model, 3000; rng = StableRNG(2)) ≈ q atol = 0.05
     end
 
-    @testset "Single-type-only helpers refuse a multi-type model" begin
+    @testset "Single-type-only helpers throw for a multi-type model" begin
         model = BranchingProcess(M, R -> Poisson(R), Exponential(5.0))
         @test_throws ArgumentError single_type_offspring(model)
         @test_throws ArgumentError probability_contain(model)

@@ -9,10 +9,10 @@ offspring from a type-`j` parent. A type-`j` parent draws its total number of
 offspring from `dist_fn(R_j)`, where `R_j` is the sum of column `j`, and
 allocates them across types multinomially in proportion to that column.
 
-The [`BranchingProcess`](@ref) built by
+A [`BranchingProcess`](@ref) built with
 `BranchingProcess(offspring_matrix, dist_fn, generation_time)` stores one, so
 the offspring draw and the multi-type analytics
-([`reproduction_number`](@ref), [`extinction_probability`](@ref)) read the same
+([`reproduction_number`](@ref), [`extinction_probability`](@ref)) use the same
 matrix and distribution family.
 """
 struct MultiTypeOffspring{M <: AbstractMatrix{<:Real}, F, R <: AbstractVector{<:Real},
@@ -41,11 +41,12 @@ _n_types(o::MultiTypeOffspring) = size(o.offspring_matrix, 1)
 
 _offspring_label(o::MultiTypeOffspring) = "MultiTypeOffspring($(_n_types(o)) types)"
 
-# A single-window branching process hands its multi-type offspring to the
-# analytics that have a multi-type form; any other offspring goes through the
-# single-type accessor.
+# For a single-window branching process with multi-type offspring, the analytics
+# that have a multi-type form use that offspring directly. Any other offspring
+# goes through the single-type accessor.
 function _analytic_offspring(m::BranchingProcess)
-    # Several windows have no closed form; the single-type accessor says so.
+    # Several windows have no closed form; the single-type accessor throws the
+    # error for that case.
     length(m.infectiousness) == 1 || return single_type_offspring(m)
     return _analytic_offspring(m, m.infectiousness[1].offspring)
 end
@@ -62,8 +63,8 @@ end
     BranchingProcess(offspring_matrix, dist_fn, generation_time; kwargs...)
 
 Construct a multi-type branching process from an offspring matrix.
-`M[i,j]` is the expected number of type-i offspring from a type-j parent.
-`dist_fn` maps each type's R to an offspring distribution.
+`offspring_matrix[i, j]` is the expected number of type-`i` offspring from a
+type-`j` parent. `dist_fn` maps each type's R to an offspring distribution.
 """
 function BranchingProcess(offspring_matrix::Matrix{Float64},
         dist_fn::Function,
@@ -78,17 +79,17 @@ end
 """
     draw_offspring(rng, offspring::MultiTypeOffspring, individual, state)
 
-Draw a count per type for a parent under an offspring matrix: the total from
-`dist_fn(R_j)` for the parent's type `j`, split multinomially across types.
+Draw offspring counts per type for a parent of type `j` under an offspring
+matrix: a total from `dist_fn(R_j)`, split multinomially across types.
 """
 function draw_offspring(rng::AbstractRNG, offspring::MultiTypeOffspring,
         individual, state::SimulationState)
     n = _n_types(offspring)
     pt = individual_type(individual)
     R = offspring.R_by_type[pt]
-    # A sink type (all-zero offspring column) produces no offspring. Short-
-    # circuit before `dist_fn`, which the documented `R -> NegBin(R, k)` form
-    # rejects at R = 0 (`NegBin` requires R > 0).
+    # A sink type (all-zero offspring column) produces no offspring. Return
+    # before calling `dist_fn`: the documented `R -> NegBin(R, k)` form throws at
+    # R = 0 because `NegBin` requires R > 0.
     R <= 0 && return zeros(Int, n)
     total = rand(rng, offspring.dist_fn(R))
     total == 0 && return zeros(Int, n)
