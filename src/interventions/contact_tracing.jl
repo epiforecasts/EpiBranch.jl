@@ -205,16 +205,20 @@ and never lab-confirmed:
 - `!TraceNobody()` behaves as `TraceEveryone()` only at the top level:
   `S & !TraceNobody()` triggers at 4 and `S & TraceEveryone()` at 9.
 
-The four-argument form checks each wrapped condition against the contact.
-The three-argument form evaluates a combinator without a contact, passing
-`nothing` in its place. A combinator that wraps a policy reading the
-contact, in `is_eligible` or `trigger_time`, therefore cannot be
-evaluated through the three-argument form; use the four-argument form.
+The four-argument form checks each wrapped condition against the contact
+and times it with its four-argument method. The three-argument form times
+each wrapped condition with its three-argument method and checks it with
+`nothing` in place of the contact, so `trigger_time(p, infector, state)`,
+`trigger_time(!!p, infector, state)` and
+`trigger_time(AllOf(p), infector, state)` agree for any policy `p`. A
+combinator that wraps a policy whose `is_eligible` reads the contact
+therefore cannot be evaluated through the three-argument form; use the
+four-argument form.
 """
 trigger_time(::TraceEligibility, infector, state) = isolation_time(infector)
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
 function trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, state)
-    trigger_time(e, infector, nothing, state)
+    _combined_time(_WithoutContact(), e, infector, nothing, state)
 end
 
 function trigger_time(e::TraceEligibility, infector, contact, state)
@@ -222,9 +226,25 @@ function trigger_time(e::TraceEligibility, infector, contact, state)
 end
 
 function trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, contact, state)
-    t, untimed = _met_time(e, infector, contact, state, false)
+    _combined_time(_WithContact(), e, infector, contact, state)
+end
+
+# Which `trigger_time` method times the policies inside a combinator: the
+# form the combinator was called with, so that wrapping a policy does not
+# change which of its methods is used.
+struct _WithContact end
+struct _WithoutContact end
+function _single_time(::_WithContact, e, infector, contact, state)
+    trigger_time(e, infector, contact, state)
+end
+function _single_time(::_WithoutContact, e, infector, contact, state)
+    trigger_time(e, infector, state)
+end
+
+function _combined_time(form, e, infector, contact, state)
+    t, untimed = _met_time(form, e, infector, contact, state, false)
     untimed || return t
-    default = first(_met_time(TraceEveryone(), infector, contact, state, false))
+    default = first(_met_time(form, TraceEveryone(), infector, contact, state, false))
     return min(t, default)
 end
 
@@ -237,38 +257,38 @@ _never(infector) = oftype(isolation_time(infector), Inf)
 # holds with no time of its own, as a negation that holds does. A
 # condition that is not met gives `(Inf, false)`. Negations are pushed
 # inwards by De Morgan's laws, so equal policies get equal times.
-function _met_time(condition::TraceEligibility, infector, contact, state, negated)
+function _met_time(form, condition::TraceEligibility, infector, contact, state, negated)
     never = _never(infector)
     met = is_eligible(condition, infector, contact, state)
     negated && return (never, !met)
     met || return (never, false)
-    t = trigger_time(condition, infector, contact, state)
+    t = _single_time(form, condition, infector, contact, state)
     return (isnan(t) ? never : t, false)
 end
 
-function _met_time(e::AnyOf, infector, contact, state, negated)
+function _met_time(form, e::AnyOf, infector, contact, state, negated)
     reduce_met = negated ? _all_met : _any_met
-    return reduce_met(e.conditions, infector, contact, state, negated)
+    return reduce_met(form, e.conditions, infector, contact, state, negated)
 end
 
-function _met_time(e::AllOf, infector, contact, state, negated)
+function _met_time(form, e::AllOf, infector, contact, state, negated)
     reduce_met = negated ? _any_met : _all_met
-    return reduce_met(e.conditions, infector, contact, state, negated)
+    return reduce_met(form, e.conditions, infector, contact, state, negated)
 end
 
 # `NoneOf(a, b)` is `!a & !b`, and its negation is `a | b`.
-function _met_time(e::NoneOf, infector, contact, state, negated)
-    negated && return _any_met(e.conditions, infector, contact, state, false)
-    return _all_met(e.conditions, infector, contact, state, true)
+function _met_time(form, e::NoneOf, infector, contact, state, negated)
+    negated && return _any_met(form, e.conditions, infector, contact, state, false)
+    return _all_met(form, e.conditions, infector, contact, state, true)
 end
 
 # Met through any condition: the earliest of their times, and untimed if
 # any condition is.
-function _any_met(conditions, infector, contact, state, negated)
+function _any_met(form, conditions, infector, contact, state, negated)
     t = _never(infector)
     untimed = false
     for condition in conditions
-        tc, uc = _met_time(condition, infector, contact, state, negated)
+        tc, uc = _met_time(form, condition, infector, contact, state, negated)
         t = min(t, tc)
         untimed |= uc
     end
@@ -280,13 +300,13 @@ end
 # condition is timed, the whole holds with no time of its own and keeps
 # the earliest of their timed branches: `(a | !b) & !c` is met at `a`'s
 # time through `a & !c`.
-function _all_met(conditions, infector, contact, state, negated)
+function _all_met(form, conditions, infector, contact, state, negated)
     never = _never(infector)
     latest = oftype(never, -Inf)
     earliest = never
     timed = false
     for condition in conditions
-        tc, uc = _met_time(condition, infector, contact, state, negated)
+        tc, uc = _met_time(form, condition, infector, contact, state, negated)
         if uc
             earliest = min(earliest, tc)
         else

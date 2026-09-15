@@ -18,8 +18,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   trigger time for the contact being traced, and `ContactTracing` calls it. A
   custom policy can define it to time the trace from the contact, and combinators
   check wrapped policies that read the contact against it. The
-  three-argument form evaluates combinators without a contact, so it cannot
-  evaluate a combinator that wraps such a policy.
+  three-argument form times the policies inside a combinator with their
+  three-argument methods and checks them without a contact, so it cannot
+  evaluate a combinator wrapping a policy whose `is_eligible` reads the contact.
 
 ### Changed
 

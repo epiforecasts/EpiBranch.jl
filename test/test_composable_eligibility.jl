@@ -19,6 +19,12 @@ function EpiBranch.trigger_time(::AfterContactInfected, infector, contact, state
     contact.infection_time + 0.5
 end
 
+# Custom eligibility timed at 7 by the three-argument form and 8 by the
+# four-argument form.
+struct TimedByForm <: EpiBranch.TraceEligibility end
+EpiBranch.trigger_time(::TimedByForm, infector, state) = 7.0
+EpiBranch.trigger_time(::TimedByForm, infector, contact, state) = 8.0
+
 # Custom trace action that records the trace time it receives.
 struct RecordTraceTime <: EpiBranch.TraceAction end
 function EpiBranch.apply_trace!(::RecordTraceTime, contact, state, trace_time, rng)
@@ -200,6 +206,23 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         # Without a contact the atomic policies still time a combinator.
         @test EpiBranch.trigger_time(SymptomaticOver65() | OnSymptomOnset(), young, nothing) ==
               4.0
+
+        # Each form times a wrapped policy with its own method, so wrapping a
+        # policy does not change its time. `AfterContactInfected` defines only
+        # the four-argument method, so the three-argument form times it from
+        # the infector's isolation at 2.
+        contact = Individual(id = 2, parent_id = 1, infection_time = 3.0)
+        for (policy, three, four) in ((AfterContactInfected(), 2.0, 3.5),
+            (TimedByForm(), 7.0, 8.0))
+            for wrapped in (policy, !!policy, AllOf(policy), AnyOf(policy))
+                @test EpiBranch.trigger_time(wrapped, young, nothing) == three
+                @test EpiBranch.trigger_time(wrapped, young, contact, nothing) == four
+            end
+        end
+        @test EpiBranch.trigger_time(AfterContactInfected() | OnSymptomOnset(), young,
+            nothing) == 2.0
+        @test EpiBranch.trigger_time(TimedByForm() & OnSymptomOnset(), young, contact,
+            nothing) == 8.0
     end
 
     @testset "Contact tracing times the trace with the contact" begin
