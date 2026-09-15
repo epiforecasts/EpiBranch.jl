@@ -112,6 +112,7 @@ Risk
 EpiBranch.HostSusceptibility
 EpiBranch.InfectorInfectiousness
 EpiBranch.InfectiousSource
+EpiBranch.AbortedInfection
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
