@@ -41,6 +41,15 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   infectious window — through recovery or isolation — now genuinely curtails
   onward spread.
 
+### Fixed
+
+- `RingVaccination` now gives each dose at the trace, using the `:trace_time`
+  that `ContactTracing` records for every traced contact. It used to read the
+  contact's isolation state, so under `quarantine_on_trace = false` doses came
+  at symptom onset and traced contacts who were asymptomatic got no dose. With
+  `:trace_time` recorded at every tracing depth, `linelist` now has a
+  `date_trace` column at the default `depth = 1` as well.
+
 ## [0.1.0] - 2026-06-16
 
 Initial release. EpiBranch brings together the branching-process cores of
