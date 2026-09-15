@@ -44,8 +44,12 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   asymptomatic, lab-confirmed case from its isolation. Previously it gave a
   `NaN` trace time, and quarantining the case's contacts had no effect. An
   `AnyOf` with no condition met, or an `AllOf` with any condition unmet, triggers
-  at `Inf` (never). A `NoneOf` triggers from infection, so
-  `OnSymptomOnset() & !OnIsolation()` traces from onset.
+  at `Inf` (never). A negation that holds has no trigger time of its own.
+  Inside an `AllOf` the other conditions set the time, so
+  `OnSymptomOnset() & !OnIsolation()` traces from onset. On its own, inside an
+  `AnyOf`, or in an `AllOf` of negations only, it takes the default trigger
+  time, the infector's isolation, so `!TraceNobody()` behaves as
+  `TraceEveryone()`.
 
 ## [0.1.0] - 2026-06-16
 

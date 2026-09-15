@@ -155,10 +155,13 @@ decided by [`is_eligible`](@ref EpiBranch.is_eligible):
   conditions, and `Inf` (never) if none is met.
 - [`AllOf`](@ref) takes the latest trigger time, the moment its last
   condition is met, and `Inf` if any condition is not met.
-- [`NoneOf`](@ref) has no event of its own. A negation holds from the
-  outset, so it triggers at the infector's infection time when none of
-  its conditions is met, and `Inf` otherwise. Inside an `AllOf` the
-  other conditions therefore set the time.
+- [`NoneOf`](@ref) holds from the outset, so a negation has no trigger
+  time of its own. Inside an `AllOf` the other conditions set the time:
+  `OnSymptomOnset() & !OnIsolation()` traces from onset. On its own or
+  inside an `AnyOf`, a negation that holds takes the default trigger time,
+  as [`TraceEveryone`](@ref) does, so `!TraceNobody()` behaves as
+  `TraceEveryone()`. An `AllOf` made only of negations also takes the
+  default. A negation that does not hold gives `Inf`.
 
 A `NaN` trigger time from a wrapped condition counts as never met. Contact
 tracing checks each condition against the contact being traced. This
@@ -178,36 +181,46 @@ function _trigger_time(e::TraceEligibility, infector, contact, state)
     trigger_time(e, infector, state)
 end
 
-function _trigger_time(e::AnyOf, infector, contact, state)
-    t = _never(infector)
-    for condition in e.conditions
-        is_eligible(condition, infector, contact, state) || continue
-        t = min(t, _met_time(condition, infector, contact, state))
-    end
-    return t
-end
-
-function _trigger_time(e::AllOf, infector, contact, state)
-    # With no conditions an `AllOf` holds from the outset, like a negation.
-    isempty(e.conditions) && return infector.infection_time
-    t = -_never(infector)
-    for condition in e.conditions
-        is_eligible(condition, infector, contact, state) || return _never(infector)
-        t = max(t, _met_time(condition, infector, contact, state))
-    end
-    return t
-end
-
-function _trigger_time(e::NoneOf, infector, contact, state)
-    is_eligible(e, infector, contact, state) ? infector.infection_time : _never(infector)
+function _trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, contact, state)
+    is_eligible(e, infector, contact, state) || return _never(infector)
+    return _timed(_met_time(e, infector, contact, state), infector, contact, state)
 end
 
 # `Inf` in the infector's time type, so AD dual numbers pass through.
 _never(infector) = oftype(isolation_time(infector), Inf)
 
-function _met_time(condition, infector, contact, state)
-    t = _trigger_time(condition, infector, contact, state)
+# The time a condition known to be met was met. `nothing` means it holds
+# from the outset without an event of its own, as a negation does.
+function _met_time(condition::TraceEligibility, infector, contact, state)
+    t = trigger_time(condition, infector, state)
     return isnan(t) ? _never(infector) : t
+end
+
+_met_time(::NoneOf, infector, contact, state) = nothing
+
+function _met_time(e::AllOf, infector, contact, state)
+    t = nothing
+    for condition in e.conditions
+        tc = _met_time(condition, infector, contact, state)
+        tc === nothing && continue
+        t = t === nothing ? tc : max(t, tc)
+    end
+    return t
+end
+
+function _met_time(e::AnyOf, infector, contact, state)
+    t = _never(infector)
+    for condition in e.conditions
+        is_eligible(condition, infector, contact, state) || continue
+        tc = _met_time(condition, infector, contact, state)
+        t = min(t, _timed(tc, infector, contact, state))
+    end
+    return t
+end
+
+# A met condition with no time of its own is timed like `TraceEveryone`.
+function _timed(t, infector, contact, state)
+    t === nothing ? _met_time(TraceEveryone(), infector, contact, state) : t
 end
 
 """

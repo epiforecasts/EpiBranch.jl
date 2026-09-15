@@ -13,6 +13,13 @@ function EpiBranch.is_eligible(::ContactOver65, infector, contact, state)
     get(contact.state, :age, 0) >= 65
 end
 
+# Custom trace action that records the trace time it receives.
+struct RecordTraceTime <: EpiBranch.TraceAction end
+function EpiBranch.apply_trace!(::RecordTraceTime, contact, state, trace_time, rng)
+    contact.state[:recorded_trace_time] = trace_time
+    return nothing
+end
+
 # Build an infector Individual carrying the given state keys.
 infector_with(; kwargs...) = Individual(id = 1, state = Dict{Symbol, Any}(kwargs...))
 
@@ -128,18 +135,35 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
             test_positive = false, isolated = false)
         @test tt(OnSymptomOnset() | OnLabConfirmation(), unconfirmed_asymptomatic) == Inf
 
-        # A negation holds from infection, so inside AllOf the other
-        # conditions set the time. Once its condition is met it never triggers.
+        # A negation that holds has no time of its own. Inside AllOf the other
+        # conditions set the time. On its own it takes the default isolation
+        # time, never isolated here, so it never triggers, the same as
+        # TraceEveryone. Once its condition is met it never triggers either.
         unisolated = Individual(id = 1, infection_time = 1.0,
             state = Dict{Symbol, Any}(:asymptomatic => false, :onset_time => 4.0,
                 :isolated => false))
-        @test tt(!OnIsolation(), unisolated) == 1.0
+        @test tt(!OnIsolation(), unisolated) == tt(TraceEveryone(), unisolated) == Inf
         @test tt(OnSymptomOnset() & !OnIsolation(), unisolated) == 4.0
         @test tt(!OnSymptomOnset(), unisolated) == Inf
         @test tt(OnSymptomOnset() & !OnIsolation(),
             infector_with(
                 asymptomatic = false, onset_time = 4.0, isolated = true, isolation_time = 9.0)) ==
               Inf
+
+        # With an isolation time, a holding negation on its own or inside AnyOf
+        # triggers there, as TraceEveryone does.
+        @test tt(!TraceNobody(), quarantined_negative) == 2.0
+        @test tt(!OnLabConfirmation(), quarantined_negative) == 2.0
+        @test tt(OnSymptomOnset() | !OnLabConfirmation(), quarantined_negative) ==
+              tt(OnSymptomOnset() | TraceEveryone(), quarantined_negative) == 2.0
+        @test tt(OnSymptomOnset() & !OnLabConfirmation(), quarantined_negative) == 4.0
+        # An AllOf of negations only, or of nothing, also takes the default.
+        @test tt(!OnLabConfirmation() & !TraceNobody(), quarantined_negative) == 2.0
+        @test tt(AllOf(), quarantined_negative) == 2.0
+        @test tt(!OnSymptomOnset() & !TraceNobody(), quarantined_negative) == Inf
+        # An asymptomatic case that is never isolated or confirmed is never traced
+        # through the negation branch.
+        @test tt(OnLabConfirmation() | !OnSymptomOnset(), unconfirmed_asymptomatic) == Inf
 
         # A custom policy is timed at its trigger time (isolation by default)
         # when its `is_eligible` method says it is met, and skipped otherwise.
@@ -183,6 +207,38 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         via_asymptomatic = filter(
             ind -> is_asymptomatic(state.individuals[ind.parent_id]), traced)
         @test count(ind -> isfinite(isolation_time(ind)), via_asymptomatic) > 0
+    end
+
+    @testset "A negation on its own traces from the default time" begin
+        clinical = clinical_presentation(
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.3)
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.5)
+        function simulate_with(eligibility, action = Quarantine())
+            ct = ContactTracing(eligibility, ConstantRate(1.0),
+                ConstantDelay(Exponential(1.0)), action)
+            simulate(
+                ModelSpec(BranchingProcess(Poisson(2.5), Exponential(5.0));
+                    interventions = [iso, ct], attributes = clinical);
+                n_initial = 5, max_cases = 300, rng = StableRNG(7))
+        end
+
+        everyone = simulate_with(TraceEveryone())
+        negated = simulate_with(!TraceNobody())
+        @test count(is_traced, negated.individuals) > 0
+        @test negated.cumulative_cases == everyone.cumulative_cases
+        @test isequal(isolation_time.(negated.individuals),
+            isolation_time.(everyone.individuals))
+
+        # Under `!OnIsolation()` only infectors not yet isolated are eligible,
+        # and their contacts are traced no earlier than the infector's isolation.
+        recorded = simulate_with(!OnIsolation(), RecordTraceTime())
+        traced = filter(ind -> haskey(ind.state, :recorded_trace_time),
+            recorded.individuals)
+        @test !isempty(traced)
+        @test all(traced) do ind
+            infector = recorded.individuals[ind.parent_id]
+            ind.state[:recorded_trace_time] >= isolation_time(infector)
+        end
     end
 
     @testset "Integration with ContactTracing constructors" begin
