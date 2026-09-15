@@ -444,6 +444,43 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
             [true, false])
     end
 
+    @testset "compiled pair layout: community cases at time 0" begin
+        # 1 and 3 are community cases at 0 in households {1, 2} and {3}; both
+        # forms count them, adding log α each
+        data = HouseholdInfections([1, 1, 2], [0.0, NaN, 0.0], [0.0, NaN, 0.0],
+            [3.0, Inf, 3.0], [true, false, true]; obs_end = 5.0)
+        layout = compile_household_pairs(data; external = true)
+        k = Exponential(2.0)
+        expected = 2 * log(0.1) - 0.1 * 5 - 3 / 2
+        @test pairwise_surv_loglik(k, data; external_hazard = 0.1) ≈ expected
+        @test pairwise_surv_loglik(k, data, layout; external_hazard = 0.1) ≈ expected
+        # a community hazard that is zero at 0 cannot have introduced them
+        zero_at_0 = Gamma(2.0, 5.0)
+        @test pairwise_surv_loglik(k, data; external_hazard = zero_at_0) == -Inf
+        @test pairwise_surv_loglik(k, data, layout; external_hazard = zero_at_0) == -Inf
+
+        # an infection where every possible infector has zero hazard
+        zero_hazard = HouseholdInfections([1, 1, 1], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0],
+            [5.0, 5.0, 6.0], [true, true, false])
+        kz = Uniform(2.0, 10.0)
+        @test pairwise_surv_loglik(kz, zero_hazard) == -Inf
+        @test pairwise_surv_loglik(kz, zero_hazard, compile_household_pairs(zero_hazard)) ==
+              -Inf
+
+        # index cases simulated at 0 without a community hazard, scored with one
+        m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
+            progression = _sir(5.0))
+        sim = household_infections(simulate(m; rng = StableRNG(1)), m)
+        d = HouseholdInfections(sim.household_of, sim.infection_time,
+            sim.infectious_time, sim.removal_time, sim.is_index; obs_end = 20.0)
+        @test count(==(0.0), filter(!isnan, d.infection_time)) == 300
+        ld = compile_household_pairs(d; external = true)
+        for α in (0.001, 0.01, 0.1, 1.0)
+            @test pairwise_surv_loglik(Exponential(3.0), d, ld; external_hazard = α) ≈
+                  pairwise_surv_loglik(Exponential(3.0), d; external_hazard = α)
+        end
+    end
+
     @testset "compiled pair layout: inference workflow (compile once, reuse)" begin
         # the documented workflow: the household structure is fixed, so the layout
         # is compiled once and reused across every gradient evaluation of the fit.

@@ -62,6 +62,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   when the model's interventions remove it from transmission, such as by
   isolation or quarantine after tracing, as the simulation does. Fitting an
   outbreak simulated under isolation then recovers the kernel.
+- The pairwise survival likelihood evaluated on a compiled layout counts a
+  community infection at time 0, as the form without a layout does, so an index
+  case at time 0 contributes the community hazard at 0. When every hazard at an
+  infection time is zero, both forms return `-Inf`.
 
 ## [0.1.0] - 2026-06-16
 

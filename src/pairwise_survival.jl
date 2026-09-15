@@ -54,7 +54,13 @@ Base.length(d::PairwiseSurvivalData) = length(d.sus)
 _rowkernel(k::ContinuousUnivariateDistribution, r) = k
 _rowkernel(k, r) = k(r)
 
-_logsumexp(xs) = (m = maximum(xs); m + log(sum(x -> exp(x - m), xs)))
+# With every term -Inf (every hazard zero) the sum is zero and its log -Inf;
+# returning early avoids the NaN of -Inf - (-Inf).
+function _logsumexp(xs)
+    m = maximum(xs)
+    m == -Inf && return m
+    return m + log(sum(x -> exp(x - m), xs))
+end
 
 """
     pairwise_surv_loglik(kernel, data::PairwiseSurvivalData) -> Float64
@@ -355,7 +361,9 @@ end
 _pair_kernel(k, layout, r) = k(layout.infector[r], layout.sus[r])
 
 # Streaming logsumexp, so the per-susceptible reduction allocates no
-# intermediate vector for reverse-mode AD to track.
+# intermediate vector for reverse-mode AD to track. A -Inf term (a zero hazard)
+# adds nothing to the sum and is skipped, so an accumulator that saw only zero
+# hazards gives -Inf without taking -Inf - (-Inf).
 mutable struct _LogSumExpAcc{T}
     m::T
     s::T
@@ -363,6 +371,7 @@ mutable struct _LogSumExpAcc{T}
 end
 _LogSumExpAcc{T}() where {T} = _LogSumExpAcc{T}(T(-Inf), zero(T), 0)
 function _push!(acc::_LogSumExpAcc{T}, x) where {T}
+    x == -Inf && return acc
     if acc.nseen == 0
         acc.m = T(x)
         acc.s = one(T)
@@ -498,9 +507,10 @@ function _pairwise_surv_loglik(kernel, extdist, data, layout, external,
             infected_j = !isnan(tj)
             infected_j || continue
             if is_ext[r]
-                # a host infected after `obs_end` was infected along a contact
+                # a host infected after `obs_end` was infected along a contact;
+                # one infected at 0 is a community case like any other
                 stop = tj
-                (stop > 0 && stop <= data.obs_end) || continue
+                (stop >= 0 && stop <= data.obs_end) || continue
                 _push!(acc, loghazard(extdist, stop))
                 had_event = true
             else

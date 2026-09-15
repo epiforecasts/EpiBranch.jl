@@ -194,6 +194,30 @@ end
         end
     end
 
+    @testset "a community case at time 0 is counted" begin
+        # households {1, 2} and {3}: 1 and 3 are community cases at 0, 1 is
+        # infectious over [0, 3] and 2 is never infected
+        data = _TestInfections([1, 1, 2], [0.0, NaN, 0.0], [0.0, NaN, 0.0],
+            [3.0, Inf, 3.0], [true, false, true]; obs_end = 5.0)
+        L = compile_contact_pairs(data; external = true)
+        k = Exponential(2.0)
+        α = 0.1
+        # each case at 0 adds log α; 2 escapes α·5 from the community and 3/2 from 1
+        @test pairwise_surv_loglik(k, data, L; external_hazard = α) ≈
+              2 * log(α) - 5α - 3 / 2
+        # a community hazard that is zero at 0 cannot have introduced them
+        @test pairwise_surv_loglik(k, data, L; external_hazard = Gamma(2.0, 5.0)) ==
+              -Inf
+    end
+
+    @testset "an infection where every hazard is zero has zero density" begin
+        # 1 and 2 are indexes at 0 and 3 is infected at 1, but the kernel has no
+        # hazard before 2, so neither of its possible infectors can explain it
+        data = _TestInfections([1, 1, 1], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0],
+            [5.0, 5.0, 6.0], [true, true, false])
+        @test pairwise_surv_loglik(Uniform(2.0, 10.0), data) == -Inf
+    end
+
     @testset "differentiable in the kernel parameters" begin
         _, adjacency = _cliques([3, 4, 2, 4])
         inf = [0.0, 1.2, NaN, 0.0, 2.1, 3.5, NaN, 0.0, NaN, 0.0, 0.7, NaN, 4.2]
