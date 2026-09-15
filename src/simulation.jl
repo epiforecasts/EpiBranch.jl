@@ -1074,13 +1074,15 @@ end
 
 Set `:onset_time` to `infection_time + :incubation_period` from the
 stored host incubation period. Asymptomatic individuals (`NaN`
-incubation) get a `NaN` onset. Applies when `:incubation_period` is
+incubation) get a `NaN` onset, and so does an infection aborted before
+onset, which never reaches it. Applies when `:incubation_period` is
 present on the individual.
 """
 function _set_onset_from_incubation!(ind::Individual)
     haskey(ind.state, :incubation_period) || return nothing
     inc = ind.state[:incubation_period]
-    ind.state[:onset_time] = isnan(inc) ? NaN : ind.infection_time + inc
+    ind.state[:onset_time] = isnan(inc) || _infection_aborted(ind) ? NaN :
+                             ind.infection_time + inc
     return nothing
 end
 

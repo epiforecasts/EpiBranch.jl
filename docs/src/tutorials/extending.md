@@ -76,6 +76,7 @@ downstream packages should pick names that do not collide.
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
 | `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
@@ -94,6 +95,13 @@ writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy`,
 and any other label suffixes the key (so `dose_label = :boost` writes
 `:vaccinated_boost`, etc.). This lets multi-dose schedules compose without
 colliding.
+
+`:infection_aborted_time` marks an infection that a post-exposure dose ended
+before symptom onset. The individual is still infected, transmits nothing from
+that time, and has no onset: `:onset_time` is `NaN` while `:asymptomatic` stays
+`false`, so isolation, tracing and clinical transitions triggered by onset never
+fire. Like the dose, it is recorded before infection is resolved, so it can also
+sit on a contact that was never infected, where it has no effect.
 
 `:reported` is shared between the `Reporting` clinical transition (which
 sets it from a probability gate) and `PerCaseObservation` (which sets it
@@ -222,7 +230,7 @@ Ordering guarantees:
 - `keep_active` runs after infection is resolved, so it can read each target's `:infected` and anything `apply_post_transmission!` wrote on it this generation.
 - Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
 
-A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms — `RingVaccination` returns both a susceptibility risk on the contact and an onward-infectiousness risk on the parent.
+A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms — `RingVaccination` returns a susceptibility risk on the contact alongside risks on the parent for an infection it aborted and for reduced onward infectiousness.
 
 Tree-shaping changes — capping offspring per parent, gathering-size limits, anything that's really "this parent produces fewer contacts than its natural offspring distribution would say" — belong in the offspring distribution itself, not in the intervention protocol. See [Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution) below.
 

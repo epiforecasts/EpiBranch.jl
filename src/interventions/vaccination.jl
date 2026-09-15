@@ -177,23 +177,28 @@ contact's own transmission time is then decided by competing risks).
     at the default `Inf` unless the protocol really does have a deadline
     on the second dose itself.
 
-`post_exposure_efficacy` is the probability that a dose given to an
-already-exposed contact aborts that infection, which it can do so long
-as immunity arrives before the infection declares itself (vaccination +
-`delay_to_immunity` before the contact's symptom onset). This is the
-mechanism post-exposure ring vaccination works through, and on a
-branching process it is normally the parameter you want: a traced
-contact was exposed at the moment they entered the simulation, so
-`efficacy` — which asks for immunity *before* the exposure — has
-nothing to gate. Defaults to `0.0`. A contact with no onset to race
-(asymptomatic, `NaN` incubation period) is protected only if immunity
-was in place before their exposure. Requires `:incubation_period`, set
-by [`clinical_presentation`](@ref).
+`post_exposure_efficacy` is the probability that a dose aborts an
+infection the contact already has, which it can do when immunity
+(vaccination + `delay_to_immunity`) arrives after the exposure but
+before the contact's symptom onset. An aborted infection runs until
+immunity arrives: the contact transmits as usual before then and not at
+all afterwards, and never develops disease, so it has no onset, no
+isolation or tracing triggered by onset, and no clinical outcome. It is
+still a case, counted in [`chain_statistics`](@ref) and listed by
+[`linelist`](@ref) with no onset date and a `date_infection_aborted`
+column (from `:infection_aborted_time`). Where immunity is already in
+place at the exposure, the dose instead blocks the infection with the
+same probability, which is all it can do for a contact with no onset to
+race (asymptomatic, `NaN` incubation period). This is the mechanism
+post-exposure ring vaccination works through, and on a branching process
+it is normally the parameter you want: a traced contact was exposed at
+the moment they entered the simulation, so `efficacy` — which asks for
+immunity *before* the exposure — has nothing to gate. Defaults to `0.0`.
+Requires `:incubation_period`, set by [`clinical_presentation`](@ref).
 
-Immunity before onset is a weaker condition than immunity before
-exposure, so `post_exposure_efficacy` already covers every contact
-`efficacy` would have protected. Set one or the other: setting both
-composes them as independent risks, which double-counts.
+`post_exposure_efficacy` already blocks every exposure that `efficacy`
+would. Set one or the other: setting both composes the two blocks
+independently, which double-counts.
 
 `onward_efficacy` is the per-exposure probability that a *vaccinated
 parent's* onward transmission is blocked once the parent's
@@ -298,39 +303,71 @@ function _onward_risk(rv::RingVaccination, parent)
         block_probability = rv.onward_efficacy)
 end
 
-# Post-exposure risk: a dose given after the contact was exposed can still
-# abort that infection, so long as immunity arrives before the infection
-# declares itself. The engine asks whether a risk's `event_time` falls at or
-# before the transmission time, so shifting the immunity time back by the
-# contact's incubation period turns that test into
+# Contact-side risk. `efficacy` blocks an exposure that comes after immunity,
+# and so does `post_exposure_efficacy`: a dose whose immunity is already in
+# place when the contact is exposed prevents the infection outright, the limit
+# of aborting it the moment it starts. This is also all a dose can do for a
+# contact with no onset to race (asymptomatic). Both act at the same immunity
+# time, so they are composed into one block, drawn once.
+function _contact_risk(rv::RingVaccination, contact)
+    susceptibility = _susceptibility_risk(rv, contact)
+    post = rv.post_exposure_efficacy
+    post > 0.0 || return susceptibility
+    if susceptibility === nothing
+        label = dose_label(rv)
+        get(contact.state, _vaccinated_key(label), false) || return nothing
+        vacc_t = get(contact.state, _vaccination_time_key(label), Inf)
+        isfinite(vacc_t) || return nothing
+        return Risk(event_time = vacc_t + delay_to_immunity(rv), block_probability = post)
+    end
+    return Risk(event_time = susceptibility.event_time,
+        block_probability = 1 - (1 - susceptibility.block_probability) * (1 - post))
+end
+
+# A dose given after the exposure can still abort the infection, so long as
+# immunity arrives before symptom onset. The contact then stays infected up to
+# its immunity time and transmits as usual until then; after it, it transmits
+# nothing (`_aborted_infection_risk`) and never develops disease, since its
+# onset, and everything timed from onset, is never reached.
 #
-#     vaccination + delay_to_immunity <= exposure + incubation
-#
-# which is immunity arriving before symptom onset.
-#
-# A contact with no onset to race (asymptomatic, `NaN` incubation) falls back
-# to the stricter pre-exposure condition rather than dropping out. Dropping out
-# would leave asymptomatic contacts reachable only by `efficacy`, so the two
-# fields would be complementary and a user would have to set both — and then
-# double-count on every symptomatic contact protected before exposure.
-function _post_exposure_risk(rv::RingVaccination, contact)
+# The draw is made when the dose is recorded, because a contact's onset and
+# clinical course are resolved together with its infection, leaving no later
+# point to make it. Like the dose, it is therefore also recorded on contacts
+# that turn out not to be infected, where it has no effect. It is made only when
+# immunity falls between the exposure and onset, so a dose that cannot abort
+# anything leaves the random stream untouched. The exposure is the contact's
+# infection time, its earliest exposure when several infectors reach it.
+function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     rv.post_exposure_efficacy > 0.0 || return nothing
-    label = dose_label(rv)
-    get(contact.state, _vaccinated_key(label), false) || return nothing
-    vacc_t = get(contact.state, _vaccination_time_key(label), Inf)
-    isfinite(vacc_t) || return nothing
-    immunity = vacc_t + delay_to_immunity(rv)
     incubation = get(contact.state, :incubation_period, NaN)
-    event_time = isnan(incubation) ? immunity : immunity - incubation
-    return Risk(event_time = event_time,
-        block_probability = rv.post_exposure_efficacy)
+    isnan(incubation) && return nothing
+    immunity = vacc_t + delay_to_immunity(rv)
+    exposure = contact.infection_time
+    exposure < immunity < exposure + incubation || return nothing
+    _covers(rv.post_exposure_efficacy, contact, rng) || return nothing
+    # An earlier dose may already have aborted it; the infection ends at the
+    # first abort.
+    contact.state[:infection_aborted_time] = min(
+        get(contact.state, :infection_aborted_time, Inf), immunity)
+    _set_onset_from_incubation!(contact)
+    return nothing
+end
+
+# Parent-side risk: an aborted infection transmits nothing from the time it
+# was aborted, the way isolation stops a parent's transmission from its
+# isolation time.
+function _aborted_infection_risk(rv::RingVaccination, parent)
+    rv.post_exposure_efficacy > 0.0 || return nothing
+    aborted_t = get(parent.state, :infection_aborted_time, nothing)
+    aborted_t === nothing && return nothing
+    return Risk(event_time = aborted_t, block_probability = 1.0)
 end
 
 # Ring vaccination gates a transmission through three mechanisms: protection
-# of the contact before exposure, protection of the contact after exposure but
-# before their infection declares itself, and reduced onward transmission from
-# a vaccinated parent. Returning a tuple of risks is supported by the engine's
-# `_iter_risks` helper, which applies each independently.
+# of the contact against the exposure, the end of an infection the parent had
+# aborted, and reduced onward transmission from a vaccinated parent. Returning
+# a tuple of risks is supported by the engine's `_iter_risks` helper, which
+# applies each independently.
 #
 # The branches are written out rather than compacted generically. Each risk is
 # a `Union{Nothing, Risk}`, so a generic compaction infers as
@@ -340,20 +377,20 @@ end
 # because this sits on the per-contact hot path of every simulation carrying a
 # vaccination.
 function competing_risk(rv::RingVaccination, parent, contact, state)
-    susceptibility = _susceptibility_risk(rv, contact)
-    post_exposure = _post_exposure_risk(rv, contact)
+    exposure = _contact_risk(rv, contact)
+    aborted = _aborted_infection_risk(rv, parent)
     onward = _onward_risk(rv, parent)
-    if susceptibility === nothing
-        post_exposure === nothing && return onward
-        onward === nothing && return post_exposure
-        return (post_exposure, onward)
-    elseif post_exposure === nothing
-        onward === nothing && return susceptibility
-        return (susceptibility, onward)
+    if exposure === nothing
+        aborted === nothing && return onward
+        onward === nothing && return aborted
+        return (aborted, onward)
+    elseif aborted === nothing
+        onward === nothing && return exposure
+        return (exposure, onward)
     elseif onward === nothing
-        return (susceptibility, post_exposure)
+        return (exposure, aborted)
     end
-    return (susceptibility, post_exposure, onward)
+    return (exposure, aborted, onward)
 end
 
 # Scalar defaults short-circuit without drawing from the rng so that
@@ -471,6 +508,7 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
             continue
         _covers(rv.coverage, ind, state.rng) || continue
         _record_vaccination!(rv, ind, vacc_t, state.rng)
+        _abort_infection!(rv, ind, vacc_t, state.rng)
     end
     return nothing
 end
