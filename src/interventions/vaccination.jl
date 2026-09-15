@@ -101,13 +101,14 @@ end
 iff this dose has been administered to the contact and the contact's
 vaccine-induced immunity has developed by their transmission time.
 
-Note that a dose has to *precede* the exposure it blocks. On a branching
-process each individual enters the simulation at their own exposure, so
-this fires only where a trace can outrun an exposure: a wider ring
-reaching past infected members who never become eligible to seed a ring
-of their own, or an isolation leaky enough that an infector keeps
-transmitting after the ring has gone out. For the ordinary case of a
-dose given to a contact already exposed, see `post_exposure_efficacy` on
+Note that a dose has to *precede* the exposure it blocks. Under default
+tracing a contact is traced once its infector has been isolated, and that
+isolation already blocks every later exposure, so for a ring dose this
+fires only where a contact can still be infected after its trace: under
+leaky isolation, when tracing starts at the infector's symptom onset,
+or in a `depth > 1` ring passing through members who keep transmitting
+after they are traced. For a dose acting on an infection the contact
+already has, see `post_exposure_efficacy` and `onward_efficacy` on
 [`RingVaccination`](@ref)."""
 function _susceptibility_risk(v::AbstractVaccination, contact)
     label = dose_label(v)
@@ -147,9 +148,11 @@ Vaccinate traced contacts. Applied to contacts that have been traced
 
 For post-exposure prophylaxis (PEP, cf.
 [pepbp](https://github.com/sophiemeakin/pepbp)), set
-`delay_to_immunity = 0.0` (the default). For ring vaccination with a
-vaccine that takes time to confer protection, set `delay_to_immunity`
-to the appropriate delay.
+`delay_to_immunity = 0.0` (the default); what it does to an infection the
+contact already has is set by `post_exposure_efficacy` and
+`onward_efficacy` below. For ring vaccination with a vaccine that takes
+time to confer protection, set `delay_to_immunity` to the appropriate
+delay.
 
 `coverage` is the per-contact probability that a traced contact
 actually receives the vaccine, capturing programme reach (consent
@@ -189,12 +192,10 @@ still a case, counted in [`chain_statistics`](@ref) and listed by
 column (from `:infection_aborted_time`). Where immunity is already in
 place at the exposure, the dose instead blocks the infection with the
 same probability, which is all it can do for a contact with no onset to
-race (asymptomatic, `NaN` incubation period). This is the mechanism
-post-exposure ring vaccination works through, and on a branching process
-it is normally the parameter you want: a traced contact was exposed at
-the moment they entered the simulation, so `efficacy` — which asks for
-immunity *before* the exposure — has nothing to gate. Defaults to `0.0`.
-Requires `:incubation_period`, set by [`clinical_presentation`](@ref).
+race (asymptomatic, `NaN` incubation period). Unlike `efficacy`, it acts
+when a contact is traced after its infector isolates, provided the trace
+does not quarantine it (see the warning below). Defaults to `0.0`. Requires
+`:incubation_period`, set by [`clinical_presentation`](@ref).
 
 `post_exposure_efficacy` already blocks every exposure that `efficacy`
 would. Set one or the other: setting both composes the two blocks
@@ -202,21 +203,25 @@ independently, which double-counts.
 
 `onward_efficacy` is the per-exposure probability that a *vaccinated
 parent's* onward transmission is blocked once the parent's
-vaccine-induced immunity has developed — the post-exposure
-prophylaxis mechanism by which ring vaccination averts onward cases
-even for contacts who were already exposed at the time of
-vaccination. Defaults to `0.0` (no onward effect). `efficacy` (the
-susceptibility-side block applied when the *contact* is vaccinated)
-still applies independently; setting both to the same value gives a
-vaccine that acts symmetrically on susceptibility and infectiousness,
-setting only `onward_efficacy` gives a pure PEP effect.
+vaccine-induced immunity has developed, which also averts onward cases
+from contacts already exposed when vaccinated. Defaults to `0.0` (no
+onward effect). It differs from `post_exposure_efficacy` in leaving the
+infection and its disease in place: each transmission after immunity is
+blocked with this probability whenever the contact's onset falls, while
+`post_exposure_efficacy` ends the whole infection, and only for contacts
+whose immunity beats their onset. The two compose independently, giving
+a vaccine that aborts some infections and reduces the infectiousness of
+the rest. `efficacy` (the susceptibility-side block applied when the
+*contact* is vaccinated) also applies independently; setting it and
+`onward_efficacy` to the same value gives a vaccine that acts
+symmetrically on susceptibility and infectiousness.
 
 Requires `:traced` (set by [`ContactTracing`](@ref)).
 
-!!! warning "Redundant when contacts are traced after their infector isolates"
+!!! warning "`efficacy` is redundant when contacts are traced after their infector isolates"
     `ContactTracing` by default traces a contact once its infector has been
     isolated, and a non-leaky `Isolation` then already blocks every later
-    transmission to the contact. A dose given at the trace or after it
+    transmission to the contact. A dose acting only through `efficacy`
     leaves the results unchanged, with or without quarantine
     (`quarantine_on_trace = false`). `efficacy` has infections left to
     prevent only when a contact can still be infected after being traced:
@@ -226,7 +231,10 @@ Requires `:traced` (set by [`ContactTracing`](@ref)).
     through members who keep transmitting after they are traced.
     `onward_efficacy` acts on the traced contact's own later transmission,
     which a quarantine already blocks, so it does act under tracing without
-    quarantine.
+    quarantine. So does `post_exposure_efficacy`, which acts on the
+    infection the contact already has. Under quarantine it can lower
+    containment, because an aborted case never has symptoms and so no
+    longer triggers tracing of the contacts it infected before its dose.
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
 `:vaccine_efficacy` for the default dose label. With a non-default

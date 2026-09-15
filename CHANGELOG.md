@@ -20,10 +20,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   whenever immunity arrives before the contact's symptom onset. An aborted
   infection keeps the transmissions made before immunity arrives, makes none
   after it, and never reaches onset or a clinical outcome; it is recorded as
-  `:infection_aborted_time` and still counts as a case. On a branching
-  process this is the operative parameter: a traced contact was exposed when
-  they entered the simulation, so `efficacy`, which requires immunity before
-  the exposure, has nothing to gate.
+  `:infection_aborted_time` and still counts as a case. Unlike `efficacy`, it
+  acts under default tracing without quarantine: a contact is traced once its
+  infector has been isolated, which already blocks any later exposure, so
+  `efficacy`, which requires immunity before the exposure, acts only with
+  leaky isolation, tracing triggered by symptom onset, or rings deeper than
+  one contact. It
+  differs from `onward_efficacy`, which reduces each later transmission of a
+  vaccinated contact without ending its infection or disease; the two compose.
 - `RingVaccination` can schedule a second dose: `dose_delay` gives it that many
   days after the trace, and `requires_dose` restricts it to contacts who have
   received the named earlier dose by then, so its `coverage` reads as the

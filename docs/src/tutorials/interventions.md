@@ -182,22 +182,26 @@ results = simulate(scenario([iso, ct, rv]), 200; max_cases = 500, rng = rng)
 println("Iso + tracing + ring vaccination: $(round(containment_probability(results), digits=3))")
 ```
 
-!!! warning "Ring vaccination adds nothing under this tracing"
+!!! warning "`efficacy` adds nothing under this tracing"
     That number is the same as for isolation and tracing alone, and it is
     meant to be. By default `ContactTracing` traces a contact once its
     infector has been isolated, and that isolation already blocks every
-    later transmission to the contact, so a dose given at the trace or
-    after it has nothing left to prevent. This holds with or without
-    quarantine (`quarantine_on_trace = false`). A dose protects only a
-    contact who can still be infected after being traced: under leaky
-    isolation (`post_isolation_transmission > 0`), when tracing starts
-    before the infector is isolated (for example
-    `eligibility = OnSymptomOnset()`), or in a `depth > 1` ring passing
-    through members who keep transmitting after they are traced.
-    `onward_efficacy` acts on the traced contact's own later transmission
-    instead, which a quarantine already blocks, so it does act when
-    tracing does not quarantine. The examples below keep the default
-    tracing, so they show the machinery rather than a vaccine effect.
+    later transmission to the contact, so `efficacy`, which protects a
+    contact only against exposure after its immunity arrives, has nothing
+    left to prevent. This holds with or without quarantine
+    (`quarantine_on_trace = false`). `efficacy` acts only where a contact
+    can still be infected after being traced: under leaky isolation
+    (`post_isolation_transmission > 0`), when tracing starts before the
+    infector is isolated (for example `eligibility = OnSymptomOnset()`),
+    or in a `depth > 1` ring passing through members who keep transmitting
+    after they are traced. `onward_efficacy` acts on the traced contact's
+    own later transmission instead, which a quarantine already blocks, so
+    it does act when tracing does not quarantine. So does
+    `post_exposure_efficacy`, which acts on the infection the contact
+    already has; see
+    [Protecting a contact who has already been exposed](#Protecting-a-contact-who-has-already-been-exposed).
+    The examples until then keep the default tracing and set only
+    `efficacy`, so they show the machinery rather than a vaccine effect.
 
 A delay between vaccination and protective immunity can be specified.
 If transmission occurs before immunity develops, there is no protection:
@@ -252,10 +256,13 @@ depths to see the trade-off for a given setting.
 ### Post-exposure prophylaxis
 
 For PEP (antivirals or antibiotics given to traced contacts), use
-`RingVaccination` with `delay_to_immunity = 0.0` (the default). PEP
-only blocks transmission for contacts whose trace time falls before
-their would-be transmission time — the engine's competing-risks
-resolution handles this automatically:
+`RingVaccination` with `delay_to_immunity = 0.0` (the default). Set
+through `efficacy`, PEP only blocks transmission for contacts whose
+trace time falls before their would-be transmission time — the engine's
+competing-risks resolution handles this automatically, and under the
+tracing used here it leaves the result unchanged (see the warning
+above). PEP that stops an infection a contact already has is
+`post_exposure_efficacy`, covered below:
 
 ```@example interventions
 pep = RingVaccination(efficacy = 0.9)  # delay_to_immunity defaults to 0
@@ -391,13 +398,13 @@ println("Primed: $(round(doses(:vaccinated_prime), digits = 1)), ",
     "boosted: $(round(doses(:vaccinated_boost), digits = 1))")
 ```
 
-Whether those doses buy anything is a question about timing. A dose
-protects a ring member only against infection after its immunity
-arrives. Under the tracing used here no ring member is infected after
-being traced (see the warning above), so neither dose changes the
-outbreak. Where infections do follow the trace, as when tracing starts at
-the infector's symptom onset and does not quarantine, they follow within
-days:
+Whether those doses buy anything is a question about timing. Through
+`efficacy`, a dose protects a ring member only against infection after
+its immunity arrives. Under the tracing used here no ring member is
+infected after being traced (see the warning above), so neither dose
+changes the outbreak. Where infections do follow the trace, as when
+tracing starts at the infector's symptom onset and does not quarantine,
+they follow within days:
 
 ```@example interventions
 ct_onset = ContactTracing(probability = 0.7,
@@ -442,63 +449,104 @@ raises containment and the same efficacy a week later does not.
 
 ### Protecting a contact who has already been exposed
 
-`efficacy` blocks an exposure that comes *after* immunity. A traced
-contact was exposed at the moment they entered the simulation, so on a
-branching process that condition is almost never met and the parameter
-does nothing. The dose can still abort the infection, as long as immunity
-arrives before the infection declares itself, and that is what
-`post_exposure_efficacy` models — immunity racing the contact's symptom
-onset rather than their exposure:
+Under default tracing a contact is traced only after its infector has
+been isolated, so by the time of the trace it has already been exposed
+and can no longer be infected. `efficacy`, which protects only against
+exposure after immunity arrives, then has nothing to block. The dose
+can still act on the infection the contact already has, in two ways:
+
+- `post_exposure_efficacy` aborts the infection, with that probability,
+  if immunity arrives before the contact's symptom onset. The contact
+  transmits as usual until immunity arrives and not at all afterwards,
+  and never develops disease. It still counts as a case.
+- `onward_efficacy` leaves the infection and its disease alone and
+  blocks each of the contact's transmissions after immunity with that
+  probability, whenever its onset falls.
+
+The two compose: a dose setting both aborts some infections and makes
+the rest less infectious. Both act only on transmission after immunity
+arrives, so a contact that has infected most of its own contacts by then
+gains little from either. A quarantine from the trace already blocks
+that later transmission, so the examples here trace without quarantine.
+Infectiousness here starts at infection, and the clearest measure is the
+number of people each traced case goes on to infect:
 
 ```@example interventions
 ct_flag = ContactTracing(probability = 0.7,
     isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = false)
 
+# Infections per traced case, over cases whose own contacts were simulated
+function onward_per_traced(runs)
+    mean(count(id -> is_infected(s.individuals[id]), ind.secondary_case_ids)
+    for s in runs for ind in s.individuals
+    if is_infected(ind) && is_traced(ind) && ind.generation < s.current_generation)
+end
+
 for (label, rv) in [
     ("no vaccine", nothing),
     ("efficacy = 0.9", RingVaccination(efficacy = 0.9)),
+    ("onward_efficacy = 0.9",
+        RingVaccination(efficacy = 0.0, onward_efficacy = 0.9)),
     ("post_exposure_efficacy = 0.9",
         RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9)),
 ]
     stack = rv === nothing ? [iso, ct_flag] : [iso, ct_flag, rv]
     rng = StableRNG(42)
     results = simulate(scenario(stack), 400; max_cases = 500, rng = rng)
-    println(rpad(label, 30), round(containment_probability(results), digits = 3))
+    println(rpad(label, 30), "infections per traced case ",
+        round(onward_per_traced(results), digits = 2),
+        ", containment ", round(containment_probability(results), digits = 3))
 end
 ```
 
-Speed is what decides it. Immunity has to arrive within the incubation
-period to be worth anything, and incubation periods here average about
-five days:
+Either parameter cuts the infections each traced case causes by about
+a seventh, while `efficacy` changes nothing. Containment moves much
+less, because each traced contact has usually made a good share of its
+transmissions before the trace. Across many seeds both raise it from
+about 0.21 to about 0.24; at 400 replicates that difference is barely
+larger than the Monte Carlo noise, so a single run of this block can
+place the two in either order.
+
+Speed decides how much `post_exposure_efficacy` achieves. Immunity has
+to arrive before onset, and incubation periods here average about five
+days:
 
 ```@example interventions
-rng = StableRNG(42)
-baseline = simulate(scenario([iso, ct_flag]), 400; max_cases = 500, rng = rng)
-println("No vaccine:                ",
-    round(containment_probability(baseline), digits = 3))
-for days in [0.0, 5.0, 21.0]
+for days in [0.0, 2.0, 5.0, 21.0]
     let rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9,
             delay_to_immunity = days),
         rng = StableRNG(42)
         results = simulate(scenario([iso, ct_flag, rv]), 400;
             max_cases = 500, rng = rng)
-        println("Immunity after $(lpad(Int(days), 2)) days:    ",
-            round(containment_probability(results), digits = 3))
+        cases = [ind for s in results for ind in s.individuals
+                 if is_infected(ind) && is_traced(ind)]
+        aborted = count(ind -> haskey(ind.state, :infection_aborted_time), cases)
+        println("Immunity after $(lpad(Int(days), 2)) days: ",
+            round(Int, 100 * aborted / length(cases)), "% of traced cases aborted, ",
+            "infections per traced case ",
+            round(onward_per_traced(results), digits = 2))
     end
 end
 ```
 
-Same-day protection roughly doubles containment. By five days most of
-that is gone, and by three weeks the vaccine is back at the no-vaccine
-figure — the two are within Monte Carlo noise of each other at 400
-replicates, and blocking a transmission diverges the run, so read the
-last row as "no measurable effect" rather than as harm.
+With same-day immunity the dose aborts over two in five traced cases.
+Two days' delay brings that to about a quarter and takes away most of
+the reduction in onward infections, by five days little is left, and
+three weeks after the trace nothing is. An aborted
+case appears in the line list with a `date_infection_aborted` and no
+onset date.
 
-A contact with no onset to race — an asymptomatic one, whose incubation
-period is `NaN` — falls back to needing immunity before their exposure.
-So `post_exposure_efficacy` covers every contact `efficacy` would have
-protected, and setting both double-counts. Requires
+Where immunity is in place before the exposure, `post_exposure_efficacy`
+blocks the infection itself. That is all it can do for a contact with no
+onset to race (an asymptomatic one, whose incubation period is `NaN`),
+and it means `post_exposure_efficacy` covers every contact `efficacy`
+would have protected, so setting both double-counts. Requires
 `:incubation_period`, from [`clinical_presentation`](@ref).
+
+Under quarantine neither parameter has transmission left to block, and
+`post_exposure_efficacy` can lower containment: an aborted case never
+has symptoms, so the contacts it infected before its dose are no longer
+traced from it.
 
 ## Effort tracking
 
