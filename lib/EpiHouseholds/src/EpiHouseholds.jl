@@ -10,17 +10,16 @@ using Random
 # `Transition`, `Individual`, `linelist`, …) is exported by EpiBranch, and the
 # population/progression helpers are called qualified. The package also uses two
 # sets of EpiBranch internals on purpose: the shared continuous-time engine (the
-# `_window_open`/`_window_close` helpers imported below and
-# `EpiBranch._sellke_race!` used by the simulator) and the community-hazard
-# helpers. Reusing them keeps the household simulator and pairwise likelihood
-# consistent with the shared engine.
+# `_shorthand_window` helper imported below and `EpiBranch._sellke_race!` used by
+# the simulator) and the community-hazard helpers. Reusing them keeps the
+# household simulator and pairwise likelihood consistent with the shared engine.
 import EpiBranch: new_state, add_individuals!, apply_observation!,
                   _simulate, SimOpts, _resolve_infectious_from,
                   _retry_for_condition, _reconcile_sellke_bookkeeping!,
                   _honours_termination_controls
-# The pairwise likelihood reuses the infectious-window helpers to read each
-# case's window from the same `from`/`until` states the simulator uses.
-import EpiBranch: _window_open, _window_close
+# The pairwise likelihood reads each case's infectious window through the same
+# window the simulator's race builds, including its intervention removal.
+import EpiBranch: _shorthand_window
 # The pairwise survival likelihood works for any contact structure and lives in
 # EpiBranch. This package adds household methods and uses EpiBranch's
 # community-hazard helpers, so the simulator and the likelihood agree on when

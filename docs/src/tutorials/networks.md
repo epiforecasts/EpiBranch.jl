@@ -352,7 +352,9 @@ overlapped, and each infected node adds the hazard summed over all its possible
 infectors at the moment it was infected.
 
 [`network_infections`](@ref) reads that layer out of a simulation, and
-`loglikelihood(data, model)` evaluates it under the model's kernel. In this
+`loglikelihood(data, model)` evaluates it under the model's kernel. The windows
+it reads close where the simulation closed them, so a case that the model's
+interventions isolate exposes its neighbours only until it is isolated. In this
 example, maximising the likelihood over a grid for an outbreak simulated on a
 small-world network recovers the kernel scale used in the simulation:
 

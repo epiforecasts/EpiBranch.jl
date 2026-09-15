@@ -67,16 +67,19 @@ EpiBranch.contact_structure(d::NetworkInfections) = d.contacts
 
 Read the infection layer out of a simulated `state`: the model's adjacency and,
 per node, its infection time, infectiousness onset (the infectious-window `from`
-state) and removal (the earliest of its `until` states), and index status. The
-window is read from the same composed progression the simulation used, so the
-`simulate → loglikelihood` round trip is exact. A bare `NetworkProcess` is
-accepted too (its window opens at `:infection`).
+state), removal and index status. A node is removed at the earliest of its
+`until` states and the time the model's interventions take it out of
+transmission, such as by isolation or quarantine after tracing. The window is
+read from the same composed progression and interventions the simulation used,
+so the `simulate → loglikelihood` round trip is exact. A bare `NetworkProcess`
+is accepted too (its window opens at `:infection`, and it has no interventions).
 """
 function network_infections(state::SimulationState,
         model::ModelSpec{<:NetworkProcess}; obs_end = model.process.obs_end)
     process = model.process
     from = _resolve_infectious_from(process.from, model.progression)
-    until = process.until
+    window = _shorthand_window(from, process.until)
+    interventions = model.interventions
     n = length(process.adjacency)
     length(state.individuals) == n || throw(ArgumentError(
         "the state has $(length(state.individuals)) individuals but the network " *
@@ -88,8 +91,8 @@ function network_infections(state::SimulationState,
     for (k, ind) in enumerate(state.individuals)
         if get(ind.state, :infected, false)
             infection[k] = ind.infection_time
-            infectious[k] = _window_open(ind, from)
-            removal[k] = _window_close(ind, until)
+            infectious[k] = window_open(ind, window)
+            removal[k] = window_close(ind, window, interventions)
             index[k] = get(ind.state, :index, false)
         end
     end

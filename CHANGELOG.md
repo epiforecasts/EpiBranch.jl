@@ -19,7 +19,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   `loglikelihood(data, model)` scores it with the pairwise survival likelihood,
   whose generative model is the network's continuous-time race. Each node's
   possible infectors are its in-neighbours. Shared, covariate and per-edge
-  kernels and a community hazard are supported.
+  kernels and a community hazard are supported. Each case's infectious window
+  ends where the simulation ends it, including removal by the model's
+  interventions such as isolation.
 - The pairwise survival likelihood now lives in EpiBranch and works over any
   contact structure. `compile_contact_pairs` enumerates the (susceptible,
   possible infector) rows from a membership vector or an adjacency list into a
@@ -45,6 +47,13 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   replacing the earlier coin-flip-per-edge version. Shortening a case's
   infectious window — through recovery or isolation — now genuinely curtails
   onward spread.
+
+### Fixed
+
+- `household_infections` (in `EpiHouseholds`) ends each case's infectious window
+  when the model's interventions remove it from transmission, such as by
+  isolation or quarantine after tracing, as the simulation does. Fitting an
+  outbreak simulated under isolation then recovers the kernel.
 
 ## [0.1.0] - 2026-06-16
 

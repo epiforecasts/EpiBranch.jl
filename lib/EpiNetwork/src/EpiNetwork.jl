@@ -14,10 +14,10 @@ import EpiBranch: population_size, new_state, add_individuals!, apply_observatio
                   _simulate, SimOpts, _resolve_infectious_from,
                   _retry_for_condition, _reconcile_sellke_bookkeeping!,
                   _honours_termination_controls
-# The pairwise likelihood reads each node's infectious window with the same
-# helpers the simulator's race uses, and shares EpiBranch's test for whether a
+# The pairwise likelihood reads each node's infectious window through the same
+# window the simulator's race builds, and shares EpiBranch's test for whether a
 # community hazard is on, so simulation and likelihood agree on both.
-import EpiBranch: _window_open, _window_close, _ext_active
+import EpiBranch: _shorthand_window, _ext_active
 
 export NetworkProcess, RoutedNetwork
 export NetworkInfections, network_infections

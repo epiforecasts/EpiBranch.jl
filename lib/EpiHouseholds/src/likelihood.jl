@@ -53,17 +53,20 @@ EpiBranch.contact_structure(d::HouseholdInfections) = d.household_of
     household_infections(state, model::ModelSpec) -> HouseholdInfections
 
 Read the infection layer out of a simulated `state`: each member's household,
-infection time, infectiousness onset (the infectious-window `from` state) and
-removal (the earliest of its `until` states), and index status. The infectious
-window is read from the same composed progression the simulation used, so the
+infection time, infectiousness onset (the infectious-window `from` state),
+removal and index status. A member is removed at the earliest of its `until`
+states and the time the model's interventions take it out of transmission, such
+as by isolation or quarantine after tracing. The infectious window is read from
+the same composed progression and interventions the simulation used, so the
 `simulate → loglikelihood` round trip is exact. A bare `HouseholdProcess` is
-accepted too (its window opens at `:infection`).
+accepted too (its window opens at `:infection`, and it has no interventions).
 """
 function household_infections(state::SimulationState,
         model::ModelSpec{<:HouseholdProcess}; obs_end = model.process.obs_end)
     process = model.process
     from = _resolve_infectious_from(process.from, model.progression)
-    until = process.until
+    window = _shorthand_window(from, process.until)
+    interventions = model.interventions
     inds = state.individuals
     n = length(inds)
     hh = Vector{Int}(undef, n)
@@ -75,8 +78,8 @@ function household_infections(state::SimulationState,
         hh[k] = ind.state[:household]::Int
         if get(ind.state, :infected, false)
             infection[k] = ind.infection_time
-            infectious[k] = _window_open(ind, from)
-            removal[k] = _window_close(ind, until)
+            infectious[k] = window_open(ind, window)
+            removal[k] = window_close(ind, window, interventions)
             index[k] = get(ind.state, :index, false)
         end
     end

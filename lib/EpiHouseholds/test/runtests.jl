@@ -151,6 +151,37 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test loglikelihood(data, m) ≈ ll(true_scale)
     end
 
+    @testset "isolation ends the infectious window in the infection layer" begin
+        # the race closes a case's window when it is isolated, so the data must
+        # too, or the likelihood sees cases infectious after isolation and
+        # overestimates the kernel scale
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0)
+        m = ModelSpec(HouseholdProcess(fill(4, 1500), Exponential(4.0));
+            progression = _sir(8.0), interventions = [iso], attributes = clinical)
+        state = simulate(m; rng = StableRNG(201))
+        data = household_infections(state, m)
+
+        infected = findall(!isnan, data.infection_time)
+        expected = [min(data.infection_time[i] + 8.0,
+                        EpiBranch.isolation_time(state.individuals[i])) for i in infected]
+        @test data.removal_time[infected] == expected
+        @test count(data.removal_time[infected] .< data.infection_time[infected] .+ 8.0) >
+              length(infected) / 2
+
+        layout = compile_household_pairs(data)
+        f(θ) = pairwise_surv_loglik(Exponential(exp(θ)), data, layout)
+        d2(z) = ForwardDiff.derivative(y -> ForwardDiff.derivative(f, y), z)
+        θhat = log(4.0)
+        for _ in 1:20
+            θhat -= ForwardDiff.derivative(f, θhat) / d2(θhat)
+        end
+        se = 1 / sqrt(-d2(θhat))
+        @test abs(θhat - log(4.0)) < 3 * se
+    end
+
     @testset "external (community) term: round trip recovers the kernel" begin
         # with a community hazard, indexes emerge from it and the within-household
         # kernel scale is still recovered through the same likelihood.
