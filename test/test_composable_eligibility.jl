@@ -189,6 +189,80 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         @test ttc(ContactOver65() & OnSymptomOnset(), 30) == Inf
     end
 
+    @testset "Logically equal policies get the same trigger time" begin
+        tt(policy, infector) = EpiBranch.trigger_time(policy, infector, nothing)
+        S, L, I, N = OnSymptomOnset(), OnLabConfirmation(), OnIsolation(), TraceNobody()
+        function case(; isolation = nothing, lab = false, asymptomatic = false)
+            state = Dict{Symbol, Any}(:asymptomatic => asymptomatic,
+                :onset_time => asymptomatic ? NaN : 4.0, :test_positive => lab,
+                :isolated => isolation !== nothing)
+            isolation === nothing || (state[:isolation_time] = isolation)
+            return Individual(id = 1, infection_time = 1.0, state = state)
+        end
+        infectors = [case(), case(isolation = 9.0), case(isolation = 2.0),
+            case(isolation = 6.0, lab = true), case(lab = true),
+            case(isolation = 6.0, asymptomatic = true),
+            case(isolation = 6.0, lab = true, asymptomatic = true)]
+        equivalent = [
+            # De Morgan
+            (S & !(L & I), S & (!L | !I)),
+            (S & !(L | I), S & (!L & !I)),
+            (!(!(S & !I) | L), (S & !I) & !L),
+            (S | !I, !(!S & I)),
+            (!!S, AllOf(S)),
+            # Distributing `&` over `|`
+            (S & (L | !I), (S & L) | (S & !I)),
+            (S & (L | !I) & (I | !L),
+                (S & L & I) | (S & L & !L) | (S & !I & I) | (S & !I & !L)),
+            ((S | !L) & !N, (S & !N) | (!L & !N)),
+            (L | (S & !(L | (I & !S))), L | (S & !L & (!I | S))),
+            # `TraceNobody()` is the identity of `|`
+            (S & (N | !L), S & !L),
+            (N | (S | !I), S | !I),
+            # Grouping
+            ((S | L) | !I, S | (L | !I))
+        ]
+        for (a, b) in equivalent
+            @test all(infector -> isequal(tt(a, infector), tt(b, infector)), infectors)
+        end
+
+        unisolated, isolated_late = infectors[1], infectors[2]
+        @test tt(S & (L | !I), unisolated) == 4.0
+        @test tt(S & (!L | !I), isolated_late) == 4.0
+        @test tt(S & (N | !L), isolated_late) == 4.0
+        # At the top level a policy met with no time of its own starts at the
+        # earlier of its timed branches and the default isolation time.
+        @test tt(S | !I, unisolated) == 4.0
+        @test tt((S | !L) & !N, isolated_late) == 4.0
+        @test tt(!L & !N, isolated_late) == 9.0
+    end
+
+    @testset "Nested and flat policies trace alike" begin
+        clinical = clinical_presentation(
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.3)
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.5)
+        S, L, I, N = OnSymptomOnset(), OnLabConfirmation(), OnIsolation(), TraceNobody()
+        function simulate_with(eligibility, seed)
+            ct = ContactTracing(eligibility, 1.0, Exponential(1.0))
+            simulate(
+                ModelSpec(BranchingProcess(Poisson(2.5), Exponential(5.0));
+                    interventions = [iso, ct], attributes = clinical);
+                n_initial = 5, max_cases = 300, rng = StableRNG(seed))
+        end
+        pairs = [(S & !L, S & (N | !L)),
+            (S & !(L & I), S & (!L | !I)),
+            ((S & L) | (S & !I), S & (L | !I))]
+        for (flat, nested) in pairs
+            for seed in 1:3
+                a = simulate_with(flat, seed)
+                b = simulate_with(nested, seed)
+                @test count(is_traced, a.individuals) > 0
+                @test a.cumulative_cases == b.cumulative_cases
+                @test isequal(isolation_time.(a.individuals), isolation_time.(b.individuals))
+            end
+        end
+    end
+
     @testset "Tracing through a non-onset branch of AnyOf" begin
         # Asymptomatic cases have a NaN onset, so their contacts can be traced
         # only through the lab-confirmation branch.

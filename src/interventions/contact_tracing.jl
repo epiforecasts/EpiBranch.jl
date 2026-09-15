@@ -136,7 +136,9 @@ Base.:!(a::TraceEligibility) = NoneOf(a)
 # triggers when its first met condition is met, an `AllOf` when its last
 # one is. A condition that is not met has no trigger time of its own (an
 # asymptomatic case has no onset). Including it in the reduction could
-# make the time earlier than any real event, or `NaN`.
+# make the time earlier than any real event, or `NaN`. A negation that
+# holds has no event to time it either, so it sets no time inside an
+# `AllOf`.
 
 """
     trigger_time(eligibility, infector, state) -> Float64
@@ -148,24 +150,37 @@ this to onset time, so suspicion-based tracing starts at symptom onset
 instead of waiting for isolation or confirmation. A custom policy that
 times its trace from another event defines a method of this function.
 
-The combinators reduce over the wrapped conditions that are met, as
-decided by [`is_eligible`](@ref EpiBranch.is_eligible):
+The combinators take their time from the wrapped conditions, as decided
+by [`is_eligible`](@ref EpiBranch.is_eligible). Each condition is either
+not met, met at a time, or met with no time of its own:
 
-- [`AnyOf`](@ref) takes the earliest trigger time among its met
-  conditions, and `Inf` (never) if none is met.
-- [`AllOf`](@ref) takes the latest trigger time, the moment its last
-  condition is met, and `Inf` if any condition is not met.
-- [`NoneOf`](@ref) holds from the outset, so a negation has no trigger
-  time of its own. Inside an `AllOf` the other conditions set the time:
-  `OnSymptomOnset() & !OnIsolation()` traces from onset. On its own or
-  inside an `AnyOf`, a negation that holds takes the default trigger time,
-  as [`TraceEveryone`](@ref) does, so `!TraceNobody()` behaves as
-  `TraceEveryone()`. An `AllOf` made only of negations also takes the
-  default. A negation that does not hold gives `Inf`.
+- A negation that holds, such as `!OnIsolation()` for an infector not yet
+  isolated, is met with no time of its own. A negation that does not hold
+  is not met. A negated combinator is timed as its De Morgan form, so
+  `!(a & b)` is timed as `!a | !b`, and `!!a` as `a`.
+- [`AllOf`](@ref) is not met if any condition is not met. Otherwise it is
+  met at the latest time among its timed conditions, so
+  `OnSymptomOnset() & !OnIsolation()` traces from onset. If none of its
+  conditions is timed, the `AllOf` is met with no time of its own.
+- [`AnyOf`](@ref) is not met if no condition is met. If one of its
+  conditions is met with no time of its own, so is the `AnyOf`, and inside
+  an `AllOf` it sets no time. Otherwise it is met at the earliest time
+  among its met conditions.
+- A policy met with no time of its own starts the trace at the default
+  trigger time, the infector's isolation as for [`TraceEveryone`](@ref),
+  or earlier if one of its timed branches is met earlier. So
+  `!TraceNobody()` behaves as `TraceEveryone()`, and
+  `OnSymptomOnset() | !OnIsolation()` traces a case that is never
+  isolated from its onset.
 
-A `NaN` trigger time from a wrapped condition counts as never met. Contact
-tracing checks each condition against the contact being traced. This
-method has no contact, so it passes `nothing` to `is_eligible` instead.
+A policy that is not met gives `Inf` (never), and a `NaN` trigger time
+from a wrapped condition counts as never met. Policies that are equal by
+De Morgan's laws, or by distributing `&` over `|`, get the same trigger
+time, and `TraceNobody() | p` is timed as `p`.
+
+Contact tracing checks each condition against the contact being traced.
+This method has no contact, so it passes `nothing` to `is_eligible`
+instead.
 """
 trigger_time(::TraceEligibility, infector, state) = isolation_time(infector)
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
@@ -182,45 +197,79 @@ function _trigger_time(e::TraceEligibility, infector, contact, state)
 end
 
 function _trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, contact, state)
-    is_eligible(e, infector, contact, state) || return _never(infector)
-    return _timed(_met_time(e, infector, contact, state), infector, contact, state)
+    t, untimed = _met_time(e, infector, contact, state, false)
+    untimed || return t
+    default = first(_met_time(TraceEveryone(), infector, contact, state, false))
+    return min(t, default)
 end
 
 # `Inf` in the infector's time type, so AD dual numbers pass through.
 _never(infector) = oftype(isolation_time(infector), Inf)
 
-# The time a condition known to be met was met. `nothing` means it holds
-# from the outset without an event of its own, as a negation does.
-function _met_time(condition::TraceEligibility, infector, contact, state)
+# How `condition`, or its negation if `negated`, is met, as
+# `(time, untimed)`. `time` is the earliest time at which it is met through
+# a timed branch, `Inf` if there is none. `untimed` is whether it also
+# holds with no time of its own, as a negation that holds does. A
+# condition that is not met gives `(Inf, false)`. Negations are pushed
+# inwards by De Morgan's laws, so equal policies get equal times.
+function _met_time(condition::TraceEligibility, infector, contact, state, negated)
+    never = _never(infector)
+    met = is_eligible(condition, infector, contact, state)
+    negated && return (never, !met)
+    met || return (never, false)
     t = trigger_time(condition, infector, state)
-    return isnan(t) ? _never(infector) : t
+    return (isnan(t) ? never : t, false)
 end
 
-_met_time(::NoneOf, infector, contact, state) = nothing
-
-function _met_time(e::AllOf, infector, contact, state)
-    t = nothing
-    for condition in e.conditions
-        tc = _met_time(condition, infector, contact, state)
-        tc === nothing && continue
-        t = t === nothing ? tc : max(t, tc)
-    end
-    return t
+function _met_time(e::AnyOf, infector, contact, state, negated)
+    reduce_met = negated ? _all_met : _any_met
+    return reduce_met(e.conditions, infector, contact, state, negated)
 end
 
-function _met_time(e::AnyOf, infector, contact, state)
+function _met_time(e::AllOf, infector, contact, state, negated)
+    reduce_met = negated ? _any_met : _all_met
+    return reduce_met(e.conditions, infector, contact, state, negated)
+end
+
+# `NoneOf(a, b)` is `!a & !b`, and its negation is `a | b`.
+function _met_time(e::NoneOf, infector, contact, state, negated)
+    negated && return _any_met(e.conditions, infector, contact, state, false)
+    return _all_met(e.conditions, infector, contact, state, true)
+end
+
+# Met through any condition: the earliest of their times, and untimed if
+# any condition is.
+function _any_met(conditions, infector, contact, state, negated)
     t = _never(infector)
-    for condition in e.conditions
-        is_eligible(condition, infector, contact, state) || continue
-        tc = _met_time(condition, infector, contact, state)
-        t = min(t, _timed(tc, infector, contact, state))
+    untimed = false
+    for condition in conditions
+        tc, uc = _met_time(condition, infector, contact, state, negated)
+        t = min(t, tc)
+        untimed |= uc
     end
-    return t
+    return (t, untimed)
 end
 
-# A met condition with no time of its own is timed like `TraceEveryone`.
-function _timed(t, infector, contact, state)
-    t === nothing ? _met_time(TraceEveryone(), infector, contact, state) : t
+# Met when every condition is. A condition that holds with no time of its
+# own sets no time, so the latest time among the others decides. If no
+# condition is timed, the whole holds with no time of its own and keeps
+# the earliest of their timed branches: `(a | !b) & !c` is met at `a`'s
+# time through `a & !c`.
+function _all_met(conditions, infector, contact, state, negated)
+    never = _never(infector)
+    latest = oftype(never, -Inf)
+    earliest = never
+    timed = false
+    for condition in conditions
+        tc, uc = _met_time(condition, infector, contact, state, negated)
+        if uc
+            earliest = min(earliest, tc)
+        else
+            timed = true
+            latest = max(latest, tc)
+        end
+    end
+    return timed ? (latest, false) : (earliest, true)
 end
 
 """
