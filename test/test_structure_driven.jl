@@ -176,8 +176,8 @@ end
 
 @testset "A dose given at an earlier exposure can abort the infecting one" begin
     # A node dosed at an exposure it escapes, then infected in a later
-    # generation before both its immunity and its onset, is aborted with the
-    # post-exposure efficacy like any other.
+    # generation before its immunity arrives, with immunity arriving before its
+    # onset, is aborted with the post-exposure efficacy like any other.
     spec = ModelSpec(AbortPoolModel(300, 4, 0.4);
         interventions = [
             Isolation(onset_to_isolation_delay = Exponential(1.0)),
