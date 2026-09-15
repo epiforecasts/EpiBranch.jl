@@ -184,9 +184,13 @@ contact's own transmission time is then decided by competing risks).
 infection the contact already has, which it can do when immunity
 (vaccination + `delay_to_immunity`) arrives after the exposure but
 before the contact's symptom onset. An aborted infection runs until
-immunity arrives: the contact transmits as usual before then and not at
-all afterwards, and never develops disease, so it has no onset, no
-isolation or tracing triggered by onset, and no clinical outcome. It is
+immunity arrives and ends there. The contact transmits as usual before
+then and not at all afterwards. It has no symptom onset, so nothing
+triggered by onset happens (isolation, tracing, onset-timed transitions),
+and its clinical course stops at the abort: no transition in the
+`progression` takes effect at or after that time, whatever it is timed
+from, so it has no later hospitalisation, death or other outcome, while
+a transition that took effect before immunity arrived stands. It is
 still a case, counted in [`chain_statistics`](@ref) and listed by
 [`linelist`](@ref) with no onset date and a `date_infection_aborted`
 column (from `:infection_aborted_time`). Where immunity is already in
@@ -335,8 +339,8 @@ end
 # A dose given after the exposure can still abort the infection, so long as
 # immunity arrives before symptom onset. The contact then stays infected up to
 # its immunity time and transmits as usual until then; after it, it transmits
-# nothing (the engine's `AbortedInfection` risk source) and never develops
-# disease, since its onset, and everything timed from onset, is never reached.
+# nothing (the engine's `AbortedInfection` risk source). It has no onset, and
+# `resolve_transitions!` ends its clinical course at the abort time.
 #
 # The draw is made when the dose is recorded, because a contact's onset and
 # clinical course are resolved together with its infection, leaving no later

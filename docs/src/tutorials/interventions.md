@@ -457,8 +457,10 @@ can still act on the infection the contact already has, in two ways:
 
 - `post_exposure_efficacy` aborts the infection, with that probability,
   if immunity arrives before the contact's symptom onset. The contact
-  transmits as usual until immunity arrives and not at all afterwards,
-  and never develops disease. It still counts as a case.
+  transmits as usual until immunity arrives and not at all afterwards.
+  It has no symptom onset, and its clinical course ends when immunity
+  arrives: nothing in the `progression` (hospitalisation, death,
+  recovery) happens from then on. It still counts as a case.
 - `onward_efficacy` leaves the infection and its disease alone and
   blocks each of the contact's transmissions after immunity with that
   probability, whenever its onset falls.

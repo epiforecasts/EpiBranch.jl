@@ -19,7 +19,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   given to an already-exposed contact aborts that infection, which it can do
   whenever immunity arrives before the contact's symptom onset. An aborted
   infection keeps the transmissions made before immunity arrives, makes none
-  after it, and never reaches onset or a clinical outcome; it is recorded as
+  after it, and has no symptom onset; its clinical course ends at the abort,
+  so no transition (hospitalisation, death or any other outcome) takes effect
+  at or after that time, whatever it is timed from. It is recorded as
   `:infection_aborted_time` and still counts as a case. Unlike `efficacy`, it
   acts under default tracing without quarantine: a contact is traced once its
   infector has been isolated, which already blocks any later exposure, so

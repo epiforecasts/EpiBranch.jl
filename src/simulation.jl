@@ -835,6 +835,14 @@ the generation-based engine) calls it itself, once per case, after the case's
 attributes and intervention state are set. The transitions come from the model's
 `progression`, placed on the state when it is built with
 [`new_state`](@ref EpiBranch.new_state).
+
+An infection aborted before onset (`:infection_aborted_time`, see
+[`RingVaccination`](@ref)) ends its clinical course at the abort time. A
+transition takes effect at the times it writes under `_time` keys, so one that
+writes a time at or after the abort is undone, whatever state it is timed from:
+every key it changed is restored. Transitions timed from it then find their
+`from` state unreached, and it enters no terminal candidate into the outcome.
+Transitions that take effect strictly before the abort stand.
 """
 function resolve_transitions!(state::SimulationState, individual)
     transitions = state.transitions
@@ -842,11 +850,40 @@ function resolve_transitions!(state::SimulationState, individual)
     for transition in transitions
         initialise_individual!(transition, individual, state)
     end
+    aborted_t = get(individual.state, :infection_aborted_time, nothing)
     for transition in transitions
-        resolve_individual!(transition, individual, state)
+        if aborted_t === nothing
+            resolve_individual!(transition, individual, state)
+        else
+            _resolve_before_abort!(transition, individual, state, aborted_t)
+        end
     end
     _finalise_terminal!(individual, transitions)
     return nothing
+end
+
+# Resolve one transition on an aborted infection, undoing it if it takes effect
+# at or after the abort. Transitions record when they happen under `_time` keys
+# (`:hospitalised_time`, `:admission_time`, `:death_candidate_time`, ...), so
+# reading those keys applies the same check to every transition, built-in or
+# user-defined, whatever state it is timed from.
+function _resolve_before_abort!(transition, individual, state, aborted_t)
+    before = copy(individual.state)
+    resolve_individual!(transition, individual, state)
+    _writes_time_from(individual.state, before, aborted_t) || return nothing
+    empty!(individual.state)
+    merge!(individual.state, before)
+    return nothing
+end
+
+function _writes_time_from(after, before, t)
+    for (key, value) in after
+        endswith(String(key), "_time") || continue
+        value isa Real && isfinite(value) && value >= t || continue
+        isequal(get(before, key, nothing), value) && continue
+        return true
+    end
+    return false
 end
 
 """Decide whether a single contact is infected along one edge by

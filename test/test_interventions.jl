@@ -689,7 +689,7 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 end
             end
 
-            @testset "An aborted infection never develops disease" begin
+            @testset "An aborted infection has no onset or outcome" begin
                 state, contacts, _ = aborted_outbreak()
                 index = state.individuals[1]
                 @test onset_time(index) == 5.0
@@ -707,6 +707,78 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 @test all(ismissing, aborted_rows.date_onset)
                 @test all(!ismissing, aborted_rows.date_infection_aborted)
                 @test size(df, 1) == length(filter(is_infected, state.individuals))
+            end
+
+            @testset "An aborted infection's clinical course ends at the abort" begin
+                # Infected at 1 and aborted at 4: whatever a transition is timed
+                # from, it stands if it takes effect before 4 and is undone
+                # otherwise, along with everything timed from it.
+                progression = [
+                    Transition(:early, from = :infection, delay = 1.0),
+                    Transition(:worse, from = :early, delay = 1.0),
+                    Transition(:hospitalised, from = :infection, delay = 6.0),
+                    Transition(:died, from = :hospitalised, delay = 1.0,
+                        terminal = true),
+                    Reporting(delay = 0.5, from = :early_time),
+                    Death(delay = 5.0, probability = 1.0,
+                        from = ind -> ind.infection_time),
+                    Recovery(delay = 10.0, from = ind -> ind.infection_time)]
+                function course(aborted)
+                    state = EpiBranch.new_state(process, progression,
+                        EpiBranch.NoAttributes(), StableRNG(1))
+                    ind = Individual(id = 1, infection_time = 1.0)
+                    aborted && (ind.state[:infection_aborted_time] = 4.0)
+                    EpiBranch.resolve_transitions!(state, ind)
+                    return ind.state
+                end
+
+                st = course(true)
+                @test st[:early] && st[:early_time] == 2.0
+                @test st[:worse] && st[:worse_time] == 3.0
+                @test st[:reported] && st[:reporting_time] == 2.5
+                @test !st[:hospitalised] && st[:hospitalised_time] == Inf
+                @test !st[:died] && st[:died_time] == Inf
+                @test st[:death_candidate_time] == Inf
+                @test st[:recovery_candidate_time] == Inf
+                @test !haskey(st, :outcome) && !haskey(st, :outcome_time)
+
+                control = course(false)
+                @test control[:hospitalised] && control[:died]
+                @test control[:outcome] == :died && control[:outcome_time] == 6.0
+            end
+
+            @testset "No transition takes effect after an abort in simulation" begin
+                progression = [
+                    Transition(:hospitalised, from = :infection, delay = Gamma(4, 2),
+                        probability = 0.2),
+                    Transition(:died, from = :hospitalised, delay = Gamma(2, 3),
+                        probability = 0.5, terminal = true),
+                    Death(delay = LogNormal(2.0, 0.4), probability = 0.1)]
+                spec = ModelSpec(process; progression,
+                    interventions = [iso, ct, post_only()], attributes = clinical)
+                results = simulate(spec, 30; max_cases = 300, rng = StableRNG(2))
+                aborted = 0
+                late = 0
+                miscounted = 0
+                for s in results
+                    for ind in filter(is_infected, s.individuals)
+                        t = get(ind.state, :infection_aborted_time, nothing)
+                        t === nothing && continue
+                        aborted += 1
+                        for key in (:hospitalised_time, :died_time,
+                            :death_candidate_time, :outcome_time)
+                            get(ind.state, key, Inf) < Inf &&
+                                ind.state[key] >= t && (late += 1)
+                        end
+                    end
+                    # Aborted cases stay in the line list and the chain sizes.
+                    n_cases = count(is_infected, s.individuals)
+                    size(linelist(s), 1) == n_cases &&
+                    sum(chain_statistics(s).size) == n_cases || (miscounted += 1)
+                end
+                @test aborted > 0
+                @test late == 0
+                @test miscounted == 0
             end
 
             @testset "An aborted infection seeds no onset-triggered ring" begin

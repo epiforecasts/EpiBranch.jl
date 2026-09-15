@@ -99,9 +99,17 @@ colliding.
 `:infection_aborted_time` marks an infection that a post-exposure dose ended
 before symptom onset. The individual is still infected, transmits nothing from
 that time, a block the engine applies for as long as the key is present, and has
-no onset: `:onset_time` is `NaN` while `:asymptomatic` stays
-`false`, so isolation, tracing and clinical transitions triggered by onset never
-fire. It is drawn when the dose is given, before infection is resolved, and
+no onset: `:onset_time` is `NaN` while `:asymptomatic` stays `false`, so
+isolation, tracing and clinical transitions triggered by onset never fire.
+
+Its clinical course ends at the abort time. Any transition that would take
+effect at or after it, whatever its `from`, is undone when transitions are
+resolved, restoring the keys it wrote, so no hospitalisation, death or
+`:outcome` follows; transitions that take effect earlier stand. The check reads
+the `_time` keys a transition writes, so a custom transition is covered as long
+as it records when it happens under a `_time` key, as the built-ins do.
+
+The key is drawn when the dose is given, before infection is resolved, and
 belongs to the exposure the contact has at that point. When resolution does not
 bear that exposure out, the engine removes the key and restores the onset: on a
 contact the exposure did not infect, and on one infected through a later
