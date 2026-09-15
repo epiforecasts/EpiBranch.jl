@@ -110,8 +110,8 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         # AllOf needs every condition, and onset never happens.
         @test tt(OnSymptomOnset() & OnLabConfirmation(), confirmed_asymptomatic) == Inf
 
-        # An unmet condition must not pull the time earlier either: this
-        # infector was quarantined at 2 before onset at 4 but never tested positive.
+        # An unmet condition must not make the time earlier either. This
+        # infector was quarantined at 2, before onset at 4, and never tested positive.
         quarantined_negative = infector_with(asymptomatic = false, onset_time = 4.0,
             test_positive = false, isolated = true, isolation_time = 2.0)
         @test tt(OnLabConfirmation() | OnSymptomOnset(), quarantined_negative) == 4.0
@@ -123,7 +123,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         @test tt(OnSymptomOnset() | OnLabConfirmation(), unconfirmed_asymptomatic) == Inf
 
         # A negation holds from infection, so inside AllOf the other
-        # conditions set the time; once its condition is met it never triggers.
+        # conditions set the time. Once its condition is met it never triggers.
         unisolated = Individual(id = 1, infection_time = 1.0,
             state = Dict{Symbol, Any}(:asymptomatic => false, :onset_time => 4.0,
                 :isolated => false))
@@ -135,8 +135,8 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
                 asymptomatic = false, onset_time = 4.0, isolated = true, isolation_time = 9.0)) ==
               Inf
 
-        # A custom policy may depend on the contact, so it is taken at its
-        # trigger time (isolation by default) while built-ins alongside are checked.
+        # A custom policy may depend on the contact, so it counts as met at its
+        # trigger time (isolation by default). Built-in conditions beside it are checked.
         custom = infector_with(asymptomatic = false, age = 70, onset_time = 4.0,
             test_positive = false, isolated = true, isolation_time = 3.0)
         @test tt(SymptomaticOver65() | OnSymptomOnset(), custom) == 3.0
@@ -144,8 +144,8 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
     end
 
     @testset "Tracing through a non-onset branch of AnyOf" begin
-        # Asymptomatic cases are traced only through lab confirmation, which
-        # makes the onset branch NaN for them.
+        # Asymptomatic cases have a NaN onset, so their contacts can be traced
+        # only through the lab-confirmation branch.
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5)
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases())

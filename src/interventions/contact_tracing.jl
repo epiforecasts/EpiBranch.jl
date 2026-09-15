@@ -131,12 +131,12 @@ Base.:!(a::TraceEligibility) = NoneOf(a)
 # condition. `OnSymptomOnset` times from symptom onset, so tracing can
 # start before lab confirmation (or without it), while the historical
 # default and the isolation/confirmation policies time from isolation.
-# `ContactTracing` adds its delay on top. Combinators compose over the
-# conditions the infector actually meets: an `AnyOf` triggers once its
-# first met condition is, an `AllOf` once its last is. A condition the
+# `ContactTracing` adds its delay on top. Combinators reduce over the
+# conditions the infector meets: an `AnyOf` triggers when its first met
+# condition is met, an `AllOf` when its last one is. A condition the
 # infector does not meet has no trigger time of its own (an asymptomatic
-# case has no onset), so letting it into the reduction would either pull
-# the time earlier than any real event or poison it with `NaN`.
+# case has no onset). Including it in the reduction could make the time
+# earlier than any real event, or `NaN`.
 
 """
     trigger_time(eligibility, infector, state) -> Float64
@@ -153,15 +153,16 @@ The combinators reduce over the wrapped conditions the infector meets:
   conditions, and `Inf` (never) if none is met.
 - [`AllOf`](@ref) takes the latest trigger time, the moment its last
   condition is met, and `Inf` if any condition is not met.
-- [`NoneOf`](@ref) marks no event of its own: a negation holds from the
+- [`NoneOf`](@ref) has no event of its own. A negation holds from the
   outset, so it triggers at the infector's infection time when none of
-  its conditions is met, and `Inf` otherwise. Inside an `AllOf` it
-  therefore leaves the timing to the other conditions.
+  its conditions is met, and `Inf` otherwise. Inside an `AllOf` the
+  other conditions therefore set the time.
 
 A `NaN` trigger time from a wrapped condition counts as never met. The
-built-in policies test only the infector, so whether they are met is
-decided from `is_eligible`; a custom policy may depend on the contact,
-which is not available here, so it is taken at its trigger time.
+built-in policies test only the infector, so `is_eligible` decides
+whether they are met. A custom policy may depend on the contact, which
+`trigger_time` does not receive, so it counts as met at its own trigger
+time.
 """
 trigger_time(::TraceEligibility, infector, state) = isolation_time(infector)
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
@@ -190,7 +191,7 @@ function trigger_time(e::NoneOf, infector, state)
     _holds(e, infector, state) === false ? _never(infector) : infector.infection_time
 end
 
-# `Inf` in the infector's time type, so an AD dual flows through.
+# `Inf` in the infector's time type, so AD dual numbers pass through.
 _never(infector) = oftype(isolation_time(infector), Inf)
 
 function _met_time(condition, infector, state)
@@ -199,11 +200,11 @@ function _met_time(condition, infector, state)
 end
 
 # Whether `condition` holds for `infector` without reference to a contact:
-# `true`, `false`, or `missing` when that cannot be told. The built-in
-# atomic predicates read only the infector, so `is_eligible` settles them;
-# a custom policy may read the contact, so it stays `missing`. The
-# combinators use three-valued logic, so a known answer still decides
-# them when a custom policy sits alongside.
+# `true`, `false`, or `missing` when the infector alone cannot decide it.
+# The built-in atomic predicates read only the infector, so `is_eligible`
+# decides them. A custom policy may read the contact, so it gives
+# `missing`. The combinators use three-valued logic, so a known answer
+# can still decide a combination that also contains a custom policy.
 const _InfectorPredicate = Union{OnSymptomOnset, OnLabConfirmation, OnIsolation,
     TraceEveryone, TraceNobody, SymptomaticParent}
 
