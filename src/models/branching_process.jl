@@ -117,10 +117,15 @@ function single_type_offspring(m::BranchingProcess)
         "Analytical helpers need a single infectiousness window (this model has " *
         "$(length(m.infectiousness))). The offspring law across several windows is a " *
         "fate-mixture with no closed form, so use simulation for multi-window models."))
-    off = m.infectiousness[1].offspring
-    off isa Function && throw(ArgumentError(
+    return _single_type(m.infectiousness[1].offspring)
+end
+
+# Multi-type offspring has no single-type law to return, so analytical helpers
+# that use this accessor throw an error for it.
+_single_type(off) = off
+function _single_type(::Function)
+    throw(ArgumentError(
         "This function only works with single-type models (not multi-type function offspring)"))
-    return off
 end
 
 # The contact interval of a single-window model (used by analytical
@@ -131,11 +136,14 @@ function _single_kernel(m::BranchingProcess)
     return m.infectiousness[1].kernel
 end
 
+_offspring_label(off::Distribution) = string(typeof(off))
+_offspring_label(off) = "Function"
+
 function Base.show(io::IO, m::BranchingProcess)
     pop_str = m.population_size isa NoPopulation ? "unlimited" : string(m.population_size)
     if length(m.infectiousness) == 1
         w = m.infectiousness[1]
-        off_str = w.offspring isa Distribution ? string(typeof(w.offspring)) : "Function"
+        off_str = _offspring_label(w.offspring)
         gt_str = w.kernel isa NoGenerationTime ? "none" :
                  w.kernel isa Distribution ? string(typeof(w.kernel)) : "Function"
         print(io,
@@ -175,45 +183,6 @@ function BranchingProcess(windows::Tuple{Infectiousness, Vararg{Infectiousness}}
 end
 function BranchingProcess(window::Infectiousness, windows::Infectiousness...; kwargs...)
     BranchingProcess((window, windows...); kwargs...)
-end
-
-"""
-    BranchingProcess(offspring_matrix, dist_fn, generation_time; kwargs...)
-
-Construct a multi-type branching process from an offspring matrix.
-`M[i,j]` is the expected number of type-i offspring from a type-j parent.
-`dist_fn` maps each type's R to an offspring distribution.
-"""
-function BranchingProcess(offspring_matrix::Matrix{Float64},
-        dist_fn::Function,
-        gt::Union{Distribution, Function};
-        population_size::Union{Int, NoPopulation} = NoPopulation(),
-        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
-    n = size(offspring_matrix, 1)
-    size(offspring_matrix, 2) == n || throw(ArgumentError(
-        "offspring_matrix must be square, got $(size(offspring_matrix))"))
-
-    R_by_type = vec(sum(offspring_matrix, dims = 1))
-    alloc_probs = similar(offspring_matrix)
-    for j in 1:n
-        s = R_by_type[j]
-        alloc_probs[:, j] = s > 0.0 ? offspring_matrix[:, j] ./ s : fill(1.0 / n, n)
-    end
-
-    offspring_fn = function (rng::AbstractRNG, individual)
-        pt = individual_type(individual)
-        # A sink type (all-zero offspring column) produces no offspring. Short-
-        # circuit before `dist_fn`, which the documented `R -> NegBin(R, k)` form
-        # rejects at R = 0 (`NegBin` requires R > 0).
-        R_by_type[pt] <= 0.0 && return zeros(Int, n)
-        dist = dist_fn(R_by_type[pt])
-        total = rand(rng, dist)
-        total == 0 && return zeros(Int, n)
-        return rand(rng, Multinomial(total, alloc_probs[:, pt]))
-    end
-
-    BranchingProcess((Infectiousness(offspring_fn; kernel = gt),), population_size, n,
-        type_labels)
 end
 
 # ── Offspring generation ─────────────────────────────────────────────

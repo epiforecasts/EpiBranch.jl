@@ -252,3 +252,47 @@ end
     grad = ForwardDiff.derivative(total_infection_time, μ0)
     @test isfinite(grad)
 end
+
+# The multi-type analytics accept any number type. A dual dispersion enters
+# through `dist_fn`. A dual scale on the offspring mean gives a dual mean matrix,
+# so the spectral radius uses power iteration.
+@testset "AD through multi-type analytics" begin
+    M = [1.5 0.6;
+         0.5 0.9]
+    fdm = central_fdm(5, 1)
+
+    q1(k) = extinction_probability(
+        BranchingProcess(M, R -> NegBin(R, k), Exponential(5.0)))[1]
+    @test ForwardDiff.derivative(q1, 0.5) ≈ fdm(q1, 0.5) rtol = 1e-5
+
+    rstar(θ) = reproduction_number(
+        BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0)))
+    @test ForwardDiff.derivative(rstar, 1.2) ≈ rstar(1.0) rtol = 1e-6
+
+    # When the eigenvectors depend on the parameter, the power iteration must
+    # still give the right derivative. Equal row sums make `ones` the right
+    # eigenvector at the start, which is the case where the iterates' values
+    # settle before their derivative parts.
+    for M0 in ([1.4 0.1; 0.2 1.3], [1.0 0.5; 0.8 0.7])
+        rpow(θ) = reproduction_number(
+            BranchingProcess(M0, R -> Poisson(R^θ), Exponential(5.0)))
+        @test ForwardDiff.derivative(rpow, 1.0) ≈ fdm(rpow, 1.0) rtol = 1e-8
+    end
+    # Dual entries of the matrix. The spectral radii are 1.2 + 0.3√θ and
+    # 0.1 + 2√θ, with derivatives 0.15 and 1 at θ = 1.
+    rentry(θ) = reproduction_number(
+        EpiBranch.MultiTypeOffspring([1.2 0.3θ; 0.3 1.2], R -> Poisson(R)))
+    @test ForwardDiff.derivative(rentry, 1.0) ≈ 0.15 rtol = 1e-10
+    rcross(θ) = EpiBranch._spectral_radius([0.1 2.0θ; 2.0 0.1])
+    @test ForwardDiff.derivative(rcross, 1.0) ≈ 1.0 rtol = 1e-10
+
+    q2(θ) = extinction_probability(
+        BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0)))[2]
+    @test ForwardDiff.derivative(q2, 1.2) ≈ fdm(q2, 1.2) rtol = 1e-5
+
+    # A reducible matrix whose second type reaches no class with R > 1.
+    qred(θ) = extinction_probability(
+        BranchingProcess([2.0 0.0; 1.0 1.0], R -> Poisson(θ * R), Exponential(5.0)))
+    @test ForwardDiff.derivative(θ -> qred(θ)[1], 0.9) ≈ fdm(θ -> qred(θ)[1], 0.9) rtol = 1e-5
+    @test ForwardDiff.derivative(θ -> qred(θ)[2], 0.9) == 0
+end
