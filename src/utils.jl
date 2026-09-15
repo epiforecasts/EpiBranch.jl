@@ -24,9 +24,9 @@ function scale_distribution(d::Distribution, ::Real)
         "NegativeBinomial offspring distributions can be scaled."))
 end
 
-# A minimal binary min-heap over `(time, id)` pairs, shared by the continuous-time
+# A minimal binary min-heap over `(time, id)` pairs, used by the continuous-time
 # event loops. Tuples compare lexicographically, so ties break deterministically
-# on id. Avoids a DataStructures dependency.
+# on id. Keeping the heap here avoids a dependency on DataStructures.
 function _heap_push!(h::Vector{Tuple{T, Int}}, x::Tuple{T, Int}) where {T <: Real}
     push!(h, x)
     i = length(h)

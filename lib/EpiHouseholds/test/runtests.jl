@@ -67,8 +67,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
     end
 
     @testset "a fixed seed reproduces a pinned outbreak" begin
-        # The race is order-sensitive through the RNG stream, so this pins the
-        # order in which each household's members settle.
+        # The race draws from the RNG stream in settling order, so this test pins
+        # the order in which each household's members settle.
         st = simulate(
             ModelSpec(HouseholdProcess([3, 4], Exponential(2.0));
                 progression = _sir(4.0));

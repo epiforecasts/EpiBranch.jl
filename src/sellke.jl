@@ -236,11 +236,11 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
 
     seed!(best, members, rng)
 
-    # Pending candidates ordered by `(time, k)`, so equal times settle in member
-    # order. Candidate times only ever decrease, so a relaxation pushes a fresh
-    # entry and leaves the superseded one in place; an entry whose member is
-    # already settled, or whose time is later than that member's current best,
-    # is stale and skipped on pop.
+    # The heap orders pending candidates by `(time, k)`, so equal times settle in
+    # member order. Candidate times only ever decrease, so a relaxation pushes a
+    # new entry and leaves the old one in the heap. On pop, the loop skips an
+    # entry as stale if its member has already settled or its time is later than
+    # that member's current best.
     pending = Tuple{eltype(best), Int}[]
     for k in 1:m
         best[k] < Inf && _heap_push!(pending, (best[k], k))

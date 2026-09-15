@@ -152,8 +152,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
     end
 
     @testset "a fixed seed reproduces a pinned outbreak" begin
-        # The race is order-sensitive through the RNG stream, so these pin the
-        # settling order, including ties: several seeds share time 0, and a
+        # The race draws from the RNG stream in settling order, so these tests pin
+        # that order, including ties. Several index cases share time 0, and a
         # deterministic kernel makes most candidate times coincide. Equal times
         # settle in member order.
         ring = ring_adjacency(10)
