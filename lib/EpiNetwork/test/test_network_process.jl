@@ -145,6 +145,20 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         for ind in secondary)
         @test all(isolation_time(ind) >= onset_time(ind) for ind in secondary)
 
+        # Tracing that flags contacts without quarantining them isolates a
+        # traced contact no earlier than its own onset, which is only known once
+        # the race has infected it.
+        flag = ContactTracing(probability = 1.0,
+            isolation_to_trace_delay = Exponential(0.5), quarantine_on_trace = false)
+        traced_model = ModelSpec(NetworkProcess(ring_adjacency(300), Exponential(2.0));
+            progression = _sir(10.0), attributes = clinical, interventions = [iso, flag])
+        traced = [ind
+                  for s in 1:20
+                  for ind in simulate(traced_model; n_initial = 1, rng = StableRNG(s)).individuals
+                  if is_infected(ind) && is_traced(ind) && isfinite(isolation_time(ind))]
+        @test !isempty(traced)
+        @test all(isolation_time(ind) >= onset_time(ind) for ind in traced)
+
         routed = ModelSpec(
             RoutedNetwork([RouteWindow(:contact; until = (:recovered,),
                 kernel = Exponential(2.0), reach = ring_adjacency(200))]);
