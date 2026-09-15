@@ -1,10 +1,10 @@
 # ── Network pairwise survival likelihood ─────────────────────────────
 #
-# The network-facing side of EpiBranch's pairwise survival likelihood. The
-# density, its compiled pair layout and the external hazard term are
-# structure-agnostic and live in EpiBranch; a network supplies its adjacency as
-# the contact structure, so a node's possible infectors are its in-neighbours.
-# The Sellke race in `network_simulate.jl` is the exact generative model of this
+# Network methods for EpiBranch's pairwise survival likelihood. The density, its
+# compiled pair layout and the external hazard term work for any contact
+# structure and live in EpiBranch. A network supplies its adjacency as the
+# contact structure, so a node's possible infectors are its in-neighbours. The
+# Sellke race in `network_simulate.jl` is the exact generative model of this
 # likelihood, so `simulate → loglikelihood` is an exact round trip.
 
 """
@@ -18,9 +18,9 @@ closing of its infectious window (`removal_time = Inf` when right-censored), and
 whether it was introduced from outside the network. `obs_end` is the end of
 follow-up over which a community hazard acts; it is only read when there is one.
 
-These are the latent quantities the contact process is a density over, read out
-of a simulation with [`network_infections`](@ref) or augmented in inference.
-Observables such as onsets are the progression's outputs and are conditioned
+The contact process is a density over these latent quantities. Read them out of
+a simulation with [`network_infections`](@ref), or augment them in inference.
+Observables such as onsets are outputs of the progression and are conditioned
 separately.
 """
 struct NetworkInfections{T <: Real} <: InfectionLayer
@@ -107,9 +107,9 @@ end
 The contact-process log-density of `model`'s kernel given the infection layer
 `data`: `pairwise_surv_loglik(model.edge_kernel, data; external_hazard =
 model.external_hazard)`, with each node's possible infectors its in-neighbours in
-`data.contacts`. A per-edge kernel must be parallel to that adjacency. This is
-the exact `simulate → loglikelihood` round trip; observed onsets and tests are
-conditioned separately through the progression.
+`data.contacts`. A per-edge kernel must be parallel to that adjacency. On an
+infection layer read from a simulation of `model` the round trip is exact.
+Observed onsets and tests are conditioned separately through the progression.
 """
 function Distributions.loglikelihood(data::NetworkInfections, model::NetworkProcess)
     return pairwise_surv_loglik(model.edge_kernel, data;

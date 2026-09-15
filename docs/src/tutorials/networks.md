@@ -342,20 +342,19 @@ println("Cases: ", size(df, 1),
 
 ## Fitting on a network
 
-Everything above simulates. The same model can also be fitted, because the
-continuous-time race that simulates `NetworkProcess` is the generative model of
-the pairwise survival likelihood (Kenah 2011), the one the
-[household models](households.md) use. The likelihood scores the **infection
-layer**: who was infected, when, and when each case's infectious window opened
-and closed. Who infected whom is not needed. Each node accrues hazard from every
-infectious in-neighbour over the time they overlapped, and each infected node
-adds the hazard summed over all its possible infectors at the moment it was
-infected.
+A `NetworkProcess` model can be fitted as well as simulated. The continuous-time
+race that simulates it is the generative model of the pairwise survival
+likelihood (Kenah 2011), which the [household models](households.md) also use.
+The likelihood scores the **infection layer**: who was infected, when, and when
+each case's infectious window opened and closed. Who infected whom is not needed.
+Each node accrues hazard from every infectious in-neighbour over the time they
+overlapped, and each infected node adds the hazard summed over all its possible
+infectors at the moment it was infected.
 
 [`network_infections`](@ref) reads that layer out of a simulation, and
-`loglikelihood(data, model)` evaluates it under the model's kernel. Here a
-simulated outbreak on a small-world network recovers the kernel scale it was
-simulated with:
+`loglikelihood(data, model)` evaluates it under the model's kernel. In this
+example, maximising the likelihood over a grid for an outbreak simulated on a
+small-world network recovers the kernel scale used in the simulation:
 
 ```@example networks
 g_fit = watts_strogatz(2000, 6, 0.1; rng = StableRNG(5))
@@ -377,10 +376,10 @@ callable `(infector, susceptible) -> Distribution` for covariates, or a per-edge
 vector parallel to the adjacency. The structure and the set of infected nodes
 are fixed, so [`compile_contact_pairs`](@ref) enumerates the rows once and the
 three-argument `pairwise_surv_loglik` reuses them while the kernel parameters
-move. That form is differentiable in those parameters, so it drops into Optim or
-a Turing `@model` through `@addlogprob!`, as the households tutorial shows. With
-an `external_hazard`, pass it to `pairwise_surv_loglik` and compile the layout
-with `external = true`.
+change. That form is differentiable in those parameters, so it can be optimised
+with Optim or added to a Turing `@model` through `@addlogprob!`, as the
+households tutorial shows. With an `external_hazard`, pass it to
+`pairwise_surv_loglik` and compile the layout with `external = true`.
 
 Because the possible infectors are read off the graph, a structure that is not a
 partition fits the same way. A network *within* households, where not every
@@ -389,6 +388,6 @@ adjacency is the within-household subgraph. On a directed graph, a node's
 possible infectors are the nodes that list it as a contact.
 
 The likelihood covers single-route `NetworkProcess` models; `RoutedNetwork` has
-no likelihood yet. In real data infection times are unobserved, and a model then
+no likelihood yet. In real data the infection times are unobserved, so a model
 augments them and conditions the observed onsets through the progression, as for
 households.

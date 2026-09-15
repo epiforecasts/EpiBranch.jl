@@ -1,8 +1,8 @@
 # ── Household pairwise survival likelihood ───────────────────────────
 #
-# The household-facing side of EpiBranch's pairwise survival likelihood. The
-# density itself, its compiled pair layout and the external hazard term are
-# structure-agnostic and live in EpiBranch; a household supplies its partition
+# Household methods for EpiBranch's pairwise survival likelihood. The density,
+# its compiled pair layout and the external hazard term work for any contact
+# structure and live in EpiBranch. A household population supplies its partition
 # as the contact structure, so household-mates are each other's possible
 # infectors.
 
@@ -228,10 +228,10 @@ _pair(k, i, j) = k(i, j)
 """
     HouseholdPairsLayout
 
-The compiled pair layout for a household population: the EpiBranch
-[`ContactPairsLayout`](@ref) built from a household partition, under its
-household name. Each row is one ordered (susceptible, household-mate) pair that
-the contact process scores.
+The compiled pair layout for a household population. It is another name for
+EpiBranch's [`ContactPairsLayout`](@ref), used when the layout is built from a
+household partition. Each row is one ordered (susceptible, household-mate) pair
+that the contact process scores.
 
 Build it with [`compile_household_pairs`](@ref).
 """
@@ -246,10 +246,10 @@ is the static at-risk mask — true iff the host appears in the posterior as
 an infected case (its `infection_time` will be augmented). The single-arg
 form reads the mask off `data` as `.!isnan.(data.infection_time)`.
 
-With `external=true` an additional row per susceptible carries the
-community hazard term; otherwise index cases are conditioned on and
-contribute only as infectors. This is [`compile_contact_pairs`](@ref) on the
-household partition; evaluate the result with
+With `external=true` each susceptible gets an additional row for the community
+hazard term; otherwise index cases are conditioned on and contribute only as
+infectors. This is [`compile_contact_pairs`](@ref) on the household partition.
+Evaluate the result with
 `pairwise_surv_loglik(kernel, data, layout; external_hazard)`.
 """
 function compile_household_pairs(household_of::AbstractVector{<:Integer},

@@ -18,14 +18,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   `network_infections` reads the infection layer out of a simulation, and
   `loglikelihood(data, model)` scores it with the pairwise survival likelihood,
   whose generative model is the network's continuous-time race. Each node's
-  possible infectors are its in-neighbours, and shared, covariate and per-edge
-  kernels and a community hazard are all supported.
+  possible infectors are its in-neighbours. Shared, covariate and per-edge
+  kernels and a community hazard are supported.
 - The pairwise survival likelihood now lives in EpiBranch and works over any
   contact structure. `compile_contact_pairs` enumerates the (susceptible,
   possible infector) rows from a membership vector or an adjacency list into a
   `ContactPairsLayout`, and `pairwise_surv_loglik` evaluates it on any
-  `InfectionLayer` subtype. `EpiHouseholds` builds on it with its API unchanged:
-  `HouseholdPairsLayout` is the household name for `ContactPairsLayout`.
+  `InfectionLayer` subtype. `EpiHouseholds` now uses it and keeps its API:
+  `HouseholdPairsLayout` is another name for `ContactPairsLayout`.
 
 ### Changed
 

@@ -186,7 +186,7 @@ end
         @test all(isfinite, g)
         @test g ≈ fd rtol = 1e-5
 
-        # a per-edge kernel carries the dual through the edge lookup
+        # the dual passes through the edge lookup of a per-edge kernel
         pe(s) = [[Exponential(s) for _ in nbrs] for nbrs in adjacency]
         fe(s) = pairwise_surv_loglik(pe(s), data, L)
         fs(s) = pairwise_surv_loglik(Exponential(s), data, L)

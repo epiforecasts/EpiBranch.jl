@@ -7,23 +7,23 @@
 # both unobserved, so each infected susceptible's contribution sums the
 # contact-interval hazard over every possible infector, with no ordering assumed.
 #
-# Nothing in it depends on what the contact structure is. It is a product over
-# (susceptible, possible infector) pairs, so a household partition, a contact
-# network and any other "who could have infected whom" relation share it; only
-# the enumeration of those pairs differs.
+# The density is a product over (susceptible, possible infector) pairs and does
+# not depend on the kind of contact structure. Households, contact networks and
+# any other relation of who could have infected whom use the same code and
+# differ only in how the pairs are enumerated.
 #
-# This scores the infection layer, which is latent: observed in a `simulate`
-# round trip, augmented in inference (where the progression then links each
-# infection to its observed onset or test). It never takes onsets as the event.
+# The infection layer is latent. It is known exactly after `simulate` and is
+# augmented in inference, where the progression links each infection to its
+# observed onset or test. Onsets are never the event.
 
 """
     PairwiseSurvivalData(sus, start, stop, event)
 
 Counting-process rows for [`pairwise_surv_loglik`](@ref). Row `r` is an ordered
 at-risk interval `(start[r], stop[r]]` for susceptible `sus[r]`, with `event[r]`
-true if an infectious contact occurred at `stop[r]`. Several rows share a
-susceptible — its possible infectors. The form is space- and order-agnostic: it
-knows only at-risk intervals and events, never an infection order.
+true if an infectious contact occurred at `stop[r]`. A susceptible has one row
+per possible infector. The rows record only at-risk intervals and events, with
+no spatial structure and no infection order.
 """
 struct PairwiseSurvivalData{T <: Real}
     sus::Vector{Int}
@@ -40,8 +40,8 @@ struct PairwiseSurvivalData{T <: Real}
     end
 end
 
-# Promote the time-type so callers don't have to spell it out; widens to Float64
-# when the inputs are integers.
+# Promote the time type so callers don't have to spell it out; integer inputs
+# widen to Float64.
 function PairwiseSurvivalData(sus, start, stop, event)
     T = promote_type(eltype(start), eltype(stop), Float64)
     return PairwiseSurvivalData{T}(sus, start, stop, event)
@@ -50,7 +50,7 @@ end
 Base.length(d::PairwiseSurvivalData) = length(d.sus)
 
 # Row r's contact-interval distribution: a shared distribution, or a per-row
-# callable `r -> Distribution` (the seam where covariates enter).
+# callable `r -> Distribution` through which covariates enter.
 _rowkernel(k::ContinuousUnivariateDistribution, r) = k
 _rowkernel(k, r) = k(r)
 
@@ -70,8 +70,8 @@ at-risk interval:
 Right-censoring is built in: a susceptible that never had an event contributes
 only the escaped cumulative hazard. `kernel` is a `Distributions.jl`
 distribution shared by every row, or a callable `r -> Distribution` for
-covariates. The result is differentiable in the kernel's parameters, so it drops
-into Optim or Turing's `@addlogprob!`.
+covariates. The result is differentiable in the kernel's parameters, so it can
+be optimised with Optim or added to a Turing model with `@addlogprob!`.
 """
 function pairwise_surv_loglik(kernel, data::PairwiseSurvivalData)
     groups = Dict{Int, Vector{Int}}()
@@ -96,22 +96,22 @@ end
 """
     InfectionLayer
 
-Supertype of an outbreak's infection layer paired with the contact structure it
-spread over — the data the pairwise likelihood is a density of. A subtype holds,
-per host `i` (numbered `1:n`):
+Supertype for an outbreak's infection layer together with the contact structure
+it spread over. The pairwise likelihood is a density over this data. A subtype
+holds, per host `i` (numbered `1:n`):
 
-- `infection_time[i]` — the infection time, `NaN` if never infected;
-- `infectious_time[i]` — when the infectious window opens;
-- `removal_time[i]` — when it closes (`Inf` when right-censored);
-- `is_index[i]` — whether the host was introduced from outside the structure;
+- `infection_time[i]`: the infection time, `NaN` if never infected;
+- `infectious_time[i]`: when the infectious window opens;
+- `removal_time[i]`: when it closes (`Inf` when right-censored);
+- `is_index[i]`: whether the host was introduced from outside the structure;
 
 and a scalar `obs_end`, the end of follow-up over which a community hazard acts
-(only read when there is one). It also defines
-[`contact_structure`](@ref EpiBranch.contact_structure), which names who could
-have infected whom. With those in place,
-[`compile_contact_pairs`](@ref) and [`pairwise_surv_loglik`](@ref) work on it
-unchanged. `HouseholdInfections` (in `EpiHouseholds`) and `NetworkInfections`
-(in `EpiNetwork`) are the worked examples.
+(only read when there is one). A subtype also defines
+[`contact_structure`](@ref EpiBranch.contact_structure), which says who could
+have infected whom. [`compile_contact_pairs`](@ref) and
+[`pairwise_surv_loglik`](@ref) then work on it with no further methods.
+`HouseholdInfections` (in `EpiHouseholds`) and `NetworkInfections` (in
+`EpiNetwork`) are the worked examples.
 """
 abstract type InfectionLayer end
 
@@ -133,10 +133,10 @@ end
 #
 # In inference the contact structure, the index cases and the set of
 # ever-infected hosts are fixed across gradient evaluations; only the augmented
-# infection and infectious times move. `ContactPairsLayout` captures everything
-# that does not depend on those times — row → (susceptible, infector, the edge
-# it travels along) and a susceptible-grouped index for the log-sum-exp — so an
-# evaluation is a single pass over rows with no `Dict` and a streaming
+# infection and infectious times move. `ContactPairsLayout` holds everything
+# that does not depend on those times: row → (susceptible, infector, the edge it
+# travels along) and a susceptible-grouped index for the log-sum-exp. An
+# evaluation is then a single pass over rows with no `Dict` and a streaming
 # log-sum-exp, which keeps a reverse-mode AD tape short.
 
 """
@@ -144,9 +144,9 @@ end
 
 The static row structure the pairwise likelihood is evaluated on. Each row is
 one ordered (susceptible, possible infector) pair, plus, when a community hazard
-is modelled, one row per susceptible for that external source. Rows whose timing
-turns out not to overlap are kept and pruned at evaluation, so one layout serves
-every configuration of latent times with the same structure and infected set.
+is modelled, one row per susceptible for that external source. Rows whose times
+do not overlap are kept and skipped at evaluation, so one layout works for every
+configuration of latent times with the same structure and infected set.
 
 Build it with [`compile_contact_pairs`](@ref).
 """
@@ -227,8 +227,8 @@ function compile_contact_pairs(membership::AbstractVector{<:Integer},
     isempty(membership) && return _contact_pairs_layout(
         Int[], Int[], Int[], Bool[], external, 0)
 
-    # Bucket hosts by label into a `Vector{Vector{Int}}` indexed by label offset
-    # (no hashing); offsetting by `lo` tolerates any integer labels.
+    # Bucket hosts by label into a `Vector{Vector{Int}}` indexed by label offset,
+    # which avoids hashing; offsetting by `lo` allows any integer labels.
     lo, hi = extrema(membership)
     n_buckets = hi - lo + 1
     buckets = [Int[] for _ in 1:n_buckets]
@@ -376,11 +376,12 @@ function _push!(acc::_LogSumExpAcc{T}, x) where {T}
 end
 _value(acc::_LogSumExpAcc{T}) where {T} = acc.nseen == 0 ? T(-Inf) : acc.m + log(acc.s)
 
-# The parameter float type the kernel contributes to the accumulator. In
-# inference the fitted parameters ride the kernel (as AD duals), not the data,
-# so the streaming accumulator must be typed to hold them: a distribution
-# exposes its parameter type via `partype`, and a per-edge or covariate kernel
-# is probed on the first internal pair. Falls back to `T` when there is none.
+# The parameter float type the kernel adds to the accumulator. In inference the
+# fitted parameters are AD duals inside the kernel, so the data's float type
+# alone cannot hold them and the streaming accumulator is typed to include them.
+# A distribution gives its parameter type through `partype`; a per-edge or
+# covariate kernel is probed on the first internal pair. With no internal pair
+# the type falls back to `T`.
 function _kernel_partype(
         kernel::ContinuousUnivariateDistribution, layout, ::Type{T}) where {T}
     Distributions.partype(kernel)
@@ -407,16 +408,15 @@ adds the log of the summed hazard at its infection time.
 `kernel` is a `Distributions.jl` distribution shared by every pair, a callable
 `(infector, susceptible) -> Distribution` for covariates, or a per-edge vector
 parallel to an adjacency list (`kernel[i][k]` for host `i`'s `k`-th listed
-contact). `external_hazard` is a community hazard — a positive rate, or a
-calendar-time distribution — acting over `[0, data.obs_end]`; with one, index
-cases are explained like any other case, and without one they are conditioned
-on.
+contact). `external_hazard` is a community hazard (a positive rate or a
+calendar-time distribution) acting over `[0, data.obs_end]`. With one, index
+cases are explained like any other case; without one they are conditioned on.
 
-The layout form is the inference fast path: compile the layout once with
-[`compile_contact_pairs`](@ref) and reuse it while the latent times move; its
+Use the layout form in inference: compile the layout once with
+[`compile_contact_pairs`](@ref) and reuse it while the latent times move. Its
 `external` setting must agree with `external_hazard`. The two-argument form
 compiles a layout on each call. Both are generic in the number type, so the
-kernel's parameters can carry ForwardDiff or reverse-mode AD values.
+kernel's parameters can be ForwardDiff or reverse-mode AD values.
 """
 function pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairsLayout;
         external_hazard = 0.0)
@@ -435,8 +435,8 @@ function pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairs
         eltype(data.infectious_time),
         eltype(data.removal_time),
         Float64)
-    # Promote against the kernel's parameter type so AD values carried by the
-    # fitted kernel (rather than the data) survive the reduction.
+    # Promote against the kernel's parameter type so AD values in the fitted
+    # kernel survive the reduction.
     Text = external ? Distributions.partype(extdist) : Union{}
     T = promote_type(Tdata, _kernel_partype(kernel, layout, Tdata), Text)
     # A per-edge or covariate kernel's parameter type is only known at run time,

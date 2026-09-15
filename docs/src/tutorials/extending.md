@@ -935,15 +935,17 @@ specification (`extinction_probability`, `epidemic_probability`,
 For **likelihoods** on data types that don't go through the offspring
 spec, define methods on `loglikelihood` directly.
 
-A structure-driven model simulated by the continuous-time race can reuse the
-pairwise survival likelihood, whose generative model that race is. The density
-needs only who could have infected whom, so define an infection-layer type that
-subtypes [`InfectionLayer`](@ref) and says so with
-[`contact_structure`](@ref EpiBranch.contact_structure): a membership vector for
-groups whose members all mix, or an adjacency list for anything else.
-[`compile_contact_pairs`](@ref) and [`pairwise_surv_loglik`](@ref) then work on
-it unchanged, including the per-edge, covariate and community-hazard terms, and
-`loglikelihood` is one forwarding method:
+The continuous-time race is the generative model of the pairwise survival
+likelihood, so a structure-driven model simulated by that race can reuse the
+likelihood. Beyond the infection times, the density needs to know who could have
+infected whom. Define an infection-layer type that subtypes
+[`InfectionLayer`](@ref) and give it a
+[`contact_structure`](@ref EpiBranch.contact_structure) method that returns a
+membership vector for groups whose members all mix, or an adjacency list for
+anything else. [`compile_contact_pairs`](@ref) and [`pairwise_surv_loglik`](@ref)
+then work on it with no further methods, including the per-edge, covariate and
+community-hazard terms, and `loglikelihood` needs one method that forwards to
+them:
 
 ```julia
 struct MyInfections{T <: Real} <: InfectionLayer
