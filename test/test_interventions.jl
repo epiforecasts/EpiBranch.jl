@@ -549,8 +549,8 @@ struct _NoTraceIntervention <: AbstractIntervention end
 
             @testset "Boost coverage thins the boosted among the primed" begin
                 # Full coverage boosts everyone primed; partial coverage
-                # boosts a strict subset. Compared within each run, since
-                # the coverage draws move the rng stream between them.
+                # boosts a strict subset. Each run is checked on its own,
+                # because the coverage draws shift the rng stream between runs.
                 full = RingVaccination(efficacy = 0.5, requires_dose = :prime,
                     dose_label = :boost)
                 partial = RingVaccination(efficacy = 0.5, coverage = 0.5,
@@ -611,7 +611,7 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 @test_throws ArgumentError ModelSpec(process;
                     interventions = [iso, ct, late_prime, early_boost],
                     attributes = clinical)
-                # Same instant is allowed: both doses fire at the trace.
+                # Same instant is allowed: both doses are given at the trace.
                 same_instant = RingVaccination(efficacy = 0.5,
                     requires_dose = :prime, dose_label = :boost)
                 @test ModelSpec(process;
@@ -697,7 +697,7 @@ struct _NoTraceIntervention <: AbstractIntervention end
                     @test isnan(onset_time(c))
                     @test !haskey(c.state, :outcome)
                     # Traced before the onset it would have had, but never
-                    # isolated for lack of one.
+                    # isolated because it has no onset.
                     @test is_traced(c)
                     @test !is_isolated(c)
                 end
@@ -788,9 +788,9 @@ struct _NoTraceIntervention <: AbstractIntervention end
             end
 
             @testset "Protects contacts a pre-exposure dose cannot reach" begin
-                # `efficacy` asks for immunity before the exposure, which a dose
+                # `efficacy` needs immunity before the exposure, which a dose
                 # given at the trace never achieves here; `post_exposure_efficacy`
-                # asks for immunity before onset, which it often does.
+                # needs immunity before onset, which it often achieves.
                 base = simulate(scen([iso, ct]), 400; max_cases = 200,
                     rng = StableRNG(42))
                 pre = simulate(scen([iso, ct, RingVaccination(efficacy = 0.9)]),
@@ -804,8 +804,8 @@ struct _NoTraceIntervention <: AbstractIntervention end
 
             @testset "Aborting protects less than blocking all later transmission" begin
                 # An abort removes only what a contact would transmit after its
-                # immunity, and only for contacts whose immunity beats their
-                # onset, so it cannot do much more than blocking all of a
+                # immunity, and only for contacts whose immunity arrives before
+                # their onset, so it cannot do much more than blocking all of a
                 # vaccinated contact's later transmission.
                 containment(rv) = mean(containment_probability(
                                            simulate(scen([iso, ct, rv]), 200;
@@ -818,8 +818,8 @@ struct _NoTraceIntervention <: AbstractIntervention end
 
             @testset "A dose that cannot abort leaves the run untouched" begin
                 # Incubation periods here average about 5 days, so immunity 100
-                # days after the trace can never beat an onset, and the run
-                # should match one without the parameter draw for draw.
+                # days after the trace never arrives before an onset, and the
+                # run should match one without the parameter draw for draw.
                 slow(post) = RingVaccination(efficacy = 0.0,
                     post_exposure_efficacy = post, delay_to_immunity = 100.0)
                 fingerprint(states) = [(ind.id, ind.infection_time,
@@ -937,9 +937,9 @@ struct _NoTraceIntervention <: AbstractIntervention end
             end
 
             @testset "An aborted infection stays ended after a scheduled dose stops" begin
-                # The abort is state on the case, so its end of transmission
-                # cannot depend on whether the ring vaccination that recorded it
-                # is still active.
+                # The abort is stored on the case, so the end of its
+                # transmission does not depend on whether the ring vaccination
+                # that recorded it is still active.
                 scheduled = Scheduled(post_only(); end_time = 15.0)
                 results = simulate(scen([iso, ct, scheduled]), 100;
                     max_cases = 300, rng = StableRNG(1))

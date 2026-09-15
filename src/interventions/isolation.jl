@@ -171,10 +171,10 @@ function resolve_individual!(iso::Isolation, individual, state)
     # Isolation fires at the earlier of any active pathway. A
     # test-negative-but-traced contact is still isolated via tracing.
     #
-    # The traced pathway isolates a flagged contact once it has symptoms, so a
-    # contact with no onset has nothing to isolate on. That includes an
-    # infection aborted before onset after the trace had already recorded the
-    # onset it expected.
+    # The traced pathway isolates a flagged contact once it has symptoms, so it
+    # never isolates a contact with no onset. That includes a contact whose
+    # infection was aborted before onset after the trace had recorded its
+    # expected onset.
     onset = onset_time(individual)
     traced_time = isnan(onset) ? Inf : get(individual.state, :traced_isolation_time, Inf)
     test_time = if is_test_positive(individual)

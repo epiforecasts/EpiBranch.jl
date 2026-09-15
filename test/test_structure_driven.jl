@@ -175,9 +175,9 @@ function EpiBranch.apply_post_transmission!(::ExposureGenerations, state, target
 end
 
 @testset "A dose given at an earlier exposure can abort the infecting one" begin
-    # A node dosed when exposed in one generation, escaping, and infected in a
-    # later one before its immunity arrives, with onset still to come, is
-    # aborted with the post-exposure efficacy like any other.
+    # A node dosed at an exposure it escapes, then infected in a later
+    # generation before both its immunity and its onset, is aborted with the
+    # post-exposure efficacy like any other.
     spec = ModelSpec(AbortPoolModel(300, 4, 0.4);
         interventions = [
             Isolation(onset_to_isolation_delay = Exponential(1.0)),

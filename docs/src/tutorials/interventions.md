@@ -183,25 +183,25 @@ println("Iso + tracing + ring vaccination: $(round(containment_probability(resul
 ```
 
 !!! warning "`efficacy` adds nothing under this tracing"
-    That number is the same as for isolation and tracing alone, and it is
-    meant to be. By default `ContactTracing` traces a contact once its
+    That number is the same as for isolation and tracing alone, as
+    expected. By default `ContactTracing` traces a contact once its
     infector has been isolated, and that isolation already blocks every
-    later transmission to the contact, so `efficacy`, which protects a
-    contact only against exposure after its immunity arrives, has nothing
-    left to prevent. This holds with or without quarantine
-    (`quarantine_on_trace = false`). `efficacy` acts only where a contact
-    can still be infected after being traced: under leaky isolation
-    (`post_isolation_transmission > 0`), when tracing starts before the
-    infector is isolated (for example `eligibility = OnSymptomOnset()`),
-    or in a `depth > 1` ring passing through members who keep transmitting
-    after they are traced. `onward_efficacy` acts on the traced contact's
-    own later transmission instead, which a quarantine already blocks, so
-    it does act when tracing does not quarantine. So does
+    later transmission to the contact. `efficacy` protects a contact only
+    against exposure after its immunity arrives, so it has nothing left to
+    prevent, with or without quarantine (`quarantine_on_trace = false`).
+    It acts only where a contact can still be infected after being traced:
+    under leaky isolation (`post_isolation_transmission > 0`), when tracing
+    starts before the infector is isolated (for example
+    `eligibility = OnSymptomOnset()`), or in a `depth > 1` ring passing
+    through members who keep transmitting after they are traced.
+    `onward_efficacy` acts on the traced contact's own later transmission.
+    A quarantine already blocks that transmission, so `onward_efficacy`
+    acts when tracing does not quarantine. So does
     `post_exposure_efficacy`, which acts on the infection the contact
     already has; see
     [Protecting a contact who has already been exposed](#Protecting-a-contact-who-has-already-been-exposed).
-    The examples until then keep the default tracing and set only
-    `efficacy`, so they show the machinery rather than a vaccine effect.
+    Until that section the examples keep the default tracing and set only
+    `efficacy`, so they show how the machinery works but no vaccine effect.
 
 A delay between vaccination and protective immunity can be specified.
 If transmission occurs before immunity develops, there is no protection:
@@ -247,22 +247,23 @@ A wider ring reaches more people, so it costs more doses, and the extra
 doses protect only contacts still exposed after they are traced. Here
 every infected ring member with symptoms is isolated and seeds a ring of
 its own, so its contacts are traced after that isolation and the second
-ring adds doses without adding protection. Its doses have exposures to
-prevent when the ring passes through members who keep transmitting after
-they are traced, such as asymptomatic members under tracing without
-quarantine. Compare dose counts and `containment_probability` across
-depths to see the trade-off for a given setting.
+ring adds doses without adding protection. The second ring's doses can
+prevent exposures when the ring passes through members who keep
+transmitting after they are traced, such as asymptomatic members under
+tracing without quarantine. Compare dose counts and
+`containment_probability` across depths to see the trade-off for a given
+setting.
 
 ### Post-exposure prophylaxis
 
 For PEP (antivirals or antibiotics given to traced contacts), use
-`RingVaccination` with `delay_to_immunity = 0.0` (the default). Set
-through `efficacy`, PEP only blocks transmission for contacts whose
-trace time falls before their would-be transmission time — the engine's
-competing-risks resolution handles this automatically, and under the
-tracing used here it leaves the result unchanged (see the warning
-above). PEP that stops an infection a contact already has is
-`post_exposure_efficacy`, covered below:
+`RingVaccination` with `delay_to_immunity = 0.0` (the default). PEP that
+stops an infection a contact already has is set by
+`post_exposure_efficacy`, covered below. Set through `efficacy`, PEP only
+blocks transmission for contacts whose trace time falls before their
+would-be transmission time. The engine's competing-risks resolution
+handles this automatically, and under the tracing used here PEP set this
+way leaves the result unchanged (see the warning above):
 
 ```@example interventions
 pep = RingVaccination(efficacy = 0.9)  # delay_to_immunity defaults to 0
@@ -368,8 +369,8 @@ and so on.
 Ring doses are given at the trace, so a second dose sets `dose_delay`
 (days from the trace to that dose) and names the dose it follows with
 `requires_dose`. Only contacts who have had the earlier dose by the time
-the later one falls due get it, which makes the boost's `coverage` the
-retention between doses:
+the later one falls due receive the later one, so the boost's `coverage`
+is the retention between doses:
 
 ```@example interventions
 prime_ring = RingVaccination(efficacy = 0.6, delay_to_immunity = 21.0,
@@ -386,11 +387,11 @@ println("Two-dose ring: $(round(containment_probability(results), digits=3))")
 
 The boost's `efficacy` is the protection it adds among those the prime
 left unprotected, because doses compose as competing risks. A schedule
-described as 60% after one dose and 80% after two therefore takes
+described as 60% after one dose and 80% after two therefore needs
 `efficacy = 0.5` on the boost: `(0.8 - 0.6) / (1 - 0.6)`.
 
-Doses are cheap to count, and a schedule's second dose is where the cost
-sits:
+Counting doses is cheap, and the count shows what a schedule's second
+dose costs:
 
 ```@example interventions
 doses(key) = mean(count(i -> i.state[key], s.individuals) for s in results)
@@ -398,7 +399,7 @@ println("Primed: $(round(doses(:vaccinated_prime), digits = 1)), ",
     "boosted: $(round(doses(:vaccinated_boost), digits = 1))")
 ```
 
-Whether those doses buy anything is a question about timing. Through
+Whether those doses prevent anything depends on timing. Through
 `efficacy`, a dose protects a ring member only against infection after
 its immunity arrives. Under the tracing used here no ring member is
 infected after being traced (see the warning above), so neither dose
@@ -427,25 +428,24 @@ end
 
 Those infections come from infectors who have not yet isolated, which
 they do within days of onset. A dose on the day of the trace can still
-prevent them, while protection arriving a week later, let alone a boost
-given 28 days after the trace, comes too late for almost all of them.
+prevent them. Protection arriving a week later comes too late for almost
+all of them, and a boost given 28 days after the trace comes later still.
 Across many simulated outbreaks under this tracing, a trace-day dose
 raises containment and the same efficacy a week later does not.
 
 !!! tip "Adding an intervention is not a controlled comparison"
     Re-running with the boost removed will not show this, and may
     suggest the opposite. `boost_ring` has `coverage = 0.9`, so it draws
-    from the rng for every primed contact and shifts the whole stream:
-    the two runs are different samples, not the same outbreak with and
-    without a dose. Here that reads as containment 0.255 with the boost
-    against 0.295 without, a difference that is Monte Carlo noise rather
-    than the boost doing harm. A dose with `coverage = 1.0`, scalar
-    efficacy and no eligibility window draws from the rng only when it
-    meets an exposure it could block, so a dose with nothing to block
-    leaves the stream untouched, which is why the
-    `RingVaccination(efficacy = 0.8)` case above reproduces its baseline
-    exactly. Otherwise, compare across many seeds, or reason from the
-    timing as here.
+    from the rng for every primed contact and shifts the whole stream.
+    The two runs are then different samples, not the same outbreak with
+    and without a dose. Here containment is 0.255 with the boost and
+    0.295 without, and that difference is Monte Carlo noise, not harm
+    from the boost. A dose with `coverage = 1.0`, scalar efficacy and no
+    eligibility window draws from the rng only when it meets an exposure
+    it could block. Such a dose with nothing to block leaves the stream
+    untouched, which is why the `RingVaccination(efficacy = 0.8)` case
+    above reproduces its baseline exactly. For any other dose, compare
+    across many seeds, or reason from the timing as here.
 
 ### Protecting a contact who has already been exposed
 
@@ -467,11 +467,11 @@ can still act on the infection the contact already has, in two ways:
 
 The two compose: a dose setting both aborts some infections and makes
 the rest less infectious. Both act only on transmission after immunity
-arrives, so a contact that has infected most of its own contacts by then
-gains little from either. A quarantine from the trace already blocks
+arrives, so neither does much for a contact that has infected most of
+its own contacts by then. A quarantine from the trace already blocks
 that later transmission, so the examples here trace without quarantine.
-Infectiousness here starts at infection, and the clearest measure is the
-number of people each traced case goes on to infect:
+Infectiousness here starts at infection, and the clearest measure of the
+effect is the number of people each traced case goes on to infect:
 
 ```@example interventions
 ct_flag = ContactTracing(probability = 0.7,
@@ -509,9 +509,9 @@ about 0.21 to about 0.24; at 400 replicates that difference is barely
 larger than the Monte Carlo noise, so a single run of this block can
 place the two in either order.
 
-Speed decides how much `post_exposure_efficacy` achieves. Immunity has
-to arrive before onset, and incubation periods here average about five
-days:
+How much `post_exposure_efficacy` achieves depends on speed. Immunity
+has to arrive before onset, and incubation periods here average about
+five days:
 
 ```@example interventions
 for days in [0.0, 2.0, 5.0, 21.0]
@@ -532,18 +532,18 @@ end
 ```
 
 With same-day immunity the dose aborts over two in five traced cases.
-Two days' delay brings that to about a quarter and takes away most of
-the reduction in onward infections, by five days little is left, and
-three weeks after the trace nothing is. An aborted
+A two-day delay brings that to about a quarter and removes most of the
+reduction in onward infections. With a five-day delay little is left,
+and with immunity three weeks after the trace nothing is. An aborted
 case appears in the line list with a `date_infection_aborted` and no
 onset date.
 
 Where immunity is in place before the exposure, `post_exposure_efficacy`
 blocks the infection itself. That is all it can do for a contact with no
-onset to race (an asymptomatic one, whose incubation period is `NaN`),
-and it means `post_exposure_efficacy` covers every contact `efficacy`
-would have protected, so setting both double-counts. Requires
-`:incubation_period`, from [`clinical_presentation`](@ref).
+onset to race (an asymptomatic one, whose incubation period is `NaN`).
+It also means `post_exposure_efficacy` covers every contact `efficacy`
+would protect, so setting both double-counts. `post_exposure_efficacy`
+requires `:incubation_period`, set by [`clinical_presentation`](@ref).
 
 Under quarantine neither parameter has transmission left to block, and
 `post_exposure_efficacy` can lower containment: an aborted case never

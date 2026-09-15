@@ -579,13 +579,13 @@ end
 
 # A post-exposure abort (`:infection_aborted_time`) is drawn in the
 # intervention phase against a target's provisional exposure, its earliest
-# exposing edge, and describes only the infection that exposure starts. When
-# resolution does not bear that exposure out, the flag would otherwise act on
-# something it was not drawn for, so it is removed and the onset it suppressed
-# restored. That covers a target that escapes infection, which on a
-# pre-created node could otherwise be infected in a later generation and have
-# its dose counted twice, and a target infected through a later edge at or
-# after the abort time, where the dose's contact-side risk already applied.
+# exposing edge, and applies only to the infection that exposure starts. When
+# resolution does not confirm that exposure, this removes the abort and
+# restores the onset it suppressed, so the abort cannot act on an infection it
+# was not drawn for. One such target escapes infection: as a pre-created node
+# it could otherwise be infected in a later generation and have its dose
+# counted twice. The other is infected through a later edge at or after the
+# abort time, where the dose's contact-side risk already applied.
 function _drop_stale_abort!(target::Individual)
     aborted_t = get(target.state, :infection_aborted_time, nothing)
     aborted_t === nothing && return nothing
@@ -841,7 +841,7 @@ An infection aborted before onset (`:infection_aborted_time`, see
 transition takes effect at the times it writes under `_time` keys, so one that
 writes a time at or after the abort is undone, whatever state it is timed from:
 every key it changed is restored. Transitions timed from it then find their
-`from` state unreached, and it enters no terminal candidate into the outcome.
+`from` state unreached, and it contributes no terminal candidate to the outcome.
 Transitions that take effect strictly before the abort stand.
 """
 function resolve_transitions!(state::SimulationState, individual)
@@ -887,7 +887,7 @@ function _resolve_before_abort!(transitions, individual, state, aborted_t)
     return nothing
 end
 
-# Marks a key a transition did not have before it ran. A private instance
+# Marks a key that was absent before a transition ran. A private instance
 # compares unequal to anything a transition could store.
 struct _Absent end
 const _ABSENT = _Absent()
@@ -1003,9 +1003,8 @@ function competing_risk(::AbortedInfection, parent, contact, state)
 end
 
 # The built-in risk sources, in the order they apply. The calls are written out
-# rather than looped over a tuple: a tuple of more than four distinct types is
-# not union-split, so the loop would dispatch dynamically on every edge, for
-# every model.
+# because a loop over a tuple of more than four distinct types is not
+# union-split and would dispatch dynamically on every edge, for every model.
 function _builtin_risk_blocks(parent, contact, state, transmission_time)
     _risk_blocks(InfectiousSource(), parent, contact, state, transmission_time) &&
         return true
