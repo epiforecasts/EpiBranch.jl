@@ -269,6 +269,23 @@ end
         BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0)))
     @test ForwardDiff.derivative(rstar, 1.2) ≈ rstar(1.0) rtol = 1e-6
 
+    # When the eigenvectors depend on the parameter, the power iteration must
+    # still give the right derivative. Equal row sums make `ones` the right
+    # eigenvector at the start, which is the case where the iterates' values
+    # settle before their derivative parts.
+    for M0 in ([1.4 0.1; 0.2 1.3], [1.0 0.5; 0.8 0.7])
+        rpow(θ) = reproduction_number(
+            BranchingProcess(M0, R -> Poisson(R^θ), Exponential(5.0)))
+        @test ForwardDiff.derivative(rpow, 1.0) ≈ fdm(rpow, 1.0) rtol = 1e-8
+    end
+    # Dual entries of the matrix. The spectral radii are 1.2 + 0.3√θ and
+    # 0.1 + 2√θ, with derivatives 0.15 and 1 at θ = 1.
+    rentry(θ) = reproduction_number(
+        EpiBranch.MultiTypeOffspring([1.2 0.3θ; 0.3 1.2], R -> Poisson(R)))
+    @test ForwardDiff.derivative(rentry, 1.0) ≈ 0.15 rtol = 1e-10
+    rcross(θ) = EpiBranch._spectral_radius([0.1 2.0θ; 2.0 0.1])
+    @test ForwardDiff.derivative(rcross, 1.0) ≈ 1.0 rtol = 1e-10
+
     q2(θ) = extinction_probability(
         BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0)))[2]
     @test ForwardDiff.derivative(q2, 1.2) ≈ fdm(q2, 1.2) rtol = 1e-5

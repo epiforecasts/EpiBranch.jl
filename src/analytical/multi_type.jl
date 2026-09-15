@@ -32,22 +32,40 @@ _spectral_radius(A::AbstractMatrix{<:LinearAlgebra.BlasReal}) = maximum(abs, eig
 # Generic element types (e.g. dual numbers under ForwardDiff) have no `eigvals`,
 # so this method uses power iteration on `A + I`. The shift makes the dominant
 # eigenvalue of a non-negative matrix the unique one of largest modulus, and the
-# unit diagonal keeps every iterate strictly positive, so the growth of the
-# largest entry converges to it even when `A` is reducible.
+# unit diagonal keeps every iterate strictly positive, so the iteration converges
+# even when `A` is reducible.
+#
+# The stopping test compares values only, so for dual numbers the derivative
+# parts of the iterates may still be far from their limits when it passes. The
+# method therefore iterates on `A + I` and its transpose together and returns
+# the quotient uᵀAv / uᵀv of the right (`v`) and left (`u`) eigenvectors. This
+# quotient is stationary in `u` and `v` at the eigenvectors, so its first
+# derivative is uᵀ(dA)v / uᵀv whatever the derivative parts of `u` and `v` are.
+# When `u` and `v` are nearly orthogonal, as for a defective dominant
+# eigenvalue, the quotient is unstable and the method returns the growth of the
+# largest entry of `v` instead.
 function _spectral_radius(A::AbstractMatrix{<:Real}; tol::Real = 1e-12,
         max_iter::Int = 100_000)
     n = size(A, 1)
     B = [A[i, j] + (i == j) for i in 1:n, j in 1:n]
+    Bt = permutedims(B)
     v = ones(eltype(B), n)
+    u = ones(eltype(B), n)
     λ = one(eltype(B))
     for _ in 1:max_iter
         w = B * v
-        λ_new = maximum(w)
-        v = w ./ λ_new
-        abs(λ_new - λ) <= tol * λ_new && return λ_new - 1
-        λ = λ_new
+        λ = maximum(w)
+        v_new = w ./ λ
+        z = Bt * u
+        u_new = z ./ maximum(z)
+        converged = maximum(abs, v_new .- v) <= tol &&
+                    maximum(abs, u_new .- u) <= tol
+        v, u = v_new, u_new
+        converged && break
     end
-    return λ - 1
+    uv = sum(u .* v)
+    uv > sqrt(tol * sum(abs2, u) * sum(abs2, v)) || return λ - 1
+    return sum(u .* (A * v)) / uv
 end
 
 # Probability generating functions of total-count laws: closed forms for
