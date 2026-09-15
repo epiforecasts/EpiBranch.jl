@@ -204,8 +204,8 @@
 
     @testset "onset is measured from each case's own infection time" begin
         # Pool members are created, and their incubation periods drawn, before
-        # the pool sets their infection times; onset must still follow from the
-        # time each case was actually infected, since isolation keys off it.
+        # the pool sets their infection times. Isolation depends on onset, so
+        # onset must be counted from the time each case was infected.
         clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
             test_sensitivity = 1.0)
