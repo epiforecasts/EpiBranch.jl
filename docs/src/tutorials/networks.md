@@ -434,7 +434,7 @@ density, and `pairwise_surv_loglik` returns `-Inf` with a zero gradient, since
 whether a configuration is possible at all is fixed by the times and not by the
 kernel's parameters.
 
-Fitting the community hazard itself carries a caveat. A positive
+Fitting the community hazard itself needs one caveat. A positive
 `external_hazard` and no community hazard are different conditionings, and the
 density does not pass continuously from one to the other. With a constant rate
 `α > 0` an index node infected at time `t` contributes `log(α) - α t`, which

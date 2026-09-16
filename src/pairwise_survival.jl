@@ -531,7 +531,7 @@ function _pairwise_surv_loglik(kernel, extdist, data, layout, external,
     # an infected one with no positive hazard at its infection time has density
     # zero, and the whole configuration is impossible: return -Inf there rather
     # than adding it, so that the derivative is zero too. Adding it would leave
-    # the finite terms of the other hosts carrying their derivatives alongside an
+    # the derivatives of the other hosts' finite terms sitting alongside an
     # infinite value, whereas the log-density is -Inf throughout a neighbourhood
     # of the parameters — impossibility is a discrete fact of the fixed times.
     acc = _LogSumExpAcc{T}()
