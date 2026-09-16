@@ -442,9 +442,12 @@ falls to `-Inf` as `α → 0`: a model that admits community introductions has t
 explain the ones it saw. At exactly `external_hazard = 0` index nodes are
 conditioned on instead and contribute nothing, so the value stays finite. So a
 likelihood ratio between "some community transmission" and "none" cannot be read
-off by letting `α` approach zero — score the two models separately — and a prior
-on `α` with mass near zero meets a density that falls away sharply just above it,
-which shows up as a sampler struggling at the boundary.
+off by letting `α` approach zero: score the two models separately. The
+discontinuity is at that one point — near zero the log-density is `k log α - α T`
+up to terms free of `α`, where `k` counts the cases the community alone can
+explain and `T` is the total time nodes are exposed to it, so in `log α` it is a
+straight line of slope `k`. The [households tutorial](households.md) puts numbers
+on that.
 
 A `Gamma` cannot be differentiated by ForwardDiff — as the community hazard or as
 the contact-interval kernel. Its cumulative hazard calls

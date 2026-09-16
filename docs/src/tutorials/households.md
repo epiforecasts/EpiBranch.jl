@@ -148,11 +148,16 @@ vanishingly badly. At exactly `external_hazard = 0` index cases are conditioned 
 instead and contribute nothing, so the value stays finite. Each is correct for
 what it conditions on.
 
-Two things follow for fitting. A likelihood ratio between "some community
-transmission" and "none" cannot be read off by letting `α` approach zero — score
-the two models separately. And a prior on `α` with mass near zero meets a density
-that falls away sharply just above it, which shows up as a sampler struggling at
-the boundary; a prior bounded away from zero, such as a lognormal, avoids that.
+What follows for fitting is that a likelihood ratio between "some community
+transmission" and "none" cannot be read off by letting `α` approach zero. Score
+the two models separately.
+
+The discontinuity is at that one point, and the approach to it is ordinary. Drop
+the terms free of `α` and the log-density near zero is `k log α - α T`, where `k`
+counts the cases the community alone can explain and `T` is the total time the
+population is exposed to it. In `log α` that is a straight line of slope `k`. On
+400 households of four with `k = 401`, `d ll / d log α` is 401.0 at `α = 1e-6`
+and 393.5 at `1e-3`, falling to zero at the mode near `α = 0.052`.
 
 A `Gamma` cannot be differentiated by ForwardDiff — as the community hazard or as
 the contact-interval kernel. Its cumulative hazard calls

@@ -458,9 +458,12 @@ and `Exponential` differentiate under either mode.
     the ones it saw. At exactly `external_hazard = 0` index cases are instead
     conditioned on and contribute nothing, leaving a finite value. So a
     likelihood ratio between "some community transmission" and "none" cannot be
-    read off by letting `α` approach zero — score the two models separately — and
-    a prior with mass near zero meets a density that falls away sharply just
-    above it, which shows up as a sampler struggling at the boundary.
+    read off by letting `α` approach zero: score the two models separately.
+
+    The discontinuity is at that one point. Approaching it, the log-density is
+    `k log α − αT` up to terms free of `α`, where `k` counts the cases the
+    community alone can explain and `T` is the total time hosts are exposed to
+    it, so in `log α` it is a straight line of slope `k`.
 """
 function pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairsLayout;
         external_hazard = 0.0)
