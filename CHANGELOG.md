@@ -28,8 +28,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   `ContactPairsLayout`, and `pairwise_surv_loglik` evaluates it on any
   `InfectionLayer` subtype. `EpiHouseholds` now uses it through every form and
   keeps its API: `HouseholdPairsLayout` is another name for
-  `ContactPairsLayout`. Household values without a community hazard are
-  unchanged, and evaluation is faster, most markedly with a community hazard.
+  `ContactPairsLayout`. Evaluation is faster, most markedly with a community
+  hazard.
 - `trigger_time(eligibility, infector, contact, state)` gives the trace's
   trigger time for the contact being traced, and `ContactTracing` calls it. A
   custom policy can define it to time the trace from the contact, and combinators
@@ -69,8 +69,7 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   infection and `obs_end`, a host infected after `obs_end` adds no community
   hazard at its infection time, and a host that is never infected is exposed
   over each possible infector's whole infectious window. Household likelihood
-  values with a community hazard change as a result; values without one are
-  unchanged. For data that end at a follow-up time, `obs_end` no longer ends
+  values with a community hazard change as a result. For data that end at a follow-up time, `obs_end` no longer ends
   exposure to contacts, so a case still infectious then takes the follow-up time
   as its removal time, where `Inf` gives a density of zero.
 - The continuous-time race behind `NetworkProcess`, `RoutedNetwork` and

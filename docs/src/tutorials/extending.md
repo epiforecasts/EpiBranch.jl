@@ -979,7 +979,7 @@ struct MyInfections{T <: Real} <: InfectionLayer
     contacts::Vector{Vector{Int}}    # contacts[i]: who host i can infect
     infection_time::Vector{T}        # NaN if never infected
     infectious_time::Vector{T}       # the infectious window opens
-    removal_time::Vector{T}          # and closes (Inf if right-censored)
+    removal_time::Vector{T}          # and closes (follow-up end if still open)
     is_index::Vector{Bool}           # introduced from outside
     obs_end::T                       # community introductions stop
 end
