@@ -25,49 +25,6 @@
 # intervention (isolation) acts by shortening the infectious window through the
 # window-close, exactly as in `_sellke_race!`.
 
-# A minimal binary min-heap over `(time, id)` pairs — tuples compare
-# lexicographically, so ties break deterministically on id. Avoids a
-# DataStructures dependency for the two pending-event queues.
-function _pool_heap_push!(h::Vector{Tuple{T, Int}}, x::Tuple{T, Int}) where {T <: Real}
-    push!(h, x)
-    i = length(h)
-    @inbounds while i > 1
-        p = i >> 1
-        h[p] <= h[i] && break
-        h[p], h[i] = h[i], h[p]
-        i = p
-    end
-    return h
-end
-
-function _pool_heap_peek(h::Vector{Tuple{T, Int}}) where {T <: Real}
-    isempty(h) ? (T(Inf), 0) : @inbounds h[1]
-end
-
-function _pool_heap_pop!(h::Vector{Tuple{T, Int}}) where {T <: Real}
-    n = length(h)
-    n == 0 && return (T(Inf), 0)
-    @inbounds top = h[1]
-    @inbounds last = h[n]
-    pop!(h)
-    n -= 1
-    if n > 0
-        @inbounds h[1] = last
-        i = 1
-        @inbounds while true
-            l = 2i
-            r = 2i + 1
-            s = i
-            (l <= n && h[l] < h[s]) && (s = l)
-            (r <= n && h[r] < h[s]) && (s = r)
-            s == i && break
-            h[i], h[s] = h[s], h[i]
-            i = s
-        end
-    end
-    return top
-end
-
 """
     _sellke_pool!(state, members, rng; mixing_by = (), force, n_initial, from, until)
 
@@ -168,8 +125,8 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         close_t = min(_window_close(ind, until),
             _intervention_removal_time(ind, interventions))
         (isfinite(close_t) && close_t <= open_t) && return nothing
-        _pool_heap_push!(open_heap, (open_t, ind.id))
-        isfinite(close_t) && _pool_heap_push!(close_heap, (close_t, ind.id))
+        _heap_push!(open_heap, (open_t, ind.id))
+        isfinite(close_t) && _heap_push!(close_heap, (close_t, ind.id))
         return nothing
     end
 
@@ -236,8 +193,8 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             end
         end
 
-        t_open, _ = _pool_heap_peek(open_heap)
-        t_close, _ = _pool_heap_peek(close_heap)
+        t_open, _ = _heap_peek(open_heap)
+        t_close, _ = _heap_peek(close_heap)
 
         t_event = min(t_open, t_close, t_inf)
         isfinite(t_event) || break
@@ -255,7 +212,7 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         # (e.g. a case that becomes infectious at its infection time when
         # `from == :infection`) updates `counts` before the next infection is timed.
         if t_close == t_event
-            _, id = _pool_heap_pop!(close_heap)
+            _, id = _heap_pop!(close_heap)
             i = slot[id]
             lastid = infectious_ids[end]
             infectious_ids[i] = lastid
@@ -264,7 +221,7 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             delete!(slot, id)
             counts[typ[id]] -= 1
         elseif t_open == t_event
-            _, id = _pool_heap_pop!(open_heap)
+            _, id = _heap_pop!(open_heap)
             push!(infectious_ids, id)
             slot[id] = length(infectious_ids)
             counts[typ[id]] += 1
