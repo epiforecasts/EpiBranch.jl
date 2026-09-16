@@ -63,6 +63,90 @@ sort(propertynames(linelist(simulate(clinical; rng = StableRNG(2)))))
 `date_infectious` and `date_recovered` appear because the progression writes
 `:infectious_time` and `:recovered_time` onto each case.
 
+## The reproduction number between households
+
+A household model describes what happens inside a household. What happens
+*between* them is a branching process of its own, whose unit is a whole
+household: an infected household infects other households through the community
+contacts of its members, and the epidemic grows only if one infected household
+infects more than one other on average. That threshold is R*.
+
+[`household_offspring`](@ref) builds the law those households follow. It needs
+one number the household process does not carry, the rate at which an infectious
+individual makes contact outside its own household. Early in an epidemic each
+such contact reaches a susceptible person in a fresh household, so a household
+infects a Poisson number of others with mean that rate times the total infectious
+person-time of its own outbreak — which is random, because the household outbreak
+is.
+
+```@example households
+offspring = household_offspring(model; global_rate = 0.1, rng = StableRNG(5))
+reproduction_number(offspring)
+```
+
+The law itself is a `Distributions.jl` distribution, so it can be plotted, sampled,
+or handed to a [`BranchingProcess`](@ref) to simulate chains of infected households:
+
+```@example households
+law = household_offspring_law(offspring)
+(pdf(law, 0), pdf(law, 1), pdf(law, 2))
+```
+
+Household size is what makes one household differ from another, so it is the type
+of this branching process. A community contact reaches a *person*, and with them
+their household, so larger households are reached more often than their share of
+households alone would suggest — and they then make more onward infections,
+because more of their members are infected. Both effects are in the answer:
+
+```@example households
+mixed = ModelSpec(HouseholdProcess([fill(2, 400); fill(5, 200)], Weibull(1.5, 12.0));
+    progression = [Transition(:recovered; from = :infection, delay = 6.0,
+        terminal = true)])
+sized = household_offspring(mixed; global_rate = 0.1, rng = StableRNG(6))
+(sizes = sized.sizes, reached = sized.mixing, offspring = sized.means)
+```
+
+[`extinction_probability`](@ref) answers the question a household model is usually
+asked: an infected household appears, how likely is that the end of it? It gives
+one probability per household size, because the first household's size is the one
+thing that is not drawn from the mixing weights.
+
+```@example households
+extinction_probability(sized)
+```
+
+The model's own layers are in all of this. An isolation intervention shortens each
+case's infectious window, which cuts both the household members it infects and the
+community contacts it makes, so R* falls out of the censoring rather than being
+adjusted by hand:
+
+```@example households
+isolated = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
+    progression = [Transition(:onset; from = :infection, delay = 1.0),
+        Transition(:recovered; from = :infection, delay = 6.0, terminal = true)],
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0),
+        eligibility = AllCases())])
+reproduction_number(household_offspring(isolated; global_rate = 0.1,
+    rng = StableRNG(7)))
+```
+
+The within-household epidemic behind all of these is available on its own.
+[`household_final_size`](@ref) gives the exact distribution of how many of a
+household's members are ultimately infected, for any contact-interval kernel and
+infectious window:
+
+```@example households
+d = household_final_size(4, Weibull(1.5, 12.0), 6.0)
+(mean = mean(d), all_four = pdf(d, 4))
+```
+
+Where the household epidemic has a closed form — an exponential contact interval
+racing an exponential infectious window, with no interventions — the offspring law
+is solved exactly and no simulation runs. Otherwise households of each size are
+simulated (`n_samples`, 10,000 by default) and only the within-household epidemic
+carries Monte Carlo error; the Poisson compounding on top of it is analytical, and
+so is the mean whenever the infectious window is a single delay of the progression.
+
 ## The pairwise likelihood
 
 Infections are latent: the model generates them, and the progression maps each to
