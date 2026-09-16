@@ -1,18 +1,26 @@
 """
-    linelist(state::SimulationState; reference_date=Date(2020, 1, 1))
+    linelist(state::SimulationState; reference_date=Date(2020, 1, 1),
+             infected_only=true)
 
-Return a DataFrame with one row per infected case. The core columns
-(`id`, `parent_id`, `generation`, `chain_id`, `date_infection`) are
-always present; any other typed field or `state` entry becomes a
-column too. Keys ending in `_time` are converted to dates using
-`reference_date`, so `:onset_time` ends up as `date_onset`.
+Return a DataFrame with one row per case. The core columns (`id`,
+`parent_id`, `generation`, `chain_id`, `date_infection`) are always
+present; any other typed field or `state` entry becomes a column too.
+Keys ending in `_time` are converted to dates using `reference_date`, so
+`:onset_time` ends up as `date_onset`.
+
+With `infected_only = false`, every individual in `state` is included —
+the whole population on a structure-driven model such as `NetworkProcess`
+or `HouseholdProcess`, not just the cases — with an `infected` column
+added. A never-infected individual has no infection or other event time,
+so its `date_*` columns are `missing` rather than the simulation's t=0
+start.
 
 To add a column, write the field during the simulation. `linelist`
 reads whatever is on `state`.
 """
 function linelist(state::SimulationState;
-        reference_date::Date = Date(2020, 1, 1))
-    cases = filter(is_infected, state.individuals)
+        reference_date::Date = Date(2020, 1, 1), infected_only::Bool = true)
+    cases = infected_only ? filter(is_infected, state.individuals) : state.individuals
     isempty(cases) && return DataFrame()
 
     cols = Dict{Symbol, Vector}(
@@ -23,12 +31,13 @@ function linelist(state::SimulationState;
         :date_infection => [_to_date(reference_date, ind.infection_time)
                             for ind in cases]
     )
+    infected_only || (cols[:infected] = [is_infected(ind) for ind in cases])
 
     state_keys = Set{Symbol}()
     for ind in cases
         union!(state_keys, keys(ind.state))
     end
-    delete!(state_keys, :infected)  # encoded by the row's existence
+    delete!(state_keys, :infected)  # encoded by the row's existence, or the column above
 
     for key in state_keys
         _add_state_column!(cols, cases, key, reference_date)
@@ -120,7 +129,7 @@ end
 columns first, then date columns (alphabetical), then the rest
 (alphabetical)."""
 function _column_order(ks)
-    core = [:id, :parent_id, :generation, :chain_id, :date_infection]
+    core = [:id, :parent_id, :generation, :chain_id, :infected, :date_infection]
     keyset = Set(ks)
     ordered = Symbol[k for k in core if k in keyset]
     remaining = [k for k in ks if !(k in ordered)]

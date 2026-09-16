@@ -151,6 +151,32 @@ using Dates
         @test n_index == 3
     end
 
+    @testset "linelist infected_only=false includes the whole population" begin
+        N = 200
+        m = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 0.5, population_size = N);
+            progression = [Transition(:recovered; from = :infection, delay = 1.0,
+                terminal = true)])
+        state = simulate(m; rng = StableRNG(1), n_initial = 1)
+        @test state.cumulative_cases < N   # a sub-critical outbreak leaves survivors
+
+        df = linelist(state; infected_only = false)
+        @test nrow(df) == N
+        @test "infected" in names(df)
+        @test count(df.infected) == state.cumulative_cases
+
+        # Never-infected individuals carry no infection time, not a spurious
+        # infection at t=0.
+        never_infected = filter(row -> !row.infected, df)
+        @test all(ismissing, never_infected.date_infection)
+
+        infected_rows = filter(row -> row.infected, df)
+        @test all(!ismissing, infected_rows.date_infection)
+
+        # The default keeps today's contract: infected cases only.
+        @test nrow(linelist(state)) == state.cumulative_cases
+    end
+
     @testset "linelist picks up custom state fields generically" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))

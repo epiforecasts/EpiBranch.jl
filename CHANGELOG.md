@@ -9,6 +9,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- `linelist(state; infected_only = false)` returns the whole population, one
+  row per individual, rather than cases only — the table a test-negative
+  design, an attack rate by covariate, or an exposed/unexposed comparison
+  needs. It adds an `infected` column and keeps the same attribute and
+  `state` columns as the default. Never-infected individuals now carry `NaN`
+  (`missing` in the table) in `infection_time` and every field derived from
+  it, rather than `0.0`, so they can no longer be mistaken for cases infected
+  at the start of the simulation.
 - `HomogeneousProcess`, a closed, homogeneously-mixing population of fixed size
   simulated by the Sellke threshold construction. Every infectious individual
   exerts the same force of infection on every susceptible, giving the exact
