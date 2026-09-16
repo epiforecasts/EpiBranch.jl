@@ -309,6 +309,40 @@ end
         end
     end
 
+    @testset "households are one type only if their kernels agree pair for pair" begin
+        # Households of four in which the first member transmits fast, and in
+        # every other household the second member too. Both patterns share the
+        # first member's kernel, so only a pair-for-pair comparison separates
+        # them.
+        n_households = 200
+        position(i) = (i - 1) % 4 + 1
+        household(i) = (i - 1) ÷ 4 + 1
+        fast(i) = position(i) == 1 || (iseven(household(i)) && position(i) == 2)
+        model = ModelSpec(
+            HouseholdProcess(fill(4, n_households),
+                (i, j) -> Exponential(fast(i) ? 1.0 : 10.0));
+            progression = [Transition(:recovered; from = :infection, rate = γ,
+                terminal = true)])
+        o = household_offspring(model; global_rate = λG, n_samples = 40_000,
+            rng = StableRNG(24))
+        @test o.households == [collect(1:2:n_households), collect(2:2:n_households)]
+        @test o.mixing ≈ [0.5, 0.5]
+        @test o.means[2] > o.means[1]
+
+        rng = StableRNG(25)
+        person_time = zeros(2)
+        for _ in 1:200
+            state = simulate(model; rng)
+            for ind in state.individuals
+                is_infected(ind) || continue
+                person_time[2 - isodd(ind.state[:household])] +=
+                    ind.state[:recovered_time] - ind.infection_time
+            end
+        end
+        direct = λG .* person_time ./ (200 * n_households / 2)
+        @test o.means≈direct rtol=0.03
+    end
+
     @testset "a bare process takes its own progression" begin
         # Without a terminal transition the infectious window never closes, so a
         # household would infect unboundedly many others.
