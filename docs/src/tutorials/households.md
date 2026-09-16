@@ -167,7 +167,8 @@ is solved exactly and no simulation runs. Otherwise households of each size are
 simulated (`n_samples`, 10,000 by default; with a covariate kernel, that many in
 all, shared among the types) and only the within-household epidemic
 carries Monte Carlo error; the Poisson compounding on top of it is analytical, and
-so is the mean whenever the infectious window is a single delay of the progression.
+so, with a shared kernel, is the mean whenever the infectious window is a single
+delay of the progression.
 
 The construction is the classical two-level-mixing model of Ball, Mollison and
 Scalia-Tomba (1997), and R* is their R*. The within-household final size comes

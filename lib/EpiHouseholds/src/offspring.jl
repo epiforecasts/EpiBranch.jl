@@ -115,8 +115,9 @@ mixing weights and at least one per type; a type with few samples has a rough
 law of its own, while the mixture law and R* average over all of them. Whichever
 route is taken, the
 Poisson compounding is analytical, so the simulated route carries Monte Carlo
-error only in the within-household epidemic. The mean is exact whenever the
-infectious window is a single delay of the progression, because the mean total
+error only in the within-household epidemic. With a shared kernel the mean is
+exact whenever the infectious window is a single delay of the progression,
+because the mean total
 infectious person-time is then the mean final size times the mean window
 (a case's own window does not bear on whether it was infected).
 
