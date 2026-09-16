@@ -116,6 +116,14 @@ using LinearAlgebra: eigvals
         @test_logs EpiBranch._spectral_radius(BigFloat[1.5 0.6; 0.5 0.9])
     end
 
+    @testset "Critical matrix gives exactly 1" begin
+        # Columns sum to 1, so R* = 1, but `eigvals` rounds it just above 1.
+        M_critical = [0.7 0.3 0.0; 0.2 0.5 0.3; 0.1 0.2 0.7]
+        critical = BranchingProcess(M_critical, R -> Poisson(R), Exponential(1.0))
+        @test reproduction_number(critical) ≈ 1.0
+        @test (@test_logs extinction_probability(critical)) == ones(3)
+    end
+
     @testset "Sink type" begin
         sink = BranchingProcess([2.0 0.0; 1.0 0.0], R -> NegBin(R, 0.5), Exponential(5.0))
         @test reproduction_number(sink) ≈ 2.0

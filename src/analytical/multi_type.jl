@@ -219,7 +219,10 @@ end
 # Whether each type can lead to a communicating class of types whose mean
 # matrix restricted to the class has spectral radius above 1. A type-`j` parent
 # has type-`i` offspring when `M[i, j] > 0`. Only such types have extinction
-# probability below 1.
+# probability below 1. The comparison allows for rounding: `eigvals` can return
+# a critical class's spectral radius as 1 plus a few `eps`, and the fixed-point
+# iteration then stalls short of 1. Just above the threshold the true extinction
+# probability differs from 1 by the same order as the allowance.
 function _reaches_supercritical_class(M::AbstractMatrix)
     n = size(M, 1)
     # reach[i, j]: a type-`j` case has type-`i` descendants (or i == j).
@@ -231,7 +234,7 @@ function _reaches_supercritical_class(M::AbstractMatrix)
     for i in 1:n
         class = [j for j in 1:n if reach[i, j] && reach[j, i]]
         supercritical[i] = i == first(class) ?
-                           _spectral_radius(M[class, class]) > 1 :
+                           _spectral_radius(M[class, class]) > 1 + sqrt(eps()) :
                            supercritical[first(class)]
     end
     return [any(supercritical[i] && reach[i, j] for i in 1:n) for j in 1:n]
