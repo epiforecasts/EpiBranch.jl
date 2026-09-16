@@ -98,7 +98,7 @@ function _onward_efficacy_key(label::Symbol)
 end
 
 """Per-individual immunity delay: the draw taken at vaccination time and
-stored on `ind` (see [`_record_vaccination!`](@ref)). Reads back what the
+stored on `ind` (see `_record_vaccination!`). Reads back what the
 competing risk should add to the vaccination time."""
 function _immunity_delay(v::AbstractVaccination, ind)
     get(ind.state, _immunity_delay_key(dose_label(v)), 0.0)
@@ -315,18 +315,17 @@ scheduled.
 `delay_to_immunity`, `dose_delay`, `post_exposure_efficacy`, and
 `onward_efficacy` accept the same `Real | Distribution | Function`
 forms as `efficacy`; the distribution/function forms sample once per
-contact, at vaccination time, and store the result (see
-[`_record_vaccination!`](@ref)), so an individual's draw stays fixed
-across the exposures it faces. `dose_delay` is the exception: it is
+contact, at vaccination time, and store the result in the contact's
+state, so an individual's draw stays fixed across the exposures it
+faces. `dose_delay` is the exception: it is
 read once, when the dose is scheduled, so there is nothing to store.
 
 !!! note "A distributional `dose_delay` is not checked against the required dose at build time"
-    [`_validate_dose_schedule`](@ref) rejects a boost whose `dose_delay`
+    Building a [`ModelSpec`](@ref) rejects a boost whose `dose_delay`
     is a fixed number earlier than the prime's. With a distribution or
     function, the two cannot be compared without sampling, so the check
-    is skipped and left to run time: [`_has_required_dose`](@ref)
-    already declines to give a dose whose draw falls before the
-    required dose's recorded time, on a per-contact basis.
+    is skipped and left to run time: a dose whose draw falls before the
+    required dose's recorded time is declined for that contact.
 """
 Base.@kwdef struct RingVaccination{
     E, C, DI, DD, W, PE, OE, M <: AbstractEffectMode
@@ -480,7 +479,7 @@ dose placed before the one it requires would silently never be given. Two
 ring doses are timed from the same trace, so a shorter `dose_delay` on the
 later dose would likewise mean it is never given. A distribution or
 function `dose_delay` cannot be compared this way and is left to run time,
-where [`_has_required_dose`](@ref) declines the dose per contact instead.
+where `_has_required_dose` declines the dose per contact instead.
 Other schedules are checked per contact when the dose falls due.
 """
 function _validate_dose_schedule(interventions)
