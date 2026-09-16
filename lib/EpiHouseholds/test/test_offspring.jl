@@ -227,6 +227,13 @@ end
                 Isolation(onset_to_isolation_delay = Exponential(1.0),
                     eligibility = AllCases()); start_after_cases = 10)])
         @test_throws ArgumentError household_offspring(scheduled; global_rate = λG)
+        # A pair-varying kernel is written against the model's own individuals.
+        scales = [isodd(i) ? 3.0 : 12.0 for i in 1:40]
+        covariate = ModelSpec(
+            HouseholdProcess(fill(4, 10), (i, j) -> Exponential(scales[i]));
+            progression = [Transition(:recovered; from = :infection, rate = γ,
+                terminal = true)])
+        @test_throws ArgumentError household_offspring(covariate; global_rate = λG)
         o = household_offspring(_markov(4); global_rate = λG)
         @test_throws ArgumentError household_offspring_law(o, 5)
         @test household_offspring_law(o, 4) === o.laws[1]

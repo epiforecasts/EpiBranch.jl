@@ -84,7 +84,9 @@ population it describes. The model's own layers apply: the infectious window is
 the one its `progression` and `interventions` produce, so isolation shortens each
 case's community-infectious period and lowers R* exactly as it lowers
 transmission in a simulation. Households are seeded with a single index case, as
-a newly infected household is, so the process must carry no `external_hazard`.
+a newly infected household is, so the process must carry no `external_hazard`,
+and one law per household size needs a single `kernel` distribution shared by
+every pair.
 Each household's epidemic runs on its own clock, so interventions cannot be
 wrapped in `Scheduled`.
 
@@ -130,6 +132,12 @@ function household_offspring(spec::ModelSpec{<:HouseholdProcess};
         "the branching process over households starts each household from a single " *
         "index case, as a newly infected household does; build the process without " *
         "an `external_hazard`"))
+    # A covariate kernel is written against the model's own individuals, whose
+    # roles do not carry over to the sample households, and households of one
+    # size with different covariates would not share an offspring law.
+    process.kernel isa ContinuousUnivariateDistribution || throw(ArgumentError(
+        "the household offspring law needs one contact-interval distribution shared " *
+        "by every pair; a kernel that varies by pair is not supported"))
     # Every household in the branching process over households starts its own
     # epidemic at its own time, so a gate on the population's clock or case count
     # has no counterpart; in the pooled sample it would switch on at an
@@ -478,8 +486,7 @@ end
 # seeded with one case. A case's own infectious window does not bear on whether
 # it was infected — only the windows of the others do — so the mean total is the
 # mean final size times the mean window. `nothing` when the model gives no window
-# law to average over, or a kernel that varies by pair and so has no single
-# escape probability; the mean is then taken from the simulated households.
+# law to average over; the mean is then taken from the simulated households.
 function _mean_person_time(n::Int, kernel::UnivariateDistribution,
         window::Union{Real, UnivariateDistribution})
     return mean(household_final_size(n, kernel, window)) * _window_mean(window)
