@@ -505,6 +505,468 @@ struct _NoTraceIntervention <: AbstractIntervention end
             @test all(is_vaccinated, traced_asymp)
         end
 
+        @testset "Second dose" begin
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+            ct = ContactTracing(probability = 1.0,
+                isolation_to_trace_delay = Exponential(1.0))
+            prime = RingVaccination(efficacy = 0.6, delay_to_immunity = 21.0,
+                dose_label = :prime)
+            process = BranchingProcess(Poisson(2.0), Exponential(5.0))
+
+            @testset "Given dose_delay days after the prime" begin
+                boost = RingVaccination(efficacy = 0.5, dose_delay = 28.0,
+                    delay_to_immunity = 14.0, requires_dose = :prime,
+                    dose_label = :boost)
+                state = simulate(
+                    ModelSpec(process; interventions = [iso, ct, prime, boost],
+                        attributes = clinical);
+                    condition = 50:200, max_cases = 200, rng = StableRNG(5))
+                n_boosted = 0
+                for ind in state.individuals
+                    get(ind.state, :vaccinated_boost, false) || continue
+                    n_boosted += 1
+                    @test ind.state[:vaccination_time_boost] ==
+                          ind.state[:vaccination_time_prime] + 28.0
+                end
+                @test n_boosted > 0  # otherwise the test is vacuous
+            end
+
+            @testset "requires_dose gates the boost on the prime" begin
+                # Nobody is primed, so nobody can be boosted.
+                prime_none = RingVaccination(efficacy = 0.6, coverage = 0.0,
+                    dose_label = :prime)
+                boost = RingVaccination(efficacy = 0.5, requires_dose = :prime,
+                    dose_label = :boost)
+                state = simulate(
+                    ModelSpec(process;
+                        interventions = [iso, ct, prime_none, boost],
+                        attributes = clinical);
+                    condition = 50:200, max_cases = 200, rng = StableRNG(5))
+                @test count(is_traced, state.individuals) > 0
+                @test !any(i -> get(i.state, :vaccinated_boost, false),
+                    state.individuals)
+            end
+
+            @testset "Boost coverage thins the boosted among the primed" begin
+                # Full coverage boosts everyone primed; partial coverage
+                # boosts a strict subset. Each run is checked on its own,
+                # because the coverage draws shift the rng stream between runs.
+                full = RingVaccination(efficacy = 0.5, requires_dose = :prime,
+                    dose_label = :boost)
+                partial = RingVaccination(efficacy = 0.5, coverage = 0.5,
+                    requires_dose = :prime, dose_label = :boost)
+                for (boost, boosts_everyone) in ((full, true), (partial, false))
+                    states = simulate(
+                        ModelSpec(process; interventions = [iso, ct, prime, boost],
+                            attributes = clinical),
+                        30; max_cases = 100, rng = StableRNG(9))
+                    primed = sum(count(i -> i.state[:vaccinated_prime], s.individuals)
+                    for s in states)
+                    boosted = sum(count(i -> i.state[:vaccinated_boost], s.individuals)
+                    for s in states)
+                    @test primed > 0  # otherwise the test is vacuous
+                    for s in states, ind in s.individuals
+
+                        ind.state[:vaccinated_boost] && @test ind.state[:vaccinated_prime]
+                    end
+                    boosts_everyone ? (@test boosted == primed) :
+                    (@test 0 < boosted < primed)
+                end
+            end
+
+            @testset "A dose is not given before the dose it requires" begin
+                # A mass prime is recorded as soon as its eligibility time is
+                # drawn, and on day 60 that time lies after most boosts fall
+                # due. Day 20 checks that boosts after the prime still happen.
+                n_boosted = 0
+                n_early = 0
+                for eligibility_time in (60.0, 20.0)
+                    mass_prime = MassVaccination(efficacy = 0.6,
+                        eligibility_time = eligibility_time, dose_label = :prime)
+                    boost = RingVaccination(efficacy = 0.5, dose_delay = 7.0,
+                        requires_dose = :prime, dose_label = :boost)
+                    states = simulate(
+                        ModelSpec(process; interventions = [iso, ct, mass_prime, boost],
+                            attributes = clinical),
+                        20; max_cases = 300, rng = StableRNG(3))
+                    for s in states, ind in s.individuals
+
+                        get(ind.state, :vaccinated_boost, false) || continue
+                        n_boosted += 1
+                        n_early += ind.state[:vaccination_time_boost] <
+                                   ind.state[:vaccination_time_prime]
+                    end
+                end
+                @test n_boosted > 0  # otherwise the test is vacuous
+                @test n_early == 0
+            end
+
+            @testset "A dose scheduled before the one it requires is rejected" begin
+                # List order is right, but the boost arrives at the trace while
+                # the prime does not arrive until 28 days later.
+                late_prime = RingVaccination(efficacy = 0.6, dose_delay = 28.0,
+                    dose_label = :prime)
+                early_boost = RingVaccination(efficacy = 0.5, dose_delay = 0.0,
+                    requires_dose = :prime, dose_label = :boost)
+                @test_throws ArgumentError ModelSpec(process;
+                    interventions = [iso, ct, late_prime, early_boost],
+                    attributes = clinical)
+                # Same instant is allowed: both doses are given at the trace.
+                same_instant = RingVaccination(efficacy = 0.5,
+                    requires_dose = :prime, dose_label = :boost)
+                @test ModelSpec(process;
+                    interventions = [iso, ct, prime, same_instant],
+                    attributes = clinical) isa ModelSpec
+            end
+
+            @testset "A dose listed before the one it requires is rejected" begin
+                boost = RingVaccination(efficacy = 0.5, requires_dose = :prime,
+                    dose_label = :boost)
+                @test_throws ArgumentError ModelSpec(process;
+                    interventions = [iso, ct, boost, prime], attributes = clinical)
+                # Wrapping in `Scheduled` must not hide the requirement.
+                @test_throws ArgumentError ModelSpec(process;
+                    interventions = [iso, ct, Scheduled(boost; start_time = 10.0),
+                        prime], attributes = clinical)
+                @test ModelSpec(process;
+                    interventions = [iso, ct, prime, boost],
+                    attributes = clinical) isa ModelSpec
+            end
+        end
+
+        @testset "Post-exposure efficacy" begin
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+            ct = ContactTracing(probability = 0.7,
+                isolation_to_trace_delay = Exponential(1.0),
+                quarantine_on_trace = false)
+            process = BranchingProcess(Poisson(3.0), Exponential(5.0))
+            scen(iv, attrs = clinical) = ModelSpec(process;
+                interventions = iv, attributes = attrs)
+            post_only(; kwargs...) = RingVaccination(efficacy = 0.0,
+                post_exposure_efficacy = 0.9; kwargs...)
+
+            # An outbreak with fixed delays. The index case, infected at 0, has
+            # onset at 5 and is isolated at 5.5, when both its contacts (infected
+            # at 1 or 5) are traced and vaccinated with immediate immunity. Their
+            # onsets (6 or 10) come after that, so a certain dose aborts both at
+            # 5.5. A contact infected at 1 has contacts of its own at 2, before
+            # the abort, or at 6, after it. Only the index tests positive, so a
+            # contact could be isolated only through its trace.
+            function aborted_outbreak(eligibility = SymptomaticParent())
+                model = ModelSpec(
+                    BranchingProcess(Dirac(2),
+                        DiscreteNonParametric([1.0, 5.0], [0.5, 0.5]));
+                    interventions = [
+                        Isolation(onset_to_isolation_delay = Dirac(0.5),
+                            test_sensitivity = (rng, ind) -> ind.parent_id == 0 ? 1.0 : 0.0),
+                        ContactTracing(eligibility, ConstantRate(1.0),
+                            ConstantDelay(Dirac(0.0)), FlagOnly()),
+                        RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0)],
+                    attributes = clinical_presentation(incubation_period = Dirac(5.0)),
+                    progression = [Recovery(delay = Dirac(3.0))])
+                # This seed gives the index one contact at each time, and the
+                # contact infected at 1 one contact at each of 2 and 6.
+                state = simulate(model; max_generations = 2, max_cases = nothing,
+                    rng = StableRNG(4))
+                cases = filter(is_infected, state.individuals)
+                return state, filter(i -> i.generation == 1, cases),
+                filter(i -> i.generation == 2, cases)
+            end
+
+            @testset "An aborted infection keeps its earlier transmissions" begin
+                state, contacts, grandcontacts = aborted_outbreak()
+                @test length(contacts) == 2
+                @test all(c -> c.state[:infection_aborted_time] == 5.5, contacts)
+                early = filter(c -> c.infection_time == 1.0, contacts)
+                @test !isempty(early)
+                # Transmission before immunity stands; none follows it.
+                @test !isempty(grandcontacts)
+                @test all(g -> g.infection_time < 5.5, grandcontacts)
+                @test any(state.individuals) do ind
+                    ind.generation == 2 && !is_infected(ind) &&
+                        ind.infection_time > 5.5
+                end
+            end
+
+            @testset "An aborted infection has no onset or outcome" begin
+                state, contacts, _ = aborted_outbreak()
+                index = state.individuals[1]
+                @test onset_time(index) == 5.0
+                @test index.state[:outcome] == :recovered
+                for c in contacts
+                    @test isnan(onset_time(c))
+                    @test !haskey(c.state, :outcome)
+                    # Traced before the onset it would have had, but never
+                    # isolated because it has no onset.
+                    @test is_traced(c)
+                    @test !is_isolated(c)
+                end
+                df = linelist(state)
+                aborted_rows = filter(r -> r.generation == 1, df)
+                @test all(ismissing, aborted_rows.date_onset)
+                @test all(!ismissing, aborted_rows.date_infection_aborted)
+                @test size(df, 1) == length(filter(is_infected, state.individuals))
+            end
+
+            @testset "An aborted infection's clinical course ends at the abort" begin
+                # Infected at 1 and aborted at 4: whatever a transition is timed
+                # from, it stands if it takes effect before 4 and is undone
+                # otherwise, along with everything timed from it.
+                progression = [
+                    Transition(:early, from = :infection, delay = 1.0),
+                    Transition(:worse, from = :early, delay = 1.0),
+                    Transition(:hospitalised, from = :infection, delay = 6.0),
+                    Transition(:died, from = :hospitalised, delay = 1.0,
+                        terminal = true),
+                    Reporting(delay = 0.5, from = :early_time),
+                    Death(delay = 5.0, probability = 1.0,
+                        from = ind -> ind.infection_time),
+                    Recovery(delay = 10.0, from = ind -> ind.infection_time)]
+                function course(aborted)
+                    state = EpiBranch.new_state(process, progression,
+                        EpiBranch.NoAttributes(), StableRNG(1))
+                    ind = Individual(id = 1, infection_time = 1.0)
+                    aborted && (ind.state[:infection_aborted_time] = 4.0)
+                    EpiBranch.resolve_transitions!(state, ind)
+                    return ind.state
+                end
+
+                st = course(true)
+                @test st[:early] && st[:early_time] == 2.0
+                @test st[:worse] && st[:worse_time] == 3.0
+                @test st[:reported] && st[:reporting_time] == 2.5
+                @test !st[:hospitalised] && st[:hospitalised_time] == Inf
+                @test !st[:died] && st[:died_time] == Inf
+                @test st[:death_candidate_time] == Inf
+                @test st[:recovery_candidate_time] == Inf
+                @test !haskey(st, :outcome) && !haskey(st, :outcome_time)
+
+                control = course(false)
+                @test control[:hospitalised] && control[:died]
+                @test control[:outcome] == :died && control[:outcome_time] == 6.0
+            end
+
+            @testset "No transition takes effect after an abort in simulation" begin
+                progression = [
+                    Transition(:hospitalised, from = :infection, delay = Gamma(4, 2),
+                        probability = 0.2),
+                    Transition(:died, from = :hospitalised, delay = Gamma(2, 3),
+                        probability = 0.5, terminal = true),
+                    Death(delay = LogNormal(2.0, 0.4), probability = 0.1)]
+                spec = ModelSpec(process; progression,
+                    interventions = [iso, ct, post_only()], attributes = clinical)
+                results = simulate(spec, 30; max_cases = 300, rng = StableRNG(2))
+                aborted = 0
+                late = 0
+                miscounted = 0
+                for s in results
+                    for ind in filter(is_infected, s.individuals)
+                        t = get(ind.state, :infection_aborted_time, nothing)
+                        t === nothing && continue
+                        aborted += 1
+                        for key in (:hospitalised_time, :died_time,
+                            :death_candidate_time, :outcome_time)
+                            get(ind.state, key, Inf) < Inf &&
+                                ind.state[key] >= t && (late += 1)
+                        end
+                    end
+                    # Aborted cases stay in the line list and the chain sizes.
+                    n_cases = count(is_infected, s.individuals)
+                    size(linelist(s), 1) == n_cases &&
+                    sum(chain_statistics(s).size) == n_cases || (miscounted += 1)
+                end
+                @test aborted > 0
+                @test late == 0
+                @test miscounted == 0
+            end
+
+            @testset "An aborted infection seeds no onset-triggered ring" begin
+                state, _, grandcontacts = aborted_outbreak(OnSymptomOnset())
+                @test !isempty(grandcontacts)
+                @test !any(is_traced, grandcontacts)
+                @test !any(ind -> isnan(isolation_time(ind)), state.individuals)
+            end
+
+            @testset "Protects contacts a pre-exposure dose cannot reach" begin
+                # `efficacy` needs immunity before the exposure, which a dose
+                # given at the trace never achieves here; `post_exposure_efficacy`
+                # needs immunity before onset, which it often achieves.
+                base = simulate(scen([iso, ct]), 400; max_cases = 200,
+                    rng = StableRNG(42))
+                pre = simulate(scen([iso, ct, RingVaccination(efficacy = 0.9)]),
+                    400; max_cases = 200, rng = StableRNG(42))
+                post = simulate(scen([iso, ct, post_only()]),
+                    400; max_cases = 200, rng = StableRNG(42))
+
+                @test containment_probability(pre) == containment_probability(base)
+                @test containment_probability(post) > containment_probability(base)
+            end
+
+            @testset "Aborting protects less than blocking all later transmission" begin
+                # An abort removes only what a contact would transmit after its
+                # immunity, and only for contacts whose immunity arrives before
+                # their onset, so it cannot do much more than blocking all of a
+                # vaccinated contact's later transmission.
+                containment(rv) = mean(containment_probability(
+                                           simulate(scen([iso, ct, rv]), 200;
+                                           max_cases = 200, rng = StableRNG(seed)))
+                for seed in 1:5)
+                onward = containment(RingVaccination(efficacy = 0.0,
+                    onward_efficacy = 0.9))
+                @test containment(post_only()) < onward + 0.05
+            end
+
+            @testset "A dose that cannot abort leaves the run untouched" begin
+                # Incubation periods here average about 5 days, so immunity 100
+                # days after the trace never arrives before an onset, and the
+                # run should match one without the parameter draw for draw.
+                slow(post) = RingVaccination(efficacy = 0.0,
+                    post_exposure_efficacy = post, delay_to_immunity = 100.0)
+                fingerprint(states) = [(ind.id, ind.infection_time,
+                                           sort!(collect(ind.state); by = first))
+                                       for s in states for ind in s.individuals]
+                base = simulate(scen([iso, ct, slow(0.0)]), 100; max_cases = 200,
+                    rng = StableRNG(3))
+                results = simulate(scen([iso, ct, slow(1.0)]), 100; max_cases = 200,
+                    rng = StableRNG(3))
+                @test isequal(fingerprint(results), fingerprint(base))
+            end
+
+            @testset "The abort races immunity against onset" begin
+                rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0,
+                    delay_to_immunity = 2.0)
+                function contact_with(incubation)
+                    c = Individual(id = 1, infection_time = 10.0)
+                    c.state[:incubation_period] = incubation
+                    c.state[:onset_time] = 10.0 + incubation
+                    return c
+                end
+                rng = StableRNG(1)
+
+                # Immunity at 14 beats an onset at 16.
+                c = contact_with(6.0)
+                EpiBranch._abort_infection!(rv, c, 12.0, rng)
+                @test c.state[:infection_aborted_time] == 14.0
+                @test isnan(onset_time(c))
+
+                # Onset at 13 comes before immunity at 14.
+                c = contact_with(3.0)
+                EpiBranch._abort_infection!(rv, c, 12.0, rng)
+                @test !haskey(c.state, :infection_aborted_time)
+                @test onset_time(c) == 13.0
+
+                # Immunity at 9 precedes the exposure: that is a blocked
+                # infection, left to the contact-side risk.
+                c = contact_with(6.0)
+                EpiBranch._abort_infection!(rv, c, 7.0, rng)
+                @test !haskey(c.state, :infection_aborted_time)
+                c.state[:vaccinated] = true
+                c.state[:vaccination_time] = 7.0
+                risk = EpiBranch._contact_risk(rv, c)
+                @test risk.event_time == 9.0
+                @test risk.block_probability == 1.0
+
+                # No onset to race: asymptomatic contacts are never aborted.
+                c = contact_with(NaN)
+                EpiBranch._abort_infection!(rv, c, 12.0, rng)
+                @test !haskey(c.state, :infection_aborted_time)
+
+                # Only a dose that can matter draws from the rng.
+                partial = RingVaccination(efficacy = 0.0,
+                    post_exposure_efficacy = 0.5, delay_to_immunity = 2.0)
+                r1, r2 = StableRNG(9), StableRNG(9)
+                EpiBranch._abort_infection!(partial, contact_with(3.0), 12.0, r1)
+                @test rand(r1) == rand(r2)
+            end
+
+            @testset "Setting both efficacies warns" begin
+                both = RingVaccination(efficacy = 0.9, post_exposure_efficacy = 0.9)
+                @test_logs (:warn, r"both `efficacy` and `post_exposure_efficacy`") ModelSpec(
+                    process; interventions = [iso, ct, both], attributes = clinical)
+                # Either alone is silent.
+                @test_logs ModelSpec(process;
+                    interventions = [iso, ct, post_only()], attributes = clinical)
+                @test_logs ModelSpec(process;
+                    interventions = [iso, ct, RingVaccination(efficacy = 0.9)],
+                    attributes = clinical)
+            end
+
+            @testset "Every combination of risks is returned" begin
+                function risks(rv; contact_dosed = true, parent_dosed = true)
+                    parent = Individual(id = 1, infection_time = 0.0)
+                    contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+                    for (ind, dosed) in ((contact, contact_dosed), (parent, parent_dosed))
+                        ind.state[:vaccinated] = dosed
+                        ind.state[:vaccination_time] = dosed ? 2.0 : Inf
+                        ind.state[:vaccine_efficacy] = rv.efficacy
+                    end
+                    r = EpiBranch.competing_risk(rv, parent, contact, nothing)
+                    r === nothing ? 0 : (r isa EpiBranch.Risk ? 1 : length(r))
+                end
+
+                susceptibility_only = RingVaccination(efficacy = 0.5)
+                post = post_only()
+                onward_only = RingVaccination(efficacy = 0.0, onward_efficacy = 0.5)
+                post_onward = RingVaccination(efficacy = 0.0,
+                    post_exposure_efficacy = 0.5, onward_efficacy = 0.5)
+
+                @test risks(susceptibility_only) == 1
+                @test risks(post) == 1
+                @test risks(post; contact_dosed = false) == 0
+                @test risks(onward_only; contact_dosed = false) == 1
+                @test risks(RingVaccination(efficacy = 0.5, onward_efficacy = 0.5)) == 2
+                @test risks(post_onward) == 2
+                @test risks(post_onward; contact_dosed = false) == 1
+                # Efficacy and post-exposure efficacy share one contact-side
+                # block at the same immunity time.
+                both = RingVaccination(efficacy = 0.5, post_exposure_efficacy = 0.5)
+                @test risks(both) == 1
+                @test risks(post_onward; contact_dosed = false, parent_dosed = false) == 0
+            end
+
+            @testset "The engine ends an aborted infection" begin
+                parent = Individual(id = 1, infection_time = 0.0)
+                contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+                @test EpiBranch.competing_risk(EpiBranch.AbortedInfection(),
+                    parent, contact, nothing) === nothing
+                parent.state[:infection_aborted_time] = 4.0
+                risk = EpiBranch.competing_risk(EpiBranch.AbortedInfection(),
+                    parent, contact, nothing)
+                @test risk.event_time == 4.0
+                @test risk.block_probability == 1.0
+            end
+
+            @testset "An aborted infection stays ended after a scheduled dose stops" begin
+                # The abort is stored on the case, so the end of its
+                # transmission does not depend on whether the ring vaccination
+                # that recorded it is still active.
+                scheduled = Scheduled(post_only(); end_time = 15.0)
+                results = simulate(scen([iso, ct, scheduled]), 100;
+                    max_cases = 300, rng = StableRNG(1))
+                aborted = 0
+                after_abort = 0
+                for s in results
+                    for ind in filter(is_infected, s.individuals)
+                        t = get(ind.state, :infection_aborted_time, nothing)
+                        t === nothing && continue
+                        aborted += 1
+                        after_abort += count(ind.secondary_case_ids) do id
+                            child = s.individuals[id]
+                            is_infected(child) && child.infection_time >= t
+                        end
+                    end
+                end
+                @test aborted > 0
+                @test after_abort == 0
+            end
+
+            @testset "Requires an incubation period" begin
+                @test :incubation_period in EpiBranch.required_fields(post_only())
+                @test :incubation_period ∉
+                      EpiBranch.required_fields(RingVaccination(efficacy = 0.9))
+            end
+        end
+
         @testset "Onward efficacy blocks next-generation transmission" begin
             # With onward_efficacy = 1.0 and delay_to_immunity = 0.0,
             # any infected child of a vaccinated parent must have been
@@ -567,6 +1029,128 @@ struct _NoTraceIntervention <: AbstractIntervention end
 
             @test [s.cumulative_cases for s in results_default] ==
                   [s.cumulative_cases for s in results_explicit]
+        end
+
+        @testset "Severity efficacy" begin
+            @testset "Recorded alongside the other per-dose state" begin
+                rv = RingVaccination(efficacy = 0.0, severity_efficacy = 0.4,
+                    delay_to_immunity = 5.0)
+                contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+                EpiBranch._record_vaccination!(rv, contact, 3.0, StableRNG(1))
+                @test contact.state[:severity_efficacy] == 0.4
+                @test immunity_time(contact) == 8.0
+                @test severity_efficacy(contact) == 0.4
+            end
+
+            @testset "Unvaccinated individuals carry no severity protection" begin
+                ind = Individual(id = 1, infection_time = 0.0)
+                @test severity_efficacy(ind) == 0.0
+                @test immunity_time(ind) == Inf
+            end
+
+            @testset "Lowers deaths without changing case counts" begin
+                # A vaccine with efficacy = 0.0 leaves transmission untouched;
+                # severity_efficacy = 1.0 fully protects anyone whose immunity
+                # has developed by their own onset from the (otherwise
+                # certain) death drawn below.
+                iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+                ct = ContactTracing(probability = 1.0,
+                    isolation_to_trace_delay = Exponential(0.5))
+                progression = [Death(delay = 0.0,
+                    probability = (rng, ind) -> immunity_time(ind) <= onset_time(ind) ?
+                                                1.0 - severity_efficacy(ind) : 1.0)]
+                scen(rv) = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical,
+                    progression = progression)
+                died(ind) = get(ind.state, :outcome, nothing) === :died
+
+                rv_protected = RingVaccination(efficacy = 0.0, severity_efficacy = 1.0,
+                    delay_to_immunity = 0.0)
+                results_protected = simulate(scen(rv_protected), 50;
+                    max_cases = 200, rng = StableRNG(42))
+
+                rv_unprotected = RingVaccination(efficacy = 0.0, severity_efficacy = 0.0,
+                    delay_to_immunity = 0.0)
+                results_unprotected = simulate(scen(rv_unprotected), 50;
+                    max_cases = 200, rng = StableRNG(42))
+
+                # Case counts are bit-identical: severity_efficacy does not
+                # touch transmission.
+                @test [s.cumulative_cases for s in results_protected] ==
+                      [s.cumulative_cases for s in results_unprotected]
+
+                n_vaccinated = sum(count(is_vaccinated, s.individuals)
+                for s in results_protected)
+                n_died_protected = sum(count(died, s.individuals)
+                for s in results_protected)
+                n_died_unprotected = sum(count(died, s.individuals)
+                for s in results_unprotected)
+
+                @test n_vaccinated > 0  # otherwise the test is vacuous
+                @test n_died_protected < n_died_unprotected
+                # Anyone whose immunity arrived before their own onset is
+                # fully protected (severity_efficacy = 1.0).
+                @test all(results_protected) do s
+                    all(s.individuals) do ind
+                        immunity_time(ind) > onset_time(ind) || !died(ind)
+                    end
+                end
+            end
+
+            @testset "Immunity arriving after the outcome confers no protection" begin
+                # delay_to_immunity is long enough that immunity never
+                # develops before onset, so severity_efficacy must leave
+                # every death exactly as if the dose were never given.
+                iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+                ct = ContactTracing(probability = 1.0,
+                    isolation_to_trace_delay = Exponential(0.5))
+                progression = [Death(delay = 0.0,
+                    probability = (rng, ind) -> immunity_time(ind) <= onset_time(ind) ?
+                                                1.0 - severity_efficacy(ind) : 1.0)]
+                scen(rv) = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical,
+                    progression = progression)
+                died(ind) = get(ind.state, :outcome, nothing) === :died
+
+                rv_late = RingVaccination(efficacy = 0.0, severity_efficacy = 1.0,
+                    delay_to_immunity = 1e6)
+                results_late = simulate(scen(rv_late), 50;
+                    max_cases = 200, rng = StableRNG(42))
+
+                rv_none = RingVaccination(efficacy = 0.0, severity_efficacy = 0.0,
+                    delay_to_immunity = 1e6)
+                results_none = simulate(scen(rv_none), 50;
+                    max_cases = 200, rng = StableRNG(42))
+
+                n_vaccinated = sum(count(is_vaccinated, s.individuals)
+                for s in results_late)
+                n_died_late = sum(count(died, s.individuals) for s in results_late)
+                n_died_none = sum(count(died, s.individuals) for s in results_none)
+
+                @test n_vaccinated > 0  # otherwise the test is vacuous
+                @test n_died_late == n_died_none
+            end
+
+            @testset "Composes with a per-individual base probability" begin
+                # severity_efficacy multiplies whatever base probability the
+                # Death transition's `probability` computes, so it composes
+                # with age-conditional CFR the same way `efficacy` composes
+                # with any other per-individual heterogeneity.
+                ind_high = Individual(id = 1, infection_time = 0.0,
+                    state = Dict{Symbol, Any}(:onset_time => 5.0, :age => 85))
+                ind_low = Individual(id = 2, infection_time = 0.0,
+                    state = Dict{Symbol, Any}(:onset_time => 5.0, :age => 20))
+                rv = RingVaccination(efficacy = 0.0, severity_efficacy = 0.5,
+                    delay_to_immunity = 0.0)
+                for ind in (ind_high, ind_low)
+                    EpiBranch._record_vaccination!(rv, ind, 0.0, StableRNG(1))
+                end
+                base(ind) = ind.state[:age] >= 80 ? 0.3 : 0.02
+                cfr(ind) = immunity_time(ind) <= onset_time(ind) ?
+                           base(ind) * (1 - severity_efficacy(ind)) : base(ind)
+                @test cfr(ind_high) ≈ 0.15
+                @test cfr(ind_low) ≈ 0.01
+            end
         end
     end
 

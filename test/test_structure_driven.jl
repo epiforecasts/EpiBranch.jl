@@ -93,3 +93,146 @@ end
     @test length(state.individuals) > 1            # fresh contacts were minted
     @test EpiBranch._timetype(state) === Float64
 end
+
+# A pool of pre-created nodes, each parent reaching random members, so a node
+# can be exposed, escape, and be exposed again in a later generation. That is
+# the path on which a post-exposure abort drawn for one exposure could outlive
+# it.
+struct AbortPoolModel <: EpiBranch.TransmissionModel
+    n::Int
+    k::Int
+    p::Float64
+end
+EpiBranch.population_size(::AbortPoolModel) = EpiBranch.NoPopulation()
+function EpiBranch.initialise_state(m::AbortPoolModel, sim_opts::EpiBranch.SimOpts,
+        interventions, transitions, attributes, rng::AbstractRNG)
+    state = EpiBranch.new_state(m, transitions, attributes, rng)
+    EpiBranch.add_individuals!(state, m.n, interventions)
+    EpiBranch.seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
+    return state
+end
+function EpiBranch.collect_exposures(m::AbortPoolModel, state::EpiBranch.SimulationState)
+    return EpiBranch.gather_by_target(m, state)
+end
+function EpiBranch.contacts_of(m::AbortPoolModel, parent, state::EpiBranch.SimulationState)
+    result = Tuple{eltype(state.individuals), Float64}[]
+    for _ in 1:(m.k)
+        target = state.individuals[rand(state.rng, 1:(m.n))]
+        (EpiBranch.is_infected(target) || target.id == parent.id) && continue
+        push!(result, (target, parent.infection_time + rand(state.rng, Exponential(4.0))))
+    end
+    return result
+end
+EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
+
+@testset "A post-exposure abort belongs to the exposure it was drawn for" begin
+    spec = ModelSpec(AbortPoolModel(300, 4, 0.4);
+        interventions = [
+            Isolation(onset_to_isolation_delay = Exponential(1.0)),
+            ContactTracing(probability = 1.0,
+                isolation_to_trace_delay = Exponential(0.5),
+                quarantine_on_trace = false),
+            RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5)],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
+    aborted = 0
+    escaped_with_abort = 0
+    escaped_without_onset = 0
+    abort_before_infection = 0
+    for seed in 1:100
+        state = simulate(spec; n_initial = 3, rng = StableRNG(seed),
+            stopping_rules = [Extinction(), MaxGenerations(30)])
+        for ind in state.individuals
+            t = get(ind.state, :infection_aborted_time, nothing)
+            if !EpiBranch.is_infected(ind)
+                t === nothing || (escaped_with_abort += 1)
+                isnan(onset_time(ind)) && (escaped_without_onset += 1)
+            elseif t !== nothing
+                aborted += 1
+                # An abort at or before the infection was drawn for an earlier
+                # exposure: the dose already acted on this one as a
+                # contact-side block, and would act a second time.
+                t > ind.infection_time || (abort_before_infection += 1)
+            end
+        end
+    end
+    @test aborted > 0
+    @test escaped_with_abort == 0
+    @test escaped_without_onset == 0
+    @test abort_before_infection == 0
+end
+
+# Records the generation of each node's latest exposure and of the first one in
+# which it was found vaccinated. Listed after the ring vaccination, so a node
+# dosed at an exposure records that exposure's generation.
+struct ExposureGenerations <: AbstractIntervention end
+function EpiBranch.apply_post_transmission!(::ExposureGenerations, state, targets)
+    for t in targets
+        t.state[:exposure_generation] = state.current_generation
+        get(t.state, :vaccinated, false) || continue
+        get!(t.state, :vaccination_generation, state.current_generation)
+    end
+    return nothing
+end
+
+@testset "A dose given at an earlier exposure can abort the infecting one" begin
+    # A node dosed at an exposure it escapes, then infected in a later
+    # generation before its immunity arrives, with immunity arriving before its
+    # onset, is aborted with the post-exposure efficacy like any other.
+    spec = ModelSpec(AbortPoolModel(300, 4, 0.4);
+        interventions = [
+            Isolation(onset_to_isolation_delay = Exponential(1.0)),
+            ContactTracing(probability = 1.0,
+                isolation_to_trace_delay = Exponential(0.5),
+                quarantine_on_trace = false),
+            RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
+            ExposureGenerations()],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
+    aborted = 0
+    not_aborted = 0
+    for seed in 1:300
+        state = simulate(spec; n_initial = 3, rng = StableRNG(seed),
+            stopping_rules = [Extinction(), MaxGenerations(30)])
+        for ind in state.individuals
+            EpiBranch.is_infected(ind) || continue
+            dosed = get(ind.state, :vaccination_generation, nothing)
+            dosed !== nothing && dosed < ind.state[:exposure_generation] || continue
+            # Immunity is immediate (`delay_to_immunity = 0`).
+            immunity = ind.state[:vaccination_time]
+            onset = ind.infection_time + ind.state[:incubation_period]
+            ind.infection_time < immunity < onset || continue
+            if haskey(ind.state, :infection_aborted_time)
+                aborted += 1
+            else
+                not_aborted += 1
+            end
+        end
+    end
+    @test aborted + not_aborted >= 50
+    @test 0.35 < aborted / (aborted + not_aborted) < 0.65
+end
+
+@testset "An abort is dropped when resolution does not bear its exposure out" begin
+    function exposed(infected, infection_time)
+        ind = Individual(id = 1, infection_time = infection_time)
+        ind.state[:infected] = infected
+        ind.state[:incubation_period] = 6.0
+        ind.state[:infection_aborted_time] = 4.0
+        ind.state[:onset_time] = NaN
+        return ind
+    end
+    # Infected before the abort: the abort stands.
+    ind = exposed(true, 1.0)
+    EpiBranch._drop_stale_abort!(ind)
+    @test ind.state[:infection_aborted_time] == 4.0
+    @test isnan(onset_time(ind))
+    # Infected through a later exposure at or after the abort time.
+    ind = exposed(true, 4.0)
+    EpiBranch._drop_stale_abort!(ind)
+    @test !haskey(ind.state, :infection_aborted_time)
+    @test onset_time(ind) == 10.0
+    # Not infected at all.
+    ind = exposed(false, 0.0)
+    EpiBranch._drop_stale_abort!(ind)
+    @test !haskey(ind.state, :infection_aborted_time)
+    @test onset_time(ind) == 6.0
+end

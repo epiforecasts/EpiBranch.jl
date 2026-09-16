@@ -62,6 +62,7 @@ downstream packages should pick names that do not collide.
 | `:age` | `Real` | — | `demographics` | Init |
 | `:sex` | `Symbol` | — | `demographics` | Init |
 | `:risk_group` | `Symbol` | — | `demographics` | Init |
+| `:group` | `Int` | — | `groups` | Init |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
 | `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
@@ -76,6 +77,9 @@ downstream packages should pick names that do not collide.
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
 | `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
@@ -94,6 +98,39 @@ writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy`,
 and any other label suffixes the key (so `dose_label = :boost` writes
 `:vaccinated_boost`, etc.). This lets multi-dose schedules compose without
 colliding.
+
+`:immunity_time` (`:vaccination_time` plus the dose's `delay_to_immunity`)
+and `:severity_efficacy` let a clinical transition read a vaccine's effect
+on disease severity — mortality, or any other outcome a `progression`
+transition decides — without gating transmission. Neither participates in
+`competing_risk`; a transition's `probability` reads them through the
+[`immunity_time`](@ref) and [`severity_efficacy`](@ref) accessors, gating
+on the former so a dose whose immunity has not yet developed by the
+outcome it would affect confers no protection.
+
+`:infection_aborted_time` marks an infection that a post-exposure dose ended
+before symptom onset. The individual is still infected but transmits nothing
+from that time, and the engine applies this block for as long as the key is
+present. It has no onset: `:onset_time` is `NaN` while `:asymptomatic` stays
+`false`, so isolation, tracing and clinical transitions triggered by onset never
+happen.
+
+Its clinical course ends at the abort time. When transitions are resolved, any
+transition that would take effect at or after that time, whatever its `from`,
+is undone and the keys it wrote are restored, so no hospitalisation, death or
+`:outcome` follows. Transitions that take effect earlier stand. The check reads
+the `_time` keys a transition writes, so it covers a custom transition that
+records when it happens under a `_time` key, as the built-ins do.
+
+The key is drawn against a particular exposure, before infection is resolved:
+when the dose is given, and again each time a contact that already has the dose
+is exposed, using its recorded vaccination time. The engine removes the key and
+restores the onset when resolution does not confirm that exposure, which happens
+on a contact the exposure did not infect and on one infected through a later
+exposure at or after the abort time. The key is therefore only present on an
+infected individual whose infection it ended, and a pre-created node that
+escapes one exposure gets a fresh draw against the exposure that later infects
+it.
 
 `:reported` is shared between the `Reporting` clinical transition (which
 sets it from a probability gate) and `PerCaseObservation` (which sets it
@@ -222,7 +259,7 @@ Ordering guarantees:
 - `keep_active` runs after infection is resolved, so it can read each target's `:infected` and anything `apply_post_transmission!` wrote on it this generation.
 - Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
 
-A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms — `RingVaccination` returns both a susceptibility risk on the contact and an onward-infectiousness risk on the parent.
+A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms: `RingVaccination` returns a susceptibility risk on the contact alongside a risk on the parent for reduced onward infectiousness.
 
 Tree-shaping changes — capping offspring per parent, gathering-size limits, anything that's really "this parent produces fewer contacts than its natural offspring distribution would say" — belong in the offspring distribution itself, not in the intervention protocol. See [Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution) below.
 
@@ -323,7 +360,7 @@ privileges neither, so `competing_risk` is the whole vocabulary for
 gating transmission: a vaccine, a border closure, and the host's own
 susceptibility all speak it.
 
-Three defaults ship, each contributing a block probability:
+Four defaults ship, each contributing a block probability:
 
 - [`EpiBranch.HostSusceptibility`](@ref) — `1 - susceptibility` on the contact.
 - [`EpiBranch.InfectorInfectiousness`](@ref) — `1 - infectiousness` on the parent.
@@ -331,6 +368,10 @@ Three defaults ship, each contributing a block probability:
   not infected, so an uninfected node can stay active (see below) and
   generate contacts without infecting them. A no-op in the usual case
   where every active node is infected.
+- [`EpiBranch.AbortedInfection`](@ref) blocks every transmission an
+  infector makes from its `:infection_aborted_time`, so an infection
+  aborted by a post-exposure dose stays ended whether or not the
+  intervention that aborted it is still active.
 
 A trait of `1.0` contributes no risk, so the defaults are silent unless
 an attributes function sets a susceptibility or infectiousness below one.
