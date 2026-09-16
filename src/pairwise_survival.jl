@@ -425,7 +425,8 @@ accrues cumulative hazard from every possible infector over the overlap of that
 infector's infectious window with its own time at risk, and each infected one
 adds the log of the summed hazard at its infection time. An infected host that
 is not conditioned on and has no positive hazard at its infection time, such as
-one infected when none of its possible infectors is infectious, gives `-Inf`.
+one infected when none of its possible infectors is infectious, makes the whole
+configuration impossible, and the density is `-Inf` with a zero gradient.
 
 `kernel` is a `Distributions.jl` distribution shared by every pair, a callable
 `(infector, susceptible) -> Distribution` for covariates, or a per-edge vector
@@ -512,8 +513,12 @@ function _pairwise_surv_loglik(kernel, extdist, data, layout, external,
     # Pass 2: per-susceptible log-sum-exp over event rows. A single accumulator
     # is reused across groups (reset per group) so the reduction stays
     # allocation-free on the AD tape. Every host in the layout is explained, so
-    # an infected one with no positive hazard at its infection time adds the log
-    # of zero, -Inf.
+    # an infected one with no positive hazard at its infection time has density
+    # zero, and the whole configuration is impossible: return -Inf there rather
+    # than adding it, so that the derivative is zero too. Adding it would leave
+    # the finite terms of the other hosts carrying their derivatives alongside an
+    # infinite value, whereas the log-density is -Inf throughout a neighbourhood
+    # of the parameters — impossibility is a discrete fact of the fixed times.
     acc = _LogSumExpAcc{T}()
     @inbounds for g in eachindex(layout.sus_unique)
         tj = data.infection_time[layout.sus_unique[g]]
@@ -537,7 +542,9 @@ function _pairwise_surv_loglik(kernel, extdist, data, layout, external,
                 end
             end
         end
-        ll += _value(acc)
+        v = _value(acc)
+        v == -Inf && return T(-Inf)
+        ll += v
     end
 
     return ll

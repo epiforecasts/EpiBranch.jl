@@ -78,6 +78,12 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   have infected at its infection time, including a host with no possible
   infector at all, so a sampler over latent infection times rejects such
   configurations.
+- The pairwise survival likelihood's `-Inf` now comes with a zero gradient. A
+  host that nothing could have infected makes the whole configuration
+  impossible, and the density is `-Inf` throughout a neighbourhood of the
+  parameters, but the `-Inf` term used to be summed with the other hosts' finite
+  terms, so the accumulated value carried their derivatives. A gradient-based
+  sampler or optimiser therefore saw a spurious direction at such a point.
 - The continuous-time race behind `NetworkProcess`, `RoutedNetwork` and
   `HouseholdProcess` picks the next case to settle from a binary heap, so a race
   over `n` members with `E` contacts costs O(E log n) where it previously cost

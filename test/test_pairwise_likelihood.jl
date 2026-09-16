@@ -256,6 +256,47 @@ end
         @test pairwise_surv_loglik(k, index_3) ≈ log(1 / 2) - 1 / 2
     end
 
+    @testset "an impossible configuration has a zero gradient" begin
+        # Two components. In {1, 2} host 1 is a community case at 0 and infects 2
+        # at 1.0, which the parameters do move. In {3, 4} host 4 is infected at
+        # 8.0, after obs_end and before its only possible infector is infectious,
+        # so nothing can explain it. The density is -Inf over a whole
+        # neighbourhood of the parameters — possibility is fixed by the times —
+        # so the derivative must be exactly zero, and must not pick up the other
+        # component's finite terms.
+        inf = [0.0, 1.0, 10.0, 8.0]
+        removal = [5.0, 6.0, 12.0, 13.0]
+        index = [true, false, true, false]
+        membership = [1, 1, 2, 2]
+        adjacency = [[2], [1], [4], [3]]
+        for structure in (membership, adjacency)
+            data = _TestInfections(structure, inf, inf, removal, index; obs_end = 5.0)
+            L = compile_contact_pairs(data; external = true)
+            f(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data;
+                external_hazard = exp(θ[2]))
+            g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, L;
+                external_hazard = exp(θ[2]))
+            θ = [log(3.0), log(0.1)]
+            @test f(θ) == -Inf
+            @test g(θ) == -Inf
+            @test ForwardDiff.gradient(f, θ) == [0.0, 0.0]
+            @test ForwardDiff.gradient(g, θ) == [0.0, 0.0]
+            @test (@inferred pairwise_surv_loglik(
+                Exponential(3.0), data, L; external_hazard = 0.1)) == -Inf
+
+            # the possible component alone is finite and does move with both
+            # parameters, so the zero gradient above is the fix and not an
+            # artefact of a flat likelihood
+            ok = _TestInfections(structure, [0.0, 1.0, NaN, NaN], [0.0, 1.0, NaN, NaN],
+                [5.0, 6.0, Inf, Inf], index; obs_end = 5.0)
+            okL = compile_contact_pairs(ok; external = true)
+            h(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), ok, okL;
+                external_hazard = exp(θ[2]))
+            @test isfinite(h(θ))
+            @test all(!iszero, ForwardDiff.gradient(h, θ))
+        end
+    end
+
     @testset "differentiable in the kernel parameters" begin
         _, adjacency = _cliques([3, 4, 2, 4])
         inf = [0.0, 1.2, NaN, 0.0, 2.1, 3.5, NaN, 0.0, NaN, 0.0, 0.7, NaN, 4.2]

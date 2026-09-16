@@ -238,6 +238,30 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test abs(grid[argmax([ll(s) for s in grid])] - true_scale) <= 1.5
     end
 
+    @testset "an impossible household gives -Inf with a zero gradient" begin
+        # Two households. In {1, 2} member 1 is a community case at 0 and infects
+        # 2 at 1.0, which the parameters do move. In {3, 4} member 4 is infected
+        # at 8.0, after obs_end and before its only household-mate is infectious,
+        # so nothing can explain it. The density is -Inf over a whole
+        # neighbourhood of the parameters — possibility is fixed by the times —
+        # so the gradient must be exactly zero rather than that of the other
+        # household's terms.
+        inf = [0.0, 1.0, 10.0, 8.0]
+        data = HouseholdInfections([1, 1, 2, 2], inf, inf, [5.0, 6.0, 12.0, 13.0],
+            [true, false, true, false]; obs_end = 5.0)
+        layout = compile_household_pairs(data; external = true)
+        f(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data;
+            external_hazard = exp(θ[2]))
+        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout;
+            external_hazard = exp(θ[2]))
+        θ = [log(3.0), log(0.1)]
+        @test f(θ) == -Inf
+        @test g(θ) == -Inf
+        @test ForwardDiff.gradient(f, θ) == [0.0, 0.0]
+        @test ForwardDiff.gradient(g, θ) == [0.0, 0.0]
+        @test DifferentiationInterface.gradient(g, AutoMooncake(), θ) == [0.0, 0.0]
+    end
+
     @testset "community introductions stop at obs_end and household spread goes on" begin
         # with a short obs_end most infections come later, within households; the
         # likelihood must give them no community hazard and keep uninfected
