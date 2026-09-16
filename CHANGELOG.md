@@ -59,7 +59,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   ring doses, a `dose_delay` distribution is judged on its support: a boost whose
   every draw falls before the dose it requires is rejected as a scalar one is, and
   supports that merely overlap are warned about, since the contacts whose draws
-  come out in the wrong order go without the boost.
+  come out in the wrong order go without the boost. A delay whose bounds cannot be
+  read — a function, or a distribution that reports no support — goes unchecked.
 - The fixed-size population pool's mixing structure is now keyed on the
   individual's real attributes: a model names which attributes define mixing via
   `mixing_by` (a tuple of attribute keys, e.g. `(:age_band, :ses)`), and the pool

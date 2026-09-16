@@ -108,9 +108,14 @@ _dose_value(_, v, ind, key, default) = get(ind.state, key(dose_label(v)), defaul
 
 # Whether a parameter could be non-zero for some individual, which decides
 # whether a risk is worth building at all. A scalar answers for everyone, a
-# distribution answers from its support, and a callable is opaque.
+# distribution answers from its support, and a callable is opaque. A
+# distribution whose support cannot be read is taken to be non-zero, the
+# assumption that costs a risk rather than protection.
 _can_be_nonzero(x::Real) = x > 0
-_can_be_nonzero(d::Distribution) = maximum(d) > 0
+function _can_be_nonzero(d::Distribution)
+    hi = _support_bound(maximum, d)
+    return hi === nothing || hi > 0
+end
 _can_be_nonzero(_) = true
 
 """Label of the dose a contact must already have received before this
@@ -360,8 +365,8 @@ never be given. A `dose_delay` drawn from a distribution is judged on its
 support: the boost is rejected when even its longest delay falls before
 the prime's shortest, and warned about when the two supports overlap, so
 that boosts silently skipped for the contacts whose draws come out in the
-wrong order are not a surprise. A `dose_delay` given as a function is
-opaque and goes unchecked.
+wrong order are not a surprise. A `dose_delay` whose bounds cannot be read
+goes unchecked: a function, or a distribution that reports no support.
 
 Doses compose as competing risks, so a schedule reaching 80% protection
 in total from a prime at 60% needs `efficacy = 0.5` on the boost
@@ -527,7 +532,10 @@ it is never given. Other schedules are checked per contact when the dose
 falls due.
 """
 function _validate_dose_schedule(interventions)
-    given = Dict{Symbol, Union{Nothing, Tuple{Float64, Float64}}}()
+    # Each delay is held exactly as it was given, so that a `dose_delay`
+    # carrying a derivative, or any other numeric type, passes through the
+    # schedule unconverted.
+    given = Dict{Symbol, Any}()
     for iv in interventions
         vacc = _unwrap_scheduled(iv)
         vacc isa AbstractVaccination || continue
@@ -554,24 +562,34 @@ end
 # is rejected as a scalar one would be. Supports that merely overlap describe a
 # schedule that boosts some contacts and, for the rest, draws the boost before
 # the prime and skips it — worth a warning, since the reason for the missing
-# doses is otherwise invisible. A delay given as a callable cannot be read
-# statically and goes unchecked.
+# doses is otherwise invisible. The bounds are read here rather than when each
+# dose is recorded, so that a schedule with nothing to compare asks nothing of
+# its delays.
 function _check_dose_order(label, req, offset, req_offset)
-    (offset === nothing || req_offset === nothing) && return nothing
-    lo, hi = offset
-    req_lo, req_hi = req_offset
+    bounds = _delay_bounds(offset)
+    req_bounds = _delay_bounds(req_offset)
+    (bounds === nothing || req_bounds === nothing) && return nothing
+    lo, hi = bounds
+    req_lo, req_hi = req_bounds
     hi < req_lo && throw(ArgumentError(
         "vaccination with dose_label = :$label requires dose :$req but is " *
         "scheduled earlier than it (a dose_delay of at most $hi days after the " *
         "trace, against at least $req_lo for dose :$req). A dose cannot be " *
         "given before the dose it requires."))
-    lo < req_hi && @warn "A dose_delay drawn as low as $lo days after the " *
-          "trace can fall before dose :$req, which this dose " *
-          "requires and which can take up to $req_hi days. " *
-          "Contacts whose draws come out in that order go " *
-          "without this dose." dose_label=label
+    lo < req_hi && @warn "This dose's dose_delay $(_reaches_below(lo)), so it can " *
+          "fall before dose :$req, which it requires and whose own dose_delay " *
+          "$(_reaches_above(req_hi)). Contacts whose draws come out in that " *
+          "order go without this dose." dose_label=label
     return nothing
 end
+
+# An unbounded support has no number worth quoting, so the warning describes it
+# in words instead.
+function _reaches_below(lo)
+    isfinite(lo) ? "reaches $lo days after the trace" :
+    "has no lower bound"
+end
+_reaches_above(hi) = isfinite(hi) ? "can reach $hi days" : "has no upper bound"
 
 # Immunity before onset is a weaker condition than immunity before exposure, so
 # a dose setting both fields blocks with `1 - (1 - e1)(1 - e2)` for any contact
@@ -590,16 +608,37 @@ function _warn_double_counted_efficacy(rv::RingVaccination)
     return nothing
 end
 
-"""Bounds `(lo, hi)` on the days from the trace to this dose, or `nothing` when
-they cannot be read: a vaccination not timed from the trace, or a `dose_delay`
-given as a callable. [`RingVaccination`](@ref) is the only one timed from the
-trace."""
+"""Days from the trace to this dose, as the `dose_delay` was given, or `nothing`
+for a vaccination not timed from the trace. [`RingVaccination`](@ref) is the only
+one timed from it."""
 _dose_offset(::AbstractVaccination) = nothing
-_dose_offset(rv::RingVaccination) = _delay_bounds(dose_delay(rv))
+_dose_offset(rv::RingVaccination) = dose_delay(rv)
 
-_delay_bounds(x::Real) = (float(x), float(x))
-_delay_bounds(d::Distribution) = (float(minimum(d)), float(maximum(d)))
+"""Bounds `(lo, hi)` on a dose delay, or `nothing` where they cannot be read: a
+dose not timed from the trace, a delay given as a callable, or a distribution
+that does not report its support."""
+_delay_bounds(x::Real) = (x, x)
+function _delay_bounds(d::Distribution)
+    lo = _support_bound(minimum, d)
+    hi = _support_bound(maximum, d)
+    return (lo === nothing || hi === nothing) ? nothing : (lo, hi)
+end
 _delay_bounds(_) = nothing
+
+# `minimum` and `maximum` are an optional part of the `Distribution` interface: a
+# distribution defining only `rand` and `logpdf` — the package's own
+# `_TruncatedSkewNormal` among them — falls through to `Base.minimum`, which
+# tries to iterate it and throws. A bound that cannot be read comes back as
+# `nothing` and leaves the caller to make the cautious assumption, so that a
+# perfectly usable distribution is not rejected for the sake of a check.
+function _support_bound(f, d)
+    bound = try
+        f(d)
+    catch
+        return nothing
+    end
+    return bound isa Real ? bound : nothing
+end
 
 # The intervention inside a wrapper; `Scheduled` adds a method.
 _unwrap_scheduled(iv) = iv
