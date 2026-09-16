@@ -135,8 +135,9 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
             RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5)],
         attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
     aborted = 0
+    escaped = 0
     escaped_with_abort = 0
-    escaped_without_onset = 0
+    escaped_with_onset = 0
     abort_before_infection = 0
     for seed in 1:100
         state = simulate(spec; n_initial = 3, rng = StableRNG(seed),
@@ -144,8 +145,12 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
         for ind in state.individuals
             t = get(ind.state, :infection_aborted_time, nothing)
             if !EpiBranch.is_infected(ind)
+                escaped += 1
                 t === nothing || (escaped_with_abort += 1)
-                isnan(onset_time(ind)) && (escaped_without_onset += 1)
+                # A never-infected individual has no onset either: onset
+                # follows the infection time, and an infection that never
+                # happened carries no time of its own to derive one from.
+                isnan(onset_time(ind)) || (escaped_with_onset += 1)
             elseif t !== nothing
                 aborted += 1
                 # An abort at or before the infection was drawn for an earlier
@@ -156,8 +161,9 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
         end
     end
     @test aborted > 0
+    @test escaped > 0
     @test escaped_with_abort == 0
-    @test escaped_without_onset == 0
+    @test escaped_with_onset == 0
     @test abort_before_infection == 0
 end
 
