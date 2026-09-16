@@ -634,7 +634,11 @@ _delay_bounds(_) = nothing
 function _support_bound(f, d)
     bound = try
         f(d)
-    catch
+    catch err
+        # Only a missing method means the bound cannot be read. Anything else is
+        # the distribution failing for its own reasons, which a validation step
+        # must not swallow.
+        err isa MethodError || rethrow()
         return nothing
     end
     return bound isa Real ? bound : nothing
