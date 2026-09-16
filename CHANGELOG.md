@@ -26,8 +26,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   contact structure. `compile_contact_pairs` enumerates the (susceptible,
   possible infector) rows from a membership vector or an adjacency list into a
   `ContactPairsLayout`, and `pairwise_surv_loglik` evaluates it on any
-  `InfectionLayer` subtype. `EpiHouseholds` now uses it and keeps its API:
-  `HouseholdPairsLayout` is another name for `ContactPairsLayout`.
+  `InfectionLayer` subtype. `EpiHouseholds` now uses it through every form and
+  keeps its API: `HouseholdPairsLayout` is another name for
+  `ContactPairsLayout`. Household values without a community hazard are
+  unchanged, and evaluation is faster, most markedly with a community hazard.
 - `trigger_time(eligibility, infector, contact, state)` gives the trace's
   trigger time for the contact being traced, and `ContactTracing` calls it. A
   custom policy can define it to time the trace from the contact, and combinators
@@ -69,19 +71,11 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   over each possible infector's whole infectious window. Household likelihood
   values with a community hazard change as a result; values without one are
   unchanged.
-- `EpiHouseholds` now reaches EpiBranch's shared pairwise likelihood through
-  every form, not only the one taking a compiled layout. Its own implementation
-  of `pairwise_surv_loglik(kernel, data::HouseholdInfections; external_hazard)`
-  is gone, so the two-argument form compiles a `ContactPairsLayout` like any
-  other contact structure. Values match the retired implementation to summation
-  order — relative differences of order 1e-13 and below across kernel scales and
-  community rates — and evaluation is faster: 1.1 ms against 1.7 ms without a
-  community hazard, and 1.7 ms against 7.9 ms with one, on 1,500 households of
-  four.
-- The `pairwise_surv_loglik` docstring and the household and network tutorials
-  record that a vanishing community hazard does not approach the
-  no-community-hazard case, and that a `Gamma` community hazard needs a
-  reverse-mode AD backend.
+- The continuous-time race behind `NetworkProcess`, `RoutedNetwork` and
+  `HouseholdProcess` picks the next case to settle from a binary heap, so a race
+  over `n` members with `E` contacts costs O(E log n) where it previously cost
+  O(n²). A 100,000-node sparse network now simulates in about a second, down
+  from about half a minute. Results for a given seed are unchanged.
 
 ### Fixed
 
@@ -97,21 +91,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   not conditioned on and that no possible infector or community hazard could
   have infected at its infection time, including a host with no possible
   infector at all, so a sampler over latent infection times rejects such
-  configurations.
-- The pairwise survival likelihood's `-Inf` now comes with a zero gradient. A
-  host that nothing could have infected makes the whole configuration
-  impossible, and the density is `-Inf` throughout a neighbourhood of the
-  parameters, but the `-Inf` term used to be summed with the other hosts' finite
-  terms, so the accumulated value carried their derivatives. A gradient-based
-  sampler or optimiser therefore saw a spurious direction at such a point.
-- The continuous-time race behind `NetworkProcess`, `RoutedNetwork` and
-  `HouseholdProcess` picks the next case to settle from a binary heap, so a race
-  over `n` members with `E` contacts costs O(E log n) where it previously cost
-  O(n²). A 100,000-node sparse network now simulates in about a second, down
-  from about half a minute. Results for a given seed are unchanged.
-
-### Fixed
-
+  configurations. The `-Inf` comes with a zero gradient, since the
+  configuration is impossible throughout a neighbourhood of the parameters.
 - Combined tracing eligibility policies now time the trace from the conditions
   that are met. Each condition, custom policies included, is checked with
   `is_eligible` against the contact being traced. With a custom `Over65` policy,
