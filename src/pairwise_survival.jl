@@ -113,11 +113,15 @@ holds, per host `i` (numbered `1:n`):
 
 and a scalar `obs_end`, the time community introductions stop (only read when
 there is a community hazard). Spread along the contact structure continues after
-it. For observed data that end at a follow-up time, set the removal time of a
-case still infectious then to that follow-up time, and `obs_end` no later than
-it: hosts that were never infected are known to have escaped only until then. A
-removal time of `Inf` exposes every uninfected possible infectee for ever, and
-the density is `-Inf`. A subtype also defines
+it.
+
+Observed data end at a follow-up time, which
+[`followup_end`](@ref EpiBranch.followup_end) gives: a `followup_end` field when
+the subtype has one, and `Inf` otherwise. The likelihood ignores everything after
+it. A host infected later counts as escaped until then, and exposure to a
+possible infector stops then, so a case still infectious at the end of the data
+can keep a removal time of `Inf`. Simulated outbreaks run to their end and need
+no follow-up time. A subtype also defines
 [`contact_structure`](@ref EpiBranch.contact_structure), which says who could
 have infected whom. [`compile_contact_pairs`](@ref) and
 [`pairwise_surv_loglik`](@ref) then work on it with no further methods.
@@ -138,6 +142,19 @@ network). An [`InfectionLayer`](@ref) subtype defines this.
 function contact_structure(data::InfectionLayer)
     throw(ArgumentError("$(nameof(typeof(data))) needs a method for " *
                         "`EpiBranch.contact_structure` naming who could have infected whom"))
+end
+
+"""
+    followup_end(data::InfectionLayer)
+
+The time observation of `data` ends. The pairwise likelihood scores the infection
+layer up to it and ignores infections and exposure after it. The default reads a
+`followup_end` field when the [`InfectionLayer`](@ref) subtype has one, and is
+`Inf` otherwise; a subtype that stores it elsewhere defines a method.
+"""
+function followup_end(data::InfectionLayer)
+    hasproperty(data, :followup_end) ?
+    data.followup_end : Inf
 end
 
 # ── Compiled pair layout ─────────────────────────────────────────────
@@ -444,6 +461,12 @@ been infected by a possible infector. Spread along the contact structure
 continues after `obs_end`, so a host that is never infected accrues hazard over
 each possible infector's whole infectious window.
 
+Everything is cut at [`followup_end(data)`](@ref EpiBranch.followup_end): a host
+infected after it is scored as escaped until then, and no exposure accrues past
+it. Scoring data with a follow-up time gives the same value as first truncating
+the data there: later infections unobserved, and removal times and `obs_end`
+capped at it.
+
 Use the layout form in inference: compile the layout once with
 [`compile_contact_pairs`](@ref) and reuse it while the latent times move. Its
 `external` setting must agree with `external_hazard`. The two-argument form
@@ -482,9 +505,13 @@ function pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairs
                                 "was compiled for ($(layout.nhosts))"))
     extdist = external ? _ext_survival(external_hazard) : kernel
 
+    tfollow = followup_end(data)
+    (!isnan(tfollow) && tfollow >= 0) || throw(ArgumentError(
+        "followup_end must be a non-negative number (Inf allowed), got $tfollow"))
     Tdata = promote_type(eltype(data.infection_time),
         eltype(data.infectious_time),
         eltype(data.removal_time),
+        typeof(tfollow),
         Float64)
     # Promote against the kernel's parameter type so AD values in the fitted
     # kernel survive the reduction.
@@ -492,27 +519,30 @@ function pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairs
     T = promote_type(Tdata, _kernel_partype(kernel, layout, Tdata), Text)
     # A per-edge or covariate kernel's parameter type is only known at run time,
     # so pass it through a function barrier to keep the passes type-stable.
-    return _pairwise_surv_loglik(kernel, extdist, data, layout, external, T)
+    return _pairwise_surv_loglik(kernel, extdist, data, layout,
+        convert(Tdata, tfollow), T)
 end
 
-function _pairwise_surv_loglik(kernel, extdist, data, layout, external,
+function _pairwise_surv_loglik(kernel, extdist, data, layout, tfollow,
         ::Type{T}) where {T}
     # An infected host that is not conditioned on and has no possible infector
-    # cannot have been infected.
+    # cannot have been infected, unless that infection falls after follow-up.
     @inbounds for j in layout.no_rows
-        isnan(data.infection_time[j]) || return T(-Inf)
+        tj = data.infection_time[j]
+        (isnan(tj) || tj > tfollow) || return T(-Inf)
     end
 
     # A covariate or per-edge kernel may carry the fitted parameters on only some
     # pairs, so the probe behind `T` can miss them. Every row pass 2 scores has a
     # positive at-risk time in pass 1, so pass 1's sum has seen every kernel
     # pass 2 will use, and its type sets pass 2's accumulator.
-    ll = _pairwise_cumhazard(kernel, extdist, data, layout, T)
-    return _pairwise_events(kernel, extdist, data, layout, ll,
+    ll = _pairwise_cumhazard(kernel, extdist, data, layout, tfollow, T)
+    return _pairwise_events(kernel, extdist, data, layout, tfollow, ll,
         promote_type(T, typeof(ll)))
 end
 
-function _pairwise_cumhazard(kernel, extdist, data, layout, ::Type{T}) where {T}
+function _pairwise_cumhazard(kernel, extdist, data, layout, tfollow,
+        ::Type{T}) where {T}
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
@@ -521,12 +551,13 @@ function _pairwise_cumhazard(kernel, extdist, data, layout, ::Type{T}) where {T}
     # Pass 1: cumulative-hazard contribution per row, each at risk from 0. A
     # susceptible is exposed to its possible infectors until it is infected, and
     # to the community hazard until the earlier of that and `obs_end`, after
-    # which there are no more introductions.
+    # which there are no more introductions. Nothing is at risk after follow-up,
+    # and a host infected after it has escaped until then as far as the data
+    # show.
     @inbounds for r in eachindex(sus)
         j = sus[r]
         tj = data.infection_time[j]
-        infected_j = !isnan(tj)
-        tend = infected_j ? tj : T(Inf)
+        tend = (isnan(tj) || tj > tfollow) ? tfollow : convert(typeof(tfollow), tj)
         if is_ext[r]
             stop = min(tend, data.obs_end)
             stop > 0 || continue
@@ -544,7 +575,8 @@ function _pairwise_cumhazard(kernel, extdist, data, layout, ::Type{T}) where {T}
     return ll
 end
 
-function _pairwise_events(kernel, extdist, data, layout, ll0, ::Type{T}) where {T}
+function _pairwise_events(kernel, extdist, data, layout, tfollow, ll0,
+        ::Type{T}) where {T}
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
@@ -562,7 +594,7 @@ function _pairwise_events(kernel, extdist, data, layout, ll0, ::Type{T}) where {
     acc = _LogSumExpAcc{T}()
     @inbounds for g in eachindex(layout.sus_unique)
         tj = data.infection_time[layout.sus_unique[g]]
-        isnan(tj) && continue
+        (isnan(tj) || tj > tfollow) && continue
         acc.m = T(-Inf)
         acc.s = zero(T)
         acc.nseen = 0

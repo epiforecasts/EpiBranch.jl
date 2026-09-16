@@ -9,12 +9,38 @@ struct _TestInfections{S} <: InfectionLayer
     removal_time::Vector{Float64}
     is_index::Vector{Bool}
     obs_end::Float64
+    followup_end::Float64
 end
-function _TestInfections(structure, inf, infectious, removal, index; obs_end = Inf)
+function _TestInfections(structure, inf, infectious, removal, index; obs_end = Inf,
+        followup_end = Inf)
     _TestInfections(structure, Float64.(inf), Float64.(infectious),
-        Float64.(removal), Vector{Bool}(index), Float64(obs_end))
+        Float64.(removal), Vector{Bool}(index), Float64(obs_end),
+        Float64(followup_end))
 end
 EpiBranch.contact_structure(d::_TestInfections) = d.structure
+
+# The same layer without a follow-up time, as a subtype written before it existed.
+struct _NoFollowup{S} <: InfectionLayer
+    structure::S
+    infection_time::Vector{Float64}
+    infectious_time::Vector{Float64}
+    removal_time::Vector{Float64}
+    is_index::Vector{Bool}
+    obs_end::Float64
+end
+EpiBranch.contact_structure(d::_NoFollowup) = d.structure
+
+# `d` as observed up to `tf`: later infections unseen, windows and community
+# introductions cut there.
+function _truncate(d::_TestInfections, tf)
+    late = .!isnan.(d.infection_time) .& (d.infection_time .> tf)
+    inf = _nan_where(d.infection_time, late)
+    infectious = _nan_where(d.infectious_time, late)
+    removal = _nan_where(min.(d.removal_time, tf), late)
+    return _TestInfections(d.structure, inf, infectious, removal, d.is_index;
+        obs_end = min(d.obs_end, tf))
+end
+_nan_where(x, mask) = [m ? NaN : v for (v, m) in zip(x, mask)]
 
 # A layer that forgets to name its structure.
 struct _NoStructure <: InfectionLayer end
@@ -256,21 +282,81 @@ end
         @test pairwise_surv_loglik(k, index_3) ≈ log(1 / 2) - 1 / 2
     end
 
-    @testset "a case still infectious at the end of follow-up" begin
+    @testset "nothing after the end of follow-up is scored" begin
         # path 1-2-3 followed up to 5: index 1 infectious over [0, 2] infects 2 at
         # 1, which is still infectious at 5, and 3 has escaped until then
         contacts = [[2], [1, 3], [2]]
         k = Exponential(2.0)
-        censored = _TestInfections(contacts, [0.0, 1.0, NaN], [0.0, 1.0, NaN],
-            [2.0, 5.0, NaN], [true, false, false]; obs_end = 5.0)
-        @test pairwise_surv_loglik(k, censored) ≈ log(1 / 2) - 1 / 2 - 4 / 2
+        ongoing = _TestInfections(contacts, [0.0, 1.0, NaN], [0.0, 1.0, NaN],
+            [2.0, Inf, NaN], [true, false, false]; obs_end = 5.0, followup_end = 5.0)
+        @test pairwise_surv_loglik(k, ongoing) ≈ log(1 / 2) - 1 / 2 - 4 / 2
         # 3 is also exposed to the community until 5
-        @test pairwise_surv_loglik(k, censored; external_hazard = 0.1) ≈
+        @test pairwise_surv_loglik(k, ongoing; external_hazard = 0.1) ≈
               log(0.1) + log(1 / 2 + 0.1) - 0.1 - 1 / 2 - 4 / 2 - 0.5
-        # without the follow-up time 3 is exposed to 2 for ever
+        # without a follow-up time 3 is exposed to 2 for ever
         unbounded = _TestInfections(contacts, [0.0, 1.0, NaN], [0.0, 1.0, NaN],
             [2.0, Inf, NaN], [true, false, false]; obs_end = 5.0)
         @test pairwise_surv_loglik(k, unbounded) == -Inf
+
+        # Cliques and a graph with latent periods, ongoing windows, infections
+        # after follow-up (including one nobody could explain then, and an index
+        # case) and a window opening after it: scoring up to 6 matches scoring
+        # the data truncated at 6.
+        membership, adjacency = _cliques([3, 4, 2, 4])
+        inf = [0.0, 1.2, NaN, 0.0, 2.1, 5.5, 8.0, 0.0, 7.0, 0.0, 0.7, NaN, 9.0]
+        infectious = inf .+ [0.5, 0.3, 0, 0.4, 0.2, 0.1, 0.3, 0.6, 0.2, 0.1, 0.2, 0, 0.3]
+        removal = [3.0, Inf, NaN, 4.0, Inf, Inf, Inf, 2.0, Inf, 5.0, Inf, NaN, Inf]
+        index = [true, false, false, true, false, false, false, true, true,
+            true, false, false, false]
+        wk = Weibull(1.5, 3.0)
+        for structure in (membership, adjacency), obs_end in (3.0, 10.0)
+
+            full = _TestInfections(structure, inf, infectious, removal, index;
+                obs_end, followup_end = 6.0)
+            cut = _truncate(full, 6.0)
+            @test isfinite(pairwise_surv_loglik(wk, full))
+            @test pairwise_surv_loglik(wk, full) ≈ pairwise_surv_loglik(wk, cut)
+            for α in (0.05, Weibull(1.0, 20.0))
+                v = pairwise_surv_loglik(wk, full; external_hazard = α)
+                @test isfinite(v)
+                @test v ≈ pairwise_surv_loglik(wk, cut; external_hazard = α)
+                L = compile_contact_pairs(full; external = true)
+                @test pairwise_surv_loglik(wk, full, L; external_hazard = α) ≈ v
+            end
+        end
+
+        # the gradient in the kernel and community hazard matches finite differences
+        full = _TestInfections(adjacency, inf, infectious, removal, index;
+            obs_end = 10.0, followup_end = 6.0)
+        L = compile_contact_pairs(full; external = true)
+        f(θ) = pairwise_surv_loglik(Weibull(exp(θ[1]), exp(θ[2])), full, L;
+            external_hazard = exp(θ[3]))
+        θ = [log(1.5), log(3.0), log(0.05)]
+        g = ForwardDiff.gradient(f, θ)
+        h = 1e-6
+        fd = [(f(θ .+ h .* e) - f(θ .- h .* e)) / 2h
+              for e in ([1.0, 0, 0], [0, 1.0, 0], [0, 0, 1.0])]
+        @test all(isfinite, g)
+        @test g ≈ fd rtol = 1e-5
+        @test (@inferred pairwise_surv_loglik(wk, full, L; external_hazard = 0.05)) isa
+              Float64
+
+        # a layer without the field is followed up for ever, as `Inf` is
+        @test EpiBranch.followup_end(_NoFollowup(adjacency, inf, infectious, removal,
+            index, 10.0)) == Inf
+        closed = min.(removal, 12.0)
+        for α in (0.0, 0.05)
+            @test pairwise_surv_loglik(wk,
+                _NoFollowup(adjacency, inf, infectious, closed, index, 10.0);
+                external_hazard = α) ==
+                  pairwise_surv_loglik(wk,
+                _TestInfections(adjacency, inf, infectious, closed, index;
+                    obs_end = 10.0); external_hazard = α)
+        end
+
+        bad = _TestInfections(contacts, [0.0, 1.0, NaN], [0.0, 1.0, NaN],
+            [2.0, Inf, NaN], [true, false, false]; followup_end = NaN)
+        @test_throws ArgumentError pairwise_surv_loglik(k, bad)
     end
 
     @testset "an impossible configuration has a zero gradient" begin

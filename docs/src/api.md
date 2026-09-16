@@ -21,6 +21,7 @@ pairwise_surv_loglik
 PairwiseSurvivalData
 InfectionLayer
 EpiBranch.contact_structure
+EpiBranch.followup_end
 ContactPairsLayout
 compile_contact_pairs
 ```
