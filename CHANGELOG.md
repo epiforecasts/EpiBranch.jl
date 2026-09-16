@@ -24,6 +24,33 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Changed
 
+- The continuous-time models (`HomogeneousProcess`, and `NetworkProcess`,
+  `RoutedNetwork` and `HouseholdProcess` in the companion packages) now resolve
+  per-contact competing risks. Each potential infection is put to the composed
+  risks at the moment it is proposed and against the time it is proposed for, as
+  on the generation-based engine, so per-individual susceptibility and
+  infectiousness apply there at last, and so does an intervention whose effect
+  is a per-contact block — a leaky `Isolation`, a vaccine's efficacy, or a risk
+  a user writes themselves. A blocked proposal is declined and nothing else: on
+  a graph that pair offers no further contact and the target stays susceptible
+  to its other neighbours, while in the mass-action pool the susceptible draws a
+  fresh resistance and waits for the next contact. On a model with several
+  routes, an intervention's risks reach only the routes that list
+  `EpiBranch.INTERVENTION_REMOVAL` in their `until`. A model with no risks in
+  play draws nothing extra and reproduces earlier runs exactly for the same
+  seed. A model with risks is no longer the exact generative model of the
+  pairwise likelihood, which has no term for a declined proposal. A pool whose
+  infectious windows never close and whose every contact is then blocked has no
+  end to reach, and now says so rather than running on.
+- `RingVaccination` doses along the trace on the continuous-time models, where
+  before it only ever dosed contacts the generation engine had created. Its
+  `eligibility_window` has no meaning there: a contact that has not been
+  infected has no exposure time to measure from.
+- The continuous-time models' warning about interventions they cannot honour
+  now names only those that reach their targets through the generation engine's
+  post-transmission hooks — `MassVaccination`'s rollout, and `ContactTracing`
+  (with `RingVaccination` behind it) on the mass-action pool, which has no
+  pairwise contact structure to act along.
 - The fixed-size population pool's mixing structure is now keyed on the
   individual's real attributes: a model names which attributes define mixing via
   `mixing_by` (a tuple of attribute keys, e.g. `(:age_band, :ses)`), and the pool

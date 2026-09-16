@@ -147,7 +147,7 @@ ones your intervention needs (all default to no-ops).
 | `initialise_individual!(iv, individual, state)` | Once when each individual is created | An `Individual` whose typed fields are set but whose `state` dict is empty | `nothing` (mutate `individual.state` in place) |
 | `resolve_individual!(iv, individual, state)` | Once per active individual at the start of each generation, before offspring are drawn | The parent for the upcoming step | `nothing` (mutate `individual.state` in place) |
 | `apply_post_transmission!(iv, state, new_contacts)` | Once per generation after all contacts for that generation have been created (across every active parent) | A `Vector{Individual}` of the new contacts | `nothing` (mutate any of the contacts' `state` in place) |
-| `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair during infection resolution, after `apply_post_transmission!` has run | The parent and a single new contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
+| `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair: on the generation engine during infection resolution, after `apply_post_transmission!` has run; on the continuous-time models as each infection is proposed | The parent and a single contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
 | `keep_active(iv, state, targets, is_new)` | Once per generation after infection is resolved, while the engine builds the next active set | This generation's `targets` and an `is_new` flag per target | An iterable of contact ids to keep generating contacts into the next generation (default: none) |
 | `trace_contacts!(iv, state, infector, contacts[, not_before])` | Continuous-time models only: once per case, when the race settles it | The case, the contacts it reached that are not yet settled, and, from a model whose contacts can come about after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing` (mutate the contacts' `state` in place) |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to gather contacts at all | Nothing | `true` if this intervention implements `trace_contacts!` (default `false`) |
@@ -157,21 +157,21 @@ ones your intervention needs (all default to no-ops).
 
 The hooks above are not all available everywhere, because the engines are
 built differently. The generation-based engine creates a fresh `Individual`
-for every contact, infected or not, so it can hand you contact objects and
-resolve a per-pair decision for each. The continuous-time (Sellke) models
-have no such objects: every node exists from the start and the simulation
-only settles *when* each is infected, by a race between contact-interval
-draws. There is no per-pair decision point to hang a `Risk` on, and the one
-seam an intervention has is the infectious window.
+for every contact, infected or not, so it can hand you a batch of contact
+objects. The continuous-time (Sellke) models have no such objects: every node
+exists from the start and the simulation only settles *when* each is infected,
+by a race between contact-interval draws. What they do have is the potential
+infection itself — a drawn time for a named pair — so a `Risk` has somewhere to
+hang after all, alongside the infectious window.
 
 | Hook | Generation engine | Network / household (Sellke race) | Homogeneous pool |
 |---|---|---|---|
 | `initialise_individual!` | yes | yes | yes |
 | `resolve_individual!` | yes | yes | yes |
+| `competing_risk` | yes | yes | yes |
 | `infectious_removal_time` | not read | yes | yes |
 | `trace_contacts!` | not called | yes | no contact set |
 | `apply_post_transmission!` | yes | not called | not called |
-| `competing_risk` | yes | not called | not called |
 | `keep_active` | yes | not called | not called |
 
 What this means in practice:
@@ -181,9 +181,36 @@ What this means in practice:
   infectious window, which every engine has.
 - An intervention whose effect is a **per-contact competing risk** against
   the infection event — leaky vaccination, a partial-efficacy prophylaxis —
-  works only on the generation-based engine. On the continuous-time models
-  it is reported with a warning and has no effect, rather than being
-  silently ignored.
+  works everywhere too, and so do per-individual susceptibility and
+  infectiousness, which ride the same surface. The continuous-time models put
+  each potential infection to the composed risks at the moment they propose it,
+  against the time they propose it for. What a block then means differs with
+  the contact process, and is worth knowing if you write a risk of your own:
+  on a graph the pair carries a single contact interval, so a blocked proposal
+  is declined and the edge offers nothing more — the target simply stays
+  susceptible to its other neighbours; in the mass-action pool contacts keep
+  arriving, so a blocked one leaves the susceptible waiting for the next. Both
+  give the same realised reduction in cases as blocking that fraction of a
+  parent's contacts on the generation engine.
+- A model with per-contact risks in play is no longer the exact generative
+  model of the pairwise likelihood, which has no term for a declined proposal.
+  Simulating with risks and scoring the result with `loglikelihood` will
+  disagree.
+- On a model with several routes, an intervention's risks are resolved only on
+  the routes that list `EpiBranch.INTERVENTION_REMOVAL` in their `until`. That
+  listing is a route's statement about whether the response reaches it at all,
+  so a household route that runs on through an isolation is not blocked by that
+  isolation's per-contact risk either. Per-individual susceptibility and
+  infectiousness, and anything the model contributes through
+  `transmission_risks`, apply on every route: they belong to the people and the
+  edge rather than to the response.
+- An intervention that reaches its targets only through
+  `apply_post_transmission!` or `keep_active` — `MassVaccination`'s rollout
+  doses each new contact as the engine creates it — has nothing to act on when
+  no contacts are created. Say so with
+  `EpiBranch._sellke_honours(model, ::MyIntervention) = false` — internal for
+  now, like the pool primitive below — and the continuous-time models will name
+  it in their warning rather than leave it silently inert.
 - **Contact tracing** spans the two. Its action is a removal, so it applies
   on both, but it needs to know who a case's contacts were. The generation
   engine reads that off each contact's `parent_id`; the continuous-time
@@ -221,8 +248,9 @@ Ordering guarantees:
 - `apply_post_transmission!` runs strictly before any `competing_risk` call, so a competing risk can read whatever post-transmission hook wrote on the contact (e.g. `:vaccination_time`).
 - `keep_active` runs after infection is resolved, so it can read each target's `:infected` and anything `apply_post_transmission!` wrote on it this generation.
 - Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
+- On the continuous-time models the counterpart holds through tracing: a case is traced when it settles, before it proposes any infection of its own, so a risk can read what `trace_contacts!` wrote on a contact. `RingVaccination` doses on that pass, which is why listing it after the `ContactTracing` that feeds it matters there as much as it does on the generation engine.
 
-A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms — `RingVaccination` returns both a susceptibility risk on the contact and an onward-infectiousness risk on the parent.
+A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. On the continuous-time models the transmission time it is compared against is the candidate infection time the race has just drawn for that pair. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms — `RingVaccination` returns both a susceptibility risk on the contact and an onward-infectiousness risk on the parent.
 
 Tree-shaping changes — capping offspring per parent, gathering-size limits, anything that's really "this parent produces fewer contacts than its natural offspring distribution would say" — belong in the offspring distribution itself, not in the intervention protocol. See [Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution) below.
 

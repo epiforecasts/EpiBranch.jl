@@ -72,6 +72,14 @@ of a simulation. Because the Sellke construction is the likelihood's generative
 model, `simulate → loglikelihood` is an exact round trip, so the simulated outbreak
 recovers the kernel.
 
+!!! note "Per-contact risks break the round trip"
+    That exactness is the contact process's alone. A model that also carries
+    per-contact competing risks — a per-individual susceptibility or
+    infectiousness, a leaky isolation, a vaccine's efficacy — declines some of
+    the infections the race proposes, and the pairwise likelihood has no term
+    for a declined proposal. Simulate with those and the likelihood scores a
+    different model from the one that produced the data.
+
 ```@example households
 truth = ModelSpec(HouseholdProcess(fill(4, 500), Exponential(4.0));
     progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])

@@ -107,15 +107,19 @@ spreads on is a modelling choice. A few that map onto common assumptions:
   the distances, so take the first element.
 
 The kernel, progression and attributes attach exactly as before — only the
-source of the graph changes. Interventions attach through the infectious
-window: one that removes a case from transmission — `Isolation` — shortens
-that window and curtails spread (see below). `ContactTracing` applies too,
-because a node's contacts are its graph neighbours and quarantining a traced
-neighbour closes that neighbour's own window; see
-[Contact tracing on a network](#Contact-tracing-on-a-network). An intervention
-whose effect is purely a per-contact competing risk against the infection event,
-such as leaky vaccination, has no representation on the continuous-time network
-path and is reported with a warning rather than applied. Graphs.jl is an optional
+source of the graph changes. Interventions attach through two seams. One that
+removes a case from transmission — `Isolation` — shortens its infectious window
+and curtails spread (see below). One whose effect is a per-contact block — a
+leaky isolation, a vaccine's efficacy — is put to each infection the race
+proposes along an edge, and a blocked proposal leaves the neighbour susceptible
+to everyone else. Per-individual susceptibility and infectiousness are resolved
+the same way, so they mean here what they mean on the generation-based engine.
+`ContactTracing` applies too, because a node's contacts are its graph neighbours
+and quarantining a traced neighbour closes that neighbour's own window; see
+[Contact tracing on a network](#Contact-tracing-on-a-network). Ring vaccination
+doses along that same trace. An intervention that reaches its targets only among
+freshly created contacts, such as `MassVaccination`'s rollout, is reported with
+a warning rather than applied. Graphs.jl is an optional
 dependency: this constructor becomes available once you load Graphs.jl,
 and the adjacency-list and matrix constructors need nothing extra. For a
 directed graph, a node's out-neighbours are the contacts it can infect.

@@ -120,6 +120,43 @@ println("Mean size, with isolation: ",
     round(sum(iso_sizes) / length(iso_sizes), digits = 1))
 ```
 
+## Partial protection
+
+Not every control takes a case out of transmission. A vaccine that halves the
+chance of infection, an isolation people only partly keep to, a susceptibility
+that differs from person to person: each blocks a share of contacts rather than
+ending anyone's infectious period. The pool resolves those where the contact
+happens. A threshold crossing is one arriving contact, and if a competing risk
+blocks it the susceptible waits for the next one, so blocking a fraction `p` of
+contacts thins the force of infection to `(1-p)·λ`.
+
+Per-individual susceptibility is the simplest case, and means here what it means
+on a branching process: a susceptibility of 0.75 leaves each contact three
+quarters as likely to infect, and so scales the reproduction number to 1.5.
+
+```@example homogeneous
+protected = ModelSpec(
+    HomogeneousProcess(; transmission_rate = 2.0, population_size = 2000);
+    progression = [Transition(:recovered; from = :infection,
+        delay = Exponential(1.0), terminal = true)],
+    attributes = transmission_traits(susceptibility = 0.75))
+
+prot_sizes = [simulate(protected; n_initial = 5, rng = StableRNG(s)).cumulative_cases
+              for s in 1:30]
+
+println("Mean size, susceptibility 0.75: ",
+    round(sum(prot_sizes) / length(prot_sizes), digits = 1))
+```
+
+Push it far enough and the outbreak stops taking off at all: at a susceptibility
+of 0.5 the reproduction number is exactly 1, and most seeds die out.
+
+An intervention's [`competing_risk`](@ref EpiBranch.competing_risk) reaches the pool the same way, so a
+leaky `Isolation` (`post_isolation_transmission > 0`) reduces what a case
+transmits after isolating rather than ending it. What the pool cannot express is
+an intervention that finds its targets among freshly created contacts,
+`MassVaccination`'s rollout among them; `simulate` warns when it is handed one.
+
 ## Structured mixing
 
 `HomogeneousProcess` assumes everyone mixes with everyone else at the same
