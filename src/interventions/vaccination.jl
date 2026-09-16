@@ -244,6 +244,26 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
     return nothing
 end
 
+traces_contacts(::RingVaccination) = true
+
+"""Dose the contacts a case reaches on the continuous-time path, where the
+generation engine's round of new contacts does not exist. The dosing policy
+reads nothing but each contact's own tracing state, so it is the same loop
+either way: list ring vaccination after the [`ContactTracing`](@ref) that feeds
+it, as on the generation engine, and it doses whoever that trace has just
+reached. Whether the dose then blocks an infection is the competing risk's
+business, and the continuous-time race resolves that on each contact it
+proposes.
+
+`eligibility_window` is the one piece that does not carry over: it measures from
+the contact's own exposure, and a contact the race has not settled has no
+exposure time — it still carries the zero it was created with — so a finite
+window would measure from the start of the run. Leave it at its `Inf` default on
+these models."""
+function trace_contacts!(rv::RingVaccination, state, infector, contacts)
+    apply_post_transmission!(rv, state, contacts)
+end
+
 # ── MassVaccination ──────────────────────────────────────────────────
 
 """

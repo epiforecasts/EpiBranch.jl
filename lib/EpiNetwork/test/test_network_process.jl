@@ -126,6 +126,70 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
               n_infected(simulate(baseline; rng = StableRNG(3)))
     end
 
+    @testset "per-individual susceptibility and infectiousness apply" begin
+        # The race resolves the composed competing risks on each infection it
+        # proposes along an edge, so both multipliers mean here what they mean
+        # on the generation engine: a per-contact block.
+        n = 300
+        ring = [vcat([mod1(i - d, n) for d in 1:2], [mod1(i + d, n) for d in 1:2])
+                for i in 1:n]
+        build(attrs) = ModelSpec(NetworkProcess(ring, Exponential(1.5));
+            progression = _sir(Exponential(4.0)), attributes = attrs)
+        meansize(attrs) = sum(simulate(build(attrs);
+                                  rng = StableRNG(s), n_initial = 3).cumulative_cases
+        for s in 1:10) / 10
+
+        full = meansize(transmission_traits(susceptibility = 1.0))
+        half = meansize(transmission_traits(susceptibility = 0.5))
+        @test half < full
+        @test meansize(transmission_traits(susceptibility = 0.2)) < half
+
+        # Susceptibility 0 blocks every proposal, so only the seeds are infected.
+        blocked = simulate(build(transmission_traits(susceptibility = 0.0));
+            rng = StableRNG(1), n_initial = 3)
+        @test blocked.cumulative_cases == 3
+
+        @test meansize(transmission_traits(infectiousness = 0.5)) < full
+        silent = simulate(build(transmission_traits(infectiousness = 0.0));
+            rng = StableRNG(1), n_initial = 3)
+        @test silent.cumulative_cases == 3
+    end
+
+    @testset "leaky ring vaccination changes network results" begin
+        # Ring vaccination doses the contacts a case reaches when the race
+        # settles it, and its efficacy is then a per-contact block against every
+        # infection proposed to a dosed node afterwards.
+        n = 300
+        ring = [vcat([mod1(i - d, n) for d in 1:2], [mod1(i + d, n) for d in 1:2])
+                for i in 1:n]
+        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
+            prob_asymptomatic = 0.0)
+        # Isolation is the trigger tracing fires from, and nothing else: a
+        # residual of 1 leaves transmission untouched, so what the outbreak sizes
+        # below show is the vaccine on its own.
+        iso = Isolation(onset_to_isolation_delay = Exponential(0.5),
+            test_sensitivity = 1.0, post_isolation_transmission = 1.0)
+        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.2),
+            quarantine_on_trace = false)
+        build(ivs) = ModelSpec(NetworkProcess(ring, Exponential(4.0));
+            progression = _sir(Exponential(8.0)), interventions = ivs,
+            attributes = clinical)
+        runs(ivs) = [simulate(build(ivs); rng = StableRNG(s), n_initial = 3)
+                     for s in 1:10]
+        meansize(ivs) = sum(st.cumulative_cases for st in runs(ivs)) / 10
+
+        base = meansize([iso, ct])
+        @test !any(st -> any(is_vaccinated, st.individuals), runs([iso, ct]))
+        @test all(st -> any(is_vaccinated, st.individuals),
+            runs([iso, ct, RingVaccination(efficacy = 0.5)]))
+
+        @test isapprox(meansize([iso, ct, RingVaccination(efficacy = 0.0)]), base;
+            rtol = 0.05)
+        leaky = meansize([iso, ct, RingVaccination(efficacy = 0.5)])
+        @test leaky < 0.6 * base
+        @test meansize([iso, ct, RingVaccination(efficacy = 1.0)]) < leaky
+    end
+
     @testset "onset is measured from each case's own infection time" begin
         # Nodes are created, and their incubation periods drawn, before the
         # race sets their infection times. Isolation depends on onset, so onset
@@ -682,9 +746,14 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
             isolation_to_trace_delay = Exponential(500.0))
         @test meansize([iso, late]) <= meansize([iso]) * 1.05
 
-        # An intervention with no window representation still warns.
-        @test_logs (:warn, r"RingVaccination") match_mode=:any simulate(
-            build([iso, ct, RingVaccination(efficacy = 0.8)]);
+        # Ring vaccination doses along the same trace, so the graph honours it
+        # and nothing is reported as unhonoured. A rollout that doses newly
+        # created contacts still is: the race creates none.
+        @test EpiBranch._sellke_honours(
+            build([iso]).process, RingVaccination(efficacy = 0.8))
+        @test_logs (:warn, r"MassVaccination") match_mode=:any simulate(
+            build([iso, ct,
+                MassVaccination(efficacy = 0.8, eligibility_time = 0.0)]);
             n_initial = 1, rng = StableRNG(4))
     end
 end
