@@ -153,7 +153,7 @@ export Borel, chain_size_distribution
 export ThinnedChainSize
 
 # Exports — attributes functions
-export clinical_presentation, demographics, transmission_traits
+export clinical_presentation, demographics, transmission_traits, vaccine_acceptance
 
 # Exports — simulation
 export simulate, make_contact!, susceptible_fraction

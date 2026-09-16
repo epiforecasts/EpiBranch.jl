@@ -768,7 +768,7 @@ function _create_individual(state::SimulationState, parent_id::Int,
         state.current_generation + (parent_id == 0 ? 0 : 1),
         chain_id, convert(T, inf_time), one(T), one(T), Int[], s)
 
-    _apply_attributes!(state.attributes, state.rng, ind)
+    _apply_attributes!(state.attributes, state.rng, ind, state)
 
     return ind
 end
@@ -1100,14 +1100,57 @@ function _resolve_new_transitions!(state::SimulationState, from_index::Int)
     return nothing
 end
 
-"""Apply attributes function to an individual. No-op for NoAttributes."""
-_apply_attributes!(::NoAttributes, rng, ind) = nothing
-_apply_attributes!(f::Function, rng, ind) = f(rng, ind)
-function _apply_attributes!(builders::Union{Tuple, AbstractVector}, rng, ind)
+"""Apply attributes function to an individual. No-op for `NoAttributes`.
+The 3-argument form is a convenience for callers with no `state` to hand
+(direct unit tests, mainly); it forwards to the 4-argument form with
+`state = nothing`. Only a [`GroupAttribute`](@ref EpiBranch.GroupAttribute)
+— which needs `state` to find its ring — cannot be applied that way."""
+_apply_attributes!(x, rng, ind) = _apply_attributes!(x, rng, ind, nothing)
+
+_apply_attributes!(::NoAttributes, rng, ind, state) = nothing
+_apply_attributes!(f::Function, rng, ind, state) = f(rng, ind)
+function _apply_attributes!(builders::Union{Tuple, AbstractVector}, rng, ind, state)
     for build! in builders
-        build!(rng, ind)
+        _apply_attributes!(build!, rng, ind, state)
     end
     return nothing
+end
+
+"""
+Attributes-list element that draws one value per ring rather than
+independently per individual. A ring is a case and the contacts created
+from it directly — the branching process's proxy for a household or
+community, in the absence of a persistent household structure. The value
+is drawn once, when the case's first contact is created, cached on the
+case, and read from there by the rest of that case's contacts. An index
+case (no parent) draws its own value, so unrelated chains start
+independently of one another.
+
+Construct with [`vaccine_acceptance`](@ref) rather than directly.
+"""
+struct GroupAttribute{D}
+    key::Symbol
+    propensity::D
+end
+
+_group_cache_key(key::Symbol) = Symbol(key, :_group)
+
+function _apply_attributes!(g::GroupAttribute, rng, ind, state::SimulationState)
+    ind.state[g.key] = if ind.parent_id == 0
+        _sample_value(g.propensity, rng, ind)
+    else
+        parent = state.individuals[ind.parent_id]
+        get!(parent.state, _group_cache_key(g.key)) do
+            _sample_value(g.propensity, rng, parent)
+        end
+    end
+    return nothing
+end
+function _apply_attributes!(::GroupAttribute, rng, ind, ::Nothing)
+    throw(ArgumentError(
+        "a GroupAttribute needs simulation state to find its individual's " *
+        "ring; apply it via `make_contact!`, `add_individuals!` or " *
+        "`simulate`, not directly."))
 end
 
 # ── Attributes function constructors ─────────────────────────────────
@@ -1290,6 +1333,48 @@ _trait_sampler(x::Real) =
     end
 _trait_sampler(d::Distribution) = (rng, ind) -> float(rand(rng, d))
 _trait_sampler(f::Function) = (rng, ind) -> float(f(rng, ind))
+
+"""
+    vaccine_acceptance(; propensity, key = :vaccine_acceptance)
+
+Return an attributes function that sets `key` (default `:vaccine_acceptance`)
+on each individual, drawn once per ring — a case and the contacts created
+from it directly — and shared by that ring's members, rather than drawn
+independently per contact.
+
+Engagement with a response clusters by household or community: the
+contacts who evade tracing tend to be the same ones who decline a dose.
+A vaccination's `coverage` (or `MassVaccination`'s `eligibility_time`)
+accepts a function `(rng, ind) -> Real`, but has no group to read on its
+own; this builder supplies one. Read it back with a closure such as
+`coverage = (rng, ind) -> ind.state[:vaccine_acceptance]`, so members of
+the same ring accept or decline together rather than independently.
+
+`propensity` accepts a `Real`, a `Distribution`, or a function
+`(rng, ind) -> Real`; it is sampled once for the case whose ring is being
+formed (`ind` is that case, not the contact). With a `Real` or a
+degenerate `{0, 1}` propensity, coverage is all-or-nothing per ring; with
+a `Distribution`, it varies ring to ring around its mean, giving the same
+average coverage as independent draws but more variance in per-ring
+coverage — some rings fully covered, others untouched.
+
+# Examples
+
+Each ring's coverage is Beta-distributed around a mean of 60%:
+
+```julia
+attributes = vaccine_acceptance(propensity = Beta(6, 4))
+rv = RingVaccination(efficacy = 0.8,
+    coverage = (rng, ind) -> ind.state[:vaccine_acceptance])
+```
+
+See also [`clinical_presentation`](@ref), [`demographics`](@ref).
+"""
+function vaccine_acceptance(;
+        propensity::Union{Real, Distribution, Function},
+        key::Symbol = :vaccine_acceptance)
+    return GroupAttribute(key, propensity)
+end
 
 # ── Intervention field validation ────────────────────────────────────
 

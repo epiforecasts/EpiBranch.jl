@@ -159,7 +159,11 @@ actually receives the vaccine, capturing programme reach (consent
 refusal, absence, exclusion criteria, logistical gaps). Defaults to
 `1.0`. Accepts a `Real`, `Distribution`, or `Function`
 `(rng, contact) -> Real` for per-individual coverage (e.g.
-age-dependent).
+age-dependent). Refusal clusters by household or community in practice
+rather than falling independently on each contact; give `coverage` a
+function reading a value set by [`vaccine_acceptance`](@ref) to draw
+that correlation in, so an entire ring accepts or declines together
+rather than each member flipping its own independent coin.
 
 `eligibility_window` skips vaccination when the time since the
 contact's exposure exceeds the window — typical of filovirus-type
@@ -533,7 +537,11 @@ own transmission time.
   independently (e.g. `Exponential(60.0)` for a slow random rollout).
 - a `Function` `(rng, ind) -> Real`: per-individual rule; use for
   age-stratified rollout or any other state-dependent schedule.
-  Return `Inf` for individuals who never become eligible.
+  Return `Inf` for individuals who never become eligible. Reading a
+  value set by [`vaccine_acceptance`](@ref) here (e.g.
+  `(rng, ind) -> ind.state[:vaccine_acceptance] > 0.5 ? 30.0 : Inf`)
+  clusters refusal by ring rather than drawing it independently per
+  contact.
 
 `efficacy` accepts the same `Real | Distribution | Function` set,
 sampled once per vaccinated contact. Per-individual heterogeneous
