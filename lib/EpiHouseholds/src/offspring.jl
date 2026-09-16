@@ -109,12 +109,13 @@ The within-household epidemic is resolved exactly where a closed form exists —
 an exponential contact-interval kernel and an exponential infectious window, with
 no interventions, make the household a Markov chain — and by simulating
 households otherwise. With a shared kernel `n_samples` households of each size
-are simulated. A covariate kernel has no closed form and is always simulated,
-with `n_samples` households in all, shared among the types in proportion to their
-mixing weights and at least one per type; a type with few samples has a rough
-law of its own, while the mixture law and R* average over all of them. Whichever
-route is taken, the
-Poisson compounding is analytical, so the simulated route carries Monte Carlo
+are simulated. A covariate kernel has no closed form and is always simulated:
+`n_samples` households are shared among the types in proportion to their mixing
+weights, with at least one per type. When every household is a type of its own,
+as with a continuous individual covariate, that floor means at least one
+simulated household per model household whatever `n_samples` is. A type with few
+samples has a rough law of its own, while the mixture law and R* average over
+all of them. Whichever route is taken, the Poisson compounding is analytical, so the simulated route carries Monte Carlo
 error only in the within-household epidemic. With a shared kernel the mean is
 exact whenever the infectious window is a single delay of the progression,
 because the mean total
@@ -199,7 +200,7 @@ end
 # A pair-varying kernel: the epidemic depends on who the members are, so each
 # type is simulated on the ids of one of its own households and the kernel sees
 # the model's individuals. All types go through one simulation, `n_samples`
-# households in all, stratified by mixing weight.
+# households stratified by mixing weight, with at least one per type.
 function _household_offspring(kernel, spec::ModelSpec, global_rate::Float64;
         n_samples::Int, rng::AbstractRNG, tol::Float64, max_offspring::Int)
     members = spec.process.members
