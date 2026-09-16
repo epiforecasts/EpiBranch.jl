@@ -34,22 +34,27 @@ function _law_mean(d::DiscreteUnivariateDistribution)
 end
 
 # The range of counts a truncated series has to cover. `maximum` gives it for a
-# bounded law. For an unbounded one, walk out until the mass left is negligible,
-# rather than ask for a quantile: `quantile` on a truncated law clamps to its
-# bounds, and clamping an integer-valued law to an infinite upper bound throws
-# an `InexactError` that says nothing about the distribution it came from.
+# bounded law. For an unbounded one, ask the law how much mass sits above each
+# count until what is left is negligible. Subtracting the masses one at a time
+# instead would leave a residual of the order of the number of terms times
+# `eps`, which for a few dozen terms sits above any useful tolerance, so the
+# walk would run to its cap; and `quantile` is no use either, because on a
+# truncated law it clamps to the bounds and an integer law clamped to an
+# infinite bound throws.
 function _series_range(d::DiscreteUnivariateDistribution, tail::Real = 1e-14,
         cap::Int = 1_000_000)
     lo = round(Int, minimum(d))
     hi = maximum(d)
     isfinite(hi) && return lo, round(Int, hi)
-    # The walk only sets the range, so it needs the values of the masses and not
-    # their derivative parts; a dual `pdf` compares and subtracts by value here.
-    remaining = 1.0
     x = lo
-    while remaining > tail && x - lo < cap
-        remaining -= pdf(d, x)
+    while ccdf(d, x) > tail
         x += 1
+        if x - lo >= cap
+            @warn "The offspring law has more than $tail of its mass above " *
+                  "$cap counts, so the series stops there and the reproduction " *
+                  "number and extinction probability are understated." maxlog=1
+            break
+        end
     end
     return lo, x
 end

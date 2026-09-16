@@ -175,9 +175,10 @@ function probability_contain(R::Real, k::Real;
     end
 
     # This iteration's rate at the fixed point is `(1 - ind_control)` times the
-    # effective reproduction number, so that product is what stalls it.
+    # effective reproduction number, which already has `pop_control` in it, so
+    # that product is what stalls it.
     @warn_unconverged_extinction(max_iter,
-        "the reproduction number times one minus `ind_control`")
+        "the effective reproduction number times one minus `ind_control`")
     return q^n_initial
 end
 

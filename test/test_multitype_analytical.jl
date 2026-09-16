@@ -181,6 +181,40 @@ using LinearAlgebra: eigvals
         @test simulated_extinction(model, 3000; rng = StableRNG(2)) ≈ q atol = 0.05
     end
 
+    @testset "Show and the analytic accessor cover every offspring kind" begin
+        # `show` labels each offspring kind, and the analytic accessor falls back
+        # to the single-type law for anything that is not a matrix.
+        matrix_model = BranchingProcess(M, R -> Poisson(R), Exponential(1.0))
+        @test occursin("MultiTypeOffspring(2 types)", sprint(show, matrix_model))
+        fn_model = BranchingProcess(
+            Infectiousness((rng, ind) -> [1, 0];
+                kernel = Exponential(1.0)); n_types = 2)
+        @test occursin("Function", sprint(show, fn_model))
+        @test_throws ArgumentError EpiBranch._analytic_offspring(fn_model)
+        single = BranchingProcess(NegBin(2.0, 0.5), Exponential(1.0))
+        @test EpiBranch._analytic_offspring(single) == NegBin(2.0, 0.5)
+        @test EpiBranch._analytic_offspring(ModelSpec(single)) == NegBin(2.0, 0.5)
+    end
+
+    @testset "The unconverged warning reaches every iteration" begin
+        # One call site each, so none of them silences another.
+        @test_logs (:warn, r"without converging") match_mode=:any extinction_probability(
+            1.002, 5.0)
+        @test_logs (:warn, r"one minus `ind_control`") match_mode=:any probability_contain(
+            4.0, 0.5; pop_control = 0.7499999, max_iter = 5)
+    end
+
+    @testset "A heavy tail stops where the mass runs out" begin
+        # Subtracting masses one at a time would stall on rounding error here;
+        # reading the mass left above each count stops at the right place.
+        @test EpiBranch._series_range(truncated(Poisson(60.0); lower = 0)) == (0, 128)
+        @test EpiBranch._series_range(truncated(Poisson(150.0); lower = 0)) == (0, 253)
+        # A law whose tail runs past the cap says so rather than truncating it
+        # silently.
+        @test_logs (:warn, r"understated") match_mode=:any EpiBranch._series_range(
+            truncated(Poisson(500.0); lower = 0), 1e-14, 50)
+    end
+
     @testset "Single-type-only helpers throw for a multi-type model" begin
         model = BranchingProcess(M, R -> Poisson(R), Exponential(5.0))
         @test_throws ArgumentError single_type_offspring(model)
