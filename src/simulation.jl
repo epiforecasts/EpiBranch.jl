@@ -904,6 +904,13 @@ end
 const _BUILTIN_RISK_SOURCES = (InfectiousSource(), WindowCensor(),
     HostSusceptibility(), InfectorInfectiousness())
 
+# The built-in sources the continuous-time models compose. Two of the four are
+# the generation engine's own and can never fire on a race: its infector has
+# settled and so is infected by construction, and route censoring is the
+# infectious window's job there rather than a tag written on a contact. Leaving
+# them out keeps a per-contact resolution down to what can actually apply.
+const _SELLKE_RISK_SOURCES = (HostSusceptibility(), InfectorInfectiousness())
+
 """Apply one risk source's [`competing_risk`](@ref)(s) to a transmission;
 return `true` if any active risk blocks it. Built-in risk sources and
 interventions share this single risk-evaluation path."""
@@ -955,20 +962,37 @@ function _decide_infected(state::SimulationState, contact::Individual,
     pop_suscept <= 0.0 && return false
     pop_suscept < 1.0 && rand(rng) > pop_suscept && return false
 
-    # All transmission risks — susceptibility and infectiousness, then any the
-    # model contributes, then interventions — on one surface, applied in order;
-    # first to block wins.
-    for source in _BUILTIN_RISK_SOURCES
-        _risk_blocks(source, parent, contact, state, transmission_time) && return false
+    return !_composed_risks_block(
+        state, parent, contact, transmission_time, model_risks, interventions)
+end
+
+"""Whether any risk blocks the `parent` → `contact` transmission at
+`transmission_time`: the built-in sources (host susceptibility, infector
+infectiousness, …) first, then any the model contributes through
+[`transmission_risks`](@ref), then the interventions in stack order. The
+first to block wins.
+
+Both engines resolve a transmission through this one function — the
+generation engine on each contact it created, the continuous-time models on
+each candidate infection time they propose — so a susceptibility, an
+infectiousness, or an intervention's [`Risk`](@ref) means the same thing on
+either. `builtins` is the only difference between them, and only because two
+of the built-in sources cannot fire on a continuous-time model at all. Nothing
+is drawn from the rng unless a risk actually applies."""
+function _composed_risks_block(state::SimulationState, parent, contact,
+        transmission_time, model_risks, interventions,
+        builtins = _BUILTIN_RISK_SOURCES)
+    for source in builtins
+        _risk_blocks(source, parent, contact, state, transmission_time) && return true
     end
     for source in model_risks
-        _risk_blocks(source, parent, contact, state, transmission_time) && return false
+        _risk_blocks(source, parent, contact, state, transmission_time) && return true
     end
     for intervention in interventions
         _risk_blocks(intervention, parent, contact, state, transmission_time) &&
-            return false
+            return true
     end
-    return true
+    return false
 end
 
 """Sweep newly added infected individuals (those at indices
