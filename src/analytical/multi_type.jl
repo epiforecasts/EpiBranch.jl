@@ -29,8 +29,29 @@ function _law_mean(d::DiscreteUnivariateDistribution)
     catch err
         err isa MethodError || rethrow()
     end
-    hi = isfinite(maximum(d)) ? maximum(d) : quantile(d, 1 - 1e-14)
-    return sum(x * pdf(d, x) for x in minimum(d):round(Int, hi))
+    lo, hi = _series_range(d)
+    return sum(x * pdf(d, x) for x in lo:hi)
+end
+
+# The range of counts a truncated series has to cover. `maximum` gives it for a
+# bounded law. For an unbounded one, walk out until the mass left is negligible,
+# rather than ask for a quantile: `quantile` on a truncated law clamps to its
+# bounds, and clamping an integer-valued law to an infinite upper bound throws
+# an `InexactError` that says nothing about the distribution it came from.
+function _series_range(d::DiscreteUnivariateDistribution, tail::Real = 1e-14,
+        cap::Int = 1_000_000)
+    lo = round(Int, minimum(d))
+    hi = maximum(d)
+    isfinite(hi) && return lo, round(Int, hi)
+    # The walk only sets the range, so it needs the values of the masses and not
+    # their derivative parts; a dual `pdf` compares and subtracts by value here.
+    remaining = 1.0
+    x = lo
+    while remaining > tail && x - lo < cap
+        remaining -= pdf(d, x)
+        x += 1
+    end
+    return lo, x
 end
 
 # Mean matrix of the process: entry `[i, j]` is the expected number of type-`i`
@@ -104,8 +125,8 @@ function _pgf(d::NegativeBinomial, s)
 end
 _pgf(d::Dirac, s) = s^d.value
 function _pgf(d::DiscreteUnivariateDistribution, s)
-    hi = isfinite(maximum(d)) ? maximum(d) : quantile(d, 1 - 1e-14)
-    return sum(pdf(d, x) * s^x for x in minimum(d):round(Int, hi))
+    lo, hi = _series_range(d)
+    return sum(pdf(d, x) * s^x for x in lo:hi)
 end
 
 """
@@ -186,7 +207,7 @@ function extinction_probability(o::MultiTypeOffspring; tol::Real = 1e-10,
         maximum(abs.(q_new .- q)) < tol && return q_new
         q = q_new
     end
-    @warn_unconverged_extinction(max_iter)
+    @warn_unconverged_extinction(max_iter, "the reproduction number")
     return q
 end
 

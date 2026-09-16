@@ -89,6 +89,14 @@ using LinearAlgebra: eigvals
         # sum the series instead.
         capped = R -> truncated(Poisson(R); upper = 5)
         model = BranchingProcess([1.3 0.4; 0.5 1.1], capped, Exponential(1.0))
+        # A law truncated from below has no upper bound to read, so the series
+        # walks out until the mass left is negligible.
+        from_one = R -> truncated(Poisson(R); lower = 1)
+        unbounded = BranchingProcess([1.3 0.4; 0.5 1.1], from_one, Exponential(1.0))
+        @test EpiBranch._law_mean(from_one(1.8))≈2.156460527727 atol=1e-9
+        @test reproduction_number(unbounded) > reproduction_number(model)
+        # Every case infects at least one, so no outbreak dies out.
+        @test extinction_probability(unbounded) == [0.0, 0.0]
         series_mean(d) = sum(x * pdf(d, x) for x in 0:5)
         expected = [1.3 0.4; 0.5 1.1] ./ [1.8 1.5]
         expected = expected .* [series_mean(capped(1.8)) series_mean(capped(1.5))]

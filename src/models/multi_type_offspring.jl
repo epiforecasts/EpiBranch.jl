@@ -9,10 +9,11 @@ offspring from a type-`j` parent. A type-`j` parent draws its total number of
 offspring from `dist_fn(R_j)`, where `R_j` is the sum of column `j`, and
 allocates them across types multinomially in proportion to that column.
 
-Only the proportions within a column reach the draw. The size of a parent's
-offspring is the mean of `dist_fn(R_j)`, so a distribution family whose mean is
-not `R_j` rescales the process, and the column sums are then no longer its
-reproduction numbers. That is deliberate, and `R -> Poisson(θ * R)` uses it to
+A column reaches the draw in two parts: its sum is what `dist_fn` is asked for,
+and the proportions within it split whatever comes back. The size of a parent's
+offspring is therefore the mean of `dist_fn(R_j)`, which is `R_j` only for a
+family with mean R. Any other family rescales the process, and the column sums
+are then no longer its reproduction numbers. That is deliberate, and `R -> Poisson(θ * R)` uses it to
 put a scale parameter on a fixed matrix. It also catches people out:
 `Distributions.NegativeBinomial(R, p)` takes a number of failures rather than a
 mean, and a matrix with a spectral radius of 1.045 passed to
