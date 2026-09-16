@@ -1,3 +1,15 @@
+# A leaky vaccine written from outside the package: the whole population is
+# dosed at `from_time`, and every exposure from then on is blocked with
+# probability `efficacy`. The entire intervention is one competing risk, which
+# is the shape #232's seam has to carry.
+struct LeakyVaccine <: EpiBranch.AbstractIntervention
+    efficacy::Float64
+    from_time::Float64
+end
+function EpiBranch.competing_risk(v::LeakyVaccine, parent, contact, state)
+    Risk(event_time = v.from_time, block_probability = v.efficacy)
+end
+
 @testset "HomogeneousProcess (Sellke fixed pool)" begin
     @testset "deterministic final size (major outbreaks)" begin
         # With β = 2 and mean infectious period 1, R0 = β·E[T] = 2; the
@@ -103,6 +115,8 @@
     @testset "Unhonoured intervention warns rather than silently ignoring" begin
         prog = [Transition(:recovered; from = :infection,
             delay = Exponential(1.0), terminal = true)]
+        # A mass-action pool has no pairwise contact structure for tracing to act
+        # along, so tracing stays unhonoured there.
         ct = ModelSpec(
             HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);
             progression = prog,
@@ -111,23 +125,23 @@
         @test_logs (:warn, r"does not honour"i) match_mode=:any simulate(
             ct; rng = StableRNG(1), n_initial = 2)
 
-        # Leaky isolation (residual transmission) also can't be expressed as a
-        # window close, so it warns too — only perfect isolation is honoured.
-        leaky = ModelSpec(
+        # A rollout that doses each newly created contact has nobody to dose on a
+        # path that creates none.
+        mass = ModelSpec(
             HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);
             progression = prog,
-            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.5),
-                post_isolation_transmission = 0.5)])
+            interventions = [MassVaccination(efficacy = 0.8, eligibility_time = 0.0)])
         @test_logs (:warn, r"does not honour"i) match_mode=:any simulate(
-            leaky; rng = StableRNG(1), n_initial = 2)
+            mass; rng = StableRNG(1), n_initial = 2)
 
-        # The warning holds: the process's default `until` lists `:isolated`,
-        # and isolating a case must not close its window through that state.
+        # Leaky isolation is honoured: the residual transmission it leaves is a
+        # per-contact block, which the pool resolves on each contact it delivers.
+        # It warns about nothing, and it bites in proportion to the residual.
         pool = HomogeneousProcess(; transmission_rate = 2.0, population_size = 500)
         onsets = clinical_presentation(incubation_period = LogNormal(-1.0, 0.3),
             prob_asymptomatic = 0.0)
-        nearly_leaky = [Isolation(onset_to_isolation_delay = Exponential(0.5),
-            post_isolation_transmission = 0.9)]
+        leaky(residual) = [Isolation(onset_to_isolation_delay = Exponential(0.5),
+            post_isolation_transmission = residual)]
         mean_size(ivs) = sum(
             simulate(
                 ModelSpec(pool; progression = prog, interventions = ivs,
@@ -135,8 +149,99 @@
                 rng = StableRNG(s), n_initial = 5).cumulative_cases
         for s in 1:20) / 20
         base_mean = mean_size(AbstractIntervention[])
-        leaky_mean = @test_logs (:warn, r"does not honour"i) match_mode=:any mean_size(nearly_leaky)
-        @test leaky_mean > 0.8 * base_mean
+        @test EpiBranch._sellke_honours(pool, leaky(0.9)[1])
+        # Residual 1.0 is no isolation at all; 0.9 barely reduces transmission;
+        # 0.2 cuts most of it. (Isolation draws its own delays either way, so
+        # residual 1.0 gives the same process off a different rng stream.)
+        @test isapprox(mean_size(leaky(1.0)), base_mean; rtol = 0.1)
+        @test 0.8 * base_mean < mean_size(leaky(0.9)) < base_mean
+        @test mean_size(leaky(0.2)) < 0.5 * base_mean
+    end
+
+    @testset "per-individual susceptibility and infectiousness apply on the pool" begin
+        # A threshold crossing is one arriving contact, and the pool puts it to
+        # the same competing risks the generation engine uses: both multipliers
+        # mean what they mean there, a per-contact block.
+        N = 500
+        prog = [Transition(:recovered; from = :infection,
+            delay = Exponential(1.0), terminal = true)]
+        pool = HomogeneousProcess(; transmission_rate = 2.0, population_size = N)
+        mean_size(attrs) = sum(
+            simulate(ModelSpec(pool; progression = prog, attributes = attrs);
+                rng = StableRNG(s), n_initial = 3).cumulative_cases
+        for s in 1:15) / 15
+
+        full = mean_size(transmission_traits(susceptibility = 1.0))
+        @test mean_size(transmission_traits(susceptibility = 0.5)) < full
+        @test mean_size(transmission_traits(susceptibility = 0.2)) <
+              mean_size(transmission_traits(susceptibility = 0.5))
+        # Susceptibility 0 blocks every contact, so only the seeds are infected.
+        none = simulate(
+            ModelSpec(pool; progression = prog,
+                attributes = transmission_traits(susceptibility = 0.0));
+            rng = StableRNG(1), n_initial = 3)
+        @test none.cumulative_cases == 3
+
+        # Infectiousness acts on the other side of the same pair.
+        @test mean_size(transmission_traits(infectiousness = 0.5)) < full
+        silent = simulate(
+            ModelSpec(pool; progression = prog,
+                attributes = transmission_traits(infectiousness = 0.0));
+            rng = StableRNG(1), n_initial = 3)
+        @test silent.cumulative_cases == 3
+
+        # Blocking thins the force of infection, so a susceptibility of s is the
+        # same process as a transmission rate scaled by s. Compare attack rates.
+        half_beta = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
+        scaled = sum(
+            simulate(ModelSpec(half_beta; progression = prog);
+                rng = StableRNG(s), n_initial = 3).cumulative_cases
+        for s in 1:40) / 40
+        blocked = sum(
+            simulate(
+                ModelSpec(pool; progression = prog,
+                    attributes = transmission_traits(susceptibility = 0.5));
+                rng = StableRNG(s), n_initial = 3).cumulative_cases
+        for s in 1:40) / 40
+        @test isapprox(blocked, scaled; rtol = 0.15)
+    end
+
+    @testset "a user-defined leaky vaccination bites on the pool" begin
+        # The seam is open from outside: an intervention returning a time-tagged
+        # Risk changes the pool's results without touching the package.
+        N = 600
+        prog = [Transition(:recovered; from = :infection,
+            delay = Exponential(1.0), terminal = true)]
+        pool = HomogeneousProcess(; transmission_rate = 2.0, population_size = N)
+        mean_size(ivs) = sum(
+            simulate(ModelSpec(pool; progression = prog, interventions = ivs);
+                rng = StableRNG(s), n_initial = 3).cumulative_cases
+        for s in 1:15) / 15
+
+        base = mean_size(AbstractIntervention[])
+        @test mean_size([LeakyVaccine(0.0, 0.0)]) == base
+        @test mean_size([LeakyVaccine(0.5, 0.0)]) < 0.9 * base
+        @test mean_size([LeakyVaccine(1.0, 0.0)]) == 3         # only the seeds
+        # A dose that arrives after the outbreak has burnt out changes nothing.
+        @test mean_size([LeakyVaccine(1.0, 1000.0)]) == base
+    end
+
+    @testset "a pool that can never finish is refused, not looped" begin
+        # With no removal transition the infectious window never closes, so the
+        # force of infection never decays; with every contact certainly blocked
+        # there is no end to reach. The pool says so rather than spinning.
+        m = ModelSpec(HomogeneousProcess(; transmission_rate = 2.0, population_size = 40);
+            attributes = transmission_traits(susceptibility = 0.0))
+        @test_throws ErrorException simulate(m; rng = StableRNG(1), n_initial = 2)
+
+        # A removal transition is all it takes: the outbreak ends at the seeds.
+        with_removal = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 40);
+            progression = [Transition(:recovered; from = :infection,
+                delay = Exponential(1.0), terminal = true)],
+            attributes = transmission_traits(susceptibility = 0.0))
+        @test simulate(with_removal; rng = StableRNG(1), n_initial = 2).cumulative_cases ==
+              2
     end
 
     @testset "Scheduled interventions gate on the running clock on the pool" begin

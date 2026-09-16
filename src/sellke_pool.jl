@@ -1,10 +1,11 @@
 # ── Sellke fixed-size population pool ────────────────────────────────
 #
 # A closed population of N pre-allocated individuals, bucketed by mixing type.
-# Each susceptible carries a fixed resistance threshold `Q_j ~ Exponential(1)`
-# and accumulates infection pressure `Λ(t) = ∫ λ(s) ds` at the force of
-# infection `λ` felt by its own mixing type; it is infected the instant `Λ`
-# crosses its threshold. A model names *which real attributes define mixing*
+# Each susceptible carries a resistance threshold `Q_j ~ Exponential(1)` and
+# accumulates infection pressure `Λ(t) = ∫ λ(s) ds` at the force of infection
+# `λ` felt by its own mixing type; it is contacted the instant `Λ` crosses its
+# threshold, and infected unless a competing risk blocks that contact. A model
+# names *which real attributes define mixing*
 # (`mixing_by`, e.g. `(:age_band, :ses)`); an individual's mixing type is the
 # tuple of those attribute values it already carries, and susceptibles that share
 # a type feel a common force. The force is supplied by the model as a function
@@ -24,6 +25,31 @@
 # `resolve_transitions!` and its interventions resolved, so a removing
 # intervention (isolation) acts by shortening the infectious window through the
 # window-close, exactly as in `_sellke_race!`.
+#
+# ── Per-contact competing risks ──────────────────────────────────────
+#
+# A threshold crossing is the arrival of one infectious contact, and like any
+# other potential transmission it is put to the composed competing risks (see
+# `_composed_risks_block`): the contact's own susceptibility, the drawn
+# infector's infectiousness, and whatever block an intervention contributes
+# against that pair at that time.
+#
+# A blocked contact does not infect, and the susceptible goes back into its
+# group with a fresh `Exponential(1)` resistance above the pressure it has
+# already absorbed. Mass action offers a *stream* of contacts, not one per pair:
+# the pressure keeps arriving whether or not any given contact transmits, so
+# surviving one contact says nothing about the next. The exponential resistance
+# is memoryless, so re-drawing it is exactly the residual of the same process,
+# and blocking a fraction `p` of contacts thins the force of infection to
+# `(1-p)·λ` — the continuous-time reading of a leaky vaccine, and the same
+# realised reduction in cases as blocking a fraction `p` of a parent's contacts
+# on the generation engine.
+#
+# This is where the pool parts company with `_sellke_race!`, which declines a
+# blocked proposal and never re-offers that pair. The rule is the same in both —
+# resolve the risks at the contact, and a blocked contact does not infect — and
+# only the contact process differs: an edge of a graph carries one contact
+# interval, a mass-action pool a stream.
 
 """
     _sellke_pool!(state, members, rng; mixing_by = (), force, n_initial, from, until)
@@ -51,14 +77,20 @@ input is the mixing rule between types:
 
 `n_initial` is the number of index cases seeded at time 0, `from` the state the
 infectious window opens at and `until` the removal states that close it. Each
-susceptible carries a fixed `Exponential(1)` resistance threshold and is infected
-the instant its accumulated pressure crosses it; pressure accumulates at the
-force felt by its mixing type. Writes per-individual state directly; the caller
+susceptible carries an `Exponential(1)` resistance threshold and is contacted the
+instant its accumulated pressure crosses it; pressure accumulates at the force
+felt by its mixing type. Writes per-individual state directly; the caller
 reconciles aggregate bookkeeping and applies observation.
+
+Each contact is put to the composed competing risks — the built-in
+per-individual susceptibility and infectiousness, the model's own `risks` (what
+[`transmission_risks`](@ref) reports), and the interventions. A blocked contact
+does not infect, and the susceptible draws a fresh resistance and waits for the
+next one.
 """
 function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; mixing_by::Tuple = (), force, n_initial::Integer,
-        from::Symbol, until::Tuple, interventions = ())
+        from::Symbol, until::Tuple, interventions = (), risks = ())
     N = length(members)
     N == 0 && return nothing
 
@@ -170,23 +202,47 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     nsus = [length(v) for v in sus_by_group]
     Λ = zeros(T, G)                     # accumulated pressure per group
     λ = zeros(T, G)                     # current force per group (scratch)
+    qn = zeros(T, G)                    # next threshold per group (scratch)
+
+    # A susceptible whose contact a competing risk blocks comes back with a fresh
+    # resistance, which can land anywhere in the order and so cannot go back into
+    # the sorted queue. Each group keeps a min-heap of `(threshold, id)` for those,
+    # and its next crossing is the lower of the queue's front and the heap's root.
+    # The heaps stay empty for a model with no risks in play, which is why the
+    # sorted queue is kept rather than everything moved to a heap: that path walks
+    # a pointer, as it did before per-contact risks existed. A re-drawn threshold
+    # carries the timing type `T` because it sits above the pressure already
+    # absorbed and so inherits that pressure's sensitivity under automatic
+    # differentiation, while the drawn ones stay `Float64` constants — the
+    # reparameterisation.
+    redrawn = [Tuple{T, Int}[] for _ in 1:G]
 
     t = zero(T)
 
+    # Contacts blocked in a row while nothing but the draw can change, and the
+    # budget past which that is taken as a model that cannot finish (see the
+    # blocked branch). The budget is generous enough that a block probability up
+    # to about 1 - 1/1000 runs to its end on an average pool.
+    frozen_blocks = 0
+    block_budget = 1_000 * N + 1_000_000
+
     while true
-        # Force on a susceptible in each group at the current infectious counts.
-        # Piecewise-constant between events, so it is evaluated once per group.
+        # Each group's next threshold, and the force on a susceptible in it at the
+        # current infectious counts. The force is piecewise-constant between
+        # events, so it is evaluated once per group.
         @inbounds for g in 1:G
-            λ[g] = ptr[g] <= nsus[g] ? convert(T, force(types[g], counts)) : zero(T)
+            front = ptr[g] <= nsus[g] ? convert(T, Q_by_group[g][ptr[g]]) : T(Inf)
+            qn[g] = isempty(redrawn[g]) ? front : min(front, redrawn[g][1][1])
+            λ[g] = isfinite(qn[g]) ? convert(T, force(types[g], counts)) : zero(T)
         end
 
-        # Next infection per group: the lowest remaining threshold in the group,
+        # Next contact per group: the lowest remaining threshold in the group,
         # reached at the group's own force. The soonest across groups wins.
         t_inf = T(Inf)
         gstar = 0
         @inbounds for g in 1:G
-            (λ[g] > 0 && ptr[g] <= nsus[g]) || continue
-            tg = t + (Q_by_group[g][ptr[g]] - Λ[g]) / λ[g]
+            (λ[g] > 0 && isfinite(qn[g])) || continue
+            tg = t + (qn[g] - Λ[g]) / λ[g]
             if tg < t_inf
                 t_inf = tg
                 gstar = g
@@ -226,22 +282,65 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             slot[id] = length(infectious_ids)
             counts[typ[id]] += 1
         else
-            # Infection: the lowest-threshold susceptible in group `gstar` crosses
-            # now. Its infector is drawn uniformly from all currently-infectious
+            # Contact: the lowest-threshold susceptible in group `gstar` is
+            # reached now. Take it from whichever holds that threshold — the
+            # front of the group's sorted queue, or the root of its re-drawn heap.
+            q = qn[gstar]
+            local id
+            if !isempty(redrawn[gstar]) && redrawn[gstar][1][1] == q
+                _, id = _heap_pop!(redrawn[gstar])
+            else
+                id = sus_by_group[gstar][ptr[gstar]]
+                ptr[gstar] += 1
+            end
+            # Its infector is drawn uniformly from all currently-infectious
             # individuals across groups — a valid parent label whose epidemic
-            # dynamics are exact regardless; mixing-weighted attribution (weighting
-            # by each infective's contribution to `force`) is a possible refinement
-            # that would only sharpen the parent label, not the dynamics.
-            id = sus_by_group[gstar][ptr[gstar]]
-            ptr[gstar] += 1
-            # If the infectious pool is empty — a custom `force` with a positive
-            # count-independent hazard, e.g. external importation — there is no
-            # infector to attribute to, so fall back to the index-case label 0.
+            # dynamics are exact regardless; mixing-weighted attribution
+            # (weighting by each infective's contribution to `force`) is a
+            # possible refinement that would only sharpen the parent label, not
+            # the dynamics. If the infectious pool is empty — a custom `force`
+            # with a positive count-independent hazard, e.g. external
+            # importation — there is no infector to attribute to, so fall back to
+            # the index-case label 0.
             src = isempty(infectious_ids) ? 0 :
                   infectious_ids[rand(rng, 1:length(infectious_ids))]
             ind = state.individuals[id]
-            stamp!(ind, t, src)
-            push_windows!(ind)
+            # An introduction with no infector has no pair to resolve risks over,
+            # as an index case on the generation engine has none either.
+            blocked = src != 0 && _composed_risks_block(
+                state, state.individuals[src], ind, t, risks, interventions,
+                _SELLKE_RISK_SOURCES)
+            if blocked
+                # The contact did not transmit. Put the susceptible back with the
+                # residual of its resistance: a fresh Exponential(1) above the
+                # threshold this contact consumed.
+                _heap_push!(redrawn[gstar],
+                    (q + convert(T, rand(rng, Exponential(1.0))), id))
+                # With no window left to open or close, the infectious set and so
+                # the force of infection are fixed for the rest of time, and the
+                # only thing separating one contact from the next is the draw. If
+                # the risks block with certainty there, the run has no end: the
+                # pressure keeps arriving, every contact of it is refused, and
+                # nothing can ever change. Refuse the model instead of looping,
+                # once enough contacts have been blocked that a merely unlucky run
+                # is out of the question. Any model whose cases recover, die or are
+                # isolated keeps a window on the queues and never reaches this.
+                if isempty(open_heap) && isempty(close_heap)
+                    frozen_blocks += 1
+                    frozen_blocks > block_budget && error(
+                        "the fixed-size pool cannot finish: no infectious window " *
+                        "ever closes, so the force of infection never decays, and " *
+                        "every contact it has delivered since is blocked by a " *
+                        "competing risk. Give the progression a removal transition " *
+                        "(e.g. `Transition(:recovered; from = :infection, " *
+                        "delay = ..., terminal = true)`) so the infectious period ends.")
+                else
+                    frozen_blocks = 0
+                end
+            else
+                stamp!(ind, t, src)
+                push_windows!(ind)
+            end
         end
     end
 
