@@ -236,16 +236,19 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
 
     seed!(best, members, rng)
 
-    while true
-        j = 0
-        bt = Inf
-        for k in 1:m
-            if !processed[k] && best[k] < bt
-                bt = best[k]
-                j = k
-            end
-        end
-        j == 0 && break
+    # The heap orders pending candidates by `(time, k)`, so equal times settle in
+    # member order. Candidate times only ever decrease, so a relaxation pushes a
+    # new entry and leaves the old one in the heap. On pop, the loop skips an
+    # entry as stale if its member has already settled or its time is later than
+    # that member's current best.
+    pending = Tuple{eltype(best), Int}[]
+    for k in 1:m
+        best[k] < Inf && _heap_push!(pending, (best[k], k))
+    end
+
+    while !isempty(pending)
+        bt, j = _heap_pop!(pending)
+        (processed[j] || bt > best[j]) && continue
         processed[j] = true
 
         ind = state.individuals[members[j]]
@@ -258,6 +261,10 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
         end
+        # Onset was first drawn when the node was created at time 0. Recompute
+        # it from the infection time before transitions and interventions, such
+        # as onset-triggered isolation, read it.
+        _set_onset_from_incubation!(ind)
         resolve_transitions!(state, ind)
         _resolve_interventions!(state, ind, interventions)
         _trace_from!(state, ind, interventions, contacts, pos, processed)
@@ -279,6 +286,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                 (cand <= close_t && cand < best[k]) || continue
                 best[k] = cand
                 src[k] = members[j]
+                _heap_push!(pending, (best[k], k))
             end
         end
     end

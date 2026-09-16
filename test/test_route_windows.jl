@@ -27,6 +27,29 @@
         @test d.reach == [[2], [1]]
     end
 
+    @testset "traceability is a validated probability" begin
+        # every contact is nameable unless the route says otherwise
+        w = RouteWindow(:household; kernel = Exponential(1.0))
+        @test w.traceable === 1.0
+        @test !occursin("traceable", repr(w))
+
+        c = RouteWindow(:community; kernel = Exponential(1.0), traceable = 0.2)
+        @test c.traceable === 0.2
+        @test occursin("traceable=0.2", repr(c))
+
+        # a Boolean is the all-or-nothing case, and integers are probabilities too
+        @test RouteWindow(:a; kernel = nothing, traceable = false).traceable === 0.0
+        @test RouteWindow(:a; kernel = nothing, traceable = true).traceable === 1.0
+        @test RouteWindow(:a; kernel = nothing, traceable = 0).traceable === 0.0
+
+        @test_throws ArgumentError RouteWindow(:a; kernel = nothing, traceable = -0.1)
+        @test_throws ArgumentError RouteWindow(:a; kernel = nothing, traceable = 1.5)
+        @test_throws ArgumentError RouteWindow(:a; kernel = nothing, traceable = NaN)
+        # the positional form validates too, so no construction path skips it
+        @test_throws ArgumentError RouteWindow(:a, nothing, (), nothing, :a,
+            :infection, 2.0)
+    end
+
     @testset "opening and closing read the state-time convention" begin
         ind = Individual(id = 1)
         ind.infection_time = 5.0
@@ -161,9 +184,11 @@
             state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
                 prog, EpiBranch.NoAttributes(), rng)
             EpiBranch.add_individuals!(state, 3, interventions)
-            edge(from, to, t) = (inf, st) -> inf == from &&
-                                             !get(st.individuals[to].state, :infected, false) ?
-                                             ((to, Dirac(t)),) : ()
+            function edge(from, to, t)
+                (inf, st) -> inf == from &&
+                             !get(st.individuals[to].state, :infected, false) ?
+                             ((to, Dirac(t)),) : ()
+            end
             routes = (
                 (RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0)),
                     edge(1, 2, 5.0)),
