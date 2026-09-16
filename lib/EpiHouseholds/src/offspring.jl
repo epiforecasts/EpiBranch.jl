@@ -324,12 +324,12 @@ end
 function _simulated_person_time(n::Int, spec::ModelSpec, n_samples::Int,
         rng::AbstractRNG)
     process = spec.process
-    sample = ModelSpec(
+    sample_spec = ModelSpec(
         HouseholdProcess(fill(n, n_samples), process.kernel;
             from = process.from, until = process.until);
         progression = spec.progression, interventions = spec.interventions,
         attributes = spec.attributes, observation = spec.observation)
-    state = simulate(sample; rng)
+    state = simulate(sample_spec; rng)
 
     from = _resolve_infectious_from(process.from, spec.progression)
     person_time = zeros(n_samples)
@@ -339,9 +339,9 @@ function _simulated_person_time(n::Int, spec::ModelSpec, n_samples::Int,
         closed = min(_window_close(ind, process.until),
             _removal_time(ind, spec.interventions))
         isfinite(closed - opened) || throw(ArgumentError(
-            "a case's infectious window never closes, so a household infects " *
+            "a case's infectious window has no finite length, so a household infects " *
             "unboundedly many others; give the progression a terminal transition " *
-            "listed in the process's `until` states"))
+            "listed in the process's `until` states, reached by every case"))
         person_time[ind.state[:household]] += closed - opened
     end
     return person_time
