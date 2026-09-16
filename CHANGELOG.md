@@ -22,6 +22,13 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   PGF of the simulator's draw (a total count from the distribution family, split
   multinomially across types) and equals the single-type result when there is
   one type.
+- `RouteWindow` takes a `traceable` probability (default `1.0`): the chance that
+  a case can name a contact made on that route, such as `1.0` for a household
+  and something lower for casual community contact. On `RoutedNetwork` a contact
+  is traced only if the case names it and the tracing intervention then traces
+  it. A contact reachable on several routes is named with the highest of those
+  routes' probabilities. Routes left at the default give the same outbreaks as
+  before for the same seed.
 
 ### Changed
 
@@ -41,9 +48,20 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   replacing the earlier coin-flip-per-edge version. Shortening a case's
   infectious window — through recovery or isolation — now genuinely curtails
   onward spread.
+- The continuous-time race behind `NetworkProcess`, `RoutedNetwork` and
+  `HouseholdProcess` picks the next case to settle from a binary heap, so a race
+  over `n` members with `E` contacts costs O(E log n) where it previously cost
+  O(n²). A 100,000-node sparse network now simulates in about a second, down
+  from about half a minute. Results for a given seed are unchanged.
 
 ### Fixed
 
+- On the continuous-time models (`HomogeneousProcess`, and `NetworkProcess`,
+  `RoutedNetwork` and `HouseholdProcess` in the companion packages), symptom
+  onset from `clinical_presentation` is now measured from each case's own
+  infection time. Previously it was measured from time 0, because each
+  individual is created before it is infected, so onset-triggered isolation
+  started too early and simulations overstated its effect.
 - `RingVaccination` now gives each dose at the trace, using the `:trace_time`
   that `ContactTracing` records for every traced contact. It used to read the
   contact's isolation state, so under `quarantine_on_trace = false` doses came
