@@ -227,16 +227,86 @@ end
                 Isolation(onset_to_isolation_delay = Exponential(1.0),
                     eligibility = AllCases()); start_after_cases = 10)])
         @test_throws ArgumentError household_offspring(scheduled; global_rate = λG)
-        # A pair-varying kernel is written against the model's own individuals.
-        scales = [isodd(i) ? 3.0 : 12.0 for i in 1:40]
-        covariate = ModelSpec(
-            HouseholdProcess(fill(4, 10), (i, j) -> Exponential(scales[i]));
-            progression = [Transition(:recovered; from = :infection, rate = γ,
-                terminal = true)])
-        @test_throws ArgumentError household_offspring(covariate; global_rate = λG)
         o = household_offspring(_markov(4); global_rate = λG)
         @test_throws ArgumentError household_offspring_law(o, 5)
         @test household_offspring_law(o, 4) === o.laws[1]
+    end
+
+    @testset "a covariate kernel that does not vary is the shared kernel" begin
+        sizes = [fill(2, 30); fill(4, 50); fill(6, 20)]
+        progression = [Transition(:recovered; from = :infection, rate = γ,
+            terminal = true)]
+        shared = household_offspring(
+            ModelSpec(HouseholdProcess(sizes, Exponential(1 / β)); progression);
+            global_rate = λG)
+        covariate = household_offspring(
+            ModelSpec(HouseholdProcess(sizes, (i, j) -> Exponential(1 / β));
+                progression);
+            global_rate = λG, n_samples = 60_000, rng = StableRNG(21))
+        # Every household of a size has the same kernels, so size is the type.
+        @test covariate.sizes == shared.sizes
+        @test covariate.households == shared.households
+        @test covariate.mixing ≈ shared.mixing
+        for n in (2, 4, 6)
+            pc = probs(household_offspring_law(covariate, n))
+            ps = probs(household_offspring_law(shared, n))
+            k = min(length(pc), length(ps), 15)
+            @test maximum(abs, pc[1:k] .- ps[1:k]) < 0.015
+        end
+        @test reproduction_number(covariate)≈reproduction_number(shared) rtol=0.03
+        @test extinction_probability(covariate)≈extinction_probability(shared) atol=0.02
+    end
+
+    @testset "a covariate kernel follows each household's own members" begin
+        # Odd-numbered households transmit fast and even-numbered ones slowly, and
+        # households of three and five alternate, so there are four types. The
+        # offspring law is checked against the model's own simulator run on the
+        # model's own individuals: each household's community contacts are
+        # Poisson over its members' infectious time, and a contact reaches a
+        # household in proportion to its size.
+        sizes = repeat([3, 5, 5, 3], 25)
+        household_of = reduce(vcat, [fill(h, n) for (h, n) in enumerate(sizes)])
+        fast(i) = isodd(household_of[i])
+        kernel = (i, j) -> Exponential(fast(i) ? 1.0 : 10.0)
+        model = ModelSpec(HouseholdProcess(sizes, kernel);
+            progression = [Transition(:recovered; from = :infection, rate = γ,
+                terminal = true)])
+        o = household_offspring(model; global_rate = λG, n_samples = 40_000,
+            rng = StableRNG(22))
+        @test o.sizes == [3, 3, 5, 5]
+        @test sort(reduce(vcat, o.households)) == 1:100
+        @test all(allequal(isodd.(h)) && allequal(sizes[h]) for h in o.households)
+        @test o.mixing ≈ [3 * 25, 3 * 25, 5 * 25, 5 * 25] ./ 400
+
+        rng = StableRNG(23)
+        counts = Int[]
+        weights = Int[]
+        for _ in 1:400
+            state = simulate(model; rng)
+            person_time = zeros(length(sizes))
+            for ind in state.individuals
+                is_infected(ind) || continue
+                person_time[ind.state[:household]] +=
+                    ind.state[:recovered_time] - ind.infection_time
+            end
+            append!(counts, rand.(Ref(rng), Poisson.(λG .* person_time)))
+            append!(weights, sizes)
+        end
+        direct = [sum(weights[counts .== k]) for k in 0:9] ./ sum(weights)
+        law = probs(household_offspring_law(o))
+        @test maximum(abs, law[1:10] .- direct) < 0.01
+        @test reproduction_number(o)≈sum(weights .* counts) / sum(weights) rtol=0.03
+        # Of two households the same size, the fast one has the bigger outbreak,
+        # so it is the less likely to start a chain that dies out.
+        q = extinction_probability(o)
+        for n in (3, 5)
+            fast_type = findfirst(t -> o.sizes[t] == n && isodd(first(o.households[t])),
+                eachindex(o.sizes))
+            slow_type = findfirst(t -> o.sizes[t] == n && iseven(first(o.households[t])),
+                eachindex(o.sizes))
+            @test o.means[fast_type] > o.means[slow_type]
+            @test q[fast_type] < q[slow_type]
+        end
     end
 
     @testset "a bare process takes its own progression" begin
