@@ -428,4 +428,25 @@ possible infectors are the nodes that list it as a contact.
 The likelihood covers single-route `NetworkProcess` models; `RoutedNetwork` has
 no likelihood yet. In real data the infection times are unobserved, so a model
 augments them and conditions the observed onsets through the progression, as for
-households.
+households. A configuration the model cannot produce — a node infected when no
+in-neighbour is infectious and no community hazard can reach it — has zero
+density, and `pairwise_surv_loglik` returns `-Inf` with a zero gradient, since
+whether a configuration is possible at all is fixed by the times and not by the
+kernel's parameters.
+
+Fitting the community hazard itself carries a caveat. A positive
+`external_hazard` and no community hazard are different conditionings, and the
+density does not pass continuously from one to the other. With a constant rate
+`α > 0` an index node infected at time `t` contributes `log(α) - α t`, which
+falls to `-Inf` as `α → 0`: a model that admits community introductions has to
+explain the ones it saw. At exactly `external_hazard = 0` index nodes are
+conditioned on instead and contribute nothing, so the value stays finite. So a
+likelihood ratio between "some community transmission" and "none" cannot be read
+off by letting `α` approach zero — score the two models separately — and a prior
+on `α` with mass near zero meets a density that falls away sharply just above it,
+which shows up as a sampler struggling at the boundary.
+
+A `Gamma` community hazard cannot be differentiated by ForwardDiff: its
+cumulative hazard calls `SpecialFunctions._gamma_inc`, which has no
+`ForwardDiff.Dual` method, so the `MethodError` comes from there rather than from
+this package. Fit that one with a reverse-mode backend such as Mooncake.

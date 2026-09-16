@@ -133,4 +133,28 @@ move — so it is compiled once, outside the model, and reused. A configuration 
 model cannot produce has zero density, and `pairwise_surv_loglik` returns `-Inf`
 for it: for example, a case infected when none of its household-mates is
 infectious and no community hazard can reach it. Without a community hazard the
-density conditions on index cases, so they need no possible infector.
+density conditions on index cases, so they need no possible infector. The `-Inf`
+comes with a zero gradient, since whether a configuration is possible at all is
+fixed by the times and not by the kernel's parameters.
+
+### Fitting a community hazard
+
+A positive `external_hazard` and no community hazard are different conditionings,
+and the density does not pass continuously from one to the other. With a constant
+rate `α > 0` an index case infected at time `t` contributes `log(α) - α t`, which
+falls to `-Inf` as `α → 0`: a model that admits community introductions has to
+explain the ones it saw, and vanishingly rare introductions explain them
+vanishingly badly. At exactly `external_hazard = 0` index cases are conditioned on
+instead and contribute nothing, so the value stays finite. Each is correct for
+what it conditions on.
+
+Two things follow for fitting. A likelihood ratio between "some community
+transmission" and "none" cannot be read off by letting `α` approach zero — score
+the two models separately. And a prior on `α` with mass near zero meets a density
+that falls away sharply just above it, which shows up as a sampler struggling at
+the boundary; a prior bounded away from zero, such as a lognormal, avoids that.
+
+A `Gamma` community hazard cannot be differentiated by ForwardDiff: its cumulative
+hazard calls `SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual`
+method, so the `MethodError` comes from there rather than from this package. Fit
+that one with a reverse-mode backend, `NUTS(; adtype = AutoMooncake())`.

@@ -444,7 +444,22 @@ Use the layout form in inference: compile the layout once with
 [`compile_contact_pairs`](@ref) and reuse it while the latent times move. Its
 `external` setting must agree with `external_hazard`. The two-argument form
 compiles a layout on each call. Both are generic in the number type, so the
-kernel's parameters can be ForwardDiff or reverse-mode AD values.
+kernel's parameters can be ForwardDiff or reverse-mode AD values. A `Gamma`
+community hazard is the exception: its cumulative hazard calls
+`SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual` method, so fit
+that one with a reverse-mode backend such as Mooncake.
+
+!!! warning "A vanishing community hazard is not the no-community case"
+    The two are different conditionings, and the density does not pass
+    continuously from one to the other. With `external_hazard = α > 0` an index
+    case infected at time `t` contributes `log(α) − αt`, which falls to `-Inf` as
+    `α → 0`, because a model that admits community introductions has to explain
+    the ones it saw. At exactly `external_hazard = 0` index cases are instead
+    conditioned on and contribute nothing, leaving a finite value. So a
+    likelihood ratio between "some community transmission" and "none" cannot be
+    read off by letting `α` approach zero — score the two models separately — and
+    a prior with mass near zero meets a density that falls away sharply just
+    above it, which shows up as a sampler struggling at the boundary.
 """
 function pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairsLayout;
         external_hazard = 0.0)
