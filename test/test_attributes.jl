@@ -116,4 +116,113 @@
             @test 50 <= asymp_count <= 150
         end
     end
+
+    @testset "vaccine_acceptance draws once per ring" begin
+        clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+
+        @testset "contacts of the same case share one value; other cases differ" begin
+            model = BranchingProcess(Poisson(1.0), Exponential(5.0))
+            attrs = vaccine_acceptance(propensity = Beta(2, 2))
+            rng = StableRNG(1)
+            state = EpiBranch.new_state(
+                model, EpiBranch.AbstractClinicalTransition[], attrs, rng)
+            parent1, parent2 = EpiBranch.add_individuals!(state, 2, [])
+            ring1 = [make_contact!(state, parent1, 1.0) for _ in 1:20]
+            ring2 = [make_contact!(state, parent2, 1.0) for _ in 1:20]
+            @test length(unique(c.state[:vaccine_acceptance] for c in ring1)) == 1
+            @test length(unique(c.state[:vaccine_acceptance] for c in ring2)) == 1
+            @test ring1[1].state[:vaccine_acceptance] != ring2[1].state[:vaccine_acceptance]
+        end
+
+        @testset "key is customisable" begin
+            model = BranchingProcess(Poisson(1.0), Exponential(5.0))
+            attrs = vaccine_acceptance(propensity = Beta(2, 2), key = :acceptance)
+            rng = StableRNG(1)
+            state = EpiBranch.new_state(
+                model, EpiBranch.AbstractClinicalTransition[], attrs, rng)
+            parent = only(EpiBranch.add_individuals!(state, 1, []))
+            contact = make_contact!(state, parent, 1.0)
+            @test haskey(contact.state, :acceptance)
+            @test !haskey(contact.state, :vaccine_acceptance)
+        end
+
+        @testset "applied without simulation state errors" begin
+            attrs = vaccine_acceptance(propensity = 0.5)
+            ind = Individual(id = 1)
+            @test_throws ArgumentError EpiBranch._apply_attributes!(attrs, StableRNG(1), ind)
+        end
+
+        @testset "0/1 propensity gives all-or-nothing rings at the independent-case mean" begin
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+            ct = ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+            p = 0.4
+            attrs = [clinical,
+                vaccine_acceptance(
+                    propensity = (rng, ind) -> Float64(rand(rng, Bernoulli(p))))]
+            rv = RingVaccination(efficacy = 0.9,
+                coverage = (rng, ind) -> ind.state[:vaccine_acceptance])
+            state = simulate(
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = attrs);
+                max_cases = 300, rng = StableRNG(3))
+
+            rings = Dict{Int, Vector{Bool}}()
+            for ind in state.individuals
+                is_traced(ind) || continue
+                push!(get!(rings, ind.parent_id, Bool[]), is_vaccinated(ind))
+            end
+            @test !isempty(rings)
+            @test all(length(unique(v)) == 1 for v in values(rings))
+
+            traced = filter(is_traced, state.individuals)
+            rate = count(is_vaccinated, traced) / length(traced)
+            @test p - 0.15 <= rate <= p + 0.15
+        end
+
+        @testset "clustered coverage inflates the variance of per-ring coverage at the same mean" begin
+            # Pure statistics on the acceptance draw: many independent rings,
+            # comparing a shared Beta-distributed propensity per ring against
+            # independent per-contact draws at the same mean coverage.
+            k = 20        # contacts per ring
+            n_rings = 500
+            propensity = Beta(2, 2)  # mean 0.5
+            rng = StableRNG(4)
+
+            clustered_means = map(1:n_rings) do _
+                p = rand(rng, propensity)
+                mean(rand(rng, k) .< p)
+            end
+            independent_means = map(1:n_rings) do _
+                mean(rand(rng, k) .< mean(propensity))
+            end
+
+            @test isapprox(mean(clustered_means), mean(independent_means); atol = 0.05)
+            @test var(clustered_means) > var(independent_means)
+        end
+
+        @testset "clustered refusal contains worse than independent refusal at equal mean coverage" begin
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+            ct = ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+
+            rv_independent = RingVaccination(efficacy = 0.9, coverage = 0.5)
+            rv_clustered = RingVaccination(efficacy = 0.9,
+                coverage = (rng, ind) -> ind.state[:vaccine_acceptance])
+            attrs_clustered = [clinical, vaccine_acceptance(propensity = Beta(1, 1))]
+
+            n = 300
+            results_independent = simulate(
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv_independent], attributes = clinical),
+                n; max_cases = 200, rng = StableRNG(9))
+            results_clustered = simulate(
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv_clustered], attributes = attrs_clustered),
+                n; max_cases = 200, rng = StableRNG(9))
+
+            @test containment_probability(results_clustered) <=
+                  containment_probability(results_independent) + 0.05
+        end
+    end
 end
