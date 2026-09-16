@@ -8,6 +8,20 @@ when. They share the [`competing_risk`](@ref) machinery: a vaccinated
 contact whose immunity has developed by their transmission time has
 their infection blocked with probability `efficacy`.
 
+`severity_efficacy` is a fourth effect, alongside `efficacy` (contact
+susceptibility) and `onward_efficacy`/`post_exposure_efficacy` on
+[`RingVaccination`](@ref) (parent infectiousness / abort of an existing
+infection): the probability that a vaccinated individual's own disease
+course is milder, e.g. a lower chance of death or of severe symptoms,
+once their immunity has developed. It has no counterpart in the
+competing-risks machinery those act through, because it does not gate
+transmission — it is consulted from the `probability` of a
+[`Transition`](@ref) (or [`Death`](@ref), [`Hospitalisation`](@ref), or
+any other clinical transition in a `progression`) via the
+[`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors, the
+same idiom [`Hospitalisation`](@ref) documents for prerequisite-gated
+admission. See [`RingVaccination`](@ref) for a worked example.
+
 `efficacy` accepts a `Real`, a `Distribution`, or a function
 `(rng, ind) -> Real`. The function/distribution forms sample once per
 vaccinated individual at vaccination time and store the result on the
@@ -75,9 +89,9 @@ vaccination is given, or `nothing` when it requires no earlier dose."""
 required_dose(::AbstractVaccination) = nothing
 
 """Label namespacing the vaccination's per-contact state (`:vaccinated`,
-`:vaccination_time`, `:vaccine_efficacy`). `:default` writes to the
-unsuffixed keys for backwards compatibility; other labels write to
-`:vaccinated_<label>` etc."""
+`:vaccination_time`, `:vaccine_efficacy`, `:immunity_time`,
+`:severity_efficacy`). `:default` writes to the unsuffixed keys for
+backwards compatibility; other labels write to `:vaccinated_<label>` etc."""
 dose_label(v::AbstractVaccination) = v.dose_label
 
 function _vaccinated_key(label::Symbol)
@@ -88,6 +102,12 @@ function _vaccination_time_key(label::Symbol)
 end
 function _vaccine_efficacy_key(label::Symbol)
     label === :default ? :vaccine_efficacy : Symbol("vaccine_efficacy_", label)
+end
+function _immunity_time_key(label::Symbol)
+    label === :default ? :immunity_time : Symbol("immunity_time_", label)
+end
+function _severity_efficacy_key(label::Symbol)
+    label === :default ? :severity_efficacy : Symbol("severity_efficacy_", label)
 end
 
 function initialise_individual!(v::AbstractVaccination, individual, state)
@@ -131,12 +151,16 @@ end
 
 # Helper for concrete subtypes: write per-dose state on a contact at
 # vaccination time. Samples efficacy via `_sample_value` so scalar,
-# distribution, and function forms all work.
+# distribution, and function forms all work. `:immunity_time` is stored
+# alongside so a clinical transition can check it without reaching for
+# the vaccination object, which it never sees.
 function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     label = dose_label(v)
     contact.state[_vaccinated_key(label)] = true
     contact.state[_vaccination_time_key(label)] = vacc_t
     contact.state[_vaccine_efficacy_key(label)] = _sample_value(v.efficacy, rng, contact)
+    contact.state[_immunity_time_key(label)] = vacc_t + delay_to_immunity(v)
+    contact.state[_severity_efficacy_key(label)] = _sample_value(v.severity_efficacy, rng, contact)
     return nothing
 end
 
@@ -242,9 +266,36 @@ Requires `:traced` (set by [`ContactTracing`](@ref)).
     never has symptoms and so no longer triggers tracing of the contacts it
     infected before its dose.
 
-Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
-`:vaccine_efficacy` for the default dose label. With a non-default
-`dose_label`, the keys carry the label as a suffix.
+`severity_efficacy` is the probability that the vaccinated *contact's own*
+disease course is milder once their immunity has developed — lower
+mortality, a lower chance of a severe outcome, or whatever a clinical
+transition's `probability` reads it for. Unlike `efficacy`,
+`onward_efficacy` and `post_exposure_efficacy`, it does not gate
+transmission and so is not one of the risks [`competing_risk`](@ref)
+returns: it has no effect until a transition in `progression` consults it,
+via the [`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors,
+same as any other prerequisite a clinical transition's `probability` gates
+on:
+
+```julia
+Death(delay = LogNormal(2.5, 0.4),
+      probability = (rng, ind) ->
+          immunity_time(ind) <= onset_time(ind) ?
+              0.7 * (1 - severity_efficacy(ind)) : 0.7)
+```
+
+`immunity_time(ind) <= onset_time(ind)` is the check that a dose whose
+immunity has not yet developed by the outcome it would affect confers no
+protection — comparing against `:vaccinated` alone, as a naive closure
+might, would count a not-yet-immune dose as protective. Defaults to `0.0`
+(no severity effect). Accepts a `Real`, `Distribution`, or `Function`
+`(rng, ind) -> Real`, sampled once per vaccinated contact alongside
+`efficacy`.
+
+Per-contact state keys are `:vaccinated`, `:vaccination_time`,
+`:vaccine_efficacy`, `:immunity_time`, and `:severity_efficacy` for the
+default dose label. With a non-default `dose_label`, the keys carry the
+label as a suffix.
 
 # Second and later doses
 
@@ -283,7 +334,8 @@ infected in the meantime, because infection is resolved after the doses
 are given. Dose counts for later doses are therefore counts of doses
 scheduled.
 """
-Base.@kwdef struct RingVaccination{E, C, W, M <: AbstractEffectMode} <: AbstractVaccination
+Base.@kwdef struct RingVaccination{E, C, W, SV, M <: AbstractEffectMode} <:
+                   AbstractVaccination
     efficacy::E
     coverage::C = 1.0
     delay_to_immunity::Float64 = 0.0
@@ -292,6 +344,7 @@ Base.@kwdef struct RingVaccination{E, C, W, M <: AbstractEffectMode} <: Abstract
     eligibility_window::W = Inf
     post_exposure_efficacy::Float64 = 0.0
     onward_efficacy::Float64 = 0.0
+    severity_efficacy::SV = 0.0
     mode::M = LeakyMode()
     dose_label::Symbol = :default
 end
@@ -539,10 +592,18 @@ own transmission time.
 sampled once per vaccinated contact. Per-individual heterogeneous
 efficacy (e.g. age-dependent) is set via the function form.
 
-Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
-`:vaccine_efficacy` for the default dose label. With a non-default
-`dose_label`, the keys carry the label as a suffix — pass two
-`MassVaccination`s with different labels for a multi-dose rollout.
+`severity_efficacy` accepts the same set and, like on
+[`RingVaccination`](@ref), sets how much milder a vaccinated individual's
+own disease course is once their immunity has developed — a clinical
+transition's `probability` reads it via the [`severity_efficacy`](@ref)
+and [`immunity_time`](@ref) accessors. Defaults to `0.0` (no severity
+effect).
+
+Per-contact state keys are `:vaccinated`, `:vaccination_time`,
+`:vaccine_efficacy`, `:immunity_time`, and `:severity_efficacy` for the
+default dose label. With a non-default `dose_label`, the keys carry the
+label as a suffix — pass two `MassVaccination`s with different labels for
+a multi-dose rollout.
 
 # Examples
 
@@ -582,10 +643,11 @@ Prime-and-boost schedule (compose two instances with different labels):
 ]
 ```
 """
-Base.@kwdef struct MassVaccination{E, T, M <: AbstractEffectMode} <: AbstractVaccination
+Base.@kwdef struct MassVaccination{E, T, SV, M <: AbstractEffectMode} <: AbstractVaccination
     efficacy::E
     eligibility_time::T
     delay_to_immunity::Float64 = 0.0
+    severity_efficacy::SV = 0.0
     mode::M = LeakyMode()
     dose_label::Symbol = :default
 end

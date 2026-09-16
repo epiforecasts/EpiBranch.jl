@@ -160,6 +160,8 @@ isolation_time
 is_traced
 is_quarantined
 is_vaccinated
+immunity_time
+severity_efficacy
 is_asymptomatic
 is_test_positive
 is_infected
