@@ -11,7 +11,9 @@ function Base.show(io::IO, ind::Individual)
 end
 
 """Symptom onset time (`NaN` if asymptomatic or not set); a dual under AD."""
-onset_time(ind::Individual{T}) where {T} = convert(T, get(ind.state, :onset_time, T(NaN)))
+function onset_time(ind::Individual{T}) where {T}
+    convert(T, get(ind.state, :onset_time, T(NaN)))::T
+end
 
 """
 Incubation period: time from infection to symptom onset (Float64, NaN if
@@ -26,7 +28,7 @@ is_isolated(ind::Individual) = get(ind.state, :isolated, false)::Bool
 
 """Time of isolation (Inf if not isolated); a dual under AD."""
 function isolation_time(ind::Individual{T}) where {T}
-    convert(T, get(ind.state, :isolation_time, T(Inf)))
+    convert(T, get(ind.state, :isolation_time, T(Inf)))::T
 end
 
 """Whether the individual was traced via contact tracing."""
