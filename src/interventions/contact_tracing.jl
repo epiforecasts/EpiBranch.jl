@@ -31,7 +31,7 @@ is_eligible(::TraceEligibility, infector, contact, state) = true
 from symptom onset, so tracing can start before lab confirmation, or
 without it. See [`trigger_time`](@ref EpiBranch.trigger_time)."""
 struct OnSymptomOnset <: TraceEligibility end
-is_eligible(::OnSymptomOnset, infector, contact, state) = !is_asymptomatic(infector)
+is_eligible(::OnSymptomOnset, infector, contact, state) = _develops_symptoms(infector)
 
 """Trace when the infector has tested positive (lab confirmation)."""
 struct OnLabConfirmation <: TraceEligibility end
@@ -56,7 +56,7 @@ to `OnSymptomOnset() & OnIsolation()`; kept as a named type for
 backwards compatibility (it is the default `eligibility`)."""
 struct SymptomaticParent <: TraceEligibility end
 function is_eligible(::SymptomaticParent, infector, contact, state)
-    !is_asymptomatic(infector) && is_isolated(infector)
+    _develops_symptoms(infector) && is_isolated(infector)
 end
 
 # `AlwaysEligible` and `NoTracing` were the previous names for tracing
