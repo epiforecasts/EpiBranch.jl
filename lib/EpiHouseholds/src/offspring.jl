@@ -219,7 +219,6 @@ households as a single-type process, so it can be handed straight to
 `BranchingProcess` to simulate chains of infected households.
 """
 function household_offspring_law(o::HouseholdOffspring)
-    length(o.sizes) == 1 && return o.laws[1]
     n_max = maximum(length(probs(law)) for law in o.laws)
     p = zeros(n_max)
     for (w, law) in zip(o.mixing, o.laws)
