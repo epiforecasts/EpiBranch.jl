@@ -24,6 +24,11 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   one type. An extinction probability whose iteration has not converged by
   `max_iter` now warns, which happens near R = 1, in the multi-type and the
   single-type functions alike.
+- `reproduction_number`, `extinction_probability` and `epidemic_probability` for
+  `ClusterMixed` offspring and models built from it. The reproduction number is
+  the offspring mean averaged over the mixing distribution, and the extinction
+  probability is the single-type extinction probability averaged over it, since
+  every case in a chain shares its index case's parameter.
 - `trigger_time(eligibility, infector, contact, state)` gives the trace's
   trigger time for the contact being traced, and `ContactTracing` calls it. A
   custom policy can define it to time the trace from the contact, and combinators
