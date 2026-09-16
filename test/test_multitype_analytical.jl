@@ -102,6 +102,9 @@ using LinearAlgebra: eigvals
         expected = expected .* [series_mean(capped(1.8)) series_mean(capped(1.5))]
         @test reproduction_number(model)≈maximum(abs, eigvals(expected)) atol=1e-10
         @test all(0 .< extinction_probability(model) .< 1)
+        # One type reduces to the single-type model with the same law.
+        @test reproduction_number(BranchingProcess(capped(2.0), Exponential(1.0))) ≈
+              reproduction_number(BranchingProcess(fill(2.0, 1, 1), capped, Exponential(1.0)))
     end
 
     @testset "Power iteration warns when it does not converge" begin

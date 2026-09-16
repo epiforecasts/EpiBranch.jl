@@ -162,7 +162,7 @@ reproduction_number(BranchingProcess(M, R -> NegBin(R, 0.5), Exponential(5.0)))
 reproduction_number(BranchingProcess(NegBin(2.5, 0.16)))  # 2.5
 ```
 """
-reproduction_number(d::DiscreteUnivariateDistribution) = mean(d)
+reproduction_number(d::DiscreteUnivariateDistribution) = _law_mean(d)
 reproduction_number(o::MultiTypeOffspring) = _spectral_radius(_mean_matrix(o))
 function reproduction_number(model::Union{TransmissionModel, ModelSpec})
     return reproduction_number(_analytic_offspring(model))
