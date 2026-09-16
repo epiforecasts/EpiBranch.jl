@@ -67,9 +67,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   of `pairwise_surv_loglik(kernel, data::HouseholdInfections; external_hazard)`
   is gone, so the two-argument form compiles a `ContactPairsLayout` like any
   other contact structure. Values match the retired implementation to summation
-  order (a relative difference around 1e-14 on 1,500 households of four), and
-  evaluation is faster: 1.1 ms against 1.7 ms without a community hazard, and
-  1.7 ms against 7.9 ms with one.
+  order — relative differences of order 1e-13 and below across kernel scales and
+  community rates — and evaluation is faster: 1.1 ms against 1.7 ms without a
+  community hazard, and 1.7 ms against 7.9 ms with one, on 1,500 households of
+  four.
 - The `pairwise_surv_loglik` docstring and the household and network tutorials
   record that a vanishing community hazard does not approach the
   no-community-hazard case, and that a `Gamma` community hazard needs a
