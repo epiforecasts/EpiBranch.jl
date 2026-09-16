@@ -77,6 +77,8 @@ downstream packages should pick names that do not collide.
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
 | `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
@@ -96,6 +98,15 @@ writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy`,
 and any other label suffixes the key (so `dose_label = :boost` writes
 `:vaccinated_boost`, etc.). This lets multi-dose schedules compose without
 colliding.
+
+`:immunity_time` (`:vaccination_time` plus the dose's `delay_to_immunity`)
+and `:severity_efficacy` let a clinical transition read a vaccine's effect
+on disease severity — mortality, or any other outcome a `progression`
+transition decides — without gating transmission. Neither participates in
+`competing_risk`; a transition's `probability` reads them through the
+[`immunity_time`](@ref) and [`severity_efficacy`](@ref) accessors, gating
+on the former so a dose whose immunity has not yet developed by the
+outcome it would affect confers no protection.
 
 `:infection_aborted_time` marks an infection that a post-exposure dose ended
 before symptom onset. The individual is still infected but transmits nothing
