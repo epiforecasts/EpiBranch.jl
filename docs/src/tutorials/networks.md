@@ -84,7 +84,7 @@ using Graphs
 
 # A small-world network: mostly local contacts (high clustering) with a
 # few long-range links, from the Watts–Strogatz model.
-g = watts_strogatz(400, 6, 0.1)
+g = watts_strogatz(400, 6, 0.1; rng = StableRNG(1))
 
 model_ws = ModelSpec(NetworkProcess(g, Exponential(3.0));
     progression = [Transition(:recovered; from = :infection, delay = 7.0, terminal = true)])
@@ -222,7 +222,7 @@ clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
     prob_asymptomatic = 0.0)
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 1.0)
 
-ws = watts_strogatz(400, 6, 0.1)
+ws = watts_strogatz(400, 6, 0.1; rng = StableRNG(1))
 build(ivs) = ModelSpec(NetworkProcess(ws, Exponential(16.0));
     progression = [Transition(:recovered; from = :infection, delay = 7.0,
         terminal = true)],
@@ -283,9 +283,9 @@ end
 
 hh_adj, comm_adj = households_and_community(150, 4, StableRNG(99))
 
-clinical2 = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+clinical2 = clinical_presentation(incubation_period = LogNormal(0.5, 0.3),
     prob_asymptomatic = 0.0)
-iso2 = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 1.0)
+iso2 = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 1.0)
 REM = EpiBranch.INTERVENTION_REMOVAL
 
 # The household route differs from the community route in one tuple: whether
@@ -320,6 +320,40 @@ self-isolation achieves.
 
 `R` is unchanged by any of this. It stays what a case would achieve if never
 removed; the realised figure falls out of which routes were cut.
+
+### Which contacts can be traced
+
+Routes also differ in who a case can name. Everyone in the household can be
+named, but most community contacts are strangers. `traceable` on a route is the
+probability that a case can name a contact made on it. Contact tracing then
+reaches a named contact with its own probability, so the two multiply. A
+neighbour on both routes is named with the higher probability, since someone you
+live with can be named whether or not you also meet them elsewhere.
+
+```@example networks
+# Slower isolation and more community contact than above, so that tracing has
+# transmission left to prevent.
+iso3 = Isolation(onset_to_isolation_delay = Exponential(4.0), test_sensitivity = 1.0)
+ct3 = ContactTracing(probability = 0.9, isolation_to_trace_delay = Exponential(0.5))
+traced_routes(community_traceable) = [
+    RouteWindow(:household; until = (:recovered, REM),
+        kernel = Weibull(1.5, 4.0), reach = hh_adj),
+    RouteWindow(:community; until = (:recovered, REM),
+        kernel = Exponential(15.0), reach = comm_adj,
+        traceable = community_traceable)]
+
+println("isolation only:                          ",
+    round(mean_size(traced_routes(1.0), [iso3]), digits = 1))
+for p in (0.0, 0.5, 1.0)
+    println("isolation + tracing, community traceable $p: ",
+        round(mean_size(traced_routes(p), [iso3, ct3]), digits = 1))
+end
+```
+
+Tracing household contacts alone already helps, and the more community contacts
+a case can name, the more tracing prevents. Treating every route as fully
+traceable overstates what tracing achieves whenever much of the transmission
+happens between people who cannot name each other.
 
 ## Community introductions
 
