@@ -293,6 +293,8 @@ for examples.
 clinical_presentation
 demographics
 transmission_traits
+vaccine_acceptance
+EpiBranch.GroupAttribute
 ```
 
 ## Convenience constructors
