@@ -20,6 +20,20 @@ function _window_close(ind::Individual{T}, until::Tuple) where {T}
     minimum(convert(T, get(ind.state, Symbol(s, :_time), T(Inf))) for s in until)
 end
 
+# The infector's infectiousness and the target's susceptibility as a rate
+# multiplier `m` on the pair kernel, rather than a Bernoulli thin: scaling a
+# hazard by `m` turns its survival function S(t) into S(t)^m, which is drawn by
+# inverse-transform on the *survival* scale, `quantile(kernel, 1 - U^(1/m))`
+# for `U ~ Uniform(0, 1)` — `rand(rng, kernel)` is the `m == 1` case of the same
+# draw, kept as a fast path since every pair without either trait set takes it.
+# `m <= 0` (either trait exactly zero) never fires: race candidates only
+# relax on a strictly earlier time, so `Inf` is silently a no-op downstream.
+function _traits_scaled_draw(rng::AbstractRNG, kernel, m::Real)
+    m == 1 && return rand(rng, kernel)
+    m <= 0 && return oftype(m, Inf)
+    return quantile(kernel, 1 - rand(rng)^(1 / m))
+end
+
 # ── Interventions on the continuous-time (Sellke) models ─────────────
 # These models run their own event loop rather than the generation engine, so
 # the engine's per-generation hook passes never fire. The one intervention seam
@@ -281,7 +295,9 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             for (target_id, kernel) in route_targets(members[j], state)
                 k = get(pos, target_id, 0)
                 (k == 0 || processed[k]) && continue
-                dt = rand(rng, kernel)
+                target = state.individuals[target_id]
+                dt = _traits_scaled_draw(rng, kernel, ind.infectiousness *
+                                                      target.susceptibility)
                 cand = open_t + dt
                 (cand <= close_t && cand < best[k]) || continue
                 best[k] = cand

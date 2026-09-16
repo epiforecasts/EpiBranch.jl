@@ -137,6 +137,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   at symptom onset and traced contacts who were asymptomatic got no dose. With
   `:trace_time` recorded at every tracing depth, `linelist` now has a
   `date_trace` column at the default `depth = 1` as well.
+- Per-individual susceptibility and infectiousness (`transmission_traits`, or
+  any attributes function) now bear on `NetworkProcess`, `RoutedNetwork` and
+  `HouseholdProcess` (in the companion packages). Previously `competing_risk`
+  was never evaluated on the continuous-time race, so the two built-in risk
+  sources it carries were silently ignored. They now scale the rate of the
+  pair kernel directly, the continuous-time reading of a rate multiplier: a
+  trait of exactly `0` blocks transmission along that pair entirely, and a
+  fractional value thins it.
 
 ## [0.1.0] - 2026-06-16
 

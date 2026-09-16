@@ -214,6 +214,55 @@
         @test !EpiBranch._sellke_honours(nothing, RingVaccination(efficacy = 0.9))
     end
 
+    @testset "susceptibility and infectiousness scale the pair kernel's rate" begin
+        # Node 1 is seeded at time 0 and can reach node 2 on a single
+        # exponential contact interval, uncensored, so the pair transmits iff
+        # its drawn candidate time is finite. `HostSusceptibility` and
+        # `InfectorInfectiousness` are the engine's default risk sources for
+        # these traits on the generation-based path; here they must have some
+        # effect on the continuous-time race too.
+        function infected2(; infectiousness = 1.0, susceptibility = 1.0, seed = 1)
+            rng = StableRNG(seed)
+            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                AbstractClinicalTransition[], EpiBranch.NoAttributes(), rng)
+            EpiBranch.add_individuals!(state, 2, AbstractIntervention[])
+            state.individuals[1].infectiousness = infectiousness
+            state.individuals[2].susceptibility = susceptibility
+            EpiBranch._sellke_race!(state, [1, 2], rng;
+                from = :infection, until = (),
+                targets = (inf, st) -> inf == 1 ? ((2, Exponential(1.0)),) : (),
+                seed! = (best, members, r) -> (best[1] = 0.0))
+            return get(state.individuals[2].state, :infected, false)
+        end
+
+        @test infected2()                          # both default to 1: transmits
+        @test !infected2(infectiousness = 0.0)      # a rate of zero never fires
+        @test !infected2(susceptibility = 0.0)
+
+        # A fractional multiplier thins transmission rather than switching it
+        # off: across many independent pairs, a lower susceptibility yields a
+        # lower share infected within a short, shared infectious window.
+        function share_infected(susceptibility; n = 300, seed = 1)
+            rng = StableRNG(seed)
+            prog = [Transition(:recovered; from = :infection, delay = 3.0,
+                terminal = true)]
+            infected = 0
+            for h in 1:n
+                state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                    prog, EpiBranch.NoAttributes(), rng)
+                EpiBranch.add_individuals!(state, 2, AbstractIntervention[])
+                state.individuals[2].susceptibility = susceptibility
+                EpiBranch._sellke_race!(state, [1, 2], rng;
+                    from = :infection, until = (:recovered,),
+                    targets = (inf, st) -> inf == 1 ? ((2, Exponential(1.0)),) : (),
+                    seed! = (best, members, r) -> (best[1] = 0.0))
+                get(state.individuals[2].state, :infected, false) && (infected += 1)
+            end
+            return infected / n
+        end
+        @test share_infected(0.2) < share_infected(1.0)
+    end
+
     @testset "the race takes routes or the shorthand, not both" begin
         state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
             AbstractClinicalTransition[], nothing, StableRNG(1))
