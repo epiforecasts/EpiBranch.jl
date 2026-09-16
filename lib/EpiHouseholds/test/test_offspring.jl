@@ -203,3 +203,50 @@ end
         @test occursin("R*", sprint(show, o))
     end
 end
+
+@testset "published values" begin
+    @testset "Ball, Mollison and Scalia-Tomba (1997), Figure 2" begin
+        # Households of five, an exponential infectious period of mean 1 and a
+        # per-pair local infection rate λ_L. The paper prints the mean number
+        # infected besides the index case, and the global rate at which R*
+        # reaches 1 (Ann. Appl. Probab. 7(1): 46-89, Figure 2 and eq. 3.14).
+        for (λ_local, infected_besides_index, critical_rate) in [
+            (0.125, 0.578283, 0.6336), (0.1875, 0.879315, 0.5321),
+            (0.5, 2.033827, 0.3296), (1.25, 3.117259, 0.2429)]
+            d = household_final_size(5, Exponential(1 / λ_local), Exponential(1.0))
+            @test mean(d)≈1 + infected_besides_index atol=1e-6
+
+            model = ModelSpec(HouseholdProcess(fill(5, 10), Exponential(1 / λ_local));
+                progression = [Transition(:recovered; from = :infection, rate = 1.0,
+                    terminal = true)])
+            o = household_offspring(model; global_rate = critical_rate)
+            @test reproduction_number(o)≈1.0 atol=2e-4
+        end
+    end
+
+    @testset "Ball, Mollison and Scalia-Tomba (1997), Tecumseh influenza" begin
+        # Their Section 5 fit to the Tecumseh A(H3N2) household data: 567
+        # households of one to five, a per-pair local rate of 0.0423, a fixed
+        # infectious period of 4.1 days and a global rate of 0.1950. They report
+        # a size-biased mean household outbreak of 1.4145 and R* of 1.1309.
+        counts = [133, 189, 108, 106, 31]
+        sizes = vcat([fill(n, counts[n]) for n in 1:5]...)
+        model = ModelSpec(HouseholdProcess(sizes, Exponential(1 / 0.0423));
+            progression = [Transition(:recovered; from = :infection, delay = 4.1,
+                terminal = true)])
+        o = household_offspring(model; global_rate = 0.1950, n_samples = 200,
+            rng = StableRNG(1))
+        @test sum(o.mixing .* o.means) / (0.1950 * 4.1)≈1.4145 atol=1e-4
+        @test reproduction_number(o)≈1.1309 atol=1e-4
+    end
+
+    @testset "House and Keeling (2008) mean household outbreak" begin
+        # Their closed forms for the mean number infected in a household of two
+        # and of three, for a per-pair rate τ against a removal rate γ.
+        τ, γ = 4.0, 1.0
+        kernel, window = Exponential(1 / τ), Exponential(1 / γ)
+        @test mean(household_final_size(2, kernel, window)) ≈ (2τ + γ) / (τ + γ)
+        @test mean(household_final_size(3, kernel, window)) ≈
+              (6τ^3 + 13τ^2 * γ + 6τ * γ^2 + γ^3) / ((τ + γ)^2 * (2τ + γ))
+    end
+end
