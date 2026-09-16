@@ -120,6 +120,26 @@ end
         @test length(unique(effs)) > 10
     end
 
+    @testset "MassVaccination with distributional delay_to_immunity" begin
+        # Immunity delay drawn from Uniform(7, 21) per individual, a
+        # vaccine that takes one to three weeks to protect.
+        mv = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
+            delay_to_immunity = Uniform(7.0, 21.0))
+        state = simulate(
+            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [mv], attributes = clinical);
+            condition = 50:500,
+            max_cases = 500,
+            rng = StableRNG(1))
+        delays = [ind.state[:immunity_delay]
+                  for ind in state.individuals if ind.parent_id != 0]
+        @test !isempty(delays)
+        @test all(7.0 .<= delays .<= 21.0)
+        # Variation confirms per-individual sampling rather than a
+        # single sample reused across all contacts.
+        @test length(unique(delays)) > 10
+    end
+
     @testset "MassVaccination with callable efficacy reads contact state" begin
         # Age-conditional efficacy: high in <65, low in 65+.
         attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]

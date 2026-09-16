@@ -76,6 +76,9 @@ downstream packages should pick names that do not collide.
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
 | `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:immunity_delay[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:post_exposure_efficacy[_<label>]` | `Float64` | — | `RingVaccination` | `apply_post_transmission!` |
+| `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
@@ -91,10 +94,16 @@ downstream packages should pick names that do not collide.
 | `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)` | `resolve_individual!` |
 
 The vaccination keys are namespaced by `dose_label`: the default label
-writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy`,
-and any other label suffixes the key (so `dose_label = :boost` writes
-`:vaccinated_boost`, etc.). This lets multi-dose schedules compose without
-colliding.
+writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy` /
+`:immunity_delay` (and, on `RingVaccination`, `:post_exposure_efficacy` /
+`:onward_efficacy`), and any other label suffixes the key (so
+`dose_label = :boost` writes `:vaccinated_boost`, etc.). This lets multi-dose
+schedules compose without colliding. `:immunity_delay`,
+`:post_exposure_efficacy`, and `:onward_efficacy` hold one draw taken at
+vaccination time from the field of the same purpose (`delay_to_immunity`,
+`post_exposure_efficacy`, `onward_efficacy`), which may be a `Real`, a
+`Distribution`, or a function; the competing risk reads the stored value
+back rather than resampling on every exposure.
 
 `:infection_aborted_time` marks an infection that a post-exposure dose ended
 before symptom onset. The individual is still infected but transmits nothing
