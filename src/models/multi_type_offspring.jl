@@ -34,7 +34,29 @@ function MultiTypeOffspring(offspring_matrix::AbstractMatrix{<:Real}, dist_fn)
         s = R_by_type[j]
         alloc_probs[:, j] = s > 0 ? offspring_matrix[:, j] ./ s : fill(1.0 / n, n)
     end
+    _check_offspring_means(R_by_type, dist_fn)
     return MultiTypeOffspring(offspring_matrix, dist_fn, R_by_type, alloc_probs)
+end
+
+# Only the column proportions of the matrix reach the draw; the size of each
+# type's offspring comes from the mean of `dist_fn(R_j)`. The two usually agree,
+# and when they do not it is the distribution that decides, so a matrix written
+# down as the reproduction numbers between types then means something else. The
+# common way to get there is `Distributions.NegativeBinomial(R, k)`, whose first
+# argument is a number of failures rather than a mean (use `NegBin(R, k)`), so
+# say so at construction instead of leaving a silently rescaled R.
+function _check_offspring_means(R_by_type, dist_fn)
+    for (j, R) in enumerate(R_by_type)
+        R > 0 || continue
+        m = mean(dist_fn(R))
+        isapprox(m, R; rtol = 1e-6) && continue
+        @warn "The offspring matrix gives type $j a column sum of $R, but " *
+              "`dist_fn($R)` has mean $m, which is what both the simulation and " *
+              "the analytical helpers use. If you meant a negative binomial with " *
+              "mean R and dispersion k, use `NegBin(R, k)`." maxlog=1
+        return nothing
+    end
+    return nothing
 end
 
 _n_types(o::MultiTypeOffspring) = size(o.offspring_matrix, 1)

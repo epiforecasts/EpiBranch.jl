@@ -105,6 +105,11 @@ eigenvalue (spectral radius) of the mean next-generation matrix, whose
 parent. An outbreak can grow with positive probability only if the
 reproduction number exceeds 1.
 
+For a matrix whose types cannot all infect one another, R* above 1 says that
+some group of types can grow, and not that a case of any given type can: an
+index case of a type that never reaches such a group still dies out for
+certain. [`extinction_probability`](@ref) answers that per type.
+
 # Examples
 
 ```julia
@@ -135,7 +140,13 @@ are split across types. Fixed-point iteration from zero converges to it.
 A type-`j` outbreak can grow only if type-`j` cases lead, through some chain
 of transmission, to a group of types that infect each other with a
 reproduction number above 1. Types without such a chain, and every type when
-[`reproduction_number`](@ref) is at most 1, get exactly 1.
+[`reproduction_number`](@ref) is at most 1, get exactly 1. The second of those
+takes the offspring count to vary: a deterministic law, such as `Dirac(1)` at
+R = 1, gives every case exactly one offspring and so never dies out, and 1 is
+the wrong answer for it.
+
+Iteration that has not converged by `max_iter` warns, which happens when the
+reproduction number is close to 1.
 
 To use it on a model built with
 `BranchingProcess(offspring_matrix, dist_fn, generation_time)`, call
@@ -158,6 +169,7 @@ function extinction_probability(o::MultiTypeOffspring; tol::Real = 1e-10,
         maximum(abs.(q_new .- q)) < tol && return q_new
         q = q_new
     end
+    _warn_unconverged_extinction(max_iter)
     return q
 end
 

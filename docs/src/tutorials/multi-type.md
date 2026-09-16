@@ -28,6 +28,19 @@ for (i, label) in enumerate(["Children", "Adults", "Elderly"])
 end
 ```
 
+The matrix is read by column: column `j` holds what a type-`j` parent produces.
+The contact matrix above is symmetric, so the numbers look the same either way
+round and the convention stays invisible. It shows in an asymmetric example,
+where adults infect children more often than children infect adults:
+
+```@example multitype
+asymmetric = [1.0 1.2;
+              0.3 0.9]
+println("an adult infects $(asymmetric[1, 2]) children")
+println("a child infects $(asymmetric[2, 1]) adults")
+println("R for a child: $(sum(asymmetric[:, 1])), for an adult: $(sum(asymmetric[:, 2]))")
+```
+
 ## Simulation
 
 Pass the matrix and a function that maps each type's R to an offspring distribution:

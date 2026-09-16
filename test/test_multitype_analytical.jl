@@ -56,6 +56,34 @@ using LinearAlgebra: eigvals
         @test only(extinction_probability(geom)) ≈ extinction_probability(2.0, 1.0) atol = 1e-8
     end
 
+    @testset "Extinction iteration warns when it does not converge" begin
+        # Near R = 1 the fixed point moves by less than the tolerance each step,
+        # so the iteration runs out before it arrives.
+        near_critical = BranchingProcess([1.005 0.0; 0.0 0.5], R -> Poisson(R),
+            Exponential(5.0))
+        @test_logs (:warn, r"without converging") match_mode=:any extinction_probability(
+            near_critical)
+        @test_logs (:warn, r"without converging") match_mode=:any extinction_probability(
+            Poisson(1.005))
+        @test_logs match_mode=:any extinction_probability(
+            BranchingProcess([1.5 0.2; 0.3 1.2], R -> Poisson(R), Exponential(5.0)))
+    end
+
+    @testset "A distribution family that rescales the matrix warns" begin
+        # `Distributions.NegativeBinomial(R, p)` takes a failure count, not a
+        # mean, so a matrix written as reproduction numbers no longer describes
+        # the offspring the model draws.
+        balanced = [0.8 0.2; 0.2 0.8]
+        @test_logs (:warn, r"column sum") match_mode=:any BranchingProcess(
+            balanced, R -> NegativeBinomial(R, 0.3), Exponential(5.0))
+        @test_logs match_mode=:any BranchingProcess(balanced, R -> NegBin(R, 0.5),
+            Exponential(5.0))
+        # The matrix and the distribution agree here, so R* is the column-sum
+        # spectral radius.
+        model = BranchingProcess(balanced, R -> NegBin(R, 0.5), Exponential(5.0))
+        @test reproduction_number(model)≈1.0 atol=1e-8
+    end
+
     @testset "Power iteration warns when it does not converge" begin
         # Nearly equal top eigenvalues slow the iteration used for number types
         # without `eigvals`; stopping early is reported.
