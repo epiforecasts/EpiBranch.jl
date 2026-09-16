@@ -316,5 +316,15 @@ end
         fe(s) = pairwise_surv_loglik(pe(s), data, L)
         fs(s) = pairwise_surv_loglik(Exponential(s), data, L)
         @test ForwardDiff.derivative(fe, 2.5) ≈ ForwardDiff.derivative(fs, 2.5)
+
+        # a kernel whose first internal pair carries no fitted parameter
+        first_inf = L.infector[findfirst(!, L.is_ext)]
+        fc(s) = pairwise_surv_loglik(
+            (i, j) -> i == first_inf ? Exponential(3.0) : Exponential(s), data, L)
+        dc = ForwardDiff.derivative(fc, 2.5)
+        @test dc ≈ (fc(2.5 + 1e-6) - fc(2.5 - 1e-6)) / 2e-6 rtol = 1e-5
+        pm(s) = [Distribution[i == first_inf ? Exponential(3.0) : Exponential(s)
+                              for _ in nbrs] for (i, nbrs) in enumerate(adjacency)]
+        @test ForwardDiff.derivative(s -> pairwise_surv_loglik(pm(s), data, L), 2.5) ≈ dc
     end
 end

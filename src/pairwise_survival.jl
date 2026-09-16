@@ -493,16 +493,25 @@ end
 
 function _pairwise_surv_loglik(kernel, extdist, data, layout, external,
         ::Type{T}) where {T}
-    sus = layout.sus
-    infector = layout.infector
-    is_ext = layout.is_ext
-
     # An infected host that is not conditioned on and has no possible infector
     # cannot have been infected.
     @inbounds for j in layout.no_rows
         isnan(data.infection_time[j]) || return T(-Inf)
     end
 
+    # A covariate or per-edge kernel may carry the fitted parameters on only some
+    # pairs, so the probe behind `T` can miss them. Every row pass 2 scores has a
+    # positive at-risk time in pass 1, so pass 1's sum has seen every kernel
+    # pass 2 will use, and its type sets pass 2's accumulator.
+    ll = _pairwise_cumhazard(kernel, extdist, data, layout, T)
+    return _pairwise_events(kernel, extdist, data, layout, ll,
+        promote_type(T, typeof(ll)))
+end
+
+function _pairwise_cumhazard(kernel, extdist, data, layout, ::Type{T}) where {T}
+    sus = layout.sus
+    infector = layout.infector
+    is_ext = layout.is_ext
     ll = zero(T)
 
     # Pass 1: cumulative-hazard contribution per row, each at risk from 0. A
@@ -528,6 +537,14 @@ function _pairwise_surv_loglik(kernel, extdist, data, layout, external,
             ll -= cumhazard(_pair_kernel(kernel, layout, r), stop)
         end
     end
+    return ll
+end
+
+function _pairwise_events(kernel, extdist, data, layout, ll0, ::Type{T}) where {T}
+    sus = layout.sus
+    infector = layout.infector
+    is_ext = layout.is_ext
+    ll = T(ll0)
 
     # Pass 2: per-susceptible log-sum-exp over event rows. A single accumulator
     # is reused across groups (reset per group) so the reduction stays
