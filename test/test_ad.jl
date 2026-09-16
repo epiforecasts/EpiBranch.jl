@@ -252,3 +252,32 @@ end
     grad = ForwardDiff.derivative(total_infection_time, μ0)
     @test isfinite(grad)
 end
+
+# A scalar vaccination parameter stays on the intervention and reaches the
+# competing risk with its type intact, so a derivative can be taken with
+# respect to it.
+@testset "AD through scalar vaccination parameters" begin
+    contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+    contact.state[:vaccinated] = true
+    contact.state[:vaccination_time] = 2.0
+    contact.state[:vaccine_efficacy] = 0.6
+    parent = Individual(id = 1, infection_time = 0.0)
+    parent.state[:vaccinated] = true
+    parent.state[:vaccination_time] = 2.0
+
+    immunity(delay) = EpiBranch._contact_risk(
+        RingVaccination(efficacy = 0.6, delay_to_immunity = delay), contact).event_time
+    @test ForwardDiff.derivative(immunity, 3.0) == 1.0
+
+    # The contact-side block composes the stored efficacy with the
+    # post-exposure one, so the derivative is 1 - efficacy.
+    block(post) = EpiBranch._contact_risk(
+        RingVaccination(efficacy = 0.6, delay_to_immunity = 3.0,
+            post_exposure_efficacy = post), contact).block_probability
+    @test ForwardDiff.derivative(block, 0.5) ≈ 0.4
+
+    onward(efficacy) = EpiBranch._onward_risk(
+        RingVaccination(efficacy = 0.6, onward_efficacy = efficacy),
+        parent).block_probability
+    @test ForwardDiff.derivative(onward, 0.5) == 1.0
+end
