@@ -88,7 +88,9 @@ a newly infected household is, so the process must carry no `external_hazard`,
 and one law per household size needs a single `kernel` distribution shared by
 every pair.
 Each household's epidemic runs on its own clock, so interventions cannot be
-wrapped in `Scheduled`.
+wrapped in `Scheduled`. To see what switching a policy on does, derive the law
+twice, once without the intervention and once with it unwrapped: the two R*
+values are the reproduction numbers before and after the switch.
 
 The within-household epidemic is resolved exactly where a closed form exists —
 an exponential contact-interval kernel and an exponential infectious window, with
@@ -144,8 +146,9 @@ function household_offspring(spec::ModelSpec{<:HouseholdProcess};
     # arbitrary point set by `n_samples`.
     any(iv -> iv isa Scheduled, spec.interventions) && throw(ArgumentError(
         "a `Scheduled` intervention gates on the population's clock or case count, " *
-        "which the branching process over households does not have; pass the " *
-        "intervention unwrapped"))
+        "which the branching process over households does not have. For R* before " *
+        "and after the policy starts, call `household_offspring` once without the " *
+        "intervention and once with it unwrapped"))
 
     sizes = household_sizes(process)
     unique_sizes = sort(unique(sizes))
