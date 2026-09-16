@@ -16,10 +16,11 @@ An outbreak grows with positive probability only if it exceeds 1.
 
 What counts as a unit depends on the specification. For an offspring
 distribution, or a single-type model carrying one, the unit is a case and the
-number is the distribution's mean. For a household-level offspring law
-(`EpiHouseholds.household_offspring`) the unit is a household and the number is
-R*, the mean number of households infected by the members of one infected
-household.
+number is the distribution's mean; like `extinction_probability`, this reads
+the offspring distribution alone and ignores any interventions on the model.
+For a household-level offspring law (`EpiHouseholds.household_offspring`) the
+unit is a household and the number is R*, the mean number of households infected
+by the members of one infected household.
 """
 function reproduction_number end
 
