@@ -289,6 +289,40 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test all(abs.(θhat - θ) .< 3 .* se)
     end
 
+    @testset "an outbreak still going at the end of follow-up" begin
+        m = ModelSpec(
+            HouseholdProcess(fill(6, 1500), Exponential(10.0);
+                external_hazard = 0.1, obs_end = 2.0);
+            progression = _sir(12.0))
+        state = simulate(m; rng = StableRNG(71))
+        tf = 6.0
+        full = household_infections(state, m)
+        late = .!(full.infection_time .<= tf)
+        nan_late(x) = [l ? NaN : v for (v, l) in zip(x, late)]
+        ongoing = HouseholdInfections(full.household_of, nan_late(full.infection_time),
+            nan_late(full.infectious_time),
+            [l ? NaN : (r > tf ? Inf : r) for (r, l) in zip(full.removal_time, late)],
+            full.is_index .& .!late; obs_end = 2.0, followup_end = tf)
+        @test any(isinf, ongoing.removal_time)
+        @test count(!isnan, ongoing.infection_time) < count(!isnan, full.infection_time)
+
+        read = household_infections(state, m; followup_end = tf)
+        @test read.followup_end == tf
+        k = Exponential(10.0)
+        v = loglikelihood(ongoing, m)
+        @test isfinite(v)
+        @test v ≈ loglikelihood(read, m)
+        layout = compile_household_pairs(ongoing; external = true)
+        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), ongoing, layout;
+            external_hazard = exp(θ[2]))
+        θ = [log(10.0), log(0.1)]
+        @test g(θ) ≈ v
+        grad = ForwardDiff.gradient(g, θ)
+        h = 1e-4
+        fd = [(g(θ .+ h .* e) - g(θ .- h .* e)) / 2h for e in ([1.0, 0.0], [0.0, 1.0])]
+        @test grad ≈ fd rtol = 1e-5
+    end
+
     @testset "inference-friendly likelihood: kernel varies over a fixed infection layer" begin
         # the form a household @model evaluates each iteration: the kernel carries
         # the fitted parameter, the infection layer is the augmented latent state.

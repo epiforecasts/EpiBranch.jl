@@ -9,13 +9,16 @@
 # ── The household infection layer ────────────────────────────────────
 
 """
-    HouseholdInfections(household_of, infection_time, infectious_time, removal_time, is_index)
+    HouseholdInfections(household_of, infection_time, infectious_time, removal_time, is_index;
+                        obs_end = Inf, followup_end = Inf)
 
 The infection layer of a household outbreak: per individual, their household,
 infection time (`NaN` if never infected), infectiousness onset and removal (the
 infectious-window endpoints), and whether they were introduced from outside the
-household. For data that end at a follow-up time, an individual still infectious
-then takes that time as their removal time, as described for [`InfectionLayer`](@ref).
+household. `obs_end` is when community introductions stop, and `followup_end`
+when observation of the data ends: the likelihood ignores infections and
+exposure after it, so an individual still infectious then can keep a removal
+time of `Inf` (see [`InfectionLayer`](@ref)).
 
 These are the latent quantities the contact process is a density over — read out
 of a `simulate` round-trip with [`household_infections`](@ref), or augmented in
@@ -29,21 +32,23 @@ struct HouseholdInfections{T <: Real} <: InfectionLayer
     removal_time::Vector{T}
     is_index::Vector{Bool}
     obs_end::T
+    followup_end::T
 end
 
 # `obs_end` is when community introductions stop; spread within households goes
 # on after it. Only used when the model has an external hazard, and may be left
 # `Inf`.
 function HouseholdInfections(household_of, infection_time, infectious_time,
-        removal_time, is_index; obs_end = Inf)
+        removal_time, is_index; obs_end = Inf, followup_end = Inf)
     T = promote_type(eltype(infection_time), eltype(infectious_time),
-        eltype(removal_time), typeof(obs_end), Float64)
+        eltype(removal_time), typeof(obs_end), typeof(followup_end), Float64)
     return HouseholdInfections{T}(collect(Int, household_of),
         Vector{T}(infection_time),
         Vector{T}(infectious_time),
         Vector{T}(removal_time),
         Vector{Bool}(is_index),
-        T(obs_end))
+        T(obs_end),
+        T(followup_end))
 end
 
 Base.length(d::HouseholdInfections) = length(d.household_of)
@@ -52,7 +57,8 @@ Base.length(d::HouseholdInfections) = length(d.household_of)
 EpiBranch.contact_structure(d::HouseholdInfections) = d.household_of
 
 """
-    household_infections(state, model::ModelSpec) -> HouseholdInfections
+    household_infections(state, model::ModelSpec; obs_end = model.process.obs_end,
+                         followup_end = Inf) -> HouseholdInfections
 
 Read the infection layer out of a simulated `state`: each member's household,
 infection time, infectiousness onset (the infectious-window `from` state),
@@ -62,9 +68,11 @@ as by isolation or quarantine after tracing. The infectious window is read from
 the same composed progression and interventions the simulation used, so the
 `simulate → loglikelihood` round trip is exact. A bare `HouseholdProcess` is
 accepted too (its window opens at `:infection`, and it has no interventions).
+Pass `followup_end` to score the outbreak as if observation had stopped then.
 """
 function household_infections(state::SimulationState,
-        model::ModelSpec{<:HouseholdProcess}; obs_end = model.process.obs_end)
+        model::ModelSpec{<:HouseholdProcess}; obs_end = model.process.obs_end,
+        followup_end = Inf)
     process = model.process
     from = _resolve_infectious_from(process.from, model.progression)
     window = _shorthand_window(from, process.until)
@@ -85,7 +93,8 @@ function household_infections(state::SimulationState,
             index[k] = get(ind.state, :index, false)
         end
     end
-    return HouseholdInfections(hh, infection, infectious, removal, index; obs_end)
+    return HouseholdInfections(hh, infection, infectious, removal, index; obs_end,
+        followup_end)
 end
 
 function household_infections(state::SimulationState, process::HouseholdProcess;

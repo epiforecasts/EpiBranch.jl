@@ -269,6 +269,50 @@ end
         @test all(abs.(θhat - θ) .< 3 .* se)
     end
 
+    @testset "an outbreak still going at the end of follow-up" begin
+        # the data as seen at day 15: later infections unseen and windows still
+        # open recorded as `Inf`
+        adj = _random_graph(2000, 4000, StableRNG(16))
+        m = ModelSpec(
+            NetworkProcess(adj, Exponential(8.0);
+                external_hazard = 0.01, obs_end = 10.0);
+            progression = _seir(4.0))
+        state = simulate(m; rng = StableRNG(17))
+        tf = 15.0
+        full = network_infections(state, m)
+        late = .!(full.infection_time .<= tf)
+        nan_late(x) = [l ? NaN : v for (v, l) in zip(x, late)]
+        ongoing = NetworkInfections(adj, nan_late(full.infection_time),
+            nan_late(full.infectious_time),
+            [l ? NaN : (r > tf ? Inf : r) for (r, l) in zip(full.removal_time, late)],
+            full.is_index .& .!late; obs_end = 10.0, followup_end = tf)
+        @test any(isinf, ongoing.removal_time)
+        @test count(!isnan, ongoing.infection_time) < count(!isnan, full.infection_time)
+
+        read = network_infections(state, m; followup_end = tf)
+        @test read.followup_end == tf
+        capped = NetworkInfections(adj, ongoing.infection_time, ongoing.infectious_time,
+            min.(ongoing.removal_time, tf), ongoing.is_index; obs_end = 10.0)
+        k = Exponential(8.0)
+        v = pairwise_surv_loglik(k, ongoing; external_hazard = 0.01)
+        @test isfinite(v)
+        @test v ≈ pairwise_surv_loglik(k, read; external_hazard = 0.01)
+        @test v ≈ pairwise_surv_loglik(k, capped; external_hazard = 0.01)
+        @test loglikelihood(ongoing, m) ≈ v
+
+        layout = compile_contact_pairs(ongoing; external = true)
+        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), ongoing, layout;
+            external_hazard = exp(θ[2]))
+        θ = [log(8.0), log(0.01)]
+        θhat = copy(θ)
+        for _ in 1:20
+            θhat -= ForwardDiff.hessian(g, θhat) \ ForwardDiff.gradient(g, θhat)
+        end
+        Σ = inv(-ForwardDiff.hessian(g, θhat))
+        se = sqrt.([Σ[1, 1], Σ[2, 2]])
+        @test all(abs.(θhat - θ) .< 3 .* se)
+    end
+
     @testset "differentiable in the kernel parameters (ForwardDiff, Mooncake)" begin
         adj = _random_graph(300, 900, StableRNG(12))
         m = ModelSpec(NetworkProcess(adj, Exponential(3.0)); progression = _seir(4.0))

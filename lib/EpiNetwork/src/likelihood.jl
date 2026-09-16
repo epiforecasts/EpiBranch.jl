@@ -9,7 +9,7 @@
 
 """
     NetworkInfections(contacts, infection_time, infectious_time, removal_time, is_index;
-                      obs_end = Inf)
+                      obs_end = Inf, followup_end = Inf)
 
 The infection layer of a network outbreak: the adjacency it spread over
 (`contacts[i]` lists the nodes `i` can infect, as for [`NetworkProcess`](@ref))
@@ -18,8 +18,9 @@ closing of its infectious window, and
 whether it was introduced from outside the network. `obs_end` is the time
 community introductions stop, as for [`NetworkProcess`](@ref); spread along the
 edges continues after it. It is only read when there is a community hazard.
-For data that end at a follow-up time, a node still infectious then takes that
-time as its removal time, as described for [`InfectionLayer`](@ref).
+`followup_end` is when observation of the data ends: the likelihood ignores
+infections and exposure after it, so a node still infectious then can keep a
+removal time of `Inf` (see [`InfectionLayer`](@ref)).
 
 The contact process is a density over these latent quantities. Read them out of
 a simulation with [`network_infections`](@ref), or augment them in inference.
@@ -33,22 +34,24 @@ struct NetworkInfections{T <: Real} <: InfectionLayer
     removal_time::Vector{T}
     is_index::Vector{Bool}
     obs_end::T
+    followup_end::T
     function NetworkInfections{T}(contacts, infection_time, infectious_time,
-            removal_time, is_index, obs_end) where {T <: Real}
+            removal_time, is_index, obs_end, followup_end) where {T <: Real}
         n = length(contacts)
         all(length(v) == n
         for v in (infection_time, infectious_time, removal_time, is_index)) ||
             throw(ArgumentError("contacts and the per-node vectors must cover the " *
                                 "same nodes"))
         return new{T}(contacts, infection_time, infectious_time, removal_time,
-            is_index, obs_end)
+            is_index, obs_end, followup_end)
     end
 end
 
 function NetworkInfections(contacts::AbstractVector{<:AbstractVector{<:Integer}},
-        infection_time, infectious_time, removal_time, is_index; obs_end = Inf)
+        infection_time, infectious_time, removal_time, is_index; obs_end = Inf,
+        followup_end = Inf)
     T = promote_type(eltype(infection_time), eltype(infectious_time),
-        eltype(removal_time), typeof(obs_end), Float64)
+        eltype(removal_time), typeof(obs_end), typeof(followup_end), Float64)
     adj = contacts isa Vector{Vector{Int}} ? contacts :
           Vector{Int}[Int.(nbrs) for nbrs in contacts]
     return NetworkInfections{T}(adj,
@@ -56,7 +59,8 @@ function NetworkInfections(contacts::AbstractVector{<:AbstractVector{<:Integer}}
         Vector{T}(infectious_time),
         Vector{T}(removal_time),
         Vector{Bool}(is_index),
-        T(obs_end))
+        T(obs_end),
+        T(followup_end))
 end
 
 Base.length(d::NetworkInfections) = length(d.contacts)
@@ -65,7 +69,8 @@ Base.length(d::NetworkInfections) = length(d.contacts)
 EpiBranch.contact_structure(d::NetworkInfections) = d.contacts
 
 """
-    network_infections(state, model::ModelSpec{<:NetworkProcess}) -> NetworkInfections
+    network_infections(state, model::ModelSpec{<:NetworkProcess};
+                       obs_end = model.process.obs_end, followup_end = Inf) -> NetworkInfections
     network_infections(state, process::NetworkProcess) -> NetworkInfections
 
 Read the infection layer out of a simulated `state`: the model's adjacency and,
@@ -76,9 +81,11 @@ transmission, such as by isolation or quarantine after tracing. The window is
 read from the same composed progression and interventions the simulation used,
 so the `simulate → loglikelihood` round trip is exact. A bare `NetworkProcess`
 is accepted too (its window opens at `:infection`, and it has no interventions).
+Pass `followup_end` to score the outbreak as if observation had stopped then.
 """
 function network_infections(state::SimulationState,
-        model::ModelSpec{<:NetworkProcess}; obs_end = model.process.obs_end)
+        model::ModelSpec{<:NetworkProcess}; obs_end = model.process.obs_end,
+        followup_end = Inf)
     process = model.process
     from = _resolve_infectious_from(process.from, model.progression)
     window = _shorthand_window(from, process.until)
@@ -100,7 +107,7 @@ function network_infections(state::SimulationState,
         end
     end
     return NetworkInfections(process.adjacency, infection, infectious, removal, index;
-        obs_end)
+        obs_end, followup_end)
 end
 
 function network_infections(state::SimulationState, process::NetworkProcess; kwargs...)
