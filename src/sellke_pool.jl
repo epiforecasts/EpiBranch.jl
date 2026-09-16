@@ -43,8 +43,9 @@ input is the mixing rule between types:
 
   - `force(type, counts)::Float64` is the per-susceptible force of infection on a
     susceptible of mixing type `type`, given `counts`, a `Dict` mapping each
-    mixing type to the number currently infectious of that type. It must be
-    piecewise-constant
+    mixing type to the infectiousness-weighted number currently infectious of
+    that type (each infective contributes its own `infectiousness`, 1 by
+    default, rather than a flat 1). It must be piecewise-constant
     between events, which it is: `counts` only changes at an infection, a window
     opening or a window closing. Homogeneous mixing is
     `force = (type, counts) -> beta / N * sum(values(counts))`.
@@ -52,9 +53,10 @@ input is the mixing rule between types:
 `n_initial` is the number of index cases seeded at time 0, `from` the state the
 infectious window opens at and `until` the removal states that close it. Each
 susceptible carries a fixed `Exponential(1)` resistance threshold and is infected
-the instant its accumulated pressure crosses it; pressure accumulates at the
-force felt by its mixing type. Writes per-individual state directly; the caller
-reconciles aggregate bookkeeping and applies observation.
+the instant its accumulated pressure, scaled by its own `susceptibility` (1 by
+default), crosses it; pressure accumulates at the force felt by its mixing
+type. Writes per-individual state directly; the caller reconciles aggregate
+bookkeeping and applies observation.
 """
 function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; mixing_by::Tuple = (), force, n_initial::Integer,
@@ -100,12 +102,17 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         typ[id] = Tuple(get(s, k, missing) for k in mixing_by)
     end
 
-    # Current infectious count per mixing type: one persistent Dict, mutated in
-    # place and handed to `force` (never reallocated). Every type present starts
-    # at 0, so index cases and susceptibles of any type key in without a miss.
-    counts = Dict{Any, Int}()
+    # Current infectiousness-weighted infectious count per mixing type: one
+    # persistent Dict, mutated in place and handed to `force` (never
+    # reallocated). Every type present starts at 0, so index cases and
+    # susceptibles of any type key in without a miss. Weighting by each
+    # infective's own `infectiousness` (1 by default, carrying T like every
+    # other pressure term) is the pool's reading of the built-in
+    # infectiousness trait: a case with half the infectiousness contributes
+    # half the force a default case would.
+    counts = Dict{Any, T}()
     for id in members
-        counts[typ[id]] = 0
+        counts[typ[id]] = zero(T)
     end
 
     open_heap = Tuple{T, Int}[]         # pending window-open (becomes infectious)
@@ -143,22 +150,34 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     # Susceptibles carry an Exponential(1) resistance threshold; within each group
     # consume thresholds in ascending order (a sorted vector with a front
     # pointer), so each group tracks its own next crossing.
+    #
+    # A susceptible's own `susceptibility` (1 by default) scales the pressure it
+    # feels, `Λ(t)·susceptibility ≥ Q`, so its *effective* threshold is
+    # `Q/susceptibility` — the group's shared pressure crosses it later exactly
+    # in proportion to how resistant this individual is. Dividing once here (and
+    # sorting on the result) keeps the rest of the race, which only ever compares
+    # against the group's pressure, unchanged; a susceptibility of 0 is an
+    # infinite threshold, never crossed.
     type_group = Dict{Any, Int}()    # type value → group index
     types = Any[]                       # group index → type value
     sus_by_group = Vector{Int}[]
-    Q_by_group = Vector{Float64}[]
+    # Carries T (e.g. a dual under AD), not hardcoded Float64: the effective
+    # threshold is arithmetic on susceptibility, which does too.
+    Q_by_group = Vector{T}[]
     for id in @view order[(n_initial + 1):end]
         tp = typ[id]
         g = get(type_group, tp, 0)
         if g == 0
             push!(types, tp)
             push!(sus_by_group, Int[])
-            push!(Q_by_group, Float64[])
+            push!(Q_by_group, T[])
             g = length(types)
             type_group[tp] = g
         end
         push!(sus_by_group[g], id)
-        push!(Q_by_group[g], rand(rng, Exponential(1.0)))
+        susceptibility = state.individuals[id].susceptibility
+        q = susceptibility > 0 ? rand(rng, Exponential(1.0)) / susceptibility : T(Inf)
+        push!(Q_by_group[g], q)
     end
     G = length(types)                   # number of susceptible groups in play
     for g in 1:G
@@ -219,12 +238,12 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             slot[lastid] = i
             pop!(infectious_ids)
             delete!(slot, id)
-            counts[typ[id]] -= 1
+            counts[typ[id]] -= state.individuals[id].infectiousness
         elseif t_open == t_event
             _, id = _heap_pop!(open_heap)
             push!(infectious_ids, id)
             slot[id] = length(infectious_ids)
-            counts[typ[id]] += 1
+            counts[typ[id]] += state.individuals[id].infectiousness
         else
             # Infection: the lowest-threshold susceptible in group `gstar` crosses
             # now. Its infector is drawn uniformly from all currently-infectious

@@ -48,6 +48,33 @@
         end
     end
 
+    @testset "transmission_traits susceptibility and infectiousness scale the pool" begin
+        # The pool's force is a built-in engine seam (`_sellke_pool!`), not a
+        # model-specific one, so `transmission_traits` should bear on it exactly
+        # as it does on the generation-based engine's default risk sources.
+        N = 2000
+        build(attrs) = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
+            progression = [Transition(:recovered; from = :infection,
+                delay = Exponential(1.0), terminal = true)],
+            attributes = attrs)
+        finals(attrs) = [simulate(build(attrs); rng = StableRNG(s), n_initial = 5).cumulative_cases
+                          for s in 1:20]
+        baseline = mean(finals(NoAttributes()))
+        @test mean(finals(transmission_traits(susceptibility = 0.3))) < baseline
+        @test mean(finals(transmission_traits(infectiousness = 0.3))) < baseline
+
+        # A trait of exactly zero blocks spread past the index cases entirely:
+        # no susceptible ever crosses an infinite threshold, and an all-zero
+        # infectiousness pool exerts no force at all.
+        none_susceptible = simulate(build(transmission_traits(susceptibility = 0.0));
+            rng = StableRNG(1), n_initial = 5)
+        @test none_susceptible.cumulative_cases == 5
+        none_infectious = simulate(build(transmission_traits(infectiousness = 0.0));
+            rng = StableRNG(1), n_initial = 5)
+        @test none_infectious.cumulative_cases == 5
+    end
+
     @testset "isolation shortens the outbreak" begin
         N = 1000
         base = ModelSpec(

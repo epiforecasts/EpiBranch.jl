@@ -145,6 +145,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   pair kernel directly, the continuous-time reading of a rate multiplier: a
   trait of exactly `0` blocks transmission along that pair entirely, and a
   fractional value thins it.
+- The same traits now bear on `HomogeneousProcess` too: infectiousness weights
+  each case's contribution to the pool's force, and susceptibility scales the
+  pressure each individual needs to accumulate before it is infected.
 
 ## [0.1.0] - 2026-06-16
 
