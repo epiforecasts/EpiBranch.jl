@@ -281,3 +281,40 @@ end
         parent).block_probability
     @test ForwardDiff.derivative(onward, 0.5) == 1.0
 end
+
+# `dose_delay` reaches the simulation through the schedule validation the
+# `ModelSpec` runs, which a derivative has to survive — for a lone ring dose as
+# much as for a prime-boost pair, since every ring dose is recorded there.
+@testset "AD through a scalar dose_delay" begin
+    clinical = clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+    ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+    process = BranchingProcess(Poisson(2.0), Exponential(5.0))
+    run_with(interventions) = simulate(
+        ModelSpec(process; interventions = interventions, attributes = clinical);
+        condition = 50:200, max_cases = 200, rng = StableRNG(31))
+    dosed(state, flag) = filter(ind -> get(ind.state, flag, false), state.individuals)
+    total_dose_time(state, flag, key) = sum(ind.state[key] for ind in dosed(state, flag))
+
+    # Each dose lands `dose_delay` days after its trace, so the derivative of
+    # the doses' total timing is the number of doses given.
+    single(delay) = total_dose_time(
+        run_with([iso, ct, RingVaccination(efficacy = 0.5, dose_delay = delay)]),
+        :vaccinated, :vaccination_time)
+    n_single = length(dosed(
+        run_with([iso, ct, RingVaccination(efficacy = 0.5, dose_delay = 7.0)]),
+        :vaccinated))
+    @test n_single > 0  # otherwise the test is vacuous
+    @test ForwardDiff.derivative(single, 7.0) == n_single
+
+    prime = RingVaccination(efficacy = 0.6, dose_label = :prime)
+    boost(delay) = RingVaccination(efficacy = 0.5, dose_delay = delay,
+        requires_dose = :prime, dose_label = :boost)
+    boosted(delay) = total_dose_time(run_with([iso, ct, prime, boost(delay)]),
+        :vaccinated_boost, :vaccination_time_boost)
+    n_boosted = length(dosed(run_with([iso, ct, prime, boost(28.0)]),
+        :vaccinated_boost))
+    @test n_boosted > 0  # otherwise the test is vacuous
+    @test ForwardDiff.derivative(boosted, 28.0) == n_boosted
+end
