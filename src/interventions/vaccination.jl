@@ -8,10 +8,13 @@ when. They share the [`competing_risk`](@ref) machinery: a vaccinated
 contact whose immunity has developed by their transmission time has
 their infection blocked with probability `efficacy`.
 
-`efficacy` accepts a `Real`, a `Distribution`, or a function
-`(rng, ind) -> Real`. The function/distribution forms sample once per
-vaccinated individual at vaccination time and store the result on the
-contact; the competing risk reads the stored value.
+`efficacy` and `delay_to_immunity` each accept a `Real`, a
+`Distribution`, or a function `(rng, ind) -> Real`. The
+function/distribution forms sample once per vaccinated individual at
+vaccination time and store the result on the contact; the competing risk
+reads the stored value, so an individual meets every exposure with the
+same efficacy and the same immunity time. A scalar is shared by everyone
+and stays on the intervention, so it writes no per-contact state.
 
 `mode` is an [`AbstractEffectMode`](@ref): [`LeakyMode`](@ref) (the
 default) reduces each exposure's success probability by `efficacy`,
@@ -67,8 +70,48 @@ no protection."""
 struct AllOrNothingMode <: AbstractEffectMode end
 
 """Time between vaccination and the onset of protective immunity. Added
-to the vaccination time to give the event time of the competing risk."""
+to the vaccination time to give the event time of the competing risk.
+
+The two-argument form gives the value in force for one individual: a
+scalar is shared by everyone and read straight off the intervention,
+while a varying delay was drawn when the dose was given and is read back
+from the individual's state."""
 delay_to_immunity(v::AbstractVaccination) = v.delay_to_immunity
+function delay_to_immunity(v::AbstractVaccination, ind)
+    _dose_value(delay_to_immunity(v), v, ind, _vaccine_immunity_delay_key, Inf)
+end
+
+"""Probability that a dose aborts an infection the individual already has.
+Zero for a vaccination with no post-exposure effect."""
+post_exposure_efficacy(::AbstractVaccination) = 0.0
+function post_exposure_efficacy(v::AbstractVaccination, ind)
+    _dose_value(post_exposure_efficacy(v), v, ind,
+        _vaccine_post_exposure_efficacy_key, 0.0)
+end
+
+"""Per-exposure probability that a vaccinated individual's onward
+transmission is blocked once their immunity has developed. Zero for a
+vaccination with no onward effect."""
+onward_efficacy(::AbstractVaccination) = 0.0
+function onward_efficacy(v::AbstractVaccination, ind)
+    _dose_value(onward_efficacy(v), v, ind, _vaccine_onward_efficacy_key, 0.0)
+end
+
+# A scalar parameter is the same for every individual, so it is read straight
+# off the intervention: no dictionary lookup in the competing risk, and a value
+# whose type carries a derivative (ForwardDiff) reaches the risk unchanged. Any
+# other form was drawn once when the dose was given, and the individual's stored
+# draw governs every one of its exposures. `key` is applied to the dose label
+# only on the varying branch, so the scalar path builds no `Symbol`.
+_dose_value(x::Real, v, ind, key, default) = x
+_dose_value(_, v, ind, key, default) = get(ind.state, key(dose_label(v)), default)
+
+# Whether a parameter could be non-zero for some individual, which decides
+# whether a risk is worth building at all. A scalar answers for everyone, a
+# distribution answers from its support, and a callable is opaque.
+_can_be_nonzero(x::Real) = x > 0
+_can_be_nonzero(d::Distribution) = maximum(d) > 0
+_can_be_nonzero(_) = true
 
 """Label of the dose a contact must already have received before this
 vaccination is given, or `nothing` when it requires no earlier dose."""
@@ -88,6 +131,18 @@ function _vaccination_time_key(label::Symbol)
 end
 function _vaccine_efficacy_key(label::Symbol)
     label === :default ? :vaccine_efficacy : Symbol("vaccine_efficacy_", label)
+end
+function _vaccine_immunity_delay_key(label::Symbol)
+    label === :default ? :vaccine_immunity_delay :
+    Symbol("vaccine_immunity_delay_", label)
+end
+function _vaccine_post_exposure_efficacy_key(label::Symbol)
+    label === :default ? :vaccine_post_exposure_efficacy :
+    Symbol("vaccine_post_exposure_efficacy_", label)
+end
+function _vaccine_onward_efficacy_key(label::Symbol)
+    label === :default ? :vaccine_onward_efficacy :
+    Symbol("vaccine_onward_efficacy_", label)
 end
 
 function initialise_individual!(v::AbstractVaccination, individual, state)
@@ -122,7 +177,8 @@ function _susceptibility_risk(v::AbstractVaccination, contact)
     # post-exposure-only setup (`efficacy = 0.0`) does not build and discard a
     # risk for every contact.
     eff <= 0 && return nothing
-    return Risk(event_time = vacc_t + delay_to_immunity(v), block_probability = eff)
+    return Risk(event_time = vacc_t + delay_to_immunity(v, contact),
+        block_probability = eff)
 end
 
 function competing_risk(v::AbstractVaccination, parent, contact, state)
@@ -131,12 +187,28 @@ end
 
 # Helper for concrete subtypes: write per-dose state on a contact at
 # vaccination time. Samples efficacy via `_sample_value` so scalar,
-# distribution, and function forms all work.
+# distribution, and function forms all work. The parameters that can vary
+# between individuals are drawn here too, once per dose, so that an individual
+# meets each of its exposures with the same values.
 function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     label = dose_label(v)
     contact.state[_vaccinated_key(label)] = true
     contact.state[_vaccination_time_key(label)] = vacc_t
     contact.state[_vaccine_efficacy_key(label)] = _sample_value(v.efficacy, rng, contact)
+    _sample_and_store!(delay_to_immunity(v), contact, _vaccine_immunity_delay_key,
+        label, rng)
+    _sample_and_store!(post_exposure_efficacy(v), contact,
+        _vaccine_post_exposure_efficacy_key, label, rng)
+    _sample_and_store!(onward_efficacy(v), contact, _vaccine_onward_efficacy_key,
+        label, rng)
+    return nothing
+end
+
+# A scalar parameter needs no per-individual draw and writes no state key, which
+# keeps a scalar dose's random stream and its line-list columns as they were.
+_sample_and_store!(x::Real, ind, key, label, rng) = nothing
+function _sample_and_store!(x, ind, key, label, rng)
+    ind.state[key(label)] = _sample_value(x, rng, ind)
     return nothing
 end
 
@@ -152,7 +224,11 @@ For post-exposure prophylaxis (PEP, cf.
 `onward_efficacy` (below) set what it does to an infection the contact
 already has. For ring vaccination with a vaccine that takes
 time to confer protection, set `delay_to_immunity` to the appropriate
-delay.
+delay, as a `Real`, a `Distribution` for a vaccine whose protection
+takes anywhere from one to three weeks to develop, or a `Function`
+`(rng, contact) -> Real`. The varying forms are drawn once, when the
+dose is given, so a contact keeps the same immunity time against every
+exposure.
 
 `coverage` is the per-contact probability that a traced contact
 actually receives the vaccine, capturing programme reach (consent
@@ -199,8 +275,9 @@ infection with the same probability, which is all it can do for a contact
 with no onset to race (asymptomatic, `NaN` incubation period). Unlike
 `efficacy`, `post_exposure_efficacy` acts when a contact is traced after
 its infector isolates, provided the trace does not quarantine it (see the
-warning below). Defaults to `0.0`. Requires `:incubation_period`, set by
-[`clinical_presentation`](@ref).
+warning below). Defaults to `0.0`. Accepts a `Real`, `Distribution`, or
+`Function` `(rng, contact) -> Real`, drawn once when the dose is given.
+Requires `:incubation_period`, set by [`clinical_presentation`](@ref).
 
 `post_exposure_efficacy` already blocks every exposure that `efficacy`
 would. Set one or the other: setting both composes the two blocks
@@ -210,7 +287,9 @@ independently, which double-counts.
 parent's* onward transmission is blocked once the parent's
 vaccine-induced immunity has developed, so it also averts onward cases
 from contacts already exposed when vaccinated. Defaults to `0.0` (no
-onward effect). Unlike `post_exposure_efficacy`, it leaves the infection
+onward effect), and accepts the same `Real | Distribution | Function`
+set, drawn once when the dose is given. Unlike
+`post_exposure_efficacy`, it leaves the infection
 and its disease in place: each transmission after immunity is blocked
 with this probability whenever the contact's onset falls.
 `post_exposure_efficacy` ends the whole infection, and only for contacts
@@ -243,15 +322,21 @@ Requires `:traced` (set by [`ContactTracing`](@ref)).
     infected before its dose.
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
-`:vaccine_efficacy` for the default dose label. With a non-default
-`dose_label`, the keys carry the label as a suffix.
+`:vaccine_efficacy` for the default dose label, plus
+`:vaccine_immunity_delay`, `:vaccine_post_exposure_efficacy` and
+`:vaccine_onward_efficacy` where those parameters vary between
+individuals. With a non-default `dose_label`, the keys carry the label as
+a suffix.
 
 # Second and later doses
 
 A dose is given at the trace, or `dose_delay` days after it.
-`requires_dose` names a dose label the contact must have received by the
-time this dose falls due; a contact without it does not get this dose. A
-prime-boost schedule is two `RingVaccination`s:
+`dose_delay` accepts a `Real`, a `Distribution` for a booster due four to
+six weeks after the prime, or a `Function` `(rng, contact) -> Real`; it
+is drawn once, when the dose is scheduled. `requires_dose` names a dose
+label the contact must have received by the time this dose falls due; a
+contact without it does not get this dose. A prime-boost schedule is two
+`RingVaccination`s:
 
 ```julia
 [
@@ -271,7 +356,12 @@ dose may come from any vaccination, such as a [`MassVaccination`](@ref)
 prime; a contact whose prime falls after the boost's due date is not
 boosted. Between two ring doses, a `dose_delay` shorter than the required
 dose's is rejected when the `ModelSpec` is built, since such a boost could
-never be given.
+never be given. A `dose_delay` drawn from a distribution is judged on its
+support: the boost is rejected when even its longest delay falls before
+the prime's shortest, and warned about when the two supports overlap, so
+that boosts silently skipped for the contacts whose draws come out in the
+wrong order are not a surprise. A `dose_delay` given as a function is
+opaque and goes unchecked.
 
 Doses compose as competing risks, so a schedule reaching 80% protection
 in total from a prime at 60% needs `efficacy = 0.5` on the boost
@@ -283,23 +373,30 @@ infected in the meantime, because infection is resolved after the doses
 are given. Dose counts for later doses are therefore counts of doses
 scheduled.
 """
-Base.@kwdef struct RingVaccination{E, C, W, M <: AbstractEffectMode} <: AbstractVaccination
+Base.@kwdef struct RingVaccination{E, C, D, S, W, P, O, M <: AbstractEffectMode} <:
+                   AbstractVaccination
     efficacy::E
     coverage::C = 1.0
-    delay_to_immunity::Float64 = 0.0
-    dose_delay::Float64 = 0.0
+    delay_to_immunity::D = 0.0
+    dose_delay::S = 0.0
     requires_dose::Union{Nothing, Symbol} = nothing
     eligibility_window::W = Inf
-    post_exposure_efficacy::Float64 = 0.0
-    onward_efficacy::Float64 = 0.0
+    post_exposure_efficacy::P = 0.0
+    onward_efficacy::O = 0.0
     mode::M = LeakyMode()
     dose_label::Symbol = :default
 end
 
 function required_fields(rv::RingVaccination)
-    rv.post_exposure_efficacy > 0.0 ? [:traced, :incubation_period] : [:traced]
+    _can_be_nonzero(rv.post_exposure_efficacy) ? [:traced, :incubation_period] :
+    [:traced]
 end
 required_dose(rv::RingVaccination) = rv.requires_dose
+post_exposure_efficacy(rv::RingVaccination) = rv.post_exposure_efficacy
+onward_efficacy(rv::RingVaccination) = rv.onward_efficacy
+
+"""Days from the trace to this dose."""
+dose_delay(rv::RingVaccination) = rv.dose_delay
 
 # Onward-infectiousness risk: blocks the parent → contact transmission
 # iff this dose has been administered to the *parent* and the parent's
@@ -308,13 +405,15 @@ required_dose(rv::RingVaccination) = rv.requires_dose
 # was traced, and the onward immunity takes effect at that time plus
 # `delay_to_immunity`, as on the susceptibility side.
 function _onward_risk(rv::RingVaccination, parent)
-    rv.onward_efficacy > 0.0 || return nothing
+    _can_be_nonzero(rv.onward_efficacy) || return nothing
     label = dose_label(rv)
     get(parent.state, _vaccinated_key(label), false) || return nothing
     vacc_t = get(parent.state, _vaccination_time_key(label), Inf)
     isfinite(vacc_t) || return nothing
-    return Risk(event_time = vacc_t + delay_to_immunity(rv),
-        block_probability = rv.onward_efficacy)
+    eff = onward_efficacy(rv, parent)
+    eff > 0 || return nothing
+    return Risk(event_time = vacc_t + delay_to_immunity(rv, parent),
+        block_probability = eff)
 end
 
 # Contact-side risk. `efficacy` blocks an exposure that comes after immunity,
@@ -325,14 +424,17 @@ end
 # time, so they combine into one block, drawn once.
 function _contact_risk(rv::RingVaccination, contact)
     susceptibility = _susceptibility_risk(rv, contact)
-    post = rv.post_exposure_efficacy
+    # A contact with no dose of this vaccination has nothing stored, so the
+    # varying forms read zero here and fall back to the susceptibility risk.
+    post = post_exposure_efficacy(rv, contact)
     post > 0.0 || return susceptibility
     if susceptibility === nothing
         label = dose_label(rv)
         get(contact.state, _vaccinated_key(label), false) || return nothing
         vacc_t = get(contact.state, _vaccination_time_key(label), Inf)
         isfinite(vacc_t) || return nothing
-        return Risk(event_time = vacc_t + delay_to_immunity(rv), block_probability = post)
+        return Risk(event_time = vacc_t + delay_to_immunity(rv, contact),
+            block_probability = post)
     end
     return Risk(event_time = susceptibility.event_time,
         block_probability = 1 - (1 - susceptibility.block_probability) * (1 - post))
@@ -355,16 +457,16 @@ end
 # (`_drop_stale_abort!`), and a contact that escaped it gets a fresh draw at its
 # next exposure.
 #
-# Callers check `post_exposure_efficacy > 0` first: the vaccination time comes
-# untyped from the contact's state, so an unconditional call would dispatch
-# dynamically for every vaccinated contact of a dose that cannot abort.
+# Callers check `_can_be_nonzero(post_exposure_efficacy)` first: the vaccination
+# time comes untyped from the contact's state, so an unconditional call would
+# dispatch dynamically for every vaccinated contact of a dose that cannot abort.
 function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     incubation = get(contact.state, :incubation_period, NaN)
     isnan(incubation) && return nothing
-    immunity = vacc_t + delay_to_immunity(rv)
+    immunity = vacc_t + delay_to_immunity(rv, contact)
     exposure = contact.infection_time
     exposure < immunity < exposure + incubation || return nothing
-    _covers(rv.post_exposure_efficacy, contact, rng) || return nothing
+    _covers(post_exposure_efficacy(rv, contact), contact, rng) || return nothing
     # An earlier dose may already have aborted it; the infection ends at the
     # first abort.
     contact.state[:infection_aborted_time] = min(
@@ -425,7 +527,7 @@ it is never given. Other schedules are checked per contact when the dose
 falls due.
 """
 function _validate_dose_schedule(interventions)
-    given = Dict{Symbol, Union{Nothing, Float64}}()
+    given = Dict{Symbol, Union{Nothing, Tuple{Float64, Float64}}}()
     for iv in interventions
         vacc = _unwrap_scheduled(iv)
         vacc isa AbstractVaccination || continue
@@ -437,18 +539,37 @@ function _validate_dose_schedule(interventions)
                 "vaccination with dose_label = :$label requires dose :$req, " *
                 "which is not given earlier in the intervention stack. " *
                 "List a dose after the dose it requires."))
-            req_offset = given[req]
-            if offset !== nothing && req_offset !== nothing && offset < req_offset
-                throw(ArgumentError(
-                    "vaccination with dose_label = :$label requires dose :$req " *
-                    "but is scheduled earlier than it ($offset days after the " *
-                    "trace, compared with $req_offset). A dose cannot be given " *
-                    "before the dose it requires."))
-            end
+            _check_dose_order(label, req, offset, given[req])
         end
         given[label] = offset
         _warn_double_counted_efficacy(vacc)
     end
+    return nothing
+end
+
+# Both ring doses are timed from the same trace, so their `dose_delay`s decide
+# whether the later dose can be given at all. A delay drawn from a distribution
+# is judged on its support: a dose whose latest possible delay still falls before
+# the earliest possible delay of the dose it requires could never be given, and
+# is rejected as a scalar one would be. Supports that merely overlap describe a
+# schedule that boosts some contacts and, for the rest, draws the boost before
+# the prime and skips it — worth a warning, since the reason for the missing
+# doses is otherwise invisible. A delay given as a callable cannot be read
+# statically and goes unchecked.
+function _check_dose_order(label, req, offset, req_offset)
+    (offset === nothing || req_offset === nothing) && return nothing
+    lo, hi = offset
+    req_lo, req_hi = req_offset
+    hi < req_lo && throw(ArgumentError(
+        "vaccination with dose_label = :$label requires dose :$req but is " *
+        "scheduled earlier than it (a dose_delay of at most $hi days after the " *
+        "trace, against at least $req_lo for dose :$req). A dose cannot be " *
+        "given before the dose it requires."))
+    lo < req_hi && @warn "A dose_delay drawn as low as $lo days after the " *
+          "trace can fall before dose :$req, which this dose " *
+          "requires and which can take up to $req_hi days. " *
+          "Contacts whose draws come out in that order go " *
+          "without this dose." dose_label=label
     return nothing
 end
 
@@ -460,7 +581,7 @@ end
 # efficacy is left alone.
 _warn_double_counted_efficacy(::AbstractVaccination) = nothing
 function _warn_double_counted_efficacy(rv::RingVaccination)
-    rv.post_exposure_efficacy > 0.0 || return nothing
+    _can_be_nonzero(rv.post_exposure_efficacy) || return nothing
     rv.efficacy isa Real && rv.efficacy > 0.0 || return nothing
     @warn "RingVaccination sets both `efficacy` and `post_exposure_efficacy`, "*
           "which compose as independent risks and so over-protect any contact "*
@@ -469,10 +590,16 @@ function _warn_double_counted_efficacy(rv::RingVaccination)
     return nothing
 end
 
-"""Days from the trace to this dose, or `nothing` for a vaccination not timed
-from the trace. [`RingVaccination`](@ref) is the only one timed from it."""
+"""Bounds `(lo, hi)` on the days from the trace to this dose, or `nothing` when
+they cannot be read: a vaccination not timed from the trace, or a `dose_delay`
+given as a callable. [`RingVaccination`](@ref) is the only one timed from the
+trace."""
 _dose_offset(::AbstractVaccination) = nothing
-_dose_offset(rv::RingVaccination) = rv.dose_delay
+_dose_offset(rv::RingVaccination) = _delay_bounds(dose_delay(rv))
+
+_delay_bounds(x::Real) = (float(x), float(x))
+_delay_bounds(d::Distribution) = (float(minimum(d)), float(maximum(d)))
+_delay_bounds(_) = nothing
 
 # The intervention inside a wrapper; `Scheduled` adds a method.
 _unwrap_scheduled(iv) = iv
@@ -485,7 +612,7 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
         if get(ind.state, vacc_key, false)
             # Dosed in an earlier generation and exposed again: the dose stays,
             # and the abort draw is made against this exposure.
-            rv.post_exposure_efficacy > 0.0 &&
+            _can_be_nonzero(rv.post_exposure_efficacy) &&
                 _abort_infection!(rv, ind, ind.state[_vaccination_time_key(label)],
                     state.rng)
             continue
@@ -496,21 +623,24 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
         # reached only when something other than `ContactTracing` set
         # `:traced`, or when the trace time was `NaN` and so was not recorded.
         # A contact recorded as never reached (an infinite trace time) is not
-        # vaccinated. The `haskey` branch avoids evaluating a `get` default for
-        # every contact.
+        # vaccinated, and is skipped before the delay is drawn so that an
+        # unreachable contact leaves the random stream untouched. The `haskey`
+        # branch avoids evaluating a `get` default for every contact.
         trace_t = if haskey(ind.state, :trace_time)
             ind.state[:trace_time]
         else
             min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
         end
-        vacc_t = trace_t + rv.dose_delay
+        isfinite(trace_t) || continue
+        vacc_t = trace_t + _sample_value(dose_delay(rv), state.rng, ind)
         isfinite(vacc_t) || continue
         _has_required_dose(rv, ind, vacc_t) || continue
         _within_eligibility_window(rv.eligibility_window, ind, vacc_t, state.rng) ||
             continue
         _covers(rv.coverage, ind, state.rng) || continue
         _record_vaccination!(rv, ind, vacc_t, state.rng)
-        rv.post_exposure_efficacy > 0.0 && _abort_infection!(rv, ind, vacc_t, state.rng)
+        _can_be_nonzero(rv.post_exposure_efficacy) &&
+            _abort_infection!(rv, ind, vacc_t, state.rng)
     end
     return nothing
 end
@@ -535,14 +665,18 @@ own transmission time.
   age-stratified rollout or any other state-dependent schedule.
   Return `Inf` for individuals who never become eligible.
 
-`efficacy` accepts the same `Real | Distribution | Function` set,
-sampled once per vaccinated contact. Per-individual heterogeneous
-efficacy (e.g. age-dependent) is set via the function form.
+`efficacy` and `delay_to_immunity` accept the same
+`Real | Distribution | Function` set, sampled once per vaccinated
+contact. Per-individual heterogeneous efficacy (e.g. age-dependent) is
+set via the function form, and a vaccine whose immunity takes one to
+three weeks to develop by giving `delay_to_immunity` a distribution.
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
-`:vaccine_efficacy` for the default dose label. With a non-default
-`dose_label`, the keys carry the label as a suffix — pass two
-`MassVaccination`s with different labels for a multi-dose rollout.
+`:vaccine_efficacy` for the default dose label, plus
+`:vaccine_immunity_delay` where `delay_to_immunity` varies between
+individuals. With a non-default `dose_label`, the keys carry the label as
+a suffix — pass two `MassVaccination`s with different labels for a
+multi-dose rollout.
 
 # Examples
 
@@ -552,12 +686,13 @@ Whole population eligible on day 30:
 MassVaccination(efficacy = 0.85, eligibility_time = 30.0)
 ```
 
-Per-individual rollout draws from a distribution:
+Per-individual rollout draws from a distribution, and so does the time
+each contact takes to develop immunity:
 
 ```julia
 MassVaccination(efficacy = 0.85,
     eligibility_time = Exponential(60.0),
-    delay_to_immunity = 14.0)
+    delay_to_immunity = Uniform(7.0, 21.0))
 ```
 
 Age-stratified rollout (65+ on day 30, younger on day 90), with
@@ -582,10 +717,11 @@ Prime-and-boost schedule (compose two instances with different labels):
 ]
 ```
 """
-Base.@kwdef struct MassVaccination{E, T, M <: AbstractEffectMode} <: AbstractVaccination
+Base.@kwdef struct MassVaccination{E, T, D, M <: AbstractEffectMode} <:
+                   AbstractVaccination
     efficacy::E
     eligibility_time::T
-    delay_to_immunity::Float64 = 0.0
+    delay_to_immunity::D = 0.0
     mode::M = LeakyMode()
     dose_label::Symbol = :default
 end
