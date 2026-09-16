@@ -173,8 +173,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         data = household_infections(state, m)
         @test count(data.is_index) == 1500            # one index per household
 
-        rows = first(EpiHouseholds._survival_rows(data))
-        ll(s) = pairwise_surv_loglik(Exponential(s), rows)
+        layout = compile_household_pairs(data)
+        ll(s) = pairwise_surv_loglik(Exponential(s), data, layout)
         @test ll(true_scale) > ll(true_scale / 2)
         @test ll(true_scale) > ll(true_scale * 2)
         grid = 2.0:0.5:6.0
@@ -230,10 +230,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test count(data.is_index) >= 1
         @test isfinite(loglikelihood(data, m))          # dispatched form with external
 
-        rows, _, is_ext = EpiHouseholds._survival_rows(
-            data; external = true, obs_end = Tobs)
-        extdist = Exponential(1 / 0.05)
-        ll(s) = pairwise_surv_loglik(r -> is_ext[r] ? extdist : Exponential(s), rows)
+        layout = compile_household_pairs(data; external = true)
+        ll(s) = pairwise_surv_loglik(Exponential(s), data, layout; external_hazard = 0.05)
         grid = 1.5:0.5:5.0
         @test abs(grid[argmax([ll(s) for s in grid])] - true_scale) <= 1.5
     end
@@ -328,8 +326,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
 
     @testset "compiled pair layout matches the dynamic path (shared kernel)" begin
         # the layout captures the fixed row structure once; evaluating it over a
-        # grid of kernel scales must reproduce the dynamic HouseholdInfections
-        # path exactly (up to row order) while the same layout object is reused.
+        # grid of kernel scales must reproduce the two-argument form, which
+        # compiles a layout per call, while the same layout object is reused.
         m = ModelSpec(HouseholdProcess(fill(4, 500), Exponential(3.0));
             progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(101)), m)
@@ -355,8 +353,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
 
     @testset "compiled pair layout matches the dynamic path (external hazard)" begin
         # with a community term every susceptible also carries an external row;
-        # the layout must be built with external=true and agree with the dynamic
-        # external path across kernel scales.
+        # the layout must be built with external=true and agree with the
+        # two-argument form across kernel scales.
         Tobs = 30.0
         m = ModelSpec(
             HouseholdProcess(fill(4, 500), Exponential(3.0);
@@ -381,8 +379,9 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
     end
 
     @testset "compiled pair layout: covariate (per-pair) kernel" begin
-        # a two-argument (infector, susceptible) -> Distribution kernel routes
-        # through _pair on both the dynamic and the compiled path, so they agree.
+        # a two-argument (infector, susceptible) -> Distribution kernel is
+        # resolved per row on both paths, so a reused layout and one compiled
+        # per call agree.
         m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
             progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(103)), m)

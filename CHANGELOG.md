@@ -62,6 +62,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   over each possible infector's whole infectious window. Household likelihood
   values with a community hazard change as a result; values without one are
   unchanged.
+- `EpiHouseholds` now reaches EpiBranch's shared pairwise likelihood through
+  every form, not only the one taking a compiled layout. Its own implementation
+  of `pairwise_surv_loglik(kernel, data::HouseholdInfections; external_hazard)`
+  is gone, so the two-argument form compiles a `ContactPairsLayout` like any
+  other contact structure. Values match the retired implementation to summation
+  order (a relative difference around 1e-14 on 1,500 households of four), and
+  evaluation is faster: 1.1 ms against 1.7 ms without a community hazard, and
+  1.7 ms against 7.9 ms with one.
 
 ### Fixed
 
