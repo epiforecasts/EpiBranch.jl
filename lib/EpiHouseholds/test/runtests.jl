@@ -324,10 +324,14 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test 0 < count(df.reported) < size(df, 1)       # ~half detected, not all
     end
 
-    @testset "compiled pair layout matches the dynamic path (shared kernel)" begin
-        # the layout captures the fixed row structure once; evaluating it over a
-        # grid of kernel scales must reproduce the two-argument form, which
-        # compiles a layout per call, while the same layout object is reused.
+    @testset "a reused layout matches a freshly compiled one (shared kernel)" begin
+        # the two-argument form is the three-argument one with a layout compiled
+        # on the spot, so this is not an independent check of the density — that
+        # cross-check against hand-built counting-process rows lives in the root
+        # suite, in "evaluation matches hand-built counting-process rows". What
+        # it does check is that evaluating a layout leaves it unchanged, so one
+        # object reused across a grid of kernel scales keeps agreeing with a
+        # fresh one. That is the property inference relies on.
         m = ModelSpec(HouseholdProcess(fill(4, 500), Exponential(3.0));
             progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(101)), m)
@@ -343,7 +347,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
                   pairwise_surv_loglik(Exponential(s), data)
         end
 
-        # single-arg constructor reads the at-risk mask off the data and agrees
+        # the single-argument constructor derives the at-risk mask from the data,
+        # and must land on the same layout as passing that mask explicitly
         layout1 = compile_household_pairs(data.household_of, data.is_index,
             .!isnan.(data.infection_time))
         @test length(layout1) == length(layout)
@@ -351,10 +356,10 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
               pairwise_surv_loglik(Exponential(3.0), data, layout)
     end
 
-    @testset "compiled pair layout matches the dynamic path (external hazard)" begin
+    @testset "a reused layout matches a freshly compiled one (external hazard)" begin
         # with a community term every susceptible also carries an external row;
-        # the layout must be built with external=true and agree with the
-        # two-argument form across kernel scales.
+        # the layout must be built with external=true, and reusing it across
+        # kernel scales must keep agreeing with a layout compiled per call.
         Tobs = 30.0
         m = ModelSpec(
             HouseholdProcess(fill(4, 500), Exponential(3.0);
@@ -427,8 +432,9 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
 
         ll(θ; by_infector = true) = pairwise_surv_loglik(
             kernel(exp.(θ)...; by_infector), data, layout)
-        # the compiled layout and the dynamic form agree for the covariate kernel,
-        # and `loglikelihood` on the model passes its own kernel the same way
+        # a reused layout and one compiled per call agree for the covariate
+        # kernel, and `loglikelihood` on the model passes its own kernel the
+        # same way
         for θ in (log.(truth), log.([2.0, 5.0]), log.([6.0, 3.0]))
             @test ll(θ) ≈ pairwise_surv_loglik(kernel(exp.(θ)...), data)
         end
@@ -460,12 +466,13 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test ll(θ̂) > swapped(newton(swapped, log.([4.0, 4.0]))) + 10
     end
 
-    @testset "compiled pair layout: differentiable and matches dynamic gradient" begin
+    @testset "a reused layout carries AD duals like a freshly compiled one" begin
         # the fast path exists to be differentiated in the kernel parameters
         # (its whole reason for being reused across gradient evaluations). The
         # fitted parameter rides the kernel, not the data, so the layout must
         # carry the AD duals through both the cumulative-hazard pass and the
-        # per-susceptible log-sum-exp. Checked in all three kernel modes.
+        # per-susceptible log-sum-exp, and must still do so after being
+        # evaluated. Checked in all three kernel modes.
         m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
             progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(104)), m)
@@ -523,6 +530,7 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test 3 in layout.sus_unique && 2 in layout.sus_unique
         @test !(1 in layout.sus_unique)
 
+        # and the reused layout keeps agreeing with one compiled per call
         for s in 1.0:1.0:5.0
             @test pairwise_surv_loglik(Exponential(s), data, layout) ≈
                   pairwise_surv_loglik(Exponential(s), data)
@@ -540,7 +548,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         # a household where the sole housemate escapes: the index recovers at
         # t=3 and member 2 is never infected. There is still one structural row
         # (member 2 at risk from the index), whose only contribution is the
-        # escaped cumulative hazard — finite and equal to the dynamic path.
+        # escaped cumulative hazard — finite, and the same however the layout
+        # was obtained.
         lone = HouseholdInfections([1, 1], [0.0, NaN], [0.0, NaN], [3.0, Inf],
             [true, false])
         llayout = compile_household_pairs(lone)
@@ -655,8 +664,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         # the documented workflow: the household structure is fixed, so the layout
         # is compiled once and reused across every gradient evaluation of the fit.
         # Recovering the kernel scale by Newton MLE — feeding the same layout to
-        # every step — must land on the same optimum as the dynamic path and near
-        # the truth.
+        # every step — must land on the same optimum as compiling a layout per
+        # call, and near the truth.
         true_scale = 4.0
         m = ModelSpec(HouseholdProcess(fill(4, 800), Exponential(true_scale));
             progression = _sir(6.0))
@@ -678,10 +687,10 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
 
         x_fast = mle(f_fast)
         x_dyn = mle(f_dyn)
-        @test x_fast ≈ x_dyn                              # same optimum as dynamic path
+        @test x_fast ≈ x_dyn                              # same optimum either way
         @test isapprox(exp(-x_fast), true_scale; rtol = 0.2)  # recovers the scale
 
-        # a scan reusing the one layout object matches the dynamic scan pointwise
+        # a scan reusing the one layout object matches a per-call scan pointwise
         grid = 2.0:0.5:6.0
         @test [f_fast(log(1 / s)) for s in grid] ≈ [f_dyn(log(1 / s)) for s in grid]
     end
