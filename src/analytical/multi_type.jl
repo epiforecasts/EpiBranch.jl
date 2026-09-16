@@ -7,8 +7,8 @@
 # independent per-type PGFs only when G_j is Poisson.
 
 # Total-count law of a type-`j` parent. A sink type (zero column) has no
-# offspring. Its law is `Dirac(0)`, so `dist_fn`, which may reject R = 0, is
-# never called with R = 0.
+# offspring, so its law is `Dirac(0)` and `dist_fn`, which may reject R = 0, is
+# never called for it.
 function _total_count_law(o::MultiTypeOffspring, j::Integer)
     R = o.R_by_type[j]
     return R > 0 ? o.dist_fn(R) : Dirac(0)
