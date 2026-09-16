@@ -171,12 +171,15 @@ function resolve_individual!(iso::Isolation, individual, state)
     # Isolation fires at the earlier of any active pathway. A
     # test-negative-but-traced contact is still isolated via tracing.
     #
-    # The traced pathway isolates a flagged contact once it has symptoms, so it
-    # never isolates a contact with no onset. That includes a contact whose
-    # infection was aborted before onset after the trace had recorded its
-    # expected onset.
+    # The traced pathway isolates a flagged contact once it has symptoms, so a
+    # contact with no onset never isolates through it. That includes a contact
+    # whose infection was aborted before onset, after the trace had already
+    # recorded its expected onset. A continuous-time model traces a contact
+    # before its own infection is settled, when the onset is not yet known, so
+    # the recorded time is held back to the onset.
     onset = onset_time(individual)
-    traced_time = isnan(onset) ? Inf : get(individual.state, :traced_isolation_time, Inf)
+    traced_time = isnan(onset) ? Inf :
+                  max(get(individual.state, :traced_isolation_time, Inf), onset)
     test_time = if is_test_positive(individual)
         onset + rand(state.rng, iso.onset_to_isolation_delay)
     else

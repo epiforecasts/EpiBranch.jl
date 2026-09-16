@@ -33,6 +33,23 @@ Network transmission over several routes at once.
   tracing. Leave it at `:infection` for standing relationships, which tracing
   reaches as on `NetworkProcess`; give a funeral route `contacts_from = :died`
   so its contacts are traced only if the funeral happened, and not before it.
+- `traceable`: the probability that a case can name a neighbour on this route.
+  Contact tracing reaches only named neighbours. Keep the default `1.0` for
+  people a case can always name, such as its household, and lower it for a
+  route of casual contact.
+
+The model decides naming once for each pair of case and neighbour, when it
+passes the case's contacts to tracing. A neighbour reachable on several routes
+is named with the highest of their `traceable` probabilities: someone a case
+both lives with and sees in the community can be named because they live
+together. The model draws a single uniform number `u` from the simulation's
+random number generator, and the neighbour is nameable on every route whose
+`traceable` exceeds `u`. It can be traced from the earliest `contacts_from` time
+among those routes. Each route on its own therefore names the neighbour with its
+own probability, and together they name it with the highest. The intervention
+then traces a named neighbour with its own probability, so the two multiply. A
+neighbour reachable only on routes at `1.0` or `0.0` needs no draw, so routes
+left at the default use no random numbers for naming.
 
 All routes run over the same node set, so every adjacency must have the same
 length.
@@ -64,6 +81,10 @@ isolates keeps infecting its household to the end of its infectious period,
 which is what self-isolation at home actually does. `R` is unchanged by any of
 this: it stays what the case would achieve if never removed, and the realised
 figure falls out of which routes were cut.
+
+With contact tracing, `traceable = 0.2` on the community route means a case can
+name only one community contact in five, while it can name everyone it lives
+with. A household member who is also a community contact is always nameable.
 """
 struct RoutedNetwork{W <: AbstractVector, E} <: TransmissionModel
     windows::W                       # RouteWindows; each `reach` is an adjacency list
@@ -93,12 +114,17 @@ function RoutedNetwork(windows::AbstractVector{<:RouteWindow};
     # the stored routes are the ones the simulation runs and `window_open` on
     # them agrees with it.
     if from !== nothing
-        windows = [w.from === nothing ?
-                   RouteWindow(w.name, from, w.until, w.kernel, w.reach, w.contacts_from) :
-                   w for w in windows]
+        windows = [_start_unset(w, from) for w in windows]
     end
     return RoutedNetwork(windows, from, _normalise_external(external_hazard),
         obs_end_value, n)
+end
+
+# A route that leaves its start unset takes `from`.
+function _start_unset(w::RouteWindow, from)
+    w.from === nothing || return w
+    return RouteWindow(w.name, from, w.until, w.kernel, w.reach, w.contacts_from,
+        w.traceable)
 end
 
 population_size(::RoutedNetwork) = NoPopulation()
@@ -115,11 +141,22 @@ EpiBranch.supplies_contacts(::RoutedNetwork) = true
 # if the event never happened or the route was cut before it (a survivor's
 # funeral, or a safe burial after isolation), and its contacts are traced no
 # earlier than the event.
-function _route_contacts(windows, interventions, ind::Individual, i::Integer)
+#
+# Only contacts the case can name reach tracing. One uniform draw per neighbour
+# decides naming on all its routes at once: the neighbour is nameable on each
+# route whose `traceable` exceeds the draw, so it is named with the highest
+# route probability and traced from the earliest time among the routes it was
+# named on. Routes at exactly 0 or 1 decide without a draw, as does a neighbour
+# that a route at 1 already names from its earliest time, so a fully traceable
+# model uses no random numbers here.
+function _route_contacts(windows, interventions, ind::Individual, i::Integer,
+        rng::AbstractRNG)
     T = typeof(ind.infection_time)
     ids = Int[]
-    opens = T[]
+    certain = T[]                      # earliest time on a route at traceable 1
+    uncertain = Tuple{Int, T, Float64}[]  # (contact slot, time, traceable) in (0, 1)
     for w in windows
+        w.traceable > 0 || continue
         if w.contacts_from === :infection
             t = T(-Inf)
         else
@@ -130,13 +167,30 @@ function _route_contacts(windows, interventions, ind::Individual, i::Integer)
             k = findfirst(==(nb), ids)
             if k === nothing
                 push!(ids, nb)
-                push!(opens, t)
+                push!(certain, T(Inf))
+                k = length(ids)
+            end
+            if w.traceable == 1
+                certain[k] = min(certain[k], t)
             else
-                opens[k] = min(opens[k], t)
+                push!(uncertain, (k, t, w.traceable))
             end
         end
     end
-    return zip(ids, opens)
+    named = Tuple{Int, T}[]
+    for k in eachindex(ids)
+        t = certain[k]
+        # A draw is needed only if some uncertain route could name the neighbour
+        # earlier than the certain ones already do.
+        if any(e -> e[1] == k && e[2] < t, uncertain)
+            u = rand(rng)
+            for (slot, t_route, p) in uncertain
+                slot == k && u < p && (t = min(t, t_route))
+            end
+        end
+        t < Inf && push!(named, (ids[k], t))
+    end
+    return named
 end
 
 function Base.show(io::IO, m::RoutedNetwork)
@@ -165,10 +219,7 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
             "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
             "the whole network); build the process with e.g. `obs_end = 30.0`"))
 
-    windows = [w.from === nothing ?
-               RouteWindow(w.name, derived, w.until, w.kernel, w.reach, w.contacts_from) :
-               w
-               for w in model.windows]
+    windows = [_start_unset(w, derived) for w in model.windows]
     routes = Tuple((w, _route_targets(w)) for w in windows)
 
     EpiBranch._sellke_race!(state, collect(1:model.n), rng;
@@ -176,7 +227,7 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
         seed! = (best, members, r) -> _seed_network!(
             best, members, model.external_hazard, sim_opts.n_initial, Tobs, r),
         contacts = (inf, st) -> _route_contacts(
-            windows, interventions, st.individuals[inf], inf))
+            windows, interventions, st.individuals[inf], inf, st.rng))
 
     _reconcile_sellke_bookkeeping!(state)
     apply_observation!(observation, state, rng)
