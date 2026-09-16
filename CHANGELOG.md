@@ -70,7 +70,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   hazard at its infection time, and a host that is never infected is exposed
   over each possible infector's whole infectious window. Household likelihood
   values with a community hazard change as a result; values without one are
-  unchanged.
+  unchanged. For data that end at a follow-up time, `obs_end` no longer ends
+  exposure to contacts, so a case still infectious then takes the follow-up time
+  as its removal time, where `Inf` gives a density of zero.
 - The continuous-time race behind `NetworkProcess`, `RoutedNetwork` and
   `HouseholdProcess` picks the next case to settle from a binary heap, so a race
   over `n` members with `E` contacts costs O(E log n) where it previously cost

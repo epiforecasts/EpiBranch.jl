@@ -13,8 +13,9 @@
 
 The infection layer of a household outbreak: per individual, their household,
 infection time (`NaN` if never infected), infectiousness onset and removal (the
-infectious-window endpoints; `removal_time = Inf` when not yet removed, i.e.
-right-censored), and whether they were introduced from outside the household.
+infectious-window endpoints), and whether they were introduced from outside the
+household. For data that end at a follow-up time, an individual still infectious
+then takes that time as their removal time, as described for [`InfectionLayer`](@ref).
 
 These are the latent quantities the contact process is a density over — read out
 of a `simulate` round-trip with [`household_infections`](@ref), or augmented in

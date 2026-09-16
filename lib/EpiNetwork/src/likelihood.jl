@@ -14,10 +14,12 @@
 The infection layer of a network outbreak: the adjacency it spread over
 (`contacts[i]` lists the nodes `i` can infect, as for [`NetworkProcess`](@ref))
 and, per node, its infection time (`NaN` if never infected), the opening and
-closing of its infectious window (`removal_time = Inf` when right-censored), and
+closing of its infectious window, and
 whether it was introduced from outside the network. `obs_end` is the time
 community introductions stop, as for [`NetworkProcess`](@ref); spread along the
 edges continues after it. It is only read when there is a community hazard.
+For data that end at a follow-up time, a node still infectious then takes that
+time as its removal time, as described for [`InfectionLayer`](@ref).
 
 The contact process is a density over these latent quantities. Read them out of
 a simulation with [`network_infections`](@ref), or augment them in inference.

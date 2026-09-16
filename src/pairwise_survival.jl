@@ -108,12 +108,16 @@ holds, per host `i` (numbered `1:n`):
 
 - `infection_time[i]`: the infection time, `NaN` if never infected;
 - `infectious_time[i]`: when the infectious window opens;
-- `removal_time[i]`: when it closes (`Inf` when right-censored);
+- `removal_time[i]`: when it closes;
 - `is_index[i]`: whether the host was introduced from outside the structure;
 
 and a scalar `obs_end`, the time community introductions stop (only read when
 there is a community hazard). Spread along the contact structure continues after
-it. A subtype also defines
+it. For observed data that end at a follow-up time, set the removal time of a
+case still infectious then to that follow-up time, and `obs_end` no later than
+it: hosts that were never infected are known to have escaped only until then. A
+removal time of `Inf` exposes every uninfected possible infectee for ever, and
+the density is `-Inf`. A subtype also defines
 [`contact_structure`](@ref EpiBranch.contact_structure), which says who could
 have infected whom. [`compile_contact_pairs`](@ref) and
 [`pairwise_surv_loglik`](@ref) then work on it with no further methods.

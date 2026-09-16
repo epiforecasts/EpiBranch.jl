@@ -256,6 +256,23 @@ end
         @test pairwise_surv_loglik(k, index_3) ≈ log(1 / 2) - 1 / 2
     end
 
+    @testset "a case still infectious at the end of follow-up" begin
+        # path 1-2-3 followed up to 5: index 1 infectious over [0, 2] infects 2 at
+        # 1, which is still infectious at 5, and 3 has escaped until then
+        contacts = [[2], [1, 3], [2]]
+        k = Exponential(2.0)
+        censored = _TestInfections(contacts, [0.0, 1.0, NaN], [0.0, 1.0, NaN],
+            [2.0, 5.0, NaN], [true, false, false]; obs_end = 5.0)
+        @test pairwise_surv_loglik(k, censored) ≈ log(1 / 2) - 1 / 2 - 4 / 2
+        # 3 is also exposed to the community until 5
+        @test pairwise_surv_loglik(k, censored; external_hazard = 0.1) ≈
+              log(0.1) + log(1 / 2 + 0.1) - 0.1 - 1 / 2 - 4 / 2 - 0.5
+        # without the follow-up time 3 is exposed to 2 for ever
+        unbounded = _TestInfections(contacts, [0.0, 1.0, NaN], [0.0, 1.0, NaN],
+            [2.0, Inf, NaN], [true, false, false]; obs_end = 5.0)
+        @test pairwise_surv_loglik(k, unbounded) == -Inf
+    end
+
     @testset "an impossible configuration has a zero gradient" begin
         # Two components. In {1, 2} host 1 is a community case at 0 and infects 2
         # at 1.0, which the parameters do move. In {3, 4} host 4 is infected at
