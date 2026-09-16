@@ -515,6 +515,143 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
     return nothing
 end
 
+# ── GroupVaccination ─────────────────────────────────────────────────
+
+"""
+Vaccinate every member of the group a confirmed case belongs to — the
+fallback an outbreak response reaches for when no ring can be built, such
+as a village, a health area, or a household. Individuals carry their
+group under `group_key` (`:group` by default; see [`groups`](@ref)), and
+every member sharing a triggering case's group is vaccinated at the
+trigger time plus `dose_delay`, whether or not it has any traced
+connection to that case.
+
+`eligibility` is a [`TraceEligibility`](@ref) policy, exactly as
+[`ContactTracing`](@ref) uses it, but tested against a case itself rather
+than an infector–contact pair: `OnLabConfirmation()` (the default) fires
+once a case in the group has tested positive, `OnSymptomOnset()` fires on
+suspicion alone, and the boolean operators `&`, `|`, `!` combine them the
+same way. The policy's [`trigger_time`](@ref EpiBranch.trigger_time) sets
+when the group is deemed to have a case in it; `dose_delay` is added on
+top, standing in for the time a vaccination team takes to reach the
+group once notified.
+
+A group is vaccinated as soon as any of its members meets `eligibility`,
+at the *earliest* such member's trigger time — later confirmations in the
+same group do not push the dose out further. Members created after the
+trigger (a case infected later in the same group) are vaccinated at that
+same trigger time plus `dose_delay` when they appear, so they are
+protected only from exposures after that point, exactly as an
+already-present member is. Because the campaign reaches the whole group,
+doses scale with group size where [`RingVaccination`](@ref) doses scale
+with ring size.
+
+`coverage`, `efficacy`, `delay_to_immunity`, `mode`, and `dose_label`
+mean what they do for [`RingVaccination`](@ref).
+
+# Fallback composition
+
+Listing a [`RingVaccination`](@ref) before a `GroupVaccination` with the
+same `dose_label` makes the group dose a pure fallback: `coverage`,
+`efficacy`, and vaccination state are namespaced by `dose_label` (see
+[`AbstractVaccination`](@ref)), so a member the ring already reached is
+recorded as vaccinated by the time `GroupVaccination` runs and is
+skipped, leaving the group dose to reach only those the ring did not:
+
+```julia
+[ContactTracing(OnLabConfirmation(), 0.7, Exponential(1.0)),
+ RingVaccination(efficacy = 0.9),
+ GroupVaccination(efficacy = 0.6)]
+```
+
+Requires `:group` (or `group_key`) and whatever `eligibility` requires,
+e.g. `:test_positive` for the default `OnLabConfirmation()`.
+
+!!! note "Seed cases"
+    Like [`RingVaccination`](@ref) and [`MassVaccination`](@ref),
+    `GroupVaccination` acts through `apply_post_transmission!`, which the
+    engine calls only on newly created contacts. A run's seed cases are
+    created directly, not through that hook, so a seed is reached only once
+    another member of its group is created later and re-triggers the sweep;
+    a seed whose chain goes extinct without ever sharing a group with a
+    later case is not vaccinated even if it is itself confirmed.
+
+# Examples
+
+Vaccinate the whole village once a case there is lab-confirmed, 2 days
+later:
+
+```julia
+GroupVaccination(efficacy = 0.7, eligibility = OnLabConfirmation(), dose_delay = 2.0)
+```
+"""
+Base.@kwdef struct GroupVaccination{
+    E <: TraceEligibility, Ef, C, M <: AbstractEffectMode} <:
+                   AbstractVaccination
+    eligibility::E = OnLabConfirmation()
+    efficacy::Ef
+    coverage::C = 1.0
+    delay_to_immunity::Float64 = 0.0
+    dose_delay::Float64 = 0.0
+    group_key::Symbol = :group
+    mode::M = LeakyMode()
+    dose_label::Symbol = :default
+end
+
+function required_fields(gv::GroupVaccination)
+    union([gv.group_key], required_fields(gv.eligibility))
+end
+
+# The group's trigger time: the earliest time any of its members (found by
+# scanning every individual created so far, not just this generation's
+# `new_contacts`) meets `eligibility`, tested against the member itself in
+# both the infector and contact slots since the policy describes a property
+# of a case, not a pair. `Inf` if no member has triggered yet.
+function _group_trigger_time(gv::GroupVaccination, state, group)
+    key = gv.group_key
+    t = Inf
+    for m in state.individuals
+        get(m.state, key, nothing) == group || continue
+        is_eligible(gv.eligibility, m, m, state) || continue
+        tt = trigger_time(gv.eligibility, m, state)
+        isnan(tt) && continue
+        t = min(t, tt)
+    end
+    return t
+end
+
+# Two things can happen to a group in a single generation: a member created
+# earlier newly meets `eligibility` (the group's first trigger), or a member
+# is created into a group that already triggered in an earlier generation.
+# Recomputing the trigger time for every group touched by `new_contacts` and
+# sweeping the whole population against it handles both in one pass: a fresh
+# trigger reaches members already present, and a standing one reaches a
+# member only now created. Groups untouched this generation are left alone,
+# so nobody outside a triggered group is ever visited.
+function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
+    key = gv.group_key
+    label = dose_label(gv)
+    vacc_key = _vaccinated_key(label)
+
+    groups_here = Set{Any}()
+    for ind in new_contacts
+        haskey(ind.state, key) && push!(groups_here, ind.state[key])
+    end
+
+    for group in groups_here
+        trigger = _group_trigger_time(gv, state, group)
+        isfinite(trigger) || continue
+        vacc_t = trigger + gv.dose_delay
+        for m in state.individuals
+            get(m.state, key, nothing) == group || continue
+            get(m.state, vacc_key, false) && continue
+            _covers(gv.coverage, m, state.rng) || continue
+            _record_vaccination!(gv, m, vacc_t, state.rng)
+        end
+    end
+    return nothing
+end
+
 # ── MassVaccination ──────────────────────────────────────────────────
 
 """
