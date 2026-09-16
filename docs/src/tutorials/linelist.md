@@ -115,9 +115,9 @@ state field set by your attributes function. See the
 ## The whole population
 
 `linelist` gives cases only by default. Pass `infected_only = false` to get
-every individual in the population instead — the table a test-negative
-design, an attack rate by covariate, or an exposed/unexposed comparison
-needs. This matters most for a structure-driven model such as
+every individual in the population, as needed for a test-negative design, an
+attack rate by covariate, or an exposed/unexposed comparison. This matters
+most for a structure-driven model such as
 [`HomogeneousProcess`](@ref), `NetworkProcess` or `HouseholdProcess`, whose
 population exists in full from the start:
 
@@ -134,10 +134,8 @@ println("Population: $(nrow(pop)), infected: $(count(pop.infected))")
 first(pop, 5)
 ```
 
-A never-infected individual has no infection or onset event, so its
-`date_infection`, `date_onset` and the like are `missing` rather than the
-simulation's t=0 start — they cannot be mistaken for a case infected at the
-outset.
+A never-infected individual has no infection or onset event, and its
+`date_infection`, `date_onset` and other date columns are `missing`.
 
 ## Contacts table
 

@@ -165,15 +165,14 @@ using Dates
         @test "infected" in names(df)
         @test count(df.infected) == state.cumulative_cases
 
-        # Never-infected individuals carry no infection time, not a spurious
-        # infection at t=0.
+        # Never-infected individuals have no infection date.
         never_infected = filter(row -> !row.infected, df)
         @test all(ismissing, never_infected.date_infection)
 
         infected_rows = filter(row -> row.infected, df)
         @test all(!ismissing, infected_rows.date_infection)
 
-        # The default keeps today's contract: infected cases only.
+        # The default returns infected cases only.
         @test nrow(linelist(state)) == state.cumulative_cases
     end
 

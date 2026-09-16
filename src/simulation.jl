@@ -541,10 +541,10 @@ function _resolve!(model::TransmissionModel, state::SimulationState,
         elseif !is_new[i]
             # A pre-instantiated node exposed but not infected this
             # generation stays a clean susceptible; clear the provisional
-            # parent and infection time left from the failed exposure, so it
-            # reads as never infected rather than infected at time 0.
-            # (Minted "contact-only" individuals keep their parent — they are
-            # real contacts.)
+            # parent and infection time left from the failed exposure. A NaN
+            # infection time marks it as never infected; 0.0 would mean
+            # infected at time 0. (Minted "contact-only" individuals keep their
+            # parent because they are real contacts.)
             target.parent_id = 0
             target.infection_time = NaN
         end

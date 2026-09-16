@@ -8,12 +8,11 @@ present; any other typed field or `state` entry becomes a column too.
 Keys ending in `_time` are converted to dates using `reference_date`, so
 `:onset_time` ends up as `date_onset`.
 
-With `infected_only = false`, every individual in `state` is included —
-the whole population on a structure-driven model such as `NetworkProcess`
-or `HouseholdProcess`, not just the cases — with an `infected` column
-added. A never-infected individual has no infection or other event time,
-so its `date_*` columns are `missing` rather than the simulation's t=0
-start.
+With `infected_only = false`, the table has a row for every individual in
+`state` and an extra `infected` column. On a structure-driven model such as
+`NetworkProcess` or `HouseholdProcess` this is the whole population. A
+never-infected individual has no infection or other event time, and its
+`date_*` columns are `missing`.
 
 To add a column, write the field during the simulation. `linelist`
 reads whatever is on `state`.

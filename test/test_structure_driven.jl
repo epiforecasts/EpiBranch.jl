@@ -147,9 +147,8 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
             if !EpiBranch.is_infected(ind)
                 escaped += 1
                 t === nothing || (escaped_with_abort += 1)
-                # A never-infected individual has no onset either: onset
-                # follows the infection time, and an infection that never
-                # happened carries no time of its own to derive one from.
+                # A never-infected individual has no onset time, because
+                # onset is derived from the infection time.
                 isnan(onset_time(ind)) || (escaped_with_onset += 1)
             elseif t !== nothing
                 aborted += 1
