@@ -218,6 +218,15 @@ end
             progression = [Transition(:recovered; from = :infection, rate = γ,
                 terminal = true)])
         @test_throws ArgumentError household_offspring(external; global_rate = λG)
+        # A gate on the population's clock or case count has no counterpart when
+        # every household starts its own epidemic.
+        scheduled = ModelSpec(HouseholdProcess(fill(4, 10), Exponential(1 / β));
+            progression = [Transition(:onset; from = :infection, delay = 0.5),
+                Transition(:recovered; from = :infection, rate = γ, terminal = true)],
+            interventions = [Scheduled(
+                Isolation(onset_to_isolation_delay = Exponential(1.0),
+                    eligibility = AllCases()); start_after_cases = 10)])
+        @test_throws ArgumentError household_offspring(scheduled; global_rate = λG)
         o = household_offspring(_markov(4); global_rate = λG)
         @test_throws ArgumentError household_offspring_law(o, 5)
         @test household_offspring_law(o, 4) === o.laws[1]

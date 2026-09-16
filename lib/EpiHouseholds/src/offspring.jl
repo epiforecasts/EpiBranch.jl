@@ -85,6 +85,8 @@ the one its `progression` and `interventions` produce, so isolation shortens eac
 case's community-infectious period and lowers R* exactly as it lowers
 transmission in a simulation. Households are seeded with a single index case, as
 a newly infected household is, so the process must carry no `external_hazard`.
+Each household's epidemic runs on its own clock, so interventions cannot be
+wrapped in `Scheduled`.
 
 The within-household epidemic is resolved exactly where a closed form exists —
 an exponential contact-interval kernel and an exponential infectious window, with
@@ -128,6 +130,14 @@ function household_offspring(spec::ModelSpec{<:HouseholdProcess};
         "the branching process over households starts each household from a single " *
         "index case, as a newly infected household does; build the process without " *
         "an `external_hazard`"))
+    # Every household in the branching process over households starts its own
+    # epidemic at its own time, so a gate on the population's clock or case count
+    # has no counterpart; in the pooled sample it would switch on at an
+    # arbitrary point set by `n_samples`.
+    any(iv -> iv isa Scheduled, spec.interventions) && throw(ArgumentError(
+        "a `Scheduled` intervention gates on the population's clock or case count, " *
+        "which the branching process over households does not have; pass the " *
+        "intervention unwrapped"))
 
     sizes = household_sizes(process)
     unique_sizes = sort(unique(sizes))
