@@ -30,6 +30,13 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   keeps its API: `HouseholdPairsLayout` is another name for
   `ContactPairsLayout`. Evaluation is faster, most markedly with a community
   hazard.
+- An infection layer can carry the time observation ends, `followup_end`
+  (default `Inf`), on `HouseholdInfections`, `NetworkInfections` and a custom
+  `InfectionLayer` alike, and `household_infections` and `network_infections`
+  take it as a keyword. The pairwise survival likelihood ignores infections and
+  exposure after it, so an outbreak still going when the data end is scored as
+  observed so far, with a finite value and gradient, and a case still infectious
+  then can keep a removal time of `Inf`.
 - `trigger_time(eligibility, infector, contact, state)` gives the trace's
   trigger time for the contact being traced, and `ContactTracing` calls it. A
   custom policy can define it to time the trace from the contact, and combinators
@@ -111,9 +118,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   infection and `obs_end`, a host infected after `obs_end` adds no community
   hazard at its infection time, and a host that is never infected is exposed
   over each possible infector's whole infectious window. Household likelihood
-  values with a community hazard change as a result. For data that end at a follow-up time, `obs_end` no longer ends
-  exposure to contacts, so a case still infectious then takes the follow-up time
-  as its removal time, where `Inf` gives a density of zero.
+  values with a community hazard change as a result. Where `obs_end` stood in
+  for the end of follow-up, set `followup_end` instead.
 - The continuous-time race behind `NetworkProcess`, `RoutedNetwork` and
   `HouseholdProcess` picks the next case to settle from a binary heap, so a race
   over `n` members with `E` contacts costs O(E log n) where it previously cost

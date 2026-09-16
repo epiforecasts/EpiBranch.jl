@@ -1020,9 +1020,10 @@ struct MyInfections{T <: Real} <: InfectionLayer
     contacts::Vector{Vector{Int}}    # contacts[i]: who host i can infect
     infection_time::Vector{T}        # NaN if never infected
     infectious_time::Vector{T}       # the infectious window opens
-    removal_time::Vector{T}          # and closes (follow-up end if still open)
+    removal_time::Vector{T}          # and closes (Inf if still open)
     is_index::Vector{Bool}           # introduced from outside
     obs_end::T                       # community introductions stop
+    followup_end::T                  # observation ends (optional; Inf if absent)
 end
 EpiBranch.contact_structure(d::MyInfections) = d.contacts
 

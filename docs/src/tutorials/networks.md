@@ -417,7 +417,10 @@ with Optim or added to a Turing `@model` through `@addlogprob!`, as the
 households tutorial shows. With an `external_hazard`, pass it to
 `pairwise_surv_loglik` and compile the layout with `external = true`. As in the
 simulation, the community hazard introduces cases up to the data's `obs_end`
-and spread along the edges continues after it.
+and spread along the edges continues after it. Data that stop at a date are
+scored up to it by passing that date as `followup_end` to `NetworkInfections`
+(or `network_infections`): infections and exposure after it are ignored, and a
+node still infectious then keeps a removal time of `Inf`.
 
 Because the possible infectors are read off the graph, a structure that is not a
 partition fits the same way. A network *within* households, where not every
