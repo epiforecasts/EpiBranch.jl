@@ -104,6 +104,7 @@ EpiBranch.apply_trace!
 AbstractVaccination
 RingVaccination
 MassVaccination
+GroupVaccination
 AbstractEffectMode
 LeakyMode
 AllOrNothingMode
@@ -293,6 +294,7 @@ for examples.
 clinical_presentation
 demographics
 transmission_traits
+groups
 ```
 
 ## Convenience constructors
