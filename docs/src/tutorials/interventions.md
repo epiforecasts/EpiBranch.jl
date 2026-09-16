@@ -566,6 +566,81 @@ println("Contacts: $total, Infections: $infected, Traced: $traced")
 println("Contacts per case: $(round(total / infected, digits=1))")
 ```
 
+## Capacity constraints
+
+Everything above vaccinates everyone the policy reaches, with no limit on
+doses. Real response capacity is finite — a fixed number of teams, a daily
+dose cap, a ceiling on how many people a zone's programme can reach — and
+[`CapacityConstrained`](@ref) wraps an intervention to ration it.
+
+### The `CapacityConstrained` wrapper
+
+`CapacityConstrained` wraps [`RingVaccination`](@ref) or
+[`MassVaccination`](@ref) the way [`Scheduled`](@ref) wraps an intervention
+for time, but rations *how many* candidates a call reaches rather than
+*when* it acts. `budget_per_period` doses become available every `period`
+days; candidates in excess of what remains are simply not vaccinated this
+call, first-come-first-served by trace time by default:
+
+```@example interventions
+rv = RingVaccination(efficacy = 0.8)
+rv_capped = CapacityConstrained(rv; budget_per_period = 5.0, period = 1.0)
+
+rng = StableRNG(42)
+state_uncapped = simulate(scenario([iso, ct, rv]); condition = 50:200, max_cases = 200, rng = StableRNG(42))
+state_capped = simulate(scenario([iso, ct, rv_capped]); condition = 50:200, max_cases = 200, rng = StableRNG(42))
+
+println("Doses without a cap: $(count(is_vaccinated, state_uncapped.individuals))")
+println("Doses at 5/day: $(count(is_vaccinated, state_capped.individuals))")
+```
+
+[`capacity_usage`](@ref) reads back doses used against the running
+allowance at the point a simulation reached:
+
+```@example interventions
+capacity_usage(rv_capped, state_capped)
+```
+
+### Rationing rule
+
+`priority(individual, state) -> Real`, lower served first, decides who is
+served when a call's demand exceeds what remains of the budget. The default
+orders by `:trace_time` (first-come-first-served); pass any function for a
+different rule, such as a lottery among the same day's demand:
+
+```@example interventions
+rv_lottery = CapacityConstrained(rv; budget_per_period = 5.0, period = 1.0,
+    priority = (ind, state) -> rand(state.rng))
+nothing # hide
+```
+
+### Budget and carry-over
+
+`period = Inf` (the default) is a single lifetime stockpile rather than a
+renewing daily rate:
+
+```@example interventions
+rv_stockpile = CapacityConstrained(rv; budget_per_period = 200.0)
+nothing # hide
+```
+
+With a `period`, `carry_over = true` (the default) lets a day's unused doses
+add to the next day's allowance; `carry_over = false` loses them instead —
+only that day's own `budget_per_period` is ever available.
+
+### Scope
+
+`CapacityConstrained` rations `apply_post_transmission!`, the one hook the
+engine calls with a whole generation's contacts at once, since that is the
+only point where several individuals compete for the same resource in the
+same call. That is where a dose is recorded, so it is what this wrapper can
+ration. [`GroupVaccination`](@ref) vaccinates a triggered group by scanning
+the whole population rather than the generation's batch, so it raises an
+error rather than silently doing nothing; a custom intervention becomes
+capacity-constrained the same way `RingVaccination` and `MassVaccination`
+are by defining [`capacity_key`](@ref EpiBranch.capacity_key) for itself —
+see [Extending EpiBranch](extending.md).
+
 ## Time-dependent policies
 
 In real outbreaks, interventions are not active from the start. Testing

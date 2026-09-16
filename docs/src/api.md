@@ -109,6 +109,11 @@ AbstractEffectMode
 LeakyMode
 AllOrNothingMode
 Scheduled
+CapacityConstrained
+capacity_usage
+EpiBranch.capacity_key
+EpiBranch.capacity_time_key
+default_capacity_priority
 Risk
 EpiBranch.HostSusceptibility
 EpiBranch.InfectorInfectiousness

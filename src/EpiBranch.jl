@@ -24,6 +24,7 @@ include("interventions/isolation.jl")
 include("interventions/contact_tracing.jl")
 include("interventions/vaccination.jl")
 include("interventions/scheduled.jl")
+include("interventions/capacity.jl")
 
 # Clinical transitions — case-state Markov chain layered on the
 # intervention framework. Same hook shape as interventions; sibling
@@ -127,6 +128,7 @@ export TraceAction, Quarantine, FlagOnly
 export AbstractVaccination, RingVaccination, MassVaccination, GroupVaccination
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
+export CapacityConstrained, capacity_usage, default_capacity_priority
 export RouteWindow, window_open, window_close
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery

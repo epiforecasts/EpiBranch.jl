@@ -9,6 +9,17 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- `CapacityConstrained`, wrapping an intervention to ration a scarce,
+  population-level resource (doses, teams, reach) across the individuals
+  competing for it in the same period — `budget_per_period` doses become
+  available every `period` days, measured on the simulation's own
+  continuous clock so a generation-based and a continuous-time model mean
+  the same thing by it. Demand in excess of what remains is ordered by a
+  `priority` function (first-come-first-served by trace time, by default)
+  and only the front of that order is admitted; `carry_over` decides
+  whether an unused allowance rolls into the next period. Rations
+  `RingVaccination` and `MassVaccination` out of the box; `capacity_usage`
+  reads back doses used against doses available.
 - `HomogeneousProcess`, a closed, homogeneously-mixing population of fixed size
   simulated by the Sellke threshold construction. Every infectious individual
   exerts the same force of infection on every susceptible, giving the exact
