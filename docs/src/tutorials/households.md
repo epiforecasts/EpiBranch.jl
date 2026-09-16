@@ -108,11 +108,32 @@ sized = household_offspring(mixed; global_rate = 0.1, rng = StableRNG(6))
 
 [`extinction_probability`](@ref) answers the question a household model is usually
 asked: an infected household appears, how likely is that the end of it? It gives
-one probability per household size, because the first household's size is the one
+one probability per household type, because the first household's type is the one
 thing that is not drawn from the mixing weights.
 
 ```@example households
 extinction_probability(sized)
+```
+
+With a covariate kernel, households of one size need not be alike: who the
+members are decides how fast the household outbreak runs. The law is then built
+from the model's own households, each starting from a member picked uniformly at
+random, and the type is the household itself. Households whose kernels agree pair
+for pair share a type, so here, where one in three households transmits faster,
+there are two types of each size:
+
+```@example households
+fast_household = [h % 3 == 0 for h in 1:600]
+household_of = reduce(vcat, [fill(h, n) for (h, n) in
+    enumerate([fill(2, 400); fill(5, 200)])])
+covariate = ModelSpec(
+    HouseholdProcess([fill(2, 400); fill(5, 200)],
+        (infector, susceptible) -> Weibull(1.5,
+            fast_household[household_of[infector]] ? 4.0 : 12.0));
+    progression = [Transition(:recovered; from = :infection, delay = 6.0,
+        terminal = true)])
+typed = household_offspring(covariate; global_rate = 0.1, rng = StableRNG(8))
+(sizes = typed.sizes, reached = typed.mixing, offspring = typed.means)
 ```
 
 The model's own layers are in all of this. An isolation intervention shortens each
@@ -143,7 +164,8 @@ d = household_final_size(4, Weibull(1.5, 12.0), 6.0)
 Where the household epidemic has a closed form — an exponential contact interval
 racing an exponential infectious window, with no interventions — the offspring law
 is solved exactly and no simulation runs. Otherwise households of each size are
-simulated (`n_samples`, 10,000 by default) and only the within-household epidemic
+simulated (`n_samples`, 10,000 by default; with a covariate kernel, that many in
+all, shared among the types) and only the within-household epidemic
 carries Monte Carlo error; the Poisson compounding on top of it is analytical, and
 so is the mean whenever the infectious window is a single delay of the progression.
 
