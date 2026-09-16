@@ -131,26 +131,204 @@ Base.:!(a::TraceEligibility) = NoneOf(a)
 # condition. `OnSymptomOnset` times from symptom onset, so tracing can
 # start before lab confirmation (or without it), while the historical
 # default and the isolation/confirmation policies time from isolation.
-# `ContactTracing` adds its delay on top. Combinators compose: an `AllOf`
-# triggers once its last condition is met (the latest time), an `AnyOf`
-# once its first is.
+# `ContactTracing` adds its delay on top. Combinators reduce over the
+# conditions that are met for the infector and contact: an `AnyOf`
+# triggers when its first met condition is met, an `AllOf` when its last
+# one is. A condition that is not met has no trigger time of its own (an
+# asymptomatic case has no onset). Including it in the reduction could
+# make the time earlier than any real event, or `NaN`. A negation that
+# holds has no event to time it either, so it sets no time inside an
+# `AllOf`.
 
 """
+    trigger_time(eligibility, infector, contact, state) -> Float64
     trigger_time(eligibility, infector, state) -> Float64
 
-The time the trace starts for `infector` under this eligibility policy;
-[`ContactTracing`](@ref) adds its delay to it. Defaults to the infector's
-isolation time (the historical default). [`OnSymptomOnset`](@ref) overrides
-this to onset time, so suspicion-based tracing starts at symptom onset
-instead of waiting for isolation or confirmation.
+The time tracing from `infector` starts under this eligibility policy,
+for `contact` in the four-argument form; [`ContactTracing`](@ref) adds
+its delay to it.
+Defaults to the infector's isolation time (the historical default).
+[`OnSymptomOnset`](@ref) overrides this to onset time, so suspicion-based
+tracing starts at symptom onset instead of waiting for isolation or
+confirmation.
+
+`ContactTracing` calls the four-argument form with the contact being
+traced, as it does for [`is_eligible`](@ref EpiBranch.is_eligible),
+[`traces`](@ref EpiBranch.traces) and
+[`draw_trace_delay`](@ref EpiBranch.draw_trace_delay). For a single
+policy the four-argument form defaults to the three-argument one. A
+custom policy timed from another event of the infector defines a
+three-argument method, and one timed from the contact defines a
+four-argument method.
+
+The combinators take their time from the wrapped conditions, as decided
+by [`is_eligible`](@ref EpiBranch.is_eligible). Each condition is either
+not met, met at a time, or met with no time of its own:
+
+- A negation that holds, such as `!OnIsolation()` for an infector not yet
+  isolated, is met with no time of its own. A negation that does not hold
+  is not met. A negated combinator is timed as its De Morgan form, so
+  `!(a & b)` is timed as `!a | !b`, and `!!a` as `a`.
+- [`AllOf`](@ref) is not met if any condition is not met. Otherwise it is
+  met at the latest time among its timed conditions, so
+  `OnSymptomOnset() & !OnIsolation()` traces from onset. If none of its
+  conditions is timed, the `AllOf` is met with no time of its own.
+- [`AnyOf`](@ref) is not met if no condition is met. If one of its
+  conditions is met with no time of its own, so is the `AnyOf`, and inside
+  an `AllOf` it sets no time. Otherwise it is met at the earliest time
+  among its met conditions.
+- A policy met with no time of its own starts the trace at the default
+  trigger time, the infector's isolation as for [`TraceEveryone`](@ref),
+  or earlier if one of its timed branches is met earlier. So
+  `OnSymptomOnset() | !OnIsolation()` traces a case that is never
+  isolated from its onset.
+
+A combinator that is not met gives `Inf` (never), and a `NaN` trigger
+time from a wrapped condition counts as never met. A single policy's
+`trigger_time` does not check [`is_eligible`](@ref EpiBranch.is_eligible),
+so for a policy that is not met it still returns the policy's usual time.
+`ContactTracing` only times a contact once `is_eligible` holds.
+
+Two policies that are met get the same trigger time if one is rewritten
+into the other by De Morgan's laws, double negation, commutativity,
+associativity or distributing `&` over `|` outside a negation, and
+`TraceNobody() | p` is timed as `p`. The exception is a
+policy whose own trigger time is `NaN`, which gives `Inf` once wrapped in
+a combinator.
+
+Other logically equal policies can differ, for two reasons. A negation
+that holds has no time of its own, so a rewrite that adds or removes such
+a branch changes which times count, and `TraceEveryone()` is timed at
+isolation, so adding or removing it can move the time. With
+`S = OnSymptomOnset()`, `L = OnLabConfirmation()` and `I = OnIsolation()`,
+for a case with onset at 4 that is isolated at 9 and never lab-confirmed:
+
+- Distributing inside a negation: `!(L & (!I | !S))` triggers at 9 and
+  `!((L & !I) | (L & !S))` at 4.
+- Absorption by a branch with no time of its own: `!L | (!L & S)`
+  triggers at 4 and `!L` at 9.
+- A condition joined with its negation: `S & (I | !I)` triggers at 9 and
+  `S` at 4.
+- Joining `TraceEveryone()`: `S & TraceEveryone()` triggers at 9 and `S`
+  at 4, and `S | TraceEveryone()` triggers at 4 and `TraceEveryone()`
+  at 9.
+- `!TraceNobody()` behaves as `TraceEveryone()` only at the top level:
+  `S & !TraceNobody()` triggers at 4 and `S & TraceEveryone()` at 9.
+
+The four-argument form checks each wrapped condition against the contact
+and times it with its four-argument method. The three-argument form times
+each wrapped condition with its three-argument method and checks it with
+`nothing` in place of the contact, so `trigger_time(p, infector, state)`,
+`trigger_time(!!p, infector, state)` and
+`trigger_time(AllOf(p), infector, state)` agree for any policy `p` that
+is met and whose own trigger time is not `NaN`. A combinator that wraps
+a policy whose `is_eligible` reads the contact therefore cannot be
+evaluated through the three-argument form; use the four-argument form.
 """
 trigger_time(::TraceEligibility, infector, state) = isolation_time(infector)
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
-function trigger_time(e::AllOf, infector, state)
-    maximum(trigger_time(c, infector, state) for c in e.conditions)
+function trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, state)
+    _combined_time(_WithoutContact(), e, infector, nothing, state)
 end
-function trigger_time(e::AnyOf, infector, state)
-    minimum(trigger_time(c, infector, state) for c in e.conditions)
+
+function trigger_time(e::TraceEligibility, infector, contact, state)
+    trigger_time(e, infector, state)
+end
+
+function trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, contact, state)
+    _combined_time(_WithContact(), e, infector, contact, state)
+end
+
+# Which `trigger_time` method times the policies inside a combinator: the
+# form the combinator was called with, so that wrapping a policy does not
+# change which of its methods is used.
+struct _WithContact end
+struct _WithoutContact end
+function _single_time(::_WithContact, e, infector, contact, state)
+    trigger_time(e, infector, contact, state)
+end
+function _single_time(::_WithoutContact, e, infector, contact, state)
+    trigger_time(e, infector, state)
+end
+
+# What every node of a combinator is evaluated against. `never` is `Inf` in
+# the infector's time type, so AD dual numbers pass through, and is computed
+# once per evaluation.
+struct _TimingContext{F, T, I, C, S}
+    form::F
+    never::T
+    infector::I
+    contact::C
+    state::S
+end
+
+_never(::Individual{T}) where {T} = T(Inf)
+_never(infector) = oftype(isolation_time(infector), Inf)
+
+function _combined_time(form, e, infector, contact, state)
+    cx = _TimingContext(form, _never(infector), infector, contact, state)
+    t, untimed = _met_time(cx, e, false)
+    untimed || return t
+    default = _single_time(form, TraceEveryone(), infector, contact, state)
+    return min(t, isnan(default) ? cx.never : default)
+end
+
+# How `condition`, or its negation if `negated`, is met, as
+# `(time, untimed)`. `time` is the earliest time at which it is met through
+# a timed branch, `Inf` if there is none. `untimed` is whether it also
+# holds with no time of its own, as a negation that holds does. A
+# condition that is not met gives `(Inf, false)`. Negations are pushed
+# inwards by De Morgan's laws, so equal policies get equal times.
+function _met_time(cx::_TimingContext, condition::TraceEligibility, negated::Bool)
+    met = is_eligible(condition, cx.infector, cx.contact, cx.state)::Bool
+    negated && return (cx.never, !met)
+    met || return (cx.never, false)
+    t = _single_time(cx.form, condition, cx.infector, cx.contact, cx.state)
+    return (isnan(t) ? cx.never : t, false)
+end
+
+function _met_time(cx::_TimingContext, e::AnyOf, negated::Bool)
+    negated ? _all_met(cx, e.conditions, true) : _any_met(cx, e.conditions, false)
+end
+
+function _met_time(cx::_TimingContext, e::AllOf, negated::Bool)
+    negated ? _any_met(cx, e.conditions, true) : _all_met(cx, e.conditions, false)
+end
+
+# `NoneOf(a, b)` is `!a & !b`, and its negation is `a | b`.
+function _met_time(cx::_TimingContext, e::NoneOf, negated::Bool)
+    negated ? _any_met(cx, e.conditions, false) : _all_met(cx, e.conditions, true)
+end
+
+# The reductions below walk the conditions tuple one element at a time, so
+# each step is compiled for that condition's type and the times stay
+# unboxed.
+
+# Met through any condition: the earliest of their times, and untimed if
+# any condition is.
+_any_met(cx, conditions, negated) = _any_met(cx, conditions, negated, cx.never, false)
+_any_met(cx, ::Tuple{}, negated, t, untimed) = (t, untimed)
+function _any_met(cx, conditions::Tuple, negated, t, untimed)
+    tc, uc = _met_time(cx, first(conditions), negated)
+    return _any_met(cx, Base.tail(conditions), negated, min(t, tc), untimed | uc)
+end
+
+# Met when every condition is. A condition that holds with no time of its
+# own sets no time, so the latest time among the others decides. If no
+# condition is timed, the whole holds with no time of its own and keeps
+# the earliest of their timed branches: `(a | !b) & !c` is met at `a`'s
+# time through `a & !c`.
+function _all_met(cx, conditions, negated)
+    _all_met(cx, conditions, negated, oftype(cx.never, -Inf), cx.never, false)
+end
+function _all_met(cx, ::Tuple{}, negated, latest, earliest, timed)
+    timed ? (latest, false) : (earliest, true)
+end
+function _all_met(cx, conditions::Tuple, negated, latest, earliest, timed)
+    tc, uc = _met_time(cx, first(conditions), negated)
+    rest = Base.tail(conditions)
+    uc && return _all_met(cx, rest, negated, latest, min(earliest, tc), timed)
+    return _all_met(cx, rest, negated, max(latest, tc), earliest, true)
 end
 
 """
@@ -449,7 +627,7 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
 
     trace_delay = draw_trace_delay(
         ct.isolation_to_trace_delay, infector, ind, state, rng)
-    base = seed ? trigger_time(ct.eligibility, infector, state) :
+    base = seed ? trigger_time(ct.eligibility, infector, ind, state) :
            get(infector.state, :trace_time, isolation_time(infector))
     # A contact cannot be sought before it exists, such as a funeral contact
     # before the funeral, so the delay runs from whichever comes later.
