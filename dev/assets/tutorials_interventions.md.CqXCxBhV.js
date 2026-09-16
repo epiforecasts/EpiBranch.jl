@@ -160,7 +160,14 @@ import{_ as i,o as a,c as n,ao as t}from"./chunks/framework.BXDtdeot.js";const o
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    #     (for symptomatic traced contacts), fires iff contact was traced</span></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    # Isolation fires at the earlier of any active pathway. A</span></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    # test-negative-but-traced contact is still isolated via tracing.</span></span>
+<span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    # A continuous-time model traces a contact before its own infection is</span></span>
+<span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    # settled, when its onset is not yet known, so the traced isolation time is</span></span>
+<span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    # held back to the onset here.</span></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    traced_time = get(individual.state, :traced_isolation_time, Inf)</span></span>
+<span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    onset = onset_time(individual)</span></span>
+<span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    if isfinite(traced_time) &amp;&amp; !isnan(onset)</span></span>
+<span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">        traced_time = max(traced_time, onset)</span></span>
+<span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    end</span></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    test_time = if is_test_positive(individual)</span></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">        onset_time(individual) + rand(state.rng, iso.onset_to_isolation_delay)</span></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    else</span></span>
