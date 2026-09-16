@@ -2,6 +2,12 @@
 # defaults are inert.
 struct _NoTraceIntervention <: AbstractIntervention end
 
+# A distribution that draws and scores but reports no support, as the package's
+# own `_TruncatedSkewNormal` does. Nothing may ask it for its bounds.
+struct _UnboundedDelay <: ContinuousUnivariateDistribution end
+Base.rand(::AbstractRNG, ::_UnboundedDelay) = 30.0
+Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
+
 @testset "Interventions" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
@@ -1206,6 +1212,36 @@ struct _NoTraceIntervention <: AbstractIntervention end
                     dose_delay = (rng, ind) -> 0.0, requires_dose = :prime,
                     dose_label = :boost)
                 @test (@test_logs scen([iso, ct, prime, callable])) isa ModelSpec
+                # An unbounded support names no number worth quoting.
+                unbounded = RingVaccination(efficacy = 0.5,
+                    dose_delay = Normal(35.0, 3.0), requires_dose = :prime,
+                    dose_label = :boost)
+                logs, spec = Test.collect_test_logs() do
+                    scen([iso, ct, prime, unbounded])
+                end
+                @test spec isa ModelSpec
+                message = string(only(logs).message)
+                @test occursin("has no lower bound", message)
+                @test occursin("can fall before dose :prime", message)
+                @test !occursin("-Inf", message)
+            end
+
+            @testset "A delay reporting no support goes unchecked" begin
+                # Reading the bounds of a distribution that has none must not
+                # fail the model: the check is skipped, as it is for a callable.
+                lone = RingVaccination(efficacy = 0.5, dose_delay = _UnboundedDelay())
+                @test (@test_logs scen([iso, ct, lone])) isa ModelSpec
+                prime = RingVaccination(efficacy = 0.6, dose_delay = 28.0,
+                    dose_label = :prime)
+                boost = RingVaccination(efficacy = 0.5,
+                    dose_delay = _UnboundedDelay(), requires_dose = :prime,
+                    dose_label = :boost)
+                @test (@test_logs scen([iso, ct, prime, boost])) isa ModelSpec
+                # A support that cannot be read leaves an efficacy possibly
+                # non-zero, so the fields it needs are still required.
+                unreadable = RingVaccination(efficacy = 0.0,
+                    post_exposure_efficacy = _UnboundedDelay())
+                @test :incubation_period in EpiBranch.required_fields(unreadable)
             end
 
             @testset "Varying parameters are reproducible under a seeded rng" begin
