@@ -385,6 +385,14 @@ results = simulate(scenario([iso, ct, prime_ring, boost_ring]), 200;
 println("Two-dose ring: $(round(containment_probability(results), digits=3))")
 ```
 
+A protocol that puts the boost four to six weeks after the prime says so
+with a distribution: `dose_delay = Uniform(28.0, 42.0)`, drawn once per
+contact when the dose is scheduled. `delay_to_immunity`,
+`post_exposure_efficacy` and `onward_efficacy` take a distribution or a
+function `(rng, contact) -> Real` in the same way, each drawn once when
+the dose is given, so that a contact meets every exposure with the same
+immunity time and the same efficacy.
+
 The boost's `efficacy` is the protection it adds among those the prime
 left unprotected, because doses compose as competing risks. A schedule
 described as 60% after one dose and 80% after two therefore needs

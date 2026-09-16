@@ -38,6 +38,21 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Changed
 
+- Every `RingVaccination` and `MassVaccination` parameter now accepts a `Real`, a
+  `Distribution` or a function `(rng, individual) -> Real`, as `efficacy` and
+  `coverage` already did. `delay_to_immunity` covers a vaccine whose protection
+  takes one to three weeks to develop, `dose_delay` a booster due four to six
+  weeks after the prime, and `post_exposure_efficacy` and `onward_efficacy` a dose
+  that works better in some people than in others. The varying forms are drawn
+  once, when the dose is given, and stored on the individual as
+  `:vaccine_immunity_delay`, `:vaccine_post_exposure_efficacy` and
+  `:vaccine_onward_efficacy` (namespaced by `dose_label`), so an individual meets
+  every exposure with the same immunity time and the same efficacy. A scalar
+  parameter behaves exactly as before and writes no per-contact state. Between two
+  ring doses, a `dose_delay` distribution is judged on its support: a boost whose
+  every draw falls before the dose it requires is rejected as a scalar one is, and
+  supports that merely overlap are warned about, since the contacts whose draws
+  come out in the wrong order go without the boost.
 - The fixed-size population pool's mixing structure is now keyed on the
   individual's real attributes: a model names which attributes define mixing via
   `mixing_by` (a tuple of attribute keys, e.g. `(:age_band, :ses)`), and the pool

@@ -76,6 +76,9 @@ downstream packages should pick names that do not collide.
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
 | `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:vaccine_immunity_delay[_<label>]` | `Float64` | — | `AbstractVaccination` (varying `delay_to_immunity`) | `apply_post_transmission!` |
+| `:vaccine_post_exposure_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `post_exposure_efficacy`) | `apply_post_transmission!` |
+| `:vaccine_onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
@@ -95,6 +98,13 @@ writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy`,
 and any other label suffixes the key (so `dose_label = :boost` writes
 `:vaccinated_boost`, etc.). This lets multi-dose schedules compose without
 colliding.
+
+The last three of them hold the draw a vaccination made for one individual
+when its dose was given, so that every exposure of that individual is judged
+against the same value. They are written only where the parameter varies
+between individuals, which is to say where it was given as a distribution or
+a function; a scalar parameter is the same for everyone and is read straight
+off the intervention.
 
 `:infection_aborted_time` marks an infection that a post-exposure dose ended
 before symptom onset. The individual is still infected but transmits nothing
