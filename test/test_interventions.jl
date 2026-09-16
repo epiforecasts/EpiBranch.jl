@@ -366,6 +366,69 @@ struct _NoTraceIntervention <: AbstractIntervention end
                   containment_probability(results_delayed) - 0.05
         end
 
+        @testset "Waning immunity" begin
+            # Probe the closure `_susceptibility_risk` builds directly, at
+            # increasing times since immunity onset (`delay_to_immunity = 0`,
+            # so immunity onset coincides with vaccination).
+            decay(dt) = exp(-dt / 10.0)
+            rv = RingVaccination(efficacy = 0.9, waning = decay)
+            contact = Individual(id = 2)
+            EpiBranch._record_vaccination!(rv, contact, 0.0, StableRNG(1))
+
+            dts = [0.0, 5.0, 20.0, 100.0]
+            probs = map(dts) do dt
+                contact.infection_time = dt
+                risk = EpiBranch._susceptibility_risk(rv, contact)
+                EpiBranch._sample_value(
+                    risk.block_probability, StableRNG(1), nothing, contact, nothing)
+            end
+
+            @test probs ≈ 0.9 .* decay.(dts)
+            @test issorted(probs, rev = true)
+            @test allunique(probs)
+
+            @testset "Fully decayed waning blocks nothing" begin
+                rv0 = RingVaccination(efficacy = 0.9, waning = dt -> 0.0)
+                contact0 = Individual(id = 3)
+                EpiBranch._record_vaccination!(rv0, contact0, 0.0, StableRNG(1))
+                contact0.infection_time = 50.0
+                risk = EpiBranch._susceptibility_risk(rv0, contact0)
+                @test EpiBranch._sample_value(
+                    risk.block_probability, StableRNG(1), nothing, contact0, nothing) == 0.0
+            end
+
+            @testset "Waning at full strength matches the constant-efficacy risk" begin
+                rv1 = RingVaccination(efficacy = 0.9, waning = dt -> 1.0)
+                contact1 = Individual(id = 4)
+                EpiBranch._record_vaccination!(rv1, contact1, 0.0, StableRNG(1))
+                contact1.infection_time = 30.0
+                risk = EpiBranch._susceptibility_risk(rv1, contact1)
+                @test EpiBranch._sample_value(
+                    risk.block_probability, StableRNG(1), nothing, contact1, nothing) == 0.9
+            end
+
+            @testset "Onward-infectiousness risk also wanes" begin
+                rv2 = RingVaccination(efficacy = 0.0, onward_efficacy = 0.8, waning = decay)
+                parent = Individual(id = 5)
+                parent.state[:vaccinated] = true
+                parent.state[:vaccination_time] = 0.0
+                contact2 = Individual(id = 6)
+
+                risk = EpiBranch._onward_risk(rv2, parent)
+
+                contact2.infection_time = 0.0
+                prob_now = EpiBranch._sample_value(
+                    risk.block_probability, StableRNG(1), parent, contact2, nothing)
+                contact2.infection_time = 40.0
+                prob_later = EpiBranch._sample_value(
+                    risk.block_probability, StableRNG(1), parent, contact2, nothing)
+
+                @test prob_now ≈ 0.8
+                @test prob_later ≈ 0.8 * decay(40.0)
+                @test prob_later < prob_now
+            end
+        end
+
         @testset "Coverage thins vaccinations" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
