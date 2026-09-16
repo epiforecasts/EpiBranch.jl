@@ -129,7 +129,7 @@ export AnyOf, AllOf, NoneOf
 export TraceRate, ConstantRate
 export TraceDelay, ConstantDelay
 export TraceAction, Quarantine, FlagOnly
-export AbstractVaccination, RingVaccination, MassVaccination
+export AbstractVaccination, RingVaccination, MassVaccination, GroupVaccination
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
 export RouteWindow, window_open, window_close
@@ -145,7 +145,8 @@ export NoAgeDistribution, NoCases
 
 # Exports — accessors
 export onset_time, incubation_period, is_isolated, isolation_time, is_traced, is_quarantined
-export is_vaccinated, is_asymptomatic, is_test_positive, is_infected
+export is_vaccinated, immunity_time, severity_efficacy, is_asymptomatic, is_test_positive,
+       is_infected
 export individual_type, set_isolated!, clear_isolated!
 
 # Exports — distributions
@@ -158,7 +159,7 @@ export Borel, chain_size_distribution
 export ThinnedChainSize
 
 # Exports — attributes functions
-export clinical_presentation, demographics, transmission_traits
+export clinical_presentation, demographics, transmission_traits, groups
 
 # Exports — simulation
 export simulate, make_contact!, susceptible_fraction

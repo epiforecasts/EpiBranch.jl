@@ -62,6 +62,24 @@ Death(delay = LogNormal(2.5, 0.4),
 `delay` accepts a `Distribution` or `Function (rng, ind) -> Real`,
 making time-to-death heterogeneity available the same way.
 
+A vaccine that lowers mortality rather than blocking transmission (a
+[`RingVaccination`](@ref) or [`MassVaccination`](@ref) with a
+`severity_efficacy`) is read the same way, via the
+[`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors:
+
+```julia
+Death(delay = LogNormal(2.5, 0.4),
+      probability = (rng, ind) ->
+          immunity_time(ind) <= onset_time(ind) ?
+              0.7 * (1 - severity_efficacy(ind)) : 0.7)
+```
+
+`immunity_time(ind) <= onset_time(ind)` is what makes a dose whose
+immunity has not yet developed by onset confer no protection; comparing
+against `is_vaccinated(ind)` alone would count it as protective anyway.
+It composes with an age-conditional CFR the same way: multiply whatever
+base probability applies by `1 - severity_efficacy(ind)` once immune.
+
 Initialises `:death_candidate_time = Inf`.
 
 `Death` and [`Recovery`](@ref) compose as competing terminal events, resolved
