@@ -338,7 +338,10 @@ function _simulated_person_time(n::Int, spec::ModelSpec, n_samples::Int,
         opened = _window_open(ind, from)
         closed = min(_window_close(ind, process.until),
             _removal_time(ind, spec.interventions))
-        isfinite(closed - opened) || throw(ArgumentError(
+        # A case that never becomes infectious, or is removed before it does (a
+        # recovery or isolation during a latent period), makes no contacts.
+        (isfinite(opened) && closed > opened) || continue
+        isfinite(closed) || throw(ArgumentError(
             "a case's infectious window has no finite length, so a household infects " *
             "unboundedly many others; give the progression a terminal transition " *
             "listed in the process's `until` states, reached by every case"))
@@ -491,10 +494,28 @@ function _window_length_law(spec::ModelSpec{<:HouseholdProcess})
     closer = closers[1]
     closer isa Transition || return nothing
     closer.from === from || return nothing
+    # The final-size recursion and the mean both give every infected case the
+    # window, which holds only if every case reaches the state that opens it.
+    _reached_by_every_case(from, spec.progression) || return nothing
     # A probability gate leaves the window open for the cases that fail it.
     (closer.probability isa Real && closer.probability == 1) || return nothing
     (closer.delay isa UnivariateDistribution || closer.delay isa Real) || return nothing
     return closer.delay
+end
+
+# Whether every case reaches `state`: it is the infection itself, or the target
+# of exactly one ungated transition out of a state every case reaches.
+function _reached_by_every_case(state::Symbol, progression, depth::Int = 0)
+    state === :infection && return true
+    depth > length(progression) && return false
+    into = filter(t -> hasproperty(t, :state) && getfield(t, :state) === state,
+        progression)
+    length(into) == 1 || return false
+    t = into[1]
+    t isa Transition || return false
+    (t.probability isa Real && t.probability == 1) || return false
+    t.from isa Symbol || return false
+    return _reached_by_every_case(t.from, progression, depth + 1)
 end
 
 function _closes_window(transition, until::Tuple)

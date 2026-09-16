@@ -173,6 +173,39 @@ end
         @test extinction_probability(with_isolation) == [1.0]
     end
 
+    @testset "cases that never become infectious make no contacts" begin
+        # A household of one isolates the window: R* is the community rate times
+        # the lone case's mean infectious time, zero for a case that recovers
+        # before its latent period ends or never becomes infectious.
+        latent, recovery = Gamma(2, 2.0), Gamma(3, 2.0)
+        seir = ModelSpec(HouseholdProcess(fill(1, 10), Exponential(1 / β));
+            progression = [Transition(:infectious; from = :infection, delay = latent),
+                Transition(:recovered; from = :infection, delay = recovery,
+                    terminal = true)])
+        o = household_offspring(seir; global_rate = λG, n_samples = 50_000,
+            rng = StableRNG(11))
+        rng = StableRNG(12)
+        expected = mean(max(rand(rng, recovery) - rand(rng, latent), 0.0)
+        for _ in 1:200_000)
+        @test reproduction_number(o)≈λG * expected rtol=0.03
+
+        p = 0.7
+        gated(n) = ModelSpec(HouseholdProcess(fill(n, 10), Exponential(1 / β));
+            progression = [
+                Transition(:infectious; from = :infection, delay = 1.0, probability = p),
+                Transition(:recovered; from = :infectious, rate = γ, terminal = true)])
+        o = household_offspring(gated(1); global_rate = λG, n_samples = 50_000,
+            rng = StableRNG(13))
+        @test reproduction_number(o)≈p * λG / γ rtol=0.03
+        # A gate leaves some cases without the window, so the mean cannot be read
+        # off the final size and the window law.
+        @test EpiHouseholds._window_length_law(gated(4)) === nothing
+        gated_four = household_offspring(gated(4); global_rate = λG, n_samples = 20_000,
+            rng = StableRNG(14))
+        @test reproduction_number(gated_four) < reproduction_number(
+            household_offspring(_markov(4); global_rate = λG))
+    end
+
     @testset "invalid arguments" begin
         @test_throws ArgumentError household_offspring(_markov(4); global_rate = 0.0)
         @test_throws ArgumentError household_offspring(_markov(4); global_rate = λG,
