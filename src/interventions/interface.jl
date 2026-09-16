@@ -128,9 +128,13 @@ mechanism — e.g. ring vaccination's susceptibility reduction on the
 contact *and* its onward-infectiousness reduction on the parent — may
 return a tuple of risks instead; the engine applies each independently.
 
-Resolution happens after `apply_post_transmission!` so that risks can
-read state that other interventions have written on the contact
-(e.g. `:vaccination_time` set by tracing-driven vaccination).
+On the generation-based engine, resolution happens after
+`apply_post_transmission!` so that risks can read state that other
+interventions have written on the contact (e.g. `:vaccination_time`
+set by tracing-driven vaccination). The continuous-time models resolve
+the same risks against each infection they propose, after the infector
+has been traced, which is where their own tracing-driven state is
+written.
 """
 competing_risk(::AbstractIntervention, parent, contact, state) = nothing
 
@@ -151,14 +155,14 @@ intervention_time(::AbstractIntervention, ::Individual) = -Inf
 
 The time at which this intervention takes `individual` out of onward
 transmission. The continuous-time (Sellke) transmission models
-([`HomogeneousProcess`](@ref), and the network/household processes) express
-interventions only through the infectious window, closing it at the earliest
-removal time across the interventions. `Isolation` removes a case at its
-isolation time, and `ContactTracing` removes a quarantined contact at its trace
-time. The default is `Inf` (no removal), so an intervention whose effect is a
-per-contact competing risk against the infection event rather than a removal,
-such as leaky vaccination, contributes nothing to the window and has no
-continuous-time representation. Not read by the generation-based engine.
+([`HomogeneousProcess`](@ref), and the network/household processes) close the
+infectious window at the earliest removal time across the interventions.
+`Isolation` removes a case at its isolation time, and `ContactTracing` removes a
+quarantined contact at its trace time. The default is `Inf` (no removal), which
+is what an intervention whose effect is a per-contact block rather than a
+removal wants — a leaky vaccination, say: those reach the continuous-time models
+through [`competing_risk`](@ref) instead, resolved against each infection the
+model proposes. Not read by the generation-based engine.
 """
 infectious_removal_time(::AbstractIntervention, ::Individual) = Inf
 

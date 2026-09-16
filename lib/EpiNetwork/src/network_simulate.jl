@@ -49,6 +49,7 @@ function _simulate(model::NetworkProcess, sim_opts::SimOpts;
             "the whole network); build the process with e.g. `obs_end = 30.0`"))
     EpiBranch._sellke_race!(state, collect(1:n), rng;
         from = from, until = model.until, interventions = interventions,
+        risks = EpiBranch.transmission_risks(model),
         seed! = (best, members, r) -> _seed_network!(
             best, members, model.external_hazard, n_initial, Tobs, r),
         targets = (inf, st) -> ((nb, _edge_kernel(model, inf, k))

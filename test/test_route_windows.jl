@@ -1,6 +1,16 @@
 # Route windows: the unit that lets one case carry several transmission routes,
 # each opening and closing on different states of its natural history.
 
+# Blocks every transmission out of one named infector, whatever the time: the
+# smallest per-contact competing risk there is, and one an outside user could
+# have written without touching the package.
+struct BlockFrom <: EpiBranch.AbstractIntervention
+    id::Int
+end
+function EpiBranch.competing_risk(b::BlockFrom, parent, contact, state)
+    parent.id == b.id ? Risk(block_probability = 1.0) : nothing
+end
+
 @testset "Route windows" begin
     @testset "construction and show" begin
         w = RouteWindow(:community; from = :infectious, until = (:recovered,),
@@ -210,8 +220,91 @@
         # with no contacts supplied there is nothing to trace along
         @test infected(race([iso, ct])) == [true, true, true]
 
-        # an intervention with no window representation is not honoured
-        @test !EpiBranch._sellke_honours(nothing, RingVaccination(efficacy = 0.9))
+        # Ring vaccination doses along the trace, so it is honoured exactly where
+        # tracing is: on a model that can name a case's contacts.
+        nameless = BranchingProcess(Poisson(1.0), Exponential(1.0))
+        @test !EpiBranch.supplies_contacts(nameless)
+        @test !EpiBranch._sellke_honours(nameless, RingVaccination(efficacy = 0.9))
+        # A rollout that doses each newly created contact has nobody to dose
+        # when no contacts are created, wherever it runs.
+        @test !EpiBranch._sellke_honours(nameless,
+            MassVaccination(efficacy = 0.9, eligibility_time = 0.0))
+        # A leaky isolation is a per-contact block, and the race now resolves it.
+        @test EpiBranch._sellke_honours(nameless,
+            Isolation(onset_to_isolation_delay = Dirac(1.0),
+                post_isolation_transmission = 0.5))
+    end
+
+    @testset "the race resolves competing risks on each proposal" begin
+        # Nodes 1 and 2 are both seeded at time 0 and both reach node 3: node 1
+        # at time 2, node 2 at time 5. Unblocked, the earlier proposal wins.
+        prog = [Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
+        function race(interventions; attributes = EpiBranch.NoAttributes())
+            rng = StableRNG(1)
+            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, attributes, rng)
+            EpiBranch.add_individuals!(state, 3, interventions)
+            targets = function (inf, st)
+                (inf == 3 || get(st.individuals[3].state, :infected, false)) && return ()
+                return ((3, Dirac(inf == 1 ? 2.0 : 5.0)),)
+            end
+            EpiBranch._sellke_race!(state, [1, 2, 3], rng; targets,
+                from = :infection, until = (:recovered,), interventions,
+                seed! = (best, members, r) -> (best[1] = 0.0; best[2] = 0.0))
+            return state
+        end
+
+        plain = race(AbstractIntervention[])
+        @test plain.individuals[3].parent_id == 1
+        @test plain.individuals[3].infection_time == 2.0
+
+        # Blocking node 1's proposal declines that one transmission and nothing
+        # else: node 3 stays susceptible and node 2 infects it at 5, later than
+        # it would otherwise have been infected.
+        blocked = race([BlockFrom(1)])
+        @test is_infected(blocked.individuals[3])
+        @test blocked.individuals[3].parent_id == 2
+        @test blocked.individuals[3].infection_time == 5.0
+
+        # A susceptibility of 0 blocks every proposal, so node 3 is never reached.
+        immune = race(AbstractIntervention[];
+            attributes = transmission_traits(susceptibility = 0.0))
+        @test !is_infected(immune.individuals[3])
+
+        # Traits at their defaults contribute no risk, draw nothing from the rng,
+        # and leave the race stream exactly as it was.
+        neutral = race(AbstractIntervention[];
+            attributes = transmission_traits(susceptibility = 1.0, infectiousness = 1.0))
+        @test neutral.individuals[3].parent_id == 1
+        @test neutral.individuals[3].infection_time == 2.0
+    end
+
+    @testset "an intervention's risks reach only the routes it can cut" begin
+        # Node 1 is seeded at 0 and reaches node 2 on a community route and node
+        # 3 on a household route, each at 5. An intervention blocking everything
+        # node 1 proposes takes out the community contact; the household route
+        # never opted into intervention removal, so it runs on.
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        prog = [Transition(:recovered; from = :infection, delay = 10.0, terminal = true)]
+        function infected_after(interventions)
+            rng = StableRNG(1)
+            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, EpiBranch.NoAttributes(), rng)
+            EpiBranch.add_individuals!(state, 3, interventions)
+            edge(to) = (inf, st) -> inf == 1 &&
+                                    !get(st.individuals[to].state, :infected, false) ?
+                                    ((to, Dirac(5.0)),) : ()
+            routes = (
+                (RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(5.0)),
+                    edge(2)),
+                (RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0)),
+                    edge(3)))
+            EpiBranch._sellke_race!(state, [1, 2, 3], rng; routes, interventions,
+                seed! = (best, members, r) -> (best[1] = 0.0))
+            return [get(ind.state, :infected, false) for ind in state.individuals]
+        end
+        @test infected_after(AbstractIntervention[]) == [true, true, true]
+        @test infected_after([BlockFrom(1)]) == [true, false, true]
     end
 
     @testset "the race takes routes or the shorthand, not both" begin
