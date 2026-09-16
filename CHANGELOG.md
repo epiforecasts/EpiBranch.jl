@@ -49,6 +49,17 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   contacts who have received the named earlier dose by then, so its `coverage`
   is the retention between doses. A dose listed before the dose it requires is
   rejected when the `ModelSpec` is built.
+- `groups`, an attributes function that labels each individual with a group
+  (a village, a health area, a household) under `:group` or an arbitrary key,
+  and `GroupVaccination`, which vaccinates every member of a group once any
+  case in it meets a [`TraceEligibility`](@ref) policy such as
+  `OnLabConfirmation()` — the fallback an outbreak response reaches for when
+  no ring can be built. Members are vaccinated at the triggering case's
+  eligibility time plus `dose_delay`, whether created before or after the
+  trigger, so doses scale with group size where `RingVaccination` doses scale
+  with ring size. Listing a `RingVaccination` before a `GroupVaccination` with
+  the same `dose_label` makes the group dose a pure fallback: a member the
+  ring already reached is skipped.
 
 ### Changed
 

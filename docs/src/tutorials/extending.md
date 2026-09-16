@@ -62,6 +62,7 @@ downstream packages should pick names that do not collide.
 | `:age` | `Real` | — | `demographics` | Init |
 | `:sex` | `Symbol` | — | `demographics` | Init |
 | `:risk_group` | `Symbol` | — | `demographics` | Init |
+| `:group` | `Int` | — | `groups` | Init |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
 | `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
