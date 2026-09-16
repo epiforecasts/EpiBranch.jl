@@ -141,9 +141,9 @@ end
 Reproduction number of a branching process, computed from its offspring
 specification.
 
-For a single-type model whose offspring is a discrete distribution this is the
-mean of that distribution; offspring specifications without a single
-per-case law, such as [`ClusterMixed`](@ref), have no method. For a
+For a single-type model this is the mean of the offspring distribution, and
+for [`ClusterMixed`](@ref) offspring that mean averaged over the mixing
+distribution. For a
 multi-type model built from an offspring matrix it is R*, the dominant
 eigenvalue (spectral radius) of the mean next-generation matrix, whose
 `[i, j]` entry is the expected number of type-`i` offspring from a type-`j`
