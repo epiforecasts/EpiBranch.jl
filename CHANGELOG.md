@@ -21,11 +21,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   type of index case. The extinction probability is the fixed point of the vector
   PGF of the simulator's draw (a total count from the distribution family, split
   multinomially across types) and equals the single-type result when there is
-  one type. Both warn when they cannot answer accurately: an extinction
-  probability whose iteration has not converged by `max_iter`, which happens
-  near R = 1, and an offspring matrix whose column sums differ from the means of
-  the distributions `dist_fn` returns, where the distribution is what the model
-  draws from.
+  one type. An extinction probability whose iteration has not converged by
+  `max_iter` now warns, which happens near R = 1, in the multi-type and the
+  single-type functions alike.
 - `RouteWindow` takes a `traceable` probability (default `1.0`): the chance that
   a case can name a contact made on that route, such as `1.0` for a household
   and something lower for casual community contact. On `RoutedNetwork` a contact

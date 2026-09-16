@@ -16,12 +16,29 @@ end
 
 _total_count_laws(o::MultiTypeOffspring) = [_total_count_law(o, j) for j in 1:_n_types(o)]
 
+# Mean of a total-count law. `mean` covers the standard families, but a law built
+# on another, such as a truncated Poisson, can have no method for it, and the
+# generic fallback iterates the distribution and fails. Sum the series there, as
+# `_pgf` does for the same laws.
+function _law_mean(d::DiscreteUnivariateDistribution)
+    # `Statistics.mean` accepts any iterable, so asking whether a method applies
+    # says nothing; the distribution-specific method either exists or the
+    # iterable one is reached and fails.
+    try
+        return mean(d)
+    catch err
+        err isa MethodError || rethrow()
+    end
+    hi = isfinite(maximum(d)) ? maximum(d) : quantile(d, 1 - 1e-14)
+    return sum(x * pdf(d, x) for x in minimum(d):round(Int, hi))
+end
+
 # Mean matrix of the process: entry `[i, j]` is the expected number of type-`i`
 # offspring of a type-`j` parent. The entries use the means of the total-count
 # laws, so the matrix matches what the simulator draws even if the mean of
 # `dist_fn(R_j)` differs from the column sum `R_j`.
 function _mean_matrix(o::MultiTypeOffspring, laws = _total_count_laws(o))
-    means = [mean(law) for law in laws]
+    means = [_law_mean(law) for law in laws]
     T = float(promote_type(eltype(o.alloc_probs), map(typeof, means)...))
     return T[o.alloc_probs[i, j] * means[j] for i in 1:_n_types(o), j in 1:_n_types(o)]
 end
@@ -140,10 +157,10 @@ are split across types. Fixed-point iteration from zero converges to it.
 A type-`j` outbreak can grow only if type-`j` cases lead, through some chain
 of transmission, to a group of types that infect each other with a
 reproduction number above 1. Types without such a chain, and every type when
-[`reproduction_number`](@ref) is at most 1, get exactly 1. The second of those
-takes the offspring count to vary: a deterministic law, such as `Dirac(1)` at
-R = 1, gives every case exactly one offspring and so never dies out, and 1 is
-the wrong answer for it.
+[`reproduction_number`](@ref) is at most 1, get exactly 1. Both of those take
+the offspring count to vary: a deterministic law, such as `Dirac(1)` at R = 1,
+gives every case exactly one offspring and so never dies out, whether it is a
+class of its own or one the other types feed, and 1 is the wrong answer for it.
 
 Iteration that has not converged by `max_iter` warns, which happens when the
 reproduction number is close to 1.
@@ -169,7 +186,7 @@ function extinction_probability(o::MultiTypeOffspring; tol::Real = 1e-10,
         maximum(abs.(q_new .- q)) < tol && return q_new
         q = q_new
     end
-    _warn_unconverged_extinction(max_iter)
+    @warn_unconverged_extinction(max_iter)
     return q
 end
 

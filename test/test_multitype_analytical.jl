@@ -65,23 +65,35 @@ using LinearAlgebra: eigvals
             near_critical)
         @test_logs (:warn, r"without converging") match_mode=:any extinction_probability(
             Poisson(1.005))
-        @test_logs match_mode=:any extinction_probability(
+        @test_logs extinction_probability(
             BranchingProcess([1.5 0.2; 0.3 1.2], R -> Poisson(R), Exponential(5.0)))
     end
 
-    @testset "A distribution family that rescales the matrix warns" begin
+    @testset "A distribution family can rescale the matrix" begin
         # `Distributions.NegativeBinomial(R, p)` takes a failure count, not a
-        # mean, so a matrix written as reproduction numbers no longer describes
-        # the offspring the model draws.
+        # mean, so the process runs at a reproduction number the matrix does not
+        # show. `reproduction_number` reports the one the model draws from.
         balanced = [0.8 0.2; 0.2 0.8]
-        @test_logs (:warn, r"column sum") match_mode=:any BranchingProcess(
-            balanced, R -> NegativeBinomial(R, 0.3), Exponential(5.0))
-        @test_logs match_mode=:any BranchingProcess(balanced, R -> NegBin(R, 0.5),
+        rescaled = BranchingProcess(balanced, R -> NegativeBinomial(R, 0.3),
             Exponential(5.0))
-        # The matrix and the distribution agree here, so R* is the column-sum
-        # spectral radius.
-        model = BranchingProcess(balanced, R -> NegBin(R, 0.5), Exponential(5.0))
-        @test reproduction_number(model)≈1.0 atol=1e-8
+        factor = mean(NegativeBinomial(1.0, 0.3))
+        @test reproduction_number(rescaled)≈factor atol=1e-8
+        # The mean-and-dispersion parameterisation leaves the matrix as written.
+        intended = BranchingProcess(balanced, R -> NegBin(R, 0.5), Exponential(5.0))
+        @test reproduction_number(intended)≈1.0 atol=1e-8
+    end
+
+    @testset "A law with no mean method still works" begin
+        # `mean` has no method for a truncated Poisson, and the iterable
+        # fallback it reaches cannot iterate a distribution, so the analytics
+        # sum the series instead.
+        capped = R -> truncated(Poisson(R); upper = 5)
+        model = BranchingProcess([1.3 0.4; 0.5 1.1], capped, Exponential(1.0))
+        series_mean(d) = sum(x * pdf(d, x) for x in 0:5)
+        expected = [1.3 0.4; 0.5 1.1] ./ [1.8 1.5]
+        expected = expected .* [series_mean(capped(1.8)) series_mean(capped(1.5))]
+        @test reproduction_number(model)≈maximum(abs, eigvals(expected)) atol=1e-10
+        @test all(0 .< extinction_probability(model) .< 1)
     end
 
     @testset "Power iteration warns when it does not converge" begin

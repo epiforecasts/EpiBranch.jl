@@ -1,14 +1,19 @@
 # The fixed-point iteration converges slowly when the reproduction number is
 # close to 1, so it can stop at `max_iter` well short of the answer: at R = 1.005
-# the default 1000 iterations end about 1e-6 away, and the gap grows as R
+# the default 1000 iterations end about 7e-5 away, and the gap grows as R
 # approaches 1. Report that rather than return the last iterate as if it had
 # converged.
-function _warn_unconverged_extinction(max_iter)
-    @warn "Fixed-point iteration for the extinction probability stopped after " *
-          "$max_iter iterations without converging, which happens when the " *
-          "reproduction number is close to 1. The result may be inaccurate; raise " *
-          "`max_iter`." maxlog=1
-    return nothing
+#
+# A macro rather than a function, so that each iteration warns from its own call
+# site and `maxlog` counts them separately. A shared function would let one
+# unconverged multi-type call silence every later single-type one in the session.
+macro warn_unconverged_extinction(max_iter)
+    return esc(quote
+        @warn "Fixed-point iteration for the extinction probability stopped " *
+              "after $($max_iter) iterations without converging, which happens " *
+              "when the reproduction number is close to 1. The result may be " *
+              "inaccurate; raise `max_iter`." maxlog=1
+    end)
 end
 
 """
@@ -39,7 +44,7 @@ function extinction_probability(R::Real, k::Real; tol::Real = 1e-10, max_iter::I
         q = q_new
     end
 
-    _warn_unconverged_extinction(max_iter)
+    @warn_unconverged_extinction(max_iter)
     return q
 end
 
@@ -62,7 +67,7 @@ function extinction_probability(d::Poisson; tol::Real = 1e-10, max_iter::Int = 1
         abs(q_new - q) < tol && return q_new
         q = q_new
     end
-    _warn_unconverged_extinction(max_iter)
+    @warn_unconverged_extinction(max_iter)
     return q
 end
 
@@ -169,6 +174,7 @@ function probability_contain(R::Real, k::Real;
         q = q_new
     end
 
+    @warn_unconverged_extinction(max_iter)
     return q^n_initial
 end
 
