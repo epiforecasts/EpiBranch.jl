@@ -154,7 +154,9 @@ the two models separately. And a prior on `α` with mass near zero meets a densi
 that falls away sharply just above it, which shows up as a sampler struggling at
 the boundary; a prior bounded away from zero, such as a lognormal, avoids that.
 
-A `Gamma` community hazard cannot be differentiated by ForwardDiff: its cumulative
-hazard calls `SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual`
-method, so the `MethodError` comes from there rather than from this package. Fit
-that one with a reverse-mode backend, `NUTS(; adtype = AutoMooncake())`.
+A `Gamma` cannot be differentiated by ForwardDiff — as the community hazard or as
+the contact-interval kernel. Its cumulative hazard calls
+`SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual` method, so the
+`MethodError` comes from there rather than from this package. Fit a `Gamma` with
+a reverse-mode backend, `NUTS(; adtype = AutoMooncake())`. `Weibull` and
+`Exponential`, the kernels used above, differentiate under either mode.

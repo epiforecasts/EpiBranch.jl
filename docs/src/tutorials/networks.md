@@ -446,7 +446,9 @@ off by letting `α` approach zero — score the two models separately — and a 
 on `α` with mass near zero meets a density that falls away sharply just above it,
 which shows up as a sampler struggling at the boundary.
 
-A `Gamma` community hazard cannot be differentiated by ForwardDiff: its
-cumulative hazard calls `SpecialFunctions._gamma_inc`, which has no
-`ForwardDiff.Dual` method, so the `MethodError` comes from there rather than from
-this package. Fit that one with a reverse-mode backend such as Mooncake.
+A `Gamma` cannot be differentiated by ForwardDiff — as the community hazard or as
+the contact-interval kernel. Its cumulative hazard calls
+`SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual` method, so the
+`MethodError` comes from there rather than from this package. Fit a `Gamma` with
+a reverse-mode backend such as Mooncake; `Weibull` and `Exponential` work under
+either mode.

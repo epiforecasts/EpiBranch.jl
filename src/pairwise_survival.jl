@@ -444,10 +444,11 @@ Use the layout form in inference: compile the layout once with
 [`compile_contact_pairs`](@ref) and reuse it while the latent times move. Its
 `external` setting must agree with `external_hazard`. The two-argument form
 compiles a layout on each call. Both are generic in the number type, so the
-kernel's parameters can be ForwardDiff or reverse-mode AD values. A `Gamma`
-community hazard is the exception: its cumulative hazard calls
-`SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual` method, so fit
-that one with a reverse-mode backend such as Mooncake.
+kernel's parameters can be ForwardDiff or reverse-mode AD values. A `Gamma` is
+the exception, whether it is the kernel or the community hazard: its cumulative
+hazard calls `SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual`
+method, so fit a `Gamma` with a reverse-mode backend such as Mooncake. `Weibull`
+and `Exponential` differentiate under either mode.
 
 !!! warning "A vanishing community hazard is not the no-community case"
     The two are different conditionings, and the density does not pass
