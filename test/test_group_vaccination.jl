@@ -71,9 +71,8 @@ end
         @test all(t -> 7.0 <= t <= 10.0, vacc_times)
         @test length(unique(vacc_times)) > 1
         for m in new_contacts
-            delay = m.state[:immunity_delay]
+            delay = immunity_time(m) - m.state[:vaccination_time]
             @test 5.0 <= delay <= 10.0
-            @test immunity_time(m) == m.state[:vaccination_time] + delay
         end
     end
 

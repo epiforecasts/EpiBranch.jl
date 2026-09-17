@@ -131,7 +131,7 @@ end
             condition = 50:500,
             max_cases = 500,
             rng = StableRNG(1))
-        delays = [ind.state[:immunity_delay]
+        delays = [immunity_time(ind) - ind.state[:vaccination_time]
                   for ind in state.individuals if ind.parent_id != 0]
         @test !isempty(delays)
         @test all(7.0 .<= delays .<= 21.0)

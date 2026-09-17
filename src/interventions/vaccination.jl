@@ -101,9 +101,6 @@ end
 function _vaccine_efficacy_key(label::Symbol)
     label === :default ? :vaccine_efficacy : Symbol("vaccine_efficacy_", label)
 end
-function _immunity_delay_key(label::Symbol)
-    label === :default ? :immunity_delay : Symbol("immunity_delay_", label)
-end
 function _post_exposure_efficacy_key(label::Symbol)
     label === :default ? :post_exposure_efficacy : Symbol("post_exposure_efficacy_", label)
 end
@@ -111,11 +108,11 @@ function _onward_efficacy_key(label::Symbol)
     label === :default ? :onward_efficacy : Symbol("onward_efficacy_", label)
 end
 
-"""Per-individual immunity delay: the draw taken at vaccination time and
-stored on `ind` (see `_record_vaccination!`). Reads back what the
-competing risk should add to the vaccination time."""
-function _immunity_delay(v::AbstractVaccination, ind)
-    get(ind.state, _immunity_delay_key(dose_label(v)), 0.0)
+"""Per-individual immunity time: the vaccination time plus the delay drawn
+at vaccination time, as stored on `ind` (see `_record_vaccination!`).
+Falls back to `vacc_t`, immediate immunity, when no time is stored."""
+function _immunity_time(v::AbstractVaccination, ind, vacc_t)
+    get(ind.state, _immunity_time_key(dose_label(v)), vacc_t)
 end
 
 """Whether `x` could plausibly resolve to a positive value: `false` only
@@ -164,7 +161,7 @@ function _susceptibility_risk(v::AbstractVaccination, contact)
     # post-exposure-only setup (`efficacy = 0.0`) does not build and discard a
     # risk for every contact.
     eff <= 0 && return nothing
-    return Risk(event_time = vacc_t + _immunity_delay(v, contact), block_probability = eff)
+    return Risk(event_time = _immunity_time(v, contact, vacc_t), block_probability = eff)
 end
 
 function competing_risk(v::AbstractVaccination, parent, contact, state)
@@ -176,17 +173,16 @@ end
 # immunity delay via `_sample_value` so scalar, distribution, and
 # function forms all work. The delay is drawn here, once, rather than
 # inside `competing_risk`, so a given individual's immunity time is the
-# same against every exposure it faces. `:immunity_time` is stored
-# alongside so a clinical transition can check it without reaching for
-# the vaccination object, which it never sees.
+# same against every exposure it faces. Storing the resulting immunity
+# time also lets a clinical transition check it without reaching for the
+# vaccination object, which it never sees.
 function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     label = dose_label(v)
     contact.state[_vaccinated_key(label)] = true
     contact.state[_vaccination_time_key(label)] = vacc_t
     contact.state[_vaccine_efficacy_key(label)] = _sample_value(v.efficacy, rng, contact)
-    delay = _sample_value(v.delay_to_immunity, rng, contact)
-    contact.state[_immunity_delay_key(label)] = delay
-    contact.state[_immunity_time_key(label)] = vacc_t + delay
+    contact.state[_immunity_time_key(label)] = vacc_t +
+                                               _sample_value(v.delay_to_immunity, rng, contact)
     contact.state[_severity_efficacy_key(label)] = _sample_value(v.severity_efficacy, rng, contact)
     return nothing
 end
@@ -320,7 +316,7 @@ might, would count a not-yet-immune dose as protective. Defaults to `0.0`
 `efficacy`.
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`,
-`:vaccine_efficacy`, `:immunity_delay`, `:immunity_time`,
+`:vaccine_efficacy`, `:immunity_time`,
 `:severity_efficacy`, `:post_exposure_efficacy`, and `:onward_efficacy`
 for the default dose label. With a non-default `dose_label`, the keys
 carry the label as a suffix.
@@ -414,7 +410,7 @@ function _onward_risk(rv::RingVaccination, parent)
     isfinite(vacc_t) || return nothing
     onward = get(parent.state, _onward_efficacy_key(label), 0.0)
     onward > 0.0 || return nothing
-    return Risk(event_time = vacc_t + _immunity_delay(rv, parent),
+    return Risk(event_time = _immunity_time(rv, parent, vacc_t),
         block_probability = onward)
 end
 
@@ -434,7 +430,7 @@ function _contact_risk(rv::RingVaccination, contact)
         get(contact.state, _vaccinated_key(label), false) || return nothing
         vacc_t = get(contact.state, _vaccination_time_key(label), Inf)
         isfinite(vacc_t) || return nothing
-        return Risk(event_time = vacc_t + _immunity_delay(rv, contact),
+        return Risk(event_time = _immunity_time(rv, contact, vacc_t),
             block_probability = post)
     end
     return Risk(event_time = susceptibility.event_time,
@@ -470,7 +466,7 @@ function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     # here, not resampled from `rv.post_exposure_efficacy` on every exposure.
     post = get(contact.state, _post_exposure_efficacy_key(label), 0.0)
     post > 0.0 || return nothing
-    immunity = vacc_t + _immunity_delay(rv, contact)
+    immunity = _immunity_time(rv, contact, vacc_t)
     exposure = contact.infection_time
     exposure < immunity < exposure + incubation || return nothing
     _covers(post, contact, rng) || return nothing
@@ -823,7 +819,7 @@ and [`immunity_time`](@ref) accessors. Defaults to `0.0` (no severity
 effect).
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`,
-`:vaccine_efficacy`, `:immunity_delay`, `:immunity_time`, and
+`:vaccine_efficacy`, `:immunity_time`, and
 `:severity_efficacy` for the default dose label. With a non-default
 `dose_label`, the keys carry the label as a suffix — pass two
 `MassVaccination`s with different labels for a multi-dose rollout.

@@ -77,7 +77,6 @@ downstream packages should pick names that do not collide.
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
 | `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
-| `:immunity_delay[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:post_exposure_efficacy[_<label>]` | `Float64` | — | `RingVaccination` | `apply_post_transmission!` |
 | `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` | `apply_post_transmission!` |
 | `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
@@ -98,15 +97,14 @@ downstream packages should pick names that do not collide.
 
 The vaccination keys are namespaced by `dose_label`: the default label
 writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy` /
-`:immunity_delay` (and, on `RingVaccination`, `:post_exposure_efficacy` /
+`:immunity_time` (and, on `RingVaccination`, `:post_exposure_efficacy` /
 `:onward_efficacy`), and any other label suffixes the key (so
 `dose_label = :boost` writes `:vaccinated_boost`, etc.). This lets multi-dose
-schedules compose without colliding. `:immunity_delay`,
-`:post_exposure_efficacy`, and `:onward_efficacy` hold one draw taken at
-vaccination time from the field of the same purpose (`delay_to_immunity`,
-`post_exposure_efficacy`, `onward_efficacy`), which may be a `Real`, a
-`Distribution`, or a function; the competing risk reads the stored value
-back rather than resampling on every exposure.
+schedules compose without colliding. `:immunity_time` (the vaccination time
+plus a draw from `delay_to_immunity`), `:post_exposure_efficacy`, and
+`:onward_efficacy` each hold one draw taken at vaccination time from a field
+that may be a `Real`, a `Distribution`, or a function; the competing risk
+reads the stored value back on every exposure.
 
 `:immunity_time` (`:vaccination_time` plus the dose's `delay_to_immunity`)
 and `:severity_efficacy` let a clinical transition read a vaccine's effect

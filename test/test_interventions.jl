@@ -378,7 +378,7 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv], attributes = clinical);
                 condition = 50:300, max_cases = 300, rng = StableRNG(12))
-            delays = [ind.state[:immunity_delay]
+            delays = [immunity_time(ind) - ind.state[:vaccination_time]
                       for ind in state.individuals if is_vaccinated(ind)]
             @test !isempty(delays)
             @test all(7.0 .<= delays .<= 21.0)
@@ -386,13 +386,13 @@ struct _NoTraceIntervention <: AbstractIntervention end
             # reused across all of them.
             @test length(unique(delays)) > 5
 
-            # Reading the stored delay twice for the same contact — as two
-            # exposures of the same individual would — gives the same value.
+            # Reading the stored immunity time twice for the same contact — as
+            # two exposures of the same individual would — gives the same value.
             rng = StableRNG(1)
             contact = Individual(id = 1, infection_time = 0.0)
             EpiBranch._record_vaccination!(rv, contact, 5.0, rng)
-            first_read = EpiBranch._immunity_delay(rv, contact)
-            @test EpiBranch._immunity_delay(rv, contact) == first_read
+            first_read = EpiBranch._immunity_time(rv, contact, 5.0)
+            @test EpiBranch._immunity_time(rv, contact, 5.0) == first_read
         end
 
         @testset "Coverage thins vaccinations" begin
@@ -933,31 +933,31 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 # (see `_record_vaccination!` / `_record_ring_extras!`), so a
                 # contact built by hand for `_abort_infection!` needs them set
                 # to match `v` as they would be after a real dose.
-                function contact_with(v, incubation)
+                function contact_with(v, incubation, vacc_t)
                     c = Individual(id = 1, infection_time = 10.0)
                     c.state[:incubation_period] = incubation
                     c.state[:onset_time] = 10.0 + incubation
                     c.state[:post_exposure_efficacy] = v.post_exposure_efficacy
-                    c.state[:immunity_delay] = v.delay_to_immunity
+                    c.state[:immunity_time] = vacc_t + v.delay_to_immunity
                     return c
                 end
                 rng = StableRNG(1)
 
                 # Immunity at 14 beats an onset at 16.
-                c = contact_with(rv, 6.0)
+                c = contact_with(rv, 6.0, 12.0)
                 EpiBranch._abort_infection!(rv, c, 12.0, rng)
                 @test c.state[:infection_aborted_time] == 14.0
                 @test isnan(onset_time(c))
 
                 # Onset at 13 comes before immunity at 14.
-                c = contact_with(rv, 3.0)
+                c = contact_with(rv, 3.0, 12.0)
                 EpiBranch._abort_infection!(rv, c, 12.0, rng)
                 @test !haskey(c.state, :infection_aborted_time)
                 @test onset_time(c) == 13.0
 
                 # Immunity at 9 precedes the exposure: that is a blocked
                 # infection, left to the contact-side risk.
-                c = contact_with(rv, 6.0)
+                c = contact_with(rv, 6.0, 7.0)
                 EpiBranch._abort_infection!(rv, c, 7.0, rng)
                 @test !haskey(c.state, :infection_aborted_time)
                 c.state[:vaccinated] = true
@@ -967,7 +967,7 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 @test risk.block_probability == 1.0
 
                 # No onset to race: asymptomatic contacts are never aborted.
-                c = contact_with(rv, NaN)
+                c = contact_with(rv, NaN, 12.0)
                 EpiBranch._abort_infection!(rv, c, 12.0, rng)
                 @test !haskey(c.state, :infection_aborted_time)
 
@@ -975,7 +975,7 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 partial = RingVaccination(efficacy = 0.0,
                     post_exposure_efficacy = 0.5, delay_to_immunity = 2.0)
                 r1, r2 = StableRNG(9), StableRNG(9)
-                EpiBranch._abort_infection!(partial, contact_with(partial, 3.0), 12.0, r1)
+                EpiBranch._abort_infection!(partial, contact_with(partial, 3.0, 12.0), 12.0, r1)
                 @test rand(r1) == rand(r2)
             end
 
@@ -1004,7 +1004,8 @@ struct _NoTraceIntervention <: AbstractIntervention end
                         # state, as if a real dose had recorded them.
                         ind.state[:post_exposure_efficacy] = rv.post_exposure_efficacy
                         ind.state[:onward_efficacy] = rv.onward_efficacy
-                        ind.state[:immunity_delay] = rv.delay_to_immunity
+                        ind.state[:immunity_time] = dosed ?
+                                                    2.0 + rv.delay_to_immunity : Inf
                     end
                     r = EpiBranch.competing_risk(rv, parent, contact, nothing)
                     r === nothing ? 0 : (r isa EpiBranch.Risk ? 1 : length(r))
