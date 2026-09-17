@@ -18,6 +18,18 @@ function person_time_by_household(state, n_households)
     return person_time
 end
 
+# A custom clinical transition that records a death one day after infection,
+# closing the infectious window through its `:died_time` key alone.
+struct DeathAfterOneDay <: EpiBranch.AbstractClinicalTransition end
+function EpiBranch.initialise_individual!(::DeathAfterOneDay, ind, state)
+    ind.state[:died_time] = Inf
+    return nothing
+end
+function EpiBranch.resolve_individual!(::DeathAfterOneDay, ind, state)
+    ind.state[:died_time] = ind.infection_time + 1.0
+    return nothing
+end
+
 @testset "household_final_size" begin
     β, γ = 0.5, 1 / 4
 
@@ -252,6 +264,24 @@ end
             rng = StableRNG(14))
         @test reproduction_number(gated_four) < reproduction_number(
             household_offspring(_markov(4); global_rate = λG))
+    end
+
+    @testset "a custom transition that closes the window is simulated" begin
+        # The window law cannot see what a custom transition writes, so the
+        # derivation must simulate and let the window close where the model does.
+        progression = EpiBranch.AbstractClinicalTransition[
+            Transition(:recovered; from = :infection, rate = γ, terminal = true),
+            DeathAfterOneDay()]
+        model(n_households) = ModelSpec(
+            HouseholdProcess(fill(4, n_households), Exponential(2.0)); progression)
+        @test EpiHouseholds._window_length_law(model(10)) === nothing
+        o = household_offspring(model(10); global_rate = λG, n_samples = 20_000,
+            rng = StableRNG(51))
+        state = simulate(model(20_000); rng = StableRNG(52))
+        person_time = sum(
+            min(ind.state[:recovered_time], ind.state[:died_time]) - ind.infection_time
+        for ind in state.individuals if is_infected(ind))
+        @test reproduction_number(o)≈λG * person_time / 20_000 rtol=0.03
     end
 
     @testset "invalid arguments" begin

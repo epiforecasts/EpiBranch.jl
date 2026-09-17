@@ -611,11 +611,13 @@ _mean_person_time(::Int, kernel, window) = nothing
 # a window law to read off; both are simulated instead.
 function _window_length_law(spec::ModelSpec{<:HouseholdProcess})
     isempty(spec.interventions) || return nothing
+    # Only a `Transition` names the state it writes; any other element may write
+    # a `<state>_time` key that opens or closes the window unseen here.
+    all(t -> t isa Transition, spec.progression) || return nothing
     from = _resolve_infectious_from(spec.process.from, spec.progression)
     closers = filter(t -> _enters(t, spec.process.until), spec.progression)
     length(closers) == 1 || return nothing
     closer = closers[1]
-    closer isa Transition || return nothing
     closer.from === from || return nothing
     # The final-size recursion and the mean both give every infected case the
     # window, which holds only if every case reaches the state that opens it.
@@ -634,7 +636,6 @@ function _reached_by_every_case(state::Symbol, progression, depth::Int = 0)
     into = filter(t -> _enters(t, (state,)), progression)
     length(into) == 1 || return false
     t = into[1]
-    t isa Transition || return false
     (t.probability isa Real && t.probability == 1) || return false
     t.from isa Symbol || return false
     return _reached_by_every_case(t.from, progression, depth + 1)
