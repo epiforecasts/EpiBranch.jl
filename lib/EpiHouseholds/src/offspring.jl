@@ -48,7 +48,8 @@ hold one entry per type, in increasing size order:
 - `laws` — the offspring law of a household of each type, as a
   `DiscreteNonParametric` over the number of households it infects.
 - `means` — the mean of each of those laws, exact where the within-household
-  final size has a closed form (see [`household_offspring`](@ref)).
+  final size has a closed form the recursion can evaluate accurately (see
+  [`household_offspring`](@ref)).
 - `global_rate` — the community contact rate the law was built with.
 
 [`reproduction_number`](@ref) gives R*, [`extinction_probability`](@ref) the
@@ -123,7 +124,10 @@ error only in the within-household epidemic. With a shared kernel the mean is
 exact whenever the infectious window is a single delay of the progression,
 because the mean total
 infectious person-time is then the mean final size times the mean window
-(a case's own window does not bear on whether it was infected).
+(a case's own window does not bear on whether it was infected). The exception is
+a large, weakly transmitting household with a random window, where the
+final-size recursion loses accuracy and the mean comes from the simulated
+households instead.
 
 `tol` bounds the offspring-law tail left outside the returned support and
 `max_offspring` caps it.
