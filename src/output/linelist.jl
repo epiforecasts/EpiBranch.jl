@@ -16,9 +16,9 @@ contact they exposed who was not infected. A row that is not infected has no
 infection, so `date_infection` and every date derived from it (onset,
 reporting, admission, outcome, a traced isolation held back to onset, and any
 custom `_time` field) are `missing`. Dates of events that happen to a person
-whether or not they are infected are kept: `date_trace`, the vaccination and
-immunity dates of any dose label, and `date_isolation` when the isolation is a
-quarantine on tracing. An isolation that [`Isolation`](@ref) derived from a
+whether or not they are infected are kept: `date_trace`, `date_vaccination`,
+`date_immunity`, and `date_isolation` when the isolation is a quarantine on
+tracing. An isolation that [`Isolation`](@ref) derived from a
 provisional onset is `missing`, or the date of the quarantine it replaced.
 Columns that are not dates are reported as stored.
 
@@ -141,9 +141,7 @@ quarantined. An isolation that `Isolation` wrote was derived from the
 provisional onset, so the quarantine it replaced, if any, is reported
 instead."""
 function _uninfected_event_time(ind, key::Symbol)
-    name = String(key)
-    if key === :trace_time || startswith(name, "vaccination_time") ||
-       startswith(name, "immunity_time")
+    if key in (:trace_time, :vaccination_time, :immunity_time)
         return get(ind.state, key, missing)
     elseif key === :isolation_time
         get(ind.state, :isolated_by_isolation, false) ||

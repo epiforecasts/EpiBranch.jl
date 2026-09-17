@@ -15,8 +15,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   `infected` column and keeps the same attribute and `state` columns as the
   default. In rows that are not infected, `date_infection` and every date
   derived from the infection, such as `date_onset`, are `missing`; only
-  `date_trace`, `date_vaccination`, `date_immunity` (and their labelled
-  variants) and a quarantine's `date_isolation` are kept.
+  `date_trace`, `date_vaccination`, `date_immunity` and a quarantine's
+  `date_isolation` are kept.
 - `HomogeneousProcess`, a closed, homogeneously-mixing population of fixed size
   simulated by the Sellke threshold construction. Every infectious individual
   exerts the same force of infection on every susceptible, giving the exact

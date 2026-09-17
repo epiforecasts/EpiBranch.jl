@@ -144,8 +144,7 @@ dates of events that happen to a person whether or not they are infected are
 kept:
 
 - `date_trace`, when the contact was traced;
-- `date_vaccination` and `date_immunity`, and their `_<label>` variants for
-  labelled doses;
+- `date_vaccination` and `date_immunity`;
 - `date_isolation`, when it is a quarantine on tracing. An isolation that
   `Isolation` derived from the contact's provisional onset is `missing`, and
   if it replaced an earlier quarantine the quarantine's date is shown.
