@@ -46,9 +46,9 @@ post-exposure abort happens the moment immunity arrives, so it uses
 `post_exposure_efficacy` only for a `waning` that does not start at 1.
 `waning` does not reach `severity_efficacy`, which stays at the value
 sampled at vaccination for the whole run; [`RingVaccination`](@ref) shows
-how to apply a decay to it in the clinical transition that reads it. Defaults to `nothing`,
-which keeps protection constant once immunity develops, as before
-`waning` existed. A dose with its own `dose_label` in a multi-dose
+how to apply a decay to it in the clinical transition that reads it.
+Defaults to `nothing`, which keeps protection constant once immunity
+develops. A dose with its own `dose_label` in a multi-dose
 schedule decays from its own immunity time, independently of any other
 dose's; doses still compose as competing risks, so a schedule's total
 protection at a given exposure is the product of what each dose retains
@@ -827,15 +827,10 @@ transition's `probability` reads it via the [`severity_efficacy`](@ref)
 and [`immunity_time`](@ref) accessors. Defaults to `0.0` (no severity
 effect).
 
-`waning` means what it does for [`RingVaccination`](@ref): an optional
-`dt -> Real` giving the fraction of `efficacy` still in force `dt` time
-units after immunity develops. Defaults to `nothing` (constant
-protection) — a rolling rollout with a vaccine whose protection decays,
-e.g. a health worker vaccinated well ahead of any exposure, sets this
-rather than relying on `efficacy` staying at full strength indefinitely.
-As on [`RingVaccination`](@ref), `waning` does not apply to
-`severity_efficacy`, which keeps the value sampled at vaccination for the
-whole run; see there for applying a decay in the transition that reads it.
+`waning` decays `efficacy` from immunity onset as described under
+[`AbstractVaccination`](@ref), which matters most for a rollout that
+vaccinates well ahead of any exposure. It does not apply to
+`severity_efficacy`.
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`,
 `:vaccine_efficacy`, `:immunity_time`, and `:severity_efficacy` for the
