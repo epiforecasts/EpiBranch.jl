@@ -164,8 +164,10 @@ dose_label(v::AbstractVaccination) = vaccine_effect(v).dose_label
 
 # The built-in vaccinations expose the effect parameters as properties
 # (`rv.efficacy`) next to their own fields, matching the keywords their
-# constructors take. `show` prints the same keywords, so how the effect is
-# stored inside does not surface in printed output.
+# constructors take, and `show` prints those keywords. Both are derived from
+# the fields, so a parameter added to `VaccineEffect` or to one vaccination
+# type appears without further edits. The keyword constructors pass their
+# effect keywords on to `VaccineEffect` for the same reason.
 const _VACCINE_EFFECT_FIELDS = fieldnames(VaccineEffect)
 
 function _effect_getproperty(v, name::Symbol)
@@ -179,9 +181,10 @@ function _effect_propertynames(v)
     return (fieldnames(typeof(v))..., _VACCINE_EFFECT_FIELDS...)
 end
 
-function _show_keywords(io::IO, v, names)
+function _show_keywords(io::IO, v)
+    own = filter(!=(:effect), fieldnames(typeof(v)))
     print(io, nameof(typeof(v)), "(")
-    for (i, name) in enumerate(names)
+    for (i, name) in enumerate((_VACCINE_EFFECT_FIELDS..., own...))
         i > 1 && print(io, ", ")
         print(io, name, " = ")
         show(io, getproperty(v, name))
@@ -440,25 +443,17 @@ struct RingVaccination{V <: VaccineEffect, C, W} <: AbstractVaccination
     onward_efficacy::Float64
 end
 
-function RingVaccination(; efficacy, coverage = 1.0, delay_to_immunity = 0.0,
-        dose_delay = 0.0, requires_dose = nothing, eligibility_window = Inf,
-        post_exposure_efficacy = 0.0, onward_efficacy = 0.0, severity_efficacy = 0.0,
-        mode = LeakyMode(), dose_label = :default)
-    effect = VaccineEffect(; efficacy, severity_efficacy, delay_to_immunity, mode,
-        dose_label)
-    return RingVaccination(effect, coverage, dose_delay, requires_dose,
-        eligibility_window, post_exposure_efficacy, onward_efficacy)
+function RingVaccination(; coverage = 1.0, dose_delay = 0.0, requires_dose = nothing,
+        eligibility_window = Inf, post_exposure_efficacy = 0.0, onward_efficacy = 0.0,
+        effect...)
+    return RingVaccination(VaccineEffect(; effect...), coverage, dose_delay,
+        requires_dose, eligibility_window, post_exposure_efficacy, onward_efficacy)
 end
 
 vaccine_effect(rv::RingVaccination) = getfield(rv, :effect)
 Base.getproperty(rv::RingVaccination, name::Symbol) = _effect_getproperty(rv, name)
 Base.propertynames(rv::RingVaccination, ::Bool = false) = _effect_propertynames(rv)
-function Base.show(io::IO, rv::RingVaccination)
-    _show_keywords(io, rv,
-        (:efficacy, :coverage, :delay_to_immunity, :dose_delay, :requires_dose,
-            :eligibility_window, :post_exposure_efficacy, :onward_efficacy,
-            :severity_efficacy, :mode, :dose_label))
-end
+Base.show(io::IO, rv::RingVaccination) = _show_keywords(io, rv)
 
 function required_fields(rv::RingVaccination)
     rv.post_exposure_efficacy > 0.0 ? [:traced, :incubation_period] : [:traced]
@@ -761,22 +756,16 @@ struct GroupVaccination{V <: VaccineEffect, E <: TraceEligibility, C} <:
     group_key::Symbol
 end
 
-function GroupVaccination(; eligibility = OnLabConfirmation(), efficacy, coverage = 1.0,
-        severity_efficacy = 0.0, delay_to_immunity = 0.0, dose_delay = 0.0,
-        group_key = :group, mode = LeakyMode(), dose_label = :default)
-    effect = VaccineEffect(; efficacy, severity_efficacy, delay_to_immunity, mode,
-        dose_label)
-    return GroupVaccination(effect, eligibility, coverage, dose_delay, group_key)
+function GroupVaccination(; eligibility = OnLabConfirmation(), coverage = 1.0,
+        dose_delay = 0.0, group_key = :group, effect...)
+    return GroupVaccination(VaccineEffect(; effect...), eligibility, coverage,
+        dose_delay, group_key)
 end
 
 vaccine_effect(gv::GroupVaccination) = getfield(gv, :effect)
 Base.getproperty(gv::GroupVaccination, name::Symbol) = _effect_getproperty(gv, name)
 Base.propertynames(gv::GroupVaccination, ::Bool = false) = _effect_propertynames(gv)
-function Base.show(io::IO, gv::GroupVaccination)
-    _show_keywords(io, gv,
-        (:eligibility, :efficacy, :coverage, :severity_efficacy, :delay_to_immunity,
-            :dose_delay, :group_key, :mode, :dose_label))
-end
+Base.show(io::IO, gv::GroupVaccination) = _show_keywords(io, gv)
 
 function required_fields(gv::GroupVaccination)
     union([gv.group_key], required_fields(gv.eligibility))
@@ -912,21 +901,14 @@ struct MassVaccination{V <: VaccineEffect, T} <: AbstractVaccination
     eligibility_time::T
 end
 
-function MassVaccination(; efficacy, eligibility_time, delay_to_immunity = 0.0,
-        severity_efficacy = 0.0, mode = LeakyMode(), dose_label = :default)
-    effect = VaccineEffect(; efficacy, severity_efficacy, delay_to_immunity, mode,
-        dose_label)
-    return MassVaccination(effect, eligibility_time)
+function MassVaccination(; eligibility_time, effect...)
+    return MassVaccination(VaccineEffect(; effect...), eligibility_time)
 end
 
 vaccine_effect(mv::MassVaccination) = getfield(mv, :effect)
 Base.getproperty(mv::MassVaccination, name::Symbol) = _effect_getproperty(mv, name)
 Base.propertynames(mv::MassVaccination, ::Bool = false) = _effect_propertynames(mv)
-function Base.show(io::IO, mv::MassVaccination)
-    _show_keywords(io, mv,
-        (:efficacy, :eligibility_time, :delay_to_immunity, :severity_efficacy, :mode,
-            :dose_label))
-end
+Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)
 
 required_fields(::MassVaccination) = Symbol[]
 

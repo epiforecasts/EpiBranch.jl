@@ -40,7 +40,7 @@ end
     @testset "Effect parameters read as properties of every vaccination" begin
         for v in (RingVaccination(efficacy = 0.8, severity_efficacy = 0.2),
             MassVaccination(efficacy = 0.8, eligibility_time = 1.0,
-                severity_efficacy = 0.2),
+            severity_efficacy = 0.2),
             GroupVaccination(efficacy = 0.8, severity_efficacy = 0.2))
             @test v.efficacy == EpiBranch.efficacy(v) == 0.8
             @test v.severity_efficacy == EpiBranch.severity_efficacy(v) == 0.2
@@ -52,14 +52,20 @@ end
         end
     end
 
+    @testset "Keyword errors match the constructors' own" begin
+        @test_throws UndefKeywordError RingVaccination()
+        @test_throws UndefKeywordError MassVaccination(efficacy = 0.5)
+        @test_throws MethodError GroupVaccination(efficacy = 0.5, covrage = 0.5)
+    end
+
     @testset "show prints the constructor keywords" begin
         rv = RingVaccination(efficacy = 0.9, dose_label = :boost, requires_dose = :prime)
         @test repr(rv) ==
-              "RingVaccination(efficacy = 0.9, coverage = 1.0, " *
-              "delay_to_immunity = 0.0, dose_delay = 0.0, requires_dose = :prime, " *
+              "RingVaccination(efficacy = 0.9, severity_efficacy = 0.0, " *
+              "delay_to_immunity = 0.0, mode = LeakyMode(), dose_label = :boost, " *
+              "coverage = 1.0, dose_delay = 0.0, requires_dose = :prime, " *
               "eligibility_window = Inf, post_exposure_efficacy = 0.0, " *
-              "onward_efficacy = 0.0, severity_efficacy = 0.0, mode = LeakyMode(), " *
-              "dose_label = :boost)"
+              "onward_efficacy = 0.0)"
         for v in (rv, MassVaccination(efficacy = 0.5, eligibility_time = 3.0),
             GroupVaccination(efficacy = 0.5, group_key = :village))
             @test eval(Meta.parse(repr(v))) == v
