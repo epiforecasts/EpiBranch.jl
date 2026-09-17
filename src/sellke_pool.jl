@@ -25,6 +25,32 @@
 # intervention (isolation) acts by shortening the infectious window through the
 # window-close, exactly as in `_sellke_race!`.
 
+# The infector of a pool infection, drawn from `infectious_ids` with probability
+# proportional to infectiousness. When every member has the default
+# infectiousness the draw is uniform, which keeps seeded runs without the trait
+# unchanged. With no infectious weight at all — an empty pool under a custom
+# `force` with a count-independent hazard, e.g. external importation, or only
+# zero-infectiousness cases — there is no infector to attribute to, so fall back
+# to the index-case label 0.
+function _draw_infector(rng::AbstractRNG, state::SimulationState,
+        infectious_ids::AbstractVector{Int}, equal_infectiousness::Bool)
+    isempty(infectious_ids) && return 0
+    equal_infectiousness && return infectious_ids[rand(rng, 1:length(infectious_ids))]
+    u = rand(rng) * sum(id -> state.individuals[id].infectiousness, infectious_ids)
+    # The last positive-weight case stands in when rounding leaves `u` a hair
+    # above zero after the final subtraction; with no positive weight at all it
+    # stays 0.
+    infector = 0
+    for id in infectious_ids
+        weight = state.individuals[id].infectiousness
+        weight > 0 || continue
+        infector = id
+        u -= weight
+        u < 0 && break
+    end
+    return infector
+end
+
 """
     _sellke_pool!(state, members, rng; mixing_by = (), force, n_initial, from, until)
 
@@ -121,6 +147,8 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         counts[typ[id]] = zero(T)
         n_infectious[typ[id]] = 0
     end
+
+    equal_infectiousness = all(id -> state.individuals[id].infectiousness == 1, members)
 
     open_heap = Tuple{T, Int}[]         # pending window-open (becomes infectious)
     close_heap = Tuple{T, Int}[]        # pending window-close (recovers/isolates)
@@ -257,18 +285,15 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             counts[typ[id]] += state.individuals[id].infectiousness
         else
             # Infection: the lowest-threshold susceptible in group `gstar` crosses
-            # now. Its infector is drawn uniformly from all currently-infectious
-            # individuals across groups — a valid parent label whose epidemic
-            # dynamics are exact regardless; mixing-weighted attribution (weighting
-            # by each infective's contribution to `force`) is a possible refinement
-            # that would only sharpen the parent label, not the dynamics.
+            # now. Its infector is drawn from all currently-infectious individuals
+            # across groups in proportion to their infectiousness, each one's
+            # share of the pooled force. The epidemic dynamics are exact
+            # regardless; mixing-weighted attribution (weighting by each
+            # infective's contribution to `force` on this group) is a possible
+            # refinement that would only sharpen the parent label.
             id = sus_by_group[gstar][ptr[gstar]]
             ptr[gstar] += 1
-            # If the infectious pool is empty — a custom `force` with a positive
-            # count-independent hazard, e.g. external importation — there is no
-            # infector to attribute to, so fall back to the index-case label 0.
-            src = isempty(infectious_ids) ? 0 :
-                  infectious_ids[rand(rng, 1:length(infectious_ids))]
+            src = _draw_infector(rng, state, infectious_ids, equal_infectiousness)
             ind = state.individuals[id]
             stamp!(ind, t, src)
             push_windows!(ind)

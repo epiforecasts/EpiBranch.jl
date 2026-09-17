@@ -84,6 +84,19 @@
             for ind in st.individuals if get(ind.state, :infected, false))
         end
         @test maximum(latest_infection) < 1e3
+
+        # The infector is drawn in proportion to infectiousness, so a case
+        # contributing no force is never named as a parent.
+        half_silent = build(transmission_traits(
+            infectiousness = (rng, ind) -> rand(rng) < 0.5 ? 0.0 : 1.0))
+        for s in 1:5
+            st = simulate(half_silent; rng = StableRNG(s), n_initial = 20)
+            parents = [ind.parent_id
+                       for ind in st.individuals
+                       if get(ind.state, :infected, false) && ind.parent_id > 0]
+            @test !isempty(parents)
+            @test all(p -> st.individuals[p].infectiousness > 0, parents)
+        end
     end
 
     @testset "isolation shortens the outbreak" begin
