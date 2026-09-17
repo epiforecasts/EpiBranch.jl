@@ -152,21 +152,3 @@ end
 _resolve_kernel(k::ContinuousUnivariateDistribution, m, i, pos) = k
 _resolve_kernel(k::AbstractVector, m, i, pos) = k[i][pos]
 _resolve_kernel(k, m, i, pos) = k(i, m.adjacency[i][pos])
-
-# ── External-hazard helpers ──────────────────────────────────────────
-#
-# Mirror the HouseholdProcess helpers: this model shares the same
-# community-introduction machinery.
-
-# The external community source: a non-negative scalar (constant hazard) or any
-# continuous distribution on the non-negative reals (a calendar-time hazard).
-_valid_external(α::Real) = α >= 0
-_valid_external(d::ContinuousUnivariateDistribution) = minimum(d) >= 0
-_valid_external(_) = false
-_normalise_external(α::Real) = Float64(α)
-_normalise_external(d::ContinuousUnivariateDistribution) = d
-
-# A community introduction time under the external hazard: the constant case is
-# its Exponential survival time, a distribution is sampled directly.
-_ext_draw(rng, α::Real) = rand(rng, Exponential(1 / α))
-_ext_draw(rng, d::ContinuousUnivariateDistribution) = rand(rng, d)

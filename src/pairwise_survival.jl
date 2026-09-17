@@ -400,7 +400,20 @@ function compile_contact_pairs(data::InfectionLayer; external::Bool = false)
         external)
 end
 
-# ── Evaluation ───────────────────────────────────────────────────────
+# ── The community hazard ─────────────────────────────────────────────
+#
+# A model with a contact structure can also introduce cases from outside it: a
+# non-negative rate (a constant hazard) or a continuous distribution on the
+# non-negative reals (a calendar-time hazard). Its simulators and this likelihood
+# share these helpers, so they agree on when the term applies and what it is.
+
+# Introductions cannot happen before time 0, so a distribution with negative
+# support is rejected.
+_valid_external(α::Real) = α >= 0
+_valid_external(d::ContinuousUnivariateDistribution) = minimum(d) >= 0
+_valid_external(_) = false
+_normalise_external(α::Real) = Float64(α)
+_normalise_external(d::ContinuousUnivariateDistribution) = d
 
 # The community hazard is off at a zero rate; a distribution is always on.
 _ext_active(α::Real) = α > 0
@@ -410,6 +423,11 @@ _ext_active(::ContinuousUnivariateDistribution) = true
 # α is `Exponential(1/α)` (hazard α, cumulative α·t); a distribution is itself.
 _ext_survival(α::Real) = Exponential(1 / α)
 _ext_survival(d::ContinuousUnivariateDistribution) = d
+
+# A community introduction time drawn under the hazard.
+_ext_draw(rng::AbstractRNG, source) = rand(rng, _ext_survival(source))
+
+# ── Evaluation ───────────────────────────────────────────────────────
 
 # Row r's contact-interval distribution: a shared distribution, a per-edge
 # vector parallel to the adjacency the layout was compiled from, or a callable

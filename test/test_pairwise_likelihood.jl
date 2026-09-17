@@ -109,6 +109,23 @@ end
             [1.0], [true]; obs_end = Inf, followup_end = Inf)
     end
 
+    @testset "community hazard helpers" begin
+        @test EpiBranch._valid_external(0)
+        @test EpiBranch._valid_external(Gamma(2.0, 3.0))
+        @test !EpiBranch._valid_external(-0.1)
+        @test !EpiBranch._valid_external(Normal())
+        @test !EpiBranch._valid_external("0.1")
+        @test EpiBranch._normalise_external(1) === 1.0
+        @test EpiBranch._normalise_external(Gamma(2.0, 3.0)) == Gamma(2.0, 3.0)
+        @test !EpiBranch._ext_active(0.0)
+        @test EpiBranch._ext_active(Gamma(2.0, 3.0))
+        # a constant rate draws its exponential waiting time
+        @test EpiBranch._ext_draw(StableRNG(1), 0.5) ==
+              rand(StableRNG(1), Exponential(2.0))
+        @test EpiBranch._ext_draw(StableRNG(1), Gamma(2.0, 3.0)) ==
+              rand(StableRNG(1), Gamma(2.0, 3.0))
+    end
+
     @testset "layout on a household partition" begin
         # households {1,2,3} and {4,5}; 1 and 4 are indexes, 2 is infected too
         membership = [1, 1, 1, 2, 2]
