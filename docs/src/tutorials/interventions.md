@@ -275,18 +275,16 @@ println("Iso + tracing + PEP: $(round(containment_probability(results), digits=3
 
 ### Clustered vaccine refusal
 
-`coverage` drawn independently per contact means every ring ends up
-partly covered — refusal averages out within each ring. In practice
-engagement with a response clusters by household or community: the same
-contacts who evade tracing tend to be the ones who decline a dose. That
-matters more than independent refusal at the same average, because it
-leaves some rings fully covered and others untouched, and an untouched
-ring is where the next chain comes from.
+`coverage` drawn independently per contact means every ring's covered
+fraction concentrates near the mean, whatever any one contact's own
+tendency to refuse. In practice engagement with a response clusters by
+household or community: the same contacts who evade tracing tend to be
+the ones who decline a dose.
 
 [`vaccine_acceptance`](@ref) draws a propensity once per ring — a case
 and the contacts traced from it — rather than once per contact.
-`coverage` reads it back, so a ring accepts or declines together instead
-of each member drawing independently:
+`coverage` reads it back, so ring members share one acceptance
+probability instead of each drawing an independent one:
 
 ```@example interventions
 acceptance = vaccine_acceptance(propensity = Beta(2, 2))  # mean 0.5, varies ring to ring
@@ -310,8 +308,14 @@ results_independent = simulate(scenario([iso, ct, rv_independent]), 200; max_cas
 println("Independent refusal (mean coverage 0.5): $(round(containment_probability(results_independent), digits=3))")
 ```
 
-The mean coverage is the same in both; the variance in per-ring coverage
-is not, and that is the quantity containment depends on.
+The mean coverage is the same in both, and so is the per-ring propensity's
+expectation, so a case's expected number of onward infections is the same
+either way. What differs is the spread of *coverage* across rings at that
+fixed mean — some rings mostly covered, others mostly untouched — not
+containment: each ring's propensity is drawn afresh, so it does not carry
+over into the ring that an unvaccinated contact goes on to seed. The two
+numbers above are expected to be close, and differ only by simulation
+noise at 200 repeats.
 
 ### Mass vaccination
 
