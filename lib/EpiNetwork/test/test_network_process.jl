@@ -1,8 +1,11 @@
 # Tests for NetworkProcess: a rate-based (contact-interval) network run
 # on the shared continuous-time Sellke race.
 
-# A ring graph on `n` nodes: each node linked to its two neighbours.
-ring_adjacency(n) = [[mod1(i - 1, n), mod1(i + 1, n)] for i in 1:n]
+# A ring graph on `n` nodes: each node linked to its `k` nearest neighbours on
+# either side.
+function ring_adjacency(n, k = 1)
+    [vcat([mod1(i - d, n) for d in 1:k], [mod1(i + d, n) for d in 1:k]) for i in 1:n]
+end
 
 # Number of infected nodes in a finished simulation.
 n_infected(state) = count(is_infected, state.individuals)
@@ -131,8 +134,7 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         # proposes along an edge, so both multipliers mean here what they mean
         # on the generation engine: a per-contact block.
         n = 300
-        ring = [vcat([mod1(i - d, n) for d in 1:2], [mod1(i + d, n) for d in 1:2])
-                for i in 1:n]
+        ring = ring_adjacency(n, 2)
         build(attrs) = ModelSpec(NetworkProcess(ring, Exponential(1.5));
             progression = _sir(Exponential(4.0)), attributes = attrs)
         meansize(attrs) = sum(simulate(build(attrs);
@@ -160,8 +162,7 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         # settles it, and its efficacy is then a per-contact block against every
         # infection proposed to a dosed node afterwards.
         n = 300
-        ring = [vcat([mod1(i - d, n) for d in 1:2], [mod1(i + d, n) for d in 1:2])
-                for i in 1:n]
+        ring = ring_adjacency(n, 2)
         clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
             prob_asymptomatic = 0.0)
         # Isolation is the trigger tracing fires from, and nothing else: a
