@@ -751,6 +751,19 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         # created contacts still is: the race creates none.
         @test EpiBranch._sellke_honours(
             build([iso]).process, RingVaccination(efficacy = 0.8))
+        # Its eligibility window and its post-exposure abort are timed from a
+        # contact's exposure, which a node the race has not settled does not
+        # have, so a ring that uses either is reported and doses nobody.
+        model = build([iso]).process
+        @test !EpiBranch._sellke_honours(
+            model, RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8))
+        @test !EpiBranch._sellke_honours(
+            model, RingVaccination(efficacy = 0.8, eligibility_window = 21.0))
+        pep = @test_logs (:warn, r"RingVaccination") match_mode=:any simulate(
+            build([iso, ct,
+                RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8)]);
+            n_initial = 1, rng = StableRNG(4))
+        @test !any(is_vaccinated, pep.individuals)
         @test_logs (:warn, r"MassVaccination") match_mode=:any simulate(
             build([iso, ct,
                 MassVaccination(efficacy = 0.8, eligibility_time = 0.0)]);

@@ -229,6 +229,9 @@ end
         # when no contacts are created, wherever it runs.
         @test !EpiBranch._sellke_honours(nameless,
             MassVaccination(efficacy = 0.9, eligibility_time = 0.0))
+        # Group vaccination doses whole groups as the generation engine creates
+        # their members, so it has nobody to dose either.
+        @test !EpiBranch._sellke_honours(nameless, GroupVaccination(efficacy = 0.9))
         # A leaky isolation is a per-contact block, and the race now resolves it.
         @test EpiBranch._sellke_honours(nameless,
             Isolation(onset_to_isolation_delay = Dirac(1.0),

@@ -707,6 +707,15 @@ end
 
 traces_contacts(::RingVaccination) = true
 
+# Whether a ring can dose on the continuous-time race. Its eligibility window
+# and its post-exposure abort both measure from the contact's exposure, which a
+# contact the race has not settled does not have yet, so a ring using either
+# cannot be applied there faithfully.
+function _ring_doses_on_race(rv::RingVaccination)
+    rv.post_exposure_efficacy == 0.0 &&
+        rv.eligibility_window isa Real && rv.eligibility_window == Inf
+end
+
 """Dose the contacts a case reaches on the continuous-time path, where the
 generation engine's round of new contacts does not exist. The dosing policy
 reads nothing but each contact's own tracing state, so it is the same loop
@@ -716,12 +725,12 @@ reached. Whether the dose then blocks an infection is the competing risk's
 business, and the continuous-time race resolves that on each contact it
 proposes.
 
-`eligibility_window` is the one piece that does not carry over: it measures from
-the contact's own exposure, and a contact the race has not settled has no
-exposure time — it still carries the zero it was created with — so a finite
-window would measure from the start of the run. Leave it at its `Inf` default on
-these models."""
+A ring with a finite `eligibility_window` or a `post_exposure_efficacy` doses
+no one here: both are measured from the contact's own exposure, which a contact
+the race has not settled does not have yet. The model warns about such a ring
+rather than apply either from the wrong time."""
 function trace_contacts!(rv::RingVaccination, state, infector, contacts)
+    _ring_doses_on_race(rv) || return nothing
     apply_post_transmission!(rv, state, contacts)
 end
 

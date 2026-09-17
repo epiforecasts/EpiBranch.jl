@@ -92,14 +92,15 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   infectious windows never close and whose every contact is then blocked has no
   end to reach, and now says so rather than running on.
 - `RingVaccination` doses along the trace on the continuous-time models, where
-  before it only ever dosed contacts the generation engine had created. Its
-  `eligibility_window` has no meaning there: a contact that has not been
-  infected has no exposure time to measure from.
+  before it only ever dosed contacts the generation engine had created. A ring
+  with a finite `eligibility_window` or a `post_exposure_efficacy` still doses
+  no one there and is reported as unhonoured: both are timed from the contact's
+  own exposure, which a contact the race has not yet infected does not have.
 - The continuous-time models' warning about interventions they cannot honour
   now names only those that reach their targets through the generation engine's
-  post-transmission hooks — `MassVaccination`'s rollout, and `ContactTracing`
-  (with `RingVaccination` behind it) on the mass-action pool, which has no
-  pairwise contact structure to act along.
+  post-transmission hooks — `MassVaccination`'s rollout, `GroupVaccination`,
+  and `ContactTracing` (with `RingVaccination` behind it) on the mass-action
+  pool, which has no pairwise contact structure to act along.
 - The fixed-size population pool's mixing structure is now keyed on the
   individual's real attributes: a model names which attributes define mixing via
   `mixing_by` (a tuple of attribute keys, e.g. `(:age_band, :ses)`), and the pool

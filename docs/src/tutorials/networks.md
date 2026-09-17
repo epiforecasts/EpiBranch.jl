@@ -117,9 +117,12 @@ the same way, so they mean here what they mean on the generation-based engine.
 `ContactTracing` applies too, because a node's contacts are its graph neighbours
 and quarantining a traced neighbour closes that neighbour's own window; see
 [Contact tracing on a network](#Contact-tracing-on-a-network). Ring vaccination
-doses along that same trace. An intervention that reaches its targets only among
-freshly created contacts, such as `MassVaccination`'s rollout, is reported with
-a warning rather than applied. Graphs.jl is an optional
+doses along that same trace, unless it sets an `eligibility_window` or a
+`post_exposure_efficacy`: both are timed from a contact's own exposure, which a
+node not yet infected does not have, so such a ring is reported with a warning
+and doses no one. So is an intervention that reaches its targets only among
+freshly created contacts, such as `MassVaccination`'s rollout or
+`GroupVaccination`. Graphs.jl is an optional
 dependency: this constructor becomes available once you load Graphs.jl,
 and the adjacency-list and matrix constructors need nothing extra. For a
 directed graph, a node's out-neighbours are the contacts it can infect.

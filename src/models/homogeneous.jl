@@ -41,9 +41,9 @@ spread; one whose effect is a per-contact block, such as a leaky isolation or a
 vaccine's efficacy, is resolved against each contact the pool delivers, and a
 blocked contact leaves the susceptible waiting for the next. Per-individual
 susceptibility and infectiousness apply the same way. An intervention that finds
-its targets only among newly created contacts — `MassVaccination`'s rollout, or
-`ContactTracing`, which has no contact structure to act along in a mass-action
-pool — is reported with a warning rather than applied. Control expressed as a
+its targets only among newly created contacts — `MassVaccination`'s rollout,
+`GroupVaccination`, or `ContactTracing`, which has no contact structure to act
+along in a mass-action pool — is reported with a warning rather than applied. Control expressed as a
 removal `Transition` in the progression always applies.
 
 The pool is always simulated to extinction over its fixed population, so the
