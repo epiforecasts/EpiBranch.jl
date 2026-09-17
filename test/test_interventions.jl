@@ -1136,6 +1136,128 @@ struct _NoTraceIntervention <: AbstractIntervention end
             @test [s.cumulative_cases for s in results_default] ==
                   [s.cumulative_cases for s in results_explicit]
         end
+
+        @testset "Severity efficacy" begin
+            @testset "Recorded alongside the other per-dose state" begin
+                rv = RingVaccination(efficacy = 0.0, severity_efficacy = 0.4,
+                    delay_to_immunity = 5.0)
+                contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+                EpiBranch._record_vaccination!(rv, contact, 3.0, StableRNG(1))
+                @test contact.state[:severity_efficacy] == 0.4
+                @test immunity_time(contact) == 8.0
+                @test severity_efficacy(contact) == 0.4
+            end
+
+            @testset "Unvaccinated individuals carry no severity protection" begin
+                ind = Individual(id = 1, infection_time = 0.0)
+                @test severity_efficacy(ind) == 0.0
+                @test immunity_time(ind) == Inf
+            end
+
+            @testset "Lowers deaths without changing case counts" begin
+                # A vaccine with efficacy = 0.0 leaves transmission untouched;
+                # severity_efficacy = 1.0 fully protects anyone whose immunity
+                # has developed by their own onset from the (otherwise
+                # certain) death drawn below.
+                iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+                ct = ContactTracing(probability = 1.0,
+                    isolation_to_trace_delay = Exponential(0.5))
+                progression = [Death(delay = 0.0,
+                    probability = (rng, ind) -> immunity_time(ind) <= onset_time(ind) ?
+                                                1.0 - severity_efficacy(ind) : 1.0)]
+                scen(rv) = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical,
+                    progression = progression)
+                died(ind) = get(ind.state, :outcome, nothing) === :died
+
+                rv_protected = RingVaccination(efficacy = 0.0, severity_efficacy = 1.0,
+                    delay_to_immunity = 0.0)
+                results_protected = simulate(scen(rv_protected), 50;
+                    max_cases = 200, rng = StableRNG(42))
+
+                rv_unprotected = RingVaccination(efficacy = 0.0, severity_efficacy = 0.0,
+                    delay_to_immunity = 0.0)
+                results_unprotected = simulate(scen(rv_unprotected), 50;
+                    max_cases = 200, rng = StableRNG(42))
+
+                # Case counts are bit-identical: severity_efficacy does not
+                # touch transmission.
+                @test [s.cumulative_cases for s in results_protected] ==
+                      [s.cumulative_cases for s in results_unprotected]
+
+                n_vaccinated = sum(count(is_vaccinated, s.individuals)
+                for s in results_protected)
+                n_died_protected = sum(count(died, s.individuals)
+                for s in results_protected)
+                n_died_unprotected = sum(count(died, s.individuals)
+                for s in results_unprotected)
+
+                @test n_vaccinated > 0  # otherwise the test is vacuous
+                @test n_died_protected < n_died_unprotected
+                # Anyone whose immunity arrived before their own onset is
+                # fully protected (severity_efficacy = 1.0).
+                @test all(results_protected) do s
+                    all(s.individuals) do ind
+                        immunity_time(ind) > onset_time(ind) || !died(ind)
+                    end
+                end
+            end
+
+            @testset "Immunity arriving after the outcome confers no protection" begin
+                # delay_to_immunity is long enough that immunity never
+                # develops before onset, so severity_efficacy must leave
+                # every death exactly as if the dose were never given.
+                iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+                ct = ContactTracing(probability = 1.0,
+                    isolation_to_trace_delay = Exponential(0.5))
+                progression = [Death(delay = 0.0,
+                    probability = (rng, ind) -> immunity_time(ind) <= onset_time(ind) ?
+                                                1.0 - severity_efficacy(ind) : 1.0)]
+                scen(rv) = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical,
+                    progression = progression)
+                died(ind) = get(ind.state, :outcome, nothing) === :died
+
+                rv_late = RingVaccination(efficacy = 0.0, severity_efficacy = 1.0,
+                    delay_to_immunity = 1e6)
+                results_late = simulate(scen(rv_late), 50;
+                    max_cases = 200, rng = StableRNG(42))
+
+                rv_none = RingVaccination(efficacy = 0.0, severity_efficacy = 0.0,
+                    delay_to_immunity = 1e6)
+                results_none = simulate(scen(rv_none), 50;
+                    max_cases = 200, rng = StableRNG(42))
+
+                n_vaccinated = sum(count(is_vaccinated, s.individuals)
+                for s in results_late)
+                n_died_late = sum(count(died, s.individuals) for s in results_late)
+                n_died_none = sum(count(died, s.individuals) for s in results_none)
+
+                @test n_vaccinated > 0  # otherwise the test is vacuous
+                @test n_died_late == n_died_none
+            end
+
+            @testset "Composes with a per-individual base probability" begin
+                # severity_efficacy multiplies whatever base probability the
+                # Death transition's `probability` computes, so it composes
+                # with age-conditional CFR the same way `efficacy` composes
+                # with any other per-individual heterogeneity.
+                ind_high = Individual(id = 1, infection_time = 0.0,
+                    state = Dict{Symbol, Any}(:onset_time => 5.0, :age => 85))
+                ind_low = Individual(id = 2, infection_time = 0.0,
+                    state = Dict{Symbol, Any}(:onset_time => 5.0, :age => 20))
+                rv = RingVaccination(efficacy = 0.0, severity_efficacy = 0.5,
+                    delay_to_immunity = 0.0)
+                for ind in (ind_high, ind_low)
+                    EpiBranch._record_vaccination!(rv, ind, 0.0, StableRNG(1))
+                end
+                base(ind) = ind.state[:age] >= 80 ? 0.3 : 0.02
+                cfr(ind) = immunity_time(ind) <= onset_time(ind) ?
+                           base(ind) * (1 - severity_efficacy(ind)) : base(ind)
+                @test cfr(ind_high) ≈ 0.15
+                @test cfr(ind_low) ≈ 0.01
+            end
+        end
     end
 
     @testset "Contact tracing without quarantine" begin

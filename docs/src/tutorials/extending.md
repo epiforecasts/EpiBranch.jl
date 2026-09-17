@@ -62,6 +62,7 @@ downstream packages should pick names that do not collide.
 | `:age` | `Real` | — | `demographics` | Init |
 | `:sex` | `Symbol` | — | `demographics` | Init |
 | `:risk_group` | `Symbol` | — | `demographics` | Init |
+| `:group` | `Int` | — | `groups` | Init |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
 | `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
@@ -79,6 +80,8 @@ downstream packages should pick names that do not collide.
 | `:immunity_delay[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:post_exposure_efficacy[_<label>]` | `Float64` | — | `RingVaccination` | `apply_post_transmission!` |
 | `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` | `apply_post_transmission!` |
+| `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
@@ -104,6 +107,15 @@ vaccination time from the field of the same purpose (`delay_to_immunity`,
 `post_exposure_efficacy`, `onward_efficacy`), which may be a `Real`, a
 `Distribution`, or a function; the competing risk reads the stored value
 back rather than resampling on every exposure.
+
+`:immunity_time` (`:vaccination_time` plus the dose's `delay_to_immunity`)
+and `:severity_efficacy` let a clinical transition read a vaccine's effect
+on disease severity — mortality, or any other outcome a `progression`
+transition decides — without gating transmission. Neither participates in
+`competing_risk`; a transition's `probability` reads them through the
+[`immunity_time`](@ref) and [`severity_efficacy`](@ref) accessors, gating
+on the former so a dose whose immunity has not yet developed by the
+outcome it would affect confers no protection.
 
 `:infection_aborted_time` marks an infection that a post-exposure dose ended
 before symptom onset. The individual is still infected but transmits nothing
