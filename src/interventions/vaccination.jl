@@ -4,7 +4,11 @@ Base type for vaccination interventions. A vaccination has an
 and a `delay_to_immunity` (time between vaccination and protection).
 
 Concrete subtypes differ only in eligibility — who gets vaccinated
-when. They share the [`competing_risk`](@ref) machinery: a vaccinated
+when. What a dose does is a [`VaccineEffect`](@ref) (`efficacy`,
+`severity_efficacy`, `delay_to_immunity`, `mode`, `dose_label`), which each
+subtype holds and returns from [`vaccine_effect`](@ref EpiBranch.vaccine_effect);
+shared code reads these parameters only through that method. Subtypes
+share the [`competing_risk`](@ref) machinery: a vaccinated
 contact whose immunity has developed by their transmission time has
 their infection blocked with probability `efficacy`.
 
@@ -80,9 +84,73 @@ individuals are fully protected (susceptibility = 0); the rest gain
 no protection."""
 struct AllOrNothingMode <: AbstractEffectMode end
 
+"""
+    VaccineEffect(; efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
+        mode = LeakyMode(), dose_label = :default)
+
+What a dose does once given, whoever receives it and whenever: the parameters
+every [`AbstractVaccination`](@ref) shares. A vaccination type holds one
+`VaccineEffect` and adds only the fields deciding who is vaccinated and when,
+so shared code reads these parameters through
+[`vaccine_effect`](@ref EpiBranch.vaccine_effect) and the accessors built on
+it, whatever the concrete type.
+
+- `efficacy`: per-exposure probability of blocking infection once immunity has
+  developed. A `Real`, a `Distribution`, or a function `(rng, ind) -> Real`,
+  sampled once per vaccinated individual.
+- `severity_efficacy`: probability that the vaccinated individual's own
+  disease course is milder once immunity has developed. Same forms as
+  `efficacy`, sampled alongside it.
+- `delay_to_immunity`: time from vaccination to protection.
+- `mode`: an [`AbstractEffectMode`](@ref).
+- `dose_label`: namespaces the per-individual state the dose writes (see
+  [`AbstractVaccination`](@ref)).
+
+The built-in vaccinations take these as keywords and build the
+`VaccineEffect` themselves; construct one directly for a custom vaccination
+type (see the Extending guide).
+"""
+struct VaccineEffect{E, SV, D <: Real, M <: AbstractEffectMode}
+    efficacy::E
+    severity_efficacy::SV
+    delay_to_immunity::D
+    mode::M
+    dose_label::Symbol
+end
+
+# `float` keeps an integer delay stored as `Float64`, while a dual number
+# passes through so the delay can be differentiated.
+function VaccineEffect(; efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
+        mode = LeakyMode(), dose_label = :default)
+    return VaccineEffect(efficacy, severity_efficacy, float(delay_to_immunity), mode,
+        dose_label)
+end
+
+"""
+    vaccine_effect(v::AbstractVaccination) -> VaccineEffect
+
+The [`VaccineEffect`](@ref) a vaccination gives. Every `AbstractVaccination`
+subtype defines this method; the shared machinery (recording a dose, the
+susceptibility competing risk, dose schedules) reads efficacy, delay, mode and
+dose label only through it.
+"""
+function vaccine_effect end
+
+"""Per-exposure efficacy of the vaccination's dose, in any of the forms
+[`VaccineEffect`](@ref) accepts."""
+efficacy(v::AbstractVaccination) = vaccine_effect(v).efficacy
+
+"""Severity efficacy of the vaccination's dose, in any of the forms
+[`VaccineEffect`](@ref) accepts. The method on an `Individual`
+reads the value sampled for one individual."""
+severity_efficacy(v::AbstractVaccination) = vaccine_effect(v).severity_efficacy
+
+"""The vaccination's [`AbstractEffectMode`](@ref)."""
+effect_mode(v::AbstractVaccination) = vaccine_effect(v).mode
+
 """Time between vaccination and the onset of protective immunity. Added
 to the vaccination time to give the event time of the competing risk."""
-delay_to_immunity(v::AbstractVaccination) = v.delay_to_immunity
+delay_to_immunity(v::AbstractVaccination) = vaccine_effect(v).delay_to_immunity
 
 """Label of the dose a contact must already have received before this
 vaccination is given, or `nothing` when it requires no earlier dose."""
@@ -92,7 +160,34 @@ required_dose(::AbstractVaccination) = nothing
 `:vaccination_time`, `:vaccine_efficacy`, `:immunity_time`,
 `:severity_efficacy`). `:default` writes to the unsuffixed keys for
 backwards compatibility; other labels write to `:vaccinated_<label>` etc."""
-dose_label(v::AbstractVaccination) = v.dose_label
+dose_label(v::AbstractVaccination) = vaccine_effect(v).dose_label
+
+# The built-in vaccinations expose the effect parameters as properties
+# (`rv.efficacy`) next to their own fields, matching the keywords their
+# constructors take. `show` prints the same keywords, so how the effect is
+# stored inside does not surface in printed output.
+const _VACCINE_EFFECT_FIELDS = fieldnames(VaccineEffect)
+
+function _effect_getproperty(v, name::Symbol)
+    if name in _VACCINE_EFFECT_FIELDS
+        return getfield(getfield(v, :effect), name)
+    end
+    return getfield(v, name)
+end
+
+function _effect_propertynames(v)
+    return (fieldnames(typeof(v))..., _VACCINE_EFFECT_FIELDS...)
+end
+
+function _show_keywords(io::IO, v, names)
+    print(io, nameof(typeof(v)), "(")
+    for (i, name) in enumerate(names)
+        i > 1 && print(io, ", ")
+        print(io, name, " = ")
+        show(io, getproperty(v, name))
+    end
+    print(io, ")")
+end
 
 function _vaccinated_key(label::Symbol)
     label === :default ? :vaccinated : Symbol("vaccinated_", label)
@@ -158,9 +253,10 @@ function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     label = dose_label(v)
     contact.state[_vaccinated_key(label)] = true
     contact.state[_vaccination_time_key(label)] = vacc_t
-    contact.state[_vaccine_efficacy_key(label)] = _sample_value(v.efficacy, rng, contact)
+    contact.state[_vaccine_efficacy_key(label)] = _sample_value(efficacy(v), rng, contact)
     contact.state[_immunity_time_key(label)] = vacc_t + delay_to_immunity(v)
-    contact.state[_severity_efficacy_key(label)] = _sample_value(v.severity_efficacy, rng, contact)
+    contact.state[_severity_efficacy_key(label)] = _sample_value(
+        severity_efficacy(v), rng, contact)
     return nothing
 end
 
@@ -334,19 +430,34 @@ infected in the meantime, because infection is resolved after the doses
 are given. Dose counts for later doses are therefore counts of doses
 scheduled.
 """
-Base.@kwdef struct RingVaccination{E, C, W, SV, M <: AbstractEffectMode} <:
-                   AbstractVaccination
-    efficacy::E
-    coverage::C = 1.0
-    delay_to_immunity::Float64 = 0.0
-    dose_delay::Float64 = 0.0
-    requires_dose::Union{Nothing, Symbol} = nothing
-    eligibility_window::W = Inf
-    post_exposure_efficacy::Float64 = 0.0
-    onward_efficacy::Float64 = 0.0
-    severity_efficacy::SV = 0.0
-    mode::M = LeakyMode()
-    dose_label::Symbol = :default
+struct RingVaccination{V <: VaccineEffect, C, W} <: AbstractVaccination
+    effect::V
+    coverage::C
+    dose_delay::Float64
+    requires_dose::Union{Nothing, Symbol}
+    eligibility_window::W
+    post_exposure_efficacy::Float64
+    onward_efficacy::Float64
+end
+
+function RingVaccination(; efficacy, coverage = 1.0, delay_to_immunity = 0.0,
+        dose_delay = 0.0, requires_dose = nothing, eligibility_window = Inf,
+        post_exposure_efficacy = 0.0, onward_efficacy = 0.0, severity_efficacy = 0.0,
+        mode = LeakyMode(), dose_label = :default)
+    effect = VaccineEffect(; efficacy, severity_efficacy, delay_to_immunity, mode,
+        dose_label)
+    return RingVaccination(effect, coverage, dose_delay, requires_dose,
+        eligibility_window, post_exposure_efficacy, onward_efficacy)
+end
+
+vaccine_effect(rv::RingVaccination) = getfield(rv, :effect)
+Base.getproperty(rv::RingVaccination, name::Symbol) = _effect_getproperty(rv, name)
+Base.propertynames(rv::RingVaccination, ::Bool = false) = _effect_propertynames(rv)
+function Base.show(io::IO, rv::RingVaccination)
+    _show_keywords(io, rv,
+        (:efficacy, :coverage, :delay_to_immunity, :dose_delay, :requires_dose,
+            :eligibility_window, :post_exposure_efficacy, :onward_efficacy,
+            :severity_efficacy, :mode, :dose_label))
 end
 
 function required_fields(rv::RingVaccination)
@@ -514,7 +625,7 @@ end
 _warn_double_counted_efficacy(::AbstractVaccination) = nothing
 function _warn_double_counted_efficacy(rv::RingVaccination)
     rv.post_exposure_efficacy > 0.0 || return nothing
-    rv.efficacy isa Real && rv.efficacy > 0.0 || return nothing
+    efficacy(rv) isa Real && efficacy(rv) > 0.0 || return nothing
     @warn "RingVaccination sets both `efficacy` and `post_exposure_efficacy`, "*
           "which compose as independent risks and so over-protect any contact "*
           "vaccinated before its exposure. `post_exposure_efficacy` already "*
@@ -641,18 +752,30 @@ later:
 GroupVaccination(efficacy = 0.7, eligibility = OnLabConfirmation(), dose_delay = 2.0)
 ```
 """
-Base.@kwdef struct GroupVaccination{
-    E <: TraceEligibility, Ef, C, SV, M <: AbstractEffectMode} <:
-                   AbstractVaccination
-    eligibility::E = OnLabConfirmation()
-    efficacy::Ef
-    coverage::C = 1.0
-    severity_efficacy::SV = 0.0
-    delay_to_immunity::Float64 = 0.0
-    dose_delay::Float64 = 0.0
-    group_key::Symbol = :group
-    mode::M = LeakyMode()
-    dose_label::Symbol = :default
+struct GroupVaccination{V <: VaccineEffect, E <: TraceEligibility, C} <:
+       AbstractVaccination
+    effect::V
+    eligibility::E
+    coverage::C
+    dose_delay::Float64
+    group_key::Symbol
+end
+
+function GroupVaccination(; eligibility = OnLabConfirmation(), efficacy, coverage = 1.0,
+        severity_efficacy = 0.0, delay_to_immunity = 0.0, dose_delay = 0.0,
+        group_key = :group, mode = LeakyMode(), dose_label = :default)
+    effect = VaccineEffect(; efficacy, severity_efficacy, delay_to_immunity, mode,
+        dose_label)
+    return GroupVaccination(effect, eligibility, coverage, dose_delay, group_key)
+end
+
+vaccine_effect(gv::GroupVaccination) = getfield(gv, :effect)
+Base.getproperty(gv::GroupVaccination, name::Symbol) = _effect_getproperty(gv, name)
+Base.propertynames(gv::GroupVaccination, ::Bool = false) = _effect_propertynames(gv)
+function Base.show(io::IO, gv::GroupVaccination)
+    _show_keywords(io, gv,
+        (:eligibility, :efficacy, :coverage, :severity_efficacy, :delay_to_immunity,
+            :dose_delay, :group_key, :mode, :dose_label))
 end
 
 function required_fields(gv::GroupVaccination)
@@ -784,13 +907,25 @@ Prime-and-boost schedule (compose two instances with different labels):
 ]
 ```
 """
-Base.@kwdef struct MassVaccination{E, T, SV, M <: AbstractEffectMode} <: AbstractVaccination
-    efficacy::E
+struct MassVaccination{V <: VaccineEffect, T} <: AbstractVaccination
+    effect::V
     eligibility_time::T
-    delay_to_immunity::Float64 = 0.0
-    severity_efficacy::SV = 0.0
-    mode::M = LeakyMode()
-    dose_label::Symbol = :default
+end
+
+function MassVaccination(; efficacy, eligibility_time, delay_to_immunity = 0.0,
+        severity_efficacy = 0.0, mode = LeakyMode(), dose_label = :default)
+    effect = VaccineEffect(; efficacy, severity_efficacy, delay_to_immunity, mode,
+        dose_label)
+    return MassVaccination(effect, eligibility_time)
+end
+
+vaccine_effect(mv::MassVaccination) = getfield(mv, :effect)
+Base.getproperty(mv::MassVaccination, name::Symbol) = _effect_getproperty(mv, name)
+Base.propertynames(mv::MassVaccination, ::Bool = false) = _effect_propertynames(mv)
+function Base.show(io::IO, mv::MassVaccination)
+    _show_keywords(io, mv,
+        (:efficacy, :eligibility_time, :delay_to_immunity, :severity_efficacy, :mode,
+            :dose_label))
 end
 
 required_fields(::MassVaccination) = Symbol[]

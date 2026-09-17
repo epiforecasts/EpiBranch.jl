@@ -124,7 +124,8 @@ export AnyOf, AllOf, NoneOf
 export TraceRate, ConstantRate
 export TraceDelay, ConstantDelay
 export TraceAction, Quarantine, FlagOnly
-export AbstractVaccination, RingVaccination, MassVaccination, GroupVaccination
+export AbstractVaccination, VaccineEffect, RingVaccination, MassVaccination,
+       GroupVaccination
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
 export RouteWindow, window_open, window_close

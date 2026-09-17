@@ -59,10 +59,10 @@ end
 """Probability that the individual's own disease course is milder — e.g. a
 lower chance of death — once their vaccine-induced immunity has developed
 (`0.0` if not vaccinated, or if the dose carries no severity effect). Sampled
-once per vaccinated individual, alongside `efficacy`, by
-[`AbstractVaccination`](@ref) subtypes' `severity_efficacy` field. Read this
-from a clinical transition's `probability`, gated on [`immunity_time`](@ref)
-having passed:
+once per vaccinated individual, alongside `efficacy`, from the
+`severity_efficacy` of the dose's [`VaccineEffect`](@ref). Read this from a
+clinical transition's `probability`, gated on [`immunity_time`](@ref) having
+passed:
 
 ```julia
 Death(delay = LogNormal(2.5, 0.4),
