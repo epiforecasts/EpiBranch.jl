@@ -1005,25 +1005,21 @@ end
 # The built-in risk sources, in the order they apply. The calls are written out
 # because a loop over a tuple of more than four distinct types is not
 # union-split and would dispatch dynamically on every edge, for every model.
+# The first two are the generation engine's own; the rest are shared with the
+# continuous-time models.
 function _builtin_risk_blocks(parent, contact, state, transmission_time)
     _risk_blocks(InfectiousSource(), parent, contact, state, transmission_time) &&
         return true
     _risk_blocks(WindowCensor(), parent, contact, state, transmission_time) &&
         return true
-    _risk_blocks(AbortedInfection(), parent, contact, state, transmission_time) &&
-        return true
-    _risk_blocks(HostSusceptibility(), parent, contact, state, transmission_time) &&
-        return true
-    _risk_blocks(InfectorInfectiousness(), parent, contact, state, transmission_time) &&
-        return true
-    return false
+    return _sellke_builtin_risk_blocks(parent, contact, state, transmission_time)
 end
 
-# The built-in sources the continuous-time models compose. Two of the five are
-# the generation engine's own and can never fire there: an infector on those
-# models has settled and so is infected by construction, and route censoring is
-# the infectious window's job rather than a tag written on a contact. Leaving
-# them out keeps a per-contact resolution down to what can actually apply.
+# The built-in sources the continuous-time models compose. The generation
+# engine's other two can never fire there: an infector on those models has
+# settled and so is infected by construction, and route censoring is the
+# infectious window's job rather than a tag written on a contact. Leaving them
+# out keeps a per-contact resolution down to what can actually apply.
 function _sellke_builtin_risk_blocks(parent, contact, state, transmission_time)
     _risk_blocks(AbortedInfection(), parent, contact, state, transmission_time) &&
         return true
