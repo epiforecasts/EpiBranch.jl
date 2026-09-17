@@ -15,10 +15,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   a covariate kernel, its own members). It takes the community contact rate as
   `global_rate` and reads everything else — household sizes,
   contact-interval kernel, infectious window, interventions — off the model, so
-  isolation lowers R* through the window it shortens. `reproduction_number`, a
-  new verb that reads a threshold off an offspring specification, gives R* (and
-  the offspring mean for a distribution or a single-type model);
-  `extinction_probability` gives the chance a chain of household-to-household
+  isolation lowers R* through the window it shortens. `reproduction_number`
+  gives R*; `extinction_probability` gives the chance a chain of household-to-household
   transmission started by one infected household of each type dies out; and
   `household_offspring_law` gives the law itself as a `Distributions.jl`
   distribution. Households of each size are simulated where the within-household

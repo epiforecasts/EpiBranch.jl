@@ -1,12 +1,4 @@
 @testset "Analytical" begin
-    @testset "Reproduction number" begin
-        d = NegativeBinomial(0.5, 0.5 / (0.5 + 2.0))
-        @test reproduction_number(d) ≈ 2.0
-        @test reproduction_number(Poisson(1.3)) == 1.3
-        @test reproduction_number(BranchingProcess(d)) ≈ 2.0
-        @test reproduction_number(ModelSpec(BranchingProcess(Poisson(0.8)))) == 0.8
-    end
-
     @testset "Extinction probability" begin
         @testset "Subcritical always extinct" begin
             @test extinction_probability(0.5, 0.1) == 1.0
