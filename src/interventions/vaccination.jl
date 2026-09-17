@@ -675,11 +675,14 @@ already-present member is. Because the campaign reaches the whole group,
 doses scale with group size where [`RingVaccination`](@ref) doses scale
 with ring size.
 
-`coverage`, `efficacy`, `delay_to_immunity`, `mode`, and `dose_label`
-mean what they do for [`RingVaccination`](@ref). `dose_delay` and
-`delay_to_immunity` accept a `Real`, a `Distribution`, or a function
-`(rng, ind) -> Real`; the distribution and function forms draw once per
-member, when that member is vaccinated, so members of one group can be
+`coverage`, `efficacy`, `severity_efficacy`, `delay_to_immunity`, `mode`,
+and `dose_label` mean what they do for [`RingVaccination`](@ref).
+`severity_efficacy` defaults to `0.0` (no severity effect) and, as there,
+acts only through a clinical transition that reads it via the
+[`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors.
+`dose_delay` and `delay_to_immunity` accept a `Real`, a `Distribution`, or a
+function `(rng, ind) -> Real`; the distribution and function forms draw once
+per member, when that member is vaccinated, so members of one group can be
 reached at different times.
 
 # Fallback composition
@@ -719,11 +722,12 @@ GroupVaccination(efficacy = 0.7, eligibility = OnLabConfirmation(), dose_delay =
 ```
 """
 Base.@kwdef struct GroupVaccination{
-    E <: TraceEligibility, Ef, C, DI, DD, M <: AbstractEffectMode} <:
+    E <: TraceEligibility, Ef, C, SV, DI, DD, M <: AbstractEffectMode} <:
                    AbstractVaccination
     eligibility::E = OnLabConfirmation()
     efficacy::Ef
     coverage::C = 1.0
+    severity_efficacy::SV = 0.0
     delay_to_immunity::DI = 0.0
     dose_delay::DD = 0.0
     group_key::Symbol = :group

@@ -77,6 +77,27 @@ end
         end
     end
 
+    @testset "Records severity efficacy and immunity time on every member" begin
+        gv = GroupVaccination(efficacy = 0.0, severity_efficacy = 0.4,
+            delay_to_immunity = 5.0, dose_delay = 1.0)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+
+        confirmed = _group_member(gv, 1, :A, test_positive = true)
+        set_isolated!(confirmed, 2.0)
+        member = _group_member(gv, 2, :A, test_positive = false)
+        new_contacts = [confirmed, member]
+        append!(state.individuals, new_contacts)
+
+        EpiBranch.apply_post_transmission!(gv, state, new_contacts)
+
+        for ind in new_contacts
+            @test severity_efficacy(ind) == 0.4
+            @test immunity_time(ind) == 8.0
+        end
+        @test GroupVaccination(efficacy = 0.9).severity_efficacy == 0.0
+    end
+
     @testset "Members created after the trigger are still reached" begin
         gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 1.0)
