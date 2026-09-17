@@ -578,7 +578,7 @@ _mean_person_time(::Int, kernel, window) = nothing
 function _window_length_law(spec::ModelSpec{<:HouseholdProcess})
     isempty(spec.interventions) || return nothing
     from = _resolve_infectious_from(spec.process.from, spec.progression)
-    closers = filter(t -> _closes_window(t, spec.process.until), spec.progression)
+    closers = filter(t -> _enters(t, spec.process.until), spec.progression)
     length(closers) == 1 || return nothing
     closer = closers[1]
     closer isa Transition || return nothing
@@ -597,8 +597,7 @@ end
 function _reached_by_every_case(state::Symbol, progression, depth::Int = 0)
     state === :infection && return true
     depth > length(progression) && return false
-    into = filter(t -> hasproperty(t, :state) && getfield(t, :state) === state,
-        progression)
+    into = filter(t -> _enters(t, (state,)), progression)
     length(into) == 1 || return false
     t = into[1]
     t isa Transition || return false
@@ -607,6 +606,7 @@ function _reached_by_every_case(state::Symbol, progression, depth::Int = 0)
     return _reached_by_every_case(t.from, progression, depth + 1)
 end
 
-function _closes_window(transition, until::Tuple)
-    return hasproperty(transition, :state) && getfield(transition, :state) in until
+# Whether `transition` moves a case into one of `states`.
+function _enters(transition, states::Tuple)
+    return hasproperty(transition, :state) && getfield(transition, :state) in states
 end
