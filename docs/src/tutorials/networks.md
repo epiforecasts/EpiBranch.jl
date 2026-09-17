@@ -412,7 +412,7 @@ callable `(infector, susceptible) -> Distribution` for covariates, or a per-edge
 vector parallel to the adjacency. The structure and the set of infected nodes
 are fixed, so [`compile_contact_pairs`](@ref) enumerates the rows once and the
 three-argument `pairwise_surv_loglik` reuses them while the kernel parameters
-change. That form is differentiable in those parameters, so it can be optimised
+change. That form is differentiable in those parameters and can be optimised
 with Optim or added to a Turing `@model` through `@addlogprob!`, as the
 households tutorial shows. With an `external_hazard`, pass it to
 `pairwise_surv_loglik` and compile the layout with `external = true`. As in the
@@ -420,7 +420,7 @@ simulation, the community hazard introduces cases up to the data's `obs_end`
 and spread along the edges continues after it. Data that stop at a date are
 scored up to it by passing that date as `followup_end` to `NetworkInfections`
 (or `network_infections`): infections and exposure after it are ignored, and a
-node still infectious then keeps a removal time of `Inf`.
+node still infectious at the end of follow-up keeps a removal time of `Inf`.
 
 Because the possible infectors are read off the graph, a structure that is not a
 partition fits the same way. A network *within* households, where not every
@@ -429,11 +429,11 @@ adjacency is the within-household subgraph. On a directed graph, a node's
 possible infectors are the nodes that list it as a contact.
 
 The likelihood covers single-route `NetworkProcess` models; `RoutedNetwork` has
-no likelihood yet. In real data the infection times are unobserved, so a model
+no likelihood yet. In real data the infection times are unobserved, and a model
 augments them and conditions the observed onsets through the progression, as for
-households. A configuration the model cannot produce — a node infected when no
-in-neighbour is infectious and no community hazard can reach it — has zero
-density, and `pairwise_surv_loglik` returns `-Inf` with a zero gradient, since
+households. An impossible configuration, such as a node infected when no
+in-neighbour is infectious and no community hazard can reach it, has zero
+density. `pairwise_surv_loglik` returns `-Inf` for it with a zero gradient, since
 whether a configuration is possible at all is fixed by the times and not by the
 kernel's parameters.
 
@@ -443,18 +443,19 @@ density does not pass continuously from one to the other. With a constant rate
 `α > 0` an index node infected at time `t` contributes `log(α) - α t`, which
 falls to `-Inf` as `α → 0`: a model that admits community introductions has to
 explain the ones it saw. At exactly `external_hazard = 0` index nodes are
-conditioned on instead and contribute nothing, so the value stays finite. So a
-likelihood ratio between "some community transmission" and "none" cannot be read
-off by letting `α` approach zero: score the two models separately. The
-discontinuity is at that one point — near zero the log-density is `k log α - α T`
-up to terms free of `α`, where `k` counts the cases the community alone can
-explain and `T` is the total time nodes are exposed to it, so in `log α` it is a
-straight line of slope `k`. The [households tutorial](households.md) puts numbers
-on that.
+conditioned on instead and contribute nothing, and the value stays finite. A
+likelihood ratio between "some community transmission" and "none" therefore
+cannot be read off by letting `α` approach zero: score the two models
+separately. The discontinuity is only at that one point. Near zero the
+log-density is `k log α - α T` up to terms free of `α`, where `k` counts the
+cases the community alone can explain and `T` is the total time nodes are
+exposed to it. In `log α` this is a straight line of slope `k`, and the
+[households tutorial](households.md) gives the slope at several values of `α`
+for a worked example.
 
-A `Gamma` cannot be differentiated by ForwardDiff — as the community hazard or as
+ForwardDiff cannot differentiate a `Gamma`, whether it is the community hazard or
 the contact-interval kernel. Its cumulative hazard calls
-`SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual` method, so the
-`MethodError` comes from there rather than from this package. Fit a `Gamma` with
-a reverse-mode backend such as Mooncake; `Weibull` and `Exponential` work under
-either mode.
+`SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual` method, and the
+resulting `MethodError` comes from there rather than from this package. Fit a
+`Gamma` with a reverse-mode backend such as Mooncake; `Weibull` and `Exponential`
+work under either mode.

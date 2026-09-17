@@ -103,13 +103,13 @@ and a scalar `obs_end`, the time community introductions stop (only read when
 there is a community hazard). Spread along the contact structure continues after
 it.
 
-Observed data end at a follow-up time, which
+Observed data stop at the end of follow-up, which
 [`followup_end`](@ref EpiBranch.followup_end) gives: a `followup_end` field when
 the subtype has one, and `Inf` otherwise. The likelihood ignores everything after
 it. A host infected later counts as escaped until then, and exposure to a
-possible infector stops then, so a case still infectious at the end of the data
-can keep a removal time of `Inf`. Simulated outbreaks run to their end and need
-no follow-up time. A subtype also defines
+possible infector stops there. A case still infectious at the end of follow-up
+can therefore keep a removal time of `Inf`. Simulated outbreaks run to completion
+and need no end of follow-up. A subtype also defines
 [`contact_structure`](@ref EpiBranch.contact_structure), which says who could
 have infected whom. [`compile_contact_pairs`](@ref) and
 [`pairwise_surv_loglik`](@ref) then work on it with no further methods.
@@ -127,8 +127,8 @@ opens at the process's `from` state and closes at the earliest of its `until`
 states and the time the model's interventions take the host out of transmission,
 such as by isolation or quarantine after tracing. These are the windows the
 simulation used, so scoring the layer under the kernel that simulated it is an
-exact `simulate → loglikelihood` round trip. A reader's `followup_end` keyword
-scores the outbreak as if observation had stopped then.
+exact `simulate → loglikelihood` round trip. Passing a reader the `followup_end`
+keyword scores the outbreak as if observation had stopped at that time.
 """
 abstract type InfectionLayer end
 
@@ -149,10 +149,11 @@ end
 """
     followup_end(data::InfectionLayer)
 
-The time observation of `data` ends. The pairwise likelihood scores the infection
-layer up to it and ignores infections and exposure after it. The default reads a
-`followup_end` field when the [`InfectionLayer`](@ref) subtype has one, and is
-`Inf` otherwise; a subtype that stores it elsewhere defines a method.
+The end of follow-up of `data`, the time its observation stops. The pairwise
+likelihood scores the infection layer up to it and ignores infections and
+exposure after it. The default reads a `followup_end` field when the
+[`InfectionLayer`](@ref) subtype has one, and is `Inf` otherwise; a subtype that
+stores it elsewhere defines a method.
 """
 function followup_end(data::InfectionLayer)
     hasproperty(data, :followup_end) ?
@@ -178,7 +179,7 @@ end
 # The per-host columns of an infection layer, read out of a `state` simulated
 # from `model`, whose process runs one Sellke race with a `from` state and
 # `until` states (as `HouseholdProcess` and `NetworkProcess` do). Each window is
-# the one that race built, closed by the model's interventions as well, so the
+# the one that race used, closed by the model's interventions as well, so the
 # `simulate → loglikelihood` round trip is exact.
 function _infection_layer_columns(state::SimulationState, model::ModelSpec)
     process = model.process
@@ -214,7 +215,7 @@ end
 
 The static row structure the pairwise likelihood is evaluated on. Each row is
 one ordered (susceptible, possible infector) pair, plus, when a community hazard
-is modelled, one row per susceptible for that external source. Rows whose times
+is modelled, one row per susceptible for the community hazard. Rows whose times
 do not overlap are kept and skipped at evaluation, so one layout works for every
 configuration of latent times with the same structure and infected set.
 
@@ -518,14 +519,14 @@ one, index cases are explained like any other case; without one they are
 conditioned on. Each host accrues the community hazard until the earlier of its
 infection and `data.obs_end`, so a host infected after `obs_end` can only have
 been infected by a possible infector. Spread along the contact structure
-continues after `obs_end`, so a host that is never infected accrues hazard over
+continues after `obs_end`: a host that is never infected accrues hazard over
 each possible infector's whole infectious window.
 
 Everything is cut at [`followup_end(data)`](@ref EpiBranch.followup_end): a host
 infected after it is scored as escaped until then, and no exposure accrues past
-it. Scoring data with a follow-up time gives the same value as first truncating
-the data there: later infections unobserved, and removal times and `obs_end`
-capped at it.
+it. Scoring data with an end of follow-up gives the same value as first
+truncating the data there: later infections unobserved, and removal times and
+`obs_end` capped at it.
 
 Use the layout form in inference: compile the layout once with
 [`compile_contact_pairs`](@ref) and reuse it while the latent times move. Its
@@ -534,7 +535,7 @@ compiles a layout on each call. Both are generic in the number type, so the
 kernel's parameters can be ForwardDiff or reverse-mode AD values. A `Gamma` is
 the exception, whether it is the kernel or the community hazard: its cumulative
 hazard calls `SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual`
-method, so fit a `Gamma` with a reverse-mode backend such as Mooncake. `Weibull`
+method. Fit a `Gamma` with a reverse-mode backend such as Mooncake. `Weibull`
 and `Exponential` differentiate under either mode.
 
 !!! warning "A vanishing community hazard is not the no-community case"
@@ -543,14 +544,14 @@ and `Exponential` differentiate under either mode.
     case infected at time `t` contributes `log(α) − αt`, which falls to `-Inf` as
     `α → 0`, because a model that admits community introductions has to explain
     the ones it saw. At exactly `external_hazard = 0` index cases are instead
-    conditioned on and contribute nothing, leaving a finite value. So a
-    likelihood ratio between "some community transmission" and "none" cannot be
+    conditioned on and contribute nothing, leaving a finite value. A likelihood
+    ratio between "some community transmission" and "none" therefore cannot be
     read off by letting `α` approach zero: score the two models separately.
 
     The discontinuity is at that one point. Approaching it, the log-density is
     `k log α − αT` up to terms free of `α`, where `k` counts the cases the
     community alone can explain and `T` is the total time hosts are exposed to
-    it, so in `log α` it is a straight line of slope `k`.
+    it. In `log α` this is a straight line of slope `k`.
 """
 function pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairsLayout;
         external_hazard = 0.0)
@@ -586,14 +587,15 @@ end
 function _pairwise_surv_loglik(kernel, extdist, data, layout, tfollow,
         ::Type{T}) where {T}
     # An infected host that is not conditioned on and has no possible infector
-    # cannot have been infected, unless that infection falls after follow-up.
+    # cannot have been infected, unless that infection falls after the end of
+    # follow-up.
     @inbounds for j in layout.no_rows
         tj = data.infection_time[j]
         (isnan(tj) || tj > tfollow) || return T(-Inf)
     end
 
-    # A covariate or per-edge kernel may carry the fitted parameters on only some
-    # pairs, so the probe behind `T` can miss them. Every row pass 2 scores has a
+    # A covariate or per-edge kernel may hold the fitted parameters on only some
+    # pairs, and the probe behind `T` can miss them. Every row pass 2 scores has a
     # positive at-risk time in pass 1, so pass 1's sum has seen every kernel
     # pass 2 will use, and its type sets pass 2's accumulator.
     ll = _pairwise_cumhazard(kernel, extdist, data, layout, tfollow, T)
@@ -611,9 +613,9 @@ function _pairwise_cumhazard(kernel, extdist, data, layout, tfollow,
     # Pass 1: cumulative-hazard contribution per row, each at risk from 0. A
     # susceptible is exposed to its possible infectors until it is infected, and
     # to the community hazard until the earlier of that and `obs_end`, after
-    # which there are no more introductions. Nothing is at risk after follow-up,
-    # and a host infected after it has escaped until then as far as the data
-    # show.
+    # which there are no more introductions. Nothing is at risk after the end of
+    # follow-up, and a host infected after it has escaped until then as far as
+    # the data show.
     @inbounds for r in eachindex(sus)
         j = sus[r]
         tj = data.infection_time[j]
@@ -650,7 +652,8 @@ function _pairwise_events(kernel, extdist, data, layout, tfollow, ll0,
     # than adding it, so that the derivative is zero too. Adding it would leave
     # the derivatives of the other hosts' finite terms sitting alongside an
     # infinite value, whereas the log-density is -Inf throughout a neighbourhood
-    # of the parameters — impossibility is a discrete fact of the fixed times.
+    # of the parameters, because impossibility is a discrete fact of the fixed
+    # times.
     acc = _LogSumExpAcc{T}()
     @inbounds for g in eachindex(layout.sus_unique)
         tj = data.infection_time[layout.sus_unique[g]]

@@ -321,12 +321,12 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
 
     @testset "a reused layout matches a freshly compiled one (shared kernel)" begin
         # the two-argument form is the three-argument one with a layout compiled
-        # on the spot, so this is not an independent check of the density — that
+        # on the spot, and this is not an independent check of the density. That
         # cross-check against hand-built counting-process rows lives in the root
-        # suite, in "evaluation matches hand-built counting-process rows". What
-        # it does check is that evaluating a layout leaves it unchanged, so one
+        # suite, in "evaluation matches hand-built counting-process rows". This
+        # test checks that evaluating a layout leaves it unchanged, so one
         # object reused across a grid of kernel scales keeps agreeing with a
-        # fresh one. That is the property inference relies on.
+        # fresh one. Inference relies on that property.
         m = ModelSpec(HouseholdProcess(fill(4, 500), Exponential(3.0));
             progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(101)), m)
@@ -351,7 +351,7 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
               pairwise_surv_loglik(Exponential(3.0), data, layout)
     end
 
-    @testset "a reused layout matches a freshly compiled one (external hazard)" begin
+    @testset "a reused layout matches a freshly compiled one (community hazard)" begin
         # with a community term every susceptible also carries an external row;
         # the layout must be built with external=true, and reusing it across
         # kernel scales must keep agreeing with a layout compiled per call.
@@ -461,7 +461,7 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test ll(θ̂) > swapped(newton(swapped, log.([4.0, 4.0]))) + 10
     end
 
-    @testset "a reused layout carries AD duals like a freshly compiled one" begin
+    @testset "a reused layout propagates AD duals like a freshly compiled one" begin
         # the fast path exists to be differentiated in the kernel parameters
         # (its whole reason for being reused across gradient evaluations). The
         # fitted parameter rides the kernel, not the data, so the layout must
@@ -543,8 +543,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         # a household where the sole housemate escapes: the index recovers at
         # t=3 and member 2 is never infected. There is still one structural row
         # (member 2 at risk from the index), whose only contribution is the
-        # escaped cumulative hazard — finite, and the same however the layout
-        # was obtained.
+        # escaped cumulative hazard, which is finite and the same however the
+        # layout was obtained.
         lone = HouseholdInfections([1, 1], [0.0, NaN], [0.0, NaN], [3.0, Inf],
             [true, false])
         llayout = compile_household_pairs(lone)

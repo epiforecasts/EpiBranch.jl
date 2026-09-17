@@ -30,13 +30,13 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   keeps its API: `HouseholdPairsLayout` is another name for
   `ContactPairsLayout`. Evaluation is faster, most markedly with a community
   hazard.
-- An infection layer can carry the time observation ends, `followup_end`
-  (default `Inf`), on `HouseholdInfections`, `NetworkInfections` and a custom
+- An infection layer can record the end of follow-up, `followup_end` (default
+  `Inf`), on `HouseholdInfections`, `NetworkInfections` and a custom
   `InfectionLayer` alike, and `household_infections` and `network_infections`
   take it as a keyword. The pairwise survival likelihood ignores infections and
-  exposure after it, so an outbreak still going when the data end is scored as
+  exposure after it. An outbreak still going when the data end is then scored as
   observed so far, with a finite value and gradient, and a case still infectious
-  then can keep a removal time of `Inf`.
+  at the end of follow-up can keep a removal time of `Inf`.
 - `trigger_time(eligibility, infector, contact, state)` gives the trace's
   trigger time for the contact being traced, and `ContactTracing` calls it. A
   custom policy can define it to time the trace from the contact, and combinators
@@ -139,7 +139,7 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 - The pairwise survival likelihood returns `-Inf` for an infected host that is
   not conditioned on and that no possible infector or community hazard could
   have infected at its infection time, including a host with no possible
-  infector at all, so a sampler over latent infection times rejects such
+  infector at all. A sampler over latent infection times then rejects such
   configurations. The `-Inf` comes with a zero gradient, since the
   configuration is impossible throughout a neighbourhood of the parameters.
 - Combined tracing eligibility policies now time the trace from the conditions

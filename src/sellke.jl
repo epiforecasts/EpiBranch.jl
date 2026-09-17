@@ -86,10 +86,10 @@ function _route_close(ind, w::RouteWindow, interventions)
     return t
 end
 
-# The one window of `_sellke_race!`'s `from`/`until`/`targets` shorthand. A
-# likelihood that reads a single-route model's infectious windows back out of a
-# simulation builds the same window, so both close each case's window at the
-# same time.
+# The one window of `_sellke_race!`'s `from`/`until`/`targets` shorthand. Reading
+# a single-route model's infectious windows back out of a simulation for the
+# likelihood uses the same window, and the simulator and the likelihood then
+# close each case's window at the same time.
 function _shorthand_window(from, until)
     return RouteWindow(:transmission; from = something(from, :infection),
         until = (something(until, ())..., INTERVENTION_REMOVAL), kernel = nothing)

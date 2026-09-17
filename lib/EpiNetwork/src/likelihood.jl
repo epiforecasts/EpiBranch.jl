@@ -1,7 +1,7 @@
 # ── Network pairwise survival likelihood ─────────────────────────────
 #
 # Network methods for EpiBranch's pairwise survival likelihood. The density, its
-# compiled pair layout and the external hazard term work for any contact
+# compiled pair layout and the community hazard term work for any contact
 # structure and live in EpiBranch. A network supplies its adjacency as the
 # contact structure, so a node's possible infectors are its in-neighbours. The
 # Sellke race in `network_simulate.jl` is the exact generative model of this

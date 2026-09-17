@@ -1,7 +1,7 @@
 # ── Household pairwise survival likelihood ───────────────────────────
 #
 # Household methods for EpiBranch's pairwise survival likelihood. The density,
-# its compiled pair layout and the external hazard term work for any contact
+# its compiled pair layout and the community hazard term work for any contact
 # structure and live in EpiBranch. A household population supplies its partition
 # as the contact structure, so household-mates are each other's possible
 # infectors.
@@ -87,7 +87,7 @@ end
 The compiled pair layout for a household population. It is another name for
 EpiBranch's [`ContactPairsLayout`](@ref), used when the layout is built from a
 household partition. Each row is one ordered (susceptible, household-mate) pair
-that the contact process scores.
+that the likelihood scores.
 
 Build it with [`compile_household_pairs`](@ref).
 """

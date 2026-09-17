@@ -130,16 +130,16 @@ with `pairwise_surv_loglik` supplying the contact-process density of the augment
 configuration. The layout stays valid across draws as long as the household
 structure and the set of ever-infected hosts are fixed — only the latent times
 move — so it is compiled once, outside the model, and reused. Data collected up
-to a date describe an outbreak that may still be going: give
-`HouseholdInfections` that date as `followup_end`, and the density ignores
-infections and exposure after it, so a case still infectious then keeps a
-removal time of `Inf`. A configuration the
-model cannot produce has zero density, and `pairwise_surv_loglik` returns `-Inf`
-for it: for example, a case infected when none of its household-mates is
-infectious and no community hazard can reach it. Without a community hazard the
-density conditions on index cases, so they need no possible infector. The `-Inf`
-comes with a zero gradient, since whether a configuration is possible at all is
-fixed by the times and not by the kernel's parameters.
+to a date describe an outbreak that may still be going. Give
+`HouseholdInfections` that date as `followup_end` and the density ignores
+infections and exposure after it; a case still infectious at the end of
+follow-up keeps a removal time of `Inf`. An impossible configuration, such as a
+case infected when none of its household-mates is infectious and no community
+hazard can reach it, has zero density, and `pairwise_surv_loglik` returns `-Inf`
+for it. Without a community hazard the density conditions on index cases, and
+they need no possible infector. The `-Inf` comes with a zero gradient, since
+whether a configuration is possible at all is fixed by the times and not by the
+kernel's parameters.
 
 ### Fitting a community hazard
 
@@ -149,23 +149,25 @@ rate `α > 0` an index case infected at time `t` contributes `log(α) - α t`, w
 falls to `-Inf` as `α → 0`: a model that admits community introductions has to
 explain the ones it saw, and vanishingly rare introductions explain them
 vanishingly badly. At exactly `external_hazard = 0` index cases are conditioned on
-instead and contribute nothing, so the value stays finite. Each is correct for
+instead and contribute nothing, and the value stays finite. Each is correct for
 what it conditions on.
 
-What follows for fitting is that a likelihood ratio between "some community
-transmission" and "none" cannot be read off by letting `α` approach zero. Score
-the two models separately.
+For fitting, this means a likelihood ratio between "some community transmission"
+and "none" cannot be read off by letting `α` approach zero. Score the two models
+separately.
 
-The discontinuity is at that one point, and the approach to it is ordinary. Drop
-the terms free of `α` and the log-density near zero is `k log α - α T`, where `k`
-counts the cases the community alone can explain and `T` is the total time the
-population is exposed to it. In `log α` that is a straight line of slope `k`. On
+The discontinuity is only at that one point, and the density behaves regularly
+as `α` approaches it. Drop the terms free of `α` and the log-density near zero is
+`k log α - α T`, where `k` counts the cases the community alone can explain and
+`T` is the total time the population is exposed to it. In `log α` that is a
+straight line of slope `k`. On
 400 households of four with `k = 401`, `d ll / d log α` is 401.0 at `α = 1e-6`
 and 393.5 at `1e-3`, falling to zero at the mode near `α = 0.052`.
 
-A `Gamma` cannot be differentiated by ForwardDiff — as the community hazard or as
+ForwardDiff cannot differentiate a `Gamma`, whether it is the community hazard or
 the contact-interval kernel. Its cumulative hazard calls
-`SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual` method, so the
-`MethodError` comes from there rather than from this package. Fit a `Gamma` with
-a reverse-mode backend, `NUTS(; adtype = AutoMooncake())`. `Weibull` and
-`Exponential`, the kernels used above, differentiate under either mode.
+`SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual` method, and the
+resulting `MethodError` comes from there rather than from this package. Fit a
+`Gamma` with a reverse-mode backend, `NUTS(; adtype = AutoMooncake())`.
+`Weibull` and `Exponential`, the kernels used above, differentiate under either
+mode.
