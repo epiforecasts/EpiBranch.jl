@@ -71,6 +71,16 @@ function for a different rule: nearest-first from a custom distance, a
 random draw for lottery allocation, or a composite of several factors. Ties
 are broken by the order `new_contacts` arrives in.
 
+!!! warning "The default is not first-come-first-served for every intervention"
+    [`MassVaccination`](@ref) candidates carry no `:trace_time`, so every one
+    ties at `Inf` under the default and the tie-break — arrival order in
+    `new_contacts` — decides instead. That order follows contact creation,
+    not any notion of when a candidate became eligible, and favours whichever
+    chain happens to be processed first (including the seeds). Pass a
+    `priority` that reads a field `MassVaccination` actually sets (there is
+    none before its own call records `:vaccination_time`) for a rule that
+    means something for it.
+
 # Reporting
 
 [`capacity_usage`](@ref) reads back doses used against doses available at a
