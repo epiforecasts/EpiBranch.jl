@@ -42,7 +42,11 @@ when checked against a transmission, so a dose otherwise blocking at
 strength `efficacy` instead blocks at `efficacy * waning(dt)` when a
 decayed protection is wanted — pre-emptively vaccinated individuals whose
 exposure comes months after their immunity developed, say. `dt` is the
-time from immunity onset to the exposure under evaluation. A
+time from that individual's own immunity onset to the exposure under
+evaluation, and what it scales is the value that individual was given, so
+a dose drawn per individual decays from its own level on its own clock.
+`waning` itself takes only the elapsed time, one shape of decay for the
+whole dose, with the per-individual variation in the draws it scales. A
 post-exposure abort happens the moment immunity arrives, so it uses
 `post_exposure_efficacy * waning(0)`, which differs from
 `post_exposure_efficacy` only for a `waning` that does not start at 1.
