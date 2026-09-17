@@ -162,8 +162,10 @@ refusal, absence, exclusion criteria, logistical gaps). Defaults to
 age-dependent). Refusal clusters by household or community in practice
 rather than falling independently on each contact; give `coverage` a
 function reading a value set by [`vaccine_acceptance`](@ref) to draw
-that correlation in, so an entire ring accepts or declines together
-rather than each member flipping its own independent coin.
+that correlation in, so ring members share one acceptance *probability*
+rather than each drawing an independent one — each contact still flips
+its own coin against it, so the covered fraction varies ring to ring
+rather than averaging out.
 
 `eligibility_window` skips vaccination when the time since the
 contact's exposure exceeds the window — typical of filovirus-type
@@ -538,10 +540,13 @@ own transmission time.
 - a `Function` `(rng, ind) -> Real`: per-individual rule; use for
   age-stratified rollout or any other state-dependent schedule.
   Return `Inf` for individuals who never become eligible. Reading a
-  value set by [`vaccine_acceptance`](@ref) here (e.g.
-  `(rng, ind) -> ind.state[:vaccine_acceptance] > 0.5 ? 30.0 : Inf`)
-  clusters refusal by ring rather than drawing it independently per
-  contact.
+  value set by [`vaccine_acceptance`](@ref) here clusters refusal by
+  ring rather than drawing it independently per contact, e.g.
+  `(rng, ind) -> ind.state[:vaccine_acceptance] > 0.5 ? 30.0 : Inf`
+  thresholds the shared propensity into a per-ring accept/decline;
+  marginal acceptance is then `P(propensity > 0.5)`, not the
+  propensity's mean, so pick the threshold against the target uptake
+  rather than reading it off the propensity distribution's mean.
 
 `efficacy` accepts the same `Real | Distribution | Function` set,
 sampled once per vaccinated contact. Per-individual heterogeneous

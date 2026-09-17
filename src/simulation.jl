@@ -1348,15 +1348,22 @@ A vaccination's `coverage` (or `MassVaccination`'s `eligibility_time`)
 accepts a function `(rng, ind) -> Real`, but has no group to read on its
 own; this builder supplies one. Read it back with a closure such as
 `coverage = (rng, ind) -> ind.state[:vaccine_acceptance]`, so members of
-the same ring accept or decline together rather than independently.
+the same ring share one acceptance probability rather than each drawing
+an independent one.
 
 `propensity` accepts a `Real`, a `Distribution`, or a function
 `(rng, ind) -> Real`; it is sampled once for the case whose ring is being
-formed (`ind` is that case, not the contact). With a `Real` or a
-degenerate `{0, 1}` propensity, coverage is all-or-nothing per ring; with
-a `Distribution`, it varies ring to ring around its mean, giving the same
+formed (`ind` is that case, not the contact). Each ring member still
+draws its own coin against that shared value, so a constant `Real`
+propensity gives every ring the same probability and is indistinguishable
+from independent per-contact draws at that probability. A `Distribution`
+propensity varies the shared probability ring to ring, giving the same
 average coverage as independent draws but more variance in per-ring
-coverage — some rings fully covered, others untouched.
+coverage — some rings mostly covered, others mostly untouched, without
+making any one ring's outcome uniform. Only a propensity that is itself
+degenerate at `0` or `1` (e.g. `(rng, ind) ->
+Float64(rand(rng, Bernoulli(p)))`) makes a ring accept or decline as a
+block.
 
 # Examples
 
