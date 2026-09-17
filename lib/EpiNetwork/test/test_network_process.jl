@@ -1,8 +1,11 @@
 # Tests for NetworkProcess: a rate-based (contact-interval) network run
 # on the shared continuous-time Sellke race.
 
-# A ring graph on `n` nodes: each node linked to its two neighbours.
-ring_adjacency(n) = [[mod1(i - 1, n), mod1(i + 1, n)] for i in 1:n]
+# A ring graph on `n` nodes: each node linked to its `k` nearest neighbours on
+# either side.
+function ring_adjacency(n, k = 1)
+    [vcat([mod1(i - d, n) for d in 1:k], [mod1(i + d, n) for d in 1:k]) for i in 1:n]
+end
 
 # Number of infected nodes in a finished simulation.
 n_infected(state) = count(is_infected, state.individuals)
@@ -138,8 +141,7 @@ end
         # proposes along an edge, so both multipliers mean here what they mean
         # on the generation engine: a per-contact block.
         n = 300
-        ring = [vcat([mod1(i - d, n) for d in 1:2], [mod1(i + d, n) for d in 1:2])
-                for i in 1:n]
+        ring = ring_adjacency(n, 2)
         build(attrs) = ModelSpec(NetworkProcess(ring, Exponential(1.5));
             progression = _sir(Exponential(4.0)), attributes = attrs)
         meansize(attrs) = sum(simulate(build(attrs);
@@ -167,8 +169,7 @@ end
         # settles it, and its efficacy is then a per-contact block against every
         # infection proposed to a dosed node afterwards.
         n = 300
-        ring = [vcat([mod1(i - d, n) for d in 1:2], [mod1(i + d, n) for d in 1:2])
-                for i in 1:n]
+        ring = ring_adjacency(n, 2)
         clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
             prob_asymptomatic = 0.0)
         # Isolation is the trigger tracing fires from, and nothing else: a
@@ -207,6 +208,52 @@ end
         leaky = meansize([iso, ct, RingVaccination(efficacy = 0.5)])
         @test leaky < 0.8 * base
         @test meansize([iso, ct, RingVaccination(efficacy = 1.0)]) < leaky
+    end
+
+    @testset "a traced node is offered a ring dose once" begin
+        # A node is traced again by every neighbour that settles after it, and a
+        # coverage draw on each would vaccinate far more than `coverage` of them.
+        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
+            prob_asymptomatic = 0.0)
+        ivs = [
+            Isolation(onset_to_isolation_delay = Exponential(0.5), test_sensitivity = 1.0,
+                post_isolation_transmission = 1.0),
+            ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.2),
+                quarantine_on_trace = false),
+            RingVaccination(efficacy = 0.0, coverage = 0.5)]
+        model = ModelSpec(NetworkProcess(ring_adjacency(300, 2), Exponential(4.0));
+            progression = _sir(Exponential(8.0)), interventions = ivs,
+            attributes = clinical)
+        traced = [ind
+                  for s in 1:20
+                  for ind in simulate(model; rng = StableRNG(s), n_initial = 3).individuals
+                  if is_traced(ind) && isfinite(ind.state[:trace_time])]
+        @test length(traced) > 1000
+        @test isapprox(count(is_vaccinated, traced) / length(traced), 0.5; atol = 0.05)
+    end
+
+    @testset "a dose given along another case's trace protects before exposure" begin
+        # With incomplete tracing and asymptomatic cases, a node is often dosed by
+        # the trace of a case other than the one that later infects it, and that
+        # trace can settle after the infector did. The race resolves each
+        # proposal once everything infected before its time has settled, so a
+        # fully effective dose in place by then blocks it.
+        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
+            prob_asymptomatic = 0.4)
+        ivs = [
+            Isolation(onset_to_isolation_delay = Exponential(0.5), test_sensitivity = 1.0,
+                post_isolation_transmission = 1.0),
+            ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(0.2),
+                quarantine_on_trace = false),
+            RingVaccination(efficacy = 1.0)]
+        model = ModelSpec(NetworkProcess(ring_adjacency(400, 3), Exponential(3.0));
+            progression = _sir(Exponential(6.0)), interventions = ivs,
+            attributes = clinical)
+        immune_at_infection(ind) = is_vaccinated(ind) && ind.parent_id != 0 &&
+                                   ind.state[:immunity_time] <= ind.infection_time
+        runs = [simulate(model; rng = StableRNG(s), n_initial = 3) for s in 1:15]
+        @test any(st -> count(is_vaccinated, st.individuals) > 0, runs)
+        @test !any(st -> any(immune_at_infection, st.individuals), runs)
     end
 
     @testset "onset is measured from each case's own infection time" begin

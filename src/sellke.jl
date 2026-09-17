@@ -233,6 +233,23 @@ function _intervention_removal_time(ind, interventions)
     return t
 end
 
+# Whether the composed risks block `parent` infecting `contact` at the proposed
+# `transmission_time` on a continuous-time model. On the generation engine a
+# contact's `infection_time` already holds its transmission time when the risks
+# are resolved, and a risk may read the exposure from there. A contact these
+# models propose is still susceptible, so its `infection_time` holds nothing
+# yet: set it to the proposed time for the resolution, and put it back if the
+# contact is blocked, leaving it as it was.
+function _proposal_blocked(state::SimulationState, parent, contact, transmission_time,
+        model_risks, interventions)
+    previous = contact.infection_time
+    contact.infection_time = transmission_time
+    blocked = _composed_risks_block(state, parent, contact, transmission_time,
+        model_risks, interventions, _sellke_builtin_risk_blocks)
+    blocked && (contact.infection_time = previous)
+    return blocked
+end
+
 # The interventions whose risks apply on a route that has not opted into
 # intervention removal.
 function _every_route_interventions(interventions)
@@ -542,10 +559,9 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         # put to none, as on the generation engine.
         source = infector_id == 0 ? ind : state.individuals[infector_id]
         if may_block && (infector_id != 0 || introduction !== nothing) &&
-           _composed_risks_block(
+           _proposal_blocked(
                state, source, ind, bt, risks,
-               opening.route == 0 ? interventions : route_interventions[opening.route],
-               _sellke_builtin_risk_blocks)
+               opening.route == 0 ? interventions : route_interventions[opening.route])
             # The contact did not transmit, and the source goes on meeting the
             # person: the next contact is a draw from the same hazard conditioned
             # on falling later, kept while the window is still open for it.
