@@ -599,8 +599,11 @@ already-present member is. Because the campaign reaches the whole group,
 doses scale with group size where [`RingVaccination`](@ref) doses scale
 with ring size.
 
-`coverage`, `efficacy`, `delay_to_immunity`, `mode`, and `dose_label`
-mean what they do for [`RingVaccination`](@ref).
+`coverage`, `efficacy`, `severity_efficacy`, `delay_to_immunity`, `mode`,
+and `dose_label` mean what they do for [`RingVaccination`](@ref).
+`severity_efficacy` defaults to `0.0` (no severity effect) and, as there,
+acts only through a clinical transition that reads it via the
+[`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors.
 
 # Fallback composition
 
@@ -639,11 +642,12 @@ GroupVaccination(efficacy = 0.7, eligibility = OnLabConfirmation(), dose_delay =
 ```
 """
 Base.@kwdef struct GroupVaccination{
-    E <: TraceEligibility, Ef, C, M <: AbstractEffectMode} <:
+    E <: TraceEligibility, Ef, C, SV, M <: AbstractEffectMode} <:
                    AbstractVaccination
     eligibility::E = OnLabConfirmation()
     efficacy::Ef
     coverage::C = 1.0
+    severity_efficacy::SV = 0.0
     delay_to_immunity::Float64 = 0.0
     dose_delay::Float64 = 0.0
     group_key::Symbol = :group
