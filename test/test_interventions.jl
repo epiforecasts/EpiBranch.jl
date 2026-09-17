@@ -710,7 +710,7 @@ struct _NoTraceIntervention <: AbstractIntervention end
 
             @testset "Distributional post_exposure_efficacy and onward_efficacy sample per contact" begin
                 # Each dose draws once at vaccination time and stores the
-                # result (see `_record_ring_extras!`), rather than
+                # result (see `_record_vaccination!`), rather than
                 # resampling on every exposure or onward transmission.
                 rv = RingVaccination(efficacy = 0.0,
                     post_exposure_efficacy = Beta(8, 2), onward_efficacy = Beta(8, 2))

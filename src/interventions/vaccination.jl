@@ -205,8 +205,13 @@ function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     contact.state[_immunity_time_key(label)] = vacc_t +
                                                _sample_value(v.delay_to_immunity, rng, contact)
     contact.state[_severity_efficacy_key(label)] = _sample_value(v.severity_efficacy, rng, contact)
+    _record_effect_draws!(v, contact, label, rng)
     return nothing
 end
+
+# Draws for effects only some vaccinations have (`post_exposure_efficacy` and
+# `onward_efficacy` exist only on `RingVaccination`).
+_record_effect_draws!(::AbstractVaccination, contact, label, rng) = nothing
 
 # ── RingVaccination ──────────────────────────────────────────────────
 
@@ -417,6 +422,13 @@ function required_fields(rv::RingVaccination)
 end
 required_dose(rv::RingVaccination) = rv.requires_dose
 
+function _record_effect_draws!(rv::RingVaccination, contact, label, rng)
+    _store_draw!(rv.post_exposure_efficacy, _post_exposure_efficacy_key, label, contact,
+        rng)
+    _store_draw!(rv.onward_efficacy, _onward_efficacy_key, label, contact, rng)
+    return nothing
+end
+
 # Onward-infectiousness risk: blocks the parent → contact transmission
 # iff this dose has been administered to the *parent* and the parent's
 # immunity has developed by their (the parent's) transmission time. The
@@ -605,19 +617,6 @@ function _dose_offset(rv::RingVaccination)
     rv.dose_delay isa Real ? Float64(rv.dose_delay) : nothing
 end
 
-# Helper for `apply_post_transmission!`: write RingVaccination-only per-dose
-# state (`post_exposure_efficacy` and `onward_efficacy` do not exist on
-# `MassVaccination`, so they are not part of the shared `_record_vaccination!`).
-# A varying parameter is sampled once at vaccination time so `_abort_infection!`,
-# `_contact_risk`, and `_onward_risk` read back the same draw on every exposure.
-function _record_ring_extras!(rv::RingVaccination, contact, rng)
-    label = dose_label(rv)
-    _store_draw!(rv.post_exposure_efficacy, _post_exposure_efficacy_key, label, contact,
-        rng)
-    _store_draw!(rv.onward_efficacy, _onward_efficacy_key, label, contact, rng)
-    return nothing
-end
-
 # The intervention inside a wrapper; `Scheduled` adds a method.
 _unwrap_scheduled(iv) = iv
 
@@ -654,7 +653,6 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
             continue
         _covers(rv.coverage, ind, state.rng) || continue
         _record_vaccination!(rv, ind, vacc_t, state.rng)
-        _record_ring_extras!(rv, ind, state.rng)
         _maybe_positive(rv.post_exposure_efficacy) &&
             _abort_infection!(rv, ind, vacc_t, state.rng)
     end
