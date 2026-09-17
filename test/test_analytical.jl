@@ -282,6 +282,27 @@
             @test reproduction_number(narrow)≈2.0 atol=1e-6
             @test extinction_probability(narrow)≈extinction_probability(2.0, 0.5) atol=1e-6
 
+            # A degenerate law has its own PGF derivative; a geometric law sums the
+            # truncated series and matches NegBin with k = 1, whose extinction
+            # probability is 1/R.
+            @test EpiBranch._pgf_derivative(Dirac(0), 0.3) == 0.0
+            @test EpiBranch._pgf_derivative(Dirac(3), 0.5) ≈ 0.75
+            @test EpiBranch._pgf_derivative(Geometric(1 / 3), 0.5) ≈
+                  EpiBranch._pgf_derivative(NegBin(2.0, 1.0), 0.5)
+            degenerate = ClusterMixed(θ -> Dirac(round(Int, θ)),
+                DiscreteNonParametric([0.0, 2.0], [0.3, 0.7]))
+            @test extinction_probability(degenerate) ≈ 0.3
+            geometric = ClusterMixed(θ -> Geometric(1 / (1 + θ)),
+                DiscreteNonParametric([0.5, 2.0], [0.4, 0.6]))
+            @test extinction_probability(geometric)≈0.4 + 0.6 * 0.5 atol=1e-8
+
+            # Newton's method stopped early warns and returns an iterate below
+            # the root, since the iterates rise towards it.
+            stop_early = () -> EpiBranch._extinction_at_fixed_law(Poisson(2.0);
+                tol = 1e-12, max_iter = 2)
+            early = @test_logs (:warn, r"without converging") match_mode=:any stop_early()
+            @test 0 < early < extinction_probability(Poisson(2.0))
+
             # Near-critical laws converge without warning and match a precise root.
             @test (@test_logs EpiBranch._extinction_at_fixed_law(Poisson(1.0001);
                 tol = 1e-12, max_iter = 1000))≈0.9998000266635559 atol=1e-10

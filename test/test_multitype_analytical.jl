@@ -1,5 +1,12 @@
 using LinearAlgebra: eigvals
 
+# A custom model that is not a `BranchingProcess` and supplies its offspring law
+# only through `single_type_offspring`.
+struct LawOnlyModel{D} <: EpiBranch.TransmissionModel
+    law::D
+end
+EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
+
 @testset "Multi-type analytics" begin
     M = [1.5 0.6;
          0.5 0.9]
@@ -203,6 +210,7 @@ using LinearAlgebra: eigvals
         @test occursin("Function", sprint(show, fn_model))
         @test_throws ArgumentError EpiBranch._analytic_offspring(fn_model)
         single = BranchingProcess(NegBin(2.0, 0.5), Exponential(1.0))
+        @test occursin("offspring=NegativeBinomial", sprint(show, single))
         @test EpiBranch._analytic_offspring(single) == NegBin(2.0, 0.5)
         @test EpiBranch._analytic_offspring(ModelSpec(single)) == NegBin(2.0, 0.5)
     end
@@ -230,5 +238,25 @@ using LinearAlgebra: eigvals
         model = BranchingProcess(M, R -> Poisson(R), Exponential(5.0))
         @test_throws ArgumentError single_type_offspring(model)
         @test_throws ArgumentError probability_contain(model)
+    end
+
+    @testset "Degenerate laws use the closed-form PGF" begin
+        @test EpiBranch._pgf(Dirac(3), 0.5) == 0.125
+        # Every type-1 case infects exactly three others, two of type 1 and one
+        # of type 2, which infects no one.
+        fixed = BranchingProcess([2.0 0.0; 1.0 0.0], R -> Dirac(round(Int, R)),
+            Exponential(1.0))
+        @test reproduction_number(fixed) ≈ 2.0
+        q = extinction_probability(fixed)
+        @test q[2] == 1.0
+        @test 0 < q[1] < 1
+        @test q[1] ≈ ((2q[1] + 1) / 3)^3 atol = 1e-9
+    end
+
+    @testset "A custom model reaches the analytics through its offspring law" begin
+        custom = LawOnlyModel(NegBin(2.0, 0.5))
+        @test reproduction_number(custom) ≈ 2.0
+        @test extinction_probability(custom) ≈ extinction_probability(2.0, 0.5)
+        @test epidemic_probability(ModelSpec(custom)) ≈ epidemic_probability(2.0, 0.5)
     end
 end

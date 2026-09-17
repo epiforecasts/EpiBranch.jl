@@ -7,13 +7,15 @@
 # A macro rather than a function, so that each iteration warns from its own call
 # site and `maxlog` counts them separately. A shared function would let one
 # unconverged multi-type call silence every later single-type one in the session.
+# The expansion drops the line numbers of this definition, which attributes its
+# code to the call site, where coverage tools look for it.
 macro warn_unconverged_extinction(max_iter, cause)
-    return esc(quote
+    return esc(Base.remove_linenums!(quote
         @warn "Fixed-point iteration for the extinction probability stopped " *
               "after $($max_iter) iterations without converging, which happens " *
               "when $($cause) is close to 1. The result may be inaccurate; " *
               "raise `max_iter`." maxlog=1
-    end)
+    end))
 end
 
 """
