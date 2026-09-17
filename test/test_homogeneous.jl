@@ -73,6 +73,17 @@
         none_infectious = simulate(build(transmission_traits(infectiousness = 0.0));
             rng = StableRNG(1), n_initial = 5)
         @test none_infectious.cumulative_cases == 5
+
+        # Fractional infectiousness added and removed in a different order
+        # leaves a rounding residual in the weighted count; once nobody is
+        # infectious, no further infection may occur.
+        varied = build(transmission_traits(infectiousness = Uniform(0, 1)))
+        latest_infection = map(1:20) do s
+            st = simulate(varied; rng = StableRNG(s), n_initial = 5)
+            maximum(ind.infection_time
+            for ind in st.individuals if get(ind.state, :infected, false))
+        end
+        @test maximum(latest_infection) < 1e3
     end
 
     @testset "isolation shortens the outbreak" begin

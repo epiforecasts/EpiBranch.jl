@@ -111,8 +111,15 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     # infectiousness trait: a case with half the infectiousness contributes
     # half the force a default case would.
     counts = Dict{Any, T}()
+    # Headcount per mixing type. Adding and then subtracting fractional
+    # infectiousness leaves a rounding residual, which as a positive force would
+    # infect the remaining susceptibles at absurd times once nobody is
+    # infectious, so a type's weighted count is reset to zero exactly when its
+    # headcount is.
+    n_infectious = Dict{Any, Int}()
     for id in members
         counts[typ[id]] = zero(T)
+        n_infectious[typ[id]] = 0
     end
 
     open_heap = Tuple{T, Int}[]         # pending window-open (becomes infectious)
@@ -238,11 +245,15 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             slot[lastid] = i
             pop!(infectious_ids)
             delete!(slot, id)
-            counts[typ[id]] -= state.individuals[id].infectiousness
+            tp = typ[id]
+            n_infectious[tp] -= 1
+            counts[tp] = n_infectious[tp] == 0 ? zero(T) :
+                         counts[tp] - state.individuals[id].infectiousness
         elseif t_open == t_event
             _, id = _heap_pop!(open_heap)
             push!(infectious_ids, id)
             slot[id] = length(infectious_ids)
+            n_infectious[typ[id]] += 1
             counts[typ[id]] += state.individuals[id].infectiousness
         else
             # Infection: the lowest-threshold susceptible in group `gstar` crosses
