@@ -56,9 +56,11 @@ how to apply a decay to it in the clinical transition that reads it.
 Defaults to `nothing`, which keeps protection constant once immunity
 develops. A dose with its own `dose_label` in a multi-dose
 schedule decays from its own immunity time, independently of any other
-dose's; doses still compose as competing risks, so a schedule's total
-protection at a given exposure is the product of what each dose retains
-at that time.
+dose's. Doses still compose as competing risks, each blocking an exposure
+on its own, so a schedule leaves an exposure unblocked with probability
+`prod(1 - eff_i * w_i)` over its doses, where `eff_i` is what dose `i` was
+given and `w_i` what it retains at that exposure. A prime at 0.6 and a
+boost at 0.7, both at full strength, block 0.88 between them.
 
 !!! note "In a pure branching process the two modes are equivalent"
     Every contact in a branching process is a unique exposure, so
@@ -479,6 +481,15 @@ scheduled.
 accept the same `Real | Distribution | Function` forms as `efficacy`, drawn
 once per contact when the dose is given (see [`AbstractVaccination`](@ref)).
 So does `dose_delay`, drawn once when the dose is scheduled.
+
+`waning` is the exception: it is a function `dt -> Real` of the time since
+this contact's immunity developed, and one shape of decay serves the whole
+dose, because what it scales is already each contact's own draw (see
+[`AbstractVaccination`](@ref)). It scales `efficacy`, `post_exposure_efficacy`
+and `onward_efficacy`, and leaves `severity_efficacy` alone. The
+post-exposure abort acts the moment immunity arrives, so it uses `waning(0)`:
+a decay that builds up first, such as `dt -> min(1, dt / 14)`, therefore
+aborts nothing.
 """
 Base.@kwdef struct RingVaccination{
     E, C, DI, DD, W, PE, OE, SV, WN, M <: AbstractEffectMode
@@ -588,6 +599,10 @@ function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     # dose retains then: the block `_contact_risk` applies to an exposure
     # coinciding with immunity.
     post *= _retained(waning(rv), 0.0)
+    # Waning can take the retained efficacy to zero, and a dose that cannot
+    # abort anything must not draw: the draw would never succeed and would still
+    # move every later draw in the run.
+    post > 0.0 || return nothing
     _covers(post, contact, rng) || return nothing
     # An earlier dose may already have aborted it; the infection ends at the
     # first abort.

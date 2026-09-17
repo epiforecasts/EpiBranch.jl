@@ -373,6 +373,32 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "Waning immunity" begin
+            # A dose that can no longer abort anything must not draw, or it shifts every
+            # later draw in the run.
+            @testset "A fully waned post-exposure dose leaves the stream untouched" begin
+                clinical = clinical_presentation(
+                    incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+                iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+                    post_isolation_transmission = 0.4)
+                ct = ContactTracing(probability = 0.8,
+                    isolation_to_trace_delay = Exponential(0.5),
+                    quarantine_on_trace = false)
+                process = BranchingProcess(Poisson(2.2), Exponential(5.0))
+                cases(interventions) = sum(1:40) do seed
+                    state = simulate(
+                        ModelSpec(process; interventions = interventions,
+                            attributes = clinical);
+                        max_cases = 400, rng = StableRNG(seed))
+                    count(is_infected, state.individuals)
+                end
+
+                none = cases([iso, ct])
+                waned = cases([iso, ct,
+                    RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8,
+                        waning = dt -> 0.0)])
+                @test waned == none
+            end
+
             # Probe the closure `_susceptibility_risk` builds directly, at
             # increasing times since immunity onset (`delay_to_immunity = 0`,
             # so immunity onset coincides with vaccination).
