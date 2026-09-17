@@ -46,7 +46,9 @@ budget that never replenishes.
     the generation-based engine calls. A continuous-time model does not call
     it, so wrapping an intervention with `CapacityConstrained` there has no
     effect and triggers the usual "no effect" warning for an unhonoured
-    intervention.
+    intervention. For the same reason `CapacityConstrained` does not pass the
+    continuous-time tracing hook (`trace_contacts!`) through: the wrapped
+    intervention would otherwise act there with no budget.
 
 `carry_over = true` (the default) lets an unused allowance from an earlier
 period add to a later one: the running total available by time `t` is
@@ -268,3 +270,9 @@ end
 function keep_active(cc::CapacityConstrained, state, targets, is_new)
     keep_active(cc.intervention, state, targets, is_new)
 end
+
+# The continuous-time race has no batch of competing contacts to ration, so
+# passing its tracing through would let the wrapped intervention act with no
+# budget at all. Opting out keeps the documented "no effect" there.
+traces_contacts(::CapacityConstrained) = false
+trace_contacts!(::CapacityConstrained, state, infector, contacts) = nothing

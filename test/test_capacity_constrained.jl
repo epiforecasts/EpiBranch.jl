@@ -135,17 +135,28 @@ end
               EpiBranch.intervention_time(rv, contact)
         @test EpiBranch.infectious_removal_time(cc, contact) ==
               EpiBranch.infectious_removal_time(rv, contact)
-        @test EpiBranch.traces_contacts(cc) == EpiBranch.traces_contacts(rv)
         @test EpiBranch.keep_active(cc, state, [contact], [true]) ==
               EpiBranch.keep_active(rv, state, [contact], [true])
         @test EpiBranch._unwrap_scheduled(cc) === rv
         @test EpiBranch.resolve_individual!(cc, contact, state) ===
               EpiBranch.resolve_individual!(rv, contact, state)
-        @test EpiBranch.trace_contacts!(cc, state, parent, [contact]) ===
-              EpiBranch.trace_contacts!(rv, state, parent, [contact])
-        @test EpiBranch.trace_contacts!(cc, state, parent, [contact], [-Inf]) ===
-              EpiBranch.trace_contacts!(rv, state, parent, [contact], [-Inf])
         @test EpiBranch.reset!(cc, contact) === EpiBranch.reset!(rv, contact)
+    end
+
+    @testset "Continuous-time tracing is not passed through unrationed" begin
+        ct = ContactTracing(probability = 1.0,
+            isolation_to_trace_delay = Exponential(1.0))
+        cc = CapacityConstrained(ct; budget_per_period = 1.0)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
+        infector = Individual(id = 1)
+        contact = Individual(id = 2)
+
+        @test EpiBranch.traces_contacts(ct)
+        @test !EpiBranch.traces_contacts(cc)
+        @test EpiBranch.trace_contacts!(cc, state, infector, [contact]) === nothing
+        @test EpiBranch.trace_contacts!(cc, state, infector, [contact], [-Inf]) === nothing
+        @test !haskey(contact.state, :traced)
     end
 
     @testset "GroupVaccination is rejected with a clear error" begin
