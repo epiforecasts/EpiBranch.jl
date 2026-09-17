@@ -130,6 +130,22 @@ end
         risk = EpiBranch.competing_risk(cc, parent, contact, state)
         @test risk !== nothing
         @test EpiBranch.required_fields(cc) == EpiBranch.required_fields(rv)
+        @test EpiBranch.is_active(cc, state) == EpiBranch.is_active(rv, state)
+        @test EpiBranch.intervention_time(cc, contact) ==
+              EpiBranch.intervention_time(rv, contact)
+        @test EpiBranch.infectious_removal_time(cc, contact) ==
+              EpiBranch.infectious_removal_time(rv, contact)
+        @test EpiBranch.traces_contacts(cc) == EpiBranch.traces_contacts(rv)
+        @test EpiBranch.keep_active(cc, state, [contact], [true]) ==
+              EpiBranch.keep_active(rv, state, [contact], [true])
+        @test EpiBranch._unwrap_scheduled(cc) === rv
+        @test EpiBranch.resolve_individual!(cc, contact, state) ===
+              EpiBranch.resolve_individual!(rv, contact, state)
+        @test EpiBranch.trace_contacts!(cc, state, parent, [contact]) ===
+              EpiBranch.trace_contacts!(rv, state, parent, [contact])
+        @test EpiBranch.trace_contacts!(cc, state, parent, [contact], [-Inf]) ===
+              EpiBranch.trace_contacts!(rv, state, parent, [contact], [-Inf])
+        @test EpiBranch.reset!(cc, contact) === EpiBranch.reset!(rv, contact)
     end
 
     @testset "GroupVaccination is rejected with a clear error" begin
