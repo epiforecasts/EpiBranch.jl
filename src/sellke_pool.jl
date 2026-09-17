@@ -309,7 +309,7 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             # as an index case on the generation engine has none either.
             blocked = src != 0 && _composed_risks_block(
                 state, state.individuals[src], ind, t, risks, interventions,
-                _SELLKE_RISK_SOURCES)
+                _sellke_builtin_risk_blocks)
             if blocked
                 # The contact did not transmit. Put the susceptible back with the
                 # residual of its resistance: a fresh Exponential(1) above the

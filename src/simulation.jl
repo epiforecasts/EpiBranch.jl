@@ -546,6 +546,7 @@ function _resolve!(model::TransmissionModel, state::SimulationState,
             target.parent_id = 0
             target.infection_time = 0.0
         end
+        _drop_stale_abort!(target)
     end
 
     for target in newly_infected
@@ -575,6 +576,24 @@ function _resolve!(model::TransmissionModel, state::SimulationState,
 end
 
 # ── Internal helpers ───────────────────────────────────────────────
+
+# A post-exposure abort (`:infection_aborted_time`) is drawn in the
+# intervention phase against a target's provisional exposure, its earliest
+# exposing edge, and applies only to the infection that exposure starts. When
+# resolution does not confirm that exposure, this removes the abort and
+# restores the onset it suppressed, so the abort cannot act on an infection it
+# was not drawn for. One such target escapes infection: as a pre-created node
+# it could otherwise be infected in a later generation and have its dose
+# counted twice. The other is infected through a later edge at or after the
+# abort time, where the dose's contact-side risk already applied.
+function _drop_stale_abort!(target::Individual)
+    aborted_t = get(target.state, :infection_aborted_time, nothing)
+    aborted_t === nothing && return nothing
+    is_infected(target) && target.infection_time < aborted_t && return nothing
+    delete!(target.state, :infection_aborted_time)
+    _set_onset_from_incubation!(target)
+    return nothing
+end
 
 # ── Population-building helpers for a model's `initialise_state` ──────
 # A model defines `initialise_state` to set up its starting population.
@@ -816,6 +835,14 @@ the generation-based engine) calls it itself, once per case, after the case's
 attributes and intervention state are set. The transitions come from the model's
 `progression`, placed on the state when it is built with
 [`new_state`](@ref EpiBranch.new_state).
+
+An infection aborted before onset (`:infection_aborted_time`, see
+[`RingVaccination`](@ref)) ends its clinical course at the abort time. A
+transition takes effect at the times it writes under `_time` keys, so one that
+writes a time at or after the abort is undone, whatever state it is timed from:
+every key it changed is restored. Transitions timed from it then find their
+`from` state unreached, and it contributes no terminal candidate to the outcome.
+Transitions that take effect strictly before the abort stand.
 """
 function resolve_transitions!(state::SimulationState, individual)
     transitions = state.transitions
@@ -823,10 +850,71 @@ function resolve_transitions!(state::SimulationState, individual)
     for transition in transitions
         initialise_individual!(transition, individual, state)
     end
-    for transition in transitions
-        resolve_individual!(transition, individual, state)
+    # Branch once per case: a check inside the loop measurably slows every
+    # progression model, although almost no case is aborted.
+    if haskey(individual.state, :infection_aborted_time)
+        _resolve_before_abort!(transitions, individual, state,
+            individual.state[:infection_aborted_time])
+    else
+        for transition in transitions
+            resolve_individual!(transition, individual, state)
+        end
     end
     _finalise_terminal!(individual, transitions)
+    return nothing
+end
+
+# Resolve the transitions of an aborted infection in order, undoing each one
+# that takes effect at or after the abort. Transitions record when they happen
+# under `_time` keys (`:hospitalised_time`, `:admission_time`,
+# `:death_candidate_time`, ...), so reading those keys applies the same check to
+# every transition, built-in or user-defined, whatever state it is timed from.
+#
+# `kept` holds the state as the transitions that stood left it: copied once per
+# case, then brought up to date with only the keys each such transition
+# changed.
+function _resolve_before_abort!(transitions, individual, state, aborted_t)
+    kept = copy(individual.state)
+    for transition in transitions
+        resolve_individual!(transition, individual, state)
+        if _writes_time_from(individual.state, kept, aborted_t)
+            empty!(individual.state)
+            merge!(individual.state, kept)
+        else
+            _catch_up!(kept, individual.state)
+        end
+    end
+    return nothing
+end
+
+# Marks a key that was absent before a transition ran. A private instance
+# compares unequal to anything a transition could store.
+struct _Absent end
+const _ABSENT = _Absent()
+
+function _writes_time_from(after, before, t)
+    for (key, value) in after
+        # Identity first: it needs no dispatch on the stored value and rules
+        # out almost every key.
+        get(before, key, _ABSENT) === value && continue
+        value isa Real && isfinite(value) && value >= t || continue
+        isequal(get(before, key, nothing), value) && continue
+        # Only a changed value at or after the abort gets this far, so building the
+        # key's name here costs nothing on the other keys.
+        endswith(String(key), "_time") || continue
+        return true
+    end
+    return false
+end
+
+# Bring `kept` up to date with `current` after a transition that stood.
+function _catch_up!(kept, current)
+    for (key, value) in current
+        get(kept, key, _ABSENT) === value || (kept[key] = value)
+    end
+    # Every key of `current` is now in `kept`, so a surplus means the
+    # transition deleted keys.
+    length(kept) > length(current) && filter!(kv -> haskey(current, first(kv)), kept)
     return nothing
 end
 
@@ -901,15 +989,50 @@ function competing_risk(::WindowCensor, parent, contact, state)
     return Risk(event_time = t_end, block_probability = 1.0)
 end
 
-const _BUILTIN_RISK_SOURCES = (InfectiousSource(), WindowCensor(),
-    HostSusceptibility(), InfectorInfectiousness())
+"""Default risk source: the end of an aborted infection. An infector whose
+infection was aborted (`:infection_aborted_time`, written by a post-exposure
+dose of [`RingVaccination`](@ref)) transmits nothing from that time on. The
+block reads the infector's state and nothing else, so it lasts exactly as long
+as the abort is recorded, whether or not the intervention that recorded it is
+still active. A no-op on every infector without the key."""
+struct AbortedInfection end
+function competing_risk(::AbortedInfection, parent, contact, state)
+    aborted_t = get(parent.state, :infection_aborted_time, nothing)
+    aborted_t === nothing && return nothing
+    return Risk(event_time = aborted_t, block_probability = 1.0)
+end
 
-# The built-in sources the continuous-time models compose. Two of the four are
-# the generation engine's own and can never fire on a race: its infector has
-# settled and so is infected by construction, and route censoring is the
-# infectious window's job there rather than a tag written on a contact. Leaving
+# The built-in risk sources, in the order they apply. The calls are written out
+# because a loop over a tuple of more than four distinct types is not
+# union-split and would dispatch dynamically on every edge, for every model.
+function _builtin_risk_blocks(parent, contact, state, transmission_time)
+    _risk_blocks(InfectiousSource(), parent, contact, state, transmission_time) &&
+        return true
+    _risk_blocks(WindowCensor(), parent, contact, state, transmission_time) &&
+        return true
+    _risk_blocks(AbortedInfection(), parent, contact, state, transmission_time) &&
+        return true
+    _risk_blocks(HostSusceptibility(), parent, contact, state, transmission_time) &&
+        return true
+    _risk_blocks(InfectorInfectiousness(), parent, contact, state, transmission_time) &&
+        return true
+    return false
+end
+
+# The built-in sources the continuous-time models compose. Two of the five are
+# the generation engine's own and can never fire there: an infector on those
+# models has settled and so is infected by construction, and route censoring is
+# the infectious window's job rather than a tag written on a contact. Leaving
 # them out keeps a per-contact resolution down to what can actually apply.
-const _SELLKE_RISK_SOURCES = (HostSusceptibility(), InfectorInfectiousness())
+function _sellke_builtin_risk_blocks(parent, contact, state, transmission_time)
+    _risk_blocks(AbortedInfection(), parent, contact, state, transmission_time) &&
+        return true
+    _risk_blocks(HostSusceptibility(), parent, contact, state, transmission_time) &&
+        return true
+    _risk_blocks(InfectorInfectiousness(), parent, contact, state, transmission_time) &&
+        return true
+    return false
+end
 
 """Apply one risk source's [`competing_risk`](@ref)(s) to a transmission;
 return `true` if any active risk blocks it. Built-in risk sources and
@@ -976,15 +1099,13 @@ Both engines resolve a transmission through this one function — the
 generation engine on each contact it created, the continuous-time models on
 each candidate infection time they propose — so a susceptibility, an
 infectiousness, or an intervention's [`Risk`](@ref) means the same thing on
-either. `builtins` is the only difference between them, and only because two
-of the built-in sources cannot fire on a continuous-time model at all. Nothing
-is drawn from the rng unless a risk actually applies."""
+either. `builtin_blocks` is the only difference between them, and only because
+two of the built-in sources cannot fire on a continuous-time model at all.
+Nothing is drawn from the rng unless a risk actually applies."""
 function _composed_risks_block(state::SimulationState, parent, contact,
         transmission_time, model_risks, interventions,
-        builtins = _BUILTIN_RISK_SOURCES)
-    for source in builtins
-        _risk_blocks(source, parent, contact, state, transmission_time) && return true
-    end
+        builtin_blocks = _builtin_risk_blocks)
+    builtin_blocks(parent, contact, state, transmission_time) && return true
     for source in model_risks
         _risk_blocks(source, parent, contact, state, transmission_time) && return true
     end
@@ -1098,13 +1219,15 @@ end
 
 Set `:onset_time` to `infection_time + :incubation_period` from the
 stored host incubation period. Asymptomatic individuals (`NaN`
-incubation) get a `NaN` onset. Applies when `:incubation_period` is
+incubation) get a `NaN` onset, and so does an infection aborted before
+onset, which never reaches it. Applies when `:incubation_period` is
 present on the individual.
 """
 function _set_onset_from_incubation!(ind::Individual)
     haskey(ind.state, :incubation_period) || return nothing
     inc = ind.state[:incubation_period]
-    ind.state[:onset_time] = isnan(inc) ? NaN : ind.infection_time + inc
+    ind.state[:onset_time] = isnan(inc) || _infection_aborted(ind) ? NaN :
+                             ind.infection_time + inc
     return nothing
 end
 
@@ -1127,6 +1250,48 @@ end
 _sample_age(rng, ::NoAgeDistribution, age_range) = rand(rng, age_range[1]:age_range[2])
 function _sample_age(rng, dist::Distribution, age_range)
     clamp(floor(Int, rand(rng, dist)), age_range...)
+end
+
+"""
+    groups(n_groups::Integer; key::Symbol = :group)
+
+Return an attributes function that assigns each individual to one of
+`n_groups` groups, labelled `1:n_groups` and drawn uniformly at random,
+under `key` (`:group` by default).
+
+The branching process has no geography, but a group does not need one:
+`key` can stand for a village, a health area, or a household, and
+[`GroupVaccination`](@ref) targets whichever one it names without the
+model knowing where it is. `groups` only labels individuals, uniformly and
+independently of who infected whom, which is enough to test a
+group-triggered vaccination on its own. Concentrating transmission within
+a group as well is a separate, existing choice: give a multi-type
+[`BranchingProcess`](@ref) an offspring matrix that favours the diagonal,
+one type per group, and write a custom attributes function in place of
+this one that assigns `:group` from whatever labels the model's types
+(households, a contact network) rather than drawing them independently.
+
+# Examples
+
+Twenty equally likely villages:
+
+```julia
+attributes = groups(20)
+```
+
+A named unit, for a builder that also sets other fields:
+
+```julia
+attributes = [groups(10; key = :household), clinical_presentation(...)]
+```
+
+See also [`GroupVaccination`](@ref).
+"""
+function groups(n_groups::Integer; key::Symbol = :group)
+    n_groups >= 1 || throw(ArgumentError("n_groups must be at least 1, got $n_groups"))
+    return function (rng, ind)
+        ind.state[key] = rand(rng, 1:n_groups)
+    end
 end
 
 """
@@ -1224,6 +1389,7 @@ function _field_hint(field::Symbol)
     hints = Dict(
         :onset_time => "Provide attributes = clinical_presentation(incubation_period = ...).",
         :asymptomatic => "Provide attributes = clinical_presentation(incubation_period = ...).",
+        :incubation_period => "Provide attributes = clinical_presentation(incubation_period = ...).",
         :age => "Provide attributes = demographics(age_distribution = ...).",
         :sex => "Provide attributes = demographics(...)."
     )

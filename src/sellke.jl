@@ -356,7 +356,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                 (cand <= close_t && cand < best[k]) || continue
                 _composed_risks_block(state, ind, state.individuals[target_id],
                     cand, risks, route_interventions,
-                    _SELLKE_RISK_SOURCES) && continue
+                    _sellke_builtin_risk_blocks) && continue
                 best[k] = cand
                 src[k] = members[j]
                 _heap_push!(pending, (best[k], k))
