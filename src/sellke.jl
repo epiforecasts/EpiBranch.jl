@@ -195,7 +195,6 @@ function _sellke_honours(model, iv::AbstractIntervention)
     _has_generation_hook(iv) || return true
     return traces_contacts(iv) && supplies_contacts(model)
 end
-_sellke_honours(model, ::ContactTracing) = supplies_contacts(model)
 function _sellke_honours(model, rv::RingVaccination)
     supplies_contacts(model) && _ring_doses_on_race(rv)
 end
