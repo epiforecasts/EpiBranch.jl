@@ -518,43 +518,61 @@ end
 # ones before it.
 function _final_size_pmf(n::Int, a::Int, kernel, window)
     n == 0 && return [1.0]
-
-    p = zeros(n + 1)
-    for j in 0:n
-        ψ = _escape(kernel, window, n - j)
-        # Each equation is multiplied through by `ψ^(j + a)`, because dividing by
-        # a power of a small escape probability underflows to zero when
-        # transmission is strong. Floating-point coefficients: integer ones
-        # overflow from a household of 68.
-        p[j + 1] = binomial(Float64(n), j) * ψ^(j + a) -
-                   sum(
-            binomial(Float64(n - k), j - k) * p[k + 1] * ψ^(j - k)
-            for k in 0:(j - 1); init = 0.0)
+    p = _final_size_recursion(Float64, kernel, window, n, a)
+    _is_accurate(p) && return max.(p, 0.0)
+    # The recursion subtracts terms far larger than the probabilities they
+    # leave, which in Float64 fails for households of a few dozen when escape
+    # probabilities are close to 1. A binomial coefficient costs at most `n`
+    # bits, so extended precision with a margin of a few bits per member
+    # recovers them.
+    p = setprecision(BigFloat, 64 + 4n) do
+        Float64.(_final_size_recursion(BigFloat, kernel, window, n, a))
     end
-    # The recursion subtracts terms far larger than the probabilities they leave
-    # in a big household, and can leave a probability a hair below zero;
-    # anything worse is a real failure.
-    all(>=(-1e-8), p) || throw(ErrorException(
+    _is_accurate(p) || throw(ErrorException(
         "the final-size recursion lost accuracy for a household of $(n + a), " *
         "because it subtracts terms far larger than the probabilities they leave"))
     return max.(p, 0.0)
 end
 
+# Rounding can leave a probability a hair below zero; anything worse is a real
+# loss of accuracy.
+_is_accurate(p) = all(>=(-1e-8), p)
+
+# The recursion in number type `T`. Each equation is multiplied through by
+# `ψ^(j + a)`, because dividing by a power of a small escape probability
+# underflows to zero when transmission is strong. The coefficients are floating
+# point: integer ones overflow from a household of 68.
+function _final_size_recursion(T::Type{<:AbstractFloat}, kernel, window, n::Int,
+        a::Int)
+    p = zeros(T, n + 1)
+    for j in 0:n
+        ψj = _escape(T, kernel, window, n - j)
+        p[j + 1] = binomial(T(n), j) * ψj^(j + a) -
+                   sum(
+            binomial(T(n - k), j - k) * p[k + 1] * ψj^(j - k)
+            for k in 0:(j - 1); init = zero(T))
+    end
+    return p
+end
+
 # The probability that a specified set of `m` susceptibles all escape one case:
 # its contacts with them are independent given its infectious window, so each
 # escapes with the kernel's survival at the window length and the set escapes
-# with the `m`-th power, averaged over the window.
-_escape(kernel, window::Real, m::Int) = ccdf(kernel, window)^m
-function _escape(kernel, window::UnivariateDistribution, m::Int)
-    m == 0 && return 1.0
+# with the `m`-th power, averaged over the window. The power is taken in `T`: the
+# recursion amplifies any inconsistency between the escape probabilities of
+# different set sizes, so rounding each power separately in Float64 would undo
+# the extended precision.
+_escape(T::Type, kernel, window::Real, m::Int) = T(ccdf(kernel, window))^m
+function _escape(T::Type, kernel, window::UnivariateDistribution, m::Int)
+    m == 0 && return one(T)
     # Integrating over the window's quantiles keeps the range bounded whatever
     # the window distribution is.
-    return first(quadgk(u -> ccdf(kernel, quantile(window, u))^m, 0.0, 1.0))
+    return T(first(quadgk(u -> ccdf(kernel, quantile(window, u))^m, 0.0, 1.0)))
 end
 # Both exponential, the escape probability is the window's Laplace transform at
 # `m` times the kernel's rate.
-function _escape(kernel::Exponential, window::Exponential, m::Int)
-    return rate(window) / (rate(window) + m * rate(kernel))
+function _escape(T::Type, kernel::Exponential, window::Exponential, m::Int)
+    return T(rate(window)) / (T(rate(window)) + m * T(rate(kernel)))
 end
 
 # Mean total community-infectious person-time of a household of `n` members

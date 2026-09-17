@@ -80,6 +80,36 @@ end
         @test probs(d) ≈ [0.0, 0.0, 0.0, 1.0]
     end
 
+    @testset "weak transmission in a large household keeps its accuracy" begin
+        # Escape probabilities close to 1 make the recursion cancel badly in
+        # Float64 for a household of 40; the pmf must still be a distribution
+        # and agree with the chain-binomial means it approximates.
+        d = household_final_size(40, Exponential(50.0), 1.0)
+        @test all(>=(0), probs(d))
+        @test sum(probs(d)) ≈ 1
+        # For a fixed window this is Reed-Frost, whose final size can be
+        # simulated generation by generation.
+        q = exp(-1.0 / 50.0)
+        rng = StableRNG(31)
+        simulated = mean(1:20_000) do _
+            susceptible, infective, total = 39, 1, 1
+            while infective > 0 && susceptible > 0
+                infective = rand(rng, Binomial(susceptible, 1 - q^infective))
+                susceptible -= infective
+                total += infective
+            end
+            total
+        end
+        @test mean(d)≈simulated rtol=0.02
+    end
+
+    @testset "a recursion that stays inaccurate says so" begin
+        # A random window's escape probabilities come from quadrature, whose
+        # error the recursion amplifies beyond what extended precision recovers.
+        @test_throws ErrorException household_final_size(
+            40, Exponential(50.0), Uniform(0.5, 1.5))
+    end
+
     @testset "the recursion matches simulated households" begin
         n = 5
         model = ModelSpec(HouseholdProcess(fill(n, 20_000), Exponential(1 / β));
