@@ -147,21 +147,6 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test count(df.index) != length(m.process.members) # not the one-index fallback
     end
 
-    @testset "pairwise survival likelihood: basics and differentiability" begin
-        rows = PairwiseSurvivalData([1, 1, 2, 2], [0.0, 0.0, 0.0, 0.0],
-            [2.0, 4.0, 1.5, 5.0], [true, false, true, false])
-        @test isfinite(pairwise_surv_loglik(Exponential(3.0), rows))
-        # a constant per-row callable equals the shared distribution
-        @test pairwise_surv_loglik(r -> Exponential(3.0), rows) ≈
-              pairwise_surv_loglik(Exponential(3.0), rows)
-        # differentiable in a log-rate parameter (what makes it fittable)
-        f(θ) = pairwise_surv_loglik(Exponential(exp(θ)), rows)
-        g = ForwardDiff.derivative(f, log(3.0))
-        @test isfinite(g)
-        fd = (f(log(3.0) + 1e-6) - f(log(3.0) - 1e-6)) / 2e-6
-        @test isapprox(g, fd; rtol = 1e-4)
-    end
-
     @testset "simulate → loglikelihood round trip recovers the kernel" begin
         # the Sellke construction is the generative model the pairwise likelihood
         # assumes, so the simulated infection layer recovers the kernel scale.
@@ -234,30 +219,6 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         ll(s) = pairwise_surv_loglik(Exponential(s), data, layout; external_hazard = 0.05)
         grid = 1.5:0.5:5.0
         @test abs(grid[argmax([ll(s) for s in grid])] - true_scale) <= 1.5
-    end
-
-    @testset "an impossible household gives -Inf with a zero gradient" begin
-        # Two households. In {1, 2} member 1 is a community case at 0 and infects
-        # 2 at 1.0, which the parameters do move. In {3, 4} member 4 is infected
-        # at 8.0, after obs_end and before its only household-mate is infectious,
-        # so nothing can explain it. The density is -Inf over a whole
-        # neighbourhood of the parameters — possibility is fixed by the times —
-        # so the gradient must be exactly zero rather than that of the other
-        # household's terms.
-        inf = [0.0, 1.0, 10.0, 8.0]
-        data = HouseholdInfections([1, 1, 2, 2], inf, inf, [5.0, 6.0, 12.0, 13.0],
-            [true, false, true, false]; obs_end = 5.0)
-        layout = compile_household_pairs(data; external = true)
-        f(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data;
-            external_hazard = exp(θ[2]))
-        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout;
-            external_hazard = exp(θ[2]))
-        θ = [log(3.0), log(0.1)]
-        @test f(θ) == -Inf
-        @test g(θ) == -Inf
-        @test ForwardDiff.gradient(f, θ) == [0.0, 0.0]
-        @test ForwardDiff.gradient(g, θ) == [0.0, 0.0]
-        @test DifferentiationInterface.gradient(g, AutoMooncake(), θ) == [0.0, 0.0]
     end
 
     @testset "community introductions stop at obs_end and household spread goes on" begin
@@ -612,29 +573,7 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
             [true])
     end
 
-    @testset "compiled pair layout: community cases at time 0" begin
-        # 1 and 3 are community cases at 0 in households {1, 2} and {3}; both
-        # forms count them, adding log α each
-        data = HouseholdInfections([1, 1, 2], [0.0, NaN, 0.0], [0.0, NaN, 0.0],
-            [3.0, Inf, 3.0], [true, false, true]; obs_end = 5.0)
-        layout = compile_household_pairs(data; external = true)
-        k = Exponential(2.0)
-        expected = 2 * log(0.1) - 0.1 * 5 - 3 / 2
-        @test pairwise_surv_loglik(k, data; external_hazard = 0.1) ≈ expected
-        @test pairwise_surv_loglik(k, data, layout; external_hazard = 0.1) ≈ expected
-        # a community hazard that is zero at 0 cannot have introduced them
-        zero_at_0 = Gamma(2.0, 5.0)
-        @test pairwise_surv_loglik(k, data; external_hazard = zero_at_0) == -Inf
-        @test pairwise_surv_loglik(k, data, layout; external_hazard = zero_at_0) == -Inf
-
-        # an infection where every possible infector has zero hazard
-        zero_hazard = HouseholdInfections([1, 1, 1], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0],
-            [5.0, 5.0, 6.0], [true, true, false])
-        kz = Uniform(2.0, 10.0)
-        @test pairwise_surv_loglik(kz, zero_hazard) == -Inf
-        @test pairwise_surv_loglik(kz, zero_hazard, compile_household_pairs(zero_hazard)) ==
-              -Inf
-
+    @testset "simulated index cases at time 0 scored with a community hazard" begin
         # index cases simulated at 0 without a community hazard, scored with one
         m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
             progression = _sir(5.0))
@@ -647,32 +586,6 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
             @test pairwise_surv_loglik(Exponential(3.0), d, ld; external_hazard = α) ≈
                   pairwise_surv_loglik(Exponential(3.0), d; external_hazard = α)
         end
-    end
-
-    @testset "an infection no household-mate or community can explain" begin
-        k = Exponential(2.0)
-        both(d; kw...) = (pairwise_surv_loglik(k, d; kw...),
-            pairwise_surv_loglik(k, d,
-                compile_household_pairs(d; external = haskey(kw, :external_hazard));
-                kw...))
-        # index 1 is infectious over [0, 3], so 2 cannot be infected after 3
-        for (t, expected) in ((2.9, log(1 / 2) - 2.9 / 2), (3.5, -Inf), (5.0, -Inf))
-            d = HouseholdInfections([1, 1], [0.0, t], [0.0, t], [3.0, t + 3.0],
-                [true, false])
-            @test all(both(d) .≈ expected)
-        end
-        # community hazard 0.1 up to obs_end = 4, and 1 infectious over [0.5, 3]
-        for (t, expected) in ((3.5, 2 * log(0.1) - 0.05 - 0.35 - 2.5 / 2),
-            (4.5, -Inf), (6.0, -Inf))
-            d = HouseholdInfections([1, 1], [0.5, t], [0.5, t], [3.0, t + 3.0],
-                [false, false]; obs_end = 4.0)
-            @test all(both(d; external_hazard = 0.1) .≈ expected)
-        end
-        # a lone member is conditioned on as an index case and impossible otherwise
-        lone(is_index) = HouseholdInfections([1, 1, 2], [0.0, 1.0, 2.0],
-            [0.0, 1.0, 2.0], [4.0, 5.0, 6.0], [true, false, is_index])
-        @test all(both(lone(true)) .≈ log(1 / 2) - 1 / 2)
-        @test all(both(lone(false)) .== -Inf)
     end
 
     @testset "simulated infection layers never have zero density" begin

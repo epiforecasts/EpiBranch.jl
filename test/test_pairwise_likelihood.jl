@@ -1,4 +1,7 @@
 using ForwardDiff
+using DifferentiationInterface: DifferentiationInterface
+import Mooncake
+using ADTypes: AutoMooncake
 
 # A minimal infection layer over an explicit contact structure, as a companion
 # package would define one: the fields the likelihood reads plus the structure.
@@ -67,6 +70,10 @@ end
         @test pairwise_surv_loglik(k, rows) ≈ 2 * log(1 / 3) - (2 + 4 + 1.5 + 5) / 3
         @test pairwise_surv_loglik(r -> k, rows) ≈ pairwise_surv_loglik(k, rows)
         @test_throws ArgumentError PairwiseSurvivalData([1], [2.0], [1.0], [true])
+        # differentiable in a log-scale parameter
+        f(θ) = pairwise_surv_loglik(Exponential(exp(θ)), rows)
+        fd = (f(log(3.0) + 1e-6) - f(log(3.0) - 1e-6)) / 2e-6
+        @test ForwardDiff.derivative(f, log(3.0)) ≈ fd rtol = 1e-4
     end
 
     @testset "infection-layer columns read out of a simulation" begin
@@ -441,6 +448,7 @@ end
             @test g(θ) == -Inf
             @test ForwardDiff.gradient(f, θ) == [0.0, 0.0]
             @test ForwardDiff.gradient(g, θ) == [0.0, 0.0]
+            @test DifferentiationInterface.gradient(g, AutoMooncake(), θ) == [0.0, 0.0]
             @test (@inferred pairwise_surv_loglik(
                 Exponential(3.0), data, L; external_hazard = 0.1)) == -Inf
 

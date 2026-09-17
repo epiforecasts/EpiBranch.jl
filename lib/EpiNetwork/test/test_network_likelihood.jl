@@ -188,29 +188,6 @@ end
         end
     end
 
-    @testset "an impossible component gives -Inf with a zero gradient" begin
-        # Two components. In {1, 2} node 1 is a community case at 0 and infects 2
-        # at 1.0, which the parameters do move. In {3, 4} node 4 is infected at
-        # 8.0, after obs_end and before its only in-neighbour is infectious, so
-        # nothing can explain it. The density is -Inf over a whole neighbourhood
-        # of the parameters — possibility is fixed by the times — so the gradient
-        # must be exactly zero rather than that of the other component's terms.
-        inf = [0.0, 1.0, 10.0, 8.0]
-        data = NetworkInfections([[2], [1], [4], [3]], inf, inf,
-            [5.0, 6.0, 12.0, 13.0], [true, false, true, false]; obs_end = 5.0)
-        layout = compile_contact_pairs(data; external = true)
-        f(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data;
-            external_hazard = exp(θ[2]))
-        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout;
-            external_hazard = exp(θ[2]))
-        θ = [log(3.0), log(0.1)]
-        @test f(θ) == -Inf
-        @test g(θ) == -Inf
-        @test ForwardDiff.gradient(f, θ) == [0.0, 0.0]
-        @test ForwardDiff.gradient(g, θ) == [0.0, 0.0]
-        @test DifferentiationInterface.gradient(g, AutoMooncake(), θ) == [0.0, 0.0]
-    end
-
     @testset "community hazard" begin
         adj = _random_graph(1000, 3000, StableRNG(10))
         m = ModelSpec(
