@@ -164,9 +164,9 @@ d = household_final_size(4, Weibull(1.5, 12.0), 6.0)
 Where the household epidemic has a closed form — an exponential contact interval
 racing an exponential infectious window, with no interventions — the offspring law
 is solved exactly and no simulation runs. Otherwise households of each size are
-simulated (`n_samples`, 10,000 by default; with a covariate kernel, that many
-shared among the types, with at least one per type) and only the within-household
-epidemic
+simulated (`n_samples`, 10,000 by default; with a covariate kernel, the whole
+model is simulated until that many households have run, and at least once) and
+only the within-household epidemic
 carries Monte Carlo error; the Poisson compounding on top of it is analytical, and
 so, with a shared kernel, is the mean whenever the infectious window is a single
 delay of the progression.

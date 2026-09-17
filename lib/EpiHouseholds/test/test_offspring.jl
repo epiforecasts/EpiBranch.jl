@@ -352,6 +352,36 @@ end
         @test o.means≈direct rtol=0.03
     end
 
+    @testset "a covariate model's other layers see its own individuals" begin
+        # A quarter of households transmit fast and their members stay infectious
+        # for longer, the window read from the same id-indexed covariate as the
+        # kernel. Simulating the model directly gives the reference means.
+        n_households = 400
+        fast = [h % 4 == 1 for h in 1:n_households for _ in 1:3]
+        model = ModelSpec(
+            HouseholdProcess(fill(3, n_households),
+                (i, j) -> Exponential(fast[i] ? 1.0 : 10.0));
+            progression = [Transition(:recovered; from = :infection,
+                delay = (rng, ind) -> fast[ind.id] ? 8.0 : 1.0, terminal = true)])
+        o = household_offspring(model; global_rate = λG, n_samples = 20_000,
+            rng = StableRNG(26))
+        @test length(o.sizes) == 2
+
+        rng = StableRNG(27)
+        person_time = zeros(2)
+        for _ in 1:50
+            state = simulate(model; rng)
+            for ind in state.individuals
+                is_infected(ind) || continue
+                t = fast[ind.id] ? 1 : 2
+                person_time[t] += ind.state[:recovered_time] - ind.infection_time
+            end
+        end
+        direct = λG .* person_time ./ (50 .* [n_households ÷ 4, 3n_households ÷ 4])
+        @test o.households[1] == collect(1:4:n_households)
+        @test o.means≈direct rtol=0.03
+    end
+
     @testset "a bare process takes its own progression" begin
         # Without a terminal transition the infectious window never closes, so a
         # household would infect unboundedly many others.

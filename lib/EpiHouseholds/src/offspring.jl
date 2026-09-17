@@ -96,10 +96,15 @@ a newly infected household is, so the process must carry no `external_hazard`.
 The index case is the member the community contact reached, uniformly at random
 among the household's members.
 
-A covariate kernel `(infector, susceptible) -> Distribution` is evaluated on the
-model's own individuals, so each household's epidemic follows the covariates of
-its actual members. Households whose kernels agree pair for pair, in member
-order, share a type and are simulated together; the rest are types of their own.
+A covariate kernel `(infector, susceptible) -> Distribution` makes the derivation
+simulate the model itself, so the kernel and every other layer see the model's
+own individuals and each household's epidemic follows the covariates of its
+actual members. Households whose kernels agree pair for pair, in member order,
+share a type, and its law pools all of them; the rest are types of their own.
+With a shared kernel, size is the type and each size's households are simulated
+on stand-in individuals, so the other layers must treat all members alike. A progression or
+attributes that read an individual's covariates need the kernel given as a
+function, even a constant one such as `(i, j) -> Exponential(3.0)`.
 Each household's epidemic runs on its own clock, so interventions cannot be
 wrapped in `Scheduled`. To see what switching a policy on does, derive the law
 twice, once without the intervention and once with it unwrapped: the two R*
@@ -110,12 +115,10 @@ an exponential contact-interval kernel and an exponential infectious window, wit
 no interventions, make the household a Markov chain — and by simulating
 households otherwise. With a shared kernel `n_samples` households of each size
 are simulated. A covariate kernel has no closed form and is always simulated:
-`n_samples` households are shared among the types in proportion to their mixing
-weights, with at least one per type. When every household is a type of its own,
-as with a continuous individual covariate, that floor means at least one
-simulated household per model household whatever `n_samples` is. A type with few
-samples has a rough law of its own, while the mixture law and R* average over
-all of them. Whichever route is taken, the Poisson compounding is analytical, so the simulated route carries Monte Carlo
+the whole model is simulated as many times as it takes to reach `n_samples`
+households, and at least once. When every household is a type of its own, as
+with a continuous individual covariate, each type's law comes from those few
+runs and is rough, while the mixture law and R* average over all of them. Whichever route is taken, the Poisson compounding is analytical, so the simulated route carries Monte Carlo
 error only in the within-household epidemic. With a shared kernel the mean is
 exact whenever the infectious window is a single delay of the progression,
 because the mean total
@@ -197,39 +200,30 @@ function _household_offspring(kernel::ContinuousUnivariateDistribution,
         means, global_rate)
 end
 
-# A pair-varying kernel: the epidemic depends on who the members are, so each
-# type is simulated on the ids of one of its own households and the kernel sees
-# the model's individuals. All types go through one simulation, `n_samples`
-# households stratified by mixing weight, with at least one per type.
+# A pair-varying kernel: the epidemic depends on who the members are, so the
+# model itself is simulated, often enough for `n_samples` households in all.
+# Every layer then sees the model's own individuals, whatever it reads from them,
+# and each type pools the person-time of all its households.
 function _household_offspring(kernel, spec::ModelSpec, global_rate::Float64;
         n_samples::Int, rng::AbstractRNG, tol::Float64, max_offspring::Int)
     members = spec.process.members
     households = _kernel_types(kernel, members)
     sizes = [length(members[first(h)]) for h in households]
-    mixing = _mixing(sizes, households)
 
-    replicates = [max(1, round(Int, n_samples * w)) for w in mixing]
-    sample_sizes = Int[]
-    individual = Int[]   # the model individual each sample individual stands for
-    for (h, r) in zip(households, replicates)
-        for _ in 1:r
-            push!(sample_sizes, length(members[first(h)]))
-            append!(individual, members[first(h)])
+    runs = cld(n_samples, length(members))
+    person_time = [Float64[] for _ in households]
+    for _ in 1:runs
+        pt = _simulated_person_time(spec, spec.process, rng)
+        for (t, h) in enumerate(households)
+            append!(person_time[t], view(pt, h))
         end
     end
-    person_time = _simulated_person_time(spec, sample_sizes,
-        (i, j) -> kernel(individual[i], individual[j]), rng)
 
-    laws = _OffspringLaw[]
-    means = Float64[]
-    offset = 0
-    for r in replicates
-        pt = person_time[(offset + 1):(offset + r)]
-        push!(laws, _law(_compound_poisson_pmf(pt, global_rate, tol, max_offspring)))
-        push!(means, global_rate * mean(pt))
-        offset += r
-    end
-    return HouseholdOffspring(sizes, households, mixing, laws, means, global_rate)
+    laws = [_law(_compound_poisson_pmf(pt, global_rate, tol, max_offspring))
+            for pt in person_time]
+    means = [global_rate * mean(pt) for pt in person_time]
+    return HouseholdOffspring(sizes, households, _mixing(sizes, households), laws,
+        means, global_rate)
 end
 
 # Group households whose kernels agree for every ordered pair of members, in
@@ -360,7 +354,9 @@ end
 function _size_offspring(n::Int, kernel, window, global_rate::Float64;
         spec::ModelSpec, n_samples::Int, rng::AbstractRNG, tol::Float64,
         max_offspring::Int)
-    person_time = _simulated_person_time(spec, fill(n, n_samples), kernel, rng)
+    sample = HouseholdProcess(fill(n, n_samples), kernel;
+        from = spec.process.from, until = spec.process.until)
+    person_time = _simulated_person_time(spec, sample, rng)
     # Compounding the Poisson analytically over the simulated person-times, rather
     # than drawing a count per household, leaves Monte Carlo error only in the
     # within-household epidemic.
@@ -423,22 +419,19 @@ end
 
 # ── The within-household epidemic, simulated ─────────────────────────
 
-# Total community-infectious person-time of each of a sample of households with
-# the given `sizes` and `kernel`, simulated under the model's own layers. The
-# households are independent, so one run of the model's simulator over the whole
-# sample gives them all.
-function _simulated_person_time(spec::ModelSpec, sizes::Vector{Int}, kernel,
+# Total community-infectious person-time of each household of `sample`, a
+# household process simulated under the model's own layers. The households are
+# independent, so one run of the model's simulator gives them all.
+function _simulated_person_time(spec::ModelSpec, sample::HouseholdProcess,
         rng::AbstractRNG)
     process = spec.process
-    sample_spec = ModelSpec(
-        HouseholdProcess(sizes, kernel;
-            from = process.from, until = process.until);
+    sample_spec = ModelSpec(sample;
         progression = spec.progression, interventions = spec.interventions,
         attributes = spec.attributes, observation = spec.observation)
     state = simulate(sample_spec; rng)
 
     from = _resolve_infectious_from(process.from, spec.progression)
-    person_time = zeros(length(sizes))
+    person_time = zeros(length(sample.members))
     for ind in state.individuals
         is_infected(ind) || continue
         opened = _window_open(ind, from)
