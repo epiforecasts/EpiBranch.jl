@@ -427,6 +427,55 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 @test prob_later ≈ 0.8 * decay(40.0)
                 @test prob_later < prob_now
             end
+
+            # The post-exposure block for a dose already in place at exposure
+            # wanes with the same factor as `efficacy`.
+            function contact_block(rv; exposure)
+                c = Individual(id = 7)
+                EpiBranch._record_vaccination!(rv, c, 0.0, StableRNG(1))
+                c.infection_time = exposure
+                risk = EpiBranch._contact_risk(rv, c)
+                return EpiBranch._sample_value(
+                    risk.block_probability, StableRNG(1), nothing, c, nothing)
+            end
+
+            @testset "A fully waned post-exposure dose blocks nothing" begin
+                rv3 = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8,
+                    waning = dt -> 0.0)
+                @test contact_block(rv3; exposure = 100.0) == 0.0
+            end
+
+            @testset "A partially waned post-exposure dose blocks less" begin
+                rv4 = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8,
+                    waning = decay)
+                @test contact_block(rv4; exposure = 0.0) ≈ 0.8
+                @test contact_block(rv4; exposure = 20.0) ≈ 0.8 * decay(20.0)
+            end
+
+            @testset "Waning takes the combined block below post-exposure efficacy" begin
+                rv5 = RingVaccination(efficacy = 0.5, post_exposure_efficacy = 0.8,
+                    waning = decay)
+                @test contact_block(rv5; exposure = 0.0) ≈ 1 - 0.5 * 0.2
+                retained = decay(20.0)
+                waned = contact_block(rv5; exposure = 20.0)
+                @test waned ≈ 1 - (1 - 0.5 * retained) * (1 - 0.8 * retained)
+                @test waned < 0.8
+            end
+
+            @testset "The abort takes the protection retained at immunity onset" begin
+                c = Individual(id = 8, infection_time = 10.0)
+                c.state[:incubation_period] = 6.0
+                c.state[:onset_time] = 16.0
+                rv6 = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0,
+                    waning = dt -> dt == 0.0 ? 0.0 : 1.0)
+                EpiBranch._abort_infection!(rv6, c, 12.0, StableRNG(1))
+                @test !haskey(c.state, :infection_aborted_time)
+
+                rv7 = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0,
+                    waning = dt -> 1.0)
+                EpiBranch._abort_infection!(rv7, c, 12.0, StableRNG(1))
+                @test c.state[:infection_aborted_time] == 12.0
+            end
         end
 
         @testset "Coverage thins vaccinations" begin

@@ -35,11 +35,15 @@ of vaccinated individuals and leaves the rest unaffected.
 `waning` is an optional function `dt -> Real` giving the fraction of
 `efficacy` still in force `dt` time units after immunity develops
 (`dt = 0` at immunity onset). It multiplies `efficacy` (and, on
-[`RingVaccination`](@ref), `onward_efficacy`) when checked against a
-transmission, so a dose otherwise blocking at strength `efficacy`
-instead blocks at `efficacy * waning(dt)` when a decayed protection is
-wanted — pre-emptively vaccinated individuals whose exposure comes
-months after their immunity developed, say. Defaults to `nothing`,
+[`RingVaccination`](@ref), `onward_efficacy` and `post_exposure_efficacy`)
+when checked against a transmission, so a dose otherwise blocking at
+strength `efficacy` instead blocks at `efficacy * waning(dt)` when a
+decayed protection is wanted — pre-emptively vaccinated individuals whose
+exposure comes months after their immunity developed, say. `dt` is the
+time from immunity onset to the exposure under evaluation. A
+post-exposure abort happens the moment immunity arrives, so it uses
+`post_exposure_efficacy * waning(0)`, which differs from
+`post_exposure_efficacy` only for a `waning` that does not start at 1. Defaults to `nothing`,
 which keeps protection constant once immunity develops, as before
 `waning` existed. A dose with its own `dose_label` in a multi-dose
 schedule decays from its own immunity time, independently of any other
@@ -407,30 +411,44 @@ end
 # place when the contact is exposed prevents the infection outright, the limit
 # of aborting it the moment it starts. This is also all a dose can do for a
 # contact with no onset to race (asymptomatic). Both act at the same immunity
-# time, so they combine into one block, drawn once.
+# time, so they combine into one block, drawn once. `waning` scales both by the
+# same factor, read at the exposure under evaluation, so a post-exposure dose
+# fades exactly as an `efficacy` dose does.
 function _contact_risk(rv::RingVaccination, contact)
     susceptibility = _susceptibility_risk(rv, contact)
     post = rv.post_exposure_efficacy
     post > 0.0 || return susceptibility
+    label = dose_label(rv)
+    w = waning(rv)
     if susceptibility === nothing
-        label = dose_label(rv)
         get(contact.state, _vaccinated_key(label), false) || return nothing
         vacc_t = get(contact.state, _vaccination_time_key(label), Inf)
         isfinite(vacc_t) || return nothing
-        return Risk(event_time = vacc_t + delay_to_immunity(rv), block_probability = post)
+        imm_t = vacc_t + delay_to_immunity(rv)
+        w === nothing && return Risk(event_time = imm_t, block_probability = post)
+        return Risk(event_time = imm_t,
+            block_probability = (rng, p, c, state) -> post * w(c.infection_time - imm_t))
     end
-    bp = susceptibility.block_probability
-    # `bp` is a plain number unless `waning` turned it into a closure; only
-    # then does the composition itself need to become one, so a schedule
-    # without waning keeps composing eagerly as before.
-    bp isa Real && return Risk(event_time = susceptibility.event_time,
-        block_probability = 1 - (1 - bp) * (1 - post))
-    return Risk(event_time = susceptibility.event_time,
-        block_probability = (rng, p, c, state) -> 1 -
-                                                  (1 -
-                                                   _sample_value(bp, rng, p, c, state)) *
-                                                  (1 - post))
+    imm_t = susceptibility.event_time
+    w === nothing && return Risk(event_time = imm_t,
+        block_probability = 1 - (1 - susceptibility.block_probability) * (1 - post))
+    # `_susceptibility_risk` only returns a risk for a stored efficacy, so the
+    # key is present. Reading it here evaluates `waning` once per exposure for
+    # both factors.
+    eff = contact.state[_vaccine_efficacy_key(label)]
+    return Risk(event_time = imm_t,
+        block_probability = (rng, p, c, state) -> begin
+            retained = w(c.infection_time - imm_t)
+            1 - (1 - eff * retained) * (1 - post * retained)
+        end)
 end
+
+# The abort acts the moment immunity arrives, so it takes the protection the
+# dose retains at that moment, `waning(0)`: the same block `_contact_risk`
+# applies to an exposure coinciding with immunity. Dispatching on `nothing`
+# keeps a dose without waning on the plain `post_exposure_efficacy`.
+_abort_efficacy(rv::RingVaccination, ::Nothing) = rv.post_exposure_efficacy
+_abort_efficacy(rv::RingVaccination, w) = rv.post_exposure_efficacy * w(0.0)
 
 # A dose given after the exposure can still abort the infection, so long as
 # immunity arrives before symptom onset. The contact then stays infected up to
@@ -458,7 +476,7 @@ function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     immunity = vacc_t + delay_to_immunity(rv)
     exposure = contact.infection_time
     exposure < immunity < exposure + incubation || return nothing
-    _covers(rv.post_exposure_efficacy, contact, rng) || return nothing
+    _covers(_abort_efficacy(rv, waning(rv)), contact, rng) || return nothing
     # An earlier dose may already have aborted it; the infection ends at the
     # first abort.
     contact.state[:infection_aborted_time] = min(
