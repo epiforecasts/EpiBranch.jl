@@ -140,6 +140,26 @@ end
         state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
             EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
         @test_throws ArgumentError EpiBranch.apply_post_transmission!(cc, state, Individual[])
+
+        scheduled = CapacityConstrained(Scheduled(gv; start_time = 1.0); budget_per_period = 1.0)
+        @test_throws ArgumentError EpiBranch.apply_post_transmission!(
+            scheduled, state, Individual[])
+    end
+
+    @testset "Severity efficacy is recorded only for contacts within the budget" begin
+        rv = RingVaccination(efficacy = 0.9, severity_efficacy = 0.5)
+        cc = CapacityConstrained(rv; budget_per_period = 1.0)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
+
+        earlier = _traced_contact(rv, 1, 1.0)
+        later = _traced_contact(rv, 2, 2.0)
+        append!(state.individuals, [earlier, later])
+        state.max_infection_time = 2.0
+        EpiBranch.apply_post_transmission!(cc, state, [later, earlier])
+
+        @test severity_efficacy(earlier) == 0.5
+        @test severity_efficacy(later) == 0.0
     end
 
     @testset "Constructor validates its arguments" begin
