@@ -175,3 +175,52 @@ Undo the effect of an intervention on an individual. Called by
 Default: no-op.
 """
 reset!(::AbstractIntervention, ::Individual) = nothing
+
+"""
+    RiskScope
+
+Which of a continuous-time model's transmission routes an intervention's
+[`competing_risk`](@ref)s apply on, as returned by
+[`risk_scope`](@ref EpiBranch.risk_scope). A model with a single route, and the
+generation-based engine, apply every risk to every contact whatever the scope.
+
+  - [`EveryRoute`](@ref EpiBranch.EveryRoute): the risks apply on every route.
+  - [`RemovalRoutes`](@ref EpiBranch.RemovalRoutes): the risks apply only on
+    routes that list [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in their `until`.
+"""
+abstract type RiskScope end
+
+"""
+    EveryRoute()
+
+The [`RiskScope`](@ref EpiBranch.RiskScope) of a risk that belongs to the people
+in a contact whatever route it travels along, such as a vaccine's protection of
+the contact or its reduction of the infector's onward transmission. A vaccinated
+person is then as protected at home as in the community.
+"""
+struct EveryRoute <: RiskScope end
+
+"""
+    RemovalRoutes()
+
+The [`RiskScope`](@ref EpiBranch.RiskScope) of a risk that stands in for taking
+the infector out of circulation, such as leaky isolation. It applies only on the
+routes the removal itself would cut, which are those listing
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref), so a household route that runs on
+through an isolation is not blocked by that isolation's risk either.
+"""
+struct RemovalRoutes <: RiskScope end
+
+"""
+    risk_scope(intervention) -> RiskScope
+
+The routes on which `intervention`'s [`competing_risk`](@ref)s apply, on a
+continuous-time model with several transmission routes. Default:
+[`EveryRoute`](@ref EpiBranch.EveryRoute), which matches the generation-based
+engine, where every risk applies to every contact. [`Isolation`](@ref) and
+[`ContactTracing`](@ref) return [`RemovalRoutes`](@ref EpiBranch.RemovalRoutes),
+because their effect is a removal and a route opts into removal. An intervention
+whose risk expresses a removal, typically one that also defines
+[`infectious_removal_time`](@ref), should return `RemovalRoutes()` too.
+"""
+risk_scope(::AbstractIntervention) = EveryRoute()

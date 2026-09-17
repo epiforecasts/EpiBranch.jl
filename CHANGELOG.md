@@ -84,13 +84,15 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   a graph that pair offers no further contact and the target stays susceptible
   to its other neighbours, while in the mass-action pool the susceptible draws a
   fresh resistance and waits for the next contact. On a model with several
-  routes, an intervention's risks reach only the routes that list
-  `EpiBranch.INTERVENTION_REMOVAL` in their `until`. A model with no risks in
-  play draws nothing extra and reproduces earlier runs exactly for the same
-  seed. A model with risks is no longer the exact generative model of the
-  pairwise likelihood, which has no term for a declined proposal. A pool whose
-  infectious windows never close and whose every contact is then blocked has no
-  end to reach, and now says so rather than running on.
+  routes, the routes an intervention's risks reach are set by the new
+  `EpiBranch.risk_scope` trait: `Isolation` and `ContactTracing` reach only the
+  routes that list `EpiBranch.INTERVENTION_REMOVAL` in their `until`, while
+  vaccinations, and by default any other intervention, reach every route. A
+  model with no risks in play draws nothing extra and reproduces earlier runs
+  exactly for the same seed. A model with risks is no longer the exact
+  generative model of the pairwise likelihood, which has no term for a declined
+  proposal. A pool whose infectious windows never close and whose every contact
+  is then blocked has no end to reach, and now says so rather than running on.
 - `RingVaccination` doses along the trace on the continuous-time models, where
   before it only ever dosed contacts the generation engine had created. A ring
   with a finite `eligibility_window` or a `post_exposure_efficacy` still doses

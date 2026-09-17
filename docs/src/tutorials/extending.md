@@ -189,6 +189,7 @@ ones your intervention needs (all default to no-ops).
 | `trace_contacts!(iv, state, infector, contacts[, not_before])` | Continuous-time models only: once per case, when the race settles it | The case, the contacts it reached that are not yet settled, and, from a model whose contacts can come about after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing` (mutate the contacts' `state` in place) |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to gather contacts at all | Nothing | `true` if this intervention implements `trace_contacts!` (default `false`) |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
+| `risk_scope(iv)` | Continuous-time models with several routes: when deciding which routes this intervention's `competing_risk` applies on | Nothing | `EpiBranch.EveryRoute()` (default) or `EpiBranch.RemovalRoutes()` for a risk that stands in for a removal |
 
 ### Which hooks fire on which engine
 
@@ -233,14 +234,29 @@ What this means in practice:
   model of the pairwise likelihood, which has no term for a declined proposal.
   Simulating with risks and scoring the result with `loglikelihood` will
   disagree.
-- On a model with several routes, an intervention's risks are resolved only on
-  the routes that list `EpiBranch.INTERVENTION_REMOVAL` in their `until`. That
-  listing is a route's statement about whether the response reaches it at all,
+- On a model with several routes, the routes an intervention's risks apply on
+  are its [`EpiBranch.risk_scope`](@ref). `Isolation` and `ContactTracing`
+  return `EpiBranch.RemovalRoutes()`: their effect is a removal, and a route
+  opts into removal by listing `EpiBranch.INTERVENTION_REMOVAL` in its `until`,
   so a household route that runs on through an isolation is not blocked by that
-  isolation's per-contact risk either. Per-individual susceptibility and
-  infectiousness, and anything the model contributes through
-  `transmission_risks`, apply on every route: they belong to the people and the
-  edge rather than to the response.
+  isolation's per-contact risk either. Vaccinations return
+  `EpiBranch.EveryRoute()`, for both the contact's protection and
+  `onward_efficacy`: a vaccinated person is protected at home as well as in the
+  community. Per-individual susceptibility and infectiousness, and anything the
+  model contributes through `transmission_risks`, also apply on every route.
+- Your own intervention defaults to `EveryRoute()`. The generation engine has no
+  routes and applies every risk to every contact, so with this default a risk
+  written for it means the same on a routed model. The custom risks in this
+  guide and the test suite (a border closure, an age-conditional block, a leaky
+  vaccine) all gate on who the people in a contact are rather than on whether
+  the infector has been removed. The opposite default would leave such a protection silently
+  inert on every route without the removal listing. If your risk stands in for
+  taking a case out of circulation, typically alongside an
+  `infectious_removal_time` method, scope it to the routes that removal cuts:
+
+  ```julia
+  EpiBranch.risk_scope(::MyLeakyQuarantine) = EpiBranch.RemovalRoutes()
+  ```
 - An intervention that reaches its targets only through
   `apply_post_transmission!` or `keep_active` — `MassVaccination`'s rollout
   doses each new contact as the engine creates it — has nothing to act on when

@@ -126,6 +126,7 @@ reset!(s::Scheduled, ind::Individual) = reset!(s.intervention, ind)
 function infectious_removal_time(s::Scheduled, ind::Individual)
     infectious_removal_time(s.intervention, ind)
 end
+risk_scope(s::Scheduled) = risk_scope(s.intervention)
 function competing_risk(s::Scheduled, parent, contact, state)
     is_active(s, state) ? competing_risk(s.intervention, parent, contact, state) : nothing
 end

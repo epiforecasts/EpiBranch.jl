@@ -681,6 +681,73 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test any(p -> hh_of(p[1]) != hh_of(p[2]), pairs(1.0))
     end
 
+    @testset "RoutedNetwork: a vaccine protects on every route" begin
+        # Households of four, and a community route linking each node to one node
+        # in each neighbouring household. Isolation cuts only the community route,
+        # and tracing doses contacts without quarantining them, so a dosed person
+        # is still exposed afterwards, at home as well as in the community. A
+        # fully effective dose must then block every one of those exposures.
+        nh, hs = 60, 4
+        n = nh * hs
+        hh_of(i) = (i - 1) ÷ hs
+        hh = [[j for j in (hh_of(i) * hs + 1):(hh_of(i) * hs + hs) if j != i] for i in 1:n]
+        comm = [[mod1(i + hs, n), mod1(i - hs, n)] for i in 1:n]
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        clinical = clinical_presentation(incubation_period = LogNormal(0.5, 0.3),
+            prob_asymptomatic = 0.0)
+        build(ivs) = ModelSpec(
+            RoutedNetwork([
+                RouteWindow(:household; until = (:recovered,),
+                    kernel = Exponential(2.0), reach = hh),
+                RouteWindow(:community; until = (:recovered, REM),
+                    kernel = Exponential(1.5), reach = comm)]);
+            progression = _sir(8.0), interventions = ivs, attributes = clinical)
+        tracing = [
+            Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 1.0),
+            ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                quarantine_on_trace = false)]
+        immune_at_infection(ind) = is_vaccinated(ind) && ind.parent_id != 0 &&
+                                   ind.state[:immunity_time] <= ind.infection_time
+        runs(ivs) = [simulate(build(ivs); n_initial = 3, rng = StableRNG(s))
+                     for s in 1:10]
+
+        # Dosed with no protection, dosed people are infected after their dose on
+        # both routes, so the check below has something to catch.
+        placebo_runs = runs([tracing; RingVaccination(efficacy = 0.0)])
+        placebo = [ind for st in placebo_runs
+                   for ind in st.individuals
+                   if immune_at_infection(ind)]
+        @test any(ind -> hh_of(ind.id) == hh_of(ind.parent_id), placebo)
+        @test any(ind -> hh_of(ind.id) != hh_of(ind.parent_id), placebo)
+
+        # A fully effective dose blocks nearly all of them on both routes. The race
+        # resolves a proposal when its infector settles, so a dose given or brought
+        # forward by a case settled after the infector is not seen, and a few such
+        # household infections remain.
+        full = runs([tracing; RingVaccination(efficacy = 1.0)])
+        @test any(st -> any(is_vaccinated, st.individuals), full)
+        immune = [ind for st in full for ind in st.individuals
+                  if immune_at_infection(ind)]
+        at_home(inds) = count(ind -> hh_of(ind.id) == hh_of(ind.parent_id), inds)
+        @test at_home(immune) <= 0.1 * at_home(placebo)
+        @test at_home(immune) == length(immune)
+
+        # The onward effect applies on every route too: a fully effective one
+        # stops a dosed case infecting anyone once its immunity is in place, its
+        # household included.
+        function infected_by_immune(st)
+            filter(st.individuals) do ind
+                (is_infected(ind) && ind.parent_id != 0) || return false
+                parent = st.individuals[ind.parent_id]
+                is_vaccinated(parent) && parent.state[:immunity_time] <= ind.infection_time
+            end
+        end
+        placebo_onward = reduce(vcat, map(infected_by_immune, placebo_runs))
+        @test any(ind -> hh_of(ind.id) == hh_of(ind.parent_id), placebo_onward)
+        onward = runs([tracing; RingVaccination(efficacy = 0.0, onward_efficacy = 1.0)])
+        @test all(st -> isempty(infected_by_immune(st)), onward)
+    end
+
     @testset "RoutedNetwork: route and tracing probabilities multiply" begin
         # A seed on a complete graph with contact too slow to transmit: none of
         # its neighbours is infected before tracing reaches them, so the fraction

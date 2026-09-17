@@ -15,6 +15,10 @@ public competing_risk
 public reset!
 public required_fields
 public infectious_removal_time
+public risk_scope
+public RiskScope
+public EveryRoute
+public RemovalRoutes
 
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:

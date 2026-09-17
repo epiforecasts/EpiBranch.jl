@@ -78,9 +78,11 @@ end
 # generative model of the pairwise likelihood, which has no term for a declined
 # proposal. A model with risks and a likelihood fit to it will disagree.
 #
-# An intervention's risks are resolved per route, and only on a route that opted
-# into intervention removal — see the proposal loop for why. The model's own
-# risks and the per-individual multipliers apply on every route.
+# On a model with several routes, which interventions' risks a route resolves is
+# each intervention's `risk_scope`: a removal's risk only on the routes that opted
+# into intervention removal, anything else on every route — see the proposal
+# loop for why. The model's own risks and the per-individual multipliers apply on
+# every route.
 #
 # Risks are resolved only for a proposal that would otherwise win the race. One
 # that is already later than the neighbour's current best could not have
@@ -97,6 +99,12 @@ function _intervention_removal_time(ind, interventions)
         t = min(t, infectious_removal_time(iv, ind))
     end
     return t
+end
+
+# The interventions whose risks apply on a route that has not opted into
+# intervention removal.
+function _every_route_interventions(interventions)
+    filter(iv -> risk_scope(iv) isa EveryRoute, interventions)
 end
 
 """
@@ -116,7 +124,10 @@ pseudo-state is how a window opts into it.
 Listing it is what makes a route one that control measures can cut. A community
 route lists it, so isolating a case ends its community transmission; a
 household route does not, so the case goes on infecting the people it lives
-with. That difference is the whole reason routes are separated.
+with. That difference is the whole reason routes are separated. The same holds
+for the per-contact risk of a leaky isolation, but not for a vaccine's
+protection, which applies on every route; see [`risk_scope`](@ref
+EpiBranch.risk_scope).
 """
 const INTERVENTION_REMOVAL = :intervention_removal
 
@@ -259,7 +270,9 @@ and stays susceptible to its other neighbours.
 A model with several transmission routes passes `routes`, a collection of
 `(RouteWindow, targets)` pairs, in place of `from`/`until`/`targets`. Each route
 opens and closes on its own window, and only a route listing
-`INTERVENTION_REMOVAL` in its `until` is cut by the interventions.
+`INTERVENTION_REMOVAL` in its `until` is cut by the interventions' removals and
+blocked by the risks of those whose [`risk_scope`](@ref) is `RemovalRoutes()`.
+The risks of every other intervention apply on every route.
 
 `contacts(infective_id, state)` yields the ids of everyone that case was in
 contact with, whether or not transmission followed, which is what contact
@@ -305,6 +318,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
     src = zeros(Int, m)
     processed = falses(m)
     pos = Dict{Int, Int}(id => k for (k, id) in enumerate(members))
+    every_route_interventions = _every_route_interventions(interventions)
 
     seed!(best, members, rng)
 
@@ -349,15 +363,16 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             open_t = window_open(ind, w)
             isfinite(open_t) || continue
             close_t = _route_close(ind, w, interventions)
-            # A route the interventions cannot cut is not cut by their per-contact
-            # risks either. Listing `INTERVENTION_REMOVAL` is a route's whole
-            # statement about whether the response reaches it, and a route that
-            # withholds it means the case goes on infecting along it: a household
-            # route runs on through an isolation, and blocking every proposal it
-            # makes would cut it just as surely. The model's own risks and the
-            # per-individual multipliers always apply — those belong to the
-            # people and the edge rather than to the response.
-            route_interventions = INTERVENTION_REMOVAL in w.until ? interventions : ()
+            # A route the interventions cannot cut is not cut by the per-contact
+            # risks that stand in for a removal either: a household route runs on
+            # through an isolation, and blocking every proposal it makes would cut
+            # it just as surely. A vaccine's protection is no removal, and a
+            # vaccinated person is protected at home too, so risks scoped to
+            # every route still apply. The model's own risks and the
+            # per-individual multipliers always apply, since they belong to the
+            # people and the edge.
+            route_interventions = INTERVENTION_REMOVAL in w.until ? interventions :
+                                  every_route_interventions
 
             for (target_id, kernel) in route_targets(members[j], state)
                 k = get(pos, target_id, 0)

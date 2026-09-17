@@ -108,6 +108,10 @@ function competing_risk(iso::Isolation, parent, contact, state)
         block_probability = 1.0 - iso.post_isolation_transmission)
 end
 
+# Leaky isolation's residual block stands in for the removal perfect isolation
+# makes, so it reaches the same routes: those the case is isolated from.
+risk_scope(::Isolation) = RemovalRoutes()
+
 function reset!(::Isolation, ind::Individual)
     # Only undo an isolation this Isolation set. `:isolated`/`:isolation_time`
     # are shared keys — ContactTracing's Quarantine writes them directly too —

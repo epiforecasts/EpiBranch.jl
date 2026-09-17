@@ -10,6 +10,17 @@ end
 function EpiBranch.competing_risk(b::BlockFrom, parent, contact, state)
     parent.id == b.id ? Risk(block_probability = 1.0) : nothing
 end
+# Its block stands in for taking the infector out of circulation.
+EpiBranch.risk_scope(::BlockFrom) = EpiBranch.RemovalRoutes()
+
+# Blocks every transmission into one named contact: a protection that belongs to
+# the person, left at the default scope.
+struct ProtectTo <: EpiBranch.AbstractIntervention
+    id::Int
+end
+function EpiBranch.competing_risk(p::ProtectTo, parent, contact, state)
+    contact.id == p.id ? Risk(block_probability = 1.0) : nothing
+end
 
 @testset "Route windows" begin
     @testset "construction and show" begin
@@ -284,9 +295,9 @@ end
 
     @testset "an intervention's risks reach only the routes it can cut" begin
         # Node 1 is seeded at 0 and reaches node 2 on a community route and node
-        # 3 on a household route, each at 5. An intervention blocking everything
-        # node 1 proposes takes out the community contact; the household route
-        # never opted into intervention removal, so it runs on.
+        # 3 on a household route, each at 5. An intervention whose block stands in
+        # for removing node 1 takes out the community contact; the household
+        # route never opted into intervention removal, so it runs on.
         REM = EpiBranch.INTERVENTION_REMOVAL
         prog = [Transition(:recovered; from = :infection, delay = 10.0, terminal = true)]
         function infected_after(interventions)
@@ -303,11 +314,35 @@ end
                 (RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0)),
                     edge(3)))
             EpiBranch._sellke_race!(state, [1, 2, 3], rng; routes, interventions,
+                contacts = (inf, st) -> inf == 1 ? (2, 3) : (),
                 seed! = (best, members, r) -> (best[1] = 0.0))
             return [get(ind.state, :infected, false) for ind in state.individuals]
         end
         @test infected_after(AbstractIntervention[]) == [true, true, true]
         @test infected_after([BlockFrom(1)]) == [true, false, true]
+        @test infected_after([EpiBranch.Scheduled(BlockFrom(1); start_time = 0.0)]) ==
+              [true, false, true]
+        # A protection scoped to every route applies on the household route too.
+        @test EpiBranch.risk_scope(ProtectTo(3)) isa EpiBranch.EveryRoute
+        @test infected_after([ProtectTo(3)]) == [true, true, false]
+        @test infected_after([ProtectTo(2)]) == [true, false, true]
+        # A fully effective ring dose, given when node 1 traces its contacts at
+        # time 0, protects on both routes.
+        tracer = TraceAtFixedTimes(Dict(1 => 0.0))
+        @test infected_after([tracer, RingVaccination(efficacy = 1.0)]) ==
+              [true, false, false]
+        @test infected_after([tracer, RingVaccination(efficacy = 0.0)]) ==
+              [true, true, true]
+        # Isolation and quarantine follow the route's removal listing; a vaccine,
+        # including its effect on onward transmission, does not.
+        @test EpiBranch.risk_scope(Isolation(onset_to_isolation_delay = Dirac(1.0))) isa
+              EpiBranch.RemovalRoutes
+        @test EpiBranch.risk_scope(ContactTracing(probability = 1.0,
+            isolation_to_trace_delay = Dirac(1.0))) isa EpiBranch.RemovalRoutes
+        @test EpiBranch.risk_scope(RingVaccination(efficacy = 1.0,
+            onward_efficacy = 1.0)) isa EpiBranch.EveryRoute
+        @test EpiBranch.risk_scope(MassVaccination(efficacy = 1.0,
+            eligibility_time = 0.0)) isa EpiBranch.EveryRoute
     end
 
     @testset "the race takes routes or the shorthand, not both" begin

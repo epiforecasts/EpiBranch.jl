@@ -123,6 +123,10 @@ EpiBranch.supplies_contacts
 EpiBranch.keep_active
 EpiBranch.competing_risk
 EpiBranch.infectious_removal_time
+EpiBranch.risk_scope
+EpiBranch.RiskScope
+EpiBranch.EveryRoute
+EpiBranch.RemovalRoutes
 EpiBranch.intervention_time
 EpiBranch.reset!
 is_active
