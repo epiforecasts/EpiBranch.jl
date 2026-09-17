@@ -198,24 +198,6 @@ function _extinction_at_fixed_law(d::DiscreteUnivariateDistribution; tol::Real,
     return s
 end
 
-"""
-    reproduction_number(o::ClusterMixed)
-
-Mean number of offspring per case under cluster-level heterogeneity: the mean
-of `build(θ)` averaged over `θ ~ mixing`.
-
-Each chain draws its own `θ`, and whether that chain can grow depends on the
-reproduction number of `build(θ)` alone. The average is therefore no threshold:
-a mixture with mean below 1 can still produce chains that take off, and one with
-mean above 1 still leaves chains that die out for certain.
-[`extinction_probability`](@ref) accounts for this.
-
-# Examples
-
-```julia
-reproduction_number(ClusterMixed(Poisson, Gamma(2.0, 0.6)))  # 1.2
-```
-"""
 function reproduction_number(o::ClusterMixed)
     return _mixture_expectation(θ -> _law_mean(o.build(θ)), o.mixing)
 end

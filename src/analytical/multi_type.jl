@@ -149,8 +149,8 @@ whose `[i, j]` entry is the expected number of type-`i` offspring from a
 type-`j` parent. For single-type and multi-type models an outbreak can grow
 with positive probability only if the reproduction number exceeds 1. For
 `ClusterMixed` offspring the average is no threshold, because each chain's
-growth depends on its own mixing draw; use
-[`extinction_probability`](@ref) instead.
+growth depends on its own mixing draw: a mixture with mean below 1 can still
+produce chains that take off. Use [`extinction_probability`](@ref) instead.
 
 For a matrix whose types cannot all infect one another, R* above 1 says that
 some group of types can grow, and not that a case of any given type can: an
@@ -164,6 +164,7 @@ M = [1.5 0.3;
      0.3 1.0]
 reproduction_number(BranchingProcess(M, R -> NegBin(R, 0.5), Exponential(5.0)))
 reproduction_number(BranchingProcess(NegBin(2.5, 0.16)))  # 2.5
+reproduction_number(ClusterMixed(Poisson, Gamma(2.0, 0.6)))  # 1.2
 ```
 """
 reproduction_number(d::DiscreteUnivariateDistribution) = _law_mean(d)
