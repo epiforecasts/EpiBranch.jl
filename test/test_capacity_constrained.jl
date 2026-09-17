@@ -189,6 +189,20 @@ end
         @test severity_efficacy(later) == 0.0
     end
 
+    @testset "Capacity keys are read through wrappers and required of others" begin
+        mv = MassVaccination(efficacy = 0.9, eligibility_time = 1.0)
+        rv = RingVaccination(efficacy = 0.9, dose_label = :prime)
+        @test EpiBranch.capacity_key(mv) ==
+              EpiBranch.capacity_key(RingVaccination(efficacy = 0.9))
+        @test EpiBranch.capacity_time_key(mv) isa Symbol
+        @test EpiBranch.capacity_time_key(Scheduled(rv; start_time = 1.0)) ==
+              EpiBranch.capacity_time_key(rv)
+
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        @test_throws ArgumentError EpiBranch.capacity_key(iso)
+        @test_throws ArgumentError EpiBranch.capacity_time_key(iso)
+    end
+
     @testset "Constructor validates its arguments" begin
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError CapacityConstrained(rv; budget_per_period = -1.0)
