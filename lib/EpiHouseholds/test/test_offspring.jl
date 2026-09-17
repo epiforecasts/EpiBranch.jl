@@ -295,8 +295,8 @@ end
             person_time = zeros(length(sizes))
             for ind in state.individuals
                 is_infected(ind) || continue
-                person_time[ind.state[:household]] +=
-                    ind.state[:recovered_time] - ind.infection_time
+                person_time[ind.state[:household]] += ind.state[:recovered_time] -
+                                                      ind.infection_time
             end
             append!(counts, rand.(Ref(rng), Poisson.(λG .* person_time)))
             append!(weights, sizes)
@@ -344,8 +344,8 @@ end
             state = simulate(model; rng)
             for ind in state.individuals
                 is_infected(ind) || continue
-                person_time[2 - isodd(ind.state[:household])] +=
-                    ind.state[:recovered_time] - ind.infection_time
+                person_time[2 - isodd(ind.state[:household])] += ind.state[:recovered_time] -
+                                                                 ind.infection_time
             end
         end
         direct = λG .* person_time ./ (200 * n_households / 2)

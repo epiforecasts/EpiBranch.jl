@@ -543,7 +543,8 @@ function _final_size_pmf(n::Int, a::Int, kernel, window)
         ψ = _escape(kernel, window, n - j)
         # Floating-point coefficients: integer ones overflow from a household
         # of 68.
-        total = sum(binomial(Float64(n - k), j - k) * p[k + 1] / ψ^(k + a)
+        total = sum(
+            binomial(Float64(n - k), j - k) * p[k + 1] / ψ^(k + a)
             for k in 0:(j - 1); init = 0.0)
         p[j + 1] = (binomial(Float64(n), j) - total) * ψ^(j + a)
     end
