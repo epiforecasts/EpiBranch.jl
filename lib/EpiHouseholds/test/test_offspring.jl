@@ -6,6 +6,18 @@
 # two checking each other is the backbone of these tests, with the simulator as
 # a third opinion.
 
+# Each household's total infectious time in a run whose cases are infectious
+# from infection to recovery.
+function person_time_by_household(state, n_households)
+    person_time = zeros(n_households)
+    for ind in state.individuals
+        is_infected(ind) || continue
+        person_time[ind.state[:household]] += ind.state[:recovered_time] -
+                                              ind.infection_time
+    end
+    return person_time
+end
+
 @testset "household_final_size" begin
     β, γ = 0.5, 1 / 4
 
@@ -75,10 +87,11 @@ end
 
 @testset "household_offspring" begin
     β, γ, λG = 0.5, 1 / 4, 0.15
-    _markov(n, households = 10) = ModelSpec(
-        HouseholdProcess(fill(n, households), Exponential(1 / β));
+    _markov(sizes::AbstractVector) = ModelSpec(
+        HouseholdProcess(sizes, Exponential(1 / β));
         progression = [Transition(:recovered; from = :infection, rate = γ,
             terminal = true)])
+    _markov(n::Integer) = _markov(fill(n, 10))
 
     @testset "a household of one is the lone case's own offspring law" begin
         # With nobody to infect at home, the community contacts of a single case
@@ -124,11 +137,7 @@ end
 
     @testset "contacts reach households in proportion to their size" begin
         sizes = [fill(2, 300); fill(4, 500); fill(6, 200)]
-        o = household_offspring(
-            ModelSpec(HouseholdProcess(sizes, Exponential(1 / β));
-                progression = [Transition(:recovered; from = :infection, rate = γ,
-                    terminal = true)]);
-            global_rate = λG)
+        o = household_offspring(_markov(sizes); global_rate = λG)
         @test o.sizes == [2, 4, 6]
         people = [2 * 300, 4 * 500, 6 * 200]
         @test o.mixing ≈ people ./ sum(people)
@@ -145,14 +154,10 @@ end
 
     @testset "extinction solves the fixed point it is defined by" begin
         sizes = [fill(3, 100); fill(7, 100)]
-        o = household_offspring(
-            ModelSpec(HouseholdProcess(sizes, Exponential(1 / β));
-                progression = [Transition(:recovered; from = :infection, rate = γ,
-                    terminal = true)]);
-            global_rate = λG)
+        o = household_offspring(_markov(sizes); global_rate = λG)
         q = extinction_probability(o)
         s = sum(o.mixing .* q)
-        pgf(law, x) = sum(pk * x^k for (k, pk) in zip(support(law), probs(law)))
+        pgf = EpiHouseholds._pgf
         @test s≈sum(o.mixing[i] * pgf(o.laws[i], s) for i in eachindex(o.laws)) atol=1e-8
         @test all(q[i] ≈ pgf(o.laws[i], s) for i in eachindex(q))
         @test epidemic_probability(o) ≈ 1 .- q
@@ -243,14 +248,10 @@ end
 
     @testset "a covariate kernel that does not vary is the shared kernel" begin
         sizes = [fill(2, 30); fill(4, 50); fill(6, 20)]
-        progression = [Transition(:recovered; from = :infection, rate = γ,
-            terminal = true)]
-        shared = household_offspring(
-            ModelSpec(HouseholdProcess(sizes, Exponential(1 / β)); progression);
-            global_rate = λG)
+        shared = household_offspring(_markov(sizes); global_rate = λG)
         covariate = household_offspring(
             ModelSpec(HouseholdProcess(sizes, (i, j) -> Exponential(1 / β));
-                progression);
+                progression = _markov(sizes).progression);
             global_rate = λG, n_samples = 60_000, rng = StableRNG(21))
         # Every household of a size has the same kernels, so size is the type.
         @test covariate.sizes == shared.sizes
@@ -291,13 +292,7 @@ end
         counts = Int[]
         weights = Int[]
         for _ in 1:400
-            state = simulate(model; rng)
-            person_time = zeros(length(sizes))
-            for ind in state.individuals
-                is_infected(ind) || continue
-                person_time[ind.state[:household]] += ind.state[:recovered_time] -
-                                                      ind.infection_time
-            end
+            person_time = person_time_by_household(simulate(model; rng), length(sizes))
             append!(counts, rand.(Ref(rng), Poisson.(λG .* person_time)))
             append!(weights, sizes)
         end
@@ -341,12 +336,8 @@ end
         rng = StableRNG(25)
         person_time = zeros(2)
         for _ in 1:200
-            state = simulate(model; rng)
-            for ind in state.individuals
-                is_infected(ind) || continue
-                person_time[2 - isodd(ind.state[:household])] += ind.state[:recovered_time] -
-                                                                 ind.infection_time
-            end
+            by_household = person_time_by_household(simulate(model; rng), n_households)
+            person_time .+= [sum(by_household[1:2:end]), sum(by_household[2:2:end])]
         end
         direct = λG .* person_time ./ (200 * n_households / 2)
         @test o.means≈direct rtol=0.03
@@ -369,13 +360,11 @@ end
 
         rng = StableRNG(27)
         person_time = zeros(2)
+        fast_household = [h % 4 == 1 for h in 1:n_households]
         for _ in 1:50
-            state = simulate(model; rng)
-            for ind in state.individuals
-                is_infected(ind) || continue
-                t = fast[ind.id] ? 1 : 2
-                person_time[t] += ind.state[:recovered_time] - ind.infection_time
-            end
+            by_household = person_time_by_household(simulate(model; rng), n_households)
+            person_time .+= [sum(by_household[fast_household]),
+                sum(by_household[.!fast_household])]
         end
         direct = λG .* person_time ./ (50 .* [n_households ÷ 4, 3n_households ÷ 4])
         @test o.households[1] == collect(1:4:n_households)
