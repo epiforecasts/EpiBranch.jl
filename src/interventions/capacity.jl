@@ -108,7 +108,7 @@ CapacityConstrained(RingVaccination(efficacy = 0.8);
     priority = (ind, state) -> rand(state.rng))
 ```
 """
-struct CapacityConstrained{I <: AbstractIntervention, F} <: AbstractIntervention
+struct CapacityConstrained{I <: AbstractIntervention, F} <: InterventionWrapper
     intervention::I
     budget_per_period::Float64
     period::Float64
@@ -175,6 +175,10 @@ function capacity_time_key(iv::AbstractIntervention)
         "See the Extending guide."))
 end
 
+# Read through any wrapper, so `CapacityConstrained` composes with
+# `Scheduled` in either order.
+capacity_key(w::InterventionWrapper) = capacity_key(w.intervention)
+capacity_time_key(w::InterventionWrapper) = capacity_time_key(w.intervention)
 capacity_key(v::RingVaccination) = _vaccinated_key(dose_label(v))
 capacity_time_key(v::RingVaccination) = _vaccination_time_key(dose_label(v))
 capacity_key(v::MassVaccination) = _vaccinated_key(dose_label(v))
@@ -260,34 +264,7 @@ end
 
 # ── Delegation of every other hook ────────────────────────────────────
 
-function initialise_individual!(cc::CapacityConstrained, ind, state)
-    initialise_individual!(cc.intervention, ind, state)
-end
-function resolve_individual!(cc::CapacityConstrained, ind, state)
-    resolve_individual!(cc.intervention, ind, state)
-end
-function competing_risk(cc::CapacityConstrained, parent, contact, state)
-    competing_risk(cc.intervention, parent, contact, state)
-end
+# The remaining hooks are inherited from `InterventionWrapper`.
 function keep_active(cc::CapacityConstrained, state, targets, is_new)
     keep_active(cc.intervention, state, targets, is_new)
-end
-required_fields(cc::CapacityConstrained) = required_fields(cc.intervention)
-function intervention_time(cc::CapacityConstrained, ind::Individual)
-    intervention_time(cc.intervention, ind)
-end
-reset!(cc::CapacityConstrained, ind::Individual) = reset!(cc.intervention, ind)
-function infectious_removal_time(cc::CapacityConstrained, ind::Individual)
-    infectious_removal_time(cc.intervention, ind)
-end
-function is_active(cc::CapacityConstrained, state::SimulationState)
-    is_active(cc.intervention, state)
-end
-_unwrap_scheduled(cc::CapacityConstrained) = _unwrap_scheduled(cc.intervention)
-traces_contacts(cc::CapacityConstrained) = traces_contacts(cc.intervention)
-function trace_contacts!(cc::CapacityConstrained, state, infector, contacts)
-    trace_contacts!(cc.intervention, state, infector, contacts)
-end
-function trace_contacts!(cc::CapacityConstrained, state, infector, contacts, not_before)
-    trace_contacts!(cc.intervention, state, infector, contacts, not_before)
 end

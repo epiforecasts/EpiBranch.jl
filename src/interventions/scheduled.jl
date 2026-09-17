@@ -46,7 +46,7 @@ The predicate form does not perform per-individual reset (there is no
 `start_time` to compare against). Use the keyword form when you need
 that behaviour.
 """
-struct Scheduled{I <: AbstractIntervention, F} <: AbstractIntervention
+struct Scheduled{I <: AbstractIntervention, F} <: InterventionWrapper
     intervention::I
     condition::F
     start_time::Float64
@@ -86,10 +86,8 @@ end
 
 is_active(s::Scheduled, state::SimulationState) = s.condition(state)
 
-# Always initialise — fields must exist before the policy activates.
-function initialise_individual!(s::Scheduled, ind, state)
-    initialise_individual!(s.intervention, ind, state)
-end
+# `initialise_individual!` is inherited ungated from `InterventionWrapper`:
+# fields must exist before the policy activates.
 
 function resolve_individual!(s::Scheduled, ind, state)
     is_active(s, state) || return nothing
@@ -115,29 +113,17 @@ end
     return nothing
 end
 
-required_fields(s::Scheduled) = required_fields(s.intervention)
-_unwrap_scheduled(s::Scheduled) = _unwrap_scheduled(s.intervention)
-# `CapacityConstrained` reads these through a `Scheduled` wrapper the same
-# way it reads them from the intervention directly, so the two wrappers
-# compose in either order.
-capacity_key(s::Scheduled) = capacity_key(s.intervention)
-capacity_time_key(s::Scheduled) = capacity_time_key(s.intervention)
-intervention_time(s::Scheduled, ind::Individual) = intervention_time(s.intervention, ind)
-reset!(s::Scheduled, ind::Individual) = reset!(s.intervention, ind)
-# On the continuous-time models a Scheduled removes a case when the wrapped
-# intervention does. The loop resolves it against the running clock, so a case
-# whose infection time is before `start_time` never has its wrapped intervention
-# run (its gate is closed) and so is not removed.
-function infectious_removal_time(s::Scheduled, ind::Individual)
-    infectious_removal_time(s.intervention, ind)
-end
+# `infectious_removal_time` is inherited ungated: on the continuous-time models
+# a Scheduled removes a case when the wrapped intervention does. The loop
+# resolves it against the running clock, so a case whose infection time is
+# before `start_time` never has its wrapped intervention run (its gate is
+# closed) and so is not removed.
 function competing_risk(s::Scheduled, parent, contact, state)
     is_active(s, state) ? competing_risk(s.intervention, parent, contact, state) : nothing
 end
 
 # Tracing on the continuous-time path, gated by the schedule exactly as
 # `apply_post_transmission!` is on the generation-based one.
-traces_contacts(s::Scheduled) = traces_contacts(s.intervention)
 function trace_contacts!(s::Scheduled, state, infector, contacts, not_before = nothing)
     is_active(s, state) || return nothing
     if not_before === nothing

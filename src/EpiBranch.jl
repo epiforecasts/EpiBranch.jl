@@ -23,6 +23,7 @@ include("interventions/interface.jl")
 include("interventions/isolation.jl")
 include("interventions/contact_tracing.jl")
 include("interventions/vaccination.jl")
+include("interventions/wrapper.jl")
 include("interventions/scheduled.jl")
 include("interventions/capacity.jl")
 
