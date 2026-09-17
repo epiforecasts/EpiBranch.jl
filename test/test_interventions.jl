@@ -473,15 +473,17 @@ struct _NoTraceIntervention <: AbstractIntervention end
             end
         end
 
-        @testset "An unbounded eligibility window admits a contact not yet exposed" begin
-            # A never-infected individual's infection time is NaN, which fails
-            # any comparison against a finite window.
+        @testset "An eligibility window admits a contact not yet exposed" begin
+            # A never-exposed individual's infection time is NaN; no time has
+            # passed since an exposure, so any window admits it.
             unexposed = Individual(id = 1, infection_time = NaN)
             rng = StableRNG(1)
             @test EpiBranch._within_eligibility_window(Inf, unexposed, 3.0, rng)
             @test EpiBranch._within_eligibility_window(
                 (rng, ind) -> Inf, unexposed, 3.0, rng)
-            @test !EpiBranch._within_eligibility_window(21.0, unexposed, 3.0, rng)
+            @test EpiBranch._within_eligibility_window(21.0, unexposed, 3.0, rng)
+            exposed = Individual(id = 2, infection_time = 1.0)
+            @test !EpiBranch._within_eligibility_window(1.0, exposed, 3.0, rng)
         end
 
         @testset "Doses are timed at the trace, whatever the trace action" begin
