@@ -57,6 +57,18 @@ count used. With `carry_over = false`, a period's unused budget is lost —
 only `budget_per_period` is available within the current period, measured
 against usage recorded since that period began.
 
+!!! warning "The budget caps admissions per call, not doses per calendar period"
+    Each call is charged to the period `state.max_infection_time` falls in
+    when the call is made, which on the generation-based engine is still the
+    previous generation's latest infection time. A dose is dated later, at
+    `trace_time + dose_delay` or at the eligibility time, so a dose admitted
+    in one period may be given in another. A generation spanning several
+    periods gets a single period's budget, and with `carry_over = false` a
+    dose dated in a later period counts against the period of its call and
+    again against its own. `budget_per_period = 5.0, period = 1.0` therefore
+    limits how many candidates each call admits, not how many doses are given
+    on any one day.
+
 Demand denied this call is not queued: a candidate who is not reached while
 the budget is exhausted is not revisited in a later call. Reporting what is
 left of a call's own demand is the caller's job (e.g. counting
