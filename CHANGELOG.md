@@ -10,8 +10,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 ### Added
 
 - `vaccine_acceptance(; propensity)`, an attributes function that draws a
-  vaccine-acceptance propensity once per ring — a case and the contacts
-  traced from it — rather than independently per contact, so refusal
+  vaccine-acceptance propensity once per ring, shared by the contacts created
+  from the same case, rather than independently per contact, so refusal
   clusters the way it does in practice. `RingVaccination`'s `coverage` and
   `MassVaccination`'s `eligibility_time` already accept a function of the
   contact; read the propensity back from `ind.state[:vaccine_acceptance]`

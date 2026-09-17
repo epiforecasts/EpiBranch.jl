@@ -281,9 +281,9 @@ tendency to refuse. In practice engagement with a response clusters by
 household or community: the same contacts who evade tracing tend to be
 the ones who decline a dose.
 
-[`vaccine_acceptance`](@ref) draws a propensity once per ring — a case
-and the contacts traced from it — rather than once per contact.
-`coverage` reads it back, so ring members share one acceptance
+[`vaccine_acceptance`](@ref) draws a propensity once per ring, shared by
+the contacts created from the same case, rather than once per contact.
+`coverage` reads it back, so those contacts share one acceptance
 probability instead of each drawing an independent one:
 
 ```@example interventions

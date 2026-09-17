@@ -1377,9 +1377,11 @@ _trait_sampler(f::Function) = (rng, ind) -> float(f(rng, ind))
     vaccine_acceptance(; propensity, key = :vaccine_acceptance)
 
 Return an attributes function that sets `key` (default `:vaccine_acceptance`)
-on each individual, drawn once per ring — a case and the contacts created
-from it directly — and shared by that ring's members, rather than drawn
-independently per contact.
+on each individual so that contacts created from the same case (a ring) share
+one value, rather than each drawing independently. A case's own value is the
+one shared with its siblings, from its infector's ring; an index case draws
+its own. A closure reading the case itself therefore gets a value unrelated
+to the ring the case goes on to seed.
 
 Engagement with a response clusters by household or community: the
 contacts who evade tracing tend to be the same ones who decline a dose.
