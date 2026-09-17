@@ -1214,6 +1214,17 @@ write whatever contact structure you want: a full matrix over every
 `(band, ses)` combination, or a factorised one where band and SES contacts
 multiply independently.
 
+Competing risks carry over with one restriction. The pool attributes each
+contact to an infector drawn uniformly from everyone infectious, because `force`
+does not say how much each infective contributes to it. With more than one mixing
+group that attribution is not weighted by the contact matrix, so a risk that
+depends on who the infector is would be applied against the wrong infectors. The
+pool therefore refuses, with an error, per-individual infectiousness, a leaky
+`Isolation`, and any intervention with its own `competing_risk` other than the
+vaccinations' protection of the contact. Risks on the contact alone, such as a
+per-individual susceptibility, apply exactly. Differences in infectiousness
+between groups belong in `force`.
+
 The natural history, isolation and line-list output are all unchanged from
 `HomogeneousProcess`. Internally these map to the engine's build, time, intervene
 and resolve phases, described in the [design overview](../design.md), but you do

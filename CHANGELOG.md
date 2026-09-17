@@ -93,6 +93,11 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   generative model of the pairwise likelihood, which has no term for a declined
   proposal. A pool whose infectious windows never close and whose every contact
   is then blocked has no end to reach, and now says so rather than running on.
+- A fixed-size pool with more than one mixing type refuses risks that depend on
+  the infector (per-individual infectiousness, a leaky `Isolation`, or an
+  intervention's own `competing_risk` other than a vaccine's protection of the
+  contact), because it draws each contact's infector without weighting by the
+  mixing structure. Risks acting on the contact alone still apply.
 - `RingVaccination` doses along the trace on the continuous-time models, where
   before it only ever dosed contacts the generation engine had created. A ring
   with a finite `eligibility_window` or a `post_exposure_efficacy` still doses

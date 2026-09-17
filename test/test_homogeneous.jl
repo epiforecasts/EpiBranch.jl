@@ -434,6 +434,65 @@ end
         @test mean(ar1) > mean(ar2)
     end
 
+    @testset "structured pool refuses risks that depend on the infector" begin
+        # Two bands that never mix (M = diag(2, 2)). Band 1's epidemic cannot
+        # depend on anything about band 2's infectives, but a contact's infector
+        # is drawn from everyone infectious, so a block read off the infector
+        # would let band 2 thin band 1's contacts. The pool refuses such risks,
+        # while a risk acting on the contact alone leaves band 1 untouched.
+        N = 2000
+        half = N ÷ 2
+        force = (type, counts) -> 2.0 * get(counts, type, 0) / half
+        prog = [Transition(:recovered; from = :infection, delay = Exponential(1.0),
+            terminal = true)]
+        function band1_attack(s; interventions = AbstractIntervention[],
+                band2! = ind -> nothing)
+            rng = StableRNG(s)
+            process = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
+            state = EpiBranch.new_state(process, prog, NoAttributes(), rng)
+            EpiBranch.add_individuals!(state, N, interventions;
+                setup = (ind, i) -> begin
+                    ind.state[:band] = i <= half ? 1 : 2
+                    i > half && band2!(ind)
+                end)
+            EpiBranch._sellke_pool!(state, collect(1:N), rng; mixing_by = (:band,),
+                force, n_initial = 20, from = :infection, until = (:recovered,),
+                interventions)
+            return count(ind -> ind.state[:band] == 1 && is_infected(ind),
+                state.individuals) / half
+        end
+        major(ars) = mean(filter(>(0.2), ars))
+
+        @test_throws r"infectiousness" band1_attack(1;
+            band2! = ind -> (ind.infectiousness = 0.0))
+        leaky = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            post_isolation_transmission = 0.5)
+        @test_throws r"Isolation" band1_attack(1; interventions = [leaky])
+        @test_throws r"Isolation" band1_attack(1;
+            interventions = [Scheduled(leaky; start_time = 5.0)])
+        # A user's own risk may read the infector, so it is refused too.
+        @test_throws r"LeakyVaccine" band1_attack(1;
+            interventions = [LeakyVaccine(0.5, 0.0)])
+        # Perfect isolation closes the window, so it never blocks a drawn contact.
+        @test !EpiBranch._blocks_by_infector(
+            Isolation(onset_to_isolation_delay = Exponential(1.0)))
+
+        # Band 2's susceptibility acts on its own contacts only, so band 1's
+        # attack rate is the SIR final size at R0 = 2 either way.
+        base = major([band1_attack(s) for s in 1:30])
+        immune2 = major([band1_attack(s; band2! = ind -> (ind.susceptibility = 0.0))
+                         for s in 1:30])
+        @test isapprox(base, 0.7968; atol = 0.03)
+        @test isapprox(immune2, 0.7968; atol = 0.03)
+
+        # One mixing type attributes every contact exactly, so nothing is refused.
+        pool = HomogeneousProcess(; transmission_rate = 2.0, population_size = 200)
+        @test simulate(
+            ModelSpec(pool; progression = prog,
+                attributes = transmission_traits(infectiousness = 0.5));
+            rng = StableRNG(1), n_initial = 3).cumulative_cases >= 3
+    end
+
     @testset "positive force with empty infectious pool is index-labelled" begin
         # A custom force with a count-independent positive hazard (external
         # importation) keeps firing infections even when no one is infectious. The

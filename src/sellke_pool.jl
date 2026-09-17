@@ -51,6 +51,55 @@
 # only the contact process differs: an edge of a graph carries one contact
 # interval, a mass-action pool a stream.
 
+# ── Infector-side risks under structured mixing ──────────────────────
+#
+# A contact's infector is drawn uniformly from everyone infectious. That is exact
+# for one mixing type, where every infective adds the same to the force on every
+# susceptible. With several types an infective adds to a group's force according
+# to its own type, so the exact draw weights each infective by its contribution.
+# `force` is an arbitrary function of the per-type counts and is not required to
+# be linear in them, so that contribution is not defined in general; recovering
+# it by differencing `force` would assume linearity, cost one call per infectious
+# type on every contact, and change the random stream and parent labels of
+# structured pools that carry no risks at all. The uniform draw is kept, and it
+# leaves the dynamics exact as long as no risk depends on who the infector is:
+# the contact's susceptibility or a vaccine's protection of the contact are
+# fine, whereas the infector's infectiousness or a leaky isolation would weight
+# blocks by the wrong infectors. Those are refused.
+
+# Whether a risk source can block a contact differently depending on its
+# infector. A model's own risk source is opaque, so it is assumed to; an
+# intervention without a `competing_risk` method of its own contributes no risk.
+_blocks_by_infector(source) = true
+function _blocks_by_infector(iv::AbstractIntervention)
+    _has_own_method(competing_risk, (typeof(iv), Any, Any, Any), AbstractIntervention)
+end
+# Perfect isolation's block starts when the infector's window closes, so the
+# infector is never drawn once it could apply; only a leaky residual can bite.
+_blocks_by_infector(iso::Isolation) = iso.post_isolation_transmission > 0
+_blocks_by_infector(::AbstractVaccination) = false
+_blocks_by_infector(rv::RingVaccination) = rv.onward_efficacy > 0
+_blocks_by_infector(s::Scheduled) = _blocks_by_infector(s.intervention)
+
+function _refuse_infector_side_risks(state, members, risks, interventions)
+    culprits = String[]
+    any(id -> state.individuals[id].infectiousness != 1, members) &&
+        push!(culprits, "per-individual infectiousness")
+    for source in (risks..., interventions...)
+        _blocks_by_infector(source) || continue
+        push!(culprits, string(nameof(typeof(_unwrap_scheduled(source)))))
+    end
+    isempty(culprits) && return nothing
+    throw(ArgumentError(
+        "the fixed-size pool with more than one mixing type draws each contact's " *
+        "infector uniformly from everyone infectious, which gives the right " *
+        "dynamics only while the infector cannot change whether a contact " *
+        "transmits. These can: $(join(unique(culprits), ", ")). Fold differences " *
+        "in infectiousness between types into `force`, or run a single mixing " *
+        "type (`mixing_by = ()`). Risks that act on the contact alone, such as " *
+        "susceptibility, are supported."))
+end
+
 """
     _sellke_pool!(state, members, rng; mixing_by = (), force, n_initial, from, until)
 
@@ -86,7 +135,11 @@ Each contact is put to the composed competing risks — the built-in
 per-individual susceptibility and infectiousness, the model's own `risks` (what
 [`transmission_risks`](@ref) reports), and the interventions. A blocked contact
 does not infect, and the susceptible draws a fresh resistance and waits for the
-next one.
+next one. With more than one mixing type, a risk that depends on the infector —
+per-individual infectiousness, a leaky isolation, a model risk source, or any
+other intervention defining its own `competing_risk` apart from those known to
+act on the contact alone — is refused with an `ArgumentError`, because the
+infector a contact is attributed to is not weighted by its share of the force.
 """
 function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; mixing_by::Tuple = (), force, n_initial::Integer,
@@ -139,6 +192,8 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     for id in members
         counts[typ[id]] = 0
     end
+
+    length(counts) > 1 && _refuse_infector_side_risks(state, members, risks, interventions)
 
     open_heap = Tuple{T, Int}[]         # pending window-open (becomes infectious)
     close_heap = Tuple{T, Int}[]        # pending window-close (recovers/isolates)
@@ -294,14 +349,14 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
                 ptr[gstar] += 1
             end
             # Its infector is drawn uniformly from all currently-infectious
-            # individuals across groups — a valid parent label whose epidemic
-            # dynamics are exact regardless; mixing-weighted attribution
-            # (weighting by each infective's contribution to `force`) is a
-            # possible refinement that would only sharpen the parent label, not
-            # the dynamics. If the infectious pool is empty — a custom `force`
-            # with a positive count-independent hazard, e.g. external
-            # importation — there is no infector to attribute to, so fall back to
-            # the index-case label 0.
+            # individuals across groups. With one mixing type every infective
+            # contributes equally to the force, so that is the exact attribution.
+            # With several it is only a parent label, and the dynamics stay exact
+            # because no risk the pool resolves reads the infector: those are
+            # refused before the run (`_refuse_infector_side_risks`). If the
+            # infectious pool is empty — a custom `force` with a positive
+            # count-independent hazard, e.g. external importation — there is no
+            # infector to attribute to, so fall back to the index-case label 0.
             src = isempty(infectious_ids) ? 0 :
                   infectious_ids[rand(rng, 1:length(infectious_ids))]
             ind = state.individuals[id]

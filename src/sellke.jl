@@ -92,6 +92,13 @@ end
 # multiplier is 1, so nothing is drawn from the rng and a run without risks
 # reproduces the same seeded results as before.
 
+# Whether `f` has a method for `argtypes` more specific than the fallback defined
+# on `base`, i.e. whether a type has implemented a hook itself.
+function _has_own_method(f, argtypes::Tuple, base::Type)
+    fallback = (base, argtypes[2:end]...)
+    return which(f, argtypes) !== which(f, fallback)
+end
+
 # Earliest time any intervention removes `ind` from onward transmission.
 function _intervention_removal_time(ind, interventions)
     t = Inf
