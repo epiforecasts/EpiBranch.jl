@@ -29,6 +29,16 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   routes' probabilities. Routes left at the default give the same outbreaks as
   before for the same seed.
 
+- `RingVaccination`, `MassVaccination` and `GroupVaccination` gain
+  `severity_efficacy`, the probability that a vaccinated individual's own
+  disease course is milder once their immunity has developed — e.g. a lower
+  chance of death — rather than blocked transmission. It does not gate transmission and so is not one
+  of the risks `competing_risk` returns; a clinical transition's
+  `probability` reads it, together with the new `immunity_time` accessor, so
+  a dose whose immunity has not yet developed by the outcome it would affect
+  confers no protection. Recorded per dose as `:severity_efficacy` and
+  `:immunity_time`, alongside the existing `:vaccine_efficacy`.
+
 - `RingVaccination` gains `post_exposure_efficacy`, the probability that a dose
   given to an already-exposed contact aborts that infection, which it can do
   whenever immunity arrives before the contact's symptom onset. An aborted
@@ -49,12 +59,24 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   contacts who have received the named earlier dose by then, so its `coverage`
   is the retention between doses. A dose listed before the dose it requires is
   rejected when the `ModelSpec` is built.
+- `groups`, an attributes function that labels each individual with a group
+  (a village, a health area, a household) under `:group` or an arbitrary key,
+  and `GroupVaccination`, which vaccinates every member of a group once any
+  case in it meets a [`TraceEligibility`](@ref) policy such as
+  `OnLabConfirmation()` — the fallback an outbreak response reaches for when
+  no ring can be built. Members are vaccinated at the triggering case's
+  eligibility time plus `dose_delay`, whether created before or after the
+  trigger, so doses scale with group size where `RingVaccination` doses scale
+  with ring size. Listing a `RingVaccination` before a `GroupVaccination` with
+  the same `dose_label` makes the group dose a pure fallback: a member the
+  ring already reached is skipped.
 
 ### Changed
 
 - Every `RingVaccination` and `MassVaccination` parameter now accepts a `Real`, a
   `Distribution` or a function `(rng, individual) -> Real`, as `efficacy` and
-  `coverage` already did. `delay_to_immunity` covers a vaccine whose protection
+  `coverage` already did, and so does `GroupVaccination`'s `delay_to_immunity`.
+  `delay_to_immunity` covers a vaccine whose protection
   takes one to three weeks to develop, `dose_delay` a booster due four to six
   weeks after the prime, and `post_exposure_efficacy` and `onward_efficacy` a dose
   that works better in some people than in others. The varying forms are drawn
@@ -62,7 +84,7 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   `:vaccine_immunity_delay`, `:vaccine_post_exposure_efficacy` and
   `:vaccine_onward_efficacy` (namespaced by `dose_label`), so an individual meets
   every exposure with the same immunity time and the same efficacy. A scalar
-  parameter behaves exactly as before and writes no per-contact state. Between two
+  parameter behaves exactly as before and writes none of these keys. Between two
   ring doses, a `dose_delay` distribution is judged on its support: a boost whose
   every draw falls before the dose it requires is rejected as a scalar one is, and
   supports that merely overlap are warned about, since the contacts whose draws

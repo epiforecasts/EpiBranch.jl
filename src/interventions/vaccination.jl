@@ -8,13 +8,28 @@ when. They share the [`competing_risk`](@ref) machinery: a vaccinated
 contact whose immunity has developed by their transmission time has
 their infection blocked with probability `efficacy`.
 
+`severity_efficacy` is a fourth effect, alongside `efficacy` (contact
+susceptibility) and `onward_efficacy`/`post_exposure_efficacy` on
+[`RingVaccination`](@ref) (parent infectiousness / abort of an existing
+infection): the probability that a vaccinated individual's own disease
+course is milder, e.g. a lower chance of death or of severe symptoms,
+once their immunity has developed. It has no counterpart in the
+competing-risks machinery those act through, because it does not gate
+transmission — it is consulted from the `probability` of a
+[`Transition`](@ref) (or [`Death`](@ref), [`Hospitalisation`](@ref), or
+any other clinical transition in a `progression`) via the
+[`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors, the
+same idiom [`Hospitalisation`](@ref) documents for prerequisite-gated
+admission. See [`RingVaccination`](@ref) for a worked example.
+
 `efficacy` and `delay_to_immunity` each accept a `Real`, a
 `Distribution`, or a function `(rng, ind) -> Real`. The
 function/distribution forms sample once per vaccinated individual at
 vaccination time and store the result on the contact; the competing risk
 reads the stored value, so an individual meets every exposure with the
 same efficacy and the same immunity time. A scalar is shared by everyone
-and stays on the intervention, so it writes no per-contact state.
+and stays on the intervention, so it writes no per-contact state of its
+own.
 
 `mode` is an [`AbstractEffectMode`](@ref): [`LeakyMode`](@ref) (the
 default) reduces each exposure's success probability by `efficacy`,
@@ -123,9 +138,9 @@ vaccination is given, or `nothing` when it requires no earlier dose."""
 required_dose(::AbstractVaccination) = nothing
 
 """Label namespacing the vaccination's per-contact state (`:vaccinated`,
-`:vaccination_time`, `:vaccine_efficacy`). `:default` writes to the
-unsuffixed keys for backwards compatibility; other labels write to
-`:vaccinated_<label>` etc."""
+`:vaccination_time`, `:vaccine_efficacy`, `:immunity_time`,
+`:severity_efficacy`). `:default` writes to the unsuffixed keys for
+backwards compatibility; other labels write to `:vaccinated_<label>` etc."""
 dose_label(v::AbstractVaccination) = v.dose_label
 
 function _vaccinated_key(label::Symbol)
@@ -148,6 +163,12 @@ end
 function _vaccine_onward_efficacy_key(label::Symbol)
     label === :default ? :vaccine_onward_efficacy :
     Symbol("vaccine_onward_efficacy_", label)
+end
+function _immunity_time_key(label::Symbol)
+    label === :default ? :immunity_time : Symbol("immunity_time_", label)
+end
+function _severity_efficacy_key(label::Symbol)
+    label === :default ? :severity_efficacy : Symbol("severity_efficacy_", label)
 end
 
 function initialise_individual!(v::AbstractVaccination, individual, state)
@@ -194,7 +215,9 @@ end
 # vaccination time. Samples efficacy via `_sample_value` so scalar,
 # distribution, and function forms all work. The parameters that can vary
 # between individuals are drawn here too, once per dose, so that an individual
-# meets each of its exposures with the same values.
+# meets each of its exposures with the same values. `:immunity_time` is stored
+# alongside, from the delay just drawn, so a clinical transition can check it
+# without reaching for the vaccination object, which it never sees.
 function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     label = dose_label(v)
     contact.state[_vaccinated_key(label)] = true
@@ -206,6 +229,8 @@ function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
         _vaccine_post_exposure_efficacy_key, label, rng)
     _sample_and_store!(onward_efficacy(v), contact, _vaccine_onward_efficacy_key,
         label, rng)
+    contact.state[_immunity_time_key(label)] = vacc_t + delay_to_immunity(v, contact)
+    contact.state[_severity_efficacy_key(label)] = _sample_value(v.severity_efficacy, rng, contact)
     return nothing
 end
 
@@ -326,12 +351,38 @@ Requires `:traced` (set by [`ContactTracing`](@ref)).
     never has symptoms and so no longer triggers tracing of the contacts it
     infected before its dose.
 
-Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
-`:vaccine_efficacy` for the default dose label, plus
-`:vaccine_immunity_delay`, `:vaccine_post_exposure_efficacy` and
-`:vaccine_onward_efficacy` where those parameters vary between
-individuals. With a non-default `dose_label`, the keys carry the label as
-a suffix.
+`severity_efficacy` is the probability that the vaccinated *contact's own*
+disease course is milder once their immunity has developed — lower
+mortality, a lower chance of a severe outcome, or whatever a clinical
+transition's `probability` reads it for. Unlike `efficacy`,
+`onward_efficacy` and `post_exposure_efficacy`, it does not gate
+transmission and so is not one of the risks [`competing_risk`](@ref)
+returns: it has no effect until a transition in `progression` consults it,
+via the [`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors,
+same as any other prerequisite a clinical transition's `probability` gates
+on:
+
+```julia
+Death(delay = LogNormal(2.5, 0.4),
+      probability = (rng, ind) ->
+          immunity_time(ind) <= onset_time(ind) ?
+              0.7 * (1 - severity_efficacy(ind)) : 0.7)
+```
+
+`immunity_time(ind) <= onset_time(ind)` is the check that a dose whose
+immunity has not yet developed by the outcome it would affect confers no
+protection — comparing against `:vaccinated` alone, as a naive closure
+might, would count a not-yet-immune dose as protective. Defaults to `0.0`
+(no severity effect). Accepts a `Real`, `Distribution`, or `Function`
+`(rng, ind) -> Real`, sampled once per vaccinated contact alongside
+`efficacy`.
+
+Per-contact state keys are `:vaccinated`, `:vaccination_time`,
+`:vaccine_efficacy`, `:immunity_time`, and `:severity_efficacy` for the
+default dose label, plus `:vaccine_immunity_delay`,
+`:vaccine_post_exposure_efficacy` and `:vaccine_onward_efficacy` where
+those parameters vary between individuals. With a non-default `dose_label`, the keys carry the
+label as a suffix.
 
 # Second and later doses
 
@@ -378,7 +429,7 @@ infected in the meantime, because infection is resolved after the doses
 are given. Dose counts for later doses are therefore counts of doses
 scheduled.
 """
-Base.@kwdef struct RingVaccination{E, C, D, S, W, P, O, M <: AbstractEffectMode} <:
+Base.@kwdef struct RingVaccination{E, C, D, S, W, P, O, SV, M <: AbstractEffectMode} <:
                    AbstractVaccination
     efficacy::E
     coverage::C = 1.0
@@ -388,6 +439,7 @@ Base.@kwdef struct RingVaccination{E, C, D, S, W, P, O, M <: AbstractEffectMode}
     eligibility_window::W = Inf
     post_exposure_efficacy::P = 0.0
     onward_efficacy::O = 0.0
+    severity_efficacy::SV = 0.0
     mode::M = LeakyMode()
     dose_label::Symbol = :default
 end
@@ -688,6 +740,147 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
     return nothing
 end
 
+# ── GroupVaccination ─────────────────────────────────────────────────
+
+"""
+Vaccinate every member of the group a confirmed case belongs to — the
+fallback an outbreak response reaches for when no ring can be built, such
+as a village, a health area, or a household. Individuals carry their
+group under `group_key` (`:group` by default; see [`groups`](@ref)), and
+every member sharing a triggering case's group is vaccinated at the
+trigger time plus `dose_delay`, whether or not it has any traced
+connection to that case.
+
+`eligibility` is a [`TraceEligibility`](@ref) policy, exactly as
+[`ContactTracing`](@ref) uses it, but tested against a case itself rather
+than an infector–contact pair: `OnLabConfirmation()` (the default) fires
+once a case in the group has tested positive, `OnSymptomOnset()` fires on
+suspicion alone, and the boolean operators `&`, `|`, `!` combine them the
+same way. The policy's [`trigger_time`](@ref EpiBranch.trigger_time) sets
+when the group is deemed to have a case in it; `dose_delay` is added on
+top, standing in for the time a vaccination team takes to reach the
+group once notified.
+
+A group is vaccinated as soon as any of its members meets `eligibility`,
+at the *earliest* such member's trigger time — later confirmations in the
+same group do not push the dose out further. Members created after the
+trigger (a case infected later in the same group) are vaccinated at that
+same trigger time plus `dose_delay` when they appear, so they are
+protected only from exposures after that point, exactly as an
+already-present member is. Because the campaign reaches the whole group,
+doses scale with group size where [`RingVaccination`](@ref) doses scale
+with ring size.
+
+`coverage`, `efficacy`, `severity_efficacy`, `delay_to_immunity`, `mode`,
+and `dose_label` mean what they do for [`RingVaccination`](@ref).
+`severity_efficacy` defaults to `0.0` (no severity effect) and, as there,
+acts only through a clinical transition that reads it via the
+[`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors.
+
+# Fallback composition
+
+Listing a [`RingVaccination`](@ref) before a `GroupVaccination` with the
+same `dose_label` makes the group dose a pure fallback: `coverage`,
+`efficacy`, and vaccination state are namespaced by `dose_label` (see
+[`AbstractVaccination`](@ref)), so a member the ring already reached is
+recorded as vaccinated by the time `GroupVaccination` runs and is
+skipped, leaving the group dose to reach only those the ring did not:
+
+```julia
+[ContactTracing(OnLabConfirmation(), 0.7, Exponential(1.0)),
+ RingVaccination(efficacy = 0.9),
+ GroupVaccination(efficacy = 0.6)]
+```
+
+Requires `:group` (or `group_key`) and whatever `eligibility` requires,
+e.g. `:test_positive` for the default `OnLabConfirmation()`.
+
+!!! note "Seed cases"
+    Like [`RingVaccination`](@ref) and [`MassVaccination`](@ref),
+    `GroupVaccination` acts through `apply_post_transmission!`, which the
+    engine calls only on newly created contacts. A run's seed cases are
+    created directly, not through that hook, so a seed is reached only once
+    another member of its group is created later and re-triggers the sweep;
+    a seed whose chain goes extinct without ever sharing a group with a
+    later case is not vaccinated even if it is itself confirmed.
+
+# Examples
+
+Vaccinate the whole village once a case there is lab-confirmed, 2 days
+later:
+
+```julia
+GroupVaccination(efficacy = 0.7, eligibility = OnLabConfirmation(), dose_delay = 2.0)
+```
+"""
+Base.@kwdef struct GroupVaccination{
+    E <: TraceEligibility, Ef, C, SV, D, M <: AbstractEffectMode} <:
+                   AbstractVaccination
+    eligibility::E = OnLabConfirmation()
+    efficacy::Ef
+    coverage::C = 1.0
+    severity_efficacy::SV = 0.0
+    delay_to_immunity::D = 0.0
+    dose_delay::Float64 = 0.0
+    group_key::Symbol = :group
+    mode::M = LeakyMode()
+    dose_label::Symbol = :default
+end
+
+function required_fields(gv::GroupVaccination)
+    union([gv.group_key], required_fields(gv.eligibility))
+end
+
+# The group's trigger time: the earliest time any of its members (found by
+# scanning every individual created so far, not just this generation's
+# `new_contacts`) meets `eligibility`, tested against the member itself in
+# both the infector and contact slots since the policy describes a property
+# of a case, not a pair. `Inf` if no member has triggered yet.
+function _group_trigger_time(gv::GroupVaccination, state, group)
+    key = gv.group_key
+    t = Inf
+    for m in state.individuals
+        get(m.state, key, nothing) == group || continue
+        is_eligible(gv.eligibility, m, m, state) || continue
+        tt = trigger_time(gv.eligibility, m, state)
+        isnan(tt) && continue
+        t = min(t, tt)
+    end
+    return t
+end
+
+# Two things can happen to a group in a single generation: a member created
+# earlier newly meets `eligibility` (the group's first trigger), or a member
+# is created into a group that already triggered in an earlier generation.
+# Recomputing the trigger time for every group touched by `new_contacts` and
+# sweeping the whole population against it handles both in one pass: a fresh
+# trigger reaches members already present, and a standing one reaches a
+# member only now created. Groups untouched this generation are left alone,
+# so nobody outside a triggered group is ever visited.
+function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
+    key = gv.group_key
+    label = dose_label(gv)
+    vacc_key = _vaccinated_key(label)
+
+    groups_here = Set{Any}()
+    for ind in new_contacts
+        haskey(ind.state, key) && push!(groups_here, ind.state[key])
+    end
+
+    for group in groups_here
+        trigger = _group_trigger_time(gv, state, group)
+        isfinite(trigger) || continue
+        vacc_t = trigger + gv.dose_delay
+        for m in state.individuals
+            get(m.state, key, nothing) == group || continue
+            get(m.state, vacc_key, false) && continue
+            _covers(gv.coverage, m, state.rng) || continue
+            _record_vaccination!(gv, m, vacc_t, state.rng)
+        end
+    end
+    return nothing
+end
+
 # ── MassVaccination ──────────────────────────────────────────────────
 
 """
@@ -714,12 +907,19 @@ contact. Per-individual heterogeneous efficacy (e.g. age-dependent) is
 set via the function form, and a vaccine whose immunity takes one to
 three weeks to develop by giving `delay_to_immunity` a distribution.
 
-Per-contact state keys are `:vaccinated`, `:vaccination_time`, and
-`:vaccine_efficacy` for the default dose label, plus
-`:vaccine_immunity_delay` where `delay_to_immunity` varies between
-individuals. With a non-default `dose_label`, the keys carry the label as
-a suffix — pass two `MassVaccination`s with different labels for a
-multi-dose rollout.
+`severity_efficacy` accepts the same set and, like on
+[`RingVaccination`](@ref), sets how much milder a vaccinated individual's
+own disease course is once their immunity has developed — a clinical
+transition's `probability` reads it via the [`severity_efficacy`](@ref)
+and [`immunity_time`](@ref) accessors. Defaults to `0.0` (no severity
+effect).
+
+Per-contact state keys are `:vaccinated`, `:vaccination_time`,
+`:vaccine_efficacy`, `:immunity_time`, and `:severity_efficacy` for the
+default dose label, plus `:vaccine_immunity_delay` where
+`delay_to_immunity` varies between individuals. With a non-default
+`dose_label`, the keys carry the label as a suffix — pass two `MassVaccination`s with different labels for
+a multi-dose rollout.
 
 # Examples
 
@@ -760,11 +960,12 @@ Prime-and-boost schedule (compose two instances with different labels):
 ]
 ```
 """
-Base.@kwdef struct MassVaccination{E, T, D, M <: AbstractEffectMode} <:
+Base.@kwdef struct MassVaccination{E, T, D, SV, M <: AbstractEffectMode} <:
                    AbstractVaccination
     efficacy::E
     eligibility_time::T
     delay_to_immunity::D = 0.0
+    severity_efficacy::SV = 0.0
     mode::M = LeakyMode()
     dose_label::Symbol = :default
 end

@@ -62,6 +62,7 @@ downstream packages should pick names that do not collide.
 | `:age` | `Real` | — | `demographics` | Init |
 | `:sex` | `Symbol` | — | `demographics` | Init |
 | `:risk_group` | `Symbol` | — | `demographics` | Init |
+| `:group` | `Int` | — | `groups` | Init |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
 | `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
@@ -76,6 +77,8 @@ downstream packages should pick names that do not collide.
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
 | `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:vaccine_immunity_delay[_<label>]` | `Float64` | — | `AbstractVaccination` (varying `delay_to_immunity`) | `apply_post_transmission!` |
 | `:vaccine_post_exposure_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `post_exposure_efficacy`) | `apply_post_transmission!` |
 | `:vaccine_onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | `apply_post_transmission!` |
@@ -105,6 +108,15 @@ against the same value. They are written only where the parameter varies
 between individuals, which is to say where it was given as a distribution or
 a function; a scalar parameter is the same for everyone and is read straight
 off the intervention.
+
+`:immunity_time` (`:vaccination_time` plus the dose's `delay_to_immunity`)
+and `:severity_efficacy` let a clinical transition read a vaccine's effect
+on disease severity — mortality, or any other outcome a `progression`
+transition decides — without gating transmission. Neither participates in
+`competing_risk`; a transition's `probability` reads them through the
+[`immunity_time`](@ref) and [`severity_efficacy`](@ref) accessors, gating
+on the former so a dose whose immunity has not yet developed by the
+outcome it would affect confers no protection.
 
 `:infection_aborted_time` marks an infection that a post-exposure dose ended
 before symptom onset. The individual is still infected but transmits nothing
