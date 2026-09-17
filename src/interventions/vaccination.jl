@@ -136,6 +136,37 @@ function _severity_efficacy_key(label::Symbol)
     label === :default ? :severity_efficacy : Symbol("severity_efficacy_", label)
 end
 
+# Time dose `label` was given to `ind`, or `nothing` if it has not been.
+function _dose_time(label::Symbol, ind)
+    get(ind.state, _vaccinated_key(label), false) || return nothing
+    vacc_t = get(ind.state, _vaccination_time_key(label), Inf)
+    return isfinite(vacc_t) ? vacc_t : nothing
+end
+
+"""Time at which `ind`'s immunity from dose `v`, given at `vacc_t`, develops."""
+_immunity_time(v::AbstractVaccination, ind, vacc_t) = vacc_t + delay_to_immunity(v)
+
+"""Full-strength efficacy of dose `v` against infection of `ind`, as sampled
+when the dose was given, or `nothing` if none was recorded."""
+function _vaccine_efficacy(v::AbstractVaccination, ind)
+    get(ind.state, _vaccine_efficacy_key(dose_label(v)), nothing)
+end
+
+# Fraction of a dose's efficacy still in force `dt` after immunity develops.
+_retained(::Nothing, dt) = 1.0
+_retained(w, dt) = w(dt)
+
+# Block probability of a dose whose immunity develops at `imm_t`, given as
+# `block(retained)`, a function of the fraction of efficacy retained. Without
+# waning the fraction stays at 1 and the block is a fixed number. With waning it
+# is read at the exposure under evaluation: the engine sets
+# `contact.infection_time` to that transmission time before resolving competing
+# risks (`_resolve!`), so the closure reads it fresh for every edge.
+_waned_block(block, ::Nothing, imm_t) = block(1.0)
+function _waned_block(block, w, imm_t)
+    (rng, parent, contact, state) -> block(w(contact.infection_time - imm_t))
+end
+
 function initialise_individual!(v::AbstractVaccination, individual, state)
     label = dose_label(v)
     individual.state[_vaccinated_key(label)] = false
@@ -157,25 +188,18 @@ after they are traced. For a dose acting on an infection the contact
 already has, see `post_exposure_efficacy` and `onward_efficacy` on
 [`RingVaccination`](@ref)."""
 function _susceptibility_risk(v::AbstractVaccination, contact)
-    label = dose_label(v)
-    get(contact.state, _vaccinated_key(label), false) || return nothing
-    vacc_t = get(contact.state, _vaccination_time_key(label), Inf)
-    isfinite(vacc_t) || return nothing
-    eff = get(contact.state, _vaccine_efficacy_key(label), nothing)
+    vacc_t = _dose_time(dose_label(v), contact)
+    vacc_t === nothing && return nothing
+    eff = _vaccine_efficacy(v, contact)
     eff === nothing && return nothing
     # A zero-efficacy dose can never block, and the engine skips such a risk.
     # Returning nothing keeps it out of the returned tuple, so the recommended
     # post-exposure-only setup (`efficacy = 0.0`) does not build and discard a
     # risk for every contact.
     eff <= 0 && return nothing
-    imm_t = vacc_t + delay_to_immunity(v)
-    w = waning(v)
-    w === nothing && return Risk(event_time = imm_t, block_probability = eff)
-    # `contact.infection_time` is the transmission time under evaluation: the
-    # engine sets it before calling into competing risks (`_resolve!`), so the
-    # closure reads it fresh for every edge rather than closing over one value.
+    imm_t = _immunity_time(v, contact, vacc_t)
     return Risk(event_time = imm_t,
-        block_probability = (rng, parent, c, state) -> eff * w(c.infection_time - imm_t))
+        block_probability = _waned_block(retained -> eff * retained, waning(v), imm_t))
 end
 
 function competing_risk(v::AbstractVaccination, parent, contact, state)
@@ -192,7 +216,7 @@ function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     contact.state[_vaccinated_key(label)] = true
     contact.state[_vaccination_time_key(label)] = vacc_t
     contact.state[_vaccine_efficacy_key(label)] = _sample_value(v.efficacy, rng, contact)
-    contact.state[_immunity_time_key(label)] = vacc_t + delay_to_immunity(v)
+    contact.state[_immunity_time_key(label)] = _immunity_time(v, contact, vacc_t)
     contact.state[_severity_efficacy_key(label)] = _sample_value(v.severity_efficacy, rng, contact)
     return nothing
 end
@@ -410,6 +434,10 @@ function required_fields(rv::RingVaccination)
 end
 required_dose(rv::RingVaccination) = rv.requires_dose
 
+# Full-strength post-exposure and onward efficacies of dose `rv` for `ind`.
+_post_exposure_efficacy(rv::RingVaccination, ind) = rv.post_exposure_efficacy
+_onward_efficacy(rv::RingVaccination, ind) = rv.onward_efficacy
+
 # Onward-infectiousness risk: blocks the parent → contact transmission
 # iff this dose has been administered to the *parent* and the parent's
 # immunity has developed by their (the parent's) transmission time. The
@@ -417,18 +445,13 @@ required_dose(rv::RingVaccination) = rv.requires_dose
 # was traced, and the onward immunity takes effect at that time plus
 # `delay_to_immunity`, as on the susceptibility side.
 function _onward_risk(rv::RingVaccination, parent)
-    rv.onward_efficacy > 0.0 || return nothing
-    label = dose_label(rv)
-    get(parent.state, _vaccinated_key(label), false) || return nothing
-    vacc_t = get(parent.state, _vaccination_time_key(label), Inf)
-    isfinite(vacc_t) || return nothing
-    imm_t = vacc_t + delay_to_immunity(rv)
-    w = waning(rv)
-    w === nothing &&
-        return Risk(event_time = imm_t, block_probability = rv.onward_efficacy)
+    onward = _onward_efficacy(rv, parent)
+    onward > 0.0 || return nothing
+    vacc_t = _dose_time(dose_label(rv), parent)
+    vacc_t === nothing && return nothing
+    imm_t = _immunity_time(rv, parent, vacc_t)
     return Risk(event_time = imm_t,
-        block_probability = (rng, p, c, state) -> rv.onward_efficacy *
-                                                  w(c.infection_time - imm_t))
+        block_probability = _waned_block(retained -> onward * retained, waning(rv), imm_t))
 end
 
 # Contact-side risk. `efficacy` blocks an exposure that comes after immunity,
@@ -436,44 +459,18 @@ end
 # place when the contact is exposed prevents the infection outright, the limit
 # of aborting it the moment it starts. This is also all a dose can do for a
 # contact with no onset to race (asymptomatic). Both act at the same immunity
-# time, so they combine into one block, drawn once. `waning` scales both by the
-# same factor, read at the exposure under evaluation, so a post-exposure dose
-# fades exactly as an `efficacy` dose does.
+# time, so they combine into one block, drawn once, and `waning` scales both by
+# the same fraction.
 function _contact_risk(rv::RingVaccination, contact)
-    susceptibility = _susceptibility_risk(rv, contact)
-    post = rv.post_exposure_efficacy
-    post > 0.0 || return susceptibility
-    label = dose_label(rv)
-    w = waning(rv)
-    if susceptibility === nothing
-        get(contact.state, _vaccinated_key(label), false) || return nothing
-        vacc_t = get(contact.state, _vaccination_time_key(label), Inf)
-        isfinite(vacc_t) || return nothing
-        imm_t = vacc_t + delay_to_immunity(rv)
-        w === nothing && return Risk(event_time = imm_t, block_probability = post)
-        return Risk(event_time = imm_t,
-            block_probability = (rng, p, c, state) -> post * w(c.infection_time - imm_t))
-    end
-    imm_t = susceptibility.event_time
-    w === nothing && return Risk(event_time = imm_t,
-        block_probability = 1 - (1 - susceptibility.block_probability) * (1 - post))
-    # `_susceptibility_risk` only returns a risk for a stored efficacy, so the
-    # key is present. Reading it here evaluates `waning` once per exposure for
-    # both factors.
-    eff = contact.state[_vaccine_efficacy_key(label)]
-    return Risk(event_time = imm_t,
-        block_probability = (rng, p, c, state) -> begin
-            retained = w(c.infection_time - imm_t)
-            1 - (1 - eff * retained) * (1 - post * retained)
-        end)
+    post = _post_exposure_efficacy(rv, contact)
+    post > 0.0 || return _susceptibility_risk(rv, contact)
+    vacc_t = _dose_time(dose_label(rv), contact)
+    vacc_t === nothing && return nothing
+    eff = something(_vaccine_efficacy(rv, contact), 0.0)
+    imm_t = _immunity_time(rv, contact, vacc_t)
+    block(retained) = 1 - (1 - eff * retained) * (1 - post * retained)
+    return Risk(event_time = imm_t, block_probability = _waned_block(block, waning(rv), imm_t))
 end
-
-# The abort acts the moment immunity arrives, so it takes the protection the
-# dose retains at that moment, `waning(0)`: the same block `_contact_risk`
-# applies to an exposure coinciding with immunity. Dispatching on `nothing`
-# keeps a dose without waning on the plain `post_exposure_efficacy`.
-_abort_efficacy(rv::RingVaccination, ::Nothing) = rv.post_exposure_efficacy
-_abort_efficacy(rv::RingVaccination, w) = rv.post_exposure_efficacy * w(0.0)
 
 # A dose given after the exposure can still abort the infection, so long as
 # immunity arrives before symptom onset. The contact then stays infected up to
@@ -498,10 +495,14 @@ _abort_efficacy(rv::RingVaccination, w) = rv.post_exposure_efficacy * w(0.0)
 function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     incubation = get(contact.state, :incubation_period, NaN)
     isnan(incubation) && return nothing
-    immunity = vacc_t + delay_to_immunity(rv)
+    immunity = _immunity_time(rv, contact, vacc_t)
     exposure = contact.infection_time
     exposure < immunity < exposure + incubation || return nothing
-    _covers(_abort_efficacy(rv, waning(rv)), contact, rng) || return nothing
+    # The abort acts the moment immunity arrives, so it takes the protection the
+    # dose retains then: the block `_contact_risk` applies to an exposure
+    # coinciding with immunity.
+    post = _post_exposure_efficacy(rv, contact) * _retained(waning(rv), 0.0)
+    _covers(post, contact, rng) || return nothing
     # An earlier dose may already have aborted it; the infection ends at the
     # first abort.
     contact.state[:infection_aborted_time] = min(
