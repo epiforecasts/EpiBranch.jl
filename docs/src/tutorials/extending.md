@@ -475,6 +475,67 @@ results = simulate(model, 200; max_cases = 500, rng = rng)
 println("Isolation + border closure: $(round(containment_probability(results), digits=3))")
 ```
 
+### A custom vaccination
+
+A new vaccination differs from the built-in ones in who it reaches and when.
+What a dose does once given (`efficacy`, `severity_efficacy`,
+`delay_to_immunity`, `mode` and `dose_label`) lives in a [`VaccineEffect`](@ref),
+which every [`AbstractVaccination`](@ref) holds. A subtype stores one and
+returns it from `EpiBranch.vaccine_effect`; the rest of the vaccination
+machinery reads these parameters only through that method. The subtype then
+inherits:
+
+- `initialise_individual!`, which sets `:vaccinated` and `:vaccination_time`
+  (namespaced by `dose_label`) on every individual;
+- `competing_risk`, the susceptibility-side block described in
+  [`AbstractVaccination`](@ref);
+- the dose-schedule checks made when a `ModelSpec` is built, so it can give the
+  dose a later [`RingVaccination`](@ref) names in `requires_dose`.
+
+What it adds is an `apply_post_transmission!` method choosing whom to vaccinate
+and when. It records each dose with `EpiBranch._record_vaccination!(v, ind,
+vaccination_time, rng)`, which writes the per-dose keys listed under
+[Reserved keys](#Reserved-keys) and samples `efficacy` and `severity_efficacy`
+for that individual. Here, a campaign on day 10 reaches everyone aged 60 or
+over:
+
+```@example extending
+struct OlderAdultVaccination{V <: VaccineEffect} <: AbstractVaccination
+    effect::V
+    min_age::Int
+    campaign_time::Float64
+end
+
+function OlderAdultVaccination(; min_age, campaign_time, kwargs...)
+    OlderAdultVaccination(VaccineEffect(; kwargs...), min_age, campaign_time)
+end
+
+EpiBranch.vaccine_effect(v::OlderAdultVaccination) = v.effect
+EpiBranch.required_fields(::OlderAdultVaccination) = [:age]
+
+function EpiBranch.apply_post_transmission!(v::OlderAdultVaccination, state, new_contacts)
+    for ind in new_contacts
+        ind.state[:age] >= v.min_age || continue
+        EpiBranch._record_vaccination!(v, ind, v.campaign_time, state.rng)
+    end
+    return nothing
+end
+
+older = OlderAdultVaccination(min_age = 60, campaign_time = 10.0,
+    efficacy = 0.8, delay_to_immunity = 14.0)
+older_model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0));
+    interventions = [older], attributes = demographics())
+older_results = simulate(older_model, 50; max_cases = 200, rng = StableRNG(1))
+n_cases = sum(s -> length(s.individuals), older_results)
+n_vaccinated = sum(s -> count(is_vaccinated, s.individuals), older_results)
+println("Vaccinated: $n_vaccinated of $n_cases cases")
+```
+
+Forwarding keywords to `VaccineEffect` lets the constructor take the same effect
+keywords as the built-in vaccinations. A parameter describing what a dose does
+belongs in `VaccineEffect`, where every vaccination gains it at once; a
+parameter describing whom a dose reaches belongs on the subtype.
+
 ## Tree-shaping via the offspring distribution
 
 Some interventions don't filter individual transmissions — they change
@@ -1317,6 +1378,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Extension point | Mechanism | When called |
 |---|---|---|
 | Custom intervention | Struct `<: AbstractIntervention` + hook methods | Each generation |
+| Custom vaccination | Struct `<: AbstractVaccination` holding a `VaccineEffect` + `vaccine_effect` + `apply_post_transmission!` | Each generation |
 | Time-dependent intervention | `Scheduled(iv; start_time = ...)` + `intervention_time`, `reset!` on `iv` | After each hook |
 | Custom attributes | Function `(rng, ind) -> nothing` | Individual creation |
 | Layered attributes | `[f1, f2, ...]` | Individual creation |
