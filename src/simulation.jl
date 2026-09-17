@@ -1388,7 +1388,9 @@ accepts a function `(rng, ind) -> Real`, but has no group to read on its
 own; this builder supplies one. Read it back with a closure such as
 `coverage = (rng, ind) -> ind.state[:vaccine_acceptance]`, so members of
 the same ring share one acceptance probability rather than each drawing
-an independent one.
+an independent one. The same closure works as
+[`GroupVaccination`](@ref)'s `coverage`, where it clusters refusal by ring
+within each group.
 
 `propensity` accepts a `Real`, a `Distribution`, or a function
 `(rng, ind) -> Real`; it is sampled once for the case whose ring is being

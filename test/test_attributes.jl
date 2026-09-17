@@ -146,6 +146,27 @@
             @test !haskey(contact.state, :vaccine_acceptance)
         end
 
+        @testset "clusters GroupVaccination coverage by ring within a group" begin
+            gv = GroupVaccination(efficacy = 0.9,
+                coverage = (rng, ind) -> ind.state[:vaccine_acceptance])
+            attrs = [groups(1),
+                vaccine_acceptance(propensity = (rng, case) -> case.id == 1 ? 1.0 : 0.0)]
+            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+                EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1))
+            accepting, declining = EpiBranch.add_individuals!(state, 2, [])
+            accepting_ring = [make_contact!(state, accepting, 1.0) for _ in 1:10]
+            declining_ring = [make_contact!(state, declining, 1.0) for _ in 1:10]
+            for ind in state.individuals
+                ind.state[:test_positive] = ind === accepting
+            end
+            set_isolated!(accepting, 2.0)
+
+            EpiBranch.apply_post_transmission!(gv, state, state.individuals)
+
+            @test all(is_vaccinated, accepting_ring)
+            @test !any(is_vaccinated, declining_ring)
+        end
+
         @testset "applied without simulation state errors" begin
             attrs = vaccine_acceptance(propensity = 0.5)
             ind = Individual(id = 1)
