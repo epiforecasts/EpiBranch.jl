@@ -740,7 +740,25 @@ the race has not settled does not have yet. The model warns about such a ring
 rather than apply either from the wrong time."""
 function trace_contacts!(rv::RingVaccination, state, infector, contacts)
     _ring_doses_on_race(rv) || return nothing
+    for ind in contacts
+        _advance_ring_dose!(rv, ind)
+    end
     apply_post_transmission!(rv, state, contacts)
+end
+
+# The race settles cases in infection order, not trace order, so a case settled
+# later can reach a contact sooner than the one that dosed it. Its trace lowers
+# the contact's `:trace_time`, and the dose, given at the trace, moves with it.
+# Coverage and efficacy were drawn with the first dose and stay as they are.
+function _advance_ring_dose!(rv::RingVaccination, ind)
+    label = dose_label(rv)
+    get(ind.state, _vaccinated_key(label), false) || return nothing
+    vacc_t = get(ind.state, :trace_time, Inf) + rv.dose_delay
+    vacc_t < ind.state[_vaccination_time_key(label)] || return nothing
+    _has_required_dose(rv, ind, vacc_t) || return nothing
+    ind.state[_vaccination_time_key(label)] = vacc_t
+    ind.state[_immunity_time_key(label)] = vacc_t + delay_to_immunity(rv)
+    return nothing
 end
 
 # ── MassVaccination ──────────────────────────────────────────────────

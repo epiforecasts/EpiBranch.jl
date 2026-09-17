@@ -180,8 +180,16 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
 
         base = meansize([iso, ct])
         @test !any(st -> any(is_vaccinated, st.individuals), runs([iso, ct]))
-        @test all(st -> any(is_vaccinated, st.individuals),
-            runs([iso, ct, RingVaccination(efficacy = 0.5)]))
+        dosed_runs = runs([iso, ct, RingVaccination(efficacy = 0.5)])
+        @test all(st -> any(is_vaccinated, st.individuals), dosed_runs)
+        # A node reached by several cases is dosed at its earliest trace, even
+        # when the case that reached it first was settled later.
+        @test all(
+            st -> all(
+                ind -> !is_vaccinated(ind) ||
+                       ind.state[:vaccination_time] == ind.state[:trace_time],
+                st.individuals),
+            dosed_runs)
 
         @test isapprox(meansize([iso, ct, RingVaccination(efficacy = 0.0)]), base;
             rtol = 0.05)

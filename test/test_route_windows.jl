@@ -22,6 +22,19 @@ function EpiBranch.competing_risk(p::ProtectTo, parent, contact, state)
     contact.id == p.id ? Risk(block_probability = 1.0) : nothing
 end
 
+# Traces every contact a case reaches at a fixed time per tracer, keeping the
+# earliest, as `ContactTracing` records `:trace_time`.
+struct TraceAtFixedTimes <: EpiBranch.AbstractIntervention
+    times::Dict{Int, Float64}
+end
+EpiBranch.traces_contacts(::TraceAtFixedTimes) = true
+function EpiBranch.trace_contacts!(tr::TraceAtFixedTimes, state, infector, contacts)
+    for c in contacts
+        c.state[:traced] = true
+        c.state[:trace_time] = min(get(c.state, :trace_time, Inf), tr.times[infector.id])
+    end
+end
+
 @testset "Route windows" begin
     @testset "construction and show" begin
         w = RouteWindow(:community; from = :infectious, until = (:recovered,),
@@ -247,6 +260,43 @@ end
         @test EpiBranch._sellke_honours(nameless,
             Isolation(onset_to_isolation_delay = Dirac(1.0),
                 post_isolation_transmission = 0.5))
+    end
+
+    @testset "a ring dose follows the earliest trace on the race" begin
+        # Nodes 1 and 2 are seeded at 0 and 1, so the race settles node 1 first,
+        # and both reach node 3. Node 1 traces it at 4, node 2 sooner, at 2: the
+        # dose, given at the trace, must move to the earlier time.
+        prog = [Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
+        function dosed(interventions)
+            rng = StableRNG(1)
+            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, EpiBranch.NoAttributes(), rng)
+            EpiBranch.add_individuals!(state, 3, interventions)
+            EpiBranch._sellke_race!(state, [1, 2, 3], rng; interventions,
+                targets = (inf, st) -> (), contacts = (inf, st) -> inf == 3 ? () : (3,),
+                from = :infection, until = (:recovered,),
+                seed! = (best, members, r) -> (best[1] = 0.0; best[2] = 1.0))
+            return state.individuals[3].state
+        end
+        tracer = TraceAtFixedTimes(Dict(1 => 4.0, 2 => 2.0))
+
+        node3 = dosed([tracer, RingVaccination(efficacy = 0.5, delay_to_immunity = 3.0)])
+        @test node3[:trace_time] == 2.0
+        @test node3[:vaccination_time] == 2.0
+        @test node3[:immunity_time] == 5.0
+
+        # A later dose moves with the trace, and so does a boost timed from it.
+        node3 = dosed([tracer,
+            RingVaccination(efficacy = 0.5, dose_delay = 1.0, dose_label = :prime),
+            RingVaccination(efficacy = 0.5, dose_delay = 7.0, requires_dose = :prime,
+                dose_label = :boost)])
+        @test node3[:vaccination_time_prime] == 3.0
+        @test node3[:vaccination_time_boost] == 9.0
+
+        # A later trace leaves an earlier dose alone.
+        node3 = dosed([TraceAtFixedTimes(Dict(1 => 2.0, 2 => 4.0)),
+            RingVaccination(efficacy = 0.5)])
+        @test node3[:vaccination_time] == 2.0
     end
 
     @testset "the race resolves competing risks on each proposal" begin
