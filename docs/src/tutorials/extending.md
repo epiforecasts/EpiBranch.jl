@@ -991,8 +991,8 @@ continuous-time household and network processes, which step cases in
 infection-time order instead of by generation, are the worked examples.
 
 For **analytical inference helpers** that route through the offspring
-specification (`extinction_probability`, `epidemic_probability`,
-`probability_contain`, `proportion_transmission`,
+specification (`reproduction_number`, `extinction_probability`,
+`epidemic_probability`, `probability_contain`, `proportion_transmission`,
 `chain_size_distribution`), define one method:
 
 - [`single_type_offspring`](@ref)`(model)` returning the offspring
@@ -1245,7 +1245,8 @@ variation) is the reference. A new offspring type needs:
 
 1. Simulation dispatch: `draw_offspring(rng, offspring, individual, state)` returning the number of offspring.
 2. Analytical dispatch (optional but recommended): `chain_size_distribution(offspring)` returning the analytical PMF. Without it, the likelihood falls back to simulation.
-3. A `BranchingProcess` constructor so the type can be stored in the `offspring` field.
+3. Threshold and extinction dispatch (optional): [`reproduction_number`](@ref)`(offspring)` and [`extinction_probability`](@ref)`(offspring)`, so the model-level helpers answer for models built from the type. `src/analytical/cluster_mixed.jl` and `src/analytical/multi_type.jl` are the examples.
+4. A `BranchingProcess` constructor so the type can be stored in the `offspring` field.
 
 See `src/analytical/cluster_mixed.jl` for the full pattern, including how `ClusterMixed` caches per-chain state on the index case and has descendants inherit it through `parent_id`.
 
