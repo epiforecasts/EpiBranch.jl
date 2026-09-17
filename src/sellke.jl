@@ -55,13 +55,19 @@ end
 # probability, conditional on the risk having arrived before that transmission's
 # time. On the race, a potential transmission *is* a drawn time: the contact
 # interval from the infector's window opening to the moment it would infect that
-# neighbour. So the risks are resolved where that time is proposed and against
-# the time itself (see the proposal loop in `_sellke_race!`), exactly as the
+# neighbour. So the risks are resolved against the time itself, exactly as the
 # generation engine resolves them against a contact's transmission time.
 #
-# A block declines the proposal and does nothing else. The pair's candidate time
-# is not relaxed, the neighbour keeps whatever candidate it already had, stays
-# susceptible to everyone else, and the race carries on. The kernel draw is not
+# They are resolved when the proposal reaches the front of the queue, not when
+# the infector makes it. By then every case infected before the proposed time
+# has settled and run its trace, so a dose given along another case's trace
+# before that time is already on the target, as it would be on the generation
+# engine; resolving at the proposal would read the target as it stood when the
+# infector settled, and miss it.
+#
+# A block declines the proposal and does nothing else. The neighbour stays
+# susceptible to everyone else, falls back to its next proposal in the queue,
+# and the race carries on. The kernel draw is not
 # repeated, because the kernel is that pair's *contact interval* — the time of
 # the first infectious contact along the edge, not the first of a stream — so
 # there is no second contact to offer. Declining is also what keeps the two
@@ -84,13 +90,12 @@ end
 # loop for why. The model's own risks and the per-individual multipliers apply on
 # every route.
 #
-# Risks are resolved only for a proposal that would otherwise win the race. One
-# that is already later than the neighbour's current best could not have
-# infected anyone whatever the risks said, and candidate times only ever fall,
-# so skipping it changes no outcome and keeps the cost at nothing for a model
-# with no risks in play: the built-in sources return no risk at all when every
-# multiplier is 1, so nothing is drawn from the rng and a run without risks
-# reproduces the same seeded results as before.
+# Risks are resolved only for a proposal that reaches the front of the queue
+# while its neighbour is still susceptible. Any other could not have infected
+# anyone whatever the risks said, so skipping it changes no outcome and keeps
+# the cost at nothing for a model with no risks in play: the built-in sources
+# return no risk at all when every multiplier is 1, so nothing is drawn from the
+# rng.
 
 # Whether `f` has a method for `argtypes` more specific than the fallback defined
 # on `base`, i.e. whether a type has implemented a hook itself.
@@ -278,11 +283,11 @@ case's natural history is stamped and it exposes still-susceptible targets with 
 `interventions` are resolved after its natural history, and any that remove it
 from transmission (isolation, quarantine on being traced) shorten that window.
 
-Each proposed infection is then put to the composed competing risks — the
-built-in per-individual susceptibility and infectiousness, the model's own
-`risks` (what [`transmission_risks`](@ref) reports), and the interventions — and
-declined if any of them blocks it. The target keeps the candidate it already had
-and stays susceptible to its other neighbours.
+Each proposed infection is put to the composed competing risks — the built-in
+per-individual susceptibility and infectiousness, the model's own `risks` (what
+[`transmission_risks`](@ref) reports), and the interventions — when it reaches
+the front of the queue, and declined if any of them blocks it. The target then
+falls back to its next proposal and stays susceptible to its other neighbours.
 
 A model with several transmission routes passes `routes`, a collection of
 `(RouteWindow, targets)` pairs, in place of `from`/`until`/`targets`. Each route
@@ -339,20 +344,40 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
 
     seed!(best, members, rng)
 
-    # The heap orders pending candidates by `(time, k)`, so equal times settle in
-    # member order. Candidate times only ever decrease, so a relaxation pushes a
-    # new entry and leaves the old one in the heap. On pop, the loop skips an
-    # entry as stale if its member has already settled or its time is later than
-    # that member's current best.
-    pending = Tuple{eltype(best), Int}[]
+    # The heap holds every pending proposal as `(time, k, infector, route)`, the
+    # seeds with infector 0. A proposal's risks are resolved only when it is
+    # popped (see the block comment above), so a neighbour keeps all of its
+    # proposals rather than the earliest: a blocked one falls through to the
+    # next. Equal times settle in member order, and a seed before any proposal.
+    # `best` holds only the seeds, which no risk blocks, so a proposal no earlier
+    # than its neighbour's seed can never win and is not queued.
+    pending = Tuple{eltype(best), Int, Int, Int}[]
     for k in 1:m
-        best[k] < Inf && _heap_push!(pending, (best[k], k))
+        best[k] < Inf && _heap_push!(pending, (best[k], k, 0, 0))
     end
 
     while !isempty(pending)
-        bt, j = _heap_pop!(pending)
-        (processed[j] || bt > best[j]) && continue
+        bt, j, infector_id, route = _heap_pop!(pending)
+        processed[j] && continue
+        if infector_id != 0
+            # A route the interventions cannot cut is not cut by the per-contact
+            # risks that stand in for a removal either: a household route runs on
+            # through an isolation, and blocking every proposal it makes would cut
+            # it just as surely. A vaccine's protection is no removal, and a
+            # vaccinated person is protected at home too, so risks scoped to
+            # every route still apply. The model's own risks and the
+            # per-individual multipliers always apply, since they belong to the
+            # people and the edge.
+            w, _ = rts[route]
+            route_interventions = INTERVENTION_REMOVAL in w.until ? interventions :
+                                  every_route_interventions
+            _composed_risks_block(state, state.individuals[infector_id],
+                state.individuals[members[j]], bt, risks, route_interventions,
+                _sellke_builtin_risk_blocks) && continue
+        end
         processed[j] = true
+        best[j] = bt
+        src[j] = infector_id
 
         ind = state.individuals[members[j]]
         ind.infection_time = best[j]
@@ -376,33 +401,17 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         # transmitting on one while another has been cut. A route whose `from`
         # state was never reached contributes nothing, which is how a survivor
         # never materialises funeral contacts.
-        for (w, route_targets) in rts
+        for (route, (w, route_targets)) in enumerate(rts)
             open_t = window_open(ind, w)
             isfinite(open_t) || continue
             close_t = _route_close(ind, w, interventions)
-            # A route the interventions cannot cut is not cut by the per-contact
-            # risks that stand in for a removal either: a household route runs on
-            # through an isolation, and blocking every proposal it makes would cut
-            # it just as surely. A vaccine's protection is no removal, and a
-            # vaccinated person is protected at home too, so risks scoped to
-            # every route still apply. The model's own risks and the
-            # per-individual multipliers always apply, since they belong to the
-            # people and the edge.
-            route_interventions = INTERVENTION_REMOVAL in w.until ? interventions :
-                                  every_route_interventions
-
             for (target_id, kernel) in route_targets(members[j], state)
                 k = get(pos, target_id, 0)
                 (k == 0 || processed[k]) && continue
                 dt = rand(rng, kernel)
                 cand = open_t + dt
                 (cand <= close_t && cand < best[k]) || continue
-                _composed_risks_block(state, ind, state.individuals[target_id],
-                    cand, risks, route_interventions,
-                    _sellke_builtin_risk_blocks) && continue
-                best[k] = cand
-                src[k] = members[j]
-                _heap_push!(pending, (best[k], k))
+                _heap_push!(pending, (convert(eltype(best), cand), k, members[j], route))
             end
         end
     end

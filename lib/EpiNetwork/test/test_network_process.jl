@@ -199,6 +199,30 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test meansize([iso, ct, RingVaccination(efficacy = 1.0)]) < leaky
     end
 
+    @testset "a dose given along another case's trace protects before exposure" begin
+        # With incomplete tracing and asymptomatic cases, a node is often dosed by
+        # the trace of a case other than the one that later infects it, and that
+        # trace can settle after the infector did. The race resolves each
+        # proposal once everything infected before its time has settled, so a
+        # fully effective dose in place by then blocks it.
+        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
+            prob_asymptomatic = 0.4)
+        ivs = [
+            Isolation(onset_to_isolation_delay = Exponential(0.5), test_sensitivity = 1.0,
+                post_isolation_transmission = 1.0),
+            ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(0.2),
+                quarantine_on_trace = false),
+            RingVaccination(efficacy = 1.0)]
+        model = ModelSpec(NetworkProcess(ring_adjacency(400, 3), Exponential(3.0));
+            progression = _sir(Exponential(6.0)), interventions = ivs,
+            attributes = clinical)
+        immune_at_infection(ind) = is_vaccinated(ind) && ind.parent_id != 0 &&
+                                   ind.state[:immunity_time] <= ind.infection_time
+        runs = [simulate(model; rng = StableRNG(s), n_initial = 3) for s in 1:15]
+        @test any(st -> count(is_vaccinated, st.individuals) > 0, runs)
+        @test !any(st -> any(immune_at_infection, st.individuals), runs)
+    end
+
     @testset "onset is measured from each case's own infection time" begin
         # Nodes are created, and their incubation periods drawn, before the
         # race sets their infection times. Isolation depends on onset, so onset
