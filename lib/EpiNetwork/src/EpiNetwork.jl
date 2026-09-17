@@ -17,7 +17,7 @@ import EpiBranch: population_size, new_state, add_individuals!, apply_observatio
 # The pairwise likelihood reads each node's infectious window through the same
 # window the simulator's race builds, and shares EpiBranch's test for whether a
 # community hazard is on, so simulation and likelihood agree on both.
-import EpiBranch: _shorthand_window, _ext_active
+import EpiBranch: _infection_layer_columns, _ext_active
 
 export NetworkProcess, RoutedNetwork
 export NetworkInfections, network_infections

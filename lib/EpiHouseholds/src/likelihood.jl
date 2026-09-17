@@ -73,28 +73,9 @@ Pass `followup_end` to score the outbreak as if observation had stopped then.
 function household_infections(state::SimulationState,
         model::ModelSpec{<:HouseholdProcess}; obs_end = model.process.obs_end,
         followup_end = Inf)
-    process = model.process
-    from = _resolve_infectious_from(process.from, model.progression)
-    window = _shorthand_window(from, process.until)
-    interventions = model.interventions
-    inds = state.individuals
-    n = length(inds)
-    hh = Vector{Int}(undef, n)
-    infection = fill(NaN, n)
-    infectious = fill(NaN, n)
-    removal = fill(Inf, n)
-    index = falses(n)
-    for (k, ind) in enumerate(inds)
-        hh[k] = ind.state[:household]::Int
-        if get(ind.state, :infected, false)
-            infection[k] = ind.infection_time
-            infectious[k] = window_open(ind, window)
-            removal[k] = window_close(ind, window, interventions)
-            index[k] = get(ind.state, :index, false)
-        end
-    end
-    return HouseholdInfections(hh, infection, infectious, removal, index; obs_end,
-        followup_end)
+    household_of = [ind.state[:household]::Int for ind in state.individuals]
+    columns = _infection_layer_columns(state, model)
+    return HouseholdInfections(household_of, columns...; obs_end, followup_end)
 end
 
 function household_infections(state::SimulationState, process::HouseholdProcess;

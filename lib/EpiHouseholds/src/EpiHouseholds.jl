@@ -9,9 +9,9 @@ using Random
 # `using EpiBranch`. Everything else this package builds on (`TransmissionModel`,
 # `Transition`, `Individual`, `linelist`, …) is exported by EpiBranch, and the
 # population/progression helpers are called qualified. The package also uses two
-# sets of EpiBranch internals on purpose: the shared continuous-time engine (the
-# `_shorthand_window` helper imported below and `EpiBranch._sellke_race!` used by
-# the simulator) and the community-hazard helpers. Reusing them keeps the
+# sets of EpiBranch internals on purpose: the shared continuous-time engine
+# (`EpiBranch._sellke_race!` used by the simulator, and the infection-layer reader
+# imported below) and the community-hazard helpers. Reusing them keeps the
 # household simulator and pairwise likelihood consistent with the shared engine.
 import EpiBranch: new_state, add_individuals!, apply_observation!,
                   _simulate, SimOpts, _resolve_infectious_from,
@@ -19,7 +19,7 @@ import EpiBranch: new_state, add_individuals!, apply_observation!,
                   _honours_termination_controls
 # The pairwise likelihood reads each case's infectious window through the same
 # window the simulator's race builds, including its intervention removal.
-import EpiBranch: _shorthand_window
+import EpiBranch: _infection_layer_columns
 # The pairwise survival likelihood works for any contact structure and lives in
 # EpiBranch, which scores a household population through `contact_structure`.
 # The simulator shares EpiBranch's test for whether a community hazard is on, so

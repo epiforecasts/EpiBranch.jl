@@ -86,28 +86,13 @@ Pass `followup_end` to score the outbreak as if observation had stopped then.
 function network_infections(state::SimulationState,
         model::ModelSpec{<:NetworkProcess}; obs_end = model.process.obs_end,
         followup_end = Inf)
-    process = model.process
-    from = _resolve_infectious_from(process.from, model.progression)
-    window = _shorthand_window(from, process.until)
-    interventions = model.interventions
-    n = length(process.adjacency)
+    adjacency = model.process.adjacency
+    n = length(adjacency)
     length(state.individuals) == n || throw(ArgumentError(
         "the state has $(length(state.individuals)) individuals but the network " *
         "has $n nodes"))
-    infection = fill(NaN, n)
-    infectious = fill(NaN, n)
-    removal = fill(Inf, n)
-    index = falses(n)
-    for (k, ind) in enumerate(state.individuals)
-        if get(ind.state, :infected, false)
-            infection[k] = ind.infection_time
-            infectious[k] = window_open(ind, window)
-            removal[k] = window_close(ind, window, interventions)
-            index[k] = get(ind.state, :index, false)
-        end
-    end
-    return NetworkInfections(process.adjacency, infection, infectious, removal, index;
-        obs_end, followup_end)
+    columns = _infection_layer_columns(state, model)
+    return NetworkInfections(adjacency, columns...; obs_end, followup_end)
 end
 
 function network_infections(state::SimulationState, process::NetworkProcess; kwargs...)

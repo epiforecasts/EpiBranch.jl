@@ -69,6 +69,33 @@ end
         @test_throws ArgumentError PairwiseSurvivalData([1], [2.0], [1.0], [true])
     end
 
+    @testset "infection-layer columns read out of a simulation" begin
+        # the homogeneous pool runs the same one-window race as a household or a
+        # network, so its state reads back the same way: the window opens at
+        # :infectious and closes at recovery or isolation, whichever is first
+        progression = [Transition(:onset; from = :infection, delay = 0.1),
+            Transition(:infectious; from = :infection, delay = 0.5),
+            Transition(:recovered; from = :infectious, delay = Exponential(1.0),
+                terminal = true)]
+        m = ModelSpec(HomogeneousProcess(; transmission_rate = 2.0, population_size = 300);
+            progression,
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0))])
+        state = simulate(m; rng = StableRNG(1), n_initial = 3)
+        columns = EpiBranch._infection_layer_columns(state, m)
+
+        infected = findall(is_infected, state.individuals)
+        @test findall(!isnan, columns.infection_time) == infected
+        @test count(columns.is_index) == 3
+        inds = state.individuals[infected]
+        infectious = [ind.state[:infectious_time] for ind in inds]
+        recovered = [ind.state[:recovered_time] for ind in inds]
+        @test columns.infectious_time[infected] == infectious
+        @test columns.removal_time[infected] == min.(recovered, isolation_time.(inds))
+        @test any(columns.removal_time[infected] .< recovered)
+        uninfected = setdiff(eachindex(state.individuals), infected)
+        @test all(isinf, columns.removal_time[uninfected])
+    end
+
     @testset "layout on a household partition" begin
         # households {1,2,3} and {4,5}; 1 and 4 are indexes, 2 is infected too
         membership = [1, 1, 1, 2, 2]

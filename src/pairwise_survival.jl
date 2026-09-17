@@ -157,6 +157,30 @@ function followup_end(data::InfectionLayer)
     data.followup_end : Inf
 end
 
+# The per-host columns of an infection layer, read out of a `state` simulated
+# from `model`, whose process runs one Sellke race with a `from` state and
+# `until` states (as `HouseholdProcess` and `NetworkProcess` do). Each window is
+# the one that race built, closed by the model's interventions as well, so the
+# `simulate → loglikelihood` round trip is exact.
+function _infection_layer_columns(state::SimulationState, model::ModelSpec)
+    process = model.process
+    from = _resolve_infectious_from(process.from, model.progression)
+    window = _shorthand_window(from, process.until)
+    n = length(state.individuals)
+    infection_time = fill(NaN, n)
+    infectious_time = fill(NaN, n)
+    removal_time = fill(Inf, n)
+    is_index = falses(n)
+    for (k, ind) in enumerate(state.individuals)
+        get(ind.state, :infected, false) || continue
+        infection_time[k] = ind.infection_time
+        infectious_time[k] = window_open(ind, window)
+        removal_time[k] = window_close(ind, window, model.interventions)
+        is_index[k] = get(ind.state, :index, false)
+    end
+    return (; infection_time, infectious_time, removal_time, is_index)
+end
+
 # ── Compiled pair layout ─────────────────────────────────────────────
 #
 # In inference the contact structure, the index cases and the set of
