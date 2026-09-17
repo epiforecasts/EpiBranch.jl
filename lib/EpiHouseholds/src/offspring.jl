@@ -434,8 +434,8 @@ function _simulated_person_time(spec::ModelSpec, sample::HouseholdProcess,
     person_time = zeros(length(sample.members))
     for ind in state.individuals
         is_infected(ind) || continue
-        opened = _window_open(ind, from)
-        closed = min(_window_close(ind, process.until),
+        opened = EpiBranch._window_open(ind, from)
+        closed = min(EpiBranch._window_close(ind, process.until),
             EpiBranch._intervention_removal_time(ind, spec.interventions))
         # A case that never becomes infectious, or is removed before it does (a
         # recovery or isolation during a latent period), makes no contacts.
