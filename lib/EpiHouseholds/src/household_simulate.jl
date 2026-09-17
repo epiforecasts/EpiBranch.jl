@@ -54,7 +54,9 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
             from = from, until = model.until, interventions = interventions,
             risks = EpiBranch.transmission_risks(model),
             seed! = (best, members, r) -> _seed_clique!(
-                best, members, model.external_hazard, Tobs, r),
+                best, members, state, model.external_hazard, Tobs, r),
+            introduction = _ext_active(model.external_hazard) ?
+                           (_ext_kernel(model.external_hazard), Tobs) : nothing,
             targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid))
             for oid in mem if oid != inf),
             # A case's contacts are its household-mates, traced whether or not
@@ -72,11 +74,11 @@ end
 # Seed one household's candidate table: community introductions under the
 # external hazard (each member drawn, kept if it lands within `[0, Tobs]`), or a
 # single seeded index at time 0 when there is no external source.
-function _seed_clique!(best, members, extsrc, Tobs, rng)
+function _seed_clique!(best, members, state, extsrc, Tobs, rng)
     m = length(members)
     if _ext_active(extsrc)
         for k in 1:m
-            t = _ext_draw(rng, extsrc)
+            t = _ext_draw(rng, extsrc, state.individuals[members[k]].susceptibility)
             t <= Tobs && (best[k] = t)
         end
     else
@@ -90,7 +92,13 @@ end
 _pairkernel(k::ContinuousUnivariateDistribution, i, j) = k
 _pairkernel(k, i, j) = k(i, j)
 
-# A community introduction time under the external hazard: the constant case is
-# its Exponential survival time, a distribution is sampled directly.
-_ext_draw(rng, α::Real) = rand(rng, Exponential(1 / α))
-_ext_draw(rng, d::ContinuousUnivariateDistribution) = rand(rng, d)
+# The contact-interval distribution of a community introduction: a constant
+# hazard is an exponential waiting time, a distribution stands for itself.
+_ext_kernel(α::Real) = Exponential(1 / α)
+_ext_kernel(d::ContinuousUnivariateDistribution) = d
+
+# A community introduction time under that hazard, with the member's
+# susceptibility scaling it as it scales a pair kernel's.
+function _ext_draw(rng, extsrc, susceptibility)
+    EpiBranch._traits_scaled_draw(rng, _ext_kernel(extsrc), susceptibility)
+end

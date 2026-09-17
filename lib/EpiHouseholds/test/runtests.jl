@@ -15,6 +15,13 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
 # Sample variance, for the standard error of a mean.
 _var(v) = (m = sum(v) / length(v); sum((x - m)^2 for x in v) / (length(v) - 1))
 
+# A per-contact risk written from outside the package, blocking every
+# transmission it is asked about.
+struct BlockEverything <: EpiBranch.AbstractIntervention end
+function EpiBranch.competing_risk(::BlockEverything, parent, contact, state)
+    Risk(block_probability = 1.0)
+end
+
 @testset "EpiHouseholds.jl" begin
     @testset "construction" begin
         m = HouseholdProcess([3, 4, 2], Exponential(3.0))
@@ -262,6 +269,22 @@ _var(v) = (m = sum(v) / length(v); sum((x - m)^2 for x in v) / (length(v) - 1))
         @test count(df.index) >= 1                 # community introductions happened
         @test size(df, 1) > count(df.index)        # plus within-household spread
         @test count(df.index) != length(m.process.members) # not the one-index fallback
+
+        # An introduction is put to the risks like any other contact: a member
+        # with no susceptibility is never introduced from the community, and
+        # neither is anyone while a risk blocks every transmission.
+        build(attrs, ivs) = ModelSpec(
+            HouseholdProcess(fill(4, 300), Exponential(3.0);
+                external_hazard = 0.05, obs_end = 30.0);
+            progression = _sir(6.0), attributes = attrs, interventions = ivs)
+        @test !any(is_infected,
+            simulate(
+                build(transmission_traits(susceptibility = 0.0),
+                    AbstractIntervention[]);
+                rng = StableRNG(5)).individuals)
+        @test !any(is_infected,
+            simulate(build(EpiBranch.NoAttributes(), [BlockEverything()]);
+                rng = StableRNG(5)).individuals)
     end
 
     @testset "pairwise survival likelihood: basics and differentiability" begin

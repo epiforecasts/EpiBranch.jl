@@ -169,7 +169,13 @@ _normalise_external(d::ContinuousUnivariateDistribution) = d
 _ext_active(α::Real) = α > 0
 _ext_active(::ContinuousUnivariateDistribution) = true
 
-# A community introduction time under the external hazard: the constant case is
-# its Exponential survival time, a distribution is sampled directly.
-_ext_draw(rng, α::Real) = rand(rng, Exponential(1 / α))
-_ext_draw(rng, d::ContinuousUnivariateDistribution) = rand(rng, d)
+# The contact-interval distribution of a community introduction: a constant
+# hazard is an exponential waiting time, a distribution stands for itself.
+_ext_kernel(α::Real) = Exponential(1 / α)
+_ext_kernel(d::ContinuousUnivariateDistribution) = d
+
+# A community introduction time under that hazard, with the node's
+# susceptibility scaling it as it scales a pair kernel's.
+function _ext_draw(rng, extsrc, susceptibility)
+    EpiBranch._traits_scaled_draw(rng, _ext_kernel(extsrc), susceptibility)
+end

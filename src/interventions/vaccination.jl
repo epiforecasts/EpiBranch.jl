@@ -365,8 +365,12 @@ required_dose(rv::RingVaccination) = rv.requires_dose
 # parent's `:vaccination_time` is set by ring vaccination when the parent
 # was traced, and the onward immunity takes effect at that time plus
 # `delay_to_immunity`, as on the susceptibility side.
-function _onward_risk(rv::RingVaccination, parent)
+function _onward_risk(rv::RingVaccination, parent, contact)
     rv.onward_efficacy > 0.0 || return nothing
+    # A community introduction has no infector, and the person stands in for it
+    # on the continuous-time models. A dose cannot reduce what a source outside
+    # the population transmits, so it contributes nothing there.
+    parent === contact && return nothing
     label = dose_label(rv)
     get(parent.state, _vaccinated_key(label), false) || return nothing
     vacc_t = get(parent.state, _vaccination_time_key(label), Inf)
@@ -439,7 +443,7 @@ end
 # intervention off.
 function competing_risk(rv::RingVaccination, parent, contact, state)
     exposure = _contact_risk(rv, contact)
-    onward = _onward_risk(rv, parent)
+    onward = _onward_risk(rv, parent, contact)
     exposure === nothing && return onward
     onward === nothing && return exposure
     return (exposure, onward)

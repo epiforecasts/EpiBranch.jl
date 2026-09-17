@@ -11,6 +11,13 @@ n_infected(state) = count(is_infected, state.individuals)
 # a recovery removal (SIR) unless a latent step is prepended (SEIR).
 _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = true)]
 
+# A per-contact risk written from outside the package, blocking every
+# transmission it is asked about.
+struct BlockEverything <: EpiBranch.AbstractIntervention end
+function EpiBranch.competing_risk(::BlockEverything, parent, contact, state)
+    Risk(block_probability = 1.0)
+end
+
 @testset "NetworkProcess" begin
     @testset "construction" begin
         ring = ring_adjacency(5)
@@ -271,6 +278,31 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         df = linelist(state)
         @test count(df.index) >= 1                       # community introductions happened
         @test size(df, 1) > count(df.index)              # plus onward spread on the graph
+    end
+
+    @testset "risks reach community introductions" begin
+        # An introduction comes from outside the population, and is put to the
+        # same risks as a contact from a neighbour: the person's susceptibility
+        # scales the community hazard, and an intervention's block stops the
+        # introduction it is in force for.
+        n = 200
+        infected(state) = count(is_infected, state.individuals)
+        function community(ext, susceptibility, ivs = AbstractIntervention[])
+            m = ModelSpec(
+                # a contact interval far beyond the window leaves only
+                # community introductions
+                NetworkProcess(ring_adjacency(n), Exponential(1e6);
+                    external_hazard = ext, obs_end = 30.0);
+                progression = _sir(6.0), interventions = ivs,
+                attributes = transmission_traits(; susceptibility))
+            return infected(simulate(m; rng = StableRNG(5)))
+        end
+        for ext in (0.05, Exponential(20.0))
+            @test community(ext, 0.0) == 0
+            @test 0 < community(ext, 0.2) < community(ext, 1.0)
+            # A user's own risk blocking everything blocks them too.
+            @test community(ext, 1.0, [BlockEverything()]) == 0
+        end
     end
 
     @testset "a fixed seed reproduces a pinned outbreak" begin
