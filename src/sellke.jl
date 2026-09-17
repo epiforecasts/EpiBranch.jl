@@ -333,34 +333,62 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
     end
     m = length(members)
     best = fill(Inf, m)
-    src = zeros(Int, m)
     processed = falses(m)
     pos = Dict{Int, Int}(id => k for (k, id) in enumerate(members))
+    # A route the interventions cannot cut is not cut by the per-contact risks
+    # that stand in for a removal either: a household route runs on through an
+    # isolation, and blocking every proposal it makes would cut it just as
+    # surely. A vaccine's protection is no removal, and a vaccinated person is
+    # protected at home too, so risks scoped to every route still apply. The
+    # model's own risks and the per-individual multipliers always apply, since
+    # they belong to the people and the edge.
     every_route_interventions = _every_route_interventions(interventions)
+    route_interventions = [INTERVENTION_REMOVAL in w.until ? interventions :
+                           every_route_interventions for (w, _) in rts]
 
     seed!(best, members, rng)
 
-    # The heap orders pending candidates by `(time, k)`, so equal times settle in
-    # member order. Candidate times only ever decrease, so a relaxation pushes a
-    # new entry and leaves the old one in the heap. On pop, the loop skips an
-    # entry as stale if its member has already settled or its time is later than
-    # that member's current best.
-    pending = Tuple{eltype(best), Int}[]
+    # Every proposal is its own heap entry `(time, member, proposal)`, and
+    # `props` holds what each proposal was: which case made it, along which
+    # route. Entries are ordered by time, then by member so that equal times
+    # settle in member order, then by proposal so that two proposals reaching one
+    # member at the same time settle in the order they were made.
+    #
+    # A popped entry is final unless the risks block it, because every other
+    # pending proposal is at a later time and every proposal still to be made
+    # opens at the infection time of a case that has not settled, which is later
+    # again. So the risks are resolved here, against the state as it stands at
+    # the candidate time — which is what a proposal made before a contact was
+    # traced, and blocked by the dose that trace gave, depends on. A blocked
+    # proposal leaves the member to its other proposals, all of them later.
+    props = Tuple{Int, Int}[]
+    pending = Tuple{eltype(best), Int, Int}[]
     for k in 1:m
-        best[k] < Inf && _heap_push!(pending, (best[k], k))
+        best[k] < Inf || continue
+        push!(props, (0, 0))
+        _heap_push!(pending, (best[k], k, length(props)))
     end
 
     while !isempty(pending)
-        bt, j = _heap_pop!(pending)
-        (processed[j] || bt > best[j]) && continue
-        processed[j] = true
+        bt, j, p = _heap_pop!(pending)
+        processed[j] && continue
+        infector_id, route = props[p]
 
         ind = state.individuals[members[j]]
-        ind.infection_time = best[j]
+        # An introduction has no infector, so there is no pair to resolve risks
+        # over, as an index case on the generation engine has none either.
+        if infector_id != 0 && _composed_risks_block(
+            state, state.individuals[infector_id], ind, bt, risks,
+            route_interventions[route], _sellke_builtin_risk_blocks)
+            continue
+        end
+        processed[j] = true
+
+        ind.infection_time = bt
         ind.state[:infected] = true
-        ind.state[:index] = src[j] == 0
-        if src[j] != 0
-            infector = state.individuals[src[j]]
+        ind.state[:index] = infector_id == 0
+        if infector_id != 0
+            infector = state.individuals[infector_id]
             ind.parent_id = infector.id
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
@@ -377,33 +405,19 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         # transmitting on one while another has been cut. A route whose `from`
         # state was never reached contributes nothing, which is how a survivor
         # never materialises funeral contacts.
-        for (w, route_targets) in rts
+        for (ri, (w, route_targets)) in enumerate(rts)
             open_t = window_open(ind, w)
             isfinite(open_t) || continue
             close_t = _route_close(ind, w, interventions)
-            # A route the interventions cannot cut is not cut by the per-contact
-            # risks that stand in for a removal either: a household route runs on
-            # through an isolation, and blocking every proposal it makes would cut
-            # it just as surely. A vaccine's protection is no removal, and a
-            # vaccinated person is protected at home too, so risks scoped to
-            # every route still apply. The model's own risks and the
-            # per-individual multipliers always apply, since they belong to the
-            # people and the edge.
-            route_interventions = INTERVENTION_REMOVAL in w.until ? interventions :
-                                  every_route_interventions
 
             for (target_id, kernel) in route_targets(members[j], state)
                 k = get(pos, target_id, 0)
                 (k == 0 || processed[k]) && continue
                 dt = rand(rng, kernel)
                 cand = open_t + dt
-                (cand <= close_t && cand < best[k]) || continue
-                _composed_risks_block(state, ind, state.individuals[target_id],
-                    cand, risks, route_interventions,
-                    _sellke_builtin_risk_blocks) && continue
-                best[k] = cand
-                src[k] = members[j]
-                _heap_push!(pending, (best[k], k))
+                cand <= close_t || continue
+                push!(props, (members[j], ri))
+                _heap_push!(pending, (cand, k, length(props)))
             end
         end
     end
