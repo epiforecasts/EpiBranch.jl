@@ -843,5 +843,15 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
             build([iso, ct,
                 MassVaccination(efficacy = 0.8, eligibility_time = 0.0)]);
             n_initial = 1, rng = StableRNG(4))
+
+        # The package's own interventions that the graph honours warn about
+        # nothing, although tracing and ring vaccination implement the
+        # generation engine's hooks too.
+        honoured = [iso, ct, RingVaccination(efficacy = 0.8),
+            Scheduled(RingVaccination(efficacy = 0.5, dose_label = :late);
+                start_time = 2.0)]
+        @test all(iv -> EpiBranch._sellke_honours(model, iv), honoured)
+        @test_logs min_level=Base.CoreLogging.Warn simulate(build(honoured);
+            n_initial = 1, rng = StableRNG(4))
     end
 end

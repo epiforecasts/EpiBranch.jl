@@ -99,6 +99,13 @@ function _has_own_method(f, argtypes::Tuple, base::Type)
     return which(f, argtypes) !== which(f, fallback)
 end
 
+# Whether an intervention implements a hook that only the generation engine calls.
+function _has_generation_hook(iv::AbstractIntervention)
+    T = typeof(iv)
+    _has_own_method(apply_post_transmission!, (T, Any, Any), AbstractIntervention) ||
+        _has_own_method(keep_active, (T, Any, Any, Any), AbstractIntervention)
+end
+
 # Earliest time any intervention removes `ind` from onward transmission.
 function _intervention_removal_time(ind, interventions)
     t = Inf
@@ -153,20 +160,24 @@ end
 # an intervention is honoured when its effect is a removal (perfect isolation
 # shortens the window), a per-contact block (leaky isolation, a vaccine's
 # efficacy), or per-individual state written as each individual is initialised or
-# as each case is resolved. That covers most of what an intervention does, which
-# is why the default is that one is honoured. `Scheduled` delegates to its
-# wrapped intervention — the loop exposes the running clock/count (see
-# `_resolve_interventions!`), so its time/count gate is honoured whenever the
-# wrapped intervention is.
+# as each case is resolved. That covers most of what an intervention does.
+# `Scheduled` delegates to its wrapped intervention — the loop exposes the running
+# clock/count (see `_resolve_interventions!`), so its time/count gate is honoured
+# whenever the wrapped intervention is.
 #
 # What has no continuous-time representation is a *generation-shaped* hook.
 # `apply_post_transmission!` and `keep_active` act on a batch of freshly created
 # contact objects, and a race that settles one pre-existing node at a time never
-# builds those. An intervention reaching its targets that way declares itself
-# unhonoured here, as `MassVaccination` does: its rollout doses each new contact
-# as the generation engine creates it, so on the continuous-time path nobody is
-# ever dosed and the efficacy risk it contributes never fires. The model warns
-# for the unhonoured ones rather than silently ignoring them.
+# builds those. So an intervention with a method of its own for either hook is
+# taken to reach its targets that way, and reported as unhonoured, unless it
+# also traces contacts: `trace_contacts!` is then its continuous-time
+# counterpart, which needs a model that can name a case's contacts. The check
+# reads the methods themselves, so an intervention written outside the package
+# is reported without declaring anything. `MassVaccination`'s rollout, for one,
+# doses each new contact as the generation engine creates it, so on the
+# continuous-time path nobody is ever dosed and the efficacy risk it contributes
+# never fires; `GroupVaccination` doses whole groups as their members are
+# created, and goes the same way.
 #
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
@@ -179,15 +190,15 @@ end
 # and the post-exposure abort, drawn against the exposure when the dose is given.
 # Either would be measured from the zero an unsettled node was created with, so a
 # ring that sets one is reported as unhonoured, and does not dose at all, rather
-# than applying it wrongly. Group vaccination doses whole groups as the
-# generation engine creates their members, so it goes the way of the rollout.
-_sellke_honours(model, ::AbstractIntervention) = true
+# than applying it wrongly.
+function _sellke_honours(model, iv::AbstractIntervention)
+    _has_generation_hook(iv) || return true
+    return traces_contacts(iv) && supplies_contacts(model)
+end
 _sellke_honours(model, ::ContactTracing) = supplies_contacts(model)
 function _sellke_honours(model, rv::RingVaccination)
     supplies_contacts(model) && _ring_doses_on_race(rv)
 end
-_sellke_honours(model, ::MassVaccination) = false
-_sellke_honours(model, ::GroupVaccination) = false
 _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
 
 """

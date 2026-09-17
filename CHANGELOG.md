@@ -107,7 +107,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   now names only those that reach their targets through the generation engine's
   post-transmission hooks — `MassVaccination`'s rollout, `GroupVaccination`,
   and `ContactTracing` (with `RingVaccination` behind it) on the mass-action
-  pool, which has no pairwise contact structure to act along.
+  pool, which has no pairwise contact structure to act along. An intervention
+  defined outside the package is named too when it has its own
+  `apply_post_transmission!` or `keep_active` method and does not trace
+  contacts, with nothing for its author to declare.
 - The fixed-size population pool's mixing structure is now keyed on the
   individual's real attributes: a model names which attributes define mixing via
   `mixing_by` (a tuple of attribute keys, e.g. `(:age_band, :ses)`), and the pool

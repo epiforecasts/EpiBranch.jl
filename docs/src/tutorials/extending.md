@@ -257,13 +257,15 @@ What this means in practice:
   ```julia
   EpiBranch.risk_scope(::MyLeakyQuarantine) = EpiBranch.RemovalRoutes()
   ```
-- An intervention that reaches its targets only through
-  `apply_post_transmission!` or `keep_active` — `MassVaccination`'s rollout
-  doses each new contact as the engine creates it — has nothing to act on when
-  no contacts are created. Say so with
-  `EpiBranch._sellke_honours(model, ::MyIntervention) = false` — internal for
-  now, like the pool primitive below — and the continuous-time models will name
-  it in their warning rather than leave it silently inert.
+- An intervention that reaches its targets through `apply_post_transmission!`
+  or `keep_active` — `MassVaccination`'s rollout doses each new contact as the
+  engine creates it — has nothing to act on when no contacts are created. You
+  need not declare this: when your type has a method of its own for either hook,
+  the continuous-time models name it in their warning. The exception is an
+  intervention that also traces contacts (`traces_contacts` returns `true`),
+  whose `trace_contacts!` is taken as the continuous-time counterpart of those
+  hooks; it is honoured on a model that can name a case's contacts and reported
+  on one that cannot, such as the mass-action pool.
 - **Contact tracing** spans the two. Its action is a removal, so it applies
   on both, but it needs to know who a case's contacts were. The generation
   engine reads that off each contact's `parent_id`; the continuous-time

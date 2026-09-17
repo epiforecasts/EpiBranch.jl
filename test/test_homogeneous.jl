@@ -10,6 +10,17 @@ function EpiBranch.competing_risk(v::LeakyVaccine, parent, contact, state)
     Risk(event_time = v.from_time, block_probability = v.efficacy)
 end
 
+# Interventions written outside the package that act only through hooks the
+# generation engine calls, and one that also traces contacts.
+struct DoseNewContacts <: EpiBranch.AbstractIntervention end
+EpiBranch.apply_post_transmission!(::DoseNewContacts, state, new_contacts) = nothing
+struct KeepFringeActive <: EpiBranch.AbstractIntervention end
+EpiBranch.keep_active(::KeepFringeActive, state, targets, is_new) = ()
+struct DoseAndTrace <: EpiBranch.AbstractIntervention end
+EpiBranch.apply_post_transmission!(::DoseAndTrace, state, new_contacts) = nothing
+EpiBranch.traces_contacts(::DoseAndTrace) = true
+EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
+
 @testset "HomogeneousProcess (Sellke fixed pool)" begin
     @testset "deterministic final size (major outbreaks)" begin
         # With β = 2 and mean infectious period 1, R0 = β·E[T] = 2; the
@@ -133,6 +144,31 @@ end
             interventions = [MassVaccination(efficacy = 0.8, eligibility_time = 0.0)])
         @test_logs (:warn, r"does not honour"i) match_mode=:any simulate(
             mass; rng = StableRNG(1), n_initial = 2)
+
+        # An intervention from outside the package that acts only through a hook
+        # the pool never calls is reported without declaring anything, and so is
+        # one that traces, since the pool names no contacts to trace along.
+        prog_pool = HomogeneousProcess(; transmission_rate = 1.5, population_size = 200)
+        for (iv, name) in ((DoseNewContacts(), r"DoseNewContacts"),
+            (KeepFringeActive(), r"KeepFringeActive"), (DoseAndTrace(), r"DoseAndTrace"))
+            @test !EpiBranch._sellke_honours(prog_pool, iv)
+            @test_logs (:warn, name) match_mode=:any simulate(
+                ModelSpec(prog_pool; progression = prog, interventions = [iv]);
+                rng = StableRNG(1), n_initial = 2)
+        end
+        # The package's own interventions that the pool honours warn about nothing.
+        onsets = clinical_presentation(incubation_period = LogNormal(-1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        honoured = [Isolation(onset_to_isolation_delay = Exponential(0.5)),
+            Scheduled(
+                Isolation(onset_to_isolation_delay = Exponential(0.5),
+                    post_isolation_transmission = 0.5);
+                start_time = 1.0)]
+        @test all(iv -> EpiBranch._sellke_honours(prog_pool, iv), honoured)
+        @test_logs min_level=Base.CoreLogging.Warn simulate(
+            ModelSpec(prog_pool; progression = prog, interventions = honoured,
+                attributes = onsets);
+            rng = StableRNG(1), n_initial = 2)
 
         # Leaky isolation is honoured: the residual transmission it leaves is a
         # per-contact block, which the pool resolves on each contact it delivers.
