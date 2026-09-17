@@ -436,7 +436,7 @@ function _simulated_person_time(spec::ModelSpec, sample::HouseholdProcess,
         is_infected(ind) || continue
         opened = _window_open(ind, from)
         closed = min(_window_close(ind, process.until),
-            _removal_time(ind, spec.interventions))
+            EpiBranch._intervention_removal_time(ind, spec.interventions))
         # A case that never becomes infectious, or is removed before it does (a
         # recovery or isolation during a latent period), makes no contacts.
         (isfinite(opened) && closed > opened) || continue
@@ -447,15 +447,6 @@ function _simulated_person_time(spec::ModelSpec, sample::HouseholdProcess,
         person_time[ind.state[:household]] += closed - opened
     end
     return person_time
-end
-
-# Earliest time the composed interventions remove a case from transmission.
-function _removal_time(ind, interventions)
-    t = Inf
-    for iv in interventions
-        t = min(t, EpiBranch.infectious_removal_time(iv, ind))
-    end
-    return t
 end
 
 # The offspring law of a sample of households with the given total
