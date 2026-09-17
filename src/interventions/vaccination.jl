@@ -149,11 +149,6 @@ function competing_risk(v::AbstractVaccination, parent, contact, state)
     _susceptibility_risk(v, contact)
 end
 
-# A dose protects the person who received it wherever they are exposed, and
-# reduces what they pass on wherever they transmit, so neither side of it depends
-# on the route a contact travels along.
-risk_scope(::AbstractVaccination) = EveryRoute()
-
 # Helper for concrete subtypes: write per-dose state on a contact at
 # vaccination time. Samples efficacy via `_sample_value` so scalar,
 # distribution, and function forms all work. `:immunity_time` is stored
