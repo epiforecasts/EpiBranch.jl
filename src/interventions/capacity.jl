@@ -162,24 +162,30 @@ function capacity_key(::GroupVaccination)
         "would not limit the doses given."))
 end
 
-# How much of the budget remains at `state`'s current point in time. Reused
-# by the admission decision and by `capacity_usage`.
-function _remaining_budget(cc::CapacityConstrained, state)
+# Doses (or whatever `cc` rations) used and available, in the scope
+# `carry_over` implies, at `state`'s current point in time. Reused by the
+# admission decision and by `capacity_usage`.
+function _capacity_usage(cc::CapacityConstrained, state)
     key = capacity_key(cc.intervention)
     t = state.max_infection_time
     if cc.carry_over
         n_periods = isinf(cc.period) ? 1.0 : floor(t / cc.period) + 1.0
-        allowance = n_periods * cc.budget_per_period
+        available = n_periods * cc.budget_per_period
         used = count(ind -> get(ind.state, key, false), state.individuals)
     else
         time_key = capacity_time_key(cc.intervention)
         period_start = isinf(cc.period) ? 0.0 : floor(t / cc.period) * cc.period
-        allowance = cc.budget_per_period
+        available = cc.budget_per_period
         used = count(state.individuals) do ind
             get(ind.state, key, false) && get(ind.state, time_key, -Inf) >= period_start
         end
     end
-    return allowance - used
+    return (used = used, available = available)
+end
+
+function _remaining_budget(cc::CapacityConstrained, state)
+    usage = _capacity_usage(cc, state)
+    return usage.available - usage.used
 end
 
 # A candidate already carrying `capacity_key` (dosed in an earlier call, now
@@ -214,17 +220,16 @@ end
 
 Doses (or whatever `cc` rations) used and available at the point `state` has
 reached: `used` is drawn from `state.individuals` via
-[`capacity_key`](@ref EpiBranch.capacity_key), and `available` is the
-lifetime allowance implied by `state.max_infection_time`, `budget_per_period`
-and `period`.
+[`capacity_key`](@ref EpiBranch.capacity_key). With `carry_over = true`
+(the default), `available` is the lifetime allowance implied by
+`state.max_infection_time`, `budget_per_period` and `period`, and `used` is
+counted over the whole run. With `carry_over = false`, both are scoped to
+the period `state.max_infection_time` falls in: `available` is a single
+`budget_per_period` and `used` only counts doses timestamped
+([`capacity_time_key`](@ref)) within that period.
 """
 function capacity_usage(cc::CapacityConstrained, state::SimulationState)
-    key = capacity_key(cc.intervention)
-    used = count(ind -> get(ind.state, key, false), state.individuals)
-    t = state.max_infection_time
-    n_periods = isinf(cc.period) ? 1.0 : floor(t / cc.period) + 1.0
-    available = n_periods * cc.budget_per_period
-    return (used = used, available = available)
+    return _capacity_usage(cc, state)
 end
 
 # ── Delegation of every other hook ────────────────────────────────────

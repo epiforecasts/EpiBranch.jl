@@ -221,6 +221,27 @@ end
         @test calls[] == 5
     end
 
+    @testset "capacity_usage is scoped to the period with carry_over = false" begin
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0, carry_over = false)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
+
+        first = [_traced_contact(rv, 1, 1.0)]
+        append!(state.individuals, first)
+        state.max_infection_time = 1.0
+        EpiBranch.apply_post_transmission!(cc, state, first)
+
+        second = [_traced_contact(rv, i, Float64(i)) for i in 6:7]
+        append!(state.individuals, second)
+        state.max_infection_time = 6.0
+        EpiBranch.apply_post_transmission!(cc, state, second)
+
+        usage = capacity_usage(cc, state)
+        @test usage.available == 2.0
+        @test usage.used == 2
+    end
+
     @testset "Fewer doses under a binding capacity constraint than without one" begin
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
