@@ -690,13 +690,15 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
         # reached only when something other than `ContactTracing` set
         # `:traced`, or when the trace time was `NaN` and so was not recorded.
         # A contact recorded as never reached (an infinite trace time) is not
-        # vaccinated. The `haskey` branch avoids evaluating a `get` default for
-        # every contact.
+        # vaccinated, and is skipped before its `dose_delay` is drawn so it
+        # leaves the random stream untouched. The `haskey` branch avoids
+        # evaluating a `get` default for every contact.
         trace_t = if haskey(ind.state, :trace_time)
             ind.state[:trace_time]
         else
             min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
         end
+        isfinite(trace_t) || continue
         vacc_t = trace_t + _sample_value(rv.dose_delay, state.rng, ind)
         isfinite(vacc_t) || continue
         _has_required_dose(rv, ind, vacc_t) || continue

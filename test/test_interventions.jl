@@ -613,6 +613,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 end
             end
 
+            @testset "An unreachable contact draws no dose_delay" begin
+                rv = RingVaccination(efficacy = 0.5, dose_delay = Uniform(1.0, 2.0))
+                state = EpiBranch.new_state(process,
+                    EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(7))
+                contact = Individual(id = 2, parent_id = 1, infection_time = 0.0)
+                contact.state[:traced] = true
+                contact.state[:trace_time] = Inf
+                EpiBranch.apply_post_transmission!(rv, state, [contact])
+                @test !is_vaccinated(contact)
+                @test rand(state.rng) == rand(StableRNG(7))
+            end
+
             @testset "A delay reporting no support goes unchecked" begin
                 spec(ivs) = ModelSpec(process; interventions = ivs, attributes = clinical)
                 lone = RingVaccination(efficacy = 0.5, dose_delay = _UnboundedDelay())
