@@ -490,6 +490,11 @@ kernel survival function `S`: contacts from one case are independent given its
 window, so this one quantity carries everything about the kernel that the final
 size depends on.
 
+The recursion subtracts terms far larger than the probabilities they leave, so
+in a large household with weak transmission it can lose accuracy, sooner for a
+random window (whose escape probabilities are integrated numerically) than for a
+fixed one; the function then throws.
+
 # Examples
 
 ```julia
@@ -533,8 +538,8 @@ function _final_size_pmf(n::Int, a::Int, kernel, window)
     # leave, which in Float64 fails for households of a few dozen when escape
     # probabilities are close to 1. A binomial coefficient costs at most `n`
     # bits, so extended precision with a margin of a few bits per member
-    # recovers them. A window integrated by quadrature is the exception: the
-    # rounding is already in its escape probabilities.
+    # recovers them, except for a window integrated by quadrature, whose
+    # tolerance already limits the accuracy of its escape probabilities.
     p = setprecision(BigFloat, 64 + 4n) do
         Float64.(_final_size_recursion(BigFloat, kernel, window, n, a))
     end
@@ -573,8 +578,10 @@ _escape(T::Type, kernel, window::Real, m::Int) = T(ccdf(kernel, window))^m
 function _escape(T::Type, kernel, window::UnivariateDistribution, m::Int)
     m == 0 && return one(T)
     # Integrating over the window's quantiles keeps the range bounded whatever
-    # the window distribution is.
-    return T(first(quadgk(u -> ccdf(kernel, quantile(window, u))^m, 0.0, 1.0)))
+    # the window distribution is. The tolerance is as tight as Float64 allows,
+    # because the recursion amplifies the quadrature error.
+    return T(first(quadgk(u -> ccdf(kernel, quantile(window, u))^m, 0.0, 1.0;
+        rtol = 1e-15, atol = 0.0)))
 end
 # Both exponential, the escape probability is the window's Laplace transform at
 # `m` times the kernel's rate.

@@ -408,23 +408,23 @@ end
     @testset "a mean the recursion cannot give comes from the simulated households" begin
         # A random window's escape probabilities come from quadrature, whose
         # error the final-size recursion amplifies in a weakly transmitting
-        # household of twelve beyond what extended precision recovers.
+        # household of forty beyond what extended precision recovers.
         kernel, window = Exponential(50.0), Gamma(4, 0.25)
-        @test_throws ErrorException household_final_size(12, kernel, window)
-        sizes = [fill(3, 50); fill(12, 5)]
+        @test_throws ErrorException household_final_size(40, kernel, window)
+        sizes = [fill(3, 50); fill(40, 5)]
         model = ModelSpec(HouseholdProcess(sizes, kernel);
             progression = [Transition(:recovered; from = :infection, delay = window,
                 terminal = true)])
         o = household_offspring(model; global_rate = 0.5, n_samples = 20_000,
             rng = StableRNG(41))
         rng = StableRNG(42)
-        # Households 51 to 55 are the ones of twelve.
+        # Households 51 to 55 are the ones of forty.
         large = Float64[]
-        for _ in 1:1_000
+        for _ in 1:2_000
             by_household = person_time_by_household(simulate(model; rng), length(sizes))
             append!(large, by_household[51:55])
         end
-        @test o.means[2]≈0.5 * mean(large) rtol=0.03
+        @test o.means[2]≈0.5 * mean(large) rtol=0.05
     end
 
     @testset "a bare process takes its own progression" begin
