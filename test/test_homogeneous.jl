@@ -10,6 +10,16 @@ function EpiBranch.competing_risk(v::LeakyVaccine, parent, contact, state)
     Risk(event_time = v.from_time, block_probability = v.efficacy)
 end
 
+# Protects every contact exposed from `from_time` on, reading the exposure from
+# the contact's `infection_time` as a risk may on the generation engine.
+struct ProtectFromExposure <: EpiBranch.AbstractIntervention
+    from_time::Float64
+end
+function EpiBranch.competing_risk(p::ProtectFromExposure, parent, contact, state)
+    Risk(block_probability = (rng, parent, contact, state) -> contact.infection_time >=
+                                                              p.from_time ? 1.0 : 0.0)
+end
+
 # Interventions written outside the package that act only through hooks the
 # generation engine calls, and one that also traces contacts.
 struct DoseNewContacts <: EpiBranch.AbstractIntervention end
@@ -260,6 +270,10 @@ EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
         @test mean_size([LeakyVaccine(1.0, 0.0)]) == 3         # only the seeds
         # A dose that arrives after the outbreak has burnt out changes nothing.
         @test mean_size([LeakyVaccine(1.0, 1000.0)]) == base
+        # A risk that reads the exposure from the contact's `infection_time` sees
+        # the time of the contact being resolved, so protection from just after
+        # the seeds blocks every contact.
+        @test mean_size([ProtectFromExposure(1e-9)]) == 3
     end
 
     @testset "a pool that can never finish is refused, not looped" begin

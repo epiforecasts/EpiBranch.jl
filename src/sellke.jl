@@ -120,6 +120,23 @@ function _intervention_removal_time(ind, interventions)
     return t
 end
 
+# Whether the composed risks block `parent` infecting `contact` at the proposed
+# `transmission_time` on a continuous-time model. On the generation engine a
+# contact's `infection_time` already holds its transmission time when the risks
+# are resolved, and a risk may read the exposure from there. A contact these
+# models propose is still susceptible, so its `infection_time` holds nothing
+# yet: set it to the proposed time for the resolution, and put it back if the
+# proposal is blocked, leaving the contact as it was.
+function _proposal_blocked(state::SimulationState, parent, contact, transmission_time,
+        model_risks, interventions)
+    previous = contact.infection_time
+    contact.infection_time = transmission_time
+    blocked = _composed_risks_block(state, parent, contact, transmission_time,
+        model_risks, interventions, _sellke_builtin_risk_blocks)
+    blocked && (contact.infection_time = previous)
+    return blocked
+end
+
 # The interventions whose risks apply on a route that has not opted into
 # intervention removal.
 function _every_route_interventions(interventions)
@@ -371,9 +388,9 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             w, _ = rts[route]
             route_interventions = INTERVENTION_REMOVAL in w.until ? interventions :
                                   every_route_interventions
-            _composed_risks_block(state, state.individuals[infector_id],
-                state.individuals[members[j]], bt, risks, route_interventions,
-                _sellke_builtin_risk_blocks) && continue
+            _proposal_blocked(state, state.individuals[infector_id],
+                state.individuals[members[j]], bt, risks, route_interventions) &&
+                continue
         end
         processed[j] = true
         best[j] = bt

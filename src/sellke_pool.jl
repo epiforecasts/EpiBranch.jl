@@ -30,7 +30,7 @@
 #
 # A threshold crossing is the arrival of one infectious contact, and like any
 # other potential transmission it is put to the composed competing risks (see
-# `_composed_risks_block`): the contact's own susceptibility, the drawn
+# `_proposal_blocked`): the contact's own susceptibility, the drawn
 # infector's infectiousness, and whatever block an intervention contributes
 # against that pair at that time.
 #
@@ -365,9 +365,8 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             ind = state.individuals[id]
             # An introduction with no infector has no pair to resolve risks over,
             # as an index case on the generation engine has none either.
-            blocked = src != 0 && _composed_risks_block(
-                state, state.individuals[src], ind, t, risks, interventions,
-                _sellke_builtin_risk_blocks)
+            blocked = src != 0 && _proposal_blocked(
+                state, state.individuals[src], ind, t, risks, interventions)
             if blocked
                 # The contact did not transmit. Put the susceptible back with the
                 # residual of its resistance: a fresh Exponential(1) above the

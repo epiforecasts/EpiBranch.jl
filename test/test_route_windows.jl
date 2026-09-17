@@ -335,6 +335,18 @@ end
             attributes = transmission_traits(susceptibility = 0.0))
         @test !is_infected(immune.individuals[3])
 
+        # A risk reads the exposure from the contact's `infection_time`
+        # (`ProtectFromExposure`, defined with the pool's tests), which
+        # holds the proposed time while the risks are resolved. Protection from
+        # time 3 lets the proposal at 2 through; protection from time 1 blocks
+        # both, and a blocked contact's `infection_time` is left as it was.
+        late = race([ProtectFromExposure(3.0)])
+        @test late.individuals[3].parent_id == 1
+        @test late.individuals[3].infection_time == 2.0
+        early = race([ProtectFromExposure(1.0)])
+        @test !is_infected(early.individuals[3])
+        @test early.individuals[3].infection_time == 0.0
+
         # Traits at their defaults contribute no risk, draw nothing from the rng,
         # and leave the race stream exactly as it was.
         neutral = race(AbstractIntervention[];
