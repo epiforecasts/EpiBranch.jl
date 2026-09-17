@@ -395,13 +395,10 @@ infected in the meantime, because infection is resolved after the doses
 are given. Dose counts for later doses are therefore counts of doses
 scheduled.
 
-`delay_to_immunity`, `dose_delay`, `post_exposure_efficacy`, and
-`onward_efficacy` accept the same `Real | Distribution | Function`
-forms as `efficacy`; the distribution/function forms sample once per
-contact, at vaccination time, and store the result in the contact's
-state, so an individual's draw stays fixed across the exposures it
-faces. `dose_delay` is the exception: it is
-read once, when the dose is scheduled, so there is nothing to store.
+`delay_to_immunity`, `post_exposure_efficacy`, and `onward_efficacy`
+accept the same `Real | Distribution | Function` forms as `efficacy`, drawn
+once per contact when the dose is given (see [`AbstractVaccination`](@ref)).
+So does `dose_delay`, drawn once when the dose is scheduled.
 """
 Base.@kwdef struct RingVaccination{
     E, C, DI, DD, W, PE, OE, SV, M <: AbstractEffectMode
@@ -748,10 +745,8 @@ and `dose_label` mean what they do for [`RingVaccination`](@ref).
 `severity_efficacy` defaults to `0.0` (no severity effect) and, as there,
 acts only through a clinical transition that reads it via the
 [`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors.
-`dose_delay` and `delay_to_immunity` accept a `Real`, a `Distribution`, or a
-function `(rng, ind) -> Real`; the distribution and function forms draw once
-per member, when that member is vaccinated, so members of one group can be
-reached at different times.
+`dose_delay` accepts the same forms, drawn once per member, so members of one
+group can be reached at different times.
 
 # Fallback composition
 
@@ -877,11 +872,9 @@ own transmission time.
   age-stratified rollout or any other state-dependent schedule.
   Return `Inf` for individuals who never become eligible.
 
-`efficacy` and `delay_to_immunity` accept the same `Real | Distribution |
-Function` set, each sampled once per vaccinated contact, at vaccination
-time. Per-individual heterogeneous efficacy (e.g. age-dependent) or
-immunity delay (e.g. immunity that takes one to three weeks to develop)
-is set via the function or distribution form.
+`efficacy` and `delay_to_immunity` accept the same set, drawn once per
+vaccinated contact (see [`AbstractVaccination`](@ref)), for example an
+age-dependent efficacy or immunity that takes one to three weeks to develop.
 
 `severity_efficacy` accepts the same set and, like on
 [`RingVaccination`](@ref), sets how much milder a vaccinated individual's
