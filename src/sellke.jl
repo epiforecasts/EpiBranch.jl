@@ -26,7 +26,7 @@ end
 # inverse-transform on the *survival* scale, `quantile(kernel, 1 - U^(1/m))`
 # for `U ~ Uniform(0, 1)` — `rand(rng, kernel)` is the `m == 1` case of the same
 # draw, kept as a fast path since every pair without either trait set takes it.
-# `m <= 0` (either trait exactly zero) never fires: race candidates only
+# `m <= 0` (either trait exactly zero) never transmits: race candidates only
 # relax on a strictly earlier time, so `Inf` is silently a no-op downstream.
 function _traits_scaled_draw(rng::AbstractRNG, kernel, m::Real)
     m == 1 && return rand(rng, kernel)
