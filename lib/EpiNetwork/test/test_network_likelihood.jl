@@ -39,6 +39,17 @@ function _newton_mle(f, x0; steps = 20)
     return x, 1 / sqrt(-d2(x))
 end
 
+# Newton's method on a log-likelihood of a parameter vector, returning the
+# maximiser and each parameter's standard error from the observed information.
+function _newton_mle_joint(f, x0; steps = 20)
+    x = copy(x0)
+    for _ in 1:steps
+        x -= ForwardDiff.hessian(f, x) \ ForwardDiff.gradient(f, x)
+    end
+    Σ = inv(-ForwardDiff.hessian(f, x))
+    return x, sqrt.([Σ[i, i] for i in eachindex(x)])
+end
+
 @testset "NetworkProcess likelihood" begin
     @testset "network_infections reads the infection layer" begin
         adj = _random_graph(300, 900, StableRNG(1))
@@ -209,14 +220,7 @@ end
         g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout;
             external_hazard = exp(θ[2]))
         θ = [log(6.0), log(0.005)]
-        grad = ForwardDiff.gradient(g, θ)
-        H = ForwardDiff.hessian(g, θ)
-        θhat = θ - H \ grad
-        for _ in 1:10
-            θhat -= ForwardDiff.hessian(g, θhat) \ ForwardDiff.gradient(g, θhat)
-        end
-        Σ = inv(-ForwardDiff.hessian(g, θhat))
-        se = sqrt.([Σ[1, 1], Σ[2, 2]])
+        θhat, se = _newton_mle_joint(g, θ)
         @test all(abs.(θhat - θ) .< 3 .* se)
     end
 
@@ -237,12 +241,7 @@ end
         g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout;
             external_hazard = exp(θ[2]))
         θ = [log(8.0), log(0.01)]
-        θhat = copy(θ)
-        for _ in 1:20
-            θhat -= ForwardDiff.hessian(g, θhat) \ ForwardDiff.gradient(g, θhat)
-        end
-        Σ = inv(-ForwardDiff.hessian(g, θhat))
-        se = sqrt.([Σ[1, 1], Σ[2, 2]])
+        θhat, se = _newton_mle_joint(g, θ)
         @test all(abs.(θhat - θ) .< 3 .* se)
     end
 
@@ -281,12 +280,7 @@ end
         g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), ongoing, layout;
             external_hazard = exp(θ[2]))
         θ = [log(8.0), log(0.01)]
-        θhat = copy(θ)
-        for _ in 1:20
-            θhat -= ForwardDiff.hessian(g, θhat) \ ForwardDiff.gradient(g, θhat)
-        end
-        Σ = inv(-ForwardDiff.hessian(g, θhat))
-        se = sqrt.([Σ[1, 1], Σ[2, 2]])
+        θhat, se = _newton_mle_joint(g, θ)
         @test all(abs.(θhat - θ) .< 3 .* se)
     end
 
