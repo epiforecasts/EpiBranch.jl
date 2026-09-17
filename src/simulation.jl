@@ -1103,7 +1103,7 @@ end
 """Apply attributes function to an individual. No-op for `NoAttributes`.
 The 3-argument form is a convenience for callers with no `state` to hand
 (direct unit tests, mainly); it forwards to the 4-argument form with
-`state = nothing`. Only a [`GroupAttribute`](@ref EpiBranch.GroupAttribute)
+`state = nothing`. Only a [`RingAttribute`](@ref EpiBranch.RingAttribute)
 — which needs `state` to find its ring — cannot be applied that way."""
 _apply_attributes!(x, rng, ind) = _apply_attributes!(x, rng, ind, nothing)
 
@@ -1128,27 +1128,27 @@ independently of one another.
 
 Construct with [`vaccine_acceptance`](@ref) rather than directly.
 """
-struct GroupAttribute{D}
+struct RingAttribute{D}
     key::Symbol
     propensity::D
 end
 
-_group_cache_key(key::Symbol) = Symbol(key, :_group)
+_ring_cache_key(key::Symbol) = Symbol(key, :_ring)
 
-function _apply_attributes!(g::GroupAttribute, rng, ind, state::SimulationState)
-    ind.state[g.key] = if ind.parent_id == 0
-        _sample_value(g.propensity, rng, ind)
+function _apply_attributes!(attribute::RingAttribute, rng, ind, state::SimulationState)
+    ind.state[attribute.key] = if ind.parent_id == 0
+        _sample_value(attribute.propensity, rng, ind)
     else
         parent = state.individuals[ind.parent_id]
-        get!(parent.state, _group_cache_key(g.key)) do
-            _sample_value(g.propensity, rng, parent)
+        get!(parent.state, _ring_cache_key(attribute.key)) do
+            _sample_value(attribute.propensity, rng, parent)
         end
     end
     return nothing
 end
-function _apply_attributes!(::GroupAttribute, rng, ind, ::Nothing)
+function _apply_attributes!(::RingAttribute, rng, ind, ::Nothing)
     throw(ArgumentError(
-        "a GroupAttribute needs simulation state to find its individual's " *
+        "a RingAttribute needs simulation state to find its individual's " *
         "ring; apply it via `make_contact!`, `add_individuals!` or " *
         "`simulate`, not directly."))
 end
@@ -1422,7 +1422,7 @@ See also [`clinical_presentation`](@ref), [`demographics`](@ref).
 function vaccine_acceptance(;
         propensity::Union{Real, Distribution, Function},
         key::Symbol = :vaccine_acceptance)
-    return GroupAttribute(key, propensity)
+    return RingAttribute(key, propensity)
 end
 
 # ── Intervention field validation ────────────────────────────────────

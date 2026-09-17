@@ -91,7 +91,7 @@ downstream packages should pick names that do not collide.
 | `:report_time` | `Float64` | — | `PerCaseObservation` | Post-simulation projection |
 | `:cluster_theta` | `Float64` | — | `ClusterMixed` analytics | First simulation read |
 | `:vaccine_acceptance` | `Float64` | — | `vaccine_acceptance` | Init (default key; customisable) |
-| `:vaccine_acceptance_group` | `Float64` | — | `vaccine_acceptance` | Init (on the case; internal cache) |
+| `:vaccine_acceptance_ring` | `Float64` | — | `vaccine_acceptance` | Init (on the case; internal cache) |
 | `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
 | `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)` | `resolve_individual!` |
 
