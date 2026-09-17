@@ -195,11 +195,15 @@ ones your intervention needs (all default to no-ops).
 The hooks above are not all available everywhere, because the engines are
 built differently. The generation-based engine creates a fresh `Individual`
 for every contact, infected or not, so it can hand you contact objects and
-resolve a per-pair decision for each. The continuous-time (Sellke) models
-have no such objects: every node exists from the start and the simulation
-only settles *when* each is infected, by a race between contact-interval
-draws. There is no per-pair decision point to hang a `Risk` on, and the one
-seam an intervention has is the infectious window.
+resolve a per-pair decision for each. The network/household race has no such
+objects: every node exists from the start and the simulation only settles
+*when* each is infected, by a race between contact-interval draws — but each
+step of that race is still an infector proposing a candidate time to one
+contact, which is the same per-pair decision point under a different name, so
+`competing_risk` is resolved there too. The homogeneous pool goes further
+still: it has no pairwise event of any kind, only a rate-based crossing time
+for the whole susceptible pool, so there is genuinely nothing to hang a `Risk`
+on, and the infectious window is its one seam.
 
 | Hook | Generation engine | Network / household (Sellke race) | Homogeneous pool |
 |---|---|---|---|
@@ -208,7 +212,7 @@ seam an intervention has is the infectious window.
 | `infectious_removal_time` | not read | yes | yes |
 | `trace_contacts!` | not called | yes | no contact set |
 | `apply_post_transmission!` | yes | not called | not called |
-| `competing_risk` | yes | not called | not called |
+| `competing_risk` | yes | yes (route-aware form) | not called |
 | `keep_active` | yes | not called | not called |
 
 What this means in practice:
@@ -218,13 +222,25 @@ What this means in practice:
   infectious window, which every engine has.
 - An intervention whose effect is a **per-contact competing risk** against
   the infection event — leaky vaccination, a partial-efficacy prophylaxis —
-  works only on the generation-based engine. On the continuous-time models
-  it is reported with a warning and has no effect, rather than being
-  silently ignored.
-- **Contact tracing** spans the two. Its action is a removal, so it applies
-  on both, but it needs to know who a case's contacts were. The generation
-  engine reads that off each contact's `parent_id`; the continuous-time
-  models get it from the process, which must report
+  works on the generation engine and on the network/household race, which
+  resolves it against each infector → contact proposal: a risk that blocks
+  the proposal declines it, leaving the contact's candidate time untouched so
+  it can still be infected by a different neighbour. It has no effect on the
+  homogeneous pool, which has no pairwise proposal to resolve it against; the
+  pool reports this with a warning rather than silently ignoring it.
+- A route-carrying process (see [Transmission routes](#Transmission-routes))
+  passes the [`RouteWindow`](@ref) each proposal was made on to a
+  route-aware, five-argument `competing_risk(iv, parent, contact, state,
+  route)` method, which defaults to the four-argument one so most
+  interventions need only that. Override the five-argument form when a risk
+  should apply only to routes that opted into it, as `Isolation` does: it
+  reads [`EpiBranch.INTERVENTION_REMOVAL`](@ref) off `route.until`, the same
+  flag that opts a route into the window seam, so a route a control measure
+  is not meant to touch (a household route, say) sees no risk from it either.
+- **Contact tracing** spans the two continuous-time models. Its action is a
+  removal, so it applies on both, but it needs to know who a case's contacts
+  were. The generation engine reads that off each contact's `parent_id`; the
+  continuous-time models get it from the process, which must report
   `EpiBranch.supplies_contacts(model) = true` and pass a `contacts` closure.
   The closure yields contact ids, or `(id, time)` pairs when some contacts come
   about only after the case's infection, such as at a funeral
@@ -258,6 +274,7 @@ Ordering guarantees:
 - `apply_post_transmission!` runs strictly before any `competing_risk` call, so a competing risk can read whatever post-transmission hook wrote on the contact (e.g. `:vaccination_time`).
 - `keep_active` runs after infection is resolved, so it can read each target's `:infected` and anything `apply_post_transmission!` wrote on it this generation.
 - Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
+- On the network/household race, `competing_risk` for a proposal from `parent` is resolved only after `parent`'s own `resolve_individual!` and natural history have been stamped — the same "parent fully settled first" guarantee, just at the point `parent` proposes to each still-susceptible contact rather than once per generation. The contact itself is not yet settled at that point, so a competing risk cannot read anything the contact's own hooks would write.
 
 A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms: `RingVaccination` returns a susceptibility risk on the contact alongside a risk on the parent for reduced onward infectiousness.
 

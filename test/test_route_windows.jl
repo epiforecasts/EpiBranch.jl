@@ -1,6 +1,23 @@
 # Route windows: the unit that lets one case carry several transmission routes,
 # each opening and closing on different states of its natural history.
 
+# Test intervention exercising the route-aware `competing_risk` seam: blocks
+# every proposal on the named route, and none on any other.
+struct BlockRoute <: AbstractIntervention
+    name::Symbol
+end
+function EpiBranch.competing_risk(b::BlockRoute, parent, contact, state, route)
+    route.name === b.name ? Risk(block_probability = 1.0) : nothing
+end
+
+# Stand-ins for `_sellke_honours`'s model-capability check: a pool-like model
+# with no pairwise contact structure, and a graph-like one with it, mirroring
+# `HomogeneousProcess` and the network/household race respectively without
+# depending on either.
+struct FakePoolModel <: EpiBranch.TransmissionModel end
+struct FakeGraphModel <: EpiBranch.TransmissionModel end
+EpiBranch.supplies_contacts(::FakeGraphModel) = true
+
 @testset "Route windows" begin
     @testset "construction and show" begin
         w = RouteWindow(:community; from = :infectious, until = (:recovered,),
@@ -210,8 +227,103 @@
         # with no contacts supplied there is nothing to trace along
         @test infected(race([iso, ct])) == [true, true, true]
 
-        # an intervention with no window representation is not honoured
-        @test !EpiBranch._sellke_honours(nothing, RingVaccination(efficacy = 0.9))
+        # an intervention with no window representation is honoured wherever
+        # the model resolves per-contact risks at proposal time (the race),
+        # but not on a pool-like model with no pairwise proposal to gate
+        rv = RingVaccination(efficacy = 0.9)
+        @test EpiBranch._sellke_honours(FakeGraphModel(), rv)
+        @test !EpiBranch._sellke_honours(FakePoolModel(), rv)
+
+        # perfect isolation is honoured everywhere (the window); leaky
+        # isolation needs the race's per-contact seam
+        perfect = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        leaky = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            post_isolation_transmission = 0.3)
+        @test EpiBranch._sellke_honours(FakePoolModel(), perfect)
+        @test EpiBranch._sellke_honours(FakeGraphModel(), perfect)
+        @test !EpiBranch._sellke_honours(FakePoolModel(), leaky)
+        @test EpiBranch._sellke_honours(FakeGraphModel(), leaky)
+    end
+
+    @testset "per-contact competing risks are resolved at proposal time" begin
+        # Node 1 is seeded at time 0, isolates deterministically at 1 (onset at
+        # 1, isolation immediately on onset), and reaches node 2 on a community
+        # route and node 3 on a household route, both 5 days after infection.
+        # Leaky isolation gives it residual transmission, so neither window
+        # closes — the only way it can act on the (opted-in) community route is
+        # the per-contact risk this seam adds.
+        prog = [Transition(:recovered; from = :infection, delay = 20.0,
+            terminal = true)]
+        onsets = clinical_presentation(incubation_period = Dirac(1.0),
+            prob_asymptomatic = 0.0)
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        community = RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(5.0))
+        household = RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0))
+        edge(to) = (inf, st) -> inf == 1 &&
+                                !get(st.individuals[to].state, :infected, false) ?
+                                ((to, Dirac(5.0)),) : ()
+        routes = ((community, edge(2)), (household, edge(3)))
+
+        function race(interventions, seed)
+            rng = StableRNG(seed)
+            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, onsets, rng)
+            EpiBranch.add_individuals!(state, 3, interventions)
+            EpiBranch._sellke_race!(state, [1, 2, 3], rng; routes, interventions,
+                seed! = (best, members, r) -> (best[1] = 0.0))
+            return state
+        end
+        infected(state, id) = get(state.individuals[id].state, :infected, false)
+
+        leaky = [Isolation(onset_to_isolation_delay = Dirac(0.0),
+            post_isolation_transmission = 0.4)]
+
+        # The household route never lists `INTERVENTION_REMOVAL`, so Isolation
+        # contributes no risk there regardless of leakiness: node 3 is always
+        # infected.
+        # The community route does, so leaky isolation blocks it with
+        # probability `1 - post_isolation_transmission = 0.6`, across seeds.
+        n_household, n_community = 0, 0
+        nseeds = 300
+        for seed in 1:nseeds
+            state = race(leaky, seed)
+            infected(state, 3) && (n_household += 1)
+            infected(state, 2) && (n_community += 1)
+        end
+        @test n_household == nseeds
+        @test 0.3 * nseeds < n_community < 0.7 * nseeds
+
+        # With no interventions, both routes go through unhindered.
+        state = race(AbstractIntervention[], 1)
+        @test infected(state, 2)
+        @test infected(state, 3)
+    end
+
+    @testset "a declined proposal leaves the contact's race with its other neighbours" begin
+        # Node 1 and node 2 are both seeded. Node 1 reaches node 3 on a fast
+        # route that a test intervention always blocks; node 2 reaches it on a
+        # slower, unblocked route. Without the fix node 1's earlier, unblocked
+        # proposal would win; with it, the block is resolved and declined
+        # before the candidate is ever recorded, so node 3's only remaining
+        # infector is node 2, later.
+        fast = RouteWindow(:fast; until = (), kernel = Dirac(2.0))
+        slow = RouteWindow(:slow; until = (), kernel = Dirac(6.0))
+        edge(from, to, t) = (inf, st) -> inf == from &&
+                                         !get(st.individuals[to].state, :infected, false) ?
+                                         ((to, Dirac(t)),) : ()
+        routes = ((fast, edge(1, 3, 2.0)), (slow, edge(2, 3, 6.0)))
+        interventions = [BlockRoute(:fast)]
+
+        rng = StableRNG(1)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+            AbstractClinicalTransition[], EpiBranch.NoAttributes(), rng)
+        EpiBranch.add_individuals!(state, 3, interventions)
+        EpiBranch._sellke_race!(state, [1, 2, 3], rng; routes, interventions,
+            seed! = (best, members, r) -> (best[1] = 0.0; best[2] = 0.0))
+
+        @test get(state.individuals[3].state, :infected, false)
+        @test state.individuals[3].infection_time == 6.0
+        @test state.individuals[3].parent_id == 2
     end
 
     @testset "the race takes routes or the shorthand, not both" begin

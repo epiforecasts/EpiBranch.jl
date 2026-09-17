@@ -1023,8 +1023,23 @@ end
 return `true` if any active risk blocks it. Built-in risk sources and
 interventions share this single risk-evaluation path."""
 function _risk_blocks(source, parent, contact, state, transmission_time)
+    _resolve_risks(_iter_risks(competing_risk(source, parent, contact, state)),
+        parent, contact, state, transmission_time)
+end
+
+"""Route-aware form of [`_risk_blocks`](@ref), used by the continuous-time
+(Sellke) race: resolves `source`'s risk(s) against `route`, the window the
+proposal was made on, rather than the plain four-argument surface."""
+function _risk_blocks(source, parent, contact, state, transmission_time, route)
+    _resolve_risks(_iter_risks(competing_risk(source, parent, contact, state, route)),
+        parent, contact, state, transmission_time)
+end
+
+# Shared by both `_risk_blocks` forms once the risk(s) have been resolved: the
+# first to have fired and block wins.
+function _resolve_risks(risks, parent, contact, state, transmission_time)
     rng = state.rng
-    for risk in _iter_risks(competing_risk(source, parent, contact, state))
+    for risk in risks
         event_t = _sample_value(risk.event_time, rng, parent, contact, state)
         event_t > transmission_time && continue
         prob = _sample_value(risk.block_probability, rng, parent, contact, state)

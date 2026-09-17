@@ -22,12 +22,15 @@ end
 
 # ── Interventions on the continuous-time (Sellke) models ─────────────
 # These models run their own event loop rather than the generation engine, so
-# the engine's per-generation hook passes never fire. The one intervention seam
-# is the infectious window: an intervention that removes a case from onward
-# transmission (isolation) shortens it. After a case's natural history is
-# stamped, run each intervention's per-individual resolution (so `Isolation`
-# writes its isolation time), then close the window at the earliest removal
-# across interventions as well as the `until` states.
+# the engine's per-generation hook passes never fire. Two intervention seams
+# reach them instead. The infectious window: an intervention that removes a
+# case from onward transmission (isolation) shortens it. And, at the point
+# each candidate infection is proposed, `competing_risk`: an intervention that
+# only gates a specific parent → contact pair, such as a per-contact
+# vaccination risk, declines the proposal rather than shortening a window. After
+# a case's natural history is stamped, run each intervention's per-individual
+# resolution (so `Isolation` writes its isolation time), then close the window
+# at the earliest removal across interventions as well as the `until` states.
 
 # Run each intervention's per-individual resolution on a freshly-stamped case.
 function _resolve_interventions!(state::SimulationState, ind, interventions)
@@ -73,6 +76,11 @@ Listing it is what makes a route one that control measures can cut. A community
 route lists it, so isolating a case ends its community transmission; a
 household route does not, so the case goes on infecting the people it lives
 with. That difference is the whole reason routes are separated.
+
+An intervention whose per-contact `competing_risk` should observe the same
+split — acting on a community route but not a household one, say — reads this
+flag off `route.until` itself, in its route-aware `competing_risk` method; see
+`Isolation`'s for the pattern.
 """
 const INTERVENTION_REMOVAL = :intervention_removal
 
@@ -86,27 +94,38 @@ function _route_close(ind, w::RouteWindow, interventions)
     return t
 end
 
-# Whether a continuous-time model honours an intervention — i.e. can express it
-# through the infectious window. Perfect isolation shortens the window; a leaky
-# isolation (`post_isolation_transmission > 0`) only reduces transmission, which
-# the window cannot express, so it is not honoured. Contact tracing is honoured:
-# quarantining a traced contact removes it from transmission, which is a window
-# close (see `trace_contacts!` and `infectious_removal_time(::ContactTracing,…)`).
-# Interventions whose effect is purely a per-contact competing risk against the
-# infection event itself, such as leaky vaccination, still have no window
-# representation. `Scheduled` delegates to its wrapped intervention — the loop
-# exposes the running clock/count (see `_resolve_interventions!`), so its
-# time/count gate is honoured whenever the wrapped intervention is. The model
-# warns for the unhonoured ones rather than silently ignoring them.
+# Whether a continuous-time model honours an intervention, through either of
+# its two seams: the infectious window, common to every such model, and the
+# per-contact `competing_risk` resolved at proposal time, which only the
+# network/household race has proposals to resolve it against — the pool's
+# rate-based construction has no pairwise event to gate that way.
+# `supplies_contacts` already reports exactly this capability (true for the
+# three structure-driven models built on `_sellke_race!`, false for the
+# pool), because it is the same "has pairwise structure" fact contact tracing
+# needs to name a case's contacts, so the default per-contact-only
+# intervention — leaky vaccination, say — reads it directly.
 #
-# Tracing needs one thing more than a window: the model has to be able to name
-# the contacts a case reached, which is what `supplies_contacts` reports. A
-# graph names a node's neighbours and a household its members, but the
-# mass-action pool has no pairwise contact structure, so tracing has nothing to
-# act along there and stays unhonoured.
-_sellke_honours(model, ::AbstractIntervention) = false
-_sellke_honours(model, iso::Isolation) = iso.post_isolation_transmission == 0
-_sellke_honours(model, ::ContactTracing) = supplies_contacts(model)
+# Isolation is the exception in the other direction: perfect isolation
+# shortens the window on every continuous-time model, pool included, while
+# leaky isolation (`post_isolation_transmission > 0`) needs the race's
+# per-contact seam, restricted per route to those listing
+# `INTERVENTION_REMOVAL` (see its route-aware `competing_risk` method).
+#
+# Contact tracing's removal likewise depends on naming a case's contacts:
+# quarantining a traced contact removes it from transmission (see
+# `trace_contacts!` and `infectious_removal_time(::ContactTracing,…)`), but
+# only once traced, which needs `supplies_contacts` — the same condition as
+# the default, so no override is needed.
+#
+# `Scheduled` delegates to its wrapped intervention — the loop exposes the
+# running clock/count (see `_resolve_interventions!`), so its time/count gate
+# is honoured whenever the wrapped intervention is. The model warns for the
+# unhonoured ones rather than silently ignoring them.
+_sellke_honours(model, ::AbstractIntervention) = supplies_contacts(model)
+function _sellke_honours(model, iso::Isolation)
+    iso.post_isolation_transmission == 0 ||
+        supplies_contacts(model)
+end
 _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
 
 """
@@ -164,10 +183,43 @@ function _warn_unhonoured_interventions(model, interventions)
                                for iv in interventions if !_sellke_honours(model, iv)])
     isempty(unhonoured) && return nothing
     @warn "$(nameof(typeof(model))) is a continuous-time model that expresses " *
-          "interventions only through the infectious window; it does not honour " *
-          "these, which will have no effect: $(join(unhonoured, ", ")). Express " *
-          "such control as a removal `Transition` in the progression instead."
+          "interventions only through the infectious window and per-contact " *
+          "competing risks at proposal time; it does not honour these, which " *
+          "will have no effect: $(join(unhonoured, ", ")). Express such control " *
+          "as a removal `Transition` in the progression instead."
     return nothing
+end
+
+"""Isolation's per-contact block, restricted to the routes a control measure
+is meant to reach: `INTERVENTION_REMOVAL` in `route.until` is the same flag
+that opts a route into being cut by the window seam, so a route that leaves
+it out (a household route isolation is not meant to touch) sees no risk from
+`Isolation` here either. Perfect isolation (`post_isolation_transmission ==
+0`) already removes the case via the window on such a route, so this risk
+matters in practice for leaky isolation, but is evaluated for both: a
+declined proposal and a window closed at the same time agree."""
+function competing_risk(iso::Isolation, parent, contact, state, route::RouteWindow)
+    INTERVENTION_REMOVAL in route.until || return nothing
+    return competing_risk(iso, parent, contact, state)
+end
+
+function competing_risk(s::Scheduled, parent, contact, state, route::RouteWindow)
+    is_active(s, state) ? competing_risk(s.intervention, parent, contact, state, route) :
+    nothing
+end
+
+"""Whether the composed `interventions`' per-contact risks block a proposed
+infector → contact edge on route `w` at candidate time `t`. Declining leaves
+the contact's candidate time untouched, so it stays susceptible for the race's
+remaining neighbours (see [`competing_risk`](@ref)). Built-in risk sources
+(susceptibility, infectiousness) are not resolved here: the continuous-time
+kernel already folds per-individual rates into the contact-interval draw,
+so re-applying them at proposal time would double-count."""
+function _proposal_blocked(interventions, parent, contact, state, t, w::RouteWindow)
+    for iv in interventions
+        _risk_blocks(iv, parent, contact, state, t, w) && return true
+    end
+    return false
 end
 
 """
@@ -183,11 +235,17 @@ case's natural history is stamped and it exposes still-susceptible targets with 
 `from`-timed contact interval accepted inside its infectious window. Each case's
 `interventions` are resolved after its natural history, and any that remove it
 from transmission (isolation, quarantine on being traced) shorten that window.
+Every candidate proposal is then also resolved against the composed
+interventions' [`competing_risk`](@ref): one that blocks it declines the
+proposal, leaving the target's candidate time untouched so it can still be
+infected earlier, or later, by a different neighbour.
 
 A model with several transmission routes passes `routes`, a collection of
 `(RouteWindow, targets)` pairs, in place of `from`/`until`/`targets`. Each route
 opens and closes on its own window, and only a route listing
-`INTERVENTION_REMOVAL` in its `until` is cut by the interventions.
+`INTERVENTION_REMOVAL` in its `until` is cut by the interventions; the same
+flag is what an intervention's route-aware `competing_risk` method reads to
+decide which routes its per-contact risk applies to.
 
 `contacts(infective_id, state)` yields the ids of everyone that case was in
 contact with, whether or not transmission followed, which is what contact
@@ -284,6 +342,8 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                 dt = rand(rng, kernel)
                 cand = open_t + dt
                 (cand <= close_t && cand < best[k]) || continue
+                target = state.individuals[target_id]
+                _proposal_blocked(interventions, ind, target, state, cand, w) && continue
                 best[k] = cand
                 src[k] = members[j]
                 _heap_push!(pending, (best[k], k))

@@ -128,11 +128,40 @@ mechanism — e.g. ring vaccination's susceptibility reduction on the
 contact *and* its onward-infectiousness reduction on the parent — may
 return a tuple of risks instead; the engine applies each independently.
 
-Resolution happens after `apply_post_transmission!` so that risks can
-read state that other interventions have written on the contact
-(e.g. `:vaccination_time` set by tracing-driven vaccination).
+On the generation-based engine, resolution happens after
+`apply_post_transmission!` so that risks can read state that other
+interventions have written on the contact (e.g. `:vaccination_time` set
+by tracing-driven vaccination). On the continuous-time (Sellke) race, it
+is evaluated when an infector proposes a candidate infection time to a
+still-susceptible contact: a risk that blocks the proposal declines it
+without relaxing the contact's candidate time, so the contact stays
+susceptible and the race for it continues with its other neighbours. See
+the five-argument [`competing_risk`](@ref) for the route-aware form that
+seam uses.
 """
 competing_risk(::AbstractIntervention, parent, contact, state) = nothing
+
+"""
+    competing_risk(intervention, parent, contact, state, route)
+        -> Union{Nothing, Risk, NTuple{N, Risk}}
+
+Route-aware form used by the continuous-time (Sellke) race, which can carry
+several [`RouteWindow`](@ref)s over one case's natural history. `route` is
+the window the proposal was made on. Default: falls back to the
+four-argument [`competing_risk`](@ref), so an intervention that gates
+transmission the same way on every route needs only that method.
+
+Override this method when an intervention's risk applies only to routes
+that opted into it, as `Isolation` does: a route lists
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` to be cut by the
+composed interventions, and the same flag is what tells a leaky isolation's
+per-contact block which routes it may act on — one that does not list it,
+such as a household route a control measure is not meant to touch, sees no
+risk from `Isolation` at all, matching the window seam's semantics exactly.
+"""
+function competing_risk(iv::AbstractIntervention, parent, contact, state, route)
+    competing_risk(iv, parent, contact, state)
+end
 
 """
     intervention_time(intervention, individual)
@@ -150,15 +179,18 @@ intervention_time(::AbstractIntervention, ::Individual) = -Inf
     infectious_removal_time(intervention, individual) -> Real
 
 The time at which this intervention takes `individual` out of onward
-transmission. The continuous-time (Sellke) transmission models
-([`HomogeneousProcess`](@ref), and the network/household processes) express
-interventions only through the infectious window, closing it at the earliest
-removal time across the interventions. `Isolation` removes a case at its
-isolation time, and `ContactTracing` removes a quarantined contact at its trace
-time. The default is `Inf` (no removal), so an intervention whose effect is a
-per-contact competing risk against the infection event rather than a removal,
-such as leaky vaccination, contributes nothing to the window and has no
-continuous-time representation. Not read by the generation-based engine.
+transmission. The infectious window, common to every continuous-time
+transmission model ([`HomogeneousProcess`](@ref), and the network/household
+processes), closes at the earliest removal time across the interventions.
+`Isolation` removes a case at its isolation time, and `ContactTracing` removes
+a quarantined contact at its trace time. The default is `Inf` (no removal), so
+an intervention whose effect is a per-contact competing risk against the
+infection event rather than a removal, such as leaky vaccination, contributes
+nothing to the window. The network/household race still expresses such an
+intervention, through [`competing_risk`](@ref) evaluated at proposal time
+(see its five-argument form); the pool has no pairwise proposals to gate
+that way, so an intervention with no removal time and only a per-contact
+risk has no effect there. Not read by the generation-based engine.
 """
 infectious_removal_time(::AbstractIntervention, ::Individual) = Inf
 

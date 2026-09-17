@@ -97,6 +97,22 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Fixed
 
+- `competing_risk` is now resolved on the network/household race, not just
+  the generation-based engine: when an infector proposes a candidate
+  infection time to a contact, the composed interventions' risks are
+  resolved against that proposal, and a block declines it without relaxing
+  the contact's candidate time, so the contact stays susceptible for its
+  other neighbours. This is what gives leaky vaccination (`RingVaccination`,
+  `MassVaccination`) and leaky `Isolation` an effect on the continuous-time
+  path; previously it had none there. A route-carrying process passes the
+  `RouteWindow` each proposal was made on to a new, route-aware
+  `competing_risk(iv, parent, contact, state, route)` method, which defaults
+  to the plain four-argument one; `Isolation` overrides it to restrict its
+  risk to routes listing `EpiBranch.INTERVENTION_REMOVAL`, matching the
+  window seam's semantics. `_sellke_honours` no longer excludes
+  per-contact-only interventions on the network/household race, only on the
+  homogeneous pool, which has no pairwise proposal to resolve a risk
+  against.
 - Combined tracing eligibility policies now time the trace from the conditions
   that are met. Each condition, custom policies included, is checked with
   `is_eligible` against the contact being traced. With a custom `Over65` policy,
