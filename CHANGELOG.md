@@ -125,7 +125,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   and records its per-dose draw through the `_record_effect_draws!` hook. The
   positional constructors now take the `VaccineEffect` followed by the type's
   own fields, and vaccinations print as their keyword constructor calls. A
-  misspelt keyword now names the vaccination and the keywords it takes.
+  misspelt keyword now names the vaccination and the keywords it takes, unless
+  it comes alongside a missing required keyword, which Julia reports first.
 
 ### Fixed
 

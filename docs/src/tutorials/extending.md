@@ -511,14 +511,17 @@ vaccination_time, rng)`, which writes the per-dose keys listed under
 10 reaches everyone aged 60 or over:
 
 ```@example extending
-struct OlderAdultVaccination{V <: VaccineEffect} <: AbstractVaccination
+struct OlderAdultVaccination{V <: VaccineEffect, B} <: AbstractVaccination
     effect::V
     min_age::Int
     campaign_time::Float64
+    booster_uptake::B
 end
 
-function OlderAdultVaccination(; min_age, campaign_time, kwargs...)
-    OlderAdultVaccination(VaccineEffect(; kwargs...), min_age, campaign_time)
+function OlderAdultVaccination(; min_age, campaign_time, booster_uptake = 0.0,
+        kwargs...)
+    OlderAdultVaccination(VaccineEffect(; kwargs...), min_age, campaign_time,
+        booster_uptake)
 end
 
 EpiBranch.vaccine_effect(v::OlderAdultVaccination) = v.effect
@@ -547,9 +550,9 @@ keywords as the built-in vaccinations. A parameter describing what a dose does
 belongs in `VaccineEffect`, where every vaccination gains it at once; a
 parameter describing whom a dose reaches belongs on the subtype.
 
-An effect only your vaccination has is a field on it, and its per-dose draw
-goes through the `_record_effect_draws!` hook, which `_record_vaccination!`
-calls for every vaccination. `RingVaccination` records
+An effect only your vaccination has is a field on it, `booster_uptake` above,
+and its per-dose draw goes through the `_record_effect_draws!` hook, which
+`_record_vaccination!` calls for every vaccination. `RingVaccination` records
 `post_exposure_efficacy` and `onward_efficacy` that way:
 
 ```julia

@@ -150,8 +150,11 @@ drawn for one individual."""
 severity_efficacy(v::AbstractVaccination) = vaccine_effect(v).severity_efficacy
 
 """Time between vaccination and the onset of protective immunity, in any of the
-forms [`VaccineEffect`](@ref) accepts. Added to the vaccination time to give
-the event time of the competing risk."""
+forms [`VaccineEffect`](@ref) accepts, so a varying one is a distribution or a
+function rather than a number. `_immunity_time` turns it into the event time of
+the competing risk: a `Real` is added to the vaccination time, and a varying
+delay is drawn once when the dose is given and read back from the stored
+`:immunity_time`."""
 delay_to_immunity(v::AbstractVaccination) = vaccine_effect(v).delay_to_immunity
 
 """The vaccination's [`AbstractEffectMode`](@ref)."""
