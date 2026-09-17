@@ -186,23 +186,25 @@ end
 # re-exposed) does not draw on the budget when it is handed to the wrapped
 # intervention again — `RingVaccination`/`MassVaccination` only redraw a
 # post-exposure-efficacy abort for it, so it is always passed through. Fresh
-# candidates are ranked by `priority` and admitted one at a time in that
-# order for as long as the budget — rechecked against actual usage after
-# each admission — has anything left. Some candidates fail the wrapped
-# intervention's own checks (coverage, eligibility window, a missing
-# required dose, an unresolved trace time) without using a dose; this keeps
-# offering the budget to the next-ranked candidate instead of stopping after
-# a fixed count, which would otherwise leave it under-used.
+# candidates are ranked by `priority` (computed once each, not on every
+# comparison a sort makes, so a random `priority` is not resampled mid-sort)
+# and admitted one at a time in that order for as long as the budget —
+# rechecked against actual usage after each admission — has anything left.
+# Some candidates fail the wrapped intervention's own checks (coverage,
+# eligibility window, a missing required dose, an unresolved trace time)
+# without using a dose; this keeps offering the budget to the next-ranked
+# candidate instead of stopping after a fixed count, which would otherwise
+# leave it under-used.
 function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
     key = capacity_key(cc.intervention)
     already_used = filter(ind -> get(ind.state, key, false), new_contacts)
     candidates = filter(ind -> !get(ind.state, key, false), new_contacts)
     isempty(already_used) || apply_post_transmission!(cc.intervention, state, already_used)
     isempty(candidates) && return nothing
-    ordered = sort(candidates; by = ind -> cc.priority(ind, state))
-    for ind in ordered
+    order = sortperm([cc.priority(ind, state) for ind in candidates]; alg = MergeSort)
+    for i in order
         _remaining_budget(cc, state) > 0 || break
-        apply_post_transmission!(cc.intervention, state, [ind])
+        apply_post_transmission!(cc.intervention, state, [candidates[i]])
     end
     return nothing
 end

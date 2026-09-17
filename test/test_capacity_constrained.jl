@@ -205,6 +205,22 @@ end
         @test count(is_vaccinated, contacts) == 5
     end
 
+    @testset "priority is evaluated once per candidate" begin
+        rv = RingVaccination(efficacy = 0.9)
+        calls = Ref(0)
+        cc = CapacityConstrained(rv; budget_per_period = 2.0,
+            priority = (ind, state) -> (calls[] += 1; ind.state[:trace_time]))
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
+
+        contacts = [_traced_contact(rv, i, Float64(i)) for i in 1:5]
+        append!(state.individuals, contacts)
+        state.max_infection_time = 5.0
+
+        EpiBranch.apply_post_transmission!(cc, state, contacts)
+        @test calls[] == 5
+    end
+
     @testset "Fewer doses under a binding capacity constraint than without one" begin
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
