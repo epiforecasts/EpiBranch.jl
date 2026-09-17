@@ -1108,7 +1108,7 @@ The 3-argument form is a convenience for callers with no `state` to hand
 _apply_attributes!(x, rng, ind) = _apply_attributes!(x, rng, ind, nothing)
 
 _apply_attributes!(::NoAttributes, rng, ind, state) = nothing
-_apply_attributes!(f::Function, rng, ind, state) = f(rng, ind)
+_apply_attributes!(f, rng, ind, state) = f(rng, ind)
 function _apply_attributes!(builders::Union{Tuple, AbstractVector}, rng, ind, state)
     for build! in builders
         _apply_attributes!(build!, rng, ind, state)
