@@ -34,14 +34,11 @@ function extinction_probability(R::Real, k::Real; tol::Real = 1e-10, max_iter::I
 
     R <= 1.0 && return 1.0
 
-    # PGF of NegBin(k, p) is (p / (1 - (1-p)*s))^k
-    # where p = k/(k+R). Fixed point: q = pgf(q).
-    p = k / (k + R)
+    offspring = NegativeBinomial(k, k / (k + R))
 
-    # Start from a value close to 0
     q = 0.5
     for _ in 1:max_iter
-        q_new = (p / (1.0 - (1.0 - p) * q))^k
+        q_new = _pgf(offspring, q)
         abs(q_new - q) < tol && return q_new
         q = q_new
     end
@@ -60,12 +57,11 @@ For Poisson(λ): the PGF exp(λ(s-1)) is used.
 For NegativeBinomial: R and k are extracted and the closed-form PGF is applied.
 """
 function extinction_probability(d::Poisson; tol::Real = 1e-10, max_iter::Int = 1000)
-    λ = mean(d)
-    λ <= 1.0 && return 1.0
+    mean(d) <= 1.0 && return 1.0
 
     q = 0.5
     for _ in 1:max_iter
-        q_new = exp(λ * (q - 1.0))
+        q_new = _pgf(d, q)
         abs(q_new - q) < tol && return q_new
         q = q_new
     end
@@ -165,13 +161,12 @@ function probability_contain(R::Real, k::Real;
     R_eff = (1.0 - pop_control) * R
     R_eff <= 1.0 && return 1.0
 
-    p = k / (k + R_eff)
+    offspring = NegativeBinomial(k, k / (k + R_eff))
 
     # Fixed-point iteration: q = ind_control + (1-ind_control) * pgf(q)
     q = 0.5
     for _ in 1:max_iter
-        pgf_q = (p / (1.0 - (1.0 - p) * q))^k
-        q_new = ind_control + (1.0 - ind_control) * pgf_q
+        q_new = ind_control + (1.0 - ind_control) * _pgf(offspring, q)
         abs(q_new - q) < tol && return q_new^n_initial
         q = q_new
     end
