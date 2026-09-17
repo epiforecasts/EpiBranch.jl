@@ -35,20 +35,11 @@ struct HouseholdInfections{T <: Real} <: InfectionLayer
     followup_end::T
 end
 
-# `obs_end` is when community introductions stop; spread within households goes
-# on after it. Only used when the model has an external hazard, and may be left
-# `Inf`.
 function HouseholdInfections(household_of, infection_time, infectious_time,
         removal_time, is_index; obs_end = Inf, followup_end = Inf)
-    T = promote_type(eltype(infection_time), eltype(infectious_time),
-        eltype(removal_time), typeof(obs_end), typeof(followup_end), Float64)
-    return HouseholdInfections{T}(collect(Int, household_of),
-        Vector{T}(infection_time),
-        Vector{T}(infectious_time),
-        Vector{T}(removal_time),
-        Vector{Bool}(is_index),
-        T(obs_end),
-        T(followup_end))
+    fields = _infection_layer_fields(length(household_of), infection_time,
+        infectious_time, removal_time, is_index; obs_end, followup_end)
+    return HouseholdInfections(collect(Int, household_of), fields...)
 end
 
 Base.length(d::HouseholdInfections) = length(d.household_of)

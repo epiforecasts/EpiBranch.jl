@@ -17,9 +17,9 @@ import EpiBranch: new_state, add_individuals!, apply_observation!,
                   _simulate, SimOpts, _resolve_infectious_from,
                   _retry_for_condition, _reconcile_sellke_bookkeeping!,
                   _honours_termination_controls
-# The pairwise likelihood reads each case's infectious window through the same
-# window the simulator's race builds, including its intervention removal.
-import EpiBranch: _infection_layer_columns
+# The infection layer is built and read out of a simulation by EpiBranch's
+# helpers, which close each case's window where the simulator's race does.
+import EpiBranch: _infection_layer_columns, _infection_layer_fields
 # The pairwise survival likelihood works for any contact structure and lives in
 # EpiBranch, which scores a household population through `contact_structure`.
 # The simulator shares EpiBranch's test for whether a community hazard is on, so

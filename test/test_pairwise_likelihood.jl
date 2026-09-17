@@ -96,6 +96,19 @@ end
         @test all(isinf, columns.removal_time[uninfected])
     end
 
+    @testset "infection-layer fields share one number type" begin
+        fields = EpiBranch._infection_layer_fields(2, [0, 1], [0.0f0, 1.0f0],
+            [2.0, Inf], [1, 0]; obs_end = 3, followup_end = Inf)
+        @test fields == ([0.0, 1.0], [0.0, 1.0], [2.0, Inf], [true, false], 3.0, Inf)
+        @test all(v -> eltype(v) == Float64, fields[1:3])
+        @test fields[4] isa Vector{Bool}
+        dual = ForwardDiff.Dual(1.0, 1.0)
+        @test eltype(first(EpiBranch._infection_layer_fields(1, [dual], [0.0], [2.0],
+            [true]; obs_end = Inf, followup_end = Inf))) == typeof(dual)
+        @test_throws ArgumentError EpiBranch._infection_layer_fields(2, [0.0], [0.0],
+            [1.0], [true]; obs_end = Inf, followup_end = Inf)
+    end
+
     @testset "layout on a household partition" begin
         # households {1,2,3} and {4,5}; 1 and 4 are indexes, 2 is infected too
         membership = [1, 1, 1, 2, 2]

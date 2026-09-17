@@ -35,32 +35,16 @@ struct NetworkInfections{T <: Real} <: InfectionLayer
     is_index::Vector{Bool}
     obs_end::T
     followup_end::T
-    function NetworkInfections{T}(contacts, infection_time, infectious_time,
-            removal_time, is_index, obs_end, followup_end) where {T <: Real}
-        n = length(contacts)
-        all(length(v) == n
-        for v in (infection_time, infectious_time, removal_time, is_index)) ||
-            throw(ArgumentError("contacts and the per-node vectors must cover the " *
-                                "same nodes"))
-        return new{T}(contacts, infection_time, infectious_time, removal_time,
-            is_index, obs_end, followup_end)
-    end
 end
 
 function NetworkInfections(contacts::AbstractVector{<:AbstractVector{<:Integer}},
         infection_time, infectious_time, removal_time, is_index; obs_end = Inf,
         followup_end = Inf)
-    T = promote_type(eltype(infection_time), eltype(infectious_time),
-        eltype(removal_time), typeof(obs_end), typeof(followup_end), Float64)
     adj = contacts isa Vector{Vector{Int}} ? contacts :
           Vector{Int}[Int.(nbrs) for nbrs in contacts]
-    return NetworkInfections{T}(adj,
-        Vector{T}(infection_time),
-        Vector{T}(infectious_time),
-        Vector{T}(removal_time),
-        Vector{Bool}(is_index),
-        T(obs_end),
-        T(followup_end))
+    fields = _infection_layer_fields(length(adj), infection_time, infectious_time,
+        removal_time, is_index; obs_end, followup_end)
+    return NetworkInfections(adj, fields...)
 end
 
 Base.length(d::NetworkInfections) = length(d.contacts)

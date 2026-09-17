@@ -608,6 +608,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         # mismatched input lengths are rejected at compile time
         @test_throws ArgumentError compile_household_pairs([1, 1], [true],
             [true, false])
+        @test_throws ArgumentError HouseholdInfections([1, 1], [0.0], [0.0], [1.0],
+            [true])
     end
 
     @testset "compiled pair layout: community cases at time 0" begin

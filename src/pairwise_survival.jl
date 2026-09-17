@@ -157,6 +157,22 @@ function followup_end(data::InfectionLayer)
     data.followup_end : Inf
 end
 
+# The per-host fields of an `InfectionLayer` subtype over `n` hosts, in field
+# order after the contact structure: the three time vectors, `is_index`,
+# `obs_end` and `followup_end`. Every time shares one number type, at least
+# `Float64`, so a constructor can take integers or AD values.
+function _infection_layer_fields(n, infection_time, infectious_time, removal_time,
+        is_index; obs_end, followup_end)
+    all(length(v) == n
+    for v in (infection_time, infectious_time, removal_time, is_index)) ||
+        throw(ArgumentError("the contact structure and the per-host vectors must " *
+                            "cover the same hosts"))
+    T = promote_type(eltype(infection_time), eltype(infectious_time),
+        eltype(removal_time), typeof(obs_end), typeof(followup_end), Float64)
+    return (Vector{T}(infection_time), Vector{T}(infectious_time),
+        Vector{T}(removal_time), Vector{Bool}(is_index), T(obs_end), T(followup_end))
+end
+
 # The per-host columns of an infection layer, read out of a `state` simulated
 # from `model`, whose process runs one Sellke race with a `from` state and
 # `until` states (as `HouseholdProcess` and `NetworkProcess` do). Each window is
