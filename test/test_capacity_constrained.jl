@@ -148,6 +148,63 @@ end
         @test_throws ArgumentError CapacityConstrained(rv; budget_per_period = 1.0, period = 0.0)
     end
 
+    @testset "Rejected candidates do not use up the budget" begin
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
+
+        # The two untraced candidates rank first (earliest trace_time) but
+        # RingVaccination skips an untraced contact without using a dose, so
+        # the budget must still stretch to the two traced candidates behind
+        # them instead of being exhausted on the first two by count alone.
+        untraced = [Individual(id = i, state = Dict{Symbol, Any}(
+                        :traced => false, :trace_time => Float64(i))) for i in 1:2]
+        traced = [_traced_contact(rv, i, Float64(i)) for i in 3:4]
+        for ind in untraced
+            EpiBranch.initialise_individual!(rv, ind, nothing)
+        end
+        contacts = vcat(untraced, traced)
+        append!(state.individuals, contacts)
+        state.max_infection_time = 4.0
+
+        EpiBranch.apply_post_transmission!(cc, state, contacts)
+        @test count(is_vaccinated, contacts) == 2
+        @test all(is_vaccinated, traced)
+    end
+
+    @testset "An already-dosed re-exposed contact is processed with no budget left" begin
+        rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0)
+        cc = CapacityConstrained(rv; budget_per_period = 0.0)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
+
+        contact = Individual(id = 1,
+            infection_time = 0.0,
+            state = Dict{Symbol, Any}(
+                :traced => true, :trace_time => 0.0, :incubation_period => 10.0,
+                :vaccinated => true, :vaccination_time => 1.0))
+        append!(state.individuals, [contact])
+        state.max_infection_time = 1.0
+
+        EpiBranch.apply_post_transmission!(cc, state, [contact])
+        @test contact.state[:infection_aborted_time] == 1.0
+    end
+
+    @testset "An unlimited budget does not error" begin
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = Inf)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
+
+        contacts = [_traced_contact(rv, i, Float64(i)) for i in 1:5]
+        append!(state.individuals, contacts)
+        state.max_infection_time = 5.0
+
+        EpiBranch.apply_post_transmission!(cc, state, contacts)
+        @test count(is_vaccinated, contacts) == 5
+    end
+
     @testset "Fewer doses under a binding capacity constraint than without one" begin
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0))

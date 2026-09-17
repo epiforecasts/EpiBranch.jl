@@ -11,11 +11,13 @@ of a period's competing candidates it may reach.
 generation's contacts at once — the only point in the protocol where several
 individuals compete for the same resource in the same call.
 `CapacityConstrained` intercepts that call: it ranks `new_contacts` by
-`priority` (lower goes first) and passes through to the wrapped intervention
-only as many, from the front of that order, as the remaining budget allows.
-The rest are simply never handed to the wrapped intervention this call, so
-it never acts on them; a call whose demand the budget covers in full is
-unaffected, whatever the ranking.
+`priority` (lower goes first) and hands them to the wrapped intervention one
+at a time in that order, stopping once the budget is exhausted. The rest are
+simply never handed to the wrapped intervention this call, so it never acts
+on them; a call whose demand the budget covers in full is unaffected,
+whatever the ranking. A candidate the wrapped intervention turns away for its
+own reasons (failed `coverage`, outside `eligibility_window`, and so on) uses
+no budget, so it does not stop a later-ranked candidate from being tried.
 
 Every other hook (`competing_risk`, `resolve_individual!`, `keep_active`, …)
 is delegated unchanged, so `CapacityConstrained` only ever rations the
@@ -180,17 +182,28 @@ function _remaining_budget(cc::CapacityConstrained, state)
     return allowance - used
 end
 
+# A candidate already carrying `capacity_key` (dosed in an earlier call, now
+# re-exposed) does not draw on the budget when it is handed to the wrapped
+# intervention again — `RingVaccination`/`MassVaccination` only redraw a
+# post-exposure-efficacy abort for it, so it is always passed through. Fresh
+# candidates are ranked by `priority` and admitted one at a time in that
+# order for as long as the budget — rechecked against actual usage after
+# each admission — has anything left. Some candidates fail the wrapped
+# intervention's own checks (coverage, eligibility window, a missing
+# required dose, an unresolved trace time) without using a dose; this keeps
+# offering the budget to the next-ranked candidate instead of stopping after
+# a fixed count, which would otherwise leave it under-used.
 function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
-    remaining = _remaining_budget(cc, state)
-    remaining > 0 || return nothing
-    n_admit = min(length(new_contacts), floor(Int, remaining))
-    n_admit > 0 || return nothing
-    admitted = if n_admit == length(new_contacts)
-        new_contacts
-    else
-        partialsort(new_contacts, 1:n_admit; by = ind -> cc.priority(ind, state))
+    key = capacity_key(cc.intervention)
+    already_used = filter(ind -> get(ind.state, key, false), new_contacts)
+    candidates = filter(ind -> !get(ind.state, key, false), new_contacts)
+    isempty(already_used) || apply_post_transmission!(cc.intervention, state, already_used)
+    isempty(candidates) && return nothing
+    ordered = sort(candidates; by = ind -> cc.priority(ind, state))
+    for ind in ordered
+        _remaining_budget(cc, state) > 0 || break
+        apply_post_transmission!(cc.intervention, state, [ind])
     end
-    apply_post_transmission!(cc.intervention, state, admitted)
     return nothing
 end
 
