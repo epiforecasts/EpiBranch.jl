@@ -1228,6 +1228,48 @@ function _sample_age(rng, dist::Distribution, age_range)
 end
 
 """
+    groups(n_groups::Integer; key::Symbol = :group)
+
+Return an attributes function that assigns each individual to one of
+`n_groups` groups, labelled `1:n_groups` and drawn uniformly at random,
+under `key` (`:group` by default).
+
+The branching process has no geography, but a group does not need one:
+`key` can stand for a village, a health area, or a household, and
+[`GroupVaccination`](@ref) targets whichever one it names without the
+model knowing where it is. `groups` only labels individuals, uniformly and
+independently of who infected whom, which is enough to test a
+group-triggered vaccination on its own. Concentrating transmission within
+a group as well is a separate, existing choice: give a multi-type
+[`BranchingProcess`](@ref) an offspring matrix that favours the diagonal,
+one type per group, and write a custom attributes function in place of
+this one that assigns `:group` from whatever labels the model's types
+(households, a contact network) rather than drawing them independently.
+
+# Examples
+
+Twenty equally likely villages:
+
+```julia
+attributes = groups(20)
+```
+
+A named unit, for a builder that also sets other fields:
+
+```julia
+attributes = [groups(10; key = :household), clinical_presentation(...)]
+```
+
+See also [`GroupVaccination`](@ref).
+"""
+function groups(n_groups::Integer; key::Symbol = :group)
+    n_groups >= 1 || throw(ArgumentError("n_groups must be at least 1, got $n_groups"))
+    return function (rng, ind)
+        ind.state[key] = rand(rng, 1:n_groups)
+    end
+end
+
+"""
     transmission_traits(; susceptibility = 1.0, infectiousness = 1.0)
 
 Return an attributes function that sets `susceptibility` (per-contact
