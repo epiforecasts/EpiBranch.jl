@@ -225,7 +225,7 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
     EpiBranch._sellke_race!(state, collect(1:model.n), rng;
         routes = routes, interventions = interventions,
         seed! = (best, members, r) -> _seed_network!(
-            best, members, model.external_hazard, sim_opts.n_initial, Tobs, r),
+            best, members, state, model.external_hazard, sim_opts.n_initial, Tobs, r),
         contacts = (inf, st) -> _route_contacts(
             windows, interventions, st.individuals[inf], inf, st.rng))
 

@@ -53,7 +53,7 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
         EpiBranch._sellke_race!(state, mem, rng;
             from = from, until = model.until, interventions = interventions,
             seed! = (best, members, r) -> _seed_clique!(
-                best, members, model.external_hazard, Tobs, r),
+                best, members, state, model.external_hazard, Tobs, r),
             targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid))
             for oid in mem if oid != inf),
             # A case's contacts are its household-mates, traced whether or not
@@ -71,11 +71,11 @@ end
 # Seed one household's candidate table: community introductions under the
 # external hazard (each member drawn, kept if it lands within `[0, Tobs]`), or a
 # single seeded index at time 0 when there is no external source.
-function _seed_clique!(best, members, extsrc, Tobs, rng)
+function _seed_clique!(best, members, state, extsrc, Tobs, rng)
     m = length(members)
     if _ext_active(extsrc)
         for k in 1:m
-            t = _ext_draw(rng, extsrc)
+            t = _ext_draw(rng, extsrc, state.individuals[members[k]].susceptibility)
             t <= Tobs && (best[k] = t)
         end
     else
@@ -89,7 +89,10 @@ end
 _pairkernel(k::ContinuousUnivariateDistribution, i, j) = k
 _pairkernel(k, i, j) = k(i, j)
 
-# A community introduction time under the external hazard: the constant case is
-# its Exponential survival time, a distribution is sampled directly.
-_ext_draw(rng, α::Real) = rand(rng, Exponential(1 / α))
-_ext_draw(rng, d::ContinuousUnivariateDistribution) = rand(rng, d)
+# A community introduction time under the external hazard, with the member's
+# susceptibility scaling that hazard as it scales a pair kernel's: the constant
+# case is its Exponential survival time, a distribution is sampled directly.
+_ext_draw(rng, α::Real, s) = EpiBranch._traits_scaled_draw(rng, Exponential(1 / α), s)
+function _ext_draw(rng, d::ContinuousUnivariateDistribution, s)
+    EpiBranch._traits_scaled_draw(rng, d, s)
+end

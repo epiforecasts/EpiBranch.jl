@@ -197,6 +197,25 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test size(df, 1) > count(df.index)              # plus onward spread on the graph
     end
 
+    @testset "susceptibility scales the community hazard" begin
+        n = 200
+        infected(state) = count(ind -> get(ind.state, :infected, false), state.individuals)
+        function community(ext, susceptibility)
+            m = ModelSpec(
+                # a contact interval far beyond the window leaves only
+                # community introductions
+                NetworkProcess(ring_adjacency(n), Exponential(1e6);
+                    external_hazard = ext, obs_end = 30.0);
+                progression = _sir(6.0),
+                attributes = transmission_traits(; susceptibility))
+            return infected(simulate(m; rng = StableRNG(5)))
+        end
+        for ext in (0.05, Exponential(20.0))
+            @test community(ext, 0.0) == 0
+            @test 0 < community(ext, 0.2) < community(ext, 1.0)
+        end
+    end
+
     @testset "a fixed seed reproduces a pinned outbreak" begin
         # The race draws from the RNG stream in settling order, so these tests pin
         # that order, including ties. Several index cases share time 0, and a

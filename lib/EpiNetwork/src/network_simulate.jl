@@ -50,7 +50,7 @@ function _simulate(model::NetworkProcess, sim_opts::SimOpts;
     EpiBranch._sellke_race!(state, collect(1:n), rng;
         from = from, until = model.until, interventions = interventions,
         seed! = (best, members, r) -> _seed_network!(
-            best, members, model.external_hazard, n_initial, Tobs, r),
+            best, members, state, model.external_hazard, n_initial, Tobs, r),
         targets = (inf, st) -> ((nb, _edge_kernel(model, inf, k))
         for (k, nb) in enumerate(model.adjacency[inf])
         if !is_infected(st.individuals[nb])),
@@ -68,11 +68,11 @@ end
 # Seed the candidate table over all nodes: community introductions under the
 # external hazard (each node drawn, kept if it lands within `[0, Tobs]`), or
 # `n_initial` distinct random nodes at time 0 when there is no external source.
-function _seed_network!(best, members, extsrc, n_initial, Tobs, rng)
+function _seed_network!(best, members, state, extsrc, n_initial, Tobs, rng)
     m = length(members)
     if _ext_active(extsrc)
         for k in 1:m
-            t = _ext_draw(rng, extsrc)
+            t = _ext_draw(rng, extsrc, state.individuals[members[k]].susceptibility)
             t <= Tobs && (best[k] = t)
         end
     else

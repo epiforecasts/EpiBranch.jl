@@ -145,6 +145,15 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test count(df.index) >= 1                 # community introductions happened
         @test size(df, 1) > count(df.index)        # plus within-household spread
         @test count(df.index) != length(m.process.members) # not the one-index fallback
+
+        # a member with no susceptibility is never introduced from the community
+        immune = ModelSpec(
+            HouseholdProcess(fill(4, 300), Exponential(3.0);
+                external_hazard = 0.05, obs_end = 30.0);
+            progression = _sir(6.0),
+            attributes = transmission_traits(susceptibility = 0.0))
+        @test !any(ind -> get(ind.state, :infected, false),
+            simulate(immune; rng = StableRNG(5)).individuals)
     end
 
     @testset "pairwise survival likelihood: basics and differentiability" begin
