@@ -2,6 +2,12 @@
 # defaults are inert.
 struct _NoTraceIntervention <: AbstractIntervention end
 
+# A distribution that draws and scores but reports no support, as the package's
+# own `_TruncatedSkewNormal` does.
+struct _UnboundedDelay <: ContinuousUnivariateDistribution end
+Base.rand(::AbstractRNG, ::_UnboundedDelay) = 30.0
+Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
+
 @testset "Interventions" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
@@ -387,6 +393,54 @@ struct _NoTraceIntervention <: AbstractIntervention end
                   containment_probability(results_delayed) - 0.05
         end
 
+        @testset "Distributional delay_to_immunity samples once per contact" begin
+            # A vaccine that takes one to three weeks to protect. The draw
+            # is stored on the contact at vaccination time (see
+            # `_record_vaccination!`), so every exposure it faces reads
+            # back the same immunity time.
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+            rv = RingVaccination(efficacy = 0.9, delay_to_immunity = Uniform(7.0, 21.0))
+            state = simulate(
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical);
+                condition = 50:300, max_cases = 300, rng = StableRNG(12))
+            delays = [immunity_time(ind) - ind.state[:vaccination_time]
+                      for ind in state.individuals if is_vaccinated(ind)]
+            @test !isempty(delays)
+            @test all(7.0 .<= delays .<= 21.0)
+            # Variation confirms a fresh draw per contact, not one sample
+            # reused across all of them.
+            @test length(unique(delays)) > 5
+
+            # Exposures from several infectors all meet the one stored draw.
+            contact = Individual(id = 3, parent_id = 1, infection_time = 5.0)
+            EpiBranch._record_vaccination!(rv, contact, 6.0, StableRNG(4))
+            for parent_id in 1:3
+                parent = Individual(id = parent_id, infection_time = 0.0)
+                risk = EpiBranch.competing_risk(rv, parent, contact, nothing)
+                @test risk.event_time == immunity_time(contact)
+            end
+        end
+
+        @testset "delay_to_immunity accepts a function" begin
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+            attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
+            rv = RingVaccination(efficacy = 0.9,
+                delay_to_immunity = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 30.0)
+            state = simulate(
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = attrs);
+                condition = 50:300, max_cases = 300, rng = StableRNG(2))
+            vaccinated = filter(is_vaccinated, state.individuals)
+            @test !isempty(vaccinated)  # otherwise the test is vacuous
+            for ind in vaccinated
+                @test immunity_time(ind) ==
+                      ind.state[:vaccination_time] + (ind.state[:age] >= 50 ? 1.0 : 30.0)
+            end
+        end
+
         @testset "Coverage thins vaccinations" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
@@ -565,6 +619,101 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 @test n_boosted > 0  # otherwise the test is vacuous
             end
 
+            @testset "A distributional dose_delay is judged on its support" begin
+                spec(ivs) = ModelSpec(process; interventions = ivs, attributes = clinical)
+                prime_delayed = RingVaccination(efficacy = 0.6,
+                    delay_to_immunity = 21.0, dose_delay = 30.0, dose_label = :prime)
+                boost(delay) = RingVaccination(efficacy = 0.5, dose_delay = delay,
+                    delay_to_immunity = 14.0, requires_dose = :prime, dose_label = :boost)
+
+                # Every draw falls before the prime, so the boost could never be
+                # given.
+                @test_throws ArgumentError spec([iso, ct, prime_delayed,
+                    boost(Uniform(0.0, 7.0))])
+                # Supports that cannot cross are accepted in silence.
+                @test (@test_logs spec([
+                    iso, ct, prime_delayed, boost(Uniform(30.0, 42.0))])) isa
+                      ModelSpec
+                # A function cannot be read statically and goes unchecked.
+                @test (@test_logs spec([
+                    iso, ct, prime_delayed, boost((rng, ind) -> 0.0)])) isa
+                      ModelSpec
+                # An unbounded support names no number worth quoting.
+                logs, unbounded = Test.collect_test_logs() do
+                    spec([iso, ct, prime_delayed, boost(Normal(35.0, 3.0))])
+                end
+                @test unbounded isa ModelSpec
+                message = string(only(logs).message)
+                @test occursin("has no lower bound", message)
+                @test !occursin("-Inf", message)
+
+                # Overlapping supports warn, and at run time the contacts whose
+                # boost draw falls before their prime go without it.
+                overlapping = [iso, ct, prime_delayed, boost(Uniform(10.0, 50.0))]
+                @test_logs (:warn, r"can fall before dose :prime") match_mode=:any spec(overlapping)
+                state = simulate(spec(overlapping);
+                    condition = 50:300, max_cases = 300, rng = StableRNG(6))
+                primed = count(
+                    ind -> get(ind.state, :vaccinated_prime, false), state.individuals)
+                boosted = [ind
+                           for ind in state.individuals
+                           if get(ind.state, :vaccinated_boost, false)]
+                @test primed > 0
+                @test length(boosted) < primed
+                for ind in boosted
+                    @test ind.state[:vaccination_time_boost] >=
+                          ind.state[:vaccination_time_prime]
+                end
+            end
+
+            @testset "dose_delay accepts a function" begin
+                boost = RingVaccination(efficacy = 0.5,
+                    dose_delay = (rng, ind) -> iseven(ind.id) ? 10.0 : 20.0,
+                    requires_dose = :prime, dose_label = :boost)
+                state = simulate(
+                    ModelSpec(process; interventions = [iso, ct, prime, boost],
+                        attributes = clinical);
+                    condition = 50:200, max_cases = 200, rng = StableRNG(6))
+                boosted = filter(ind -> get(ind.state, :vaccinated_boost, false),
+                    state.individuals)
+                @test !isempty(boosted)  # otherwise the test is vacuous
+                for ind in boosted
+                    # Compared against the trace the dose is timed from, since
+                    # subtracting the two dose times loses the last bit.
+                    @test ind.state[:vaccination_time_boost] ==
+                          ind.state[:trace_time] + (iseven(ind.id) ? 10.0 : 20.0)
+                end
+            end
+
+            @testset "An unreachable contact draws no dose_delay" begin
+                rv = RingVaccination(efficacy = 0.5, dose_delay = Uniform(1.0, 2.0))
+                state = EpiBranch.new_state(process,
+                    EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(7))
+                contact = Individual(id = 2, parent_id = 1, infection_time = 0.0)
+                contact.state[:traced] = true
+                contact.state[:trace_time] = Inf
+                EpiBranch.apply_post_transmission!(rv, state, [contact])
+                @test !is_vaccinated(contact)
+                @test rand(state.rng) == rand(StableRNG(7))
+            end
+
+            @testset "A delay reporting no support goes unchecked" begin
+                spec(ivs) = ModelSpec(process; interventions = ivs, attributes = clinical)
+                lone = RingVaccination(efficacy = 0.5, dose_delay = _UnboundedDelay())
+                @test (@test_logs spec([iso, ct, lone])) isa ModelSpec
+                boost = RingVaccination(efficacy = 0.5, dose_delay = _UnboundedDelay(),
+                    requires_dose = :prime, dose_label = :boost)
+                @test (@test_logs spec([iso, ct, prime, boost])) isa ModelSpec
+                # An unreadable support leaves an efficacy possibly positive, so
+                # the fields it needs are still required.
+                unreadable = RingVaccination(efficacy = 0.0,
+                    post_exposure_efficacy = _UnboundedDelay())
+                @test :incubation_period in EpiBranch.required_fields(unreadable)
+                # A distribution that can only be zero aborts nothing.
+                never = RingVaccination(efficacy = 0.0, post_exposure_efficacy = Dirac(0.0))
+                @test :incubation_period ∉ EpiBranch.required_fields(never)
+            end
+
             @testset "requires_dose gates the boost on the prime" begin
                 # Nobody is primed, so nobody can be boosted.
                 prime_none = RingVaccination(efficacy = 0.6, coverage = 0.0,
@@ -678,6 +827,75 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 interventions = iv, attributes = attrs)
             post_only(; kwargs...) = RingVaccination(efficacy = 0.0,
                 post_exposure_efficacy = 0.9; kwargs...)
+
+            @testset "Distributional post_exposure_efficacy and onward_efficacy sample per contact" begin
+                # Each dose draws once at vaccination time and stores the
+                # result (see `_record_vaccination!`), rather than
+                # resampling on every exposure or onward transmission.
+                rv = RingVaccination(efficacy = 0.0,
+                    post_exposure_efficacy = Beta(8, 2), onward_efficacy = Beta(8, 2))
+                state = simulate(scen([iso, ct, rv]); condition = 50:300,
+                    max_cases = 300, rng = StableRNG(11))
+                posts = [ind.state[:post_exposure_efficacy]
+                         for ind in state.individuals if is_vaccinated(ind)]
+                onwards = [ind.state[:onward_efficacy]
+                           for ind in state.individuals if is_vaccinated(ind)]
+                @test !isempty(posts)
+                @test all(0 .<= posts .<= 1)
+                @test all(0 .<= onwards .<= 1)
+                # Variation confirms per-individual sampling rather than a
+                # single sample reused across all contacts.
+                @test length(unique(posts)) > 5
+                @test length(unique(onwards)) > 5
+            end
+
+            @testset "post_exposure_efficacy is drawn once per dose" begin
+                # Even ids always abort, odd ids never, so the draw each contact
+                # kept shows in whether its infection ended.
+                rv = RingVaccination(efficacy = 0.0, delay_to_immunity = 2.0,
+                    post_exposure_efficacy = (rng, ind) -> iseven(ind.id) ? 1.0 : 0.0)
+                rng = StableRNG(11)
+                for id in 2:3
+                    contact = Individual(id = id, infection_time = 10.0)
+                    contact.state[:incubation_period] = 6.0
+                    contact.state[:onset_time] = 16.0
+                    EpiBranch._record_vaccination!(rv, contact, 12.0, rng)
+                    EpiBranch._abort_infection!(rv, contact, 12.0, rng)
+                    @test haskey(contact.state, :infection_aborted_time) == iseven(id)
+                end
+            end
+
+            @testset "onward_efficacy is drawn once per dose" begin
+                rv = RingVaccination(efficacy = 0.0,
+                    onward_efficacy = (rng, ind) -> ind.id == 1 ? 0.0 : rand(rng))
+                contact = Individual(id = 3, parent_id = 2, infection_time = 6.0)
+                # A parent that drew zero gets no onward risk built.
+                parent = Individual(id = 1, infection_time = 0.0)
+                EpiBranch._record_vaccination!(rv, parent, 4.0, StableRNG(12))
+                @test EpiBranch.competing_risk(rv, parent, contact, nothing) === nothing
+                parent = Individual(id = 2, infection_time = 0.0)
+                EpiBranch._record_vaccination!(rv, parent, 4.0, StableRNG(12))
+                efficacy = parent.state[:onward_efficacy]
+                for _ in 1:3
+                    risk = EpiBranch.competing_risk(rv, parent, contact, nothing)
+                    @test risk.event_time == 4.0
+                    @test risk.block_probability == efficacy
+                end
+            end
+
+            @testset "Scalar post_exposure_efficacy and onward_efficacy write no state" begin
+                # A scalar is read off the intervention, so the line list gains
+                # no column for it.
+                rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5,
+                    onward_efficacy = 0.5)
+                state = simulate(scen([iso, ct, rv]); condition = 50:300,
+                    max_cases = 300, rng = StableRNG(11))
+                vaccinated = filter(is_vaccinated, state.individuals)
+                @test !isempty(vaccinated)  # otherwise the test is vacuous
+                for key in (:post_exposure_efficacy, :onward_efficacy)
+                    @test !any(ind -> haskey(ind.state, key), vaccinated)
+                end
+            end
 
             # An outbreak with fixed delays. The index case, infected at 0, has
             # onset at 5 and is isolated at 5.5, when both its contacts (infected

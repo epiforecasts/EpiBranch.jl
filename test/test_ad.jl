@@ -254,3 +254,58 @@ end
     grad = ForwardDiff.derivative(total_infection_time, μ0)
     @test isfinite(grad)
 end
+
+# A scalar vaccination parameter stays on the intervention and reaches the
+# competing risk with its type intact, so a derivative can be taken with
+# respect to it.
+@testset "AD through scalar vaccination parameters" begin
+    contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+    contact.state[:vaccinated] = true
+    contact.state[:vaccination_time] = 2.0
+    contact.state[:vaccine_efficacy] = 0.6
+    parent = Individual(id = 1, infection_time = 0.0)
+    parent.state[:vaccinated] = true
+    parent.state[:vaccination_time] = 2.0
+
+    immunity(delay) = EpiBranch._contact_risk(
+        RingVaccination(efficacy = 0.6, delay_to_immunity = delay), contact).event_time
+    @test ForwardDiff.derivative(immunity, 3.0) == 1.0
+
+    # The contact-side block composes the stored efficacy with the
+    # post-exposure one, so the derivative is 1 - efficacy.
+    block(post) = EpiBranch._contact_risk(
+        RingVaccination(efficacy = 0.6, delay_to_immunity = 3.0,
+            post_exposure_efficacy = post), contact).block_probability
+    @test ForwardDiff.derivative(block, 0.5) ≈ 0.4
+
+    onward(efficacy) = EpiBranch._onward_risk(
+        RingVaccination(efficacy = 0.6, onward_efficacy = efficacy),
+        parent).block_probability
+    @test ForwardDiff.derivative(onward, 0.5) == 1.0
+end
+
+# `dose_delay` reaches the simulation through the schedule validation the
+# `ModelSpec` runs, which a derivative has to survive.
+@testset "AD through a scalar dose_delay" begin
+    clinical = clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+    ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+    process = BranchingProcess(Poisson(2.0), Exponential(5.0))
+    run_with(interventions) = simulate(
+        ModelSpec(process; interventions = interventions, attributes = clinical);
+        condition = 50:200, max_cases = 200, rng = StableRNG(31))
+    dosed(state) = filter(ind -> get(ind.state, :vaccinated_boost, false),
+        state.individuals)
+
+    # Each boost lands `dose_delay` days after its trace, so the derivative of
+    # the boosts' total timing is the number of boosts given.
+    prime = RingVaccination(efficacy = 0.6, dose_label = :prime)
+    boost(delay) = RingVaccination(efficacy = 0.5, dose_delay = delay,
+        requires_dose = :prime, dose_label = :boost)
+    boost_time(delay) = sum(ind.state[:vaccination_time_boost]
+    for ind in dosed(run_with([iso, ct, prime, boost(delay)])))
+    n_boosted = length(dosed(run_with([iso, ct, prime, boost(28.0)])))
+    @test n_boosted > 0  # otherwise the test is vacuous
+    @test ForwardDiff.derivative(boost_time, 28.0) == n_boosted
+end
