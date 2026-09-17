@@ -458,6 +458,17 @@ struct _NoTraceIntervention <: AbstractIntervention end
             end
         end
 
+        @testset "An unbounded eligibility window admits a contact not yet exposed" begin
+            # A never-infected individual's infection time is NaN, which fails
+            # any comparison against a finite window.
+            unexposed = Individual(id = 1, infection_time = NaN)
+            rng = StableRNG(1)
+            @test EpiBranch._within_eligibility_window(Inf, unexposed, 3.0, rng)
+            @test EpiBranch._within_eligibility_window(
+                (rng, ind) -> Inf, unexposed, 3.0, rng)
+            @test !EpiBranch._within_eligibility_window(21.0, unexposed, 3.0, rng)
+        end
+
         @testset "Doses are timed at the trace, whatever the trace action" begin
             # A ring member is vaccinated when the tracing team reaches
             # them, so `:vaccination_time` is the trace time.

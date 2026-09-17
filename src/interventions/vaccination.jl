@@ -443,10 +443,14 @@ end
 # Scalar defaults short-circuit without drawing from the rng so that
 # coverage = 1.0 and eligibility_window = Inf reproduce the previous
 # deterministic behaviour exactly.
-_within_eligibility_window(w::Real, ind, vacc_t, rng) = vacc_t - ind.infection_time <= w
+_within_eligibility_window(w::Real, ind, vacc_t, rng) = _within_window(w, ind, vacc_t)
 function _within_eligibility_window(w, ind, vacc_t, rng)
-    vacc_t - ind.infection_time <= _sample_value(w, rng, ind)
+    _within_window(_sample_value(w, rng, ind), ind, vacc_t)
 end
+
+# An unbounded window admits a contact with no exposure yet, whose infection
+# time is `NaN` and so fails every comparison.
+_within_window(w, ind, vacc_t) = w == Inf || vacc_t - ind.infection_time <= w
 
 _covers(p::Real, ind, rng) = p >= 1.0 || rand(rng) < p
 _covers(p, ind, rng) = rand(rng) < _sample_value(p, rng, ind)
