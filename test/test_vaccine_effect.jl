@@ -17,17 +17,27 @@ end
 
 @testset "VaccineEffect" begin
     @testset "Keyword constructors build the shared effect" begin
-        rv = RingVaccination(efficacy = 0.7, delay_to_immunity = 14,
+        rv = RingVaccination(efficacy = 0.7, delay_to_immunity = 14.0,
             severity_efficacy = 0.3, mode = AllOrNothingMode(), dose_label = :prime,
             coverage = 0.9, dose_delay = 2.0)
         effect = EpiBranch.vaccine_effect(rv)
         @test effect isa VaccineEffect
         @test effect.efficacy == 0.7
         @test effect.delay_to_immunity === 14.0
+        @test EpiBranch.delay_to_immunity(rv) === 14.0
         @test effect.severity_efficacy == 0.3
         @test effect.mode isa AllOrNothingMode
         @test effect.dose_label === :prime
         @test rv.dose_delay === 2.0
+
+        # A distribution or a function is held as given, for the draw made when
+        # the dose is recorded.
+        vary = RingVaccination(
+            efficacy = Beta(2, 2), delay_to_immunity = Uniform(7.0, 21.0),
+            severity_efficacy = (rng, ind) -> 0.4)
+        @test vary.efficacy == Beta(2, 2)
+        @test EpiBranch.delay_to_immunity(vary) == Uniform(7.0, 21.0)
+        @test EpiBranch.severity_efficacy(vary)(nothing, nothing) == 0.4
 
         mv = MassVaccination(efficacy = Beta(2, 2), eligibility_time = 5.0)
         @test EpiBranch.vaccine_effect(mv) ==
@@ -52,10 +62,29 @@ end
         end
     end
 
-    @testset "Keyword errors match the constructors' own" begin
+    @testset "A misspelt keyword names the vaccination and its keywords" begin
         @test_throws UndefKeywordError RingVaccination()
         @test_throws UndefKeywordError MassVaccination(efficacy = 0.5)
-        @test_throws MethodError GroupVaccination(efficacy = 0.5, covrage = 0.5)
+        typos = [() -> RingVaccination(efficacy = 0.5, dose_dely = 2.0),
+            () -> RingVaccination(efficacy = 0.5, coverge = 0.5),
+            () -> RingVaccination(efficacy = 0.5, requires_dse = :prime),
+            () -> RingVaccination(efficacy = 0.5, eligibilty_window = 3.0),
+            () -> MassVaccination(efficacy = 0.5, eligibility_time = 1.0,
+                group_key = :village),
+            () -> GroupVaccination(efficacy = 0.5, eligibility_time = 1.0)]
+        for make in typos
+            err = try
+                make()
+            catch e
+                e
+            end
+            @test err isa ArgumentError
+            # The message names the type the caller wrote, not `VaccineEffect`,
+            # and lists the keywords it does take.
+            @test occursin("Vaccination has no keyword argument", err.msg)
+            @test occursin("`efficacy`", err.msg)
+            @test !occursin("VaccineEffect", err.msg)
+        end
     end
 
     @testset "show prints the constructor keywords" begin
@@ -66,6 +95,10 @@ end
               "coverage = 1.0, dose_delay = 0.0, requires_dose = :prime, " *
               "eligibility_window = Inf, post_exposure_efficacy = 0.0, " *
               "onward_efficacy = 0.0)"
+        # A distributional parameter prints where a scalar one did.
+        @test occursin("delay_to_immunity = Uniform",
+            repr(MassVaccination(efficacy = 0.5, eligibility_time = 1.0,
+                delay_to_immunity = Uniform(7.0, 21.0))))
         for v in (rv, MassVaccination(efficacy = 0.5, eligibility_time = 3.0),
             GroupVaccination(efficacy = 0.5, group_key = :village))
             @test eval(Meta.parse(repr(v))) == v

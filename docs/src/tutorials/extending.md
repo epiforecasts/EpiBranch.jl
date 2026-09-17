@@ -77,6 +77,8 @@ downstream packages should pick names that do not collide.
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
 | `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:post_exposure_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `post_exposure_efficacy`) | `apply_post_transmission!` |
+| `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | `apply_post_transmission!` |
 | `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
@@ -94,10 +96,18 @@ downstream packages should pick names that do not collide.
 | `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)` | `resolve_individual!` |
 
 The vaccination keys are namespaced by `dose_label`: the default label
-writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy`,
-and any other label suffixes the key (so `dose_label = :boost` writes
-`:vaccinated_boost`, etc.). This lets multi-dose schedules compose without
-colliding.
+writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy` /
+`:immunity_time` (and, on `RingVaccination`, `:post_exposure_efficacy` /
+`:onward_efficacy`), and any other label suffixes the key (so
+`dose_label = :boost` writes `:vaccinated_boost`, etc.). This lets multi-dose
+schedules compose without colliding. `:immunity_time` (the vaccination time
+plus a draw from `delay_to_immunity`), `:post_exposure_efficacy`, and
+`:onward_efficacy` each hold one draw taken at vaccination time from a field
+that may be a `Real`, a `Distribution`, or a function, so every exposure of an
+individual is judged against the same value. `:post_exposure_efficacy` and
+`:onward_efficacy` are written only when the field is a distribution or a
+function; a scalar is the same for everyone and is read straight off the
+intervention.
 
 `:immunity_time` (`:vaccination_time` plus the dose's `delay_to_immunity`)
 and `:severity_efficacy` let a clinical transition read a vaccine's effect
@@ -495,9 +505,10 @@ inherits:
 What it adds is an `apply_post_transmission!` method choosing whom to vaccinate
 and when. It records each dose with `EpiBranch._record_vaccination!(v, ind,
 vaccination_time, rng)`, which writes the per-dose keys listed under
-[Reserved keys](#Reserved-keys) and samples `efficacy` and `severity_efficacy`
-for that individual. Here, a campaign on day 10 reaches everyone aged 60 or
-over:
+[Reserved keys](#Reserved-keys) and draws `efficacy`, `severity_efficacy` and
+`delay_to_immunity` for that individual, whichever of the `Real`,
+`Distribution` and function forms they were given in. Here, a campaign on day
+10 reaches everyone aged 60 or over:
 
 ```@example extending
 struct OlderAdultVaccination{V <: VaccineEffect} <: AbstractVaccination
@@ -535,6 +546,24 @@ Forwarding keywords to `VaccineEffect` lets the constructor take the same effect
 keywords as the built-in vaccinations. A parameter describing what a dose does
 belongs in `VaccineEffect`, where every vaccination gains it at once; a
 parameter describing whom a dose reaches belongs on the subtype.
+
+An effect only your vaccination has is a field on it, and its per-dose draw
+goes through the `_record_effect_draws!` hook, which `_record_vaccination!`
+calls for every vaccination. `RingVaccination` records
+`post_exposure_efficacy` and `onward_efficacy` that way:
+
+```julia
+_booster_uptake_key(label) = Symbol("booster_uptake_", label)
+
+function EpiBranch._record_effect_draws!(v::OlderAdultVaccination, contact, label, rng)
+    EpiBranch._store_draw!(v.booster_uptake, _booster_uptake_key, label, contact, rng)
+    return nothing
+end
+```
+
+`_store_draw!` stores nothing for a scalar, which is read straight off the
+vaccination by `EpiBranch._dose_value`, and stores the draw for a distribution
+or function.
 
 ## Tree-shaping via the offspring distribution
 
