@@ -48,6 +48,15 @@
             3, Exponential(2.0), 1.0; initial_infectives = 4)
     end
 
+    @testset "a large household does not overflow" begin
+        # A near-certain outbreak in a 100-person household: the final size is
+        # the whole household or close to it.
+        d = household_final_size(100, Weibull(1.5, 30.0), 6.0)
+        @test all(>=(0), probs(d))
+        @test sum(probs(d)) ≈ 1
+        @test 99 < mean(d) <= 100
+    end
+
     @testset "the recursion matches simulated households" begin
         n = 5
         model = ModelSpec(HouseholdProcess(fill(n, 20_000), Exponential(1 / β));

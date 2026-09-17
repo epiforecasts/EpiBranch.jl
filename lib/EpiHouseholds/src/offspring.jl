@@ -541,9 +541,11 @@ function _final_size_pmf(n::Int, a::Int, kernel, window)
     p = zeros(n + 1)
     for j in 0:n
         ψ = _escape(kernel, window, n - j)
-        total = sum(binomial(n - k, j - k) * p[k + 1] / ψ^(k + a) for k in 0:(j - 1);
-            init = 0.0)
-        p[j + 1] = (binomial(n, j) - total) * ψ^(j + a)
+        # Floating-point coefficients: integer ones overflow from a household
+        # of 68.
+        total = sum(binomial(Float64(n - k), j - k) * p[k + 1] / ψ^(k + a)
+            for k in 0:(j - 1); init = 0.0)
+        p[j + 1] = (binomial(Float64(n), j) - total) * ψ^(j + a)
     end
     # The recursion is a difference of large terms for a big household and can
     # leave a probability a hair below zero; anything worse is a real failure.
