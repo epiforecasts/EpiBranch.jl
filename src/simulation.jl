@@ -1396,7 +1396,9 @@ The ring is read from the parent at creation, so the clustering needs
 contacts created from their infector, as [`BranchingProcess`](@ref) does.
 Models that create their whole population up front, such as
 [`HomogeneousProcess`](@ref), give every individual no parent at creation,
-and each then draws its own value.
+and each then draws its own value. A ring here is always one generation:
+with [`ContactTracing`](@ref)'s `depth > 1`, second-hop contacts share their
+own infector's value, not the traced case's.
 
 `propensity` accepts a `Real`, a `Distribution`, or a function
 `(rng, ind) -> Real`; it is sampled once for the case whose ring is being
