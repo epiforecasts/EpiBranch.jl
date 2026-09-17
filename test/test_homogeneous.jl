@@ -234,6 +234,15 @@ end
             attributes = transmission_traits(susceptibility = 0.0))
         @test_throws ErrorException simulate(m; rng = StableRNG(1), n_initial = 2)
 
+        # A rare but possible infection is no endless loop. At susceptibility
+        # 1e-4 about 10,000 contacts are blocked between one infection and the
+        # next, and about 2 million over the run, more than the guard allows in a
+        # row; counting them across infections would refuse a model that finishes.
+        rare = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 200);
+            attributes = transmission_traits(susceptibility = 1e-4))
+        @test simulate(rare; rng = StableRNG(1), n_initial = 2).cumulative_cases == 200
+
         # A removal transition is all it takes: the outbreak ends at the seeds.
         with_removal = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = 40);

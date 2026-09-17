@@ -393,6 +393,9 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
                     frozen_blocks = 0
                 end
             else
+                # An infection changes the infectious set, so the run of blocked
+                # contacts the guard counts ends here.
+                frozen_blocks = 0
                 stamp!(ind, t, src)
                 push_windows!(ind)
             end
