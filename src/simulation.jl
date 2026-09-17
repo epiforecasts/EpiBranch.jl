@@ -1392,6 +1392,12 @@ an independent one. The same closure works as
 [`GroupVaccination`](@ref)'s `coverage`, where it clusters refusal by ring
 within each group.
 
+The ring is read from the parent at creation, so the clustering needs
+contacts created from their infector, as [`BranchingProcess`](@ref) does.
+Models that create their whole population up front, such as
+[`HomogeneousProcess`](@ref), give every individual no parent at creation,
+and each then draws its own value.
+
 `propensity` accepts a `Real`, a `Distribution`, or a function
 `(rng, ind) -> Real`; it is sampled once for the case whose ring is being
 formed (`ind` is that case, not the contact). Each ring member still
