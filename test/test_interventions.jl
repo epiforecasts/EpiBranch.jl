@@ -2,6 +2,12 @@
 # defaults are inert.
 struct _NoTraceIntervention <: AbstractIntervention end
 
+# A distribution that draws and scores but reports no support, as the package's
+# own `_TruncatedSkewNormal` does.
+struct _UnboundedDelay <: ContinuousUnivariateDistribution end
+Base.rand(::AbstractRNG, ::_UnboundedDelay) = 30.0
+Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
+
 @testset "Interventions" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
@@ -560,24 +566,39 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 @test n_boosted > 0  # otherwise the test is vacuous
             end
 
-            @testset "A distributional dose_delay skips the static ordering check" begin
-                # `_validate_dose_schedule` cannot compare a distribution
-                # against the required dose's delay without sampling, so
-                # the static check is skipped for this pair (see the note
-                # on `RingVaccination`); `_has_required_dose` still
-                # declines, per contact and at run time, any boost whose
-                # draw falls before the prime.
+            @testset "A distributional dose_delay is judged on its support" begin
+                spec(ivs) = ModelSpec(process; interventions = ivs, attributes = clinical)
                 prime_delayed = RingVaccination(efficacy = 0.6,
                     delay_to_immunity = 21.0, dose_delay = 30.0, dose_label = :prime)
-                boost = RingVaccination(efficacy = 0.5,
-                    dose_delay = Uniform(10.0, 50.0), delay_to_immunity = 14.0,
-                    requires_dose = :prime, dose_label = :boost)
-                @test ModelSpec(process; interventions = [iso, ct, prime_delayed, boost],
-                    attributes = clinical) isa ModelSpec
+                boost(delay) = RingVaccination(efficacy = 0.5, dose_delay = delay,
+                    delay_to_immunity = 14.0, requires_dose = :prime, dose_label = :boost)
 
-                state = simulate(
-                    ModelSpec(process; interventions = [iso, ct, prime_delayed, boost],
-                        attributes = clinical);
+                # Every draw falls before the prime, so the boost could never be
+                # given.
+                @test_throws ArgumentError spec([iso, ct, prime_delayed,
+                    boost(Uniform(0.0, 7.0))])
+                # Supports that cannot cross are accepted in silence.
+                @test (@test_logs spec([
+                    iso, ct, prime_delayed, boost(Uniform(30.0, 42.0))])) isa
+                      ModelSpec
+                # A function cannot be read statically and goes unchecked.
+                @test (@test_logs spec([
+                    iso, ct, prime_delayed, boost((rng, ind) -> 0.0)])) isa
+                      ModelSpec
+                # An unbounded support names no number worth quoting.
+                logs, unbounded = Test.collect_test_logs() do
+                    spec([iso, ct, prime_delayed, boost(Normal(35.0, 3.0))])
+                end
+                @test unbounded isa ModelSpec
+                message = string(only(logs).message)
+                @test occursin("has no lower bound", message)
+                @test !occursin("-Inf", message)
+
+                # Overlapping supports warn, and at run time the contacts whose
+                # boost draw falls before their prime go without it.
+                overlapping = [iso, ct, prime_delayed, boost(Uniform(10.0, 50.0))]
+                @test_logs (:warn, r"can fall before dose :prime") match_mode=:any spec(overlapping)
+                state = simulate(spec(overlapping);
                     condition = 50:300, max_cases = 300, rng = StableRNG(6))
                 primed = count(
                     ind -> get(ind.state, :vaccinated_prime, false), state.individuals)
@@ -585,13 +606,28 @@ struct _NoTraceIntervention <: AbstractIntervention end
                            for ind in state.individuals
                            if get(ind.state, :vaccinated_boost, false)]
                 @test primed > 0
-                # Some primed contacts draw a boost delay shorter than the
-                # prime's and so never receive it.
                 @test length(boosted) < primed
                 for ind in boosted
                     @test ind.state[:vaccination_time_boost] >=
                           ind.state[:vaccination_time_prime]
                 end
+            end
+
+            @testset "A delay reporting no support goes unchecked" begin
+                spec(ivs) = ModelSpec(process; interventions = ivs, attributes = clinical)
+                lone = RingVaccination(efficacy = 0.5, dose_delay = _UnboundedDelay())
+                @test (@test_logs spec([iso, ct, lone])) isa ModelSpec
+                boost = RingVaccination(efficacy = 0.5, dose_delay = _UnboundedDelay(),
+                    requires_dose = :prime, dose_label = :boost)
+                @test (@test_logs spec([iso, ct, prime, boost])) isa ModelSpec
+                # An unreadable support leaves an efficacy possibly positive, so
+                # the fields it needs are still required.
+                unreadable = RingVaccination(efficacy = 0.0,
+                    post_exposure_efficacy = _UnboundedDelay())
+                @test :incubation_period in EpiBranch.required_fields(unreadable)
+                # A distribution that can only be zero aborts nothing.
+                never = RingVaccination(efficacy = 0.0, post_exposure_efficacy = Dirac(0.0))
+                @test :incubation_period ∉ EpiBranch.required_fields(never)
             end
 
             @testset "requires_dose gates the boost on the prime" begin

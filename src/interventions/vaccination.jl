@@ -136,12 +136,16 @@ function _store_draw!(x, key, label, ind, rng)
     return nothing
 end
 
-"""Whether `x` could plausibly resolve to a positive value: `false` only
-for a `Real` that is not positive. A `Distribution` or function cannot be
-checked without sampling, so it is conservatively treated as able to be
-positive — the per-individual value drawn from it is what actually gates
-the risk at use time."""
+"""Whether `x` could resolve to a positive value for some individual. A
+`Real` answers for everyone and a `Distribution` answers from its support.
+A function, or a distribution whose support cannot be read, is taken to be
+possibly positive: that costs a risk being built, never protection. The
+per-individual draw is what gates the risk at use time."""
 _maybe_positive(x::Real) = x > 0.0
+function _maybe_positive(d::Distribution)
+    hi = _support_bound(maximum, d)
+    return hi === nothing || hi > 0
+end
 _maybe_positive(x) = true
 function _immunity_time_key(label::Symbol)
     label === :default ? :immunity_time : Symbol("immunity_time_", label)
@@ -371,10 +375,15 @@ applied in order, so a boost placed first would see no prime and never
 be given. The required
 dose may come from any vaccination, such as a [`MassVaccination`](@ref)
 prime; a contact whose prime falls after the boost's due date is not
-boosted. Between two ring doses with a `Real` `dose_delay`, a delay
-shorter than the required dose's is rejected when the `ModelSpec` is
-built, since such a boost could never be given (see the note on
-distributional `dose_delay` below).
+boosted. Between two ring doses, a `dose_delay` shorter than the required
+dose's is rejected when the `ModelSpec` is built, since such a boost could
+never be given. A `dose_delay` drawn from a distribution is judged on its
+support: the boost is rejected when even its longest delay falls before
+the required dose's shortest, and warned about when the two supports
+overlap, because contacts whose draws come out in the wrong order go
+without the boost. A function, or a distribution that reports no
+support, cannot be checked when the `ModelSpec` is built; a dose whose
+draw falls before the required dose is then declined for that contact.
 
 Doses compose as competing risks, so a schedule reaching 80% protection
 in total from a prime at 60% needs `efficacy = 0.5` on the boost
@@ -393,13 +402,6 @@ contact, at vaccination time, and store the result in the contact's
 state, so an individual's draw stays fixed across the exposures it
 faces. `dose_delay` is the exception: it is
 read once, when the dose is scheduled, so there is nothing to store.
-
-!!! note "A distributional `dose_delay` is not checked against the required dose at build time"
-    Building a [`ModelSpec`](@ref) rejects a boost whose `dose_delay`
-    is a fixed number earlier than the prime's. With a distribution or
-    function, the two cannot be compared without sampling, so the check
-    is skipped and left to run time: a dose whose draw falls before the
-    required dose's recorded time is declined for that contact.
 """
 Base.@kwdef struct RingVaccination{
     E, C, DI, DD, W, PE, OE, SV, M <: AbstractEffectMode
@@ -554,17 +556,17 @@ end
     _validate_dose_schedule(interventions)
 
 Check that every vaccination requiring an earlier dose is listed after the
-dose it requires, and, when both are ring doses with a `Real` `dose_delay`,
-is not scheduled to arrive before it. The stack is applied in order, so a
-dose placed before the one it requires would silently never be given. Two
-ring doses are timed from the same trace, so a shorter `dose_delay` on the
-later dose would likewise mean it is never given. A distribution or
-function `dose_delay` cannot be compared this way and is left to run time,
-where `_has_required_dose` declines the dose per contact instead.
-Other schedules are checked per contact when the dose falls due.
+dose it requires, and, when both are ring doses, is not scheduled to arrive
+before it. The stack is applied in order, so a dose placed before the one it
+requires would silently never be given. Two ring doses are timed from the
+same trace, so a shorter `dose_delay` on the later dose would likewise mean
+it is never given. Other schedules, and delays whose bounds cannot be read,
+are checked per contact when the dose falls due.
 """
 function _validate_dose_schedule(interventions)
-    given = Dict{Symbol, Union{Nothing, Float64}}()
+    # Each delay is held as it was given, so a `dose_delay` carrying a
+    # derivative passes through the schedule unconverted.
+    given = Dict{Symbol, Any}()
     for iv in interventions
         vacc = _unwrap_scheduled(iv)
         vacc isa AbstractVaccination || continue
@@ -576,19 +578,71 @@ function _validate_dose_schedule(interventions)
                 "vaccination with dose_label = :$label requires dose :$req, " *
                 "which is not given earlier in the intervention stack. " *
                 "List a dose after the dose it requires."))
-            req_offset = given[req]
-            if offset !== nothing && req_offset !== nothing && offset < req_offset
-                throw(ArgumentError(
-                    "vaccination with dose_label = :$label requires dose :$req " *
-                    "but is scheduled earlier than it ($offset days after the " *
-                    "trace, compared with $req_offset). A dose cannot be given " *
-                    "before the dose it requires."))
-            end
+            _check_dose_order(label, req, offset, given[req])
         end
         given[label] = offset
         _warn_double_counted_efficacy(vacc)
     end
     return nothing
+end
+
+# Both ring doses are timed from the same trace, so their `dose_delay`s decide
+# whether the later dose can be given at all. A delay drawn from a distribution
+# is judged on its support: a dose whose latest possible delay still falls before
+# the earliest possible delay of the dose it requires could never be given, and
+# is rejected as a scalar one would be. Supports that merely overlap boost some
+# contacts and skip the rest, which is worth a warning since the reason for the
+# missing doses is otherwise invisible.
+function _check_dose_order(label, req, offset, req_offset)
+    bounds = _delay_bounds(offset)
+    req_bounds = _delay_bounds(req_offset)
+    (bounds === nothing || req_bounds === nothing) && return nothing
+    lo, hi = bounds
+    req_lo, req_hi = req_bounds
+    hi < req_lo && throw(ArgumentError(
+        "vaccination with dose_label = :$label requires dose :$req but is " *
+        "scheduled earlier than it (a dose_delay of at most $hi days after the " *
+        "trace, against at least $req_lo for dose :$req). A dose cannot be " *
+        "given before the dose it requires."))
+    lo < req_hi && @warn "This dose's dose_delay $(_reaches_below(lo)), so it can " *
+          "fall before dose :$req, which it requires and whose own dose_delay " *
+          "$(_reaches_above(req_hi)). Contacts whose draws come out in that " *
+          "order go without this dose." dose_label=label
+    return nothing
+end
+
+# An unbounded support has no number worth quoting, so the warning describes it
+# in words instead.
+function _reaches_below(lo)
+    isfinite(lo) ? "reaches $lo days after the trace" : "has no lower bound"
+end
+_reaches_above(hi) = isfinite(hi) ? "can reach $hi days" : "has no upper bound"
+
+"""Bounds `(lo, hi)` on a dose delay, or `nothing` where they cannot be read: a
+dose not timed from the trace, a delay given as a function, or a distribution
+that does not report its support."""
+_delay_bounds(x::Real) = (x, x)
+function _delay_bounds(d::Distribution)
+    lo = _support_bound(minimum, d)
+    hi = _support_bound(maximum, d)
+    return (lo === nothing || hi === nothing) ? nothing : (lo, hi)
+end
+_delay_bounds(_) = nothing
+
+# `minimum` and `maximum` are an optional part of the `Distribution` interface: a
+# distribution defining only `rand` and `logpdf` (the package's own
+# `_TruncatedSkewNormal` among them) falls through to `Base.minimum`, which tries
+# to iterate it and throws a `MethodError`. Such a bound comes back as `nothing`
+# and the caller makes the cautious assumption. Any other error is the
+# distribution failing for its own reasons and is rethrown.
+function _support_bound(f, d)
+    bound = try
+        f(d)
+    catch err
+        err isa MethodError || rethrow()
+        return nothing
+    end
+    return bound isa Real ? bound : nothing
 end
 
 # Immunity before onset is a weaker condition than immunity before exposure, so
@@ -608,14 +662,11 @@ function _warn_double_counted_efficacy(rv::RingVaccination)
     return nothing
 end
 
-"""Days from the trace to this dose, or `nothing` for a vaccination not timed
-from the trace, or one whose `dose_delay` is a distribution or function and so
-cannot be compared without sampling. [`RingVaccination`](@ref) is the only one
-timed from the trace."""
+"""Days from the trace to this dose, as the `dose_delay` was given, or `nothing`
+for a vaccination not timed from the trace. [`RingVaccination`](@ref) is the only
+one timed from it."""
 _dose_offset(::AbstractVaccination) = nothing
-function _dose_offset(rv::RingVaccination)
-    rv.dose_delay isa Real ? Float64(rv.dose_delay) : nothing
-end
+_dose_offset(rv::RingVaccination) = rv.dose_delay
 
 # The intervention inside a wrapper; `Scheduled` adds a method.
 _unwrap_scheduled(iv) = iv

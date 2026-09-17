@@ -70,10 +70,13 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   `delay_to_immunity`, `post_exposure_efficacy` and `onward_efficacy` are
   sampled once per individual, at vaccination time, and stored, so a given
   individual's draw stays fixed across the exposures it faces; `dose_delay` is
-  drawn once, when the dose is scheduled. A distributional `dose_delay` cannot be checked against
-  a required dose's delay when the `ModelSpec` is built, unlike a fixed
-  `dose_delay`; the per-contact check at run time still declines a dose whose
-  draw falls before the one it requires.
+  drawn once, when the dose is scheduled. A scalar parameter behaves exactly as
+  before and writes no new state key. Between two ring doses, a distributional
+  `dose_delay` is judged on its support when the `ModelSpec` is built: a boost
+  whose every draw falls before the dose it requires is rejected, and
+  overlapping supports are warned about, since contacts whose draws come out in
+  the wrong order go without the boost. A function, or a distribution that
+  reports no support, is left to the per-contact check at run time.
 - `groups`, an attributes function that labels each individual with a group
   (a village, a health area, a household) under `:group` or an arbitrary key,
   and `GroupVaccination`, which vaccinates every member of a group once any
