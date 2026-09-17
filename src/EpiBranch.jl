@@ -100,6 +100,7 @@ include("output/generation_intervals.jl")
 include("output/summary.jl")
 
 # Analytical
+include("analytical/reproduction_number.jl")
 include("analytical/extinction.jl")
 include("analytical/multi_type.jl")
 include("analytical/chain_distributions.jl")
@@ -169,7 +170,8 @@ export realised_generation_interval, realised_generation_intervals
 export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
 
 # Exports — analytical
-export extinction_probability, epidemic_probability, reproduction_number
+export reproduction_number
+export extinction_probability, epidemic_probability
 export proportion_transmission, proportion_cluster_size, heterogeneous_contact_R
 export probability_contain
 
