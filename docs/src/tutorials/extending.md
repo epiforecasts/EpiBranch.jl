@@ -77,6 +77,8 @@ downstream packages should pick names that do not collide.
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
 | `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:post_exposure_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `post_exposure_efficacy`) | `apply_post_transmission!` |
+| `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | `apply_post_transmission!` |
 | `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
@@ -96,10 +98,18 @@ downstream packages should pick names that do not collide.
 | `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)` | `resolve_individual!` |
 
 The vaccination keys are namespaced by `dose_label`: the default label
-writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy`,
-and any other label suffixes the key (so `dose_label = :boost` writes
-`:vaccinated_boost`, etc.). This lets multi-dose schedules compose without
-colliding.
+writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy` /
+`:immunity_time` (and, on `RingVaccination`, `:post_exposure_efficacy` /
+`:onward_efficacy`), and any other label suffixes the key (so
+`dose_label = :boost` writes `:vaccinated_boost`, etc.). This lets multi-dose
+schedules compose without colliding. `:immunity_time` (the vaccination time
+plus a draw from `delay_to_immunity`), `:post_exposure_efficacy`, and
+`:onward_efficacy` each hold one draw taken at vaccination time from a field
+that may be a `Real`, a `Distribution`, or a function, so every exposure of an
+individual is judged against the same value. `:post_exposure_efficacy` and
+`:onward_efficacy` are written only when the field is a distribution or a
+function; a scalar is the same for everyone and is read straight off the
+intervention.
 
 `:immunity_time` (`:vaccination_time` plus the dose's `delay_to_immunity`)
 and `:severity_efficacy` let a clinical transition read a vaccine's effect
