@@ -54,14 +54,6 @@ Base.length(d::PairwiseSurvivalData) = length(d.sus)
 _rowkernel(k::ContinuousUnivariateDistribution, r) = k
 _rowkernel(k, r) = k(r)
 
-# With every term -Inf (every hazard zero) the sum is zero and its log -Inf;
-# returning early avoids the NaN of -Inf - (-Inf).
-function _logsumexp(xs)
-    m = maximum(xs)
-    m == -Inf && return m
-    return m + log(sum(x -> exp(x - m), xs))
-end
-
 """
     pairwise_surv_loglik(kernel, data::PairwiseSurvivalData) -> Float64
 
@@ -87,7 +79,7 @@ function pairwise_surv_loglik(kernel, data::PairwiseSurvivalData)
 
     ll = 0.0
     for (_, g) in groups
-        ll += _logsumexp([loghazard(_rowkernel(kernel, r), data.stop[r]) for r in g])
+        ll += logsumexp([loghazard(_rowkernel(kernel, r), data.stop[r]) for r in g])
     end
     for r in eachindex(data.stop)
         kr = _rowkernel(kernel, r)
