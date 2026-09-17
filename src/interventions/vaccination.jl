@@ -107,6 +107,12 @@ end
 function _onward_efficacy_key(label::Symbol)
     label === :default ? :onward_efficacy : Symbol("onward_efficacy_", label)
 end
+function _immunity_time_key(label::Symbol)
+    label === :default ? :immunity_time : Symbol("immunity_time_", label)
+end
+function _severity_efficacy_key(label::Symbol)
+    label === :default ? :severity_efficacy : Symbol("severity_efficacy_", label)
+end
 
 """Time at which `ind`'s immunity from dose `v`, given at `vacc_t`, develops.
 A scalar `delay_to_immunity` is the same for everyone and is added to
@@ -147,12 +153,6 @@ function _maybe_positive(d::Distribution)
     return hi === nothing || hi > 0
 end
 _maybe_positive(x) = true
-function _immunity_time_key(label::Symbol)
-    label === :default ? :immunity_time : Symbol("immunity_time_", label)
-end
-function _severity_efficacy_key(label::Symbol)
-    label === :default ? :severity_efficacy : Symbol("severity_efficacy_", label)
-end
 
 function initialise_individual!(v::AbstractVaccination, individual, state)
     label = dose_label(v)
