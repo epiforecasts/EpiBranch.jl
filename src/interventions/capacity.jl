@@ -25,8 +25,8 @@ whatever the ranking. A candidate the wrapped intervention turns away for its
 own reasons (failed `coverage`, outside `eligibility_window`, and so on) uses
 no budget, so it does not stop a later-ranked candidate from being tried.
 
-Every other hook (`competing_risk`, `resolve_individual!`, `keep_active`, …)
-is delegated unchanged, so `CapacityConstrained` only ever rations the
+Every other generation-engine hook (`competing_risk`, `resolve_individual!`,
+`keep_active`, …) is delegated unchanged, so `CapacityConstrained` only ever rations the
 population-level batch, never a per-pair decision. It rations
 [`AbstractVaccination`](@ref)'s dose-recording hook out of the box (for
 [`RingVaccination`](@ref) and [`MassVaccination`](@ref); see
