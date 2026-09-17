@@ -43,10 +43,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   routes' probabilities. Routes left at the default give the same outbreaks as
   before for the same seed.
 
-- `RingVaccination` and `MassVaccination` gain `severity_efficacy`, the
-  probability that a vaccinated individual's own disease course is milder
-  once their immunity has developed — e.g. a lower chance of death — rather
-  than blocked transmission. It does not gate transmission and so is not one
+- `RingVaccination`, `MassVaccination` and `GroupVaccination` gain
+  `severity_efficacy`, the probability that a vaccinated individual's own
+  disease course is milder once their immunity has developed — e.g. a lower
+  chance of death — rather than blocked transmission. It does not gate transmission and so is not one
   of the risks `competing_risk` returns; a clinical transition's
   `probability` reads it, together with the new `immunity_time` accessor, so
   a dose whose immunity has not yet developed by the outcome it would affect
