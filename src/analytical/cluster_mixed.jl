@@ -185,8 +185,9 @@ end
 # stall there, and the quadrature over θ evaluates laws on both sides of R = 1.
 function _extinction_at_fixed_law(d::DiscreteUnivariateDistribution; tol::Real,
         max_iter::Int)
-    _law_mean(d) <= 1 && return one(float(_law_mean(d)))
-    s = zero(float(_law_mean(d)))
+    R = float(_law_mean(d))
+    R <= 1 && return one(R)
+    s = zero(R)
     for _ in 1:max_iter
         slope = _pgf_derivative(d, s) - 1
         slope < 0 || return s
