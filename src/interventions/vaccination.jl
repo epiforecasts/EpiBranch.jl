@@ -884,10 +884,10 @@ and [`immunity_time`](@ref) accessors. Defaults to `0.0` (no severity
 effect).
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`,
-`:vaccine_efficacy`, `:immunity_time`, and
-`:severity_efficacy` for the default dose label. With a non-default
-`dose_label`, the keys carry the label as a suffix — pass two
-`MassVaccination`s with different labels for a multi-dose rollout.
+`:vaccine_efficacy`, `:immunity_time`, and `:severity_efficacy` for the
+default dose label. With a non-default `dose_label`, the keys carry the
+label as a suffix — pass two `MassVaccination`s with different labels for
+a multi-dose rollout.
 
 # Examples
 
