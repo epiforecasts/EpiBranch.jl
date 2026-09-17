@@ -415,9 +415,11 @@ function apply_trace!(::FlagOnly, contact, state, trace_time, rng)
     # infection, so its onset is still unknown. Isolation holds the recorded
     # time back to the onset once it is known, and never isolates a contact
     # that has none, so the trace time alone is safe to record here.
+    # A contact reached by several infectors keeps its earliest trace.
     ind_onset = onset_time(contact)
-    contact.state[:traced_isolation_time] = isnan(ind_onset) ? trace_time :
-                                            max(ind_onset, trace_time)
+    traced_iso = isnan(ind_onset) ? trace_time : max(ind_onset, trace_time)
+    contact.state[:traced_isolation_time] = min(
+        get(contact.state, :traced_isolation_time, Inf), traced_iso)
     return nothing
 end
 

@@ -74,6 +74,12 @@ struct _NoTraceIntervention <: AbstractIntervention end
         pending = Individual(id = 2, infection_time = 1.0)
         EpiBranch.apply_trace!(FlagOnly(), pending, nothing, 2.0, rng)
         @test pending.state[:traced_isolation_time] == 2.0
+
+        # A later trace by another infector keeps the earlier time.
+        EpiBranch.apply_trace!(FlagOnly(), pending, nothing, 4.0, rng)
+        @test pending.state[:traced_isolation_time] == 2.0
+        EpiBranch.apply_trace!(FlagOnly(), pending, nothing, 1.5, rng)
+        @test pending.state[:traced_isolation_time] == 1.5
     end
 
     @testset "reset!(Isolation) leaves another intervention's isolation intact" begin
