@@ -203,6 +203,21 @@ end
         @test_throws ArgumentError EpiBranch.capacity_time_key(iso)
     end
 
+    @testset "A dose dated before the period began still uses the call's budget" begin
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 1.0, period = 1.0,
+            carry_over = false)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
+
+        contacts = [_traced_contact(rv, i, 3.0 + i / 10) for i in 1:5]
+        append!(state.individuals, contacts)
+        state.max_infection_time = 6.2
+        EpiBranch.apply_post_transmission!(cc, state, contacts)
+
+        @test count(is_vaccinated, contacts) == 1
+    end
+
     @testset "Constructor validates its arguments" begin
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError CapacityConstrained(rv; budget_per_period = -1.0)

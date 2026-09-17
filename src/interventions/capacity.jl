@@ -238,19 +238,18 @@ function _capacity_usage(cc::CapacityConstrained, state)
     return (used = used, available = available)
 end
 
-function _remaining_budget(cc::CapacityConstrained, state)
-    usage = _capacity_usage(cc, state)
-    return usage.available - usage.used
-end
-
 # A candidate already carrying `capacity_key` (dosed in an earlier call, now
 # re-exposed) does not draw on the budget when it is handed to the wrapped
 # intervention again — `RingVaccination`/`MassVaccination` only redraw a
 # post-exposure-efficacy abort for it, so it is always passed through. Fresh
 # candidates are ranked by `priority` (computed once each, not on every
 # comparison a sort makes, so a random `priority` is not resampled mid-sort)
-# and admitted one at a time in that order for as long as the budget —
-# rechecked against actual usage after each admission — has anything left.
+# and admitted one at a time in that order for as long as the budget has
+# anything left. Usage is counted once per call and then grows by each
+# candidate whose `capacity_key` the wrapped intervention sets: a dose admitted
+# now uses this call's budget whatever date it carries, which a recount scoped
+# to the period by dose time would miss for a dose dated before the period
+# began, and it spares rescanning the whole population per candidate.
 # Some candidates fail the wrapped intervention's own checks (coverage,
 # eligibility window, a missing required dose, an unresolved trace time)
 # without using a dose; this keeps offering the budget to the next-ranked
@@ -263,9 +262,13 @@ function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
     isempty(already_used) || apply_post_transmission!(cc.intervention, state, already_used)
     isempty(candidates) && return nothing
     order = sortperm([cc.priority(ind, state) for ind in candidates]; alg = MergeSort)
+    usage = _capacity_usage(cc, state)
+    used = usage.used
     for i in order
-        _remaining_budget(cc, state) > 0 || break
-        apply_post_transmission!(cc.intervention, state, [candidates[i]])
+        usage.available - used > 0 || break
+        candidate = candidates[i]
+        apply_post_transmission!(cc.intervention, state, [candidate])
+        get(candidate.state, key, false) && (used += 1)
     end
     return nothing
 end
