@@ -69,6 +69,17 @@ against usage recorded since that period began.
     limits how many candidates each call admits, not how many doses are given
     on any one day.
 
+!!! warning "The budget is shared by every intervention with the same dose label"
+    Usage is counted over every individual carrying the
+    [`capacity_key`](@ref EpiBranch.capacity_key) flag, which for
+    [`RingVaccination`](@ref) and [`MassVaccination`](@ref) is the dose flag
+    for their `dose_label`. Any other vaccination writing that flag, whether
+    capacity-constrained or not, draws on this budget: an uncapped
+    `MassVaccination` that has already dosed more people than the budget
+    allows leaves none for a capped `RingVaccination` with the same label.
+    Give the capped intervention its own `dose_label` to keep its budget
+    separate.
+
 Demand denied this call is not queued: a candidate who is not reached while
 the budget is exhausted is not revisited in a later call. Reporting what is
 left of a call's own demand is the caller's job (e.g. counting
