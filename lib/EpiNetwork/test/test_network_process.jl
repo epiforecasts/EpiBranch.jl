@@ -199,6 +199,28 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test meansize([iso, ct, RingVaccination(efficacy = 1.0)]) < leaky
     end
 
+    @testset "a traced node is offered a ring dose once" begin
+        # A node is traced again by every neighbour that settles after it, and a
+        # coverage draw on each would vaccinate far more than `coverage` of them.
+        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
+            prob_asymptomatic = 0.0)
+        ivs = [
+            Isolation(onset_to_isolation_delay = Exponential(0.5), test_sensitivity = 1.0,
+                post_isolation_transmission = 1.0),
+            ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.2),
+                quarantine_on_trace = false),
+            RingVaccination(efficacy = 0.0, coverage = 0.5)]
+        model = ModelSpec(NetworkProcess(ring_adjacency(300, 2), Exponential(4.0));
+            progression = _sir(Exponential(8.0)), interventions = ivs,
+            attributes = clinical)
+        traced = [ind
+                  for s in 1:20
+                  for ind in simulate(model; rng = StableRNG(s), n_initial = 3).individuals
+                  if is_traced(ind) && isfinite(ind.state[:trace_time])]
+        @test length(traced) > 1000
+        @test isapprox(count(is_vaccinated, traced) / length(traced), 0.5; atol = 0.05)
+    end
+
     @testset "a dose given along another case's trace protects before exposure" begin
         # With incomplete tracing and asymptomatic cases, a node is often dosed by
         # the trace of a case other than the one that later infects it, and that

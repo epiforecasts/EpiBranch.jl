@@ -738,7 +738,21 @@ function trace_contacts!(rv::RingVaccination, state, infector, contacts)
     for ind in contacts
         _advance_ring_dose!(rv, ind)
     end
-    apply_post_transmission!(rv, state, contacts)
+    # A contact reappears in the trace of every neighbour that settles after it
+    # was traced. It is offered the dose once, as a traced contact is on the
+    # generation engine, so one that declined is not offered it again.
+    offered_key = _ring_offered_key(dose_label(rv))
+    candidates = [ind for ind in contacts if !get(ind.state, offered_key, false)]
+    apply_post_transmission!(rv, state, candidates)
+    for ind in candidates
+        is_traced(ind) && isfinite(get(ind.state, :trace_time, Inf)) &&
+            (ind.state[offered_key] = true)
+    end
+    return nothing
+end
+
+function _ring_offered_key(label::Symbol)
+    label === :default ? :ring_dose_offered : Symbol("ring_dose_offered_", label)
 end
 
 # The race settles cases in infection order, not trace order, so a case settled
