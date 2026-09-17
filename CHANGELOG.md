@@ -59,9 +59,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   contacts who have received the named earlier dose by then, so its `coverage`
   is the retention between doses. A dose listed before the dose it requires is
   rejected when the `ModelSpec` is built.
-- `delay_to_immunity` (on `RingVaccination` and `MassVaccination`), and
-  `dose_delay`, `post_exposure_efficacy`, and `onward_efficacy` (on
-  `RingVaccination`), now accept a `Real`, a `Distribution`, or a function
+- `delay_to_immunity` (on `RingVaccination`, `MassVaccination`, and
+  `GroupVaccination`), `dose_delay` (on `RingVaccination` and
+  `GroupVaccination`), and `post_exposure_efficacy` and `onward_efficacy` (on
+  `RingVaccination`) now accept a `Real`, a `Distribution`, or a function
   `(rng, ind) -> Real`, matching `efficacy` and `coverage`. A prime-boost
   schedule can now say its booster falls four to six weeks after the prime
   (`dose_delay = Uniform(28.0, 42.0)`), or that a vaccine's immunity takes one

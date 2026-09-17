@@ -676,7 +676,11 @@ doses scale with group size where [`RingVaccination`](@ref) doses scale
 with ring size.
 
 `coverage`, `efficacy`, `delay_to_immunity`, `mode`, and `dose_label`
-mean what they do for [`RingVaccination`](@ref).
+mean what they do for [`RingVaccination`](@ref). `dose_delay` and
+`delay_to_immunity` accept a `Real`, a `Distribution`, or a function
+`(rng, ind) -> Real`; the distribution and function forms draw once per
+member, when that member is vaccinated, so members of one group can be
+reached at different times.
 
 # Fallback composition
 
@@ -715,13 +719,13 @@ GroupVaccination(efficacy = 0.7, eligibility = OnLabConfirmation(), dose_delay =
 ```
 """
 Base.@kwdef struct GroupVaccination{
-    E <: TraceEligibility, Ef, C, M <: AbstractEffectMode} <:
+    E <: TraceEligibility, Ef, C, DI, DD, M <: AbstractEffectMode} <:
                    AbstractVaccination
     eligibility::E = OnLabConfirmation()
     efficacy::Ef
     coverage::C = 1.0
-    delay_to_immunity::Float64 = 0.0
-    dose_delay::Float64 = 0.0
+    delay_to_immunity::DI = 0.0
+    dose_delay::DD = 0.0
     group_key::Symbol = :group
     mode::M = LeakyMode()
     dose_label::Symbol = :default
@@ -770,11 +774,11 @@ function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
     for group in groups_here
         trigger = _group_trigger_time(gv, state, group)
         isfinite(trigger) || continue
-        vacc_t = trigger + gv.dose_delay
         for m in state.individuals
             get(m.state, key, nothing) == group || continue
             get(m.state, vacc_key, false) && continue
             _covers(gv.coverage, m, state.rng) || continue
+            vacc_t = trigger + _sample_value(gv.dose_delay, state.rng, m)
             _record_vaccination!(gv, m, vacc_t, state.rng)
         end
     end

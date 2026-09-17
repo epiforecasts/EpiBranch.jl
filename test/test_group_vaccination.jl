@@ -53,6 +53,30 @@ end
         @test confirmed.state[:vaccination_time] == 9.0
     end
 
+    @testset "A distributional delay is drawn once per member" begin
+        gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation(),
+            dose_delay = Uniform(1.0, 4.0), delay_to_immunity = Uniform(5.0, 10.0))
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+
+        confirmed = _group_member(gv, 1, :A, test_positive = true)
+        set_isolated!(confirmed, 6.0)
+        members = [_group_member(gv, i, :A, test_positive = false) for i in 2:20]
+        new_contacts = [confirmed; members]
+        append!(state.individuals, new_contacts)
+
+        EpiBranch.apply_post_transmission!(gv, state, new_contacts)
+
+        vacc_times = [m.state[:vaccination_time] for m in new_contacts]
+        @test all(t -> 7.0 <= t <= 10.0, vacc_times)
+        @test length(unique(vacc_times)) > 1
+        for m in new_contacts
+            delay = m.state[:immunity_delay]
+            @test 5.0 <= delay <= 10.0
+            @test immunity_time(m) == m.state[:vaccination_time] + delay
+        end
+    end
+
     @testset "Members created after the trigger are still reached" begin
         gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 1.0)
