@@ -94,6 +94,18 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   over `n` members with `E` contacts costs O(E log n) where it previously cost
   O(n²). A 100,000-node sparse network now simulates in about a second, down
   from about half a minute. Results for a given seed are unchanged.
+- The parameters describing what a vaccine dose does (`efficacy`,
+  `severity_efficacy`, `delay_to_immunity`, `mode`, `dose_label`) live in a new
+  exported `VaccineEffect`, which `RingVaccination`, `MassVaccination` and
+  `GroupVaccination` each hold. Their keyword constructors, and reading these
+  parameters as properties (`rv.efficacy`), work as before, and results for a
+  given seed are unchanged. A vaccination type of your own subtypes
+  `AbstractVaccination`, stores a `VaccineEffect` and returns it from
+  `EpiBranch.vaccine_effect` to inherit the shared dose recording, competing
+  risk and dose-schedule checks. The positional constructors now take the
+  `VaccineEffect` followed by the type's own fields; vaccinations print as
+  their keyword constructor calls; and `delay_to_immunity` accepts an integer
+  or a dual number, so it can be differentiated.
 
 ### Fixed
 
