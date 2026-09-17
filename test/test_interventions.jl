@@ -61,6 +61,21 @@ struct _NoTraceIntervention <: AbstractIntervention end
         @test all(ind -> ind.infection_time < 1000.0, state.individuals)
     end
 
+    @testset "FlagOnly records no traced isolation for an asymptomatic contact" begin
+        rng = StableRNG(1)
+        asymptomatic = Individual(id = 1, infection_time = 1.0)
+        asymptomatic.state[:asymptomatic] = true
+        asymptomatic.state[:onset_time] = NaN
+        EpiBranch.apply_trace!(FlagOnly(), asymptomatic, nothing, 2.0, rng)
+        @test is_traced(asymptomatic)
+        @test !haskey(asymptomatic.state, :traced_isolation_time)
+
+        # An onset not yet known is recorded at the trace time.
+        pending = Individual(id = 2, infection_time = 1.0)
+        EpiBranch.apply_trace!(FlagOnly(), pending, nothing, 2.0, rng)
+        @test pending.state[:traced_isolation_time] == 2.0
+    end
+
     @testset "reset!(Isolation) leaves another intervention's isolation intact" begin
         # `:isolated`/`:isolation_time` are shared: ContactTracing's Quarantine
         # writes them directly. A Scheduled(Isolation) resetting a pre-start
