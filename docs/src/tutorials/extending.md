@@ -227,9 +227,14 @@ What this means in practice:
   on a graph the pair carries a single contact interval, so a blocked proposal
   is declined and the edge offers nothing more — the target simply stays
   susceptible to its other neighbours; in the mass-action pool contacts keep
-  arriving, so a blocked one leaves the susceptible waiting for the next. Both
-  give the same realised reduction in cases as blocking that fraction of a
-  parent's contacts on the generation engine.
+  arriving, so a blocked one leaves the susceptible waiting for the next. The
+  two are different models of the same risk. On a graph a block probability
+  `p` multiplies each pair's chance of transmission by `1 - p`, as blocking
+  that fraction of a parent's contacts does on the generation engine. In the
+  pool it thins the force of infection to `(1 - p)` of its value, which lowers
+  the chance that a susceptible is infected by less: in a small household
+  whose members would almost all be infected, a vaccine of efficacy 0.5 halves
+  the attack rate under the first and barely moves it under the second.
 - A model with per-contact risks in play is no longer the exact generative
   model of the pairwise likelihood, which has no term for a declined proposal.
   Simulating with risks and scoring the result with `loglikelihood` will

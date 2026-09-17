@@ -41,15 +41,18 @@
 # surviving one contact says nothing about the next. The exponential resistance
 # is memoryless, so re-drawing it is exactly the residual of the same process,
 # and blocking a fraction `p` of contacts thins the force of infection to
-# `(1-p)·λ` — the continuous-time reading of a leaky vaccine, and the same
-# realised reduction in cases as blocking a fraction `p` of a parent's contacts
-# on the generation engine.
+# `(1-p)·λ` — the continuous-time reading of a leaky vaccine. A parent's
+# contacts in the pool are a Poisson stream, so this is also what blocking a
+# fraction `p` of them does on the generation engine.
 #
 # This is where the pool parts company with `_sellke_race!`, which declines a
 # blocked proposal and never re-offers that pair. The rule is the same in both —
-# resolve the risks at the contact, and a blocked contact does not infect — and
-# only the contact process differs: an edge of a graph carries one contact
-# interval, a mass-action pool a stream.
+# resolve the risks at the contact, and a blocked contact does not infect — but
+# an edge of a graph carries one contact interval and a mass-action pool a
+# stream, so the same `p` gives different models: the race multiplies each
+# pair's probability of transmission by `1-p`, the pool thins the hazard, which
+# reduces a susceptible's probability of infection by less whenever it is
+# exposed to a high cumulative force.
 
 # ── Infector-side risks under structured mixing ──────────────────────
 #
