@@ -108,11 +108,32 @@ function _onward_efficacy_key(label::Symbol)
     label === :default ? :onward_efficacy : Symbol("onward_efficacy_", label)
 end
 
-"""Per-individual immunity time: the vaccination time plus the delay drawn
-at vaccination time, as stored on `ind` (see `_record_vaccination!`).
-Falls back to `vacc_t`, immediate immunity, when no time is stored."""
+"""Time at which `ind`'s immunity from dose `v`, given at `vacc_t`, develops.
+A scalar `delay_to_immunity` is the same for everyone and is added to
+`vacc_t` directly; a varying one was drawn when the dose was given and is
+read back from the stored `:immunity_time`, or `Inf` if nothing was stored."""
 function _immunity_time(v::AbstractVaccination, ind, vacc_t)
-    get(ind.state, _immunity_time_key(dose_label(v)), vacc_t)
+    _immunity_time(v.delay_to_immunity, dose_label(v), ind, vacc_t)
+end
+_immunity_time(delay::Real, label, ind, vacc_t) = vacc_t + delay
+function _immunity_time(delay, label, ind, vacc_t)
+    get(ind.state, _immunity_time_key(label), Inf)
+end
+
+# A scalar per-dose parameter is the same for every individual, so it is read
+# straight off the intervention: no dictionary lookup in the competing risk, no
+# per-contact state (and so no extra line-list column), and a value carrying a
+# derivative reaches the risk unchanged. A distribution or function was drawn
+# once when the dose was given, and that stored draw governs every exposure of
+# the individual. `key` is applied to the label only on the varying branch, so
+# the scalar path builds no `Symbol`.
+_dose_value(x::Real, key, label, ind) = x
+_dose_value(x, key, label, ind) = get(ind.state, key(label), 0.0)
+
+_store_draw!(x::Real, key, label, ind, rng) = nothing
+function _store_draw!(x, key, label, ind, rng)
+    ind.state[key(label)] = _sample_value(x, rng, ind)
+    return nothing
 end
 
 """Whether `x` could plausibly resolve to a positive value: `false` only
@@ -316,10 +337,10 @@ might, would count a not-yet-immune dose as protective. Defaults to `0.0`
 `efficacy`.
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`,
-`:vaccine_efficacy`, `:immunity_time`,
-`:severity_efficacy`, `:post_exposure_efficacy`, and `:onward_efficacy`
-for the default dose label. With a non-default `dose_label`, the keys
-carry the label as a suffix.
+`:vaccine_efficacy`, `:immunity_time`, and `:severity_efficacy` for the
+default dose label, plus `:post_exposure_efficacy` and `:onward_efficacy`
+where those are given as a distribution or function. With a non-default
+`dose_label`, the keys carry the label as a suffix.
 
 # Second and later doses
 
@@ -403,13 +424,12 @@ required_dose(rv::RingVaccination) = rv.requires_dose
 # was traced, and the onward immunity takes effect at that time plus
 # `delay_to_immunity`, as on the susceptibility side.
 function _onward_risk(rv::RingVaccination, parent)
-    _maybe_positive(rv.onward_efficacy) || return nothing
     label = dose_label(rv)
+    onward = _dose_value(rv.onward_efficacy, _onward_efficacy_key, label, parent)
+    onward > 0 || return nothing
     get(parent.state, _vaccinated_key(label), false) || return nothing
     vacc_t = get(parent.state, _vaccination_time_key(label), Inf)
     isfinite(vacc_t) || return nothing
-    onward = get(parent.state, _onward_efficacy_key(label), 0.0)
-    onward > 0.0 || return nothing
     return Risk(event_time = _immunity_time(rv, parent, vacc_t),
         block_probability = onward)
 end
@@ -422,9 +442,11 @@ end
 # time, so they combine into one block, drawn once.
 function _contact_risk(rv::RingVaccination, contact)
     susceptibility = _susceptibility_risk(rv, contact)
-    _maybe_positive(rv.post_exposure_efficacy) || return susceptibility
     label = dose_label(rv)
-    post = get(contact.state, _post_exposure_efficacy_key(label), 0.0)
+    # A contact with no dose of this vaccination has no draw stored, so a
+    # varying `post_exposure_efficacy` reads zero here.
+    post = _dose_value(rv.post_exposure_efficacy, _post_exposure_efficacy_key, label,
+        contact)
     post > 0.0 || return susceptibility
     if susceptibility === nothing
         get(contact.state, _vaccinated_key(label), false) || return nothing
@@ -461,10 +483,8 @@ end
 function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     incubation = get(contact.state, :incubation_period, NaN)
     isnan(incubation) && return nothing
-    label = dose_label(rv)
-    # The per-contact draw, taken once at vaccination time and read back
-    # here, not resampled from `rv.post_exposure_efficacy` on every exposure.
-    post = get(contact.state, _post_exposure_efficacy_key(label), 0.0)
+    post = _dose_value(rv.post_exposure_efficacy, _post_exposure_efficacy_key,
+        dose_label(rv), contact)
     post > 0.0 || return nothing
     immunity = _immunity_time(rv, contact, vacc_t)
     exposure = contact.infection_time
@@ -588,12 +608,13 @@ end
 # Helper for `apply_post_transmission!`: write RingVaccination-only per-dose
 # state (`post_exposure_efficacy` and `onward_efficacy` do not exist on
 # `MassVaccination`, so they are not part of the shared `_record_vaccination!`).
-# Sampled once at vaccination time so `_abort_infection!`, `_contact_risk`, and
-# `_onward_risk` read back the same draw on every exposure.
+# A varying parameter is sampled once at vaccination time so `_abort_infection!`,
+# `_contact_risk`, and `_onward_risk` read back the same draw on every exposure.
 function _record_ring_extras!(rv::RingVaccination, contact, rng)
     label = dose_label(rv)
-    contact.state[_post_exposure_efficacy_key(label)] = _sample_value(rv.post_exposure_efficacy, rng, contact)
-    contact.state[_onward_efficacy_key(label)] = _sample_value(rv.onward_efficacy, rng, contact)
+    _store_draw!(rv.post_exposure_efficacy, _post_exposure_efficacy_key, label, contact,
+        rng)
+    _store_draw!(rv.onward_efficacy, _onward_efficacy_key, label, contact, rng)
     return nothing
 end
 

@@ -729,6 +729,20 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 @test length(unique(onwards)) > 5
             end
 
+            @testset "Scalar post_exposure_efficacy and onward_efficacy write no state" begin
+                # A scalar is read off the intervention, so the line list gains
+                # no column for it.
+                rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5,
+                    onward_efficacy = 0.5)
+                state = simulate(scen([iso, ct, rv]); condition = 50:300,
+                    max_cases = 300, rng = StableRNG(11))
+                vaccinated = filter(is_vaccinated, state.individuals)
+                @test !isempty(vaccinated)  # otherwise the test is vacuous
+                for key in (:post_exposure_efficacy, :onward_efficacy)
+                    @test !any(ind -> haskey(ind.state, key), vaccinated)
+                end
+            end
+
             # An outbreak with fixed delays. The index case, infected at 0, has
             # onset at 5 and is isolated at 5.5, when both its contacts (infected
             # at 1 or 5) are traced and vaccinated with immediate immunity. Their
@@ -906,17 +920,8 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 # run should match one without the parameter draw for draw.
                 slow(post) = RingVaccination(efficacy = 0.0,
                     post_exposure_efficacy = post, delay_to_immunity = 100.0)
-                # `:post_exposure_efficacy` echoes the config value itself
-                # (0.0 vs 1.0), so it is dropped before comparing: the test
-                # checks that *everything else* — in particular, whether any
-                # rng draw differs — is unaffected by a parameter that can
-                # never fire.
                 fingerprint(states) = [(ind.id, ind.infection_time,
-                                           sort!(
-                                               [p
-                                                for p in ind.state
-                                                if p.first != :post_exposure_efficacy];
-                                               by = first))
+                                           sort!(collect(ind.state); by = first))
                                        for s in states for ind in s.individuals]
                 base = simulate(scen([iso, ct, slow(0.0)]), 100; max_cases = 200,
                     rng = StableRNG(3))
@@ -928,36 +933,29 @@ struct _NoTraceIntervention <: AbstractIntervention end
             @testset "The abort races immunity against onset" begin
                 rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0,
                     delay_to_immunity = 2.0)
-                # `post_exposure_efficacy` and `delay_to_immunity` are read
-                # back from per-contact state, drawn once at vaccination time
-                # (see `_record_vaccination!` / `_record_ring_extras!`), so a
-                # contact built by hand for `_abort_infection!` needs them set
-                # to match `v` as they would be after a real dose.
-                function contact_with(v, incubation, vacc_t)
+                function contact_with(incubation)
                     c = Individual(id = 1, infection_time = 10.0)
                     c.state[:incubation_period] = incubation
                     c.state[:onset_time] = 10.0 + incubation
-                    c.state[:post_exposure_efficacy] = v.post_exposure_efficacy
-                    c.state[:immunity_time] = vacc_t + v.delay_to_immunity
                     return c
                 end
                 rng = StableRNG(1)
 
                 # Immunity at 14 beats an onset at 16.
-                c = contact_with(rv, 6.0, 12.0)
+                c = contact_with(6.0)
                 EpiBranch._abort_infection!(rv, c, 12.0, rng)
                 @test c.state[:infection_aborted_time] == 14.0
                 @test isnan(onset_time(c))
 
                 # Onset at 13 comes before immunity at 14.
-                c = contact_with(rv, 3.0, 12.0)
+                c = contact_with(3.0)
                 EpiBranch._abort_infection!(rv, c, 12.0, rng)
                 @test !haskey(c.state, :infection_aborted_time)
                 @test onset_time(c) == 13.0
 
                 # Immunity at 9 precedes the exposure: that is a blocked
                 # infection, left to the contact-side risk.
-                c = contact_with(rv, 6.0, 7.0)
+                c = contact_with(6.0)
                 EpiBranch._abort_infection!(rv, c, 7.0, rng)
                 @test !haskey(c.state, :infection_aborted_time)
                 c.state[:vaccinated] = true
@@ -967,7 +965,7 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 @test risk.block_probability == 1.0
 
                 # No onset to race: asymptomatic contacts are never aborted.
-                c = contact_with(rv, NaN, 12.0)
+                c = contact_with(NaN)
                 EpiBranch._abort_infection!(rv, c, 12.0, rng)
                 @test !haskey(c.state, :infection_aborted_time)
 
@@ -975,7 +973,7 @@ struct _NoTraceIntervention <: AbstractIntervention end
                 partial = RingVaccination(efficacy = 0.0,
                     post_exposure_efficacy = 0.5, delay_to_immunity = 2.0)
                 r1, r2 = StableRNG(9), StableRNG(9)
-                EpiBranch._abort_infection!(partial, contact_with(partial, 3.0, 12.0), 12.0, r1)
+                EpiBranch._abort_infection!(partial, contact_with(3.0), 12.0, r1)
                 @test rand(r1) == rand(r2)
             end
 
@@ -999,13 +997,6 @@ struct _NoTraceIntervention <: AbstractIntervention end
                         ind.state[:vaccinated] = dosed
                         ind.state[:vaccination_time] = dosed ? 2.0 : Inf
                         ind.state[:vaccine_efficacy] = rv.efficacy
-                        # `post_exposure_efficacy`, `onward_efficacy`, and
-                        # `delay_to_immunity` are read back from per-contact
-                        # state, as if a real dose had recorded them.
-                        ind.state[:post_exposure_efficacy] = rv.post_exposure_efficacy
-                        ind.state[:onward_efficacy] = rv.onward_efficacy
-                        ind.state[:immunity_time] = dosed ?
-                                                    2.0 + rv.delay_to_immunity : Inf
                     end
                     r = EpiBranch.competing_risk(rv, parent, contact, nothing)
                     r === nothing ? 0 : (r isa EpiBranch.Risk ? 1 : length(r))
