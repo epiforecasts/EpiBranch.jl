@@ -117,6 +117,11 @@ end
 
 required_fields(s::Scheduled) = required_fields(s.intervention)
 _unwrap_scheduled(s::Scheduled) = _unwrap_scheduled(s.intervention)
+# `CapacityConstrained` reads these through a `Scheduled` wrapper the same
+# way it reads them from the intervention directly, so the two wrappers
+# compose in either order.
+capacity_key(s::Scheduled) = capacity_key(s.intervention)
+capacity_time_key(s::Scheduled) = capacity_time_key(s.intervention)
 intervention_time(s::Scheduled, ind::Individual) = intervention_time(s.intervention, ind)
 reset!(s::Scheduled, ind::Individual) = reset!(s.intervention, ind)
 # On the continuous-time models a Scheduled removes a case when the wrapped

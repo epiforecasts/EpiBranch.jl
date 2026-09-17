@@ -86,6 +86,12 @@ are broken by the order `new_contacts` arrives in.
 [`capacity_usage`](@ref) reads back doses used against doses available at a
 given point in the simulation.
 
+# Composing with `Scheduled`
+
+`CapacityConstrained` and [`Scheduled`](@ref) wrap in either order —
+`CapacityConstrained(Scheduled(rv); ...)` and `Scheduled(CapacityConstrained(rv;
+...))` both work — since each delegates the other's hooks through.
+
 # Examples
 
 ```julia

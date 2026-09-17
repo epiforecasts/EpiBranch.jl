@@ -242,6 +242,28 @@ end
         @test usage.used == 2
     end
 
+    @testset "Composes with Scheduled in either order" begin
+        rv = RingVaccination(efficacy = 0.9)
+
+        cc1 = CapacityConstrained(Scheduled(rv; start_time = 10.0); budget_per_period = 5.0)
+        state1 = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
+        contacts1 = [_traced_contact(rv, i, Float64(i)) for i in 1:3]
+        append!(state1.individuals, contacts1)
+        state1.max_infection_time = 5.0
+        EpiBranch.apply_post_transmission!(cc1, state1, contacts1)
+        @test count(is_vaccinated, contacts1) == 0
+
+        cc2 = Scheduled(CapacityConstrained(rv; budget_per_period = 5.0); start_time = 10.0)
+        state2 = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
+        contacts2 = [_traced_contact(rv, i, Float64(i)) for i in 1:3]
+        append!(state2.individuals, contacts2)
+        state2.max_infection_time = 5.0
+        EpiBranch.apply_post_transmission!(cc2, state2, contacts2)
+        @test count(is_vaccinated, contacts2) == 0
+    end
+
     @testset "Fewer doses under a binding capacity constraint than without one" begin
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
