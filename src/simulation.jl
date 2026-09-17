@@ -635,23 +635,27 @@ function new_state(model::TransmissionModel, transitions, attributes,
 end
 
 """
-    add_individuals!(state, n, interventions; n_types = 1, setup = (ind, i) -> nothing)
+    add_individuals!(state, n, interventions; n_types = 1, setup = (ind, i) -> nothing,
+                     infection_time = NaN)
 
 Create `n` individuals, append them to `state`, and return them. Each starts
-with `infection_time = NaN`, since none is infected yet; [`seed!`](@ref)
-stamps the seed cases' infection time, and a model's own transmission logic
-stamps everyone else's should they go on to be infected. For each, `setup(ind,
-i)` runs first (to stamp model-specific state such as a node or household id),
-then a random type is assigned for multi-type models, then each
-intervention's `initialise_individual!` runs. Used by a model's
-`initialise_state` to build its population.
+with the given `infection_time`, `NaN` by default because none is infected
+yet; [`seed!`](@ref) stamps the seed cases' infection time, and a model's own
+transmission logic stamps everyone else's should they go on to be infected.
+Pass `infection_time = 0` when every individual created is an index case, so
+that attributes, which run at creation, already see the time they are seeded
+at. For each, `setup(ind, i)` runs after the attributes (to stamp
+model-specific state such as a node or household id), then a random type is
+assigned for multi-type models, then each intervention's
+`initialise_individual!` runs. Used by a model's `initialise_state` to build
+its population.
 """
 function add_individuals!(state::SimulationState, n::Integer, interventions;
-        n_types::Integer = 1, setup = (ind, i) -> nothing)
+        n_types::Integer = 1, setup = (ind, i) -> nothing, infection_time::Real = NaN)
     base = length(state.individuals)
     added = eltype(state.individuals)[]
     for i in 1:n
-        ind = _create_individual(state, 0, base + i, base + i, NaN)
+        ind = _create_individual(state, 0, base + i, base + i, infection_time)
         setup(ind, i)
         # Match the new-contact path's ordering (`make_contact!` sets
         # `:type` before the engine calls `initialise_individual!`) so an
@@ -711,8 +715,10 @@ cases with [`seed!`](@ref).
 function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         interventions, transitions, attributes, rng::AbstractRNG)
     state = new_state(model, transitions, attributes, rng)
+    # Every individual created here is an index case, so attributes that read
+    # the infection time at creation must see the time of 0 they are seeded at.
     add_individuals!(state, sim_opts.n_initial, interventions;
-        n_types = n_types(model))
+        n_types = n_types(model), infection_time = 0)
     seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
     return state
 end

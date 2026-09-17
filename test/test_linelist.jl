@@ -191,5 +191,10 @@ using Dates
         @test "date_vaccination" in names(df)       # `_time` → `date_` convention
         @test eltype(df.risk_group) <: Union{Missing, AbstractString}
         @test eltype(df.date_vaccination) <: Union{Missing, Date}
+        # The attribute reads the infection time at creation, which index cases
+        # must already carry, so every case is vaccinated a week after infection.
+        @test any(==(0), df.parent_id)
+        @test all(!ismissing, df.date_vaccination)
+        @test all(df.date_vaccination .== df.date_infection .+ Day(7))
     end
 end
