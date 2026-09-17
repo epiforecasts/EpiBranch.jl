@@ -1,9 +1,15 @@
 """
-Ration a scarce, population-level resource — doses, teams, reach — across
-the individuals competing for it in the same period. Wraps an intervention
-in the way [`Scheduled`](@ref) wraps one for time: `Scheduled` gates *when*
-an intervention's action may occur, `CapacityConstrained` gates *how many*
-of a period's competing candidates it may reach.
+Ration a scarce, population-level resource across the individuals competing
+for it in the same period. Wraps an intervention in the way [`Scheduled`](@ref)
+wraps one for time: `Scheduled` gates *when* an intervention's action may
+occur, `CapacityConstrained` gates *how many* of a period's competing
+candidates it may reach.
+
+Out of the box this rations vaccine doses ([`RingVaccination`](@ref),
+[`MassVaccination`](@ref)); a resource other than doses (contact-tracing
+teams, geographic reach) needs a [`capacity_key`](@ref EpiBranch.capacity_key)
+method for the intervention that stands for it, which is not yet defined for
+anything in this package.
 
 # How it works
 
@@ -30,10 +36,10 @@ is not supported), and any other intervention that defines
 
 # Budget
 
-`budget_per_period` doses (or team-slots, or reach) become available every
-`period` time units, measured on the simulation's own continuous clock
-(`state.max_infection_time`), not the generation index. `period = Inf` (the
-default) is a single lifetime budget that never replenishes.
+`budget_per_period` doses become available every `period` time units,
+measured on the simulation's own continuous clock (`state.max_infection_time`),
+not the generation index. `period = Inf` (the default) is a single lifetime
+budget that never replenishes.
 
 !!! warning "Generation-based models only"
     `CapacityConstrained` acts through `apply_post_transmission!`, which only
