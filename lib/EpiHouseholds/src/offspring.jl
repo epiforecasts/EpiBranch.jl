@@ -564,12 +564,9 @@ end
 # law to average over; the mean is then taken from the simulated households.
 function _mean_person_time(n::Int, kernel::UnivariateDistribution,
         window::Union{Real, UnivariateDistribution})
-    return mean(household_final_size(n, kernel, window)) * _window_mean(window)
+    return mean(household_final_size(n, kernel, window)) * mean(window)
 end
 _mean_person_time(::Int, kernel, window) = nothing
-
-_window_mean(window::Real) = Float64(window)
-_window_mean(window::UnivariateDistribution) = mean(window)
 
 # ── The infectious window as a single delay ──────────────────────────
 
