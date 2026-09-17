@@ -79,7 +79,7 @@ end
     for (f, x) in cases
         g_reverse = DifferentiationInterface.gradient(f, mooncake, x)
         g_forward = DifferentiationInterface.gradient(f, AutoForwardDiff(), x)
-        @test g_reverse ≈ g_forward rtol=1e-6
+        @test g_reverse≈g_forward rtol=1e-6
     end
 end
 
@@ -251,4 +251,48 @@ end
     @test isfinite(total_infection_time(μ0))
     grad = ForwardDiff.derivative(total_infection_time, μ0)
     @test isfinite(grad)
+end
+
+# Efficacy and delay to immunity are carried as duals through every vaccination
+# type into the state each dose records. The recorded immunity time moves one
+# for one with the delay, so its derivative is the number of doses given.
+@testset "AD through vaccination efficacy and delay to immunity" begin
+    clinical = clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+        post_isolation_transmission = 0.3)
+    ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+    function recorded_effect(make_vaccination, key)
+        return function (x)
+            spec = ModelSpec(BranchingProcess(NegBin(2.0, 0.5), LogNormal(1.6, 0.5));
+                interventions = [iso, ct, make_vaccination(x)],
+                attributes = [clinical, groups(4)])
+            state = simulate(spec; n_initial = 20, rng = StableRNG(20260701),
+                stopping_rules = [Extinction(), MaxGenerations(5)])
+            doses = [ind.state[key] for ind in state.individuals if is_vaccinated(ind)]
+            return (sum(doses), length(doses))
+        end
+    end
+    vaccinations = (
+        ring = x -> RingVaccination(efficacy = 0.8, delay_to_immunity = x),
+        mass = x -> MassVaccination(efficacy = 0.8, eligibility_time = 2.0,
+            delay_to_immunity = x),
+        group = x -> GroupVaccination(efficacy = 0.8, delay_to_immunity = x,
+            eligibility = OnSymptomOnset()))
+    for (name, make) in pairs(vaccinations)
+        f = recorded_effect(make, :immunity_time)
+        _, n_doses = f(2.0)
+        @test n_doses > 0
+        @test ForwardDiff.derivative(x -> f(x)[1], 2.0) == n_doses
+    end
+    efficacy_vaccinations = (
+        ring = x -> RingVaccination(efficacy = x),
+        mass = x -> MassVaccination(efficacy = x, eligibility_time = 2.0),
+        group = x -> GroupVaccination(efficacy = x, eligibility = OnSymptomOnset()))
+    for (name, make) in pairs(efficacy_vaccinations)
+        f = recorded_effect(make, :vaccine_efficacy)
+        _, n_doses = f(0.5)
+        @test n_doses > 0
+        @test ForwardDiff.derivative(x -> f(x)[1], 0.5) == n_doses
+    end
 end
