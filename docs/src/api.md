@@ -113,6 +113,7 @@ EpiBranch.apply_trace!
 AbstractVaccination
 RingVaccination
 MassVaccination
+GroupVaccination
 AbstractEffectMode
 LeakyMode
 AllOrNothingMode
@@ -121,6 +122,7 @@ Risk
 EpiBranch.HostSusceptibility
 EpiBranch.InfectorInfectiousness
 EpiBranch.InfectiousSource
+EpiBranch.AbortedInfection
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
@@ -168,6 +170,8 @@ isolation_time
 is_traced
 is_quarantined
 is_vaccinated
+immunity_time
+severity_efficacy
 is_asymptomatic
 is_test_positive
 is_infected
@@ -302,6 +306,7 @@ for examples.
 clinical_presentation
 demographics
 transmission_traits
+groups
 ```
 
 ## Convenience constructors

@@ -44,8 +44,51 @@ function is_vaccinated(ind::Individual; dose_label::Symbol = :default)
     get(ind.state, _vaccinated_key(dose_label), false)::Bool
 end
 
+"""Time the individual's vaccine-induced immunity develops under the given
+`dose_label` (`Inf` if not vaccinated); a dual under AD. This is
+`vaccination_time + delay_to_immunity`, recorded by [`AbstractVaccination`](@ref)
+at vaccination time so a clinical transition can check it without reaching
+for the vaccination object, which it never sees. Compare against the time an
+outcome would take effect (e.g. `onset_time(ind)` for the default `Death`) to
+decide whether that dose's [`severity_efficacy`](@ref) applies: a dose whose
+immunity develops after that time confers no protection."""
+function immunity_time(ind::Individual{T}; dose_label::Symbol = :default) where {T}
+    convert(T, get(ind.state, _immunity_time_key(dose_label), T(Inf)))::T
+end
+
+"""Probability that the individual's own disease course is milder — e.g. a
+lower chance of death — once their vaccine-induced immunity has developed
+(`0.0` if not vaccinated, or if the dose carries no severity effect). Sampled
+once per vaccinated individual, alongside `efficacy`, by
+[`AbstractVaccination`](@ref) subtypes' `severity_efficacy` field. Read this
+from a clinical transition's `probability`, gated on [`immunity_time`](@ref)
+having passed:
+
+```julia
+Death(delay = LogNormal(2.5, 0.4),
+      probability = (rng, ind) ->
+          immunity_time(ind) <= onset_time(ind) ?
+              0.7 * (1 - severity_efficacy(ind)) : 0.7)
+```
+"""
+function severity_efficacy(ind::Individual; dose_label::Symbol = :default)
+    get(ind.state, _severity_efficacy_key(dose_label), 0.0)::Float64
+end
+
 """Whether the individual is asymptomatic."""
 is_asymptomatic(ind::Individual) = get(ind.state, :asymptomatic, false)::Bool
+
+"""Whether the individual's infection was aborted before symptom onset, as a
+post-exposure dose of [`RingVaccination`](@ref) can do. The infection lasts
+until `:infection_aborted_time` and ends there, before any onset. The abort is
+recorded against the contact's exposure at the time the dose is given, or at a
+later exposure of a contact already given it. It is removed when infection is
+resolved if that exposure does not infect the contact before the abort time."""
+_infection_aborted(ind::Individual) = haskey(ind.state, :infection_aborted_time)
+
+"""Whether the individual develops symptoms: it is not asymptomatic and its
+infection was not aborted before onset."""
+_develops_symptoms(ind::Individual) = !is_asymptomatic(ind) && !_infection_aborted(ind)
 
 """Whether the individual tested positive."""
 is_test_positive(ind::Individual) = get(ind.state, :test_positive, false)::Bool

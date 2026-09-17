@@ -50,6 +50,48 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   routes' probabilities. Routes left at the default give the same outbreaks as
   before for the same seed.
 
+- `RingVaccination`, `MassVaccination` and `GroupVaccination` gain
+  `severity_efficacy`, the probability that a vaccinated individual's own
+  disease course is milder once their immunity has developed — e.g. a lower
+  chance of death — rather than blocked transmission. It does not gate transmission and so is not one
+  of the risks `competing_risk` returns; a clinical transition's
+  `probability` reads it, together with the new `immunity_time` accessor, so
+  a dose whose immunity has not yet developed by the outcome it would affect
+  confers no protection. Recorded per dose as `:severity_efficacy` and
+  `:immunity_time`, alongside the existing `:vaccine_efficacy`.
+
+- `RingVaccination` gains `post_exposure_efficacy`, the probability that a dose
+  given to an already-exposed contact aborts that infection, which it can do
+  whenever immunity arrives before the contact's symptom onset. An aborted
+  infection keeps the transmissions made before immunity arrives, makes none
+  after it, and has no symptom onset. Its clinical course ends at the abort, so
+  no transition (hospitalisation, death or any other outcome) takes effect at or
+  after that time, whatever it is timed from. The abort is recorded as
+  `:infection_aborted_time`, and the infection still counts as a case. Unlike
+  `efficacy`, `post_exposure_efficacy` acts under default tracing without
+  quarantine. There a contact is traced once its infector has been isolated,
+  which already blocks any later exposure, so `efficacy`, which needs immunity
+  before the exposure, acts only with leaky isolation, tracing triggered by
+  symptom onset, or rings deeper than one contact. `onward_efficacy` differs in
+  reducing each later transmission of a vaccinated contact without ending its
+  infection or disease; the two compose.
+- `RingVaccination` can schedule a second dose. `dose_delay` sets the number of
+  days from the trace to the dose, and `requires_dose` restricts the dose to
+  contacts who have received the named earlier dose by then, so its `coverage`
+  is the retention between doses. A dose listed before the dose it requires is
+  rejected when the `ModelSpec` is built.
+- `groups`, an attributes function that labels each individual with a group
+  (a village, a health area, a household) under `:group` or an arbitrary key,
+  and `GroupVaccination`, which vaccinates every member of a group once any
+  case in it meets a [`TraceEligibility`](@ref) policy such as
+  `OnLabConfirmation()` — the fallback an outbreak response reaches for when
+  no ring can be built. Members are vaccinated at the triggering case's
+  eligibility time plus `dose_delay`, whether created before or after the
+  trigger, so doses scale with group size where `RingVaccination` doses scale
+  with ring size. Listing a `RingVaccination` before a `GroupVaccination` with
+  the same `dose_label` makes the group dose a pure fallback: a member the
+  ring already reached is skipped.
+
 ### Changed
 
 - The fixed-size population pool's mixing structure is now keyed on the
