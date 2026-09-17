@@ -59,7 +59,7 @@
                 delay = Exponential(1.0), terminal = true)],
             attributes = attrs)
         finals(attrs) = [simulate(build(attrs); rng = StableRNG(s), n_initial = 5).cumulative_cases
-                          for s in 1:20]
+                         for s in 1:20]
         baseline = mean(finals(NoAttributes()))
         @test mean(finals(transmission_traits(susceptibility = 0.3))) < baseline
         @test mean(finals(transmission_traits(infectiousness = 0.3))) < baseline

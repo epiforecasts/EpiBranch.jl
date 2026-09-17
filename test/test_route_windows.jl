@@ -248,7 +248,8 @@
                 terminal = true)]
             infected = 0
             for h in 1:n
-                state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                state = EpiBranch.new_state(
+                    BranchingProcess(Poisson(1.0), Exponential(1.0)),
                     prog, EpiBranch.NoAttributes(), rng)
                 EpiBranch.add_individuals!(state, 2, AbstractIntervention[])
                 state.individuals[2].susceptibility = susceptibility
