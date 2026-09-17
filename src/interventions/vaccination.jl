@@ -808,8 +808,8 @@ own transmission time.
 `efficacy` and `delay_to_immunity` accept the same `Real | Distribution |
 Function` set, each sampled once per vaccinated contact, at vaccination
 time. Per-individual heterogeneous efficacy (e.g. age-dependent) or
-immunity delay (e.g. a one- to three-week prime-boost interval) is set
-via the function or distribution form.
+immunity delay (e.g. immunity that takes one to three weeks to develop)
+is set via the function or distribution form.
 
 `severity_efficacy` accepts the same set and, like on
 [`RingVaccination`](@ref), sets how much milder a vaccinated individual's
