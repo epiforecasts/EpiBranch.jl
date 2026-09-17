@@ -208,4 +208,37 @@
             @test var(clustered_means) > var(independent_means)
         end
     end
+
+    @testset "groups" begin
+        @testset "assigns a group in range" begin
+            attrs = groups(4)
+            rng = StableRNG(1)
+            labels = map(1:200) do _
+                ind = Individual(id = 1)
+                attrs(rng, ind)
+                ind.state[:group]
+            end
+            @test all(l -> 1 <= l <= 4, labels)
+            @test length(unique(labels)) == 4  # all groups eventually drawn
+        end
+
+        @testset "custom key" begin
+            attrs = groups(3; key = :household)
+            ind = Individual(id = 1)
+            attrs(StableRNG(1), ind)
+            @test haskey(ind.state, :household)
+            @test !haskey(ind.state, :group)
+        end
+
+        @testset "rejects non-positive n_groups" begin
+            @test_throws ArgumentError groups(0)
+        end
+
+        @testset "single group assigns everyone to it" begin
+            attrs = groups(1)
+            ind = Individual(id = 1)
+            attrs(StableRNG(1), ind)
+            @test ind.state[:group] == 1
+        end
+    end
 end
