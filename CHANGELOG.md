@@ -133,7 +133,7 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   isolation or quarantine after tracing, as the simulation does. Fitting an
   outbreak simulated under isolation then recovers the kernel.
 - The pairwise survival likelihood evaluated on a compiled layout counts a
-  community infection at time 0, as the form without a layout does, so an index
+  community infection at time 0, as the form without a layout does. An index
   case at time 0 contributes the community hazard at 0. When every hazard at an
   infection time is zero, both forms return `-Inf`.
 - The pairwise survival likelihood returns `-Inf` for an infected host that is

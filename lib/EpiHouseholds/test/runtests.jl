@@ -170,8 +170,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
     end
 
     @testset "isolation ends the infectious window in the infection layer" begin
-        # the race closes a case's window when it is isolated, so the data must
-        # too, or the likelihood sees cases infectious after isolation and
+        # the race closes a case's window when it is isolated and the data must
+        # too; otherwise the likelihood sees cases infectious after isolation and
         # overestimates the kernel scale
         clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
             prob_asymptomatic = 0.0)
@@ -324,9 +324,9 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         # on the spot, and this is not an independent check of the density. That
         # cross-check against hand-built counting-process rows lives in the root
         # suite, in "evaluation matches hand-built counting-process rows". This
-        # test checks that evaluating a layout leaves it unchanged, so one
-        # object reused across a grid of kernel scales keeps agreeing with a
-        # fresh one. Inference relies on that property.
+        # test checks that evaluating a layout leaves it unchanged: one object
+        # reused across a grid of kernel scales keeps agreeing with a fresh one,
+        # which inference relies on.
         m = ModelSpec(HouseholdProcess(fill(4, 500), Exponential(3.0));
             progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(101)), m)
@@ -380,8 +380,8 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
 
     @testset "compiled pair layout: covariate (per-pair) kernel" begin
         # a two-argument (infector, susceptible) -> Distribution kernel is
-        # resolved per row on both paths, so a reused layout and one compiled
-        # per call agree.
+        # resolved per row on both paths, and a reused layout agrees with one
+        # compiled per call.
         m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
             progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(103)), m)
@@ -610,11 +610,11 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
     end
 
     @testset "compiled pair layout: inference workflow (compile once, reuse)" begin
-        # the documented workflow: the household structure is fixed, so the layout
+        # the documented workflow: with the household structure fixed, the layout
         # is compiled once and reused across every gradient evaluation of the fit.
-        # Recovering the kernel scale by Newton MLE — feeding the same layout to
-        # every step — must land on the same optimum as compiling a layout per
-        # call, and near the truth.
+        # Recovering the kernel scale by Newton MLE with the same layout at every
+        # step must land on the same optimum as compiling a layout per call, and
+        # near the truth.
         true_scale = 4.0
         m = ModelSpec(HouseholdProcess(fill(4, 800), Exponential(true_scale));
             progression = _sir(6.0))

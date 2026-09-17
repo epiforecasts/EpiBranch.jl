@@ -16,8 +16,8 @@ import EpiBranch: population_size, new_state, add_individuals!, apply_observatio
                   _honours_termination_controls
 # The infection layer is built and read out of a simulation by EpiBranch's
 # helpers, which close each node's window where the simulator's race does. The
-# simulator shares EpiBranch's community-hazard helpers, so simulation and
-# likelihood agree on both.
+# simulator and the likelihood also share EpiBranch's community-hazard helpers
+# and agree on both.
 import EpiBranch: _infection_layer_columns, _infection_layer_fields, _ext_active,
                   _ext_draw, _valid_external, _normalise_external
 

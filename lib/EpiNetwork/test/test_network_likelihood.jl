@@ -21,8 +21,8 @@ function _random_graph(n, m, rng)
     return adj
 end
 
-# A latent period followed by a fixed infectious period, so the window the
-# kernel times contacts from opens after infection.
+# A latent period followed by a fixed infectious period: the window the kernel
+# times contacts from opens after infection.
 function _seir(ip)
     [Transition(:infectious; from = :infection, delay = LogNormal(0.3, 0.3)),
         Transition(:recovered; from = :infectious, delay = ip, terminal = true)]
@@ -132,9 +132,9 @@ end
     end
 
     @testset "simulate → loglikelihood round trip recovers the kernel scale" begin
-        # the Sellke race is the likelihood's generative model, so maximising it
-        # over a simulated infection layer recovers the kernel within its
-        # standard error from the observed information
+        # the Sellke race is the likelihood's generative model: maximising the
+        # likelihood over a simulated infection layer recovers the kernel within
+        # its standard error from the observed information
         true_scale = 6.0
         adj = _random_graph(2000, 6000, StableRNG(8))
         m = ModelSpec(NetworkProcess(adj, Exponential(true_scale));
@@ -151,8 +151,8 @@ end
     end
 
     @testset "isolation ends the infectious window in the infection layer" begin
-        # the race closes a case's window when it is isolated, so the data must
-        # too, or the likelihood sees cases infectious after isolation and
+        # the race closes a case's window when it is isolated and the data must
+        # too; otherwise the likelihood sees cases infectious after isolation and
         # overestimates the kernel scale
         clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
             prob_asymptomatic = 0.0)

@@ -3,8 +3,8 @@
 # The contact-process density: the log-likelihood of an outbreak's *infection
 # layer* (who is infected, and the latent infection time and infectious window
 # of each) under a contact-interval kernel. It is the marginal pairwise
-# likelihood of Kenah (2011): who-infected-whom and the order of infections are
-# both unobserved, so each infected susceptible's contribution sums the
+# likelihood of Kenah (2011). Who infected whom and the order of infections are
+# both unobserved, and each infected susceptible's contribution sums the
 # contact-interval hazard over every possible infector, with no ordering assumed.
 #
 # The density is a product over (susceptible, possible infector) pairs and does
@@ -64,8 +64,8 @@ at-risk interval:
 Right-censoring is built in: a susceptible that never had an event contributes
 only the escaped cumulative hazard. `kernel` is a `Distributions.jl`
 distribution shared by every row, or a callable `r -> Distribution` for
-covariates. The result is differentiable in the kernel's parameters, so it can
-be optimised with Optim or added to a Turing model with `@addlogprob!`.
+covariates. The result is differentiable in the kernel's parameters and can be
+optimised with Optim or added to a Turing model with `@addlogprob!`.
 """
 function pairwise_surv_loglik(kernel, data::PairwiseSurvivalData)
     groups = Dict{Int, Vector{Int}}()
@@ -126,8 +126,8 @@ A companion package reads a simulated outbreak back into its layer
 opens at the process's `from` state and closes at the earliest of its `until`
 states and the time the model's interventions take the host out of transmission,
 such as by isolation or quarantine after tracing. These are the windows the
-simulation used, so scoring the layer under the kernel that simulated it is an
-exact `simulate → loglikelihood` round trip. Passing a reader the `followup_end`
+simulation used, which makes scoring the layer under the kernel that simulated it
+an exact `simulate → loglikelihood` round trip. Passing a reader the `followup_end`
 keyword scores the outbreak as if observation had stopped at that time.
 """
 abstract type InfectionLayer end
@@ -163,7 +163,7 @@ end
 # The per-host fields of an `InfectionLayer` subtype over `n` hosts, in field
 # order after the contact structure: the three time vectors, `is_index`,
 # `obs_end` and `followup_end`. Every time shares one number type, at least
-# `Float64`, so a constructor can take integers or AD values.
+# `Float64`, which lets a constructor take integers or AD values.
 function _infection_layer_fields(n, infection_time, infectious_time, removal_time,
         is_index; obs_end, followup_end)
     all(length(v) == n
@@ -179,8 +179,8 @@ end
 # The per-host columns of an infection layer, read out of a `state` simulated
 # from `model`, whose process runs one Sellke race with a `from` state and
 # `until` states (as `HouseholdProcess` and `NetworkProcess` do). Each window is
-# the one that race used, closed by the model's interventions as well, so the
-# `simulate → loglikelihood` round trip is exact.
+# the one that race used, closed by the model's interventions as well, which
+# makes the `simulate → loglikelihood` round trip exact.
 function _infection_layer_columns(state::SimulationState, model::ModelSpec)
     process = model.process
     from = _resolve_infectious_from(process.from, model.progression)
@@ -216,8 +216,8 @@ end
 The static row structure the pairwise likelihood is evaluated on. Each row is
 one ordered (susceptible, possible infector) pair, plus, when a community hazard
 is modelled, one row per susceptible for the community hazard. Rows whose times
-do not overlap are kept and skipped at evaluation, so one layout works for every
-configuration of latent times with the same structure and infected set.
+do not overlap are kept and skipped at evaluation. One layout then works for
+every configuration of latent times with the same structure and infected set.
 
 Build it with [`compile_contact_pairs`](@ref).
 """
@@ -416,10 +416,10 @@ end
 # A model with a contact structure can also introduce cases from outside it: a
 # non-negative rate (a constant hazard) or a continuous distribution on the
 # non-negative reals (a calendar-time hazard). Its simulators and this likelihood
-# share these helpers, so they agree on when the term applies and what it is.
+# share these helpers and agree on when the term applies and what it is.
 
-# Introductions cannot happen before time 0, so a distribution with negative
-# support is rejected.
+# A distribution with negative support is rejected, because introductions cannot
+# happen before time 0.
 _valid_external(α::Real) = α >= 0
 _valid_external(d::ContinuousUnivariateDistribution) = minimum(d) >= 0
 _valid_external(_) = false
@@ -454,8 +454,8 @@ _pair_kernel(k, layout, r) = k(layout.infector[r], layout.sus[r])
 
 # Streaming logsumexp, so the per-susceptible reduction allocates no
 # intermediate vector for reverse-mode AD to track. A -Inf term (a zero hazard)
-# adds nothing to the sum and is skipped, so an accumulator that saw only zero
-# hazards gives -Inf without taking -Inf - (-Inf).
+# adds nothing to the sum and is skipped. An accumulator that saw only zero
+# hazards then gives -Inf without taking -Inf - (-Inf).
 mutable struct _LogSumExpAcc{T}
     m::T
     s::T
@@ -479,8 +479,8 @@ end
 _value(acc::_LogSumExpAcc{T}) where {T} = acc.nseen == 0 ? T(-Inf) : acc.m + log(acc.s)
 
 # The parameter float type the kernel adds to the accumulator. In inference the
-# fitted parameters are AD duals inside the kernel, so the data's float type
-# alone cannot hold them and the streaming accumulator is typed to include them.
+# fitted parameters are AD duals inside the kernel. The data's float type alone
+# cannot hold them, and the streaming accumulator is typed to include them.
 # A distribution gives its parameter type through `partype`; a per-edge or
 # covariate kernel is probed on the first internal pair. With no internal pair
 # the type falls back to `T`.
@@ -517,7 +517,7 @@ contact). `external_hazard` is a community hazard (a positive rate or a
 calendar-time distribution) that introduces cases over `[0, data.obs_end]`. With
 one, index cases are explained like any other case; without one they are
 conditioned on. Each host accrues the community hazard until the earlier of its
-infection and `data.obs_end`, so a host infected after `obs_end` can only have
+infection and `data.obs_end`. A host infected after `obs_end` can only have
 been infected by a possible infector. Spread along the contact structure
 continues after `obs_end`: a host that is never infected accrues hazard over
 each possible infector's whole infectious window.
@@ -531,7 +531,7 @@ truncating the data there: later infections unobserved, and removal times and
 Use the layout form in inference: compile the layout once with
 [`compile_contact_pairs`](@ref) and reuse it while the latent times move. Its
 `external` setting must agree with `external_hazard`. The two-argument form
-compiles a layout on each call. Both are generic in the number type, so the
+compiles a layout on each call. Both are generic in the number type: the
 kernel's parameters can be ForwardDiff or reverse-mode AD values. A `Gamma` is
 the exception, whether it is the kernel or the community hazard: its cumulative
 hazard calls `SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual`
@@ -578,8 +578,8 @@ function pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairs
     # kernel survive the reduction.
     Text = external ? Distributions.partype(extdist) : Union{}
     T = promote_type(Tdata, _kernel_partype(kernel, layout, Tdata), Text)
-    # A per-edge or covariate kernel's parameter type is only known at run time,
-    # so pass it through a function barrier to keep the passes type-stable.
+    # A per-edge or covariate kernel's parameter type is only known at run time;
+    # the function barrier keeps the passes type-stable.
     return _pairwise_surv_loglik(kernel, extdist, data, layout,
         convert(Tdata, tfollow), T)
 end
@@ -596,8 +596,8 @@ function _pairwise_surv_loglik(kernel, extdist, data, layout, tfollow,
 
     # A covariate or per-edge kernel may hold the fitted parameters on only some
     # pairs, and the probe behind `T` can miss them. Every row pass 2 scores has a
-    # positive at-risk time in pass 1, so pass 1's sum has seen every kernel
-    # pass 2 will use, and its type sets pass 2's accumulator.
+    # positive at-risk time in pass 1. Pass 1's sum has therefore seen every
+    # kernel pass 2 will use, and its type sets pass 2's accumulator.
     ll = _pairwise_cumhazard(kernel, extdist, data, layout, tfollow, T)
     return _pairwise_events(kernel, extdist, data, layout, tfollow, ll,
         promote_type(T, typeof(ll)))
@@ -646,8 +646,8 @@ function _pairwise_events(kernel, extdist, data, layout, tfollow, ll0,
 
     # Pass 2: per-susceptible log-sum-exp over event rows. A single accumulator
     # is reused across groups (reset per group) so the reduction stays
-    # allocation-free on the AD tape. Every host in the layout is explained, so
-    # an infected one with no positive hazard at its infection time has density
+    # allocation-free on the AD tape. Every host in the layout is explained: an
+    # infected one with no positive hazard at its infection time has density
     # zero, and the whole configuration is impossible: return -Inf there rather
     # than adding it, so that the derivative is zero too. Adding it would leave
     # the derivatives of the other hosts' finite terms sitting alongside an

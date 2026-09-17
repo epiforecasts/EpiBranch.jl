@@ -128,8 +128,8 @@ In real data the infection times are unobserved. A household `@model` then augme
 them and conditions the observed onsets and tests through the progression's delays,
 with `pairwise_surv_loglik` supplying the contact-process density of the augmented
 configuration. The layout stays valid across draws as long as the household
-structure and the set of ever-infected hosts are fixed — only the latent times
-move — so it is compiled once, outside the model, and reused. Data collected up
+structure and the set of ever-infected hosts are fixed, because only the latent
+times move. Compile it once, outside the model, and reuse it. Data collected up
 to a date describe an outbreak that may still be going. Give
 `HouseholdInfections` that date as `followup_end` and the density ignores
 infections and exposure after it; a case still infectious at the end of

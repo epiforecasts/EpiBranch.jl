@@ -387,7 +387,7 @@ infectors at the moment it was infected.
 
 [`network_infections`](@ref) reads that layer out of a simulation, and
 `loglikelihood(data, model)` evaluates it under the model's kernel. The windows
-it reads close where the simulation closed them, so a case that the model's
+it reads close where the simulation closed them: a case that the model's
 interventions isolate exposes its neighbours only until it is isolated. In this
 example, maximising the likelihood over a grid for an outbreak simulated on a
 small-world network recovers the kernel scale used in the simulation:
@@ -409,8 +409,8 @@ grid[argmax(ll.(grid))]                # ≈ the true scale, 6.0
 `loglikelihood(data, truth)` is the same density at the model's own kernel. The
 kernel can be anything `NetworkProcess` accepts: a shared distribution, a
 callable `(infector, susceptible) -> Distribution` for covariates, or a per-edge
-vector parallel to the adjacency. The structure and the set of infected nodes
-are fixed, so [`compile_contact_pairs`](@ref) enumerates the rows once and the
+vector parallel to the adjacency. Because the structure and the set of infected
+nodes stay fixed, [`compile_contact_pairs`](@ref) enumerates the rows once and the
 three-argument `pairwise_surv_loglik` reuses them while the kernel parameters
 change. That form is differentiable in those parameters and can be optimised
 with Optim or added to a Turing `@model` through `@addlogprob!`, as the
@@ -437,25 +437,9 @@ density. `pairwise_surv_loglik` returns `-Inf` for it with a zero gradient, sinc
 whether a configuration is possible at all is fixed by the times and not by the
 kernel's parameters.
 
-Fitting the community hazard itself needs one caveat. A positive
-`external_hazard` and no community hazard are different conditionings, and the
-density does not pass continuously from one to the other. With a constant rate
-`α > 0` an index node infected at time `t` contributes `log(α) - α t`, which
-falls to `-Inf` as `α → 0`: a model that admits community introductions has to
-explain the ones it saw. At exactly `external_hazard = 0` index nodes are
-conditioned on instead and contribute nothing, and the value stays finite. A
-likelihood ratio between "some community transmission" and "none" therefore
-cannot be read off by letting `α` approach zero: score the two models
-separately. The discontinuity is only at that one point. Near zero the
-log-density is `k log α - α T` up to terms free of `α`, where `k` counts the
-cases the community alone can explain and `T` is the total time nodes are
-exposed to it. In `log α` this is a straight line of slope `k`, and the
-[households tutorial](households.md) gives the slope at several values of `α`
-for a worked example.
-
-ForwardDiff cannot differentiate a `Gamma`, whether it is the community hazard or
-the contact-interval kernel. Its cumulative hazard calls
-`SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual` method, and the
-resulting `MethodError` comes from there rather than from this package. Fit a
-`Gamma` with a reverse-mode backend such as Mooncake; `Weibull` and `Exponential`
-work under either mode.
+Fitting the community hazard itself has the same caveat as for households: a
+positive `external_hazard` and no community hazard are different conditionings,
+and the density jumps between them at `α = 0`. Score the two models separately;
+[Fitting a community hazard](@ref) explains why and shows the log-density near
+zero. The same automatic-differentiation limit also applies: fit a `Gamma` kernel
+or community hazard with a reverse-mode backend such as Mooncake.

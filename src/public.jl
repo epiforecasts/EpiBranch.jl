@@ -55,7 +55,7 @@ public apply_observation!
 # Types a model constructs or dispatches on.
 public NoGenerationTime
 
-# An `InfectionLayer` subtype names who could have infected whom, so the pairwise
-# likelihood can enumerate its (susceptible, possible infector) pairs.
+# An `InfectionLayer` subtype names who could have infected whom, which lets the
+# pairwise likelihood enumerate its (susceptible, possible infector) pairs.
 public contact_structure
 public followup_end

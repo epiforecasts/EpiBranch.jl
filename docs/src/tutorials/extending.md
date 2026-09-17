@@ -1003,10 +1003,9 @@ specification (`extinction_probability`, `epidemic_probability`,
 For **likelihoods** on data types that don't go through the offspring
 spec, define methods on `loglikelihood` directly.
 
-The continuous-time race is the generative model of the pairwise survival
-likelihood, so a structure-driven model simulated by that race can reuse the
-likelihood. Beyond the infection times, the density needs to know who could have
-infected whom. Define an infection-layer type that subtypes
+A structure-driven model simulated by the continuous-time race can reuse the
+pairwise survival likelihood, whose generative model is that race. Beyond the
+infection times, the density needs to know who could have infected whom. Define an infection-layer type that subtypes
 [`InfectionLayer`](@ref) and give it a
 [`contact_structure`](@ref EpiBranch.contact_structure) method that returns a
 membership vector for groups whose members all mix, or an adjacency list for

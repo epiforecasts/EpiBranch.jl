@@ -3,8 +3,7 @@
 # Household methods for EpiBranch's pairwise survival likelihood. The density,
 # its compiled pair layout and the community hazard term work for any contact
 # structure and live in EpiBranch. A household population supplies its partition
-# as the contact structure, so household-mates are each other's possible
-# infectors.
+# as the contact structure: household-mates are each other's possible infectors.
 
 # ── The household infection layer ────────────────────────────────────
 
@@ -13,7 +12,7 @@
                         obs_end = Inf, followup_end = Inf)
 
 The [`InfectionLayer`](@ref) of a household outbreak. Its contact structure is
-`household_of`, the household of each individual, so household-mates are each
+`household_of`, the household of each individual: household-mates are each
 other's possible infectors. The per-individual vectors, `obs_end` and
 `followup_end` are as described for `InfectionLayer`. Read one out of a
 simulation with [`household_infections`](@ref), or augment it in inference.
@@ -46,9 +45,9 @@ EpiBranch.contact_structure(d::HouseholdInfections) = d.household_of
 
 Read the [`InfectionLayer`](@ref) out of a `state` simulated from `model`, with
 each member's household as the contact structure. The infectious windows are
-read as described for `InfectionLayer`, so the `simulate → loglikelihood` round
-trip is exact. A bare `HouseholdProcess` is accepted too (its window opens at
-`:infection`, and it has no interventions).
+read as described for `InfectionLayer`, which makes the
+`simulate → loglikelihood` round trip exact. A bare `HouseholdProcess` is
+accepted too (its window opens at `:infection`, and it has no interventions).
 """
 function household_infections(state::SimulationState,
         model::ModelSpec{<:HouseholdProcess}; obs_end = model.process.obs_end,
