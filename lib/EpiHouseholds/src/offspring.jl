@@ -518,25 +518,25 @@ end
 # ones before it.
 function _final_size_pmf(n::Int, a::Int, kernel, window)
     n == 0 && return [1.0]
-    # Certain infection (no susceptible can escape a case) would divide by zero
-    # below, and leaves the whole household infected.
-    _escape(kernel, window, 1) > 0 || return [zeros(n); 1.0]
 
     p = zeros(n + 1)
     for j in 0:n
         ψ = _escape(kernel, window, n - j)
-        # Floating-point coefficients: integer ones overflow from a household
-        # of 68.
-        total = sum(
-            binomial(Float64(n - k), j - k) * p[k + 1] / ψ^(k + a)
+        # Each equation is multiplied through by `ψ^(j + a)`, because dividing by
+        # a power of a small escape probability underflows to zero when
+        # transmission is strong. Floating-point coefficients: integer ones
+        # overflow from a household of 68.
+        p[j + 1] = binomial(Float64(n), j) * ψ^(j + a) -
+                   sum(
+            binomial(Float64(n - k), j - k) * p[k + 1] * ψ^(j - k)
             for k in 0:(j - 1); init = 0.0)
-        p[j + 1] = (binomial(Float64(n), j) - total) * ψ^(j + a)
     end
-    # The recursion is a difference of large terms for a big household and can
-    # leave a probability a hair below zero; anything worse is a real failure.
+    # The recursion subtracts terms far larger than the probabilities they leave
+    # in a big household, and can leave a probability a hair below zero;
+    # anything worse is a real failure.
     all(>=(-1e-8), p) || throw(ErrorException(
-        "the final-size recursion lost accuracy for a household of $(n + a); " *
-        "this happens for households far larger than any real one"))
+        "the final-size recursion lost accuracy for a household of $(n + a), " *
+        "because it subtracts terms far larger than the probabilities they leave"))
     return max.(p, 0.0)
 end
 

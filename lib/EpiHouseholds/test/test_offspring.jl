@@ -69,6 +69,17 @@ end
         @test 99 < mean(d) <= 100
     end
 
+    @testset "strong transmission does not underflow" begin
+        # Escape probabilities this small underflow when raised to a power, so
+        # the recursion must not divide by them.
+        d = household_final_size(12, Exponential(0.5), 14.0)
+        @test all(isfinite, probs(d))
+        @test sum(probs(d)) ≈ 1
+        @test pdf(d, 12) ≈ 1
+        d = household_final_size(4, Exponential(0.1), 1_000.0)
+        @test probs(d) ≈ [0.0, 0.0, 0.0, 1.0]
+    end
+
     @testset "the recursion matches simulated households" begin
         n = 5
         model = ModelSpec(HouseholdProcess(fill(n, 20_000), Exponential(1 / β));
