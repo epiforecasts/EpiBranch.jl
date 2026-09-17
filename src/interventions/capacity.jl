@@ -32,11 +32,15 @@ is not supported), and any other intervention that defines
 
 `budget_per_period` doses (or team-slots, or reach) become available every
 `period` time units, measured on the simulation's own continuous clock
-(`state.max_infection_time`), not the generation index. A generation-based
-model still has this clock — it is built from the same generation-time draws
-that place every case in time — so a budget of "5 doses a day" means the same
-thing whichever engine simulates it. `period = Inf` (the default) is a single
-lifetime budget that never replenishes.
+(`state.max_infection_time`), not the generation index. `period = Inf` (the
+default) is a single lifetime budget that never replenishes.
+
+!!! warning "Generation-based models only"
+    `CapacityConstrained` acts through `apply_post_transmission!`, which only
+    the generation-based engine calls. A continuous-time model does not call
+    it, so wrapping an intervention with `CapacityConstrained` there has no
+    effect and triggers the usual "no effect" warning for an unhonoured
+    intervention.
 
 `carry_over = true` (the default) lets an unused allowance from an earlier
 period add to a later one: the running total available by time `t` is
