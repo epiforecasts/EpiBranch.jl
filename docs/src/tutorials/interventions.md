@@ -308,13 +308,14 @@ results_independent = simulate(scenario([iso, ct, rv_independent]), 200; max_cas
 println("Independent refusal (mean coverage 0.5): $(round(containment_probability(results_independent), digits=3))")
 ```
 
-The mean coverage is the same in both, so a case's expected number of
-onward infections is the same either way. Clustering spreads coverage
-across rings at that fixed mean, with some rings mostly covered and others
-mostly untouched, which widens the spread of each case's onward infections.
-That extra variance can raise containment slightly and never lowers it, so
-the clustered number above tends to sit a little above the independent one,
-by a margin that 200 repeats barely resolves.
+The mean coverage is the same in both; clustering only spreads it across
+rings, some mostly covered and others mostly untouched. Under this tracing
+`efficacy` has no effect (see the warning above), so coverage does not
+change containment and the two numbers differ only by simulation noise.
+Where the vaccine does act, for example through `onward_efficacy` when
+tracing does not quarantine, the shared propensity widens the spread of
+each case's onward infections at the same mean, which can raise
+containment slightly and never lowers it.
 
 ### Mass vaccination
 
