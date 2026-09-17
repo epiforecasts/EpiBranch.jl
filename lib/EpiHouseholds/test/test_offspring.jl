@@ -103,13 +103,6 @@ end
         @test mean(d)≈simulated rtol=0.02
     end
 
-    @testset "a recursion that stays inaccurate says so" begin
-        # A random window's escape probabilities come from quadrature, whose
-        # error the recursion amplifies beyond what extended precision recovers.
-        @test_throws ErrorException household_final_size(
-            40, Exponential(50.0), Uniform(0.5, 1.5))
-    end
-
     @testset "the recursion matches simulated households" begin
         n = 5
         model = ModelSpec(HouseholdProcess(fill(n, 20_000), Exponential(1 / β));
@@ -410,6 +403,28 @@ end
         direct = λG .* person_time ./ (50 .* [n_households ÷ 4, 3n_households ÷ 4])
         @test o.households[1] == collect(1:4:n_households)
         @test o.means≈direct rtol=0.03
+    end
+
+    @testset "a mean the recursion cannot give comes from the simulated households" begin
+        # A random window's escape probabilities come from quadrature, whose
+        # error the final-size recursion amplifies in a weakly transmitting
+        # household of twelve beyond what extended precision recovers.
+        kernel, window = Exponential(50.0), Gamma(4, 0.25)
+        @test_throws ErrorException household_final_size(12, kernel, window)
+        sizes = [fill(3, 50); fill(12, 5)]
+        model = ModelSpec(HouseholdProcess(sizes, kernel);
+            progression = [Transition(:recovered; from = :infection, delay = window,
+                terminal = true)])
+        o = household_offspring(model; global_rate = 0.5, n_samples = 20_000,
+            rng = StableRNG(41))
+        rng = StableRNG(42)
+        # Households 51 to 55 are the ones of twelve.
+        large = Float64[]
+        for _ in 1:1_000
+            by_household = person_time_by_household(simulate(model; rng), length(sizes))
+            append!(large, by_household[51:55])
+        end
+        @test o.means[2]≈0.5 * mean(large) rtol=0.03
     end
 
     @testset "a bare process takes its own progression" begin

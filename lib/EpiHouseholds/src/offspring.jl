@@ -506,8 +506,17 @@ function household_final_size(size::Integer, kernel, window;
     size >= 1 || throw(ArgumentError("household size must be ≥ 1, got $size"))
     1 <= initial_infectives <= size || throw(ArgumentError(
         "initial_infectives must be between 1 and the household size, got $initial_infectives"))
-    n = size - initial_infectives
-    p = _final_size_pmf(n, initial_infectives, kernel, window)
+    law = _final_size_law(size, kernel, window, initial_infectives)
+    law === nothing && throw(ErrorException(
+        "the final-size recursion lost accuracy for a household of $size, " *
+        "because it subtracts terms far larger than the probabilities they leave"))
+    return law
+end
+
+# The final-size law, or `nothing` when the recursion cannot compute it accurately.
+function _final_size_law(size::Integer, kernel, window, initial_infectives::Integer)
+    p = _final_size_pmf(size - initial_infectives, initial_infectives, kernel, window)
+    p === nothing && return nothing
     return DiscreteNonParametric(collect(initial_infectives:size), p ./ sum(p))
 end
 
@@ -515,7 +524,7 @@ end
 # infected, with `a` initial infectives. For each `j`, the expected number of
 # ways to pick `j` susceptibles of whom a given `n - j` all escape every case
 # gives one equation; the system is triangular, so each `P[j]` follows from the
-# ones before it.
+# ones before it. `nothing` when rounding spoils the result.
 function _final_size_pmf(n::Int, a::Int, kernel, window)
     n == 0 && return [1.0]
     p = _final_size_recursion(Float64, kernel, window, n, a)
@@ -524,14 +533,12 @@ function _final_size_pmf(n::Int, a::Int, kernel, window)
     # leave, which in Float64 fails for households of a few dozen when escape
     # probabilities are close to 1. A binomial coefficient costs at most `n`
     # bits, so extended precision with a margin of a few bits per member
-    # recovers them.
+    # recovers them. A window integrated by quadrature is the exception: the
+    # rounding is already in its escape probabilities.
     p = setprecision(BigFloat, 64 + 4n) do
         Float64.(_final_size_recursion(BigFloat, kernel, window, n, a))
     end
-    _is_accurate(p) || throw(ErrorException(
-        "the final-size recursion lost accuracy for a household of $(n + a), " *
-        "because it subtracts terms far larger than the probabilities they leave"))
-    return max.(p, 0.0)
+    return _is_accurate(p) ? max.(p, 0.0) : nothing
 end
 
 # Rounding can leave a probability a hair below zero; anything worse is a real
@@ -579,10 +586,12 @@ end
 # seeded with one case. A case's own infectious window does not bear on whether
 # it was infected — only the windows of the others do — so the mean total is the
 # mean final size times the mean window. `nothing` when the model gives no window
-# law to average over; the mean is then taken from the simulated households.
+# law to average over, or the final-size recursion cannot give the mean
+# accurately; the mean is then taken from the simulated households.
 function _mean_person_time(n::Int, kernel::UnivariateDistribution,
         window::Union{Real, UnivariateDistribution})
-    return mean(household_final_size(n, kernel, window)) * mean(window)
+    law = _final_size_law(n, kernel, window, 1)
+    return law === nothing ? nothing : mean(law) * mean(window)
 end
 _mean_person_time(::Int, kernel, window) = nothing
 
