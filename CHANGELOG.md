@@ -75,29 +75,39 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 - The continuous-time models (`HomogeneousProcess`, and `NetworkProcess`,
   `RoutedNetwork` and `HouseholdProcess` in the companion packages) now resolve
-  per-contact competing risks. Each potential infection is put to the composed
-  risks at the moment it is proposed and against the time it is proposed for, as
-  on the generation-based engine, so per-individual susceptibility and
-  infectiousness apply there at last, and so does an intervention whose effect
-  is a per-contact block — a leaky `Isolation`, a vaccine's efficacy, or a risk
-  a user writes themselves. A blocked proposal is declined and nothing else: on
-  a graph that pair offers no further contact and the target stays susceptible
-  to its other neighbours, while in the mass-action pool the susceptible draws a
-  fresh resistance and waits for the next contact. On a model with several
-  routes, the routes an intervention's risks reach are set by the new
-  `EpiBranch.risk_scope` trait: `Isolation` and `ContactTracing` reach only the
-  routes that list `EpiBranch.INTERVENTION_REMOVAL` in their `until`, while
-  vaccinations, and by default any other intervention, reach every route. A
-  model with no risks in play draws nothing extra and reproduces earlier runs
-  exactly for the same seed. A model with risks is no longer the exact
-  generative model of the pairwise likelihood, which has no term for a declined
-  proposal. A pool whose infectious windows never close and whose every contact
-  is then blocked has no end to reach, and now says so rather than running on.
+  per-contact competing risks, so an intervention whose effect is a per-contact
+  block — a leaky `Isolation`, a vaccine's efficacy, or a risk a user writes
+  themselves — takes effect there. Each contact is put to the composed risks at
+  the moment it happens, as on the generation-based engine, and a blocked
+  contact does not transmit; the contact process then carries on, so blocking a
+  fraction `p` of the contacts thins the force of infection to `(1 - p)` of it.
+  That is the per-exposure reading of a leaky vaccine, and it makes the race and
+  the pool the same process: a two-person clique meeting at rate 1 over a
+  two-day infectious period, at efficacy 0.5, infects `1 - exp(-1)` of the time
+  on both. It is not the generation engine's reading, where a parent's contacts
+  are a fixed set of draws and a blocked one is simply lost.
+- Per-individual susceptibility and infectiousness apply on the continuous-time
+  models, as multipliers on the transmission hazard: they scale the rate at
+  which a pair meets, the pressure a susceptible in the pool absorbs, the weight
+  an infective adds to the pool's force, and the hazard a community
+  introduction arrives at. A multiplier of 0 never transmits.
+- A model with per-contact risks is no longer the exact generative model of the
+  pairwise likelihood unless the risk is in force throughout and the kernel
+  family is closed under proportional hazards. A model with no risks in play
+  draws nothing extra and reproduces earlier runs exactly for the same seed. A
+  pool whose infectious windows never close and whose every contact is then
+  blocked has no end to reach, and now says so rather than running on.
+- On a model with several routes, the routes an intervention's risks reach are
+  set by the new `EpiBranch.risk_scope` trait: `Isolation` and `ContactTracing`
+  reach only the routes that list `EpiBranch.INTERVENTION_REMOVAL` in their
+  `until`, while vaccinations, and by default any other intervention, reach
+  every route.
 - A fixed-size pool with more than one mixing type refuses risks that depend on
-  the infector (per-individual infectiousness, a leaky `Isolation`, or an
-  intervention's own `competing_risk` other than a vaccine's protection of the
-  contact), because it draws each contact's infector without weighting by the
-  mixing structure. Risks acting on the contact alone still apply.
+  the infector (a leaky `Isolation`, or an intervention's own `competing_risk`
+  other than a vaccine's protection of the contact), because it draws each
+  contact's infector without weighting by the mixing structure. Risks acting on
+  the contact alone still apply, and so does per-individual infectiousness,
+  which is carried by the force itself.
 - `RingVaccination` doses along the trace on the continuous-time models, where
   before it only ever dosed contacts the generation engine had created. A ring
   with a finite `eligibility_window` or a `post_exposure_efficacy` still doses

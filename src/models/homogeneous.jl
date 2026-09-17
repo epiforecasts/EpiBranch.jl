@@ -130,7 +130,8 @@ function _simulate(model::HomogeneousProcess, sim_opts::SimOpts;
 
     # The homogeneous pool is the one-type case of the structured Sellke pool:
     # no attributes name the mixing, so every individual feels the same force
-    # β/N per infective (`sum(values(counts))` = number currently infectious).
+    # β/N per unit of infectiousness (`sum(values(counts))` = the
+    # infectiousness-weighted number currently infectious).
     _sellke_pool!(state, collect(1:model.population_size), rng;
         force = (type, counts) -> β / model.population_size * sum(values(counts)),
         n_initial = n_initial, from = from, until = model.until, interventions,

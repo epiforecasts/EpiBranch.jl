@@ -35,6 +35,13 @@ function EpiBranch.trace_contacts!(tr::TraceAtFixedTimes, state, infector, conta
     end
 end
 
+# A per-contact risk with a constant block probability, of the shape a user
+# writes: it thins the pair's contact process rather than scaling its kernel.
+struct BlockHalf <: EpiBranch.AbstractIntervention end
+function EpiBranch.competing_risk(::BlockHalf, parent, contact, state)
+    parent === contact ? nothing : Risk(block_probability = 0.5)
+end
+
 @testset "Route windows" begin
     @testset "construction and show" begin
         w = RouteWindow(:community; from = :infectious, until = (:recovered,),
@@ -262,6 +269,56 @@ end
                 post_isolation_transmission = 0.5))
     end
 
+    @testset "a per-contact risk thins the pair's hazard" begin
+        # Two members, one infectious from time 0 for two days, meeting at an
+        # Exponential(1) contact interval. A multiplier m on that pair — a
+        # susceptibility, an intervention's block of 1 - m, or both — scales the
+        # hazard, so the other member is infected with probability 1 - exp(-2m).
+        # Halving the transmission probability instead would give 0.43 at
+        # m = 0.5, where thinning the hazard gives 0.63.
+        prog = [Transition(:recovered; from = :infection, delay = 2.0, terminal = true)]
+        function secondary(kernel, sus, ivs, seed)
+            rng = StableRNG(seed)
+            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, transmission_traits(susceptibility = sus), rng)
+            EpiBranch.add_individuals!(state, 2, ivs)
+            EpiBranch._sellke_race!(state, [1, 2], rng; from = :infection,
+                until = (:recovered,), interventions = ivs,
+                targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+                                       ((2, kernel),) : (),
+                seed! = (best, members, r) -> (best[1] = 0.0))
+            return is_infected(state.individuals[2])
+        end
+        share(kernel, sus, ivs = AbstractIntervention[]) = count(secondary(kernel, sus, ivs, seed)
+        for seed in 1:4000) / 4000
+
+        # The trait folds into the contact-interval draw.
+        @test isapprox(share(Exponential(1.0), 1.0), 1 - exp(-2.0); atol = 0.025)
+        for m in (0.5, 0.25)
+            @test isapprox(share(Exponential(1.0), m), 1 - exp(-2m); atol = 0.025)
+        end
+        @test share(Exponential(1.0), 0.5) > 0.5 * (1 - exp(-2.0)) + 0.03
+        # An intervention's risk is resolved contact by contact instead, and the
+        # pair goes on meeting after a blocked one, which thins the same hazard
+        # by the same factor. The two compose: half of a half is a quarter.
+        @test isapprox(share(Exponential(1.0), 1.0, [BlockHalf()]), 1 - exp(-1.0);
+            atol = 0.025)
+        @test isapprox(share(Exponential(1.0), 0.5, [BlockHalf()]), 1 - exp(-0.5);
+            atol = 0.025)
+
+        # A kernel with an atom, or with all its mass inside the window, carries
+        # an infinite integrated hazard, and no multiplier can thin that away: a
+        # susceptibility short of zero leaves the pair transmitting for certain.
+        # An intervention's risk is a block on the contact itself, so it does
+        # bite, and a degenerate contact interval has no second contact to offer.
+        @test share(Dirac(1.0), 0.5) == 1.0
+        @test share(Uniform(1.5, 1.9), 0.5) == 1.0
+        @test isapprox(share(Dirac(1.0), 1.0, [BlockHalf()]), 0.5; atol = 0.025)
+
+        # A multiplier of zero never transmits, and draws nothing.
+        @test share(Exponential(1.0), 0.0) == 0.0
+    end
+
     @testset "a ring dose follows the earliest trace on the race" begin
         # Nodes 1 and 2 are seeded at 0 and 1, so the race settles node 1 first,
         # and both reach node 3. Node 1 traces it at 4, node 2 sooner, at 2: the
@@ -322,9 +379,9 @@ end
         @test plain.individuals[3].parent_id == 1
         @test plain.individuals[3].infection_time == 2.0
 
-        # Blocking node 1's proposal declines that one transmission and nothing
-        # else: node 3 stays susceptible and node 2 infects it at 5, later than
-        # it would otherwise have been infected.
+        # Blocking node 1's contact costs node 3 that transmission and nothing
+        # else: the contact interval here is degenerate, so the pair has no
+        # further contact to offer, and node 2 infects node 3 at 5 instead.
         blocked = race([BlockFrom(1)])
         @test is_infected(blocked.individuals[3])
         @test blocked.individuals[3].parent_id == 2

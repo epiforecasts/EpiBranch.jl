@@ -1019,19 +1019,16 @@ function _builtin_risk_blocks(parent, contact, state, transmission_time)
     return false
 end
 
-# The built-in sources the continuous-time models compose. Two of the five are
-# the generation engine's own and can never fire there: an infector on those
-# models has settled and so is infected by construction, and route censoring is
-# the infectious window's job rather than a tag written on a contact. Leaving
-# them out keeps a per-contact resolution down to what can actually apply.
+# The built-in sources the continuous-time models compose. Only one of the five
+# applies there. Two are the generation engine's own and can never fire: an
+# infector on those models has settled and so is infected by construction, and
+# route censoring is the infectious window's job rather than a tag written on a
+# contact. The other two, the per-individual susceptibility and infectiousness,
+# are rate multipliers on those models rather than per-contact blocks: each one
+# scales the hazard a pair meets at (`_traits_scaled_draw`) or the pressure a
+# susceptible absorbs, so resolving them here again would count them twice.
 function _sellke_builtin_risk_blocks(parent, contact, state, transmission_time)
-    _risk_blocks(AbortedInfection(), parent, contact, state, transmission_time) &&
-        return true
-    _risk_blocks(HostSusceptibility(), parent, contact, state, transmission_time) &&
-        return true
-    _risk_blocks(InfectorInfectiousness(), parent, contact, state, transmission_time) &&
-        return true
-    return false
+    return _risk_blocks(AbortedInfection(), parent, contact, state, transmission_time)
 end
 
 """Apply one risk source's [`competing_risk`](@ref)(s) to a transmission;
@@ -1299,7 +1296,9 @@ end
 
 Return an attributes function that sets `susceptibility` (per-contact
 probability of infection given exposure) and `infectiousness` (parent-side
-modifier on transmission) on each individual.
+modifier on transmission) on each individual. On the continuous-time models
+both act as multipliers on the transmission hazard instead, which lower the
+chance of infection only within a finite infectious window.
 
 Each argument accepts:
 

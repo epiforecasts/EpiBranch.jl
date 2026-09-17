@@ -111,8 +111,9 @@ source of the graph changes. Interventions attach through two seams. One that
 removes a case from transmission — `Isolation` — shortens its infectious window
 and curtails spread (see below). One whose effect is a per-contact block — a
 leaky isolation, a vaccine's efficacy — is put to each infection the race
-proposes along an edge, and a blocked proposal leaves the neighbour susceptible
-to everyone else. Per-individual susceptibility and infectiousness are resolved
+proposes along an edge; a blocked contact does not transmit and the pair goes on
+meeting, so blocking a fraction of the contacts thins that edge's hazard by the
+same fraction. Per-individual susceptibility and infectiousness are resolved
 the same way, so they mean here what they mean on the generation-based engine.
 `ContactTracing` applies too, because a node's contacts are its graph neighbours
 and quarantining a traced neighbour closes that neighbour's own window; see

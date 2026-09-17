@@ -222,17 +222,39 @@ What this means in practice:
   works everywhere too, and so do per-individual susceptibility and
   infectiousness, which ride the same surface. The continuous-time models put
   each potential infection to the composed risks at the moment they propose it,
-  against the time they propose it for. What a block then means differs with
-  the contact process, and is worth knowing if you write a risk of your own:
-  on a graph the pair carries a single contact interval, so a blocked proposal
-  is declined and the edge offers nothing more — the target simply stays
-  susceptible to its other neighbours; in the mass-action pool contacts keep
-  arriving, so a blocked one leaves the susceptible waiting for the next. Both
-  give the same realised reduction in cases as blocking that fraction of a
-  parent's contacts on the generation engine.
-- A model with per-contact risks in play is no longer the exact generative
-  model of the pairwise likelihood, which has no term for a declined proposal.
-  Simulating with risks and scoring the result with `loglikelihood` will
+  against the time they propose it for. A blocked contact does not transmit and
+  the contact process carries on: on a graph the pair's next contact is drawn
+  from its own hazard conditioned on falling later, and in the mass-action pool
+  the susceptible waits for the next contact with a fresh resistance. Blocking
+  each contact with probability `p` therefore thins the force of infection to
+  `(1 - p)` of it on both, so the two agree — a two-person clique with a
+  one-day mean contact interval and a two-day infectious period is the same
+  process as a pool of two at `β = 2`, and at efficacy 0.5 both infect
+  `1 - exp(-1) = 0.63` of the time.
+- Per-individual susceptibility and infectiousness reach the same thinning by a
+  shorter route. They are constants of the two people rather than something that
+  arrives at a time, so the models fold them into the draw: a multiplier `m`
+  turns a pair's contact-interval survival `S(t)` into `S(t)^m`, the pool scales
+  each susceptible's threshold and weights each infective's share of the force,
+  and a community introduction's hazard is scaled the same way. A multiplier of
+  0 never transmits and draws nothing. One consequence to know: scaling cannot
+  thin an infinite hazard, so a contact interval certain to fall inside the
+  window — a `Dirac`, or any kernel whose support ends before the window does —
+  transmits whatever the multiplier, while an intervention's `Risk` still blocks
+  the contact itself.
+- That is the per-exposure reading of a leaky vaccine, and it is **not** what
+  the same `Risk`
+  does on the generation engine. There a parent's contacts are a fixed set of
+  draws, so a blocked one is a transmission lost with nothing to follow it, and
+  an efficacy of 0.5 halves that pair's transmissions. The same efficacy bites
+  less per pair on a continuous-time model, because the pair goes on meeting
+  (0.63 above, against 0.43 for a halved probability).
+- Thinning the hazard leaves the pair's contact process in the family the
+  pairwise likelihood works with, its hazard scaled: a constant susceptibility
+  is still representable wherever that family is closed under proportional
+  hazards, as an exponential contact interval is. A risk that arrives partway
+  through the window — an isolation, or a dose a trace gives — is not, so
+  simulating with those and scoring the result with `loglikelihood` will
   disagree.
 - On a model with several routes, the routes an intervention's risks apply on
   are its [`EpiBranch.risk_scope`](@ref). `Isolation` and `ContactTracing`
@@ -423,6 +445,12 @@ A trait of `1.0` contributes no risk, so the defaults are silent unless
 an attributes function sets a susceptibility or infectiousness below one.
 You can replace or extend them by adding your own `competing_risk` the
 same way.
+
+`HostSusceptibility` and `InfectorInfectiousness` are the generation engine's
+sources for the two traits. The continuous-time models carry the same two as
+multipliers on the transmission hazard instead (see above), so they do not
+resolve them contact by contact; everything else on this surface, yours
+included, is resolved there as it is here.
 
 ### Growing the contact graph with `keep_active`
 

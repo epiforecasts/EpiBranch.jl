@@ -226,8 +226,30 @@ EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
             rng = StableRNG(1), n_initial = 3)
         @test silent.cumulative_cases == 3
 
-        # Blocking thins the force of infection, so a susceptibility of s is the
-        # same process as a transmission rate scaled by s. Compare attack rates.
+        # Infectiousness is each infective's weight in the force, so a case
+        # contributing none is never named as a parent, and the weighted count
+        # returns to exactly zero when the last of them recovers: fractional
+        # weights added and subtracted in different orders would otherwise leave
+        # a residual force and infect the rest at absurd times.
+        half_silent = ModelSpec(pool; progression = prog,
+            attributes = transmission_traits(
+                infectiousness = (rng, ind) -> rand(rng) < 0.5 ? 0.0 : 1.0))
+        for s in 1:5
+            st = simulate(half_silent; rng = StableRNG(s), n_initial = 20)
+            parents = [ind.parent_id
+                       for ind in st.individuals
+                       if is_infected(ind) && ind.parent_id > 0]
+            @test !isempty(parents)
+            @test all(p -> st.individuals[p].infectiousness > 0, parents)
+        end
+        varied = ModelSpec(pool; progression = prog,
+            attributes = transmission_traits(infectiousness = Uniform(0, 1)))
+        @test maximum(maximum(ind.infection_time
+                      for ind in simulate(varied; rng = StableRNG(s), n_initial = 5).individuals
+                      if is_infected(ind)) for s in 1:20) < 1e3
+
+        # The traits scale the force, so a susceptibility of s is the same
+        # process as a transmission rate scaled by s. Compare attack rates.
         half_beta = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
         scaled = sum(
             simulate(ModelSpec(half_beta; progression = prog);
@@ -265,26 +287,32 @@ EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
     @testset "a pool that can never finish is refused, not looped" begin
         # With no removal transition the infectious window never closes, so the
         # force of infection never decays; with every contact certainly blocked
-        # there is no end to reach. The pool says so rather than spinning.
-        m = ModelSpec(HomogeneousProcess(; transmission_rate = 2.0, population_size = 40);
-            attributes = transmission_traits(susceptibility = 0.0))
+        # by a risk there is no end to reach. The pool says so rather than
+        # spinning. (A susceptibility of zero is no such case: it is an infinite
+        # threshold, so no contact is ever delivered and the run ends at once.)
+        pool40 = HomogeneousProcess(; transmission_rate = 2.0, population_size = 40)
+        m = ModelSpec(pool40; interventions = [LeakyVaccine(1.0, 0.0)])
         @test_throws ErrorException simulate(m; rng = StableRNG(1), n_initial = 2)
+        @test simulate(
+            ModelSpec(pool40;
+                attributes = transmission_traits(susceptibility = 0.0));
+            rng = StableRNG(1), n_initial = 2).cumulative_cases == 2
 
-        # A rare but possible infection is no endless loop. At susceptibility
-        # 1e-4 about 10,000 contacts are blocked between one infection and the
-        # next, and about 2 million over the run, more than the guard allows in a
-        # row; counting them across infections would refuse a model that finishes.
+        # A rare but possible infection is no endless loop. With a block
+        # probability of 1 - 1e-4 about 10,000 contacts are blocked between one
+        # infection and the next, and about 2 million over the run, more than the
+        # guard allows in a row; counting them across infections would refuse a
+        # model that finishes.
         rare = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = 200);
-            attributes = transmission_traits(susceptibility = 1e-4))
+            interventions = [LeakyVaccine(1.0 - 1e-4, 0.0)])
         @test simulate(rare; rng = StableRNG(1), n_initial = 2).cumulative_cases == 200
 
         # A removal transition is all it takes: the outbreak ends at the seeds.
-        with_removal = ModelSpec(
-            HomogeneousProcess(; transmission_rate = 2.0, population_size = 40);
+        with_removal = ModelSpec(pool40;
             progression = [Transition(:recovered; from = :infection,
                 delay = Exponential(1.0), terminal = true)],
-            attributes = transmission_traits(susceptibility = 0.0))
+            interventions = [LeakyVaccine(1.0, 0.0)])
         @test simulate(with_removal; rng = StableRNG(1), n_initial = 2).cumulative_cases ==
               2
     end
@@ -482,9 +510,11 @@ EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
     @testset "structured pool refuses risks that depend on the infector" begin
         # Two bands that never mix (M = diag(2, 2)). Band 1's epidemic cannot
         # depend on anything about band 2's infectives, but a contact's infector
-        # is drawn from everyone infectious, so a block read off the infector
-        # would let band 2 thin band 1's contacts. The pool refuses such risks,
-        # while a risk acting on the contact alone leaves band 1 untouched.
+        # is drawn from everyone infectious without regard to which types mix, so
+        # a block read off the infector would let band 2 thin band 1's contacts.
+        # The pool refuses such risks. The two per-individual traits are not
+        # among them: they are in the force and the thresholds, not in the
+        # attribution, and leave band 1 untouched.
         N = 2000
         half = N ÷ 2
         force = (type, counts) -> 2.0 * get(counts, type, 0) / half
@@ -508,8 +538,6 @@ EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
         end
         major(ars) = mean(filter(>(0.2), ars))
 
-        @test_throws r"infectiousness" band1_attack(1;
-            band2! = ind -> (ind.infectiousness = 0.0))
         leaky = Isolation(onset_to_isolation_delay = Exponential(1.0),
             post_isolation_transmission = 0.5)
         @test_throws r"Isolation" band1_attack(1; interventions = [leaky])
@@ -522,13 +550,18 @@ EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
         @test !EpiBranch._blocks_by_infector(
             Isolation(onset_to_isolation_delay = Exponential(1.0)))
 
-        # Band 2's susceptibility acts on its own contacts only, so band 1's
-        # attack rate is the SIR final size at R0 = 2 either way.
+        # Band 2's susceptibility acts on its own contacts only, and its
+        # infectiousness is a weight in its own band's force, so band 1's attack
+        # rate is the SIR final size at R0 = 2 whatever either of them is. A
+        # contact drawn from the wrong infector would show up here.
         base = major([band1_attack(s) for s in 1:30])
         immune2 = major([band1_attack(s; band2! = ind -> (ind.susceptibility = 0.0))
                          for s in 1:30])
+        silent2 = major([band1_attack(s; band2! = ind -> (ind.infectiousness = 0.0))
+                         for s in 1:30])
         @test isapprox(base, 0.7968; atol = 0.03)
         @test isapprox(immune2, 0.7968; atol = 0.03)
+        @test isapprox(silent2, 0.7968; atol = 0.03)
 
         # One mixing type attributes every contact exactly, so nothing is refused.
         pool = HomogeneousProcess(; transmission_rate = 2.0, population_size = 200)

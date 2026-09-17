@@ -193,8 +193,12 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
 
         @test isapprox(meansize([iso, ct, RingVaccination(efficacy = 0.0)]), base;
             rtol = 0.05)
+        # A dosed pair goes on meeting, so an efficacy of 0.5 thins that edge's
+        # hazard by half rather than halving its transmissions: it cuts the
+        # outbreak, but by less than the same efficacy would on the generation
+        # engine, where a blocked contact is simply lost.
         leaky = meansize([iso, ct, RingVaccination(efficacy = 0.5)])
-        @test leaky < 0.6 * base
+        @test leaky < 0.8 * base
         @test meansize([iso, ct, RingVaccination(efficacy = 1.0)]) < leaky
     end
 
@@ -728,17 +732,12 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test any(ind -> hh_of(ind.id) == hh_of(ind.parent_id), placebo)
         @test any(ind -> hh_of(ind.id) != hh_of(ind.parent_id), placebo)
 
-        # A fully effective dose blocks nearly all of them on both routes. The race
-        # resolves a proposal when its infector settles, so a dose given or brought
-        # forward by a case settled after the infector is not seen, and a few such
-        # household infections remain.
+        # A fully effective dose blocks every one of them, on both routes. The
+        # race resolves each proposal when it is popped, so a dose that a trace
+        # gave after the infector settled is in force by then.
         full = runs([tracing; RingVaccination(efficacy = 1.0)])
         @test any(st -> any(is_vaccinated, st.individuals), full)
-        immune = [ind for st in full for ind in st.individuals
-                  if immune_at_infection(ind)]
-        at_home(inds) = count(ind -> hh_of(ind.id) == hh_of(ind.parent_id), inds)
-        @test at_home(immune) <= 0.1 * at_home(placebo)
-        @test at_home(immune) == length(immune)
+        @test !any(st -> any(immune_at_infection, st.individuals), full)
 
         # The onward effect applies on every route too: a fully effective one
         # stops a dosed case infecting anyone once its immunity is in place, its

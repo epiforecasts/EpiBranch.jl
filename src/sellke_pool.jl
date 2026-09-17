@@ -30,9 +30,12 @@
 #
 # A threshold crossing is the arrival of one infectious contact, and like any
 # other potential transmission it is put to the composed competing risks (see
-# `_composed_risks_block`): the contact's own susceptibility, the drawn
-# infector's infectiousness, and whatever block an intervention contributes
-# against that pair at that time.
+# `_composed_risks_block`): whatever block the model's own risk sources or an
+# intervention contributes against that pair at that time. The two
+# per-individual traits are not among them here: they are rate multipliers, and
+# the construction carries them already — infectiousness as each infective's
+# weight in the counts the force reads, susceptibility as the scaling of each
+# susceptible's threshold.
 #
 # A blocked contact does not infect, and the susceptible goes back into its
 # group with a fresh `Exponential(1)` resistance above the pressure it has
@@ -45,17 +48,43 @@
 # realised reduction in cases as blocking a fraction `p` of a parent's contacts
 # on the generation engine.
 #
-# This is where the pool parts company with `_sellke_race!`, which declines a
-# blocked proposal and never re-offers that pair. The rule is the same in both —
-# resolve the risks at the contact, and a blocked contact does not infect — and
-# only the contact process differs: an edge of a graph carries one contact
-# interval, a mass-action pool a stream.
+# `_sellke_race!` reads a block the same way on an edge of a graph, where the
+# pair's next contact is drawn from its kernel conditioned on falling later. Both
+# thin the hazard by the same factor, so a clique of the race and a pool with the
+# matching force of infection are the same process.
+
+# The infector of a pool infection, drawn from `infectious_ids` with probability
+# proportional to infectiousness. When every member has the default
+# infectiousness the draw is uniform, which keeps seeded runs without the trait
+# unchanged. With no infectious weight at all — an empty pool under a custom
+# `force` with a count-independent hazard, e.g. external importation, or only
+# zero-infectiousness cases — there is no infector to attribute to, so fall back
+# to the index-case label 0.
+function _draw_infector(rng::AbstractRNG, state::SimulationState,
+        infectious_ids::AbstractVector{Int}, equal_infectiousness::Bool)
+    isempty(infectious_ids) && return 0
+    equal_infectiousness && return infectious_ids[rand(rng, 1:length(infectious_ids))]
+    u = rand(rng) * sum(id -> state.individuals[id].infectiousness, infectious_ids)
+    # The last positive-weight case stands in when rounding leaves `u` a hair
+    # above zero after the final subtraction; with no positive weight at all it
+    # stays 0.
+    infector = 0
+    for id in infectious_ids
+        weight = state.individuals[id].infectiousness
+        weight > 0 || continue
+        infector = id
+        u -= weight
+        u < 0 && break
+    end
+    return infector
+end
 
 # ── Infector-side risks under structured mixing ──────────────────────
 #
 # A contact's infector is drawn uniformly from everyone infectious. That is exact
-# for one mixing type, where every infective adds the same to the force on every
-# susceptible. With several types an infective adds to a group's force according
+# for one mixing type, where every infective of the same infectiousness adds the
+# same to the force on every susceptible. With several types an infective adds to
+# a group's force according
 # to its own type, so the exact draw weights each infective by its contribution.
 # `force` is an arbitrary function of the per-type counts and is not required to
 # be linear in them, so that contribution is not defined in general; recovering
@@ -65,7 +94,9 @@
 # leaves the dynamics exact as long as no risk depends on who the infector is:
 # the contact's susceptibility or a vaccine's protection of the contact are
 # fine, whereas the infector's infectiousness or a leaky isolation would weight
-# blocks by the wrong infectors. Those are refused.
+# blocks by the wrong infectors. Those are refused. Per-individual infectiousness
+# is not among them: it is carried by the force itself, as each infective's
+# weight in the counts, so it needs no attribution to be exact.
 
 # Whether a risk source can block a contact differently depending on its
 # infector. A model's own risk source is opaque, so it is assumed to; an
@@ -83,8 +114,6 @@ _blocks_by_infector(s::Scheduled) = _blocks_by_infector(s.intervention)
 
 function _refuse_infector_side_risks(state, members, risks, interventions)
     culprits = String[]
-    any(id -> state.individuals[id].infectiousness != 1, members) &&
-        push!(culprits, "per-individual infectiousness")
     for source in (risks..., interventions...)
         _blocks_by_infector(source) || continue
         push!(culprits, string(nameof(typeof(_unwrap_scheduled(source)))))
@@ -118,8 +147,9 @@ input is the mixing rule between types:
 
   - `force(type, counts)::Float64` is the per-susceptible force of infection on a
     susceptible of mixing type `type`, given `counts`, a `Dict` mapping each
-    mixing type to the number currently infectious of that type. It must be
-    piecewise-constant
+    mixing type to the infectiousness-weighted number currently infectious of
+    that type (each infective contributes its own `infectiousness`, 1 by
+    default, rather than a flat 1). It must be piecewise-constant
     between events, which it is: `counts` only changes at an infection, a window
     opening or a window closing. Homogeneous mixing is
     `force = (type, counts) -> beta / N * sum(values(counts))`.
@@ -127,13 +157,14 @@ input is the mixing rule between types:
 `n_initial` is the number of index cases seeded at time 0, `from` the state the
 infectious window opens at and `until` the removal states that close it. Each
 susceptible carries an `Exponential(1)` resistance threshold and is contacted the
-instant its accumulated pressure crosses it; pressure accumulates at the force
-felt by its mixing type. Writes per-individual state directly; the caller
+instant its accumulated pressure, scaled by its own `susceptibility` (1 by
+default), crosses it; pressure accumulates at the force felt by its mixing type. Writes per-individual state directly; the caller
 reconciles aggregate bookkeeping and applies observation.
 
-Each contact is put to the composed competing risks — the built-in
-per-individual susceptibility and infectiousness, the model's own `risks` (what
-[`transmission_risks`](@ref) reports), and the interventions. A blocked contact
+Each contact is put to the composed competing risks — the model's own `risks`
+(what [`transmission_risks`](@ref) reports) and the interventions; the two
+per-individual traits are already in the construction, as the weights in
+`counts` and the scaling of each threshold. A blocked contact
 does not infect, and the susceptible draws a fresh resistance and waits for the
 next one. With more than one mixing type, a risk that depends on the infector —
 per-individual infectiousness, a leaky isolation, a model risk source, or any
@@ -185,13 +216,28 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         typ[id] = Tuple(get(s, k, missing) for k in mixing_by)
     end
 
-    # Current infectious count per mixing type: one persistent Dict, mutated in
-    # place and handed to `force` (never reallocated). Every type present starts
-    # at 0, so index cases and susceptibles of any type key in without a miss.
-    counts = Dict{Any, Int}()
+    # Current infectiousness-weighted infectious count per mixing type: one
+    # persistent Dict, mutated in place and handed to `force` (never
+    # reallocated). Every type present starts at 0, so index cases and
+    # susceptibles of any type key in without a miss. Weighting by each
+    # infective's own `infectiousness` (1 by default, carrying `T` like every
+    # other pressure term) is the pool's reading of that trait: a case with half
+    # the infectiousness contributes half the force a default case would.
+    counts = Dict{Any, T}()
+    # Headcount per mixing type. Adding and then subtracting fractional
+    # infectiousness leaves a rounding residual, which as a positive force would
+    # infect the remaining susceptibles at absurd times once nobody is
+    # infectious, so a type's weighted count is reset to zero exactly when its
+    # headcount is.
+    n_infectious = Dict{Any, Int}()
     for id in members
-        counts[typ[id]] = 0
+        counts[typ[id]] = zero(T)
+        n_infectious[typ[id]] = 0
     end
+
+    # Every infective contributing the same weight makes the infector draw
+    # uniform, which is what a run without the trait did before it was honoured.
+    equal_infectiousness = all(id -> state.individuals[id].infectiousness == 1, members)
 
     length(counts) > 1 && _refuse_infector_side_risks(state, members, risks, interventions)
 
@@ -230,22 +276,35 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     # Susceptibles carry an Exponential(1) resistance threshold; within each group
     # consume thresholds in ascending order (a sorted vector with a front
     # pointer), so each group tracks its own next crossing.
+    #
+    # A susceptible's own `susceptibility` (1 by default) scales the pressure it
+    # feels, `Λ(t)·susceptibility ≥ Q`, so its *effective* threshold is
+    # `Q/susceptibility` — the group's shared pressure crosses it later exactly
+    # in proportion to how resistant this individual is, which is the trait as a
+    # rate multiplier rather than a per-contact block. Dividing once here (and
+    # sorting on the result) keeps the rest of the loop, which only ever compares
+    # against the group's pressure, unchanged; a susceptibility of 0 is an
+    # infinite threshold, never crossed.
     type_group = Dict{Any, Int}()    # type value → group index
     types = Any[]                       # group index → type value
     sus_by_group = Vector{Int}[]
-    Q_by_group = Vector{Float64}[]
+    # Carries `T` (e.g. a dual under AD), not hardcoded `Float64`: the effective
+    # threshold is arithmetic on susceptibility, which does too.
+    Q_by_group = Vector{T}[]
     for id in @view order[(n_initial + 1):end]
         tp = typ[id]
         g = get(type_group, tp, 0)
         if g == 0
             push!(types, tp)
             push!(sus_by_group, Int[])
-            push!(Q_by_group, Float64[])
+            push!(Q_by_group, T[])
             g = length(types)
             type_group[tp] = g
         end
         push!(sus_by_group[g], id)
-        push!(Q_by_group[g], rand(rng, Exponential(1.0)))
+        susceptibility = state.individuals[id].susceptibility
+        push!(Q_by_group[g],
+            susceptibility > 0 ? rand(rng, Exponential(1.0)) / susceptibility : T(Inf))
     end
     G = length(types)                   # number of susceptible groups in play
     for g in 1:G
@@ -330,12 +389,16 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             slot[lastid] = i
             pop!(infectious_ids)
             delete!(slot, id)
-            counts[typ[id]] -= 1
+            tp = typ[id]
+            n_infectious[tp] -= 1
+            counts[tp] = n_infectious[tp] == 0 ? zero(T) :
+                         counts[tp] - state.individuals[id].infectiousness
         elseif t_open == t_event
             _, id = _heap_pop!(open_heap)
             push!(infectious_ids, id)
             slot[id] = length(infectious_ids)
-            counts[typ[id]] += 1
+            n_infectious[typ[id]] += 1
+            counts[typ[id]] += state.individuals[id].infectiousness
         else
             # Contact: the lowest-threshold susceptible in group `gstar` is
             # reached now. Take it from whichever holds that threshold — the
@@ -348,17 +411,15 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
                 id = sus_by_group[gstar][ptr[gstar]]
                 ptr[gstar] += 1
             end
-            # Its infector is drawn uniformly from all currently-infectious
-            # individuals across groups. With one mixing type every infective
-            # contributes equally to the force, so that is the exact attribution.
-            # With several it is only a parent label, and the dynamics stay exact
-            # because no risk the pool resolves reads the infector: those are
-            # refused before the run (`_refuse_infector_side_risks`). If the
-            # infectious pool is empty — a custom `force` with a positive
-            # count-independent hazard, e.g. external importation — there is no
-            # infector to attribute to, so fall back to the index-case label 0.
-            src = isempty(infectious_ids) ? 0 :
-                  infectious_ids[rand(rng, 1:length(infectious_ids))]
+            # Its infector is drawn from all currently-infectious individuals
+            # across groups, in proportion to their infectiousness — each one's
+            # share of the pooled force. With one mixing type that is the exact
+            # attribution. With several it is only a parent label, because it
+            # takes no account of which types mix with which, and the dynamics
+            # stay exact because no risk the pool resolves reads the infector:
+            # those are refused before the run
+            # (`_refuse_infector_side_risks`).
+            src = _draw_infector(rng, state, infectious_ids, equal_infectiousness)
             ind = state.individuals[id]
             # An introduction with no infector has no pair to resolve risks over,
             # as an index case on the generation engine has none either.
@@ -369,8 +430,15 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
                 # The contact did not transmit. Put the susceptible back with the
                 # residual of its resistance: a fresh Exponential(1) above the
                 # threshold this contact consumed.
+                # The residual is in the group's pressure, so it is the
+                # individual's own fresh `Exponential(1)` over its
+                # susceptibility, exactly as its first threshold was.
                 _heap_push!(redrawn[gstar],
-                    (q + convert(T, rand(rng, Exponential(1.0))), id))
+                    (
+                        q +
+                        convert(T, rand(rng, Exponential(1.0))) /
+                        state.individuals[id].susceptibility,
+                        id))
                 # With no window left to open or close, the infectious set and so
                 # the force of infection are fixed for the rest of time, and the
                 # only thing separating one contact from the next is the draw. If

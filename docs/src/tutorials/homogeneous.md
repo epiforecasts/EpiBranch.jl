@@ -130,9 +130,11 @@ happens. A threshold crossing is one arriving contact, and if a competing risk
 blocks it the susceptible waits for the next one, so blocking a fraction `p` of
 contacts thins the force of infection to `(1-p)·λ`.
 
-Per-individual susceptibility is the simplest case, and means here what it means
-on a branching process: a susceptibility of 0.75 leaves each contact three
-quarters as likely to infect, and so scales the reproduction number to 1.5.
+Per-individual susceptibility is the simplest case, and the pool takes it as a
+rate: a susceptibility of 0.75 leaves a person absorbing pressure three quarters
+as fast, which scales the reproduction number to 1.5. Per-individual
+infectiousness is the same on the other side, weighting what each infective
+contributes to the force.
 
 ```@example homogeneous
 protected = ModelSpec(
