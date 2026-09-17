@@ -43,7 +43,10 @@ exposure comes months after their immunity developed, say. `dt` is the
 time from immunity onset to the exposure under evaluation. A
 post-exposure abort happens the moment immunity arrives, so it uses
 `post_exposure_efficacy * waning(0)`, which differs from
-`post_exposure_efficacy` only for a `waning` that does not start at 1. Defaults to `nothing`,
+`post_exposure_efficacy` only for a `waning` that does not start at 1.
+`waning` does not reach `severity_efficacy`, which stays at the value
+sampled at vaccination for the whole run; [`RingVaccination`](@ref) shows
+how to apply a decay to it in the clinical transition that reads it. Defaults to `nothing`,
 which keeps protection constant once immunity develops, as before
 `waning` existed. A dose with its own `dose_label` in a multi-dose
 schedule decays from its own immunity time, independently of any other
@@ -321,6 +324,28 @@ might, would count a not-yet-immune dose as protective. Defaults to `0.0`
 (no severity effect). Accepts a `Real`, `Distribution`, or `Function`
 `(rng, ind) -> Real`, sampled once per vaccinated contact alongside
 `efficacy`.
+
+`severity_efficacy` does not wane. [`severity_efficacy`](@ref) returns the
+value sampled at vaccination for the whole run, and `waning` never touches
+it: a transition's `probability` sees only the individual, not the dose and
+its `waning` function. A dose with `waning` set therefore protects against
+infection less and less over time while its protection against severe
+outcomes stays at full strength. To let the latter fade too, apply the
+decay inside the closure, from immunity onset to the individual's own onset:
+
+```julia
+decay(dt) = exp(-dt / 180)
+Death(delay = LogNormal(2.5, 0.4),
+      probability = (rng, ind) -> begin
+          dt = onset_time(ind) - immunity_time(ind)
+          dt >= 0 ? 0.7 * (1 - severity_efficacy(ind) * decay(dt)) : 0.7
+      end)
+```
+
+`dt >= 0` is the same immunity check as above; it is also false for an
+individual with no onset (`NaN`), who then keeps the unvaccinated
+probability. Passing `decay` as the dose's `waning` as well makes both
+effects fade at the same rate.
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`,
 `:vaccine_efficacy`, `:immunity_time`, and `:severity_efficacy` for the
@@ -802,6 +827,9 @@ units after immunity develops. Defaults to `nothing` (constant
 protection) — a rolling rollout with a vaccine whose protection decays,
 e.g. a health worker vaccinated well ahead of any exposure, sets this
 rather than relying on `efficacy` staying at full strength indefinitely.
+As on [`RingVaccination`](@ref), `waning` does not apply to
+`severity_efficacy`, which keeps the value sampled at vaccination for the
+whole run; see there for applying a decay in the transition that reads it.
 
 Per-contact state keys are `:vaccinated`, `:vaccination_time`,
 `:vaccine_efficacy`, `:immunity_time`, and `:severity_efficacy` for the
