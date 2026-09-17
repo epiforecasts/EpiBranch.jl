@@ -531,8 +531,8 @@ function _resolve!(model::TransmissionModel, state::SimulationState,
             target.chain_id = parent.chain_id
             # Onset follows from the *infection* time. A minted contact is
             # created at its infection time, so this is idempotent; a
-            # pre-instantiated network node was created at t=0, so this
-            # recomputes its onset from the time it was actually infected.
+            # pre-instantiated node was created with no infection time (NaN),
+            # so this derives its onset from the time it was actually infected.
             _set_onset_from_incubation!(target)
             # Freshly created contacts were already registered on their
             # parent by `make_contact!`; shared network nodes are not.
