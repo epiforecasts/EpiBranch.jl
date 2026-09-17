@@ -240,11 +240,3 @@ function extinction_probability(o::ClusterMixed; tol::Real = 1e-10,
         θ -> _extinction_at_fixed_law(o.build(θ); tol, max_iter), o.mixing;
         atol = tol)
 end
-
-"""
-    epidemic_probability(o::ClusterMixed; kwargs...)
-
-Probability that a chain started by a single index case does not die out, one
-minus [`extinction_probability`](@ref).
-"""
-epidemic_probability(o::ClusterMixed; kwargs...) = 1 - extinction_probability(o; kwargs...)

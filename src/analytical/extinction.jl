@@ -86,12 +86,16 @@ function epidemic_probability(R::Real, k::Real; kwargs...)
 end
 
 """
-    epidemic_probability(d::Distribution; kwargs...)
+    epidemic_probability(offspring; kwargs...)
+    epidemic_probability(model; kwargs...)
 
-Probability of a major epidemic for a given offspring distribution.
+Probability that a single introduction leads to a major epidemic, one minus
+[`extinction_probability`](@ref), for any offspring specification or model that
+function accepts. For a multi-type model the result has one entry per type of
+index case.
 """
-function epidemic_probability(d::Distribution; kwargs...)
-    1.0 - extinction_probability(d; kwargs...)
+function epidemic_probability(offspring; kwargs...)
+    1.0 .- extinction_probability(offspring; kwargs...)
 end
 
 # ── BranchingProcess dispatch ────────────────────────────────────────
@@ -108,17 +112,6 @@ with one entry per type of index case.
 """
 function extinction_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
     return extinction_probability(_analytic_offspring(model); kwargs...)
-end
-
-"""
-    epidemic_probability(model::TransmissionModel; kwargs...)
-
-Epidemic probability for a transmission model, one minus
-[`extinction_probability`](@ref). For a multi-type model the result has one
-entry per type of index case.
-"""
-function epidemic_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
-    1.0 .- extinction_probability(model; kwargs...)
 end
 
 # ── Containment probability (analytical) ─────────────────────────────
