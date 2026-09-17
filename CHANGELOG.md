@@ -64,12 +64,13 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   `GroupVaccination`), and `post_exposure_efficacy` and `onward_efficacy` (on
   `RingVaccination`) now accept a `Real`, a `Distribution`, or a function
   `(rng, ind) -> Real`, matching `efficacy` and `coverage`. A prime-boost
-  schedule can now say its booster falls four to six weeks after the prime
-  (`dose_delay = Uniform(28.0, 42.0)`), or that a vaccine's immunity takes one
-  to three weeks to develop (`delay_to_immunity = Uniform(7.0, 21.0)`). Every
-  distribution/function form samples once per individual, at vaccination time,
-  and stores the result, so a given individual's draw stays fixed across the
-  exposures it faces. A distributional `dose_delay` cannot be checked against
+  schedule can now give its booster four to six weeks after the trace
+  (`dose_delay = Uniform(28.0, 42.0)`), or say that a vaccine's immunity takes
+  one to three weeks to develop (`delay_to_immunity = Uniform(7.0, 21.0)`).
+  `delay_to_immunity`, `post_exposure_efficacy` and `onward_efficacy` are
+  sampled once per individual, at vaccination time, and stored, so a given
+  individual's draw stays fixed across the exposures it faces; `dose_delay` is
+  drawn once, when the dose is scheduled. A distributional `dose_delay` cannot be checked against
   a required dose's delay when the `ModelSpec` is built, unlike a fixed
   `dose_delay`; the per-contact check at run time still declines a dose whose
   draw falls before the one it requires.
