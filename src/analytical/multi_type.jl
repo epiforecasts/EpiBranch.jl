@@ -143,12 +143,14 @@ specification.
 
 For a single-type model this is the mean of the offspring distribution, and
 for [`ClusterMixed`](@ref) offspring that mean averaged over the mixing
-distribution. For a
-multi-type model built from an offspring matrix it is R*, the dominant
-eigenvalue (spectral radius) of the mean next-generation matrix, whose
-`[i, j]` entry is the expected number of type-`i` offspring from a type-`j`
-parent. An outbreak can grow with positive probability only if the
-reproduction number exceeds 1.
+distribution. For a multi-type model built from an offspring matrix it is R*,
+the dominant eigenvalue (spectral radius) of the mean next-generation matrix,
+whose `[i, j]` entry is the expected number of type-`i` offspring from a
+type-`j` parent. For single-type and multi-type models an outbreak can grow
+with positive probability only if the reproduction number exceeds 1. For
+`ClusterMixed` offspring the average is no threshold, because each chain's
+growth depends on its own mixing draw; use
+[`extinction_probability`](@ref) instead.
 
 For a matrix whose types cannot all infect one another, R* above 1 says that
 some group of types can grow, and not that a case of any given type can: an
