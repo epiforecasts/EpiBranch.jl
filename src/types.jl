@@ -87,6 +87,12 @@ Core fields (used by the engine):
   this individual's onward transmission, applied when they become a
   parent.
 
+On the continuous-time models (`HomogeneousProcess`, and `NetworkProcess`,
+`RoutedNetwork` and `HouseholdProcess` in the companion packages) both traits
+instead multiply the transmission hazard. They then reduce the chance of
+infection only within a finite infectious window: a pair whose window never
+closes eventually transmits for any positive value, later on average.
+
 The timing and hazard fields share a real element type `T` (`Float64` by
 default). Under automatic differentiation the whole run carries a dual
 type, so a gradient flows through the timing parameters; ids and counts

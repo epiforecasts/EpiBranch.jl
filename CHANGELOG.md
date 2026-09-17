@@ -144,7 +144,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   sources it carries were silently ignored. They now scale the rate of the
   pair kernel directly, the continuous-time reading of a rate multiplier: a
   trait of exactly `0` blocks transmission along that pair entirely, and a
-  fractional value thins it.
+  fractional value lowers the chance of transmission within a finite infectious
+  window; a pair whose window never closes still transmits eventually, later on
+  average.
 - The same traits now bear on `HomogeneousProcess` too: infectiousness weights
   each case's contribution to the pool's force, and susceptibility scales the
   pressure each individual needs to accumulate before it is infected.

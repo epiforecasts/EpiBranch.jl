@@ -1267,7 +1267,9 @@ end
 
 Return an attributes function that sets `susceptibility` (per-contact
 probability of infection given exposure) and `infectiousness` (parent-side
-modifier on transmission) on each individual.
+modifier on transmission) on each individual. On the continuous-time models
+both act as multipliers on the transmission hazard, which lower the chance of
+infection only within a finite infectious window.
 
 Each argument accepts:
 
