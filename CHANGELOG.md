@@ -16,10 +16,7 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   default. In rows that are not infected, `date_infection` and every date
   derived from the infection, such as `date_onset`, are `missing`; only
   `date_trace`, `date_vaccination`, `date_immunity` (and their labelled
-  variants) and a quarantine's `date_isolation` are kept. Individuals created
-  up front by a structure-driven model and never infected now have
-  `infection_time = NaN` in state. They previously had `0.0`, which looked the
-  same as a case infected at the start of the simulation.
+  variants) and a quarantine's `date_isolation` are kept.
 - `HomogeneousProcess`, a closed, homogeneously-mixing population of fixed size
   simulated by the Sellke threshold construction. Every infectious individual
   exerts the same force of infection on every susceptible, giving the exact
@@ -84,6 +81,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Changed
 
+- Individuals created up front by a structure-driven model and never infected
+  now have `infection_time = NaN` in state, which is also the default of
+  `add_individuals!`. They previously had `0.0`, which looked the same as a case
+  infected at the start of the simulation.
 - The fixed-size population pool's mixing structure is now keyed on the
   individual's real attributes: a model names which attributes define mixing via
   `mixing_by` (a tuple of attribute keys, e.g. `(:age_band, :ses)`), and the pool
