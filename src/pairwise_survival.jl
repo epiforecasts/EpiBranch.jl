@@ -11,10 +11,6 @@
 # not depend on the kind of contact structure. Households, contact networks and
 # any other relation of who could have infected whom use the same code and
 # differ only in how the pairs are enumerated.
-#
-# The infection layer is latent. It is known exactly after `simulate` and is
-# augmented in inference, where the progression links each infection to its
-# observed onset or test. Onsets are never the event.
 
 """
     PairwiseSurvivalData(sus, start, stop, event)
@@ -119,6 +115,20 @@ have infected whom. [`compile_contact_pairs`](@ref) and
 [`pairwise_surv_loglik`](@ref) then work on it with no further methods.
 `HouseholdInfections` (in `EpiHouseholds`) and `NetworkInfections` (in
 `EpiNetwork`) are the worked examples.
+
+The infection layer is latent: it is known exactly after a simulation and
+augmented in inference. Observables such as onsets and tests are outputs of the
+progression and are conditioned on separately. There is no likelihood of the
+onsets alone, since the latent infections cannot be marginalised in closed form.
+
+A companion package reads a simulated outbreak back into its layer
+(`household_infections`, `network_infections`). Each infected host's window
+opens at the process's `from` state and closes at the earliest of its `until`
+states and the time the model's interventions take the host out of transmission,
+such as by isolation or quarantine after tracing. These are the windows the
+simulation used, so scoring the layer under the kernel that simulated it is an
+exact `simulate → loglikelihood` round trip. A reader's `followup_end` keyword
+scores the outbreak as if observation had stopped then.
 """
 abstract type InfectionLayer end
 

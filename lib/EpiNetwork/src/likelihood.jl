@@ -11,21 +11,12 @@
     NetworkInfections(contacts, infection_time, infectious_time, removal_time, is_index;
                       obs_end = Inf, followup_end = Inf)
 
-The infection layer of a network outbreak: the adjacency it spread over
-(`contacts[i]` lists the nodes `i` can infect, as for [`NetworkProcess`](@ref))
-and, per node, its infection time (`NaN` if never infected), the opening and
-closing of its infectious window, and
-whether it was introduced from outside the network. `obs_end` is the time
-community introductions stop, as for [`NetworkProcess`](@ref); spread along the
-edges continues after it. It is only read when there is a community hazard.
-`followup_end` is when observation of the data ends: the likelihood ignores
-infections and exposure after it, so a node still infectious then can keep a
-removal time of `Inf` (see [`InfectionLayer`](@ref)).
-
-The contact process is a density over these latent quantities. Read them out of
-a simulation with [`network_infections`](@ref), or augment them in inference.
-Observables such as onsets are outputs of the progression and are conditioned
-separately.
+The [`InfectionLayer`](@ref) of a network outbreak. Its contact structure is the
+adjacency the outbreak spread over: `contacts[i]` lists the nodes `i` can
+infect, as for [`NetworkProcess`](@ref), so a node's possible infectors are its
+in-neighbours. The per-node vectors, `obs_end` and `followup_end` are as
+described for `InfectionLayer`. Read one out of a simulation with
+[`network_infections`](@ref), or augment it in inference.
 """
 struct NetworkInfections{T <: Real} <: InfectionLayer
     contacts::Vector{Vector{Int}}
@@ -57,15 +48,11 @@ EpiBranch.contact_structure(d::NetworkInfections) = d.contacts
                        obs_end = model.process.obs_end, followup_end = Inf) -> NetworkInfections
     network_infections(state, process::NetworkProcess) -> NetworkInfections
 
-Read the infection layer out of a simulated `state`: the model's adjacency and,
-per node, its infection time, infectiousness onset (the infectious-window `from`
-state), removal and index status. A node is removed at the earliest of its
-`until` states and the time the model's interventions take it out of
-transmission, such as by isolation or quarantine after tracing. The window is
-read from the same composed progression and interventions the simulation used,
-so the `simulate → loglikelihood` round trip is exact. A bare `NetworkProcess`
-is accepted too (its window opens at `:infection`, and it has no interventions).
-Pass `followup_end` to score the outbreak as if observation had stopped then.
+Read the [`InfectionLayer`](@ref) out of a `state` simulated from `model`, with
+the model's adjacency as the contact structure. The infectious windows are read
+as described for `InfectionLayer`, so the `simulate → loglikelihood` round trip
+is exact. A bare `NetworkProcess` is accepted too (its window opens at
+`:infection`, and it has no interventions).
 """
 function network_infections(state::SimulationState,
         model::ModelSpec{<:NetworkProcess}; obs_end = model.process.obs_end,
@@ -88,10 +75,7 @@ end
 
 The contact-process log-density of `model`'s kernel given the infection layer
 `data`: `pairwise_surv_loglik(model.edge_kernel, data; external_hazard =
-model.external_hazard)`, with each node's possible infectors its in-neighbours in
-`data.contacts`. A per-edge kernel must be parallel to that adjacency. On an
-infection layer read from a simulation of `model` the round trip is exact.
-Observed onsets and tests are conditioned separately through the progression.
+model.external_hazard)`. A per-edge kernel must be parallel to `data.contacts`.
 """
 function Distributions.loglikelihood(data::NetworkInfections, model::NetworkProcess)
     return pairwise_surv_loglik(model.edge_kernel, data;
