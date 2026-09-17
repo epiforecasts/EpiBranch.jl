@@ -1117,14 +1117,11 @@ function _apply_attributes!(builders::Union{Tuple, AbstractVector}, rng, ind, st
 end
 
 """
-Attributes-list element that draws one value per ring rather than
-independently per individual. A ring is a case and the contacts created
-from it directly — the branching process's proxy for a household or
-community, in the absence of a persistent household structure. The value
-is drawn once, when the case's first contact is created, cached on the
-case, and read from there by the rest of that case's contacts. An index
-case (no parent) draws its own value, so unrelated chains start
-independently of one another.
+Attributes-list element that draws one value per ring (see
+[`vaccine_acceptance`](@ref)). The value is drawn when the case's first
+contact is created, cached on the case, and read from there by the rest of
+that case's contacts. An index case (no parent) draws its own value, so
+unrelated chains start independently of one another.
 
 Construct with [`vaccine_acceptance`](@ref) rather than directly.
 """
