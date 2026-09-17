@@ -218,6 +218,21 @@ end
         @test count(is_vaccinated, contacts) == 1
     end
 
+    @testset "A fractional budget is not rounded up" begin
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 2.5, period = 1.0,
+            carry_over = false)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
+
+        contacts = [_traced_contact(rv, i, 5.0) for i in 1:5]
+        append!(state.individuals, contacts)
+        state.max_infection_time = 5.0
+        EpiBranch.apply_post_transmission!(cc, state, contacts)
+
+        @test count(is_vaccinated, contacts) == 2
+    end
+
     @testset "Constructor validates its arguments" begin
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError CapacityConstrained(rv; budget_per_period = -1.0)

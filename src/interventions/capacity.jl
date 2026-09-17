@@ -265,7 +265,7 @@ function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
     usage = _capacity_usage(cc, state)
     used = usage.used
     for i in order
-        usage.available - used > 0 || break
+        used + 1 <= usage.available || break
         candidate = candidates[i]
         apply_post_transmission!(cc.intervention, state, [candidate])
         get(candidate.state, key, false) && (used += 1)
