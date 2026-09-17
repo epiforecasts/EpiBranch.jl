@@ -176,6 +176,38 @@ using Dates
         @test nrow(linelist(state)) == state.cumulative_cases
     end
 
+    @testset "linelist infected_only=false on a branching process with interventions" begin
+        # Contacts exposed but not infected keep their exposure time and the
+        # onset derived from it in state; the table must not report either.
+        spec = ModelSpec(
+            BranchingProcess(Poisson(2.5), Exponential(5.0); population_size = 400);
+            attributes = clinical,
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0)),
+                ContactTracing(probability = 0.8,
+                    isolation_to_trace_delay = Exponential(1.0)),
+                RingVaccination(efficacy = 0.9)])
+        state = simulate(spec; n_initial = 3, rng = StableRNG(1), max_cases = 200)
+        df = linelist(state; infected_only = false)
+        @test nrow(df) == length(state.individuals)
+
+        uninfected = df[.!df.infected, :]
+        @test nrow(uninfected) > 0
+        @test all(ismissing, uninfected.date_infection)
+        @test all(ismissing, uninfected.date_onset)
+
+        # Tracing, vaccination and quarantine happen to uninfected contacts too.
+        @test any(!ismissing, uninfected.date_trace)
+        @test any(!ismissing, uninfected.date_vaccination)
+        @test any(!ismissing, uninfected.date_isolation)
+        quarantined = uninfected[coalesce.(uninfected.quarantined, false), :]
+        @test all(!ismissing, quarantined.date_isolation)
+
+        # Infected rows are exactly the default line list.
+        cases = linelist(state)
+        shared = intersect(names(df), names(cases))
+        @test isequal(df[df.infected, shared], cases[:, shared])
+    end
+
     @testset "linelist picks up custom state fields generically" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))

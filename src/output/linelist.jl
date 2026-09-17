@@ -10,9 +10,17 @@ Keys ending in `_time` are converted to dates using `reference_date`, so
 
 With `infected_only = false`, the table has a row for every individual in
 `state` and an extra `infected` column. On a structure-driven model such as
-`NetworkProcess` or `HouseholdProcess` this is the whole population. A
-never-infected individual has no infection or other event time, and its
-`date_*` columns are `missing`.
+`NetworkProcess` or `HouseholdProcess` this is the whole population; on an
+offspring-driven model such as `BranchingProcess` it is the cases plus every
+contact they exposed who was not infected. A row that is not infected has no
+infection, so `date_infection` and every date derived from it (onset,
+reporting, admission, outcome, a traced isolation held back to onset, and any
+custom `_time` field) are `missing`. Dates of events that happen to a person
+whether or not they are infected are kept: `date_trace`, the vaccination and
+immunity dates of any dose label, and `date_isolation` when the isolation is a
+quarantine on tracing. An isolation that [`Isolation`](@ref) derived from a
+provisional onset is `missing`, or the date of the quarantine it replaced.
+Columns that are not dates are reported as stored.
 
 To add a column, write the field during the simulation. `linelist`
 reads whatever is on `state`.
@@ -27,8 +35,7 @@ function linelist(state::SimulationState;
         :parent_id => [ind.parent_id for ind in cases],
         :generation => [ind.generation for ind in cases],
         :chain_id => [ind.chain_id for ind in cases],
-        :date_infection => [_to_date(reference_date, ind.infection_time)
-                            for ind in cases]
+        :date_infection => [_infection_date(reference_date, ind) for ind in cases]
     )
     infected_only || (cols[:infected] = [is_infected(ind) for ind in cases])
 
@@ -99,7 +106,8 @@ function _add_state_column!(cols, cases, key::Symbol, reference_date)
         values = Vector{Union{Date, Missing}}(undef, length(cases))
         any_finite = false
         for (i, ind) in pairs(cases)
-            t = get(ind.state, key, missing)
+            t = is_infected(ind) ? get(ind.state, key, missing) :
+                _uninfected_event_time(ind, key)
             d = t isa Real ? _to_date(reference_date, t) : missing
             values[i] = d
             d === missing || (any_finite = true)
@@ -113,6 +121,36 @@ function _add_state_column!(cols, cases, key::Symbol, reference_date)
         cols[key] = _normalise_column(raw)
     end
     return nothing
+end
+
+# An exposed contact who escaped infection keeps its exposure time in state,
+# which is not an infection date.
+function _infection_date(reference_date::Date, ind)
+    is_infected(ind) ? _to_date(reference_date, ind.infection_time) : missing
+end
+
+"""The time stored under `key` on an individual who was never infected, or
+`missing` when that time is not of an event that happened to them.
+
+An exposed contact who escaped infection still carries its exposure time and
+the times derived from it, such as an onset, because interventions like ring
+vaccination read them during the run. Those describe an infection that did not
+happen, so only events that act on a person regardless of infection are
+reported: being traced, vaccinated, gaining vaccine immunity, or being
+quarantined. An isolation that `Isolation` wrote was derived from the
+provisional onset, so the quarantine it replaced, if any, is reported
+instead."""
+function _uninfected_event_time(ind, key::Symbol)
+    name = String(key)
+    if key === :trace_time || startswith(name, "vaccination_time") ||
+       startswith(name, "immunity_time")
+        return get(ind.state, key, missing)
+    elseif key === :isolation_time
+        get(ind.state, :isolated_by_isolation, false) ||
+            return get(ind.state, key, missing)
+        return get(ind.state, :isolation_time_before_isolation, missing)
+    end
+    return missing
 end
 
 """Convert `Symbol` entries to `String` so DataFrames serialises cleanly;

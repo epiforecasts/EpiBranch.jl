@@ -13,10 +13,13 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   row per individual, for analyses such as a test-negative design, an attack
   rate by covariate, or an exposed/unexposed comparison. It adds an
   `infected` column and keeps the same attribute and `state` columns as the
-  default. Never-infected individuals now have `NaN` (`missing` in the table)
-  in `infection_time` and every field derived from it. They previously had
-  `0.0`, which looked the same as a case infected at the start of the
-  simulation.
+  default. In rows that are not infected, `date_infection` and every date
+  derived from the infection, such as `date_onset`, are `missing`; only
+  `date_trace`, `date_vaccination`, `date_immunity` (and their labelled
+  variants) and a quarantine's `date_isolation` are kept. Individuals created
+  up front by a structure-driven model and never infected now have
+  `infection_time = NaN` in state. They previously had `0.0`, which looked the
+  same as a case infected at the start of the simulation.
 - `HomogeneousProcess`, a closed, homogeneously-mixing population of fixed size
   simulated by the Sellke threshold construction. Every infectious individual
   exerts the same force of infection on every susceptible, giving the exact

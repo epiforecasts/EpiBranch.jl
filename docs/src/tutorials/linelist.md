@@ -134,8 +134,24 @@ println("Population: $(nrow(pop)), infected: $(count(pop.infected))")
 first(pop, 5)
 ```
 
-A never-infected individual has no infection or onset event, and its
-`date_infection`, `date_onset` and other date columns are `missing`.
+On an offspring-driven model such as `BranchingProcess` the rows are the
+cases plus every contact they exposed who was not infected.
+
+A row that is not infected has no infection, so `date_infection` is `missing`,
+and so is every date that follows from an infection: `date_onset`, reporting,
+admission and outcome dates, and any date from your own `_time` fields. The
+dates of events that happen to a person whether or not they are infected are
+kept:
+
+- `date_trace`, when the contact was traced;
+- `date_vaccination` and `date_immunity`, and their `_<label>` variants for
+  labelled doses;
+- `date_isolation`, when it is a quarantine on tracing. An isolation that
+  `Isolation` derived from the contact's provisional onset is `missing`, and
+  if it replaced an earlier quarantine the quarantine's date is shown.
+
+Columns that are not dates, such as `asymptomatic`, `traced` or
+`vaccinated`, are reported as stored.
 
 ## Contacts table
 
