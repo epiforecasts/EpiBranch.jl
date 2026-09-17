@@ -82,6 +82,24 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   contacts who have received the named earlier dose by then, so its `coverage`
   is the retention between doses. A dose listed before the dose it requires is
   rejected when the `ModelSpec` is built.
+- `delay_to_immunity` (on `RingVaccination`, `MassVaccination`, and
+  `GroupVaccination`), `dose_delay` (on `RingVaccination` and
+  `GroupVaccination`), and `post_exposure_efficacy` and `onward_efficacy` (on
+  `RingVaccination`) now accept a `Real`, a `Distribution`, or a function
+  `(rng, ind) -> Real`, matching `efficacy` and `coverage`. A prime-boost
+  schedule can now give its booster four to six weeks after the trace
+  (`dose_delay = Uniform(28.0, 42.0)`), or say that a vaccine's immunity takes
+  one to three weeks to develop (`delay_to_immunity = Uniform(7.0, 21.0)`).
+  `delay_to_immunity`, `post_exposure_efficacy` and `onward_efficacy` are
+  sampled once per individual, at vaccination time, and stored, so a given
+  individual's draw stays fixed across the exposures it faces; `dose_delay` is
+  drawn once, when the dose is scheduled. A scalar parameter behaves exactly as
+  before and writes no new state key. Between two ring doses, a distributional
+  `dose_delay` is judged on its support when the `ModelSpec` is built: a boost
+  whose every draw falls before the dose it requires is rejected, and
+  overlapping supports are warned about, since contacts whose draws come out in
+  the wrong order go without the boost. A function, or a distribution that
+  reports no support, is left to the per-contact check at run time.
 - `groups`, an attributes function that labels each individual with a group
   (a village, a health area, a household) under `:group` or an arbitrary key,
   and `GroupVaccination`, which vaccinates every member of a group once any
