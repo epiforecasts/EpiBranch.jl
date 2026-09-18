@@ -819,7 +819,8 @@ end
             RingVaccination(efficacy = 0.8, eligibility_window = 21.0),
             Scheduled(RingVaccination(efficacy = 0.8); start_time = 0.0))
             @test !EpiBranch._sellke_honours(model, rv)
-            undosed = @test_logs (:warn, r"RingVaccination") match_mode=:any simulate(
+            warning_name = rv isa Scheduled ? r"Scheduled" : r"RingVaccination"
+            undosed = @test_logs (:warn, warning_name) match_mode=:any simulate(
                 build([iso, ct, rv]); n_initial = 1, rng = StableRNG(4))
             @test !any(is_vaccinated, undosed.individuals)
             @test all(!haskey(ind.state, :ring_dose_delay) &&
