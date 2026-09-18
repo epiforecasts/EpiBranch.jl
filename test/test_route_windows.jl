@@ -565,3 +565,36 @@ end
             seed!)
     end
 end
+
+@testset "Community introductions respect susceptibility" begin
+    for source in (0.5, Gamma(2.0, 3.0))
+        @test EpiBranch._ext_draw(StableRNG(7), source, 1.0) ==
+              EpiBranch._ext_draw(StableRNG(7), source)
+        rng = StableRNG(7)
+        @test EpiBranch._ext_draw(rng, source, 0.0) == Inf
+        @test rand(rng) == rand(StableRNG(7))
+    end
+    # Scaling a constant hazard by susceptibility scales its mean waiting time.
+    draws = [EpiBranch._ext_draw(StableRNG(seed), 0.5, 0.25) for seed in 1:4000]
+    @test isapprox(sum(draws) / length(draws), 8.0; rtol = 0.04)
+end
+
+@testset "A withdrawn edge cannot offer another contact after a block" begin
+    rng = StableRNG(11)
+    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
+        prog, NoAttributes(), rng)
+    interventions = [FlatBlock(1.0)]
+    EpiBranch.add_individuals!(state, 2, interventions)
+    enquiries = Ref(0)
+    targets = function (inf, st)
+        enquiries[] += 1
+        # The edge is available for the original proposal, then withdrawn.
+        return enquiries[] == 1 ? ((2, Exponential(1.0)),) : ()
+    end
+    EpiBranch._sellke_race!(state, [1, 2], rng; targets,
+        from = :infection, until = (:recovered,), interventions,
+        seed! = (best, members, r) -> (best[1] = 0.0))
+    @test !is_infected(state.individuals[2])
+    @test enquiries[] == 2
+end
