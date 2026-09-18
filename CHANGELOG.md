@@ -9,6 +9,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- `event_time_metadata` lets external event producers retain dates for uninfected
+  people in line lists. Labelled vaccination and immunity dates use the same rules.
+
 - Callable objects can supply observation probabilities, delays and anchors,
   attribute-builder parameters, isolation test sensitivity and scheduling
   predicates, using the same signatures as ordinary functions.
