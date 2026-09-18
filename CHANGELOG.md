@@ -9,6 +9,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- `linelist(state; infected_only = false)` returns the whole population, one
+  row per individual, for analyses such as a test-negative design, an attack
+  rate by covariate, or an exposed/unexposed comparison. It adds an
+  `infected` column and keeps the same attribute and `state` columns as the
+  default. In rows that are not infected, `date_infection` and every date
+  derived from the infection, such as `date_onset`, are `missing`; only
+  `date_trace`, `date_vaccination`, `date_immunity` and a quarantine's
+  `date_isolation` are kept.
 - `HomogeneousProcess`, a closed, homogeneously-mixing population of fixed size
   simulated by the Sellke threshold construction. Every infectious individual
   exerts the same force of infection on every susceptible, giving the exact
@@ -37,6 +45,20 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   exposure after it. An outbreak still going when the data end is then scored as
   observed so far, with a finite value and gradient, and a case still infectious
   at the end of follow-up can keep a removal time of `Inf`.
+- Analytical results for multi-type branching processes built from an offspring
+  matrix. `reproduction_number(model)` returns R*, the dominant eigenvalue of the
+  next-generation matrix (the offspring mean for a single-type model), and
+  `extinction_probability(model)` returns the extinction probability for each
+  type of index case. The extinction probability is the fixed point of the vector
+  PGF of the simulator's draw (a total count from the distribution family, split
+  multinomially across types) and equals the single-type result when there is
+  one type. Iteration that has not converged by `max_iter` now warns, in the
+  multi-type and the single-type functions alike; that happens near R = 1.
+- `reproduction_number`, `extinction_probability` and `epidemic_probability` for
+  `ClusterMixed` offspring and models built from it. The reproduction number is
+  the offspring mean averaged over the mixing distribution, and the extinction
+  probability is the single-type extinction probability averaged over it, since
+  every case in a chain shares its index case's parameter.
 - `trigger_time(eligibility, infector, contact, state)` gives the trace's
   trigger time for the contact being traced, and `ContactTracing` calls it. A
   custom policy can define it to time the trace from the contact, and combinators
@@ -111,9 +133,25 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   with ring size. Listing a `RingVaccination` before a `GroupVaccination` with
   the same `dose_label` makes the group dose a pure fallback: a member the
   ring already reached is skipped.
+- `RingVaccination`, `GroupVaccination`, and `MassVaccination` gain `waning`,
+  an optional function `dt -> Real` giving the fraction of `efficacy` (and, on
+  `RingVaccination`, `onward_efficacy` and `post_exposure_efficacy`) still in
+  force `dt` time units after immunity develops, evaluated at each exposure.
+  It scales the value that individual was given, so it composes with
+  efficacies drawn per individual from a distribution or a function. A
+  post-exposure abort happens as immunity arrives and therefore uses
+  `waning(0)`. A dose with its own `dose_label` decays from its own immunity
+  time, and a multi-dose schedule's doses still compose as independent
+  competing risks.
+  `severity_efficacy` does not wane. Defaults to `nothing`, which keeps the
+  existing constant-protection behaviour.
 
 ### Changed
 
+- Individuals created up front by a structure-driven model and never infected
+  now have `infection_time = NaN` in state, which is also the default of
+  `add_individuals!`. They previously had `0.0`, which looked the same as a case
+  infected at the start of the simulation.
 - The fixed-size population pool's mixing structure is now keyed on the
   individual's real attributes: a model names which attributes define mixing via
   `mixing_by` (a tuple of attribute keys, e.g. `(:age_band, :ses)`), and the pool
@@ -160,6 +198,12 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   infector at all. A sampler over latent infection times then rejects such
   configurations. The `-Inf` comes with a zero gradient, since the
   configuration is impossible throughout a neighbourhood of the parameters.
+- `GroupVaccination` draws `coverage` once per member per dose. A group is
+  walked again whenever any of its members appears among a round's new
+  contacts, and a member who declined was previously asked again each time, so
+  a member present for `k` rounds was vaccinated with probability
+  `1 - (1 - coverage)^k`. The declined answer is now recorded under
+  `:coverage_declined[_<label>]`.
 - Combined tracing eligibility policies now time the trace from the conditions
   that are met. Each condition, custom policies included, is checked with
   `is_eligible` against the contact being traced. With a custom `Over65` policy,

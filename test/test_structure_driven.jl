@@ -135,8 +135,9 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
             RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5)],
         attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
     aborted = 0
+    escaped = 0
     escaped_with_abort = 0
-    escaped_without_onset = 0
+    escaped_with_onset = 0
     abort_before_infection = 0
     for seed in 1:100
         state = simulate(spec; n_initial = 3, rng = StableRNG(seed),
@@ -144,8 +145,11 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
         for ind in state.individuals
             t = get(ind.state, :infection_aborted_time, nothing)
             if !EpiBranch.is_infected(ind)
+                escaped += 1
                 t === nothing || (escaped_with_abort += 1)
-                isnan(onset_time(ind)) && (escaped_without_onset += 1)
+                # A never-infected individual has no onset time, because
+                # onset is derived from the infection time.
+                isnan(onset_time(ind)) || (escaped_with_onset += 1)
             elseif t !== nothing
                 aborted += 1
                 # An abort at or before the infection was drawn for an earlier
@@ -156,9 +160,45 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
         end
     end
     @test aborted > 0
+    @test escaped > 0
     @test escaped_with_abort == 0
-    @test escaped_without_onset == 0
+    @test escaped_with_onset == 0
     @test abort_before_infection == 0
+end
+
+@testset "FlagOnly tracing isolates pool members through the traced pathway" begin
+    # Pool members are traced before their exposure is resolved, when their
+    # onset is not yet known. With no test-positive cases only the traced
+    # pathway can isolate, and it must still do so once the onset is known,
+    # while a member whose infection was aborted before onset never isolates.
+    spec = ModelSpec(AbortPoolModel(300, 4, 0.4);
+        interventions = [
+            Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.0),
+            ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), FlagOnly()),
+            RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5)],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
+    isolated = 0
+    isolated_before_onset = 0
+    aborted = 0
+    aborted_isolated = 0
+    for seed in 1:50
+        state = simulate(spec; n_initial = 3, rng = StableRNG(seed),
+            stopping_rules = [Extinction(), MaxGenerations(30)])
+        for ind in state.individuals
+            EpiBranch.is_infected(ind) || continue
+            if haskey(ind.state, :infection_aborted_time)
+                aborted += 1
+                isfinite(isolation_time(ind)) && (aborted_isolated += 1)
+            elseif isfinite(isolation_time(ind))
+                isolated += 1
+                isolation_time(ind) >= onset_time(ind) || (isolated_before_onset += 1)
+            end
+        end
+    end
+    @test isolated > 0
+    @test isolated_before_onset == 0
+    @test aborted > 0
+    @test aborted_isolated == 0
 end
 
 # Records the generation of each node's latest exposure and of the first one in

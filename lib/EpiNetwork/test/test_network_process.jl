@@ -159,6 +159,23 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test !isempty(traced)
         @test all(isolation_time(ind) >= onset_time(ind) for ind in traced)
 
+        # With no test-positive cases, only the traced pathway can isolate. A
+        # contact is traced before the race has settled its onset, so this
+        # checks that the trace is still recorded and turned into isolation.
+        no_test = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 0.0)
+        flag_only = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), FlagOnly())
+        untested = ModelSpec(NetworkProcess(ring_adjacency(300), Exponential(2.0));
+            progression = _sir(10.0), attributes = clinical,
+            interventions = [no_test, flag_only])
+        isolated = [ind
+                    for s in 1:20
+                    for ind in simulate(untested; n_initial = 1, rng = StableRNG(s)).individuals
+                    if is_infected(ind) && isfinite(isolation_time(ind))]
+        @test !isempty(isolated)
+        @test all(is_traced, isolated)
+        @test all(isolation_time(ind) >= onset_time(ind) for ind in isolated)
+
         routed = ModelSpec(
             RoutedNetwork([RouteWindow(:contact; until = (:recovered,),
                 kernel = Exponential(2.0), reach = ring_adjacency(200))]);

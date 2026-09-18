@@ -112,6 +112,45 @@ The same closure pattern covers risk groups, comorbidities, or any
 state field set by your attributes function. See the
 [transitions tutorial](transitions.md) for the full menu.
 
+## The whole population
+
+`linelist` gives cases only by default. Pass `infected_only = false` to get
+every individual in the population, as needed for a test-negative design, an
+attack rate by covariate, or an exposed/unexposed comparison. It is most
+useful for a structure-driven model such as
+[`HomogeneousProcess`](@ref), `NetworkProcess` or `HouseholdProcess`, whose
+population exists in full from the start:
+
+```@example linelist
+pool = ModelSpec(HomogeneousProcess(; transmission_rate = 0.6, population_size = 200);
+    progression = [Transition(:recovered; from = :infection, delay = Exponential(5.0),
+        terminal = true)],
+    attributes = attrs)
+
+pool_state = simulate(pool; n_initial = 2, rng = StableRNG(1))
+
+pop = linelist(pool_state; reference_date = Date(2024, 1, 1), infected_only = false)
+println("Population: $(nrow(pop)), infected: $(count(pop.infected))")
+first(pop, 5)
+```
+
+On an offspring-driven model such as `BranchingProcess` the rows are the
+cases plus every contact they exposed who was not infected.
+
+An uninfected row has `missing` for `date_infection` and for every date that
+follows from an infection: `date_onset`, reporting, admission and outcome
+dates, and any date from your own `_time` fields. The dates of events that
+happen to a person whether or not they are infected are kept:
+
+- `date_trace`, when the contact was traced;
+- `date_vaccination` and `date_immunity`;
+- `date_isolation`, when it is a quarantine on tracing. An isolation that
+  `Isolation` derived from the contact's provisional onset is `missing`, and
+  if it replaced an earlier quarantine the quarantine's date is shown.
+
+Columns that are not dates, such as `asymptomatic`, `traced` or
+`vaccinated`, are reported as stored.
+
 ## Contacts table
 
 All contacts (infected and non-infected) are returned by
