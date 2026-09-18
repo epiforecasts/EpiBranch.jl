@@ -39,11 +39,10 @@ end
 
 function resolve_individual!(r::Reporting, individual, state)
     anchor = _resolve_anchor(r.from, individual)
-    _anchor_ok(anchor) || return nothing
-    p = _resolve_probability(r.probability, state.rng, individual)
-    rand(state.rng) < p || return nothing
-    delay = _resolve_delay(r.delay, state.rng, individual)
+    time = transition_time(state.rng, individual, anchor, r.delay;
+        probability = r.probability)
+    time === nothing && return nothing
     individual.state[:reported] = true
-    individual.state[:reporting_time] = anchor + delay
+    individual.state[:reporting_time] = time
     return nothing
 end

@@ -339,3 +339,49 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         @test all(isfinite(ind.state[:test_time]) for ind in state.individuals)
     end
 end
+
+struct FollowupVisit <: AbstractClinicalTransition end
+function EpiBranch.resolve_individual!(::FollowupVisit, ind, state)
+    time = EpiBranch.transition_time(state.rng, ind, ind.infection_time, 2.0;
+        probability = 1.0)
+    time === nothing || (ind.state[:followup_time] = time)
+    return nothing
+end
+
+@testset "Shared clinical event sampling" begin
+    ind = Individual(id = 1, infection_time = 3.0)
+    for start in (NaN, Inf, -Inf)
+        rng = StableRNG(14)
+        @test EpiBranch.transition_time(rng, ind, start,
+            (rng, ind) -> error("unreached delay");
+            probability = (rng, ind) -> error("unreached probability")) === nothing
+        @test rand(rng) == rand(StableRNG(14))
+    end
+    for delay in (2.0, Exponential(2.0), (rng, ind) -> rand(rng) + 1)
+        rng, expected = StableRNG(15), StableRNG(15)
+        # The probability callback consumes a draw before the acceptance draw.
+        p = rand(expected)
+        accepted = rand(expected) < p
+        wait = accepted ? EpiBranch._resolve_delay(delay, expected, ind) : nothing
+        result = EpiBranch.transition_time(rng, ind, 3.0, delay;
+            probability = (rng, ind) -> rand(rng))
+        @test result === nothing ? !accepted : result == 3.0 + wait
+        @test rand(rng) == rand(expected)
+    end
+    rng = StableRNG(16)
+    @test EpiBranch.transition_time(rng, ind, 3.0, 2.0) == 5.0
+    @test rand(rng) == rand(StableRNG(16))
+
+    # Generic and named transitions preserve what delay callbacks can observe.
+    generic = Transition(:arrived; delay = (rng, ind) -> ind.state[:arrived] ? 2.0 : 9.0)
+    reporting = Reporting(from = ind -> ind.infection_time,
+        delay = (rng, ind) -> ind.state[:reported] ? 9.0 : 2.0)
+    admission = Hospitalisation(from = ind -> ind.infection_time, probability = 1.0,
+        delay = (rng, ind) -> ind.state[:admitted] ? 9.0 : 2.0)
+    model = ModelSpec(BranchingProcess(Poisson(0.0));
+        progression = [generic, reporting, admission, FollowupVisit()])
+    state = simulate(model; rng = StableRNG(17))
+    for key in (:arrived_time, :reporting_time, :admission_time, :followup_time)
+        @test only(state.individuals).state[key] == 2.0
+    end
+end

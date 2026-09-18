@@ -1653,6 +1653,32 @@ argument. Distributions and custom offspring specifications with a specialised
 require an offspring law with the corresponding analytical methods; accepting a
 callable for simulation does not provide a closed form for that rule.
 
+### Reusing clinical event sampling
+
+An external clinical transition can call `EpiBranch.transition_time` after reading
+its starting event. The helper checks that the starting time is finite, evaluates
+the probability and samples the delay. It returns `nothing` when the event is
+absent:
+
+```julia
+function EpiBranch.resolve_individual!(visit::FollowupVisit, ind, state)
+    time = EpiBranch.transition_time(state.rng, ind, ind.infection_time,
+        visit.delay; probability = visit.probability)
+    time === nothing || (ind.state[:followup_time] = time)
+    return nothing
+end
+```
+
+Here `FollowupVisit` is a user-defined subtype of `AbstractClinicalTransition`
+with `delay` and `probability` fields. It owns its output keys and can implement
+`initialise_individual!` for their defaults. Terminal transitions also implement
+`is_terminal` and `terminal_event` to join the existing arbitration.
+
+A supplied probability consumes an acceptance draw even at zero or one. Omit
+`probability` for an unconditional event without that draw, as `Recovery` does.
+Missing starting events consume no draws. `Transition` sets its flag before its
+delay callback; `Reporting` and `Hospitalisation` set their flags afterwards.
+
 ### Structured infection likelihoods and composed effects
 
 The network and household infection likelihoods condition on infection times,
