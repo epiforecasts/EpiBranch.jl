@@ -69,7 +69,7 @@ downstream packages should pick names that do not collide.
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
-| `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff |
+| `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff; may precede onset, so hold it back to onset |
 | `:trace_time` | `Float64` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` / `trace_contacts!` |
 | `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
@@ -81,6 +81,7 @@ downstream packages should pick names that do not collide.
 | `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | `apply_post_transmission!` |
 | `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
 | `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
@@ -298,7 +299,9 @@ function resolve_individual!(iso::Isolation, individual, state)
     iso_delay = rand(state.rng, iso.onset_to_isolation_delay)
     iso_time = onset_time(individual) + iso_delay
 
-    traced_time = get(individual.state, :traced_isolation_time, Inf)
+    # A contact traced before its onset was known has only the bare trace
+    # time, so hold it back to the onset.
+    traced_time = max(get(individual.state, :traced_isolation_time, Inf), onset_time(individual))
     set_isolated!(individual, min(iso_time, traced_time))
     return nothing
 end
