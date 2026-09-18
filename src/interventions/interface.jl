@@ -187,11 +187,15 @@ reset!(::AbstractIntervention, ::Individual) = nothing
 
 Which of a continuous-time model's transmission routes an intervention's
 [`competing_risk`](@ref)s apply on, as returned by
-[`risk_scope`](@ref EpiBranch.risk_scope). A model with a single route applies
-every risk on it, whatever the scope, as the generation-based engine applies
-every risk to every contact. A community introduction is the exception, on any
-model: its source is outside the population, so only the risks scoped to every
-route reach it.
+[`risk_scope`](@ref EpiBranch.risk_scope). The rule is per route: a route that
+lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` resolves every
+risk, and one that does not resolves only those scoped to every route. The
+single-route shorthand the network, household and homogeneous processes use
+lists it, so every risk applies there, as every risk applies to every contact on
+the generation-based engine; a [`RouteWindow`](@ref) of a `RoutedNetwork` need
+not, whether the model has one route or several. A community introduction
+resolves only the risks scoped to every route, on any model, because its source
+is outside the population.
 
   - [`EveryRoute`](@ref EpiBranch.EveryRoute): the risks apply on every route.
   - [`RemovalRoutes`](@ref EpiBranch.RemovalRoutes): the risks apply only on
@@ -223,9 +227,10 @@ struct RemovalRoutes <: RiskScope end
 """
     risk_scope(intervention) -> RiskScope
 
-The routes on which `intervention`'s [`competing_risk`](@ref)s apply, on a
-continuous-time model with several transmission routes, and whether they reach a
-community introduction, which only those scoped to every route do. Default:
+The routes on which `intervention`'s [`competing_risk`](@ref)s apply on a
+continuous-time model — those listing [`EpiBranch.INTERVENTION_REMOVAL`](@ref)
+in their `until`, or all of them — and whether they reach a community
+introduction, which only those scoped to every route do. Default:
 [`EveryRoute`](@ref EpiBranch.EveryRoute), which matches the generation-based
 engine, where every risk applies to every contact. [`Isolation`](@ref) and
 [`ContactTracing`](@ref) return [`RemovalRoutes`](@ref EpiBranch.RemovalRoutes),
