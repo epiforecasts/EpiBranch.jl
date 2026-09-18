@@ -7,14 +7,18 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ## [Unreleased]
 
+Development versions target 0.2.0. Both companion packages require EpiBranch 0.2;
+EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
+
 ### Added
 
+- Clean-project installation checks for matching source revisions and published
+  companion-package installations.
 - Callable objects can supply branching-process offspring rules, generation-time
   distributions and multi-type offspring families.
 - Structured infection likelihoods check composed components through
   `infection_likelihood_compatible`, rejecting effects omitted by the supplied
   infection layer and bare kernel.
-
 - Callable objects can supply observation probabilities, delays and anchors,
   attribute-builder parameters, isolation test sensitivity and scheduling
   predicates, using the same signatures as ordinary functions.

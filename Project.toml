@@ -1,6 +1,6 @@
 name = "EpiBranch"
 uuid = "d1aa5d78-c683-4158-9743-7109392647a5"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Sebastian Funk <sebastian.funk@lshtm.ac.uk>"]
 
 [deps]
