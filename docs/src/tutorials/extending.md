@@ -1678,3 +1678,25 @@ A supplied probability consumes an acceptance draw even at zero or one. Omit
 `probability` for an unconditional event without that draw, as `Recovery` does.
 Missing starting events consume no draws. `Transition` sets its flag before its
 delay callback; `Reporting` and `Hospitalisation` set their flags afterwards.
+
+### Event dates for uninfected people
+
+Line lists normally suppress event dates derived from an infection that did not
+occur. For an independent event such as an appointment, declare its output column
+and infection requirement:
+
+```julia
+EpiBranch.event_time_metadata(::Val{:appointment_time}) =
+    (column = :date_appointment, requires_infection = false)
+```
+
+The event producer writes the simulation time to `ind.state[:appointment_time]`.
+`linelist(state; infected_only = false)` then includes the date for uninfected
+people too. Missing and non-finite times remain missing. The default infected-only
+line list still includes cases only.
+
+Unrecognised keys ending in `_time` require infection. Ordinary state keys remain
+ordinary columns. Built-in tracing, vaccination and immunity dates are independent
+of infection; labelled doses use columns such as `date_vaccination_booster` and
+`date_immunity_booster`. Isolation output preserves quarantine dates when a
+provisional onset time was used during simulation.
