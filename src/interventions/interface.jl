@@ -187,8 +187,11 @@ reset!(::AbstractIntervention, ::Individual) = nothing
 
 Which of a continuous-time model's transmission routes an intervention's
 [`competing_risk`](@ref)s apply on, as returned by
-[`risk_scope`](@ref EpiBranch.risk_scope). A model with a single route, and the
-generation-based engine, apply every risk to every contact whatever the scope.
+[`risk_scope`](@ref EpiBranch.risk_scope). A model with a single route applies
+every risk on it, whatever the scope, as the generation-based engine applies
+every risk to every contact. A community introduction is the exception, on any
+model: its source is outside the population, so only the risks scoped to every
+route reach it.
 
   - [`EveryRoute`](@ref EpiBranch.EveryRoute): the risks apply on every route.
   - [`RemovalRoutes`](@ref EpiBranch.RemovalRoutes): the risks apply only on
@@ -221,7 +224,8 @@ struct RemovalRoutes <: RiskScope end
     risk_scope(intervention) -> RiskScope
 
 The routes on which `intervention`'s [`competing_risk`](@ref)s apply, on a
-continuous-time model with several transmission routes. Default:
+continuous-time model with several transmission routes, and whether they reach a
+community introduction, which only those scoped to every route do. Default:
 [`EveryRoute`](@ref EpiBranch.EveryRoute), which matches the generation-based
 engine, where every risk applies to every contact. [`Isolation`](@ref) and
 [`ContactTracing`](@ref) return [`RemovalRoutes`](@ref EpiBranch.RemovalRoutes),
