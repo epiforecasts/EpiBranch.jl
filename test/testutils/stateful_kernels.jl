@@ -15,7 +15,19 @@ function state_policy_law(before, after, date)
         [1 - survival, survival])
 end
 
+struct WaitForKernelDay <: AbstractIntervention end
+function EpiBranch.competing_risk(::WaitForKernelDay, parent, contact, state)
+    Risk(block_probability = state.max_infection_time < 1.0 ? 1.0 : 0.0)
+end
+
 function test_stateful_simulation(make_process, extract)
+    @testset "Simultaneous contacts survive refresh" begin
+        kernel = StatefulKernel(_ -> nothing, (c, a, b) -> Dirac(1.0))
+        model = ModelSpec(make_process(kernel);
+            progression = [Transition(:recovered; delay = 5.0, terminal = true)])
+        state = simulate(model; initial_cases = [1], rng = StableRNG(1))
+        @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0]
+    end
     @testset "Sampled attributes in pair kernels" begin
         project(ind) = (scale = ind.state[:sampled_scale]::Float64,)
         callback(c, a, b) = Exponential(a.scale + b.scale)
@@ -37,6 +49,21 @@ function test_stateful_simulation(make_process, extract)
         b = simulate(ModelSpec(make_process(expected); progression); initial_cases = [1], rng = StableRNG(9))
         @test isequal([i.infection_time for i in a.individuals], [i.infection_time
                                                                   for i in b.individuals])
+    end
+    @testset "Refresh preserves blocked external introductions" begin
+        live = StatefulKernel(_ -> nothing, (c, a, b) -> Dirac(20.0))
+        process = make_process(live; external_hazard = 0.8, obs_end = 3.0)
+        model = ModelSpec(process;
+            progression = [Transition(:recovered; delay = 4.0, terminal = true)],
+            interventions = [WaitForKernelDay()])
+        infected = 0
+        for seed in 1:500
+            state = simulate(model; rng = StableRNG(seed))
+            cases = filter(is_infected, state.individuals)
+            @test all(i -> 1.0 <= i.infection_time <= 3.0, cases)
+            infected += length(cases)
+        end
+        @test infected / 1500 ≈ 1 - exp(-0.8 * 2.0) atol = 0.04
     end
     @testset "Pending contacts reflect later recorded actions" begin
         project(ind) = (policy_time = get(ind.state, :policy_time, Inf)::Float64,)

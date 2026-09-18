@@ -728,6 +728,19 @@ end
 # elapsed exposure. Fixed kernels never take this path.
 function _refresh_contacts!(pending, proposals, head, best, represents,
         openings, initial_times, processed, members, pos, rts, state, now, rng)
+    # Contacts already due at this clock remain due. In particular an atom's
+    # survival is zero at its contact time, so it cannot be redrawn afterwards.
+    tied = Set{Tuple{Int, Int}}()
+    for j in eachindex(members)
+        processed[j] && continue
+        q = head[j]
+        while q != 0
+            proposal = proposals[q]
+            proposal.opening != 1 && proposal.time == now &&
+                push!(tied, (proposal.opening, j))
+            q = proposal.chain
+        end
+    end
     empty!(pending)
     empty!(proposals)
     fill!(head, 0)
@@ -738,6 +751,9 @@ function _refresh_contacts!(pending, proposals, head, best, represents,
         isfinite(initial_times[j]) || continue
         _propose!(pending, proposals, head, best, represents, j, 1, initial_times[j], true)
     end
+    for (oi, j) in tied
+        _propose!(pending, proposals, head, best, represents, j, oi, now, true)
+    end
     for oi in 2:length(openings)
         opening = openings[oi]
         opening.close_t < now && continue
@@ -746,7 +762,7 @@ function _refresh_contacts!(pending, proposals, head, best, represents,
             ri == opening.route || continue
             for (id, kernel) in targets(opening.infector, state)
                 j = get(pos, id, 0)
-                (j == 0 || processed[j]) && continue
+                (j == 0 || processed[j] || (oi, j) in tied) && continue
                 m = source.infectiousness * state.individuals[id].susceptibility
                 m <= 0 && continue
                 dt = if now <= opening.open_t
