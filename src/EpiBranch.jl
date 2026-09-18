@@ -168,7 +168,7 @@ export ThinnedChainSize
 
 # Exports — attributes functions
 export clinical_presentation, demographics, transmission_traits, groups,
-       vaccine_acceptance
+       group_attribute, vaccine_acceptance
 
 # Exports — simulation
 export simulate, make_contact!, susceptible_fraction

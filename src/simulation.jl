@@ -1125,13 +1125,13 @@ end
 
 """
 Attributes-list element that draws one value per group and shares it with
-every member of that group (see [`vaccine_acceptance`](@ref)). The group is
+every member of that group (see [`group_attribute`](@ref)). The group is
 read from `group_key` on the individual, so the value is shared across
 whatever labels those groups: [`groups`](@ref), or any earlier attributes
 function writing that key. Values are drawn lazily, the first time each group
 is seen, and held in `cache` for the rest of the run.
 
-Use [`vaccine_acceptance`](@ref) to construct one.
+Use [`group_attribute`](@ref) to construct one.
 """
 struct GroupAttribute{D}
     key::Symbol
@@ -1142,7 +1142,7 @@ end
 
 function _apply_attributes!(attribute::GroupAttribute, rng, ind)
     haskey(ind.state, attribute.group_key) || throw(ArgumentError(
-        "vaccine_acceptance needs :$(attribute.group_key) set on an individual " *
+        "group_attribute(:$(attribute.key)) needs :$(attribute.group_key) set on an individual " *
         "before it runs; list `groups(n; key = :$(attribute.group_key))`, or " *
         "another attributes function setting that key, ahead of it."))
     ind.state[attribute.key] = get!(attribute.cache, ind.state[attribute.group_key]) do
@@ -1385,6 +1385,35 @@ _trait_sampler(d::Distribution) = (rng, ind) -> float(rand(rng, d))
 _trait_sampler(f) = (rng, ind) -> float(f(rng, ind))
 
 """
+    group_attribute(key::Symbol; value, group_key = :group)
+
+Set the numeric attribute `key` once per group, sharing its value with every
+member across generations. `value` accepts a `Real`, a `Distribution`, or a
+callable `(rng, ind) -> Real`. A callable receives the first member created in
+that group; subsequent members reuse the draw. Values are converted with `float`.
+
+Place [`groups`](@ref), or an attributes function setting `group_key`, earlier
+in the attributes list. A missing group key raises an `ArgumentError`.
+Each simulation gets its own cache, including parallel runs, so the same
+builder can be reused between simulations.
+
+For example, share a reporting probability within each household:
+
+```julia
+attributes = [groups(50; key = :household),
+    group_attribute(:reporting_probability; value = Beta(6, 4),
+        group_key = :household)]
+observation = PerCaseObservation(
+    detection_prob = (rng, ind) -> ind.state[:reporting_probability])
+```
+
+[`vaccine_acceptance`](@ref) is a convenience constructor for this operation.
+"""
+function group_attribute(key::Symbol; value, group_key::Symbol = :group)
+    return GroupAttribute(key, group_key, value, Dict{Any, Any}())
+end
+
+"""
     vaccine_acceptance(; propensity, group_key = :group, key = :vaccine_acceptance)
 
 Return an attributes function that sets `key` (default `:vaccine_acceptance`)
@@ -1445,7 +1474,7 @@ function vaccine_acceptance(;
         propensity,
         group_key::Symbol = :group,
         key::Symbol = :vaccine_acceptance)
-    return GroupAttribute(key, group_key, propensity, Dict{Any, Any}())
+    return group_attribute(key; value = propensity, group_key)
 end
 
 # ── Intervention field validation ────────────────────────────────────
