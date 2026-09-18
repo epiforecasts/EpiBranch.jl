@@ -12,14 +12,14 @@ With `infected_only = false`, the table has a row for every individual in
 `state` and an extra `infected` column. On a structure-driven model such as
 `NetworkProcess` or `HouseholdProcess` this is the whole population; on an
 offspring-driven model such as `BranchingProcess` it is the cases plus every
-contact they exposed who was not infected. A row that is not infected has no
-infection, so `date_infection` and every date derived from it (onset,
-reporting, admission, outcome, a traced isolation held back to onset, and any
-custom `_time` field) are `missing`. Dates of events that happen to a person
-whether or not they are infected are kept: `date_trace`, `date_vaccination`,
-`date_immunity`, and `date_isolation` when the isolation is a quarantine on
-tracing. An isolation that [`Isolation`](@ref) derived from a
-provisional onset is `missing`, or the date of the quarantine it replaced.
+contact they exposed who was not infected. An uninfected row has `missing` for
+`date_infection` and for every date derived from it (onset, reporting,
+admission, outcome, a traced isolation held back to onset, and any custom
+`_time` field). Dates of events that happen to a person whether or not they
+are infected are kept: `date_trace`, `date_vaccination`, `date_immunity`, and
+`date_isolation` when the isolation is a quarantine on tracing. Where
+[`Isolation`](@ref) derived the isolation from a provisional onset, the column
+reports the quarantine it replaced, if there was one, and `missing` otherwise.
 Columns that are not dates are reported as stored.
 
 To add a column, write the field during the simulation. `linelist`
@@ -132,14 +132,14 @@ end
 """The time stored under `key` on an individual who was never infected, or
 `missing` when that time is not of an event that happened to them.
 
-An exposed contact who escaped infection still carries its exposure time and
-the times derived from it, such as an onset, because interventions like ring
-vaccination read them during the run. Those describe an infection that did not
-happen, so only events that act on a person regardless of infection are
-reported: being traced, vaccinated, gaining vaccine immunity, or being
-quarantined. An isolation that `Isolation` wrote was derived from the
-provisional onset, so the quarantine it replaced, if any, is reported
-instead."""
+An exposed contact who escaped infection still holds its exposure time and the
+times derived from it, such as an onset, because interventions like ring
+vaccination read them during the run. Those times describe an infection that
+never happened, so the reported events are only the ones that act on a person
+regardless of infection: being traced, vaccinated, gaining vaccine immunity, or
+being quarantined. An isolation written by `Isolation` came from the
+provisional onset; where one replaced a quarantine, that quarantine's time is
+reported in its place."""
 function _uninfected_event_time(ind, key::Symbol)
     if key in (:trace_time, :vaccination_time, :immunity_time)
         return get(ind.state, key, missing)

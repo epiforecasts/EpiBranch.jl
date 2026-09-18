@@ -297,8 +297,8 @@ function resolve_individual!(iso::Isolation, individual, state)
     iso_delay = rand(state.rng, iso.onset_to_isolation_delay)
     iso_time = onset_time(individual) + iso_delay
 
-    # A contact traced before its onset was known carries the bare trace time,
-    # so hold it back to the onset.
+    # A contact traced before its onset was known has only the bare trace
+    # time, so hold it back to the onset.
     traced_time = max(get(individual.state, :traced_isolation_time, Inf), onset_time(individual))
     set_isolated!(individual, min(iso_time, traced_time))
     return nothing

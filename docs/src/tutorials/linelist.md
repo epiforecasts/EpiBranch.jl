@@ -116,8 +116,8 @@ state field set by your attributes function. See the
 
 `linelist` gives cases only by default. Pass `infected_only = false` to get
 every individual in the population, as needed for a test-negative design, an
-attack rate by covariate, or an exposed/unexposed comparison. This matters
-most for a structure-driven model such as
+attack rate by covariate, or an exposed/unexposed comparison. It is most
+useful for a structure-driven model such as
 [`HomogeneousProcess`](@ref), `NetworkProcess` or `HouseholdProcess`, whose
 population exists in full from the start:
 
@@ -137,11 +137,10 @@ first(pop, 5)
 On an offspring-driven model such as `BranchingProcess` the rows are the
 cases plus every contact they exposed who was not infected.
 
-A row that is not infected has no infection, so `date_infection` is `missing`,
-and so is every date that follows from an infection: `date_onset`, reporting,
-admission and outcome dates, and any date from your own `_time` fields. The
-dates of events that happen to a person whether or not they are infected are
-kept:
+An uninfected row has `missing` for `date_infection` and for every date that
+follows from an infection: `date_onset`, reporting, admission and outcome
+dates, and any date from your own `_time` fields. The dates of events that
+happen to a person whether or not they are infected are kept:
 
 - `date_trace`, when the contact was traced;
 - `date_vaccination` and `date_immunity`;

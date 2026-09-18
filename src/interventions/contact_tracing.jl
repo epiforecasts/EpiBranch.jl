@@ -414,7 +414,7 @@ function apply_trace!(::FlagOnly, contact, state, trace_time, rng)
     # A continuous-time model traces a contact before the race has settled its
     # infection, so its onset is still unknown. Isolation holds the recorded
     # time back to the onset once it is known, and never isolates a contact
-    # that has none, so the trace time alone is safe to record here.
+    # that has none, which makes the trace time alone safe to record here.
     # A contact reached by several infectors keeps its earliest trace.
     ind_onset = onset_time(contact)
     traced_iso = isnan(ind_onset) ? trace_time : max(ind_onset, trace_time)
