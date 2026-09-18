@@ -6,11 +6,13 @@ version = "0.1.0"
 [deps]
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 EpiBranch = "d1aa5d78-c683-4158-9743-7109392647a5"
+QuadGK = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [compat]
 Distributions = "0.25"
 EpiBranch = "0.1"
+QuadGK = "2"
 Random = "1"
 julia = "1.11"
 

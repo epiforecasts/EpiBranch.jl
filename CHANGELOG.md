@@ -9,6 +9,25 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- `household_offspring` (in `EpiHouseholds`) returns the household-level
+  offspring law of a household-structured model: how many *households* one
+  infected household infects, one law per household type (its size, or, under
+  a covariate kernel, its own members). It takes the community contact rate as
+  `global_rate` and reads everything else (household sizes, contact-interval
+  kernel, infectious window, interventions) off the model, so isolation lowers
+  R* through the window it shortens. `reproduction_number`
+  gives R*; `extinction_probability` gives the chance a chain of household-to-household
+  transmission started by one infected household of each type dies out; and
+  `household_offspring_law` gives the law itself as a `Distributions.jl`
+  distribution. Households of each size are simulated where the within-household
+  epidemic has no closed form, and solved exactly where it has one (an
+  exponential contact interval racing an exponential infectious window).
+  A `Scheduled` intervention is rejected, with a pointer to deriving the law
+  with and without the intervention for R* before and after it starts.
+- `household_final_size` (in `EpiHouseholds`) gives the exact final-size
+  distribution of the epidemic within one household (how many of its members are
+  ultimately infected) for any contact-interval kernel and infectious window,
+  from Ball's (1986) triangular recursion.
 - `linelist(state; infected_only = false)` returns the whole population, one
   row per individual, for analyses such as a test-negative design, an attack
   rate by covariate, or an exposed/unexposed comparison. It adds an

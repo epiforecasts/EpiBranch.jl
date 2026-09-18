@@ -741,4 +741,6 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
             simulate(ModelSpec(bare; progression = _sir(6.0)); rng = StableRNG(2)), bare)
         @test length(data) == 200
     end
+
+    include("test_offspring.jl")
 end

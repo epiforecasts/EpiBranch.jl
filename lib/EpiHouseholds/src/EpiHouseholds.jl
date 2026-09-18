@@ -2,6 +2,7 @@ module EpiHouseholds
 
 using EpiBranch
 using Distributions
+using QuadGK: quadgk
 using Random
 
 # Accessor seam methods extended for `HouseholdProcess`; imported because they
@@ -31,9 +32,12 @@ export HouseholdProcess, household_sizes
 export HouseholdInfections, household_infections
 export PairwiseSurvivalData, pairwise_surv_loglik
 export HouseholdPairsLayout, compile_household_pairs
+export HouseholdOffspring, household_offspring, household_offspring_law
+export household_final_size
 
 include("household_process.jl")
 include("household_simulate.jl")
 include("likelihood.jl")
+include("offspring.jl")
 
 end # module
