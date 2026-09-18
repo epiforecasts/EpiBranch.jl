@@ -1624,3 +1624,30 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
+
+
+### Choosing initial cases in a fixed population
+
+Network and household simulations accept population IDs through `initial_cases`.
+Selection criteria belong in the calling code:
+
+```julia
+using EpiBranch, EpiNetwork, Distributions, Random
+
+adjacency = [Int[] for _ in 1:5]
+process = NetworkProcess(adjacency, Exponential(2.0))
+chosen = [2, 4]
+state = simulate(ModelSpec(process); initial_cases = chosen, rng = Xoshiro(42))
+```
+
+With no edges, only IDs 2 and 4 are infected. The same keyword works with
+`RoutedNetwork`, `HouseholdProcess` and repeated or parallel simulation. IDs refer
+to the whole population, including across households. An empty vector starts
+with no infections. The simulator copies the vector and checks for duplicates and
+IDs outside the population.
+
+Omitting `initial_cases` preserves default seeding and its random draws. A chosen
+vector replaces that rule: it cannot be combined with `n_initial` or an active
+`external_hazard`. Initial cases are infections at time zero; ongoing external
+introductions describe a separate process. Select IDs with an explicit RNG in
+caller code when selection itself is random.

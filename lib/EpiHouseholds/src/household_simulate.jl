@@ -54,7 +54,8 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
             from = from, until = model.until, interventions = interventions,
             risks = EpiBranch.transmission_risks(model),
             seed! = (best, members, r) -> _seed_clique!(
-                best, members, state, model.external_hazard, Tobs, r),
+                best, members, state, model.external_hazard, Tobs, r;
+                initial_cases = sim_opts.initial_cases),
             introduction = _ext_active(model.external_hazard) ?
                            (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
             targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid))
@@ -74,7 +75,10 @@ end
 # Seed one household's candidate table: community introductions under the
 # external hazard (each member drawn, kept if it lands within `[0, Tobs]`), or a
 # single seeded index at time 0 when there is no external source.
-function _seed_clique!(best, members, state, extsrc, Tobs, rng)
+function _seed_clique!(best, members, state, extsrc, Tobs, rng;
+        initial_cases = nothing)
+    initial_cases === nothing ||
+        return EpiBranch._seed_initial_cases!(best, members, initial_cases)
     m = length(members)
     if _ext_active(extsrc)
         for k in 1:m
@@ -91,3 +95,7 @@ end
 # susceptible) pair: a shared distribution, or a callable for covariate models.
 _pairkernel(k::ContinuousUnivariateDistribution, i, j) = k
 _pairkernel(k, i, j) = k(i, j)
+
+function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpts)
+    EpiBranch._validate_initial_case_ids(opts, length(model.household_of), model.external_hazard)
+end

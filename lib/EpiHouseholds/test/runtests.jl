@@ -849,3 +849,5 @@ end
 
     include("test_offspring.jl")
 end
+
+include("test_initial_cases.jl")

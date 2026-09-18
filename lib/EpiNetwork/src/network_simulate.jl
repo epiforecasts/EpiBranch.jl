@@ -51,7 +51,8 @@ function _simulate(model::NetworkProcess, sim_opts::SimOpts;
         from = from, until = model.until, interventions = interventions,
         risks = EpiBranch.transmission_risks(model),
         seed! = (best, members, r) -> _seed_network!(
-            best, members, state, model.external_hazard, n_initial, Tobs, r),
+            best, members, state, model.external_hazard, n_initial, Tobs, r;
+            initial_cases = sim_opts.initial_cases),
         introduction = _ext_active(model.external_hazard) ?
                        (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
         targets = (inf, st) -> ((nb, _edge_kernel(model, inf, k))
@@ -71,7 +72,10 @@ end
 # Seed the candidate table over all nodes: community introductions under the
 # external hazard (each node drawn, kept if it lands within `[0, Tobs]`), or
 # `n_initial` distinct random nodes at time 0 when there is no external source.
-function _seed_network!(best, members, state, extsrc, n_initial, Tobs, rng)
+function _seed_network!(best, members, state, extsrc, n_initial, Tobs, rng;
+        initial_cases = nothing)
+    initial_cases === nothing ||
+        return EpiBranch._seed_initial_cases!(best, members, initial_cases)
     m = length(members)
     if _ext_active(extsrc)
         for k in 1:m
@@ -84,4 +88,8 @@ function _seed_network!(best, members, state, extsrc, n_initial, Tobs, rng)
         end
     end
     return nothing
+end
+
+function EpiBranch._validate_initial_cases(model::NetworkProcess, opts::SimOpts)
+    EpiBranch._validate_initial_case_ids(opts, length(model.adjacency), model.external_hazard)
 end

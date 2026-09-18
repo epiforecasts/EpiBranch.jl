@@ -9,6 +9,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- Network and household simulations accept `initial_cases` to choose population
+  IDs infected at time zero, including repeated and parallel runs.
+
 - Callable objects can supply observation probabilities, delays and anchors,
   attribute-builder parameters, isolation test sensitivity and scheduling
   predicates, using the same signatures as ordinary functions.
