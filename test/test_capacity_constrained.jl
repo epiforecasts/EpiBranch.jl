@@ -333,6 +333,32 @@ end
         @test usage.used == 2
     end
 
+    @testset "carry_over = false binds across calls in the same period" begin
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 1.0, period = 5.0,
+            carry_over = false)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
+
+        # Both calls are charged to the period [10, 15), while the doses they
+        # give are dated from the trace times, well before that period began.
+        first = [_traced_contact(rv, 1, 3.1)]
+        append!(state.individuals, first)
+        state.max_infection_time = 12.0
+        EpiBranch.apply_post_transmission!(cc, state, first)
+        @test count(is_vaccinated, first) == 1
+
+        second = [_traced_contact(rv, 2, 3.2)]
+        append!(state.individuals, second)
+        state.max_infection_time = 13.0
+        EpiBranch.apply_post_transmission!(cc, state, second)
+        @test count(is_vaccinated, second) == 0
+
+        usage = capacity_usage(cc, state)
+        @test usage.used == 1
+        @test usage.available == 1.0
+    end
+
     @testset "Composes with Scheduled in either order" begin
         rv = RingVaccination(efficacy = 0.9)
 

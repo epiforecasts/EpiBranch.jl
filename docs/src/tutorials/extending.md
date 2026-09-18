@@ -82,6 +82,7 @@ downstream packages should pick names that do not collide.
 | `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
+| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
@@ -466,7 +467,10 @@ way, define:
   flag, …).
 - **`EpiBranch.capacity_time_key(intervention)`** — the key recording *when*
   it was used, needed only if the intervention is ever wrapped with
-  `carry_over = false`.
+  `carry_over = false`. There it places usage `CapacityConstrained` did not
+  itself admit, such as a dose from another intervention writing the same
+  `capacity_key`, in a period; usage the wrapper admitted is placed by the
+  time of the call that admitted it.
 
 `RingVaccination` and `MassVaccination` implement these with their
 dose-recording keys:

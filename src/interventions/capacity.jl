@@ -55,19 +55,17 @@ period add to a later one: the running total available by time `t` is
 `budget_per_period * (floor(t / period) + 1)`, compared against the lifetime
 count used. With `carry_over = false`, a period's unused budget is lost —
 only `budget_per_period` is available within the current period, measured
-against usage recorded since that period began.
+against the admissions charged to that period.
 
-!!! warning "The budget caps admissions per call, not doses per calendar period"
+!!! warning "The budget caps admissions per period, not doses given per calendar period"
     Each call is charged to the period `state.max_infection_time` falls in
     when the call is made, which on the generation-based engine is still the
     previous generation's latest infection time. A dose is dated later, at
     `trace_time + dose_delay` or at the eligibility time, so a dose admitted
-    in one period may be given in another. A generation spanning several
-    periods gets a single period's budget, and with `carry_over = false` a
-    dose dated in a later period counts against the period of its call and
-    again against its own. `budget_per_period = 5.0, period = 1.0` therefore
-    limits how many candidates each call admits, not how many doses are given
-    on any one day.
+    in one period may be given in another, and a generation spanning several
+    periods gets a single period's budget. `budget_per_period = 5.0,
+    period = 1.0` therefore limits how many candidates are admitted per day
+    of simulated time, not how many doses land on any one day.
 
 !!! warning "The budget is shared by every intervention with the same dose label"
     Usage is counted over every individual carrying the
@@ -190,8 +188,9 @@ end
     capacity_time_key(intervention) -> Symbol
 
 The `Individual.state` key holding *when* [`capacity_key`](@ref) was set,
-read by [`CapacityConstrained`](@ref) when `carry_over = false` to count only
-the usage recorded within the current period.
+read by [`CapacityConstrained`](@ref) when `carry_over = false` to place
+usage it did not itself admit — a dose given by some other intervention
+sharing the same [`capacity_key`](@ref) — in a period.
 """
 function capacity_time_key(iv::AbstractIntervention)
     throw(ArgumentError(
@@ -217,9 +216,22 @@ function capacity_key(::GroupVaccination)
         "would not limit the doses given."))
 end
 
+# The `Individual.state` key on which `CapacityConstrained` stamps the time
+# of the call that admitted an individual, so a later call in the same period
+# sees the budget that call spent. Derived from `capacity_key`, so two
+# wrappers rationing different resources keep separate stamps.
+_capacity_admission_key(key::Symbol) = Symbol("capacity_admission_time_", key)
+
 # Doses (or whatever `cc` rations) used and available, in the scope
 # `carry_over` implies, at `state`'s current point in time. Reused by the
 # admission decision and by `capacity_usage`.
+#
+# With `carry_over = false`, usage is placed in a period by the time of the
+# call that admitted it, since a dose is dated later than its admission and
+# often falls outside the period whose budget paid for it. Usage this wrapper
+# never admitted, which any other intervention writing the same
+# `capacity_key` also draws on, has no such stamp and is placed by
+# `capacity_time_key` instead.
 function _capacity_usage(cc::CapacityConstrained, state)
     key = capacity_key(cc.intervention)
     t = state.max_infection_time
@@ -229,10 +241,14 @@ function _capacity_usage(cc::CapacityConstrained, state)
         used = count(ind -> get(ind.state, key, false), state.individuals)
     else
         time_key = capacity_time_key(cc.intervention)
+        admission_key = _capacity_admission_key(key)
         period_start = isinf(cc.period) ? 0.0 : floor(t / cc.period) * cc.period
         available = cc.budget_per_period
         used = count(state.individuals) do ind
-            get(ind.state, key, false) && get(ind.state, time_key, -Inf) >= period_start
+            get(ind.state, key, false) || return false
+            used_at = get(ind.state, admission_key, nothing)
+            isnothing(used_at) && (used_at = get(ind.state, time_key, -Inf))
+            return used_at >= period_start
         end
     end
     return (used = used, available = available)
@@ -246,10 +262,11 @@ end
 # comparison a sort makes, so a random `priority` is not resampled mid-sort)
 # and admitted one at a time in that order for as long as the budget has
 # anything left. Usage is counted once per call and then grows by each
-# candidate whose `capacity_key` the wrapped intervention sets: a dose admitted
-# now uses this call's budget whatever date it carries, which a recount scoped
-# to the period by dose time would miss for a dose dated before the period
-# began, and it spares rescanning the whole population per candidate.
+# candidate whose `capacity_key` the wrapped intervention sets, which spares
+# rescanning the whole population per candidate. Each of those candidates is
+# stamped with the time of this call, so a dose uses the budget of the period
+# that admitted it whatever date the dose itself bears, and later calls in
+# that period see it.
 # Some candidates fail the wrapped intervention's own checks (coverage,
 # eligibility window, a missing required dose, an unresolved trace time)
 # without using a dose; this keeps offering the budget to the next-ranked
@@ -264,11 +281,15 @@ function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
     order = sortperm([cc.priority(ind, state) for ind in candidates]; alg = MergeSort)
     usage = _capacity_usage(cc, state)
     used = usage.used
+    admission_key = _capacity_admission_key(key)
     for i in order
         used + 1 <= usage.available || break
         candidate = candidates[i]
         apply_post_transmission!(cc.intervention, state, [candidate])
-        get(candidate.state, key, false) && (used += 1)
+        if get(candidate.state, key, false)
+            candidate.state[admission_key] = state.max_infection_time
+            used += 1
+        end
     end
     return nothing
 end
@@ -283,8 +304,10 @@ reached: `used` is drawn from `state.individuals` via
 `state.max_infection_time`, `budget_per_period` and `period`, and `used` is
 counted over the whole run. With `carry_over = false`, both are scoped to
 the period `state.max_infection_time` falls in: `available` is a single
-`budget_per_period` and `used` only counts doses timestamped
-([`capacity_time_key`](@ref)) within that period.
+`budget_per_period`, and `used` counts the doses `cc` admitted during that
+period together with any dose another intervention sharing the same
+[`capacity_key`](@ref EpiBranch.capacity_key) timestamped
+([`capacity_time_key`](@ref EpiBranch.capacity_time_key)) within it.
 """
 function capacity_usage(cc::CapacityConstrained, state::SimulationState)
     return _capacity_usage(cc, state)
