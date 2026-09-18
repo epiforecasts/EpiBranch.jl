@@ -4,9 +4,9 @@ struct _AttributeTagger end
 @testset "Attributes builders" begin
     @testset "Callable structs compose with attribute builders" begin
         for attributes in (
-                (groups(2), _AttributeTagger()),
-                [groups(2), _AttributeTagger()],
-            )
+            (groups(2), _AttributeTagger()),
+            [groups(2), _AttributeTagger()]
+        )
             state = simulate(
                 ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0)); attributes);
                 n_initial = 3, rng = StableRNG(1))

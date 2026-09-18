@@ -231,11 +231,56 @@ gradient loop: [`compile_household_pairs`](@ref) enumerates the ordered
 (susceptible, infector) rows once — everything that doesn't depend on the sampled
 parameters — and the three-argument `pairwise_surv_loglik(kernel, data, layout)`
 then evaluates the density in two allocation-free passes, reading the (possibly
-augmented) times on the fly. The two forms agree up to row order.
+augmented) times on the fly. The two forms agree up to row order. The layout is
+EpiBranch's [`ContactPairsLayout`](@ref), built by
+[`compile_contact_pairs`](@ref) from the household partition. Both work for any
+contact structure, and a contact network is fitted the same way (see
+[Fitting on a network](@ref "Fitting on a network")).
 
 In real data the infection times are unobserved. A household `@model` then augments
 them and conditions the observed onsets and tests through the progression's delays,
 with `pairwise_surv_loglik` supplying the contact-process density of the augmented
 configuration. The layout stays valid across draws as long as the household
-structure and the set of ever-infected hosts are fixed — only the latent times
-move — so it is compiled once, outside the model, and reused.
+structure and the set of ever-infected hosts are fixed, because only the latent
+times move. Compile it once, outside the model, and reuse it.
+
+Data collected up to a date describe an outbreak that may still be going. Give
+`HouseholdInfections` that date as `followup_end` and the density ignores
+infections and exposure after it; a case still infectious at the end of
+follow-up keeps a removal time of `Inf`. An impossible configuration, such as a
+case infected when none of its household-mates is infectious and no community
+hazard can reach it, has zero density, and `pairwise_surv_loglik` returns `-Inf`
+for it. Without a community hazard the density conditions on index cases, and
+they need no possible infector. The `-Inf` comes with a zero gradient, since
+whether a configuration is possible at all depends on the times alone.
+
+### Fitting a community hazard
+
+A positive `external_hazard` and no community hazard are different conditionings,
+and the density jumps between them at `α = 0`. With a constant rate `α > 0` an
+index case infected at time `t` contributes `log(α) - α t`, which falls to
+`-Inf` as `α → 0`: a model that admits community introductions has to
+explain the ones it saw, and vanishingly rare introductions explain them
+vanishingly badly. At exactly `external_hazard = 0` index cases are conditioned on
+instead and contribute nothing, and the value stays finite. Each is correct for
+what it conditions on.
+
+For fitting, this means a likelihood ratio between "some community transmission"
+and "none" cannot be read off by letting `α` approach zero. Score the two models
+separately.
+
+The discontinuity is only at that one point, and the density behaves regularly
+as `α` approaches it. Drop the terms free of `α` and the log-density near zero is
+`k log α - α T`, where `k` counts the cases the community alone can explain and
+`T` is the total time the population is exposed to it. In `log α` that is a
+straight line of slope `k`. On 400 households of four with `k = 401`,
+`d ll / d log α` is 401.0 at `α = 1e-6` and 393.5 at `1e-3`, falling to zero at
+the mode near `α = 0.052`.
+
+ForwardDiff cannot differentiate a `Gamma`, whether it is the community hazard or
+the contact-interval kernel. Its cumulative hazard calls
+`SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual` method, and the
+resulting `MethodError` comes from there rather than from this package. Fit a
+`Gamma` with a reverse-mode backend, `NUTS(; adtype = AutoMooncake())`.
+`Weibull` and `Exponential`, the kernels used above, differentiate under either
+mode.

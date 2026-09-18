@@ -17,6 +17,22 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   individual; read the propensity back from `ind.state[:vaccine_acceptance]`
   to draw that correlation in. Groups come from `groups`, or from any
   attributes function that labels individuals under `group_key`.
+- `CapacityConstrained`, wrapping an intervention to ration a scarce,
+  population-level resource across the individuals competing for it in the
+  same period — `budget_per_period` candidates may be admitted for the
+  resource every `period` days, measured on the simulation's own continuous
+  clock, though the dose one of them is admitted for is dated later and may
+  land on another day. It acts through
+  `apply_post_transmission!`, so it only takes effect on the generation-based
+  engine; a continuous-time model does not call that hook and warns that it
+  has no effect there. Demand in excess of what remains is ordered by a
+  `priority` function (first-come-first-served by trace time, by default)
+  and only the front of that order is admitted; `carry_over` decides
+  whether an unused allowance rolls into the next period. Rations
+  `RingVaccination` and `MassVaccination` out of the box; a resource other
+  than doses needs its own `capacity_key` method, not yet defined for
+  anything else in this package. `capacity_usage` reads back doses used
+  against doses available.
 - `household_offspring` (in `EpiHouseholds`) returns the household-level
   offspring law of a household-structured model: how many *households* one
   infected household infects, one law per household type (its size, or, under
@@ -49,6 +65,29 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   exerts the same force of infection on every susceptible, giving the exact
   stochastic SIR final-size law (`R0 = β·E[infectious period]`) and an infection
   time for every case.
+- `NetworkProcess` (in `EpiNetwork`) can be fitted as well as simulated.
+  `network_infections` reads the infection layer out of a simulation, and
+  `loglikelihood(data, model)` scores it with the pairwise survival likelihood,
+  whose generative model is the network's continuous-time race. Each node's
+  possible infectors are its in-neighbours. Shared, covariate and per-edge
+  kernels and a community hazard are supported. Each case's infectious window
+  ends where the simulation ends it, including removal by the model's
+  interventions such as isolation.
+- The pairwise survival likelihood now lives in EpiBranch and works over any
+  contact structure. `compile_contact_pairs` enumerates the (susceptible,
+  possible infector) rows from a membership vector or an adjacency list into a
+  `ContactPairsLayout`, and `pairwise_surv_loglik` evaluates it on any
+  `InfectionLayer` subtype. `EpiHouseholds` now uses it through every form and
+  keeps its API: `HouseholdPairsLayout` is another name for
+  `ContactPairsLayout`. Evaluation is faster, most markedly with a community
+  hazard.
+- An infection layer can record the end of follow-up, `followup_end` (default
+  `Inf`), on `HouseholdInfections`, `NetworkInfections` and a custom
+  `InfectionLayer` alike, and `household_infections` and `network_infections`
+  take it as a keyword. The pairwise survival likelihood ignores infections and
+  exposure after it. An outbreak still going when the data end is then scored as
+  observed so far, with a finite value and gradient, and a case still infectious
+  at the end of follow-up can keep a removal time of `Inf`.
 - Analytical results for multi-type branching processes built from an offspring
   matrix. `reproduction_number(model)` returns R*, the dominant eigenvalue of the
   next-generation matrix (the offspring mean for a single-type model), and
@@ -172,6 +211,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   replacing the earlier coin-flip-per-edge version. Shortening a case's
   infectious window — through recovery or isolation — now genuinely curtails
   onward spread.
+- With a community hazard, the pairwise survival likelihood treats `obs_end` as
+  the time community introductions stop, as the household and network
+  simulations do. A host accrues community hazard until the earlier of its
+  infection and `obs_end`, a host infected after `obs_end` adds no community
+  hazard at its infection time, and a host that is never infected is exposed
+  over each possible infector's whole infectious window. Household likelihood
+  values with a community hazard change as a result. Where `obs_end` stood in
+  for the end of follow-up, set `followup_end` instead.
 - The continuous-time race behind `NetworkProcess`, `RoutedNetwork` and
   `HouseholdProcess` picks the next case to settle from a binary heap, so a race
   over `n` members with `E` contacts costs O(E log n) where it previously cost
@@ -180,6 +227,20 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Fixed
 
+- `household_infections` (in `EpiHouseholds`) ends each case's infectious window
+  when the model's interventions remove it from transmission, such as by
+  isolation or quarantine after tracing, as the simulation does. Fitting an
+  outbreak simulated under isolation then recovers the kernel.
+- The pairwise survival likelihood evaluated on a compiled layout counts a
+  community infection at time 0, as the form without a layout does. An index
+  case at time 0 contributes the community hazard at 0. When every hazard at an
+  infection time is zero, both forms return `-Inf`.
+- The pairwise survival likelihood returns `-Inf` for an infected host that is
+  not conditioned on and that no possible infector or community hazard could
+  have infected at its infection time, including a host with no possible
+  infector at all. A sampler over latent infection times then rejects such
+  configurations. The `-Inf` comes with a zero gradient, since the
+  configuration is impossible throughout a neighbourhood of the parameters.
 - `GroupVaccination` draws `coverage` once per member per dose. A group is
   walked again whenever any of its members appears among a round's new
   contacts, and a member who declined was previously asked again each time, so
