@@ -1,3 +1,10 @@
+# A user-defined risk reuses tracing state without implementing dose delivery.
+struct _TraceProtection <: EpiBranch.AbstractIntervention end
+function EpiBranch.competing_risk(::_TraceProtection, parent, contact, state)
+    is_traced(contact) || return nothing
+    return Risk(event_time = contact.state[:trace_time], block_probability = 1.0)
+end
+
 # Tests for NetworkProcess: a rate-based (contact-interval) network run
 # on the shared continuous-time Sellke race.
 
@@ -164,107 +171,9 @@ end
         @test silent.cumulative_cases == 3
     end
 
-    @testset "leaky ring vaccination changes network results" begin
-        # Ring vaccination doses the contacts a case reaches when the race
-        # settles it, and its efficacy is then a per-contact block against every
-        # infection proposed to a dosed node afterwards.
-        n = 300
-        ring = ring_adjacency(n, 2)
-        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
-            prob_asymptomatic = 0.0)
-        # Isolation is the trigger tracing fires from, and nothing else: a
-        # residual of 1 leaves transmission untouched, so what the outbreak sizes
-        # below show is the vaccine on its own.
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.5),
-            test_sensitivity = 1.0, post_isolation_transmission = 1.0)
-        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.2),
-            quarantine_on_trace = false)
-        build(ivs) = ModelSpec(NetworkProcess(ring, Exponential(4.0));
-            progression = _sir(Exponential(8.0)), interventions = ivs,
-            attributes = clinical)
-        runs(ivs) = [simulate(build(ivs); rng = StableRNG(s), n_initial = 3)
-                     for s in 1:10]
-        meansize(ivs) = sum(st.cumulative_cases for st in runs(ivs)) / 10
-
-        base = meansize([iso, ct])
-        @test !any(st -> any(is_vaccinated, st.individuals), runs([iso, ct]))
-        dosed_runs = runs([iso, ct, RingVaccination(efficacy = 0.5)])
-        @test all(st -> any(is_vaccinated, st.individuals), dosed_runs)
-        # A node reached by several cases is dosed at its earliest trace, even
-        # when the case that reached it first was settled later.
-        @test all(
-            st -> all(
-                ind -> !is_vaccinated(ind) ||
-                       ind.state[:vaccination_time] == ind.state[:trace_time],
-                st.individuals),
-            dosed_runs)
-
-        @test isapprox(meansize([iso, ct, RingVaccination(efficacy = 0.0)]), base;
-            rtol = 0.05)
-        # A dosed pair goes on meeting, so an efficacy of 0.5 thins that edge's
-        # hazard by half rather than halving its transmissions: it cuts the
-        # outbreak, but by less than the same efficacy would on the generation
-        # engine, where a blocked contact is simply lost.
-        leaky = meansize([iso, ct, RingVaccination(efficacy = 0.5)])
-        @test leaky < 0.8 * base
-        @test meansize([iso, ct, RingVaccination(efficacy = 1.0)]) < leaky
-    end
-
-    @testset "a traced node is offered a ring dose once" begin
-        # A node is traced again by every neighbour that settles after it, and a
-        # coverage draw on each would vaccinate far more than `coverage` of them.
-        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
-            prob_asymptomatic = 0.0)
-        ivs = [
-            Isolation(onset_to_isolation_delay = Exponential(0.5), test_sensitivity = 1.0,
-                post_isolation_transmission = 1.0),
-            ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.2),
-                quarantine_on_trace = false),
-            RingVaccination(efficacy = 0.0, coverage = 0.5)]
-        model = ModelSpec(NetworkProcess(ring_adjacency(300, 2), Exponential(4.0));
-            progression = _sir(Exponential(8.0)), interventions = ivs,
-            attributes = clinical)
-        traced = [ind
-                  for s in 1:20
-                  for ind in simulate(model; rng = StableRNG(s), n_initial = 3).individuals
-                  if is_traced(ind) && isfinite(ind.state[:trace_time])]
-        @test length(traced) > 1000
-        @test isapprox(count(is_vaccinated, traced) / length(traced), 0.5; atol = 0.05)
-    end
-
-    @testset "a drawn dose delay survives a node being traced again" begin
-        # An earlier trace moves a dose that has already been given, and the
-        # delay drawn with it moves too. Drawing again, or adding the
-        # distribution itself, would throw on the second trace.
-        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
-            prob_asymptomatic = 0.0)
-        ivs = [
-            Isolation(onset_to_isolation_delay = Exponential(0.5), test_sensitivity = 1.0,
-                post_isolation_transmission = 1.0),
-            ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.2),
-                quarantine_on_trace = false),
-            RingVaccination(efficacy = 0.0, dose_delay = Uniform(1.0, 3.0))]
-        model = ModelSpec(NetworkProcess(ring_adjacency(300, 2), Exponential(4.0));
-            progression = _sir(Exponential(8.0)), interventions = ivs,
-            attributes = clinical)
-        dosed = [ind
-                 for s in 1:5
-                 for ind in simulate(model; rng = StableRNG(s), n_initial = 3).individuals
-                 if is_vaccinated(ind)]
-        @test length(dosed) > 100
-        offsets = [ind.state[:vaccination_time] - ind.state[:trace_time] for ind in dosed]
-        @test all(o -> 1.0 <= o <= 3.0, offsets)
-        # The draw varies between nodes, so the delay is a draw rather than a
-        # bound that every dose happens to sit on.
-        @test length(unique(round.(offsets, digits = 6))) > 10
-    end
-
-    @testset "a dose given along another case's trace protects before exposure" begin
-        # With incomplete tracing and asymptomatic cases, a node is often dosed by
-        # the trace of a case other than the one that later infects it, and that
-        # trace can settle after the infector did. The race resolves each
-        # proposal once everything infected before its time has settled, so a
-        # fully effective dose in place by then blocks it.
+    @testset "a risk reads another case's trace before exposure" begin
+        # A different case can trace a node after its infector has settled but
+        # before exposure. Resolve the risk at exposure time so it sees that trace.
         clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
             prob_asymptomatic = 0.4)
         ivs = [
@@ -272,15 +181,15 @@ end
                 post_isolation_transmission = 1.0),
             ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(0.2),
                 quarantine_on_trace = false),
-            RingVaccination(efficacy = 1.0)]
+            _TraceProtection()]
         model = ModelSpec(NetworkProcess(ring_adjacency(400, 3), Exponential(3.0));
             progression = _sir(Exponential(6.0)), interventions = ivs,
             attributes = clinical)
-        immune_at_infection(ind) = is_vaccinated(ind) && ind.parent_id != 0 &&
-                                   ind.state[:immunity_time] <= ind.infection_time
+        traced_at_infection(ind) = is_traced(ind) && ind.parent_id != 0 &&
+                                   ind.state[:trace_time] <= ind.infection_time
         runs = [simulate(model; rng = StableRNG(s), n_initial = 3) for s in 1:15]
-        @test any(st -> count(is_vaccinated, st.individuals) > 0, runs)
-        @test !any(st -> any(immune_at_infection, st.individuals), runs)
+        @test any(st -> count(is_traced, st.individuals) > 0, runs)
+        @test !any(st -> any(traced_at_infection, st.individuals), runs)
     end
 
     @testset "onset is measured from each case's own infection time" begin
@@ -837,68 +746,6 @@ end
         @test any(p -> hh_of(p[1]) != hh_of(p[2]), pairs(1.0))
     end
 
-    @testset "RoutedNetwork: a vaccine protects on every route" begin
-        # Households of four, and a community route linking each node to one node
-        # in each neighbouring household. Isolation cuts only the community route,
-        # and tracing doses contacts without quarantining them, so a dosed person
-        # is still exposed afterwards, at home as well as in the community. A
-        # fully effective dose must then block every one of those exposures.
-        nh, hs = 60, 4
-        n = nh * hs
-        hh_of(i) = (i - 1) ÷ hs
-        hh = [[j for j in (hh_of(i) * hs + 1):(hh_of(i) * hs + hs) if j != i] for i in 1:n]
-        comm = [[mod1(i + hs, n), mod1(i - hs, n)] for i in 1:n]
-        REM = EpiBranch.INTERVENTION_REMOVAL
-        clinical = clinical_presentation(incubation_period = LogNormal(0.5, 0.3),
-            prob_asymptomatic = 0.0)
-        build(ivs) = ModelSpec(
-            RoutedNetwork([
-                RouteWindow(:household; until = (:recovered,),
-                    kernel = Exponential(2.0), reach = hh),
-                RouteWindow(:community; until = (:recovered, REM),
-                    kernel = Exponential(1.5), reach = comm)]);
-            progression = _sir(8.0), interventions = ivs, attributes = clinical)
-        tracing = [
-            Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 1.0),
-            ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
-                quarantine_on_trace = false)]
-        immune_at_infection(ind) = is_vaccinated(ind) && ind.parent_id != 0 &&
-                                   ind.state[:immunity_time] <= ind.infection_time
-        runs(ivs) = [simulate(build(ivs); n_initial = 3, rng = StableRNG(s))
-                     for s in 1:10]
-
-        # Dosed with no protection, dosed people are infected after their dose on
-        # both routes, so the check below has something to catch.
-        placebo_runs = runs([tracing; RingVaccination(efficacy = 0.0)])
-        placebo = [ind for st in placebo_runs
-                   for ind in st.individuals
-                   if immune_at_infection(ind)]
-        @test any(ind -> hh_of(ind.id) == hh_of(ind.parent_id), placebo)
-        @test any(ind -> hh_of(ind.id) != hh_of(ind.parent_id), placebo)
-
-        # A fully effective dose blocks every one of them, on both routes. The
-        # race resolves each proposal when it is popped, so a dose that a trace
-        # gave after the infector settled is in force by then.
-        full = runs([tracing; RingVaccination(efficacy = 1.0)])
-        @test any(st -> any(is_vaccinated, st.individuals), full)
-        @test !any(st -> any(immune_at_infection, st.individuals), full)
-
-        # The onward effect applies on every route too: a fully effective one
-        # stops a dosed case infecting anyone once its immunity is in place, its
-        # household included.
-        function infected_by_immune(st)
-            filter(st.individuals) do ind
-                (is_infected(ind) && ind.parent_id != 0) || return false
-                parent = st.individuals[ind.parent_id]
-                is_vaccinated(parent) && parent.state[:immunity_time] <= ind.infection_time
-            end
-        end
-        placebo_onward = reduce(vcat, map(infected_by_immune, placebo_runs))
-        @test any(ind -> hh_of(ind.id) == hh_of(ind.parent_id), placebo_onward)
-        onward = runs([tracing; RingVaccination(efficacy = 0.0, onward_efficacy = 1.0)])
-        @test all(st -> isempty(infected_by_immune(st)), onward)
-    end
-
     @testset "RoutedNetwork: route and tracing probabilities multiply" begin
         # A seed on a complete graph with contact too slow to transmit: none of
         # its neighbours is infected before tracing reaches them, so the fraction
@@ -964,35 +811,27 @@ end
             isolation_to_trace_delay = Exponential(500.0))
         @test meansize([iso, late]) <= meansize([iso]) * 1.05
 
-        # Ring vaccination doses along the same trace, so the graph honours it
-        # and nothing is reported as unhonoured. A rollout that doses newly
-        # created contacts still is: the race creates none.
-        @test EpiBranch._sellke_honours(
-            build([iso]).process, RingVaccination(efficacy = 0.8))
-        # Its eligibility window and its post-exposure abort are timed from a
-        # contact's exposure, which a node the race has not settled does not
-        # have, so a ring that uses either is reported and doses nobody.
+        # Dosing remains a generation-engine operation, even when the graph
+        # supplies contacts for tracing. Report it and leave contacts undosed.
         model = build([iso]).process
-        @test !EpiBranch._sellke_honours(
-            model, RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8))
-        @test !EpiBranch._sellke_honours(
-            model, RingVaccination(efficacy = 0.8, eligibility_window = 21.0))
-        pep = @test_logs (:warn, r"RingVaccination") match_mode=:any simulate(
-            build([iso, ct,
-                RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8)]);
-            n_initial = 1, rng = StableRNG(4))
-        @test !any(is_vaccinated, pep.individuals)
+        for rv in (RingVaccination(efficacy = 0.8),
+            RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8),
+            RingVaccination(efficacy = 0.8, eligibility_window = 21.0),
+            Scheduled(RingVaccination(efficacy = 0.8); start_time = 0.0))
+            @test !EpiBranch._sellke_honours(model, rv)
+            undosed = @test_logs (:warn, r"RingVaccination") match_mode=:any simulate(
+                build([iso, ct, rv]); n_initial = 1, rng = StableRNG(4))
+            @test !any(is_vaccinated, undosed.individuals)
+            @test all(!haskey(ind.state, :ring_dose_delay) &&
+                          !haskey(ind.state, :ring_dose_offered)
+            for ind in undosed.individuals)
+        end
         @test_logs (:warn, r"MassVaccination") match_mode=:any simulate(
-            build([iso, ct,
-                MassVaccination(efficacy = 0.8, eligibility_time = 0.0)]);
+            build([iso, ct, MassVaccination(efficacy = 0.8, eligibility_time = 0.0)]);
             n_initial = 1, rng = StableRNG(4))
 
-        # The package's own interventions that the graph honours warn about
-        # nothing, although tracing and ring vaccination implement the
-        # generation engine's hooks too.
-        honoured = [iso, ct, RingVaccination(efficacy = 0.8),
-            Scheduled(RingVaccination(efficacy = 0.5, dose_label = :late);
-                start_time = 2.0)]
+        # Tracing has a continuous-time hook; vaccination delivery does not.
+        honoured = [iso, ct]
         @test all(iv -> EpiBranch._sellke_honours(model, iv), honoured)
         @test_logs min_level=Base.CoreLogging.Warn simulate(build(honoured);
             n_initial = 1, rng = StableRNG(4))

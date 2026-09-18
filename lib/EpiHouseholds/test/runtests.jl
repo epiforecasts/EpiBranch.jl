@@ -205,41 +205,6 @@ end
         end
     end
 
-    @testset "leaky ring vaccination changes household results" begin
-        # Ring vaccination doses along the trace, which the race runs when it
-        # settles a case, and its efficacy is a per-contact block resolved on
-        # each infection proposed afterwards. Both halves of that have to work
-        # for the vaccine to bite at all.
-        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
-            prob_asymptomatic = 0.0)
-        # Isolation is the trigger tracing fires from, and nothing else: a
-        # residual of 1 leaves transmission untouched, so the outbreak sizes
-        # below show the vaccine on its own.
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.5),
-            test_sensitivity = 1.0, post_isolation_transmission = 1.0)
-        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.3),
-            quarantine_on_trace = false)
-        build(ivs) = ModelSpec(HouseholdProcess(fill(6, 200), Exponential(10.0));
-            progression = _sir(Exponential(4.0)), interventions = ivs,
-            attributes = clinical)
-        runs(ivs) = [simulate(build(ivs); rng = StableRNG(s)) for s in 1:15]
-        meansize(ivs) = sum(st.cumulative_cases for st in runs(ivs)) / 15
-
-        base = meansize([iso, ct])
-        # Nobody is dosed without the intervention, and traced contacts are with it.
-        @test !any(st -> any(is_vaccinated, st.individuals), runs([iso, ct]))
-        dosed = runs([iso, ct, RingVaccination(efficacy = 0.8)])
-        @test any(st -> count(is_vaccinated, st.individuals) > 0, dosed)
-
-        # A useless vaccine leaves the outbreak where it was; a leaky one cuts
-        # it; a perfect one cuts it further.
-        @test isapprox(meansize([iso, ct, RingVaccination(efficacy = 0.0)]), base;
-            rtol = 0.05)
-        leaky = meansize([iso, ct, RingVaccination(efficacy = 0.8)])
-        @test leaky < 0.7 * base
-        @test meansize([iso, ct, RingVaccination(efficacy = 1.0)]) < leaky
-    end
-
     @testset "onset is measured from each case's own infection time" begin
         # Members are created, and their incubation periods drawn, before the
         # race sets their infection times. Isolation depends on onset, so onset

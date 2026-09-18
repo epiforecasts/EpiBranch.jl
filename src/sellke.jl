@@ -392,22 +392,13 @@ end
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
 # neighbours and a household its members, but the mass-action pool has no
 # pairwise contact structure, so tracing has nothing to act along there and stays
-# unhonoured — and ring vaccination, which doses along the trace, with it.
-#
-# Two parts of ring vaccination are timed from the contact's own exposure, which
-# a contact the race has not settled does not yet have: the `eligibility_window`,
-# and the post-exposure abort, drawn against the exposure when the dose is given.
-# Either would be measured from the zero an unsettled node was created with, so a
-# ring that sets one is reported as unhonoured, and does not dose at all, rather
-# than applying it wrongly.
+# unhonoured. Vaccination delivery uses the generation engine's post-transmission
+# hook and has no continuous-time counterpart yet.
 function _sellke_honours(model, iv::AbstractIntervention)
     _has_generation_hook(iv) || return true
     return traces_contacts(iv) && supplies_contacts(model)
 end
 _sellke_honours(model, ::ContactTracing) = supplies_contacts(model)
-function _sellke_honours(model, rv::RingVaccination)
-    supplies_contacts(model) && _ring_doses_on_race(rv)
-end
 _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
 
 """

@@ -239,15 +239,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   contact's infector without weighting by the mixing structure. Risks acting on
   the contact alone still apply, and so does per-individual infectiousness,
   which is carried by the force itself.
-- `RingVaccination` doses along the trace on the continuous-time models, where
-  before it only ever dosed contacts the generation engine had created. A ring
-  with a finite `eligibility_window` or a `post_exposure_efficacy` still doses
-  no one there and is reported as unhonoured: both are timed from the contact's
-  own exposure, which a contact the race has not yet infected does not have.
 - The continuous-time models' warning about interventions they cannot honour
   now names only those that reach their targets through the generation engine's
-  post-transmission hooks — `MassVaccination`'s rollout, `GroupVaccination`,
-  and `ContactTracing` (with `RingVaccination` behind it) on the mass-action
+  post-transmission hooks — vaccination delivery —
+  and `ContactTracing` on the mass-action
   pool, which has no pairwise contact structure to act along. An intervention
   defined outside the package is named too when it has its own
   `apply_post_transmission!` or `keep_active` method and does not trace

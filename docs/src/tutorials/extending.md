@@ -81,8 +81,6 @@ downstream packages should pick names that do not collide.
 | `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | `apply_post_transmission!` |
 | `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
-| `:ring_dose_offered[_<label>]` | `Bool` | — | `RingVaccination` (continuous-time models) | `trace_contacts!` |
-| `:ring_dose_delay[_<label>]` | `Float64` | — | `RingVaccination` | `apply_post_transmission!` |
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
 | `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | `apply_post_transmission!` |
@@ -346,7 +344,7 @@ Ordering guarantees:
 - `apply_post_transmission!` runs strictly before any `competing_risk` call, so a competing risk can read whatever post-transmission hook wrote on the contact (e.g. `:vaccination_time`).
 - `keep_active` runs after infection is resolved, so it can read each target's `:infected` and anything `apply_post_transmission!` wrote on it this generation.
 - Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
-- On the continuous-time models the counterpart holds through tracing: a case is traced when it settles, before it proposes any infection of its own, so a risk can read what `trace_contacts!` wrote on a contact. `RingVaccination` doses on that pass, which is why listing it after the `ContactTracing` that feeds it matters there as much as it does on the generation engine.
+- On the continuous-time models the counterpart holds through tracing: a case is traced when it settles, before it proposes any infection of its own, so a risk can read what `trace_contacts!` wrote on a contact. Built-in vaccination delivery still uses the generation engine’s post-transmission hook and is reported as unsupported on the continuous-time path.
 
 A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. On the continuous-time models the transmission time it is compared against is the candidate infection time the race has just drawn for that pair. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms: `RingVaccination` returns a susceptibility risk on the contact alongside a risk on the parent for reduced onward infectiousness.
 

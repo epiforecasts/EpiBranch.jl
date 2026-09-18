@@ -263,9 +263,6 @@ end
 function _onward_efficacy_key(label::Symbol)
     label === :default ? :onward_efficacy : Symbol("onward_efficacy_", label)
 end
-function _ring_dose_delay_key(label::Symbol)
-    label === :default ? :ring_dose_delay : Symbol("ring_dose_delay_", label)
-end
 function _coverage_declined_key(label::Symbol)
     label === :default ? :coverage_declined : Symbol("coverage_declined_", label)
 end
@@ -952,16 +949,12 @@ function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
             min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
         end
         isfinite(trace_t) || continue
-        dose_delay = _sample_value(rv.dose_delay, state.rng, ind)
-        vacc_t = trace_t + dose_delay
+        vacc_t = trace_t + _sample_value(rv.dose_delay, state.rng, ind)
         isfinite(vacc_t) || continue
         _has_required_dose(rv, ind, vacc_t) || continue
         _within_eligibility_window(rv.eligibility_window, ind, vacc_t, state.rng) ||
             continue
         _covers(rv.coverage, ind, state.rng) || continue
-        # Kept so an earlier trace can move the dose without drawing again, the
-        # way the coverage and efficacy drawn with it stay as they are.
-        ind.state[_ring_dose_delay_key(label)] = dose_delay
         _record_vaccination!(rv, ind, vacc_t, state.rng)
         _maybe_positive(rv.post_exposure_efficacy) &&
             _abort_infection!(rv, ind, vacc_t, state.rng)
@@ -1137,78 +1130,6 @@ function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
             _record_vaccination!(gv, m, vacc_t, state.rng)
         end
     end
-    return nothing
-end
-
-traces_contacts(::RingVaccination) = true
-
-# Whether a ring can dose on the continuous-time race. Its eligibility window
-# and its post-exposure abort both measure from the contact's exposure, which a
-# contact the race has not settled does not have yet, so a ring using either
-# cannot be applied there faithfully.
-function _ring_doses_on_race(rv::RingVaccination)
-    rv.post_exposure_efficacy == 0.0 &&
-        rv.eligibility_window isa Real && rv.eligibility_window == Inf
-end
-
-"""Dose the contacts a case reaches on the continuous-time path, where the
-generation engine's round of new contacts does not exist. The dosing policy
-reads nothing but each contact's own tracing state, so it is the same loop
-either way: list ring vaccination after the [`ContactTracing`](@ref) that feeds
-it, as on the generation engine, and it doses whoever that trace has just
-reached. Whether the dose then blocks an infection is the competing risk's
-business, and the continuous-time race resolves that on each contact it
-proposes.
-
-A ring with a finite `eligibility_window` or a `post_exposure_efficacy` doses
-no one here: both are measured from the contact's own exposure, which a contact
-the race has not settled does not have yet. The model warns about such a ring
-rather than apply either from the wrong time."""
-function trace_contacts!(rv::RingVaccination, state, infector, contacts)
-    _ring_doses_on_race(rv) || return nothing
-    for ind in contacts
-        _advance_ring_dose!(rv, ind)
-    end
-    # A contact reappears in the trace of every neighbour that settles after it
-    # was traced. It is offered the dose once, as a traced contact is on the
-    # generation engine, so one that declined is not offered it again.
-    offered_key = _ring_offered_key(dose_label(rv))
-    candidates = [ind for ind in contacts if !get(ind.state, offered_key, false)]
-    apply_post_transmission!(rv, state, candidates)
-    for ind in candidates
-        is_traced(ind) && isfinite(get(ind.state, :trace_time, Inf)) &&
-            (ind.state[offered_key] = true)
-    end
-    return nothing
-end
-
-function _ring_offered_key(label::Symbol)
-    label === :default ? :ring_dose_offered : Symbol("ring_dose_offered_", label)
-end
-
-# The race settles cases in infection order, not trace order, so a case settled
-# later can reach a contact sooner than the one that dosed it. Its trace lowers
-# the contact's `:trace_time`, and the dose, given at the trace, moves with it.
-# Coverage and efficacy were drawn with the first dose and stay as they are.
-function _advance_ring_dose!(rv::RingVaccination, ind)
-    label = dose_label(rv)
-    get(ind.state, _vaccinated_key(label), false) || return nothing
-    # The delay drawn when the dose was given, so a distribution- or
-    # function-valued `dose_delay` is not drawn a second time here. Its absence
-    # means another intervention gave this label's dose, and a ring moves only
-    # the doses it gave itself.
-    delay_key = _ring_dose_delay_key(label)
-    haskey(ind.state, delay_key) || return nothing
-    vacc_t = get(ind.state, :trace_time, Inf) + ind.state[delay_key]
-    old_vacc_t = ind.state[_vaccination_time_key(label)]
-    vacc_t < old_vacc_t || return nothing
-    _has_required_dose(rv, ind, vacc_t) || return nothing
-    ind.state[_vaccination_time_key(label)] = vacc_t
-    # A drawn `delay_to_immunity` was stored when the dose was given, so the
-    # immunity time moves with the dose rather than being drawn afresh.
-    ind.state[_immunity_time_key(label)] = vacc_t +
-                                           (ind.state[_immunity_time_key(label)] -
-                                            old_vacc_t)
     return nothing
 end
 

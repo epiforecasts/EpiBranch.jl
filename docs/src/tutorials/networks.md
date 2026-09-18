@@ -119,13 +119,11 @@ into `S(t)^m`, where on the generation-based engine they block each contact with
 probability `1 - m`.
 `ContactTracing` applies too, because a node's contacts are its graph neighbours
 and quarantining a traced neighbour closes that neighbour's own window; see
-[Contact tracing on a network](#Contact-tracing-on-a-network). Ring vaccination
-doses along that same trace, unless it sets an `eligibility_window` or a
-`post_exposure_efficacy`: both are timed from a contact's own exposure, which a
-node not yet infected does not have, so such a ring is reported with a warning
-and doses no one. So is an intervention that reaches its targets only among
-freshly created contacts, such as `MassVaccination`'s rollout or
-`GroupVaccination`. Graphs.jl is an optional
+[Contact tracing on a network](#Contact-tracing-on-a-network). Built-in vaccination delivery
+(`RingVaccination`, `MassVaccination` and `GroupVaccination`) uses the generation
+engine's post-transmission hook, so it is reported as unsupported and doses no
+one on this path. Existing protection may instead be represented by host traits,
+a composed kernel or a user-defined competing risk. Graphs.jl is an optional
 dependency: this constructor becomes available once you load Graphs.jl,
 and the adjacency-list and matrix constructors need nothing extra. For a
 directed graph, a node's out-neighbours are the contacts it can infect.
@@ -254,9 +252,10 @@ that case's trace time is known. It therefore reaches the neighbours that are
 not yet settled themselves. Tracing *backwards*, to the already-settled
 neighbour a case was infected by, is not supported on either engine.
 
-An intervention whose effect is a competing risk against the infection event
-rather than a removal, such as leaky `RingVaccination`, still has no
-representation here and is reported with a warning.
+Competing risks can read this tracing state at exposure time. Built-in
+vaccination delivery still requires the generation engine and is reported
+with a warning; supporting its actions on this path is separate from
+evaluating an existing protection effect.
 
 ## Several routes at once
 

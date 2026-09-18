@@ -274,8 +274,7 @@ end
         # with no contacts supplied there is nothing to trace along
         @test infected(race([iso, ct])) == [true, true, true]
 
-        # Ring vaccination doses along the trace, so it is honoured exactly where
-        # tracing is: on a model that can name a case's contacts.
+        # Vaccination delivery still requires generation-based contacts.
         nameless = BranchingProcess(Poisson(1.0), Exponential(1.0))
         @test !EpiBranch.supplies_contacts(nameless)
         @test !EpiBranch._sellke_honours(nameless, RingVaccination(efficacy = 0.9))
@@ -408,43 +407,6 @@ end
         @test share(Exponential(1.0), 0.0) == 0.0
     end
 
-    @testset "a ring dose follows the earliest trace on the race" begin
-        # Nodes 1 and 2 are seeded at 0 and 1, so the race settles node 1 first,
-        # and both reach node 3. Node 1 traces it at 4, node 2 sooner, at 2: the
-        # dose, given at the trace, must move to the earlier time.
-        prog = [Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
-        function dosed(interventions)
-            rng = StableRNG(1)
-            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
-                prog, EpiBranch.NoAttributes(), rng)
-            EpiBranch.add_individuals!(state, 3, interventions)
-            EpiBranch._sellke_race!(state, [1, 2, 3], rng; interventions,
-                targets = (inf, st) -> (), contacts = (inf, st) -> inf == 3 ? () : (3,),
-                from = :infection, until = (:recovered,),
-                seed! = (best, members, r) -> (best[1] = 0.0; best[2] = 1.0))
-            return state.individuals[3].state
-        end
-        tracer = TraceAtFixedTimes(Dict(1 => 4.0, 2 => 2.0))
-
-        node3 = dosed([tracer, RingVaccination(efficacy = 0.5, delay_to_immunity = 3.0)])
-        @test node3[:trace_time] == 2.0
-        @test node3[:vaccination_time] == 2.0
-        @test node3[:immunity_time] == 5.0
-
-        # A later dose moves with the trace, and so does a boost timed from it.
-        node3 = dosed([tracer,
-            RingVaccination(efficacy = 0.5, dose_delay = 1.0, dose_label = :prime),
-            RingVaccination(efficacy = 0.5, dose_delay = 7.0, requires_dose = :prime,
-                dose_label = :boost)])
-        @test node3[:vaccination_time_prime] == 3.0
-        @test node3[:vaccination_time_boost] == 9.0
-
-        # A later trace leaves an earlier dose alone.
-        node3 = dosed([TraceAtFixedTimes(Dict(1 => 2.0, 2 => 4.0)),
-            RingVaccination(efficacy = 0.5)])
-        @test node3[:vaccination_time] == 2.0
-    end
-
     @testset "the race resolves competing risks on each proposal" begin
         # Nodes 1 and 2 are both seeded at time 0 and both reach node 3: node 1
         # at time 2, node 2 at time 5. Unblocked, the earlier proposal wins.
@@ -539,13 +501,6 @@ end
             Scheduled(ProtectOnRoute(:community);
                 start_time = 0.0); start_time = 0.0)]) == [true, false, true]
         @test !EpiBranch.risk_applies(ProtectOnRoute(:household), nothing)
-        # A fully effective ring dose, given when node 1 traces its contacts at
-        # time 0, protects on both routes.
-        tracer = TraceAtFixedTimes(Dict(1 => 0.0))
-        @test infected_after([tracer, RingVaccination(efficacy = 1.0)]) ==
-              [true, false, false]
-        @test infected_after([tracer, RingVaccination(efficacy = 0.0)]) ==
-              [true, true, true]
         # Isolation and quarantine follow the route's removal listing; a vaccine,
         # including its effect on onward transmission, does not.
         for route in (nothing, RouteWindow(:household; until = (:recovered,), kernel = Dirac(1.0)),
