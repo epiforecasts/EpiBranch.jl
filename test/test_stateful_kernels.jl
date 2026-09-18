@@ -75,3 +75,66 @@ end
     @test DifferentiationInterface.gradient(f, AutoMooncake(), x) ≈
           ForwardDiff.gradient(reference, x)
 end
+
+include("testutils/stateful_kernels.jl")
+
+# Exercise the shared primitive without depending on a companion package.
+function stateful_test_race(kernel, initial_times; interventions = (), introduction = nothing)
+    rng = StableRNG(233)
+    progression = [Transition(:recovered; delay = 5.0, terminal = true)]
+    state = EpiBranch.new_state(BranchingProcess(Poisson(0.0)), progression,
+        NoAttributes(), rng)
+    n = length(initial_times)
+    EpiBranch.add_individuals!(state, n, interventions)
+    targets = (i, st) -> ((j,
+                              EpiBranch.pair_kernel(kernel, i, j,
+                                  st.individuals[i].infection_time, st.individuals[i].infection_time, st))
+    for j in 1:n if j != i && !is_infected(st.individuals[j]))
+    EpiBranch._sellke_race!(state, collect(1:n), rng;
+        seed! = (best, members, r) -> copyto!(best, initial_times),
+        targets, from = :infection, until = (:recovered,), interventions,
+        introduction, refresh_kernels = EpiBranch._live_kernel(kernel))
+    return state
+end
+
+@testset "Shared race refreshes live pair kernels" begin
+    ties = StatefulKernel(_ -> nothing, (c, a, b) -> Dirac(1.0))
+    state = stateful_test_race(ties, [0.0, Inf, Inf])
+    @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0]
+
+    project(ind) = (date = get(ind.state, :policy_time, Inf)::Float64,)
+    callback = function (c, a, b)
+        (c.infector, c.susceptible) == (1, 2) && return Dirac(1.0)
+        (c.infector, c.susceptible) == (1, 3) &&
+            return state_policy_law(0.1, 1.0, b.date)
+        return Dirac(20.0)
+    end
+    kernel = StatefulKernel(project, callback)
+    changed = stateful_test_race(kernel, [0.0, Inf, Inf];
+        interventions = [RecordKernelPolicy()])
+    @test changed.individuals[2].infection_time == 1.0
+    @test changed.individuals[3].state[:policy_time] == 1.5
+    recorded = record_kernel(kernel, changed)
+    @test logccdf(EpiBranch.pair_kernel(kernel, 1, 3, 0.0, 0.0, changed), 2.0) ≈
+          logccdf(EpiBranch.pair_kernel(recorded, 1, 3, 0.0), 2.0)
+    calendar = CalendarKernel(StatefulKernel(project,
+        (c, a, b) -> Exponential(2.0)))
+    @test mean(EpiBranch.pair_kernel(calendar, 1, 3, 0.0, 0.5, changed)) ≈ 2.0
+    @test mean(EpiBranch.pair_kernel(Exponential(2.0), 1, 3, 0.0, 0.5, changed)) == 2.0
+    @test logccdf(EpiBranch.pair_kernel(recorded, 1, 3, 0.0, 0.0, changed), 2.0) ≈
+          logccdf(EpiBranch.pair_kernel(recorded, 1, 3, 0.0), 2.0)
+    fixed = StatefulKernel([nothing, nothing], (c, a, b) -> Exponential(1.0))
+    replay = stateful_test_race(fixed, [0.0, Inf])
+    ordinary = stateful_test_race(Exponential(1.0), [0.0, Inf])
+    @test isequal([i.infection_time for i in replay.individuals],
+        [i.infection_time for i in ordinary.individuals])
+
+    # Retried introductions must remain later than the admission boundary even
+    # when another introduction settles and refreshes the remaining queue.
+    inactive = StatefulKernel(_ -> nothing, (c, a, b) -> Dirac(20.0))
+    introduced = stateful_test_race(inactive, [0.1, 0.2, 0.3];
+        interventions = [WaitForKernelDay()], introduction = (Exponential(0.2), 3.0))
+    cases = filter(is_infected, introduced.individuals)
+    @test length(cases) == 3
+    @test all(i -> 1.0 <= i.infection_time <= 3.0, cases)
+end
