@@ -81,17 +81,19 @@ end
 
 # ── Infector-side risks under structured mixing ──────────────────────
 #
-# A contact's infector is drawn uniformly from everyone infectious. That is exact
-# for one mixing type, where every infective of the same infectiousness adds the
-# same to the force on every susceptible. With several types an infective adds to
+# A contact's infector is drawn in proportion to infectiousness, which is a
+# uniform draw while every infective is at the default. That is exact for one
+# mixing type, where every infective of the same infectiousness adds the same to
+# the force on every susceptible. With several types an infective adds to
 # a group's force according
 # to its own type, so the exact draw weights each infective by its contribution.
 # `force` is an arbitrary function of the per-type counts and is not required to
 # be linear in them, so that contribution is not defined in general; recovering
 # it by differencing `force` would assume linearity, cost one call per infectious
 # type on every contact, and change the random stream and parent labels of
-# structured pools that carry no risks at all. The uniform draw is kept, and it
-# leaves the dynamics exact as long as no risk depends on who the infector is:
+# structured pools that carry no risks at all. The infectiousness-weighted draw
+# is kept, and it leaves the dynamics exact as long as no risk depends on who the
+# infector is:
 # the contact's susceptibility or a vaccine's protection of the contact are
 # fine, whereas the infector's infectiousness or a leaky isolation would weight
 # blocks by the wrong infectors. Those are refused. Per-individual infectiousness
@@ -126,7 +128,8 @@ function _refuse_infector_side_risks(state, members, risks, interventions)
     isempty(culprits) && return nothing
     throw(ArgumentError(
         "the fixed-size pool with more than one mixing type draws each contact's " *
-        "infector uniformly from everyone infectious, which gives the right " *
+        "infector in proportion to infectiousness rather than by its share of " *
+        "the force, which gives the right " *
         "dynamics only while the infector cannot change whether a contact " *
         "transmits. These can: $(join(unique(culprits), ", ")). Fold differences " *
         "in infectiousness between types into `force`, or run a single mixing " *
@@ -172,10 +175,11 @@ per-individual traits are already in the construction, as the weights in
 `counts` and the scaling of each threshold. A blocked contact
 does not infect, and the susceptible draws a fresh resistance and waits for the
 next one. With more than one mixing type, a risk that depends on the infector —
-per-individual infectiousness, a leaky isolation, a model risk source, or any
-other intervention defining its own `competing_risk` apart from those known to
-act on the contact alone — is refused with an `ArgumentError`, because the
-infector a contact is attributed to is not weighted by its share of the force.
+a leaky isolation, a model risk source, or any other intervention defining its
+own `competing_risk` apart from those known to act on the contact alone — is
+refused with an `ArgumentError`, because the infector a contact is attributed to
+is not weighted by its share of the force. Per-individual infectiousness is not
+refused: it reaches the force through the weighted `counts`.
 """
 function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; mixing_by::Tuple = (), force, n_initial::Integer,
