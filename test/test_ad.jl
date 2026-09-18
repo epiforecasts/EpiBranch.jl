@@ -306,6 +306,7 @@ end
     n_boosted = length(dosed(run_with([iso, ct, prime, boost(28.0)])))
     @test n_boosted > 0  # otherwise the test is vacuous
     @test ForwardDiff.derivative(boost_time, 28.0) == n_boosted
+end
 
 # The multi-type analytics accept any number type. A dual dispersion enters
 # through `dist_fn`. A dual scale on the offspring mean gives a dual mean matrix,
