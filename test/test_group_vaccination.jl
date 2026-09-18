@@ -229,4 +229,28 @@ end
         end
         @test n_vaccinated > 0
     end
+
+    @testset "Coverage is drawn once per member, however often the group returns" begin
+        gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation(),
+            coverage = 0.5)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(2))
+
+        confirmed = _group_member(gv, 1, :A, test_positive = true)
+        set_isolated!(confirmed, 5.0)
+        members = [_group_member(gv, i, :A, test_positive = false) for i in 2:201]
+        append!(state.individuals, [confirmed; members])
+
+        EpiBranch.apply_post_transmission!(gv, state, [confirmed])
+        first_round = Set(ind.id for ind in members if is_vaccinated(ind))
+        # Half of 200 members, up to the sampling noise of a fair coin.
+        @test 70 < length(first_round) < 130
+
+        # The group comes back in each later round, once for every member that
+        # turns up among the new contacts. Nobody who declined is asked again.
+        for _ in 1:10
+            EpiBranch.apply_post_transmission!(gv, state, [members[1]])
+        end
+        @test Set(ind.id for ind in members if is_vaccinated(ind)) == first_round
+    end
 end

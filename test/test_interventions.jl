@@ -67,6 +67,27 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test all(ind -> ind.infection_time < 1000.0, state.individuals)
     end
 
+    @testset "FlagOnly records no traced isolation for an asymptomatic contact" begin
+        rng = StableRNG(1)
+        asymptomatic = Individual(id = 1, infection_time = 1.0)
+        asymptomatic.state[:asymptomatic] = true
+        asymptomatic.state[:onset_time] = NaN
+        EpiBranch.apply_trace!(FlagOnly(), asymptomatic, nothing, 2.0, rng)
+        @test is_traced(asymptomatic)
+        @test !haskey(asymptomatic.state, :traced_isolation_time)
+
+        # An onset not yet known is recorded at the trace time.
+        pending = Individual(id = 2, infection_time = 1.0)
+        EpiBranch.apply_trace!(FlagOnly(), pending, nothing, 2.0, rng)
+        @test pending.state[:traced_isolation_time] == 2.0
+
+        # A later trace by another infector keeps the earlier time.
+        EpiBranch.apply_trace!(FlagOnly(), pending, nothing, 4.0, rng)
+        @test pending.state[:traced_isolation_time] == 2.0
+        EpiBranch.apply_trace!(FlagOnly(), pending, nothing, 1.5, rng)
+        @test pending.state[:traced_isolation_time] == 1.5
+    end
+
     @testset "reset!(Isolation) leaves another intervention's isolation intact" begin
         # `:isolated`/`:isolation_time` are shared: ContactTracing's Quarantine
         # writes them directly. A Scheduled(Isolation) resetting a pre-start
@@ -510,6 +531,19 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     end
                 end
             end
+        end
+
+        @testset "An eligibility window admits a contact not yet exposed" begin
+            # A never-exposed individual's infection time is NaN; no time has
+            # passed since an exposure, so any window admits it.
+            unexposed = Individual(id = 1, infection_time = NaN)
+            rng = StableRNG(1)
+            @test EpiBranch._within_eligibility_window(Inf, unexposed, 3.0, rng)
+            @test EpiBranch._within_eligibility_window(
+                (rng, ind) -> Inf, unexposed, 3.0, rng)
+            @test EpiBranch._within_eligibility_window(21.0, unexposed, 3.0, rng)
+            exposed = Individual(id = 2, infection_time = 1.0)
+            @test !EpiBranch._within_eligibility_window(1.0, exposed, 3.0, rng)
         end
 
         @testset "Doses are timed at the trace, whatever the trace action" begin

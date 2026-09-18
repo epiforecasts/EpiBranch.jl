@@ -142,7 +142,9 @@ end
     @test EpiBranch._timetype(plain) === Float64
     @test EpiBranch._timetype(dual) <: ForwardDiff.Dual
     @test dual.cumulative_cases == plain.cumulative_cases
-    @test all(ForwardDiff.value(d.infection_time) == p.infection_time
+    # `isequal`, not `==`, since a never-infected individual's `infection_time`
+    # is `NaN` on both sides.
+    @test all(isequal(ForwardDiff.value(d.infection_time), p.infection_time)
     for (d, p) in zip(dual.individuals, plain.individuals))
 
     grad = ForwardDiff.derivative(total_infection_time, β0)
@@ -293,8 +295,20 @@ end
     run_with(interventions) = simulate(
         ModelSpec(process; interventions = interventions, attributes = clinical);
         condition = 50:200, max_cases = 200, rng = StableRNG(31))
-    dosed(state) = filter(ind -> get(ind.state, :vaccinated_boost, false),
-        state.individuals)
+    dosed(state, flag = :vaccinated_boost) = filter(
+        ind -> get(ind.state, flag, false), state.individuals)
+
+    # A dose with no prerequisite reaches the schedule validation by a different
+    # path from a boost, so cover it on its own as well.
+    single(delay) = sum(ind.state[:vaccination_time]
+    for ind in dosed(
+        run_with([iso, ct, RingVaccination(efficacy = 0.5, dose_delay = delay)]),
+        :vaccinated))
+    n_single = length(dosed(
+        run_with([iso, ct, RingVaccination(efficacy = 0.5, dose_delay = 7.0)]),
+        :vaccinated))
+    @test n_single > 0  # otherwise the test is vacuous
+    @test ForwardDiff.derivative(single, 7.0) == n_single
 
     # Each boost lands `dose_delay` days after its trace, so the derivative of
     # the boosts' total timing is the number of boosts given.
