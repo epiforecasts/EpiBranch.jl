@@ -199,34 +199,36 @@ end
 
 # The infector's infectiousness and the target's susceptibility as a rate
 # multiplier `m` on the pair kernel, rather than a Bernoulli thin: scaling a
-# hazard by `m` turns its survival function S(t) into S(t)^m, which is drawn by
-# inverse-transform on the *survival* scale, at the survival `U^(1/m)` for
-# `U ~ Uniform(0, 1)`. That survival goes to `cquantile`, the quantile of the
-# complement, rather than to `quantile` as `1 - U^(1/m)`: a small multiplier puts
-# much of the mass at a survival below `eps()/2`, where subtracting from 1 rounds
-# the argument to 1 and loses the contact altogether. `rand(rng, kernel)` is the
-# `m == 1` case of the same draw, kept as a fast path since every pair without
-# either trait set takes it. `m <= 0` (either trait exactly zero) never
+# hazard by `m` turns its survival function S(t) into S(t)^m, so the draw is the
+# time whose survival is `U^(1/m)` for `U ~ Uniform(0, 1)`. Both the survival and
+# its inverse are taken in logs, `invlogccdf(kernel, log(U)/m)`: a small
+# multiplier sends `U^(1/m)` itself to zero below about 1e-324, and puts it into
+# the range where the inverse of a `Gamma` survival raises a `DomainError` long
+# before that. In logs the argument is `log(U)/m`, which stays an ordinary
+# number, and every kernel's own `invlogccdf` reads it. `rand(rng, kernel)` is
+# the `m == 1` case of the same draw, kept as a fast path since every pair
+# without either trait set takes it. `m <= 0` (either trait exactly zero) never
 # transmits, and draws nothing.
 function _traits_scaled_draw(rng::AbstractRNG, kernel, m::Real)
     m == 1 && return rand(rng, kernel)
     m <= 0 && return oftype(float(m), Inf)
-    return cquantile(kernel, rand(rng)^(1 / m))
+    return invlogccdf(kernel, log(rand(rng)) / m)
 end
 
 # The pair's next contact after the one at `dt`, as a time from the window
 # opening: the same `m`-scaled hazard, conditioned on falling later than `dt`.
-# Its survival above `dt` is `(S(t)/S(dt))^m`, so one uniform `U` gives it at the
-# survival `S(dt)·U^(1/m)`, for any kernel, at one `ccdf` and one `cquantile`
-# call — both on the survival scale, for the reason above. A kernel whose support
-# ends at or before `dt` has no later contact to give: a degenerate (`Dirac`)
-# contact interval is one such, offering exactly one contact.
+# Its survival above `dt` is `(S(t)/S(dt))^m`, so one uniform `U` puts the next
+# contact at the survival `S(dt)·U^(1/m)` — in logs, `logccdf(kernel, dt) +
+# log(U)/m`, for the reason above, a sum of two ordinary numbers whatever the
+# multiplier. A kernel whose support ends at or before `dt` has no survival left
+# and so no later contact to give: a degenerate (`Dirac`) contact interval is one
+# such, offering exactly one contact.
 _next_contact(::AbstractRNG, ::Nothing, ::Real, dt) = Inf
 function _next_contact(rng::AbstractRNG, kernel, m::Real, dt)
     m <= 0 && return Inf
-    s = ccdf(kernel, dt)
-    s > 0 || return Inf
-    nxt = cquantile(kernel, s * rand(rng)^(1 / m))
+    ls = logccdf(kernel, dt)
+    isfinite(ls) || return Inf
+    nxt = invlogccdf(kernel, ls + log(rand(rng)) / m)
     return nxt > dt ? nxt : Inf
 end
 

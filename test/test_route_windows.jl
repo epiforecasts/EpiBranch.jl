@@ -324,14 +324,31 @@ end
             atol = 0.025)
 
         # A small multiplier puts the contact far out in the tail of the kernel's
-        # survival, where an argument built by subtracting from 1 rounds to 1 and
-        # the pair loses the contact altogether. Ten days of an Exponential(0.1)
-        # contact interval is a rate of 10, so at these multipliers transmission
-        # is nearly certain, or two in three, and never 0.84 or 0.31.
+        # survival, where a linear argument loses it: subtracting from 1 rounds to
+        # 1, and `U^(1/m)` underflows to 0 below about 1e-324. Both are taken in
+        # logs instead. Ten and a hundred days of an Exponential(0.1) contact
+        # interval, at a rate of 10, so transmission is nearly certain, or two in
+        # three — never 0.84, 0.51 or 0.31.
         @test isapprox(share(Exponential(0.1), 0.05; period = 10.0), 1 - exp(-5.0);
             atol = 0.02)
         @test isapprox(share(Exponential(0.1), 1.0, [FlatBlock(0.99)]; period = 10.0),
             1 - exp(-1.0); atol = 0.025)
+        @test isapprox(share(Exponential(0.1), 0.001; period = 100.0), 1 - exp(-1.0);
+            atol = 0.025)
+        @test isapprox(share(Exponential(0.1), 1.0, [FlatBlock(0.999)]; period = 100.0),
+            1 - exp(-1.0); atol = 0.025)
+
+        # A kernel whose own inverse survival is only defined over part of the
+        # unit interval — `Gamma` below shape 1, whose inverse raises a
+        # `DomainError` on a small enough probability — is drawn from in logs for
+        # the same reason, so a small multiplier runs rather than throwing.
+        gamma_law(kernel, m, period) = 1 - ccdf(kernel, period)^m
+        for (kernel, m) in ((Gamma(0.3, 2.0), 0.01), (Gamma(0.7, 1.0), 0.005))
+            @test isapprox(share(kernel, m; period = 6.0), gamma_law(kernel, m, 6.0);
+                atol = 0.025)
+        end
+        @test isapprox(share(Gamma(0.3, 2.0), 1.0, [FlatBlock(0.99)]; period = 6.0),
+            gamma_law(Gamma(0.3, 2.0), 0.01, 6.0); atol = 0.025)
 
         # A kernel with all its mass inside the window carries an infinite
         # integrated hazard, and no thinning touches that: the pair transmits for
