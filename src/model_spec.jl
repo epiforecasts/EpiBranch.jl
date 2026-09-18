@@ -63,7 +63,8 @@ _single_kernel(s::ModelSpec) = _single_kernel(s.process)
 # `simulate` unwraps the spec: the process is the model, the spec's layers are
 # the forcing inputs.
 function simulate(spec::ModelSpec;
-        n_initial::Int = 1,
+        n_initial::Union{Int, Nothing} = nothing,
+        initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
         max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
@@ -74,15 +75,17 @@ function simulate(spec::ModelSpec;
     _warn_ignored_termination(
         spec.process, max_cases, max_generations, max_time, stopping_rules)
     _warn_unhonoured_interventions(spec.process, spec.interventions)
-    sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
+    sim_opts = SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time,
         stopping_rules)
+    _validate_initial_cases(spec.process, sim_opts)
     return _simulate(spec.process, sim_opts; interventions = spec.interventions,
         attributes = spec.attributes, progression = spec.progression,
         observation = spec.observation, rng, condition, max_attempts)
 end
 
 function simulate(spec::ModelSpec, n::Int;
-        n_initial::Int = 1,
+        n_initial::Union{Int, Nothing} = nothing,
+        initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
         max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
@@ -92,8 +95,9 @@ function simulate(spec::ModelSpec, n::Int;
     _warn_ignored_termination(
         spec.process, max_cases, max_generations, max_time, stopping_rules)
     _warn_unhonoured_interventions(spec.process, spec.interventions)
-    sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
+    sim_opts = SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time,
         stopping_rules)
+    _validate_initial_cases(spec.process, sim_opts)
     return _simulate_n(spec.process, n, sim_opts;
         interventions = spec.interventions, attributes = spec.attributes,
         progression = spec.progression, observation = spec.observation, rng,
