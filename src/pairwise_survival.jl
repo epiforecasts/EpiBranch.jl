@@ -49,6 +49,10 @@ Base.length(d::PairwiseSurvivalData) = length(d.sus)
 # callable `r -> Distribution` through which covariates enter.
 _rowkernel(k::ContinuousUnivariateDistribution, r) = k
 _rowkernel(k, r) = k(r)
+function _rowkernel(::ContextualKernel, r)
+    throw(ArgumentError("ContextualKernel requires an InfectionLayer with infector infection times; " *
+                        "for counting-process rows, supply a row-indexed kernel with those data"))
+end
 
 """
     pairwise_surv_loglik(kernel, data::PairwiseSurvivalData) -> Float64
@@ -494,14 +498,17 @@ end
 # Row r's contact-interval distribution: a shared distribution, a per-edge
 # vector parallel to the adjacency the layout was compiled from, or a callable
 # `(infector, susceptible) -> Distribution` for covariates.
-_pair_kernel(k::ContinuousUnivariateDistribution, layout, r) = k
-function _pair_kernel(k::AbstractVector{<:AbstractVector}, layout, r)
+_pair_kernel(k::ContinuousUnivariateDistribution, layout::ContactPairsLayout, r, data) = k
+function _pair_kernel(k::AbstractVector{<:AbstractVector}, layout::ContactPairsLayout, r, data)
     c = layout.contact_index[r]
     c > 0 || throw(ArgumentError(
         "a per-edge kernel needs a layout compiled from an adjacency list"))
     return k[layout.infector[r]][c]
 end
-_pair_kernel(k, layout, r) = k(layout.infector[r], layout.sus[r])
+function _pair_kernel(k, layout::ContactPairsLayout, r, data)
+    i = layout.infector[r]
+    pair_kernel(k, i, layout.sus[r], data.infection_time[i])
+end
 
 # Streaming logsumexp, so the per-susceptible reduction allocates no
 # intermediate vector for reverse-mode AD to track. A -Inf term (a zero hazard)
@@ -536,13 +543,13 @@ _value(acc::_LogSumExpAcc{T}) where {T} = acc.nseen == 0 ? T(-Inf) : acc.m + log
 # covariate kernel is probed on the first internal pair. With no internal pair
 # the type falls back to `T`.
 function _kernel_partype(
-        kernel::ContinuousUnivariateDistribution, layout, ::Type{T}) where {T}
+        kernel::ContinuousUnivariateDistribution, layout, data, ::Type{T}) where {T}
     Distributions.partype(kernel)
 end
-function _kernel_partype(kernel, layout, ::Type{T}) where {T}
+function _kernel_partype(kernel, layout, data, ::Type{T}) where {T}
     for r in eachindex(layout.is_ext)
         layout.is_ext[r] && continue
-        return Distributions.partype(_pair_kernel(kernel, layout, r))
+        return Distributions.partype(_pair_kernel(kernel, layout, r, data))
     end
     return T
 end
@@ -562,7 +569,8 @@ one infected when none of its possible infectors is infectious, makes the whole
 configuration impossible, and the density is `-Inf` with a zero gradient.
 
 `kernel` is a `Distributions.jl` distribution shared by every pair, a callable
-`(infector, susceptible) -> Distribution` for covariates, or a per-edge vector
+`(infector, susceptible) -> Distribution` for covariates, a [`ContextualKernel`](@ref)
+that also receives the infector's infection time, or a per-edge vector
 parallel to an adjacency list (`kernel[i][k]` for host `i`'s `k`-th listed
 contact). `external_hazard` is a community hazard (a positive rate or a
 calendar-time distribution) that introduces cases over `[0, data.obs_end]`. With
@@ -627,7 +635,7 @@ function pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairs
     # Promote against the kernel's parameter type so AD values in the fitted
     # kernel survive the reduction.
     Text = external ? Distributions.partype(extdist) : Union{}
-    T = promote_type(Tdata, _kernel_partype(kernel, layout, Tdata), Text)
+    T = promote_type(Tdata, _kernel_partype(kernel, layout, data, Tdata), Text)
     # A per-edge or covariate kernel's parameter type is only known at run time;
     # the function barrier keeps the passes type-stable.
     return _pairwise_surv_loglik(kernel, extdist, data, layout,
@@ -681,7 +689,7 @@ function _pairwise_cumhazard(kernel, extdist, data, layout, tfollow,
             oi < tend || continue
             stop = min(data.removal_time[i], tend) - oi
             stop > 0 || continue
-            ll -= cumhazard(_pair_kernel(kernel, layout, r), stop)
+            ll -= cumhazard(_pair_kernel(kernel, layout, r, data), stop)
         end
     end
     return ll
@@ -723,7 +731,7 @@ function _pairwise_events(kernel, extdist, data, layout, tfollow, ll0,
                 oi = data.infectious_time[i]
                 isfinite(oi) || continue
                 if oi < tj && tj <= data.removal_time[i]
-                    _push!(acc, loghazard(_pair_kernel(kernel, layout, r), tj - oi))
+                    _push!(acc, loghazard(_pair_kernel(kernel, layout, r, data), tj - oi))
                 end
             end
         end
