@@ -58,7 +58,7 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
                 best, members, state, model.external_hazard, Tobs, r),
             introduction = _ext_active(model.external_hazard) ?
                            (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
-            targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid))
+            targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid, st))
             for oid in mem if oid != inf),
             # A case's contacts are its household-mates, traced whether or not
             # transmission reached them.
@@ -90,8 +90,9 @@ end
 
 # Resolve the contact-interval distribution for an ordered (infector,
 # susceptible) pair: a shared distribution, or a callable for covariate models.
-_pairkernel(k::ContinuousUnivariateDistribution, i, j) = k
-_pairkernel(k, i, j) = k(i, j)
+function _pairkernel(k, i, j, state)
+    EpiBranch.pair_kernel(k, i, j, state.individuals[i].infection_time)
+end
 
 # Separate household races revisit earlier times. Periodic shared budgets need
 # a single chronological race; lifetime budgets remain valid across races.

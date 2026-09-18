@@ -63,5 +63,6 @@ public NoGenerationTime
 public contact_structure
 public followup_end
 
+public pair_kernel
 public InterventionAction, intervention_actions, action_draw!, apply_actions!,
        continuous_actions
