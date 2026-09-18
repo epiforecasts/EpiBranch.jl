@@ -47,9 +47,9 @@ hold one entry per type, in increasing size order:
   is proportional to the number of people in households of that type.
 - `laws` — the offspring law of a household of each type, as a
   `DiscreteNonParametric` over the number of households it infects.
-- `means` — the mean of each of those laws, exact where the within-household
-  final size has a closed form the recursion can evaluate accurately (see
-  [`household_offspring`](@ref)).
+- `means` — the mean of each of those laws, exact where the final-size recursion
+  gives the mean within-household person-time accurately, and taken from the
+  simulated households otherwise (see [`household_offspring`](@ref)).
 - `global_rate` — the community contact rate the law was built with.
 
 [`reproduction_number`](@ref) gives R*, [`extinction_probability`](@ref) the
