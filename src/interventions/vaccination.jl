@@ -1026,6 +1026,12 @@ e.g. `:test_positive` for the default `OnLabConfirmation()`.
     a seed whose chain goes extinct without ever sharing a group with a
     later case is not vaccinated even if it is itself confirmed.
 
+For a campaign with repeat visits, `coverage` is the final probability of being
+reached, and `dose_delay` can describe the first successful visit. A failed
+coverage draw does not itself identify refusal: store willingness in an
+individual attribute when that distinction matters. See [Repeat campaign visits](@ref)
+for a composition using these existing inputs.
+
 # Examples
 
 Vaccinate the whole village once a case there is lab-confirmed, 2 days

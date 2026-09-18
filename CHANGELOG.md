@@ -9,6 +9,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- A worked recipe for repeat group vaccination visits using existing coverage,
+  dose-delay distributions and individual attributes to distinguish temporary
+  absence from permanent refusal.
+
 - `vaccine_acceptance(; propensity, group_key = :group)`, an attributes
   function that draws a vaccine-acceptance propensity once per group and
   shares it with every member of that group, so refusal clusters the way it
