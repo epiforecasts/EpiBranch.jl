@@ -9,6 +9,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- Callable objects can supply branching-process offspring rules, generation-time
+  distributions and multi-type offspring families.
 - Structured infection likelihoods check composed components through
   `infection_likelihood_compatible`, rejecting effects omitted by the supplied
   infection layer and bare kernel.

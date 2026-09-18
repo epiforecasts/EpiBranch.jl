@@ -1625,6 +1625,34 @@ your new data type inherits the same closed forms for `Borel`,
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
 
+### Callable rules in branching processes
+
+Offspring rules accept `(rng, individual)` or `(rng, individual, state)`.
+When both methods exist, simulation uses the method with `state`. A generation-time
+rule accepts the individual and returns a distribution. These rules can be
+closures or callable objects:
+
+```julia
+struct OffspringRate
+    mean::Float64
+end
+(rule::OffspringRate)(rng, ind) = rand(rng, Poisson(rule.mean))
+
+struct ContactInterval
+    mean::Float64
+end
+(rule::ContactInterval)(ind) = Exponential(rule.mean)
+
+process = BranchingProcess(OffspringRate(0.6), ContactInterval(2.0))
+simulate(process; rng = Xoshiro(42))
+```
+
+The matrix constructor also accepts a callable distribution family as its second
+argument. Distributions and custom offspring specifications with a specialised
+`draw_offspring` method keep their existing dispatch. Analytical calculations
+require an offspring law with the corresponding analytical methods; accepting a
+callable for simulation does not provide a closed form for that rule.
+
 ### Structured infection likelihoods and composed effects
 
 The network and household infection likelihoods condition on infection times,

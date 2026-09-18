@@ -11,7 +11,7 @@
 Return the generation time distribution for a specific individual.
 
 For a `Distribution`, everyone shares the same distribution. For a
-`Function`, the engine calls it with the individual and uses the
+callable, the engine calls it with the individual and uses the
 `Distribution` it returns, so the generation time can read anything in
 `individual.state`: the incubation period, or any per-individual
 quantity an attributes function has stored. That is how the generation
@@ -21,7 +21,7 @@ incubation period inside such a function.
 """
 get_generation_time(gt::Distribution, individual) = gt
 get_generation_time(ngt::NoGenerationTime, individual) = ngt
-get_generation_time(gt::Function, individual) = gt(individual)
+get_generation_time(gt, individual) = gt(individual)
 
 """Compute a contact's infection time from the parent's infection time
 and the generation-time draw. Dispatches on the generation-time spec:
