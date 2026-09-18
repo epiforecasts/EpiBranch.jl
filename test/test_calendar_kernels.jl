@@ -42,7 +42,7 @@ end
     draws = rand(StableRNG(233), interval, 10000)
     @test count(<=(4.0), draws) / length(draws) ≈ 1 - exp(-1) atol = 0.02
     @test_throws ArgumentError EpiBranch.pair_kernel(kernel, 1, 2, 0.0)
-    @test_throws ArgumentError EpiBranch.pair_kernel(CalendarKernel(Uniform(0.0, 1.0)),
+    @test_throws DomainError EpiBranch.pair_kernel(CalendarKernel(Uniform(0.0, 1.0)),
         1, 2, 0.0, 2.0)
     rows = PairwiseSurvivalData([2], [0.0], [1.0], [true])
     @test_throws ArgumentError pairwise_surv_loglik(kernel, rows)
