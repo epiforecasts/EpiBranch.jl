@@ -88,8 +88,3 @@ end
 # susceptible) pair: a shared distribution, or a callable for covariate models.
 _pairkernel(k::ContinuousUnivariateDistribution, i, j) = k
 _pairkernel(k, i, j) = k(i, j)
-
-# A community introduction time under the external hazard: the constant case is
-# its Exponential survival time, a distribution is sampled directly.
-_ext_draw(rng, α::Real) = rand(rng, Exponential(1 / α))
-_ext_draw(rng, d::ContinuousUnivariateDistribution) = rand(rng, d)

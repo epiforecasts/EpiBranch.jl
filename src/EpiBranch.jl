@@ -7,6 +7,7 @@ using LinearAlgebra: LinearAlgebra, eigvals
 using QuadGK
 using Random
 using SpecialFunctions
+using SurvivalDistributions: cumhazard, loghazard
 
 # Docstring templates (must come before any docstrings)
 include("docstrings.jl")
@@ -114,6 +115,10 @@ include("analytical/end_of_outbreak_probability.jl")
 # Distribution wrappers so models work directly with Turing's `~`.
 include("likelihood_dists.jl")
 
+# Pairwise survival likelihood of an infection layer over any contact structure
+# (households, networks), shared by the structure-driven companion packages.
+include("pairwise_survival.jl")
+
 # Exports — types
 export TransmissionModel, BranchingProcess, Infectiousness, HomogeneousProcess, ModelSpec
 export Individual, SimulationState
@@ -183,5 +188,8 @@ export chain_length_distribution, offspring_distribution
 export ClusterMixed, ChainSizeMixture
 # Real-time mixture: per-cluster "is finished?" weight
 export end_of_outbreak_probability
+# Pairwise survival likelihood over a contact structure
+export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout
+export compile_contact_pairs, pairwise_surv_loglik
 
 end # module
