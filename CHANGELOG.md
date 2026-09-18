@@ -31,6 +31,12 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   infection layer and bare kernel.
 - Network and household simulations accept `initial_cases` to choose population
   IDs infected at time zero, including repeated and parallel runs.
+- Candidate intervention actions separate discovery from scheduling and resource
+  admission. Capacity constraints now ration actual group-vaccination members.
+- Network and household races support ring and group actions with cached discovery
+  draws. Ring delivery requires zero post-exposure efficacy and an infinite
+  eligibility window on these engines.
+
 - Callable objects can supply observation probabilities, delays and anchors,
   attribute-builder parameters, isolation test sensitivity and scheduling
   predicates, using the same signatures as ordinary functions.

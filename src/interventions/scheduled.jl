@@ -1,10 +1,16 @@
 """
-Wrap an intervention so it only runs when a condition on the simulation
-state is met.  Individuals are always initialised (so fields exist before
-the policy activates), but `resolve_individual!` and
-`apply_post_transmission!` are skipped while the condition returns `false`.
+Wrap an intervention in a condition on the simulation state. Individuals are
+always initialised, so fields exist before the policy activates. Scheduling
+gates delivery; effects declaring `persistent_competing_risks` retain their
+recorded protection while the delivery policy is inactive.
 
 # Time-based scheduling
+
+For interventions implementing `intervention_actions`, scheduling tests each
+proposed action time before delivery. Predicates see that time as
+`state.max_infection_time`; case counts and generation remain at discovery.
+Capacity admission uses the original simulation clock in either wrapper order.
+The batch-hook behaviour below applies to interventions without this protocol.
 
 `Scheduled` is the single entry point for time-based intervention
 scheduling. It enforces start times at two levels:
@@ -97,6 +103,11 @@ function resolve_individual!(s::Scheduled, ind, state)
 end
 
 function apply_post_transmission!(s::Scheduled, state, new_contacts)
+    actions = intervention_actions(s, state, new_contacts)
+    if actions !== nothing
+        _admit_actions!(s, state, actions)
+        return nothing
+    end
     is_active(s, state) || return nothing
     apply_post_transmission!(s.intervention, state, new_contacts)
     for c in new_contacts
@@ -119,8 +130,24 @@ end
 # before `start_time` never has its wrapped intervention run (its gate is
 # closed) and so is not removed.
 
+"""
+    persistent_competing_risks(intervention) -> Bool
+
+Whether recorded intervention effects continue when a delivery schedule is
+inactive. The default is `false`; vaccination returns `true`, and wrappers
+delegate to their inner intervention. An extension opting in must derive its
+risks from recorded effects and their dates, returning `nothing` before any
+effect has been recorded. `Scheduled` still controls delivery and other hooks.
+"""
+persistent_competing_risks(::AbstractIntervention) = false
+persistent_competing_risks(::AbstractVaccination) = true
+function persistent_competing_risks(w::InterventionWrapper)
+    persistent_competing_risks(w.intervention)
+end
+
 function competing_risk(s::Scheduled, parent, contact, state)
-    is_active(s, state) ? competing_risk(s.intervention, parent, contact, state) : nothing
+    (persistent_competing_risks(s.intervention) || is_active(s, state)) || return nothing
+    return competing_risk(s.intervention, parent, contact, state)
 end
 
 # Tracing on the continuous-time path, gated by the schedule exactly as

@@ -119,10 +119,10 @@ into `S(t)^m`, where on the generation-based engine they block each contact with
 probability `1 - m`.
 `ContactTracing` applies too, because a node's contacts are its graph neighbours
 and quarantining a traced neighbour closes that neighbour's own window; see
-[Contact tracing on a network](#Contact-tracing-on-a-network). Built-in vaccination delivery
-(`RingVaccination`, `MassVaccination` and `GroupVaccination`) uses the generation
-engine's post-transmission hook, so it is reported as unsupported and doses no
-one on this path. Existing protection may instead be represented by host traits,
+[Contact tracing on a network](#Contact-tracing-on-a-network). Ring and group vaccination use candidate actions with scheduling and capacity
+admission. Ring delivery requires an infinite eligibility window and zero
+post-exposure efficacy; pending infection times are unknown. Mass vaccination
+remains unsupported on this path. Existing protection can also use host traits,
 a composed kernel or a user-defined competing risk. Graphs.jl is an optional
 dependency: this constructor becomes available once you load Graphs.jl,
 and the adjacency-list and matrix constructors need nothing extra. For a
@@ -252,10 +252,12 @@ that case's trace time is known. It therefore reaches the neighbours that are
 not yet settled themselves. Tracing *backwards*, to the already-settled
 neighbour a case was infected by, is not supported on either engine.
 
-Competing risks can read this tracing state at exposure time. Built-in
-vaccination delivery still requires the generation engine and is reported
-with a warning; supporting its actions on this path is separate from
-evaluating an existing protection effect.
+Competing risks read tracing and delivery state at exposure time. Supported ring
+and group actions are discovered after tracing and admitted through their
+wrappers. Admission fixes the recorded delivery date; subsequent traces do not
+revise it. Already settled cases are not revisited. See the
+[action protocol](extending.md#Intervention-actions) for timing and eligibility
+limits.
 
 ## Several routes at once
 

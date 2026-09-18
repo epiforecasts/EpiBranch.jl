@@ -922,44 +922,7 @@ _dose_offset(rv::RingVaccination) = rv.dose_delay
 _unwrap_scheduled(iv) = iv
 
 function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
-    label = dose_label(rv)
-    vacc_key = _vaccinated_key(label)
-    for ind in new_contacts
-        is_traced(ind) || continue
-        if get(ind.state, vacc_key, false)
-            # Dosed in an earlier generation and exposed again: the dose stays,
-            # and the abort draw is made against this exposure.
-            _maybe_positive(rv.post_exposure_efficacy) &&
-                _abort_infection!(rv, ind, ind.state[_vaccination_time_key(label)],
-                    state.rng)
-            continue
-        end
-        # The dose is given `dose_delay` days after the tracing team reached the
-        # contact. `ContactTracing` records that time as `:trace_time`
-        # whatever its trace action, so the isolation-derived times below are
-        # reached only when something other than `ContactTracing` set
-        # `:traced`, or when the trace time was `NaN` and so was not recorded.
-        # A contact recorded as never reached (an infinite trace time) is not
-        # vaccinated, and is skipped before its `dose_delay` is drawn so it
-        # leaves the random stream untouched. The `haskey` branch avoids
-        # evaluating a `get` default for every contact.
-        trace_t = if haskey(ind.state, :trace_time)
-            ind.state[:trace_time]
-        else
-            min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
-        end
-        isfinite(trace_t) || continue
-        vacc_t = trace_t + _sample_value(rv.dose_delay, state.rng, ind)
-        isfinite(vacc_t) || continue
-        _has_required_dose(rv, ind, vacc_t) || continue
-        _within_eligibility_window(rv.eligibility_window, ind, vacc_t, state.rng) ||
-            continue
-        _covers(rv.coverage, ind, state.rng) || continue
-        _record_vaccination!(rv, ind, vacc_t, state.rng)
-        _maybe_positive(rv.post_exposure_efficacy) &&
-            _abort_infection!(rv, ind, vacc_t, state.rng)
-    end
-    return nothing
+    apply_actions!(rv, state, new_contacts)
 end
 
 # ── GroupVaccination ─────────────────────────────────────────────────
@@ -1022,7 +985,7 @@ skipped, leaving the group dose to reach only those the ring did not:
 Requires `:group` (or `group_key`) and whatever `eligibility` requires,
 e.g. `:test_positive` for the default `OnLabConfirmation()`.
 
-!!! note "Seed cases"
+!!! note "Seed cases on the generation engine"
     Like [`RingVaccination`](@ref) and [`MassVaccination`](@ref),
     `GroupVaccination` acts through `apply_post_transmission!`, which the
     engine calls only on newly created contacts. A run's seed cases are
@@ -1030,6 +993,10 @@ e.g. `:test_positive` for the default `OnLabConfirmation()`.
     another member of its group is created later and re-triggers the sweep;
     a seed whose chain goes extinct without ever sharing a group with a
     later case is not vaccinated even if it is itself confirmed.
+
+On network and household races, group actions are discovered after each case is
+finalised, including seed cases. They can reach the current case and pending
+members, subject to scheduling and capacity admission.
 
 For a campaign with repeat visits, `coverage` is the final probability of being
 reached, and `dose_delay` can describe the first successful visit. A failed
@@ -1099,38 +1066,7 @@ end
 # member only now created. Groups untouched this generation are left alone,
 # so nobody outside a triggered group is ever visited.
 function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
-    key = gv.group_key
-    label = dose_label(gv)
-    vacc_key = _vaccinated_key(label)
-    declined_key = _coverage_declined_key(label)
-
-    groups_here = Set{Any}()
-    for ind in new_contacts
-        haskey(ind.state, key) && push!(groups_here, ind.state[key])
-    end
-
-    for group in groups_here
-        trigger = _group_trigger_time(gv, state, group)
-        isfinite(trigger) || continue
-        for m in state.individuals
-            get(m.state, key, nothing) == group || continue
-            get(m.state, vacc_key, false) && continue
-            # A group reappears whenever any of its members turns up among
-            # the new contacts, and this loop walks the whole group each time.
-            # A member who lost its coverage draw keeps that answer, so
-            # `coverage` stays the per-member probability the user set. Drawing
-            # afresh each round would vaccinate a member present for k rounds
-            # with probability 1 - (1 - coverage)^k.
-            get(m.state, declined_key, false) && continue
-            if !_covers(gv.coverage, m, state.rng)
-                m.state[declined_key] = true
-                continue
-            end
-            vacc_t = trigger + _sample_value(gv.dose_delay, state.rng, m)
-            _record_vaccination!(gv, m, vacc_t, state.rng)
-        end
-    end
-    return nothing
+    apply_actions!(gv, state, new_contacts)
 end
 
 # ── MassVaccination ──────────────────────────────────────────────────
@@ -1236,13 +1172,5 @@ Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)
 required_fields(::MassVaccination) = Symbol[]
 
 function apply_post_transmission!(mv::MassVaccination, state, new_contacts)
-    label = dose_label(mv)
-    vacc_key = _vaccinated_key(label)
-    for ind in new_contacts
-        get(ind.state, vacc_key, false) && continue
-        vacc_t = _sample_value(mv.eligibility_time, state.rng, ind)
-        isfinite(vacc_t) || continue
-        _record_vaccination!(mv, ind, vacc_t, state.rng)
-    end
-    return nothing
+    apply_actions!(mv, state, new_contacts)
 end
