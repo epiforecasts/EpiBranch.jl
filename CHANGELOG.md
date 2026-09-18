@@ -9,6 +9,13 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- `GroupVaccination` accepts a finite `visit_delays` schedule for repeat visits.
+  `coverage` is the chance of reaching a member on each visit, while `acceptance`
+  is drawn once per member per dose label and represents willingness to receive
+  the dose through the group campaign. The default remains a single visit with
+  everyone willing to receive it. A missed visit can be followed by vaccination
+  on a later visit; simulation rounds do not create extra attempts.
+
 - `household_offspring` (in `EpiHouseholds`) returns the household-level
   offspring law of a household-structured model: how many *households* one
   infected household infects, one law per household type (its size, or, under

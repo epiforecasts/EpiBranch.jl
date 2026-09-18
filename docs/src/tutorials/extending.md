@@ -81,7 +81,8 @@ downstream packages should pick names that do not collide.
 | `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | `apply_post_transmission!` |
 | `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
-| `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | `apply_post_transmission!` |
+| `:group_vaccination_assessed[_<label>]` | `Bool` | `false` | `GroupVaccination` (visit schedule sampled) | `apply_post_transmission!` |
+| `:vaccination_refused[_<label>]` | `Bool` | `false` | `GroupVaccination` (`acceptance` draw failed) | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |

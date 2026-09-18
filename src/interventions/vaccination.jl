@@ -140,8 +140,12 @@ end
 function _onward_efficacy_key(label::Symbol)
     label === :default ? :onward_efficacy : Symbol("onward_efficacy_", label)
 end
-function _coverage_declined_key(label::Symbol)
-    label === :default ? :coverage_declined : Symbol("coverage_declined_", label)
+function _group_vaccination_assessed_key(label::Symbol)
+    label === :default ? :group_vaccination_assessed :
+    Symbol("group_vaccination_assessed_", label)
+end
+function _vaccination_refused_key(label::Symbol)
+    label === :default ? :vaccination_refused : Symbol("vaccination_refused_", label)
 end
 function _immunity_time_key(label::Symbol)
     label === :default ? :immunity_time : Symbol("immunity_time_", label)
@@ -854,7 +858,7 @@ already-present member is. Because the campaign reaches the whole group,
 doses scale with group size where [`RingVaccination`](@ref) doses scale
 with ring size.
 
-`coverage`, `efficacy`, `severity_efficacy`, `delay_to_immunity`,
+`efficacy`, `severity_efficacy`, `delay_to_immunity`,
 `waning`, `mode`, and `dose_label` mean what they do for
 [`RingVaccination`](@ref). `severity_efficacy` defaults to `0.0` (no
 severity effect) and, as there, acts only through a clinical transition
@@ -862,6 +866,35 @@ that reads it via the [`severity_efficacy`](@ref) and
 [`immunity_time`](@ref) accessors; `waning` does not apply to it.
 `dose_delay` accepts the same forms, drawn once per member, so members of one
 group can be reached at different times.
+
+## Visits and acceptance
+
+`visit_delays` lists the campaign's visit times relative to the group's trigger,
+starting at zero. The default `(0.0,)` gives one opportunity to reach each member.
+Use, for example, `(0.0, 7.0, 14.0)` for three visits a week apart. Delays must be
+finite, non-negative and strictly increasing. The supplied collection is copied
+to a tuple.
+
+`coverage` is the probability of reaching a member on each visit. A member missed
+on one visit can be reached on a later scheduled visit. With the default single
+visit, this is also the final campaign coverage. `acceptance` is the probability
+that a member is willing to receive this dose through the group campaign. It is
+drawn once per member per dose label; refusal applies to all its visits.
+Both parameters accept a `Real`, a `Distribution`, or a function
+`(rng, ind) -> Real`. `acceptance` defaults to `1.0`.
+
+For constant acceptance `a` and coverage `c`, the probability of vaccination
+over `n` visits is `a * (1 - (1 - c)^n)`. Visits use independent coverage draws,
+and a member receives at most one dose with a given label. Vaccination is timed
+from the first successful visit plus that member's `dose_delay`.
+
+The finite visit schedule is sampled when the triggered group is first assessed
+for a member, and a successful future dose is recorded with its scheduled time.
+Protection starts at the resulting immunity time. Further simulation rounds
+do not add visits or repeat a completed assessment. Members first encountered
+later use the same group trigger and visit schedule, as they do for a single
+visit. This policy uses `apply_post_transmission!` and applies to the
+generation-based engine; continuous-time models do not execute group campaigns.
 
 # Fallback composition
 
@@ -898,20 +931,48 @@ later:
 ```julia
 GroupVaccination(efficacy = 0.7, eligibility = OnLabConfirmation(), dose_delay = 2.0)
 ```
+
+Visit three times, with 60% of willing members reached on each visit and 90%
+willing to receive the dose:
+
+```julia
+GroupVaccination(efficacy = 0.7, coverage = 0.6, acceptance = 0.9,
+    visit_delays = (0.0, 7.0, 14.0))
+```
 """
-Base.@kwdef struct GroupVaccination{
-    E <: TraceEligibility, Ef, C, SV, DI, DD, WN, M <: AbstractEffectMode} <:
-                   AbstractVaccination
-    eligibility::E = OnLabConfirmation()
+struct GroupVaccination{
+    E <: TraceEligibility, Ef, C, A, VD <: Tuple, SV, DI, DD, WN, M <: AbstractEffectMode} <:
+       AbstractVaccination
+    eligibility::E
     efficacy::Ef
-    coverage::C = 1.0
-    severity_efficacy::SV = 0.0
-    delay_to_immunity::DI = 0.0
-    dose_delay::DD = 0.0
-    group_key::Symbol = :group
-    waning::WN = nothing
-    mode::M = LeakyMode()
-    dose_label::Symbol = :default
+    coverage::C
+    acceptance::A
+    visit_delays::VD
+    severity_efficacy::SV
+    delay_to_immunity::DI
+    dose_delay::DD
+    group_key::Symbol
+    waning::WN
+    mode::M
+    dose_label::Symbol
+end
+
+function GroupVaccination(; efficacy, eligibility = OnLabConfirmation(), coverage = 1.0,
+        acceptance = 1.0, visit_delays = (0.0,), severity_efficacy = 0.0,
+        delay_to_immunity = 0.0, dose_delay = 0.0, group_key = :group,
+        waning = nothing, mode = LeakyMode(), dose_label = :default)
+    delays = Tuple(visit_delays)
+    isempty(delays) && throw(ArgumentError("visit_delays must contain at least one visit"))
+    all(t -> t isa Real && isfinite(t) && t >= 0, delays) || throw(ArgumentError(
+        "visit_delays must be finite, non-negative times"))
+    first(delays) == 0 || throw(ArgumentError("visit_delays must start at zero"))
+    all(i -> delays[i] > delays[i - 1], 2:length(delays)) || throw(ArgumentError(
+        "visit_delays must be strictly increasing"))
+    if acceptance isa Real && !(0 <= acceptance <= 1)
+        throw(ArgumentError("acceptance must be between zero and one"))
+    end
+    return GroupVaccination(eligibility, efficacy, coverage, acceptance, delays,
+        severity_efficacy, delay_to_immunity, dose_delay, group_key, waning, mode, dose_label)
 end
 
 function required_fields(gv::GroupVaccination)
@@ -948,7 +1009,7 @@ function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
     key = gv.group_key
     label = dose_label(gv)
     vacc_key = _vaccinated_key(label)
-    declined_key = _coverage_declined_key(label)
+    assessed_key = _group_vaccination_assessed_key(label)
 
     groups_here = Set{Any}()
     for ind in new_contacts
@@ -961,19 +1022,20 @@ function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
         for m in state.individuals
             get(m.state, key, nothing) == group || continue
             get(m.state, vacc_key, false) && continue
-            # A group reappears whenever any of its members turns up among
-            # the new contacts, and this loop walks the whole group each time.
-            # A member who lost its coverage draw keeps that answer, so
-            # `coverage` stays the per-member probability the user set. Drawing
-            # afresh each round would vaccinate a member present for k rounds
-            # with probability 1 - (1 - coverage)^k.
-            get(m.state, declined_key, false) && continue
-            if !_covers(gv.coverage, m, state.rng)
-                m.state[declined_key] = true
+            # Outcomes for the finite visit schedule are sampled once per member.
+            # New contacts in the group must not create extra campaign visits.
+            get(m.state, assessed_key, false) && continue
+            m.state[assessed_key] = true
+            if !_covers(gv.acceptance, m, state.rng)
+                m.state[_vaccination_refused_key(label)] = true
                 continue
             end
-            vacc_t = trigger + _sample_value(gv.dose_delay, state.rng, m)
-            _record_vaccination!(gv, m, vacc_t, state.rng)
+            for visit_delay in gv.visit_delays
+                _covers(gv.coverage, m, state.rng) || continue
+                vacc_t = trigger + visit_delay + _sample_value(gv.dose_delay, state.rng, m)
+                _record_vaccination!(gv, m, vacc_t, state.rng)
+                break
+            end
         end
     end
     return nothing
