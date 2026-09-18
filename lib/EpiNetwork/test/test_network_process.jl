@@ -137,9 +137,9 @@ end
     end
 
     @testset "per-individual susceptibility and infectiousness apply" begin
-        # The race resolves the composed competing risks on each infection it
-        # proposes along an edge, so both multipliers mean here what they mean
-        # on the generation engine: a per-contact block.
+        # Both multipliers thin the edge's hazard, folded into the
+        # contact-interval draw as `S(t)^m`, rather than blocking each contact
+        # with probability `1 - m` as they do on the generation engine.
         n = 300
         ring = ring_adjacency(n, 2)
         build(attrs) = ModelSpec(NetworkProcess(ring, Exponential(1.5));

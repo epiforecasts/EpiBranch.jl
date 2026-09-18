@@ -467,10 +467,13 @@ case's natural history is stamped and it exposes still-susceptible targets with 
 from transmission (isolation, quarantine on being traced) shorten that window.
 
 Each proposed infection is then put to the composed competing risks — the
-built-in per-individual susceptibility and infectiousness, the model's own
-`risks` (what [`transmission_risks`](@ref) reports), and the interventions — and
-declined if any of them blocks it. The target keeps the candidate it already had
-and stays susceptible to its other neighbours.
+model's own `risks` (what [`transmission_risks`](@ref) reports) and the
+interventions — and declined if any of them blocks it. The pair goes on meeting:
+a declined contact is followed by a further draw on the same edge, so blocking a
+fraction of a pair's contacts thins that pair's hazard by the same fraction.
+Per-individual susceptibility and infectiousness reach the same thinning through
+the contact-interval draw, which turns a pair's survival `S(t)` into `S(t)^m`,
+so they are not resolved here.
 
 A model with several transmission routes passes `routes`, a collection of
 `(RouteWindow, targets)` pairs, in place of `from`/`until`/`targets`. Each route

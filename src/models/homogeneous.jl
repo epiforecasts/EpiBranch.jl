@@ -39,8 +39,11 @@ Interventions attach through two seams. An intervention that removes a case from
 transmission, such as `Isolation`, shortens its infectious window and curtails
 spread; one whose effect is a per-contact block, such as a leaky isolation or a
 vaccine's efficacy, is resolved against each contact the pool delivers, and a
-blocked contact leaves the susceptible waiting for the next. Per-individual
-susceptibility and infectiousness apply the same way. An intervention that finds
+blocked contact leaves the susceptible waiting for the next, so blocking a
+fraction of the contacts thins the force of infection by the same fraction.
+Per-individual susceptibility and infectiousness reach that thinning directly:
+they scale the pressure a susceptible absorbs and the weight an infective adds
+to the force. An intervention that finds
 its targets only among newly created contacts — `MassVaccination`'s rollout,
 `GroupVaccination`, or `ContactTracing`, which has no contact structure to act
 along in a mass-action pool — is reported with a warning rather than applied. Control expressed as a

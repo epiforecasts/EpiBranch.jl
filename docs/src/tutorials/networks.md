@@ -113,8 +113,10 @@ and curtails spread (see below). One whose effect is a per-contact block — a
 leaky isolation, a vaccine's efficacy — is put to each infection the race
 proposes along an edge; a blocked contact does not transmit and the pair goes on
 meeting, so blocking a fraction of the contacts thins that edge's hazard by the
-same fraction. Per-individual susceptibility and infectiousness are resolved
-the same way, so they mean here what they mean on the generation-based engine.
+same fraction. Per-individual susceptibility and infectiousness reach the same
+thinning through the contact-interval draw, which turns a pair's survival `S(t)`
+into `S(t)^m`, where on the generation-based engine they block each contact with
+probability `1 - m`.
 `ContactTracing` applies too, because a node's contacts are its graph neighbours
 and quarantining a traced neighbour closes that neighbour's own window; see
 [Contact tracing on a network](#Contact-tracing-on-a-network). Ring vaccination

@@ -223,9 +223,10 @@ end
     end
 
     @testset "per-individual susceptibility and infectiousness apply on the pool" begin
-        # A threshold crossing is one arriving contact, and the pool puts it to
-        # the same competing risks the generation engine uses: both multipliers
-        # mean what they mean there, a per-contact block.
+        # Both multipliers thin the hazard on the pool: susceptibility scales
+        # the pressure a susceptible absorbs and infectiousness the weight an
+        # infective adds to the force, so susceptibility m matches beta scaled
+        # by m rather than the generation engine's per-contact block.
         N = 500
         prog = [Transition(:recovered; from = :infection,
             delay = Exponential(1.0), terminal = true)]
