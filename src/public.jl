@@ -63,3 +63,4 @@ public contact_structure
 public followup_end
 
 public pair_kernel
+public infection_likelihood_compatible
