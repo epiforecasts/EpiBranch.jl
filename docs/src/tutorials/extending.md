@@ -238,11 +238,14 @@ What this means in practice:
   turns a pair's contact-interval survival `S(t)` into `S(t)^m`, the pool scales
   each susceptible's threshold and weights each infective's share of the force,
   and a community introduction's hazard is scaled the same way. A multiplier of
-  0 never transmits and draws nothing. One consequence to know: scaling cannot
-  thin an infinite hazard, so a contact interval certain to fall inside the
-  window — a `Dirac`, or any kernel whose support ends before the window does —
-  transmits whatever the multiplier, while an intervention's `Risk` still blocks
-  the contact itself.
+  0 never transmits and draws nothing. One consequence to know: no thinning
+  touches an infinite integrated hazard, so a contact interval whose support ends
+  before the window does transmits for certain whatever is applied to it, a
+  multiplier and an intervention's `Risk` alike — with `Uniform(0.1, 0.5)` in a
+  two-day window, a risk blocking half the contacts still infects every pair,
+  because the pair simply meets again. The exception is a degenerate contact
+  interval (a `Dirac`), where there is one contact and no more: a multiplier
+  leaves it alone, and an intervention's `Risk` blocks it and ends the pair.
 - That is the per-exposure reading of a leaky vaccine, and it is **not** what
   the same `Risk`
   does on the generation engine. There a parent's contacts are a fixed set of

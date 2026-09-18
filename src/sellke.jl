@@ -196,31 +196,33 @@ end
 # The infector's infectiousness and the target's susceptibility as a rate
 # multiplier `m` on the pair kernel, rather than a Bernoulli thin: scaling a
 # hazard by `m` turns its survival function S(t) into S(t)^m, which is drawn by
-# inverse-transform on the *survival* scale, `quantile(kernel, 1 - U^(1/m))`
-# for `U ~ Uniform(0, 1)` — `rand(rng, kernel)` is the `m == 1` case of the same
-# draw, kept as a fast path since every pair without either trait set takes it.
-# `m <= 0` (either trait exactly zero) never transmits, and draws nothing.
+# inverse-transform on the *survival* scale, at the survival `U^(1/m)` for
+# `U ~ Uniform(0, 1)`. That survival goes to `cquantile`, the quantile of the
+# complement, rather than to `quantile` as `1 - U^(1/m)`: a small multiplier puts
+# much of the mass at a survival below `eps()/2`, where subtracting from 1 rounds
+# the argument to 1 and loses the contact altogether. `rand(rng, kernel)` is the
+# `m == 1` case of the same draw, kept as a fast path since every pair without
+# either trait set takes it. `m <= 0` (either trait exactly zero) never
+# transmits, and draws nothing.
 function _traits_scaled_draw(rng::AbstractRNG, kernel, m::Real)
     m == 1 && return rand(rng, kernel)
     m <= 0 && return oftype(float(m), Inf)
-    return quantile(kernel, 1 - rand(rng)^(1 / m))
+    return cquantile(kernel, rand(rng)^(1 / m))
 end
 
 # The pair's next contact after the one at `dt`, as a time from the window
 # opening: the same `m`-scaled hazard, conditioned on falling later than `dt`.
-# Its survival above `dt` is `(S(t)/S(dt))^m`, so one uniform `U` gives it as
-# `quantile(kernel, 1 - S(dt)·U^(1/m))`, for any kernel, at one `cdf` and one
-# `quantile` call. A kernel whose support ends at or before `dt` has no later
-# contact to give — a degenerate (`Dirac`) contact interval is one such, offering
-# exactly one contact — and neither has one whose remaining survival has
-# underflowed, which is what stops a pair whose window never closes and whose
-# every contact is blocked from being offered contacts for ever.
+# Its survival above `dt` is `(S(t)/S(dt))^m`, so one uniform `U` gives it at the
+# survival `S(dt)·U^(1/m)`, for any kernel, at one `ccdf` and one `cquantile`
+# call — both on the survival scale, for the reason above. A kernel whose support
+# ends at or before `dt` has no later contact to give: a degenerate (`Dirac`)
+# contact interval is one such, offering exactly one contact.
 _next_contact(::AbstractRNG, ::Nothing, ::Real, dt) = Inf
 function _next_contact(rng::AbstractRNG, kernel, m::Real, dt)
     m <= 0 && return Inf
-    s = 1 - cdf(kernel, dt)
+    s = ccdf(kernel, dt)
     s > 0 || return Inf
-    nxt = quantile(kernel, 1 - s * rand(rng)^(1 / m))
+    nxt = cquantile(kernel, s * rand(rng)^(1 / m))
     return nxt > dt ? nxt : Inf
 end
 
@@ -568,7 +570,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             if opening.route == 0
                 kernel, close_t = introduction
                 open_t = zero(T)
-                m = ind.susceptibility
+                mult = ind.susceptibility
             else
                 # Which route's targets to ask is known only at run time, so the
                 # routes are walked rather than indexed: indexing a tuple of
@@ -578,9 +580,9 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                     members[j], state)
                 open_t = opening.open_t
                 close_t = opening.close_t
-                m = source.infectiousness * ind.susceptibility
+                mult = source.infectiousness * ind.susceptibility
             end
-            nxt = open_t + _next_contact(rng, kernel, m, bt - open_t)
+            nxt = open_t + _next_contact(rng, kernel, mult, bt - open_t)
             proposals[p] = _at(proposals[p], nxt <= close_t ? nxt : T(Inf))
             _requeue!(pending, proposals, head, best, represents, j)
             continue

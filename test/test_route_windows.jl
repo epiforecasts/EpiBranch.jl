@@ -37,9 +37,11 @@ end
 
 # A per-contact risk with a constant block probability, of the shape a user
 # writes: it thins the pair's contact process rather than scaling its kernel.
-struct BlockHalf <: EpiBranch.AbstractIntervention end
-function EpiBranch.competing_risk(::BlockHalf, parent, contact, state)
-    parent === contact ? nothing : Risk(block_probability = 0.5)
+struct FlatBlock <: EpiBranch.AbstractIntervention
+    p::Float64
+end
+function EpiBranch.competing_risk(b::FlatBlock, parent, contact, state)
+    parent === contact ? nothing : Risk(block_probability = b.p)
 end
 
 @testset "Route windows" begin
@@ -276,8 +278,9 @@ end
         # hazard, so the other member is infected with probability 1 - exp(-2m).
         # Halving the transmission probability instead would give 0.43 at
         # m = 0.5, where thinning the hazard gives 0.63.
-        prog = [Transition(:recovered; from = :infection, delay = 2.0, terminal = true)]
-        function secondary(kernel, sus, ivs, seed)
+        function secondary(kernel, sus, ivs, period, seed)
+            prog = [Transition(:recovered; from = :infection, delay = period,
+                terminal = true)]
             rng = StableRNG(seed)
             state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
                 prog, transmission_traits(susceptibility = sus), rng)
@@ -289,8 +292,9 @@ end
                 seed! = (best, members, r) -> (best[1] = 0.0))
             return is_infected(state.individuals[2])
         end
-        share(kernel, sus, ivs = AbstractIntervention[]) = count(secondary(kernel, sus, ivs, seed)
-        for seed in 1:4000) / 4000
+        function share(kernel, sus, ivs = AbstractIntervention[]; period = 2.0)
+            count(secondary(kernel, sus, ivs, period, seed) for seed in 1:4000) / 4000
+        end
 
         # The trait folds into the contact-interval draw.
         @test isapprox(share(Exponential(1.0), 1.0), 1 - exp(-2.0); atol = 0.025)
@@ -301,19 +305,31 @@ end
         # An intervention's risk is resolved contact by contact instead, and the
         # pair goes on meeting after a blocked one, which thins the same hazard
         # by the same factor. The two compose: half of a half is a quarter.
-        @test isapprox(share(Exponential(1.0), 1.0, [BlockHalf()]), 1 - exp(-1.0);
+        @test isapprox(share(Exponential(1.0), 1.0, [FlatBlock(0.5)]), 1 - exp(-1.0);
             atol = 0.025)
-        @test isapprox(share(Exponential(1.0), 0.5, [BlockHalf()]), 1 - exp(-0.5);
+        @test isapprox(share(Exponential(1.0), 0.5, [FlatBlock(0.5)]), 1 - exp(-0.5);
             atol = 0.025)
 
-        # A kernel with an atom, or with all its mass inside the window, carries
-        # an infinite integrated hazard, and no multiplier can thin that away: a
-        # susceptibility short of zero leaves the pair transmitting for certain.
-        # An intervention's risk is a block on the contact itself, so it does
-        # bite, and a degenerate contact interval has no second contact to offer.
-        @test share(Dirac(1.0), 0.5) == 1.0
+        # A small multiplier puts the contact far out in the tail of the kernel's
+        # survival, where an argument built by subtracting from 1 rounds to 1 and
+        # the pair loses the contact altogether. Ten days of an Exponential(0.1)
+        # contact interval is a rate of 10, so at these multipliers transmission
+        # is nearly certain, or two in three, and never 0.84 or 0.31.
+        @test isapprox(share(Exponential(0.1), 0.05; period = 10.0), 1 - exp(-5.0);
+            atol = 0.02)
+        @test isapprox(share(Exponential(0.1), 1.0, [FlatBlock(0.99)]; period = 10.0),
+            1 - exp(-1.0); atol = 0.025)
+
+        # A kernel with all its mass inside the window carries an infinite
+        # integrated hazard, and no thinning touches that: the pair transmits for
+        # certain, whether a multiplier or an intervention's risk is applied to
+        # it, because it simply meets again.
         @test share(Uniform(1.5, 1.9), 0.5) == 1.0
-        @test isapprox(share(Dirac(1.0), 1.0, [BlockHalf()]), 0.5; atol = 0.025)
+        @test share(Uniform(0.1, 0.5), 1.0, [FlatBlock(0.5)]) == 1.0
+        # A degenerate contact interval is the exception: it offers one contact
+        # and no more, which a multiplier leaves alone and a risk blocks.
+        @test share(Dirac(1.0), 0.5) == 1.0
+        @test isapprox(share(Dirac(1.0), 1.0, [FlatBlock(0.5)]), 0.5; atol = 0.025)
 
         # A multiplier of zero never transmits, and draws nothing.
         @test share(Exponential(1.0), 0.0) == 0.0
