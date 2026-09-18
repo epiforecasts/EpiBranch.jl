@@ -123,7 +123,7 @@ function EpiBranch.competing_risk(::RecordedProtection, parent, contact, state)
 end
 
 @testset "Recorded effects persist beyond delivery admission" begin
-    process = BranchingProcess(Poisson(10.0), Dirac(20.0))
+    process = BranchingProcess(Dirac(9), Dirac(20.0))
     vaccine = MassVaccination(efficacy = 1.0, eligibility_time = 10.0)
     wraps = (
         v -> Scheduled(v; start_time = 10.0, end_time = 10.0),
