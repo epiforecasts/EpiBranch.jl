@@ -44,6 +44,16 @@ function EpiBranch.competing_risk(b::FlatBlock, parent, contact, state)
     parent === contact ? nothing : Risk(block_probability = b.p)
 end
 
+# The same risk with its arguments typed, as the style guide asks for. The race
+# has to find this method as readily as the untyped one above.
+struct TypedBlock <: EpiBranch.AbstractIntervention
+    p::Float64
+end
+function EpiBranch.competing_risk(b::TypedBlock, parent::Individual, contact::Individual,
+        state::EpiBranch.SimulationState)
+    parent === contact ? nothing : Risk(block_probability = b.p)
+end
+
 @testset "Route windows" begin
     @testset "construction and show" begin
         w = RouteWindow(:community; from = :infectious, until = (:recovered,),
@@ -308,6 +318,9 @@ end
         @test isapprox(share(Exponential(1.0), 1.0, [FlatBlock(0.5)]), 1 - exp(-1.0);
             atol = 0.025)
         @test isapprox(share(Exponential(1.0), 0.5, [FlatBlock(0.5)]), 1 - exp(-0.5);
+            atol = 0.025)
+        # A risk written with typed arguments is found and applied the same way.
+        @test isapprox(share(Exponential(1.0), 1.0, [TypedBlock(0.5)]), 1 - exp(-1.0);
             atol = 0.025)
 
         # A small multiplier puts the contact far out in the tail of the kernel's

@@ -103,12 +103,17 @@ end
 # intervention without a `competing_risk` method of its own contributes no risk.
 _blocks_by_infector(source) = true
 function _blocks_by_infector(iv::AbstractIntervention)
-    _has_own_method(competing_risk, (typeof(iv), Any, Any, Any), AbstractIntervention)
+    _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
 end
 # Perfect isolation's block starts when the infector's window closes, so the
 # infector is never drawn once it could apply; only a leaky residual can bite.
 _blocks_by_infector(iso::Isolation) = iso.post_isolation_transmission > 0
-_blocks_by_infector(::AbstractVaccination) = false
+# A vaccination's own risk protects the contact and reads the infector only for
+# a ring's onward effect — but that holds for the ones this package writes. A
+# subtype of its own is taken to read the infector, as any other intervention is.
+function _blocks_by_infector(v::AbstractVaccination)
+    _has_own_method(competing_risk, typeof(v), AbstractVaccination)
+end
 _blocks_by_infector(rv::RingVaccination) = rv.onward_efficacy > 0
 _blocks_by_infector(s::Scheduled) = _blocks_by_infector(s.intervention)
 

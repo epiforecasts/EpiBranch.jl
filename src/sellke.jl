@@ -98,16 +98,20 @@ end
 
 # Whether `f` has a method for `argtypes` more specific than the fallback defined
 # on `base`, i.e. whether a type has implemented a hook itself.
-function _has_own_method(f, argtypes::Tuple, base::Type)
-    fallback = (base, argtypes[2:end]...)
-    return which(f, argtypes) !== which(f, fallback)
+function _has_own_method(f, T::Type, base::Type)
+    # `methods` rather than `which`, which finds only a method whose parameters
+    # accept `Any`: an intervention that types its hook's arguments, as the style
+    # guide asks, has one `which` looks straight past.
+    return any(methods(f, Tuple{T, Vararg{Any}})) do mm
+        Base.unwrap_unionall(mm.sig).parameters[2] !== base
+    end
 end
 
 # Whether an intervention implements a hook that only the generation engine calls.
 function _has_generation_hook(iv::AbstractIntervention)
     T = typeof(iv)
-    _has_own_method(apply_post_transmission!, (T, Any, Any), AbstractIntervention) ||
-        _has_own_method(keep_active, (T, Any, Any, Any), AbstractIntervention)
+    _has_own_method(apply_post_transmission!, T, AbstractIntervention) ||
+        _has_own_method(keep_active, T, AbstractIntervention)
 end
 
 # One case's window on one route: who it is, which route, and when that window
@@ -527,9 +531,8 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         members)
     may_block = !isempty(risks) ||
                 any(
-        iv -> _has_own_method(competing_risk, (typeof(iv), Any, Any, Any),
-            AbstractIntervention),
-        interventions)
+        iv -> _has_own_method(competing_risk, typeof(iv),
+            AbstractIntervention), interventions)
     openings = _RouteOpening{T}[] # one per case and route it transmits along
     proposals = _Pending{T}[]  # every proposal made, when something can block
     head = zeros(Int, may_block ? m : 0)  # first proposal to each member

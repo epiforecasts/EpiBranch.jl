@@ -26,10 +26,27 @@ struct DoseNewContacts <: EpiBranch.AbstractIntervention end
 EpiBranch.apply_post_transmission!(::DoseNewContacts, state, new_contacts) = nothing
 struct KeepFringeActive <: EpiBranch.AbstractIntervention end
 EpiBranch.keep_active(::KeepFringeActive, state, targets, is_new) = ()
+# The same, with its arguments typed, as the style guide asks for: the check
+# that names an unhonoured intervention has to find this method too.
+struct DoseNewContactsTyped <: EpiBranch.AbstractIntervention end
+function EpiBranch.apply_post_transmission!(::DoseNewContactsTyped,
+        state::EpiBranch.SimulationState, new_contacts::Vector{<:Individual})
+    return nothing
+end
 struct DoseAndTrace <: EpiBranch.AbstractIntervention end
 EpiBranch.apply_post_transmission!(::DoseAndTrace, state, new_contacts) = nothing
 EpiBranch.traces_contacts(::DoseAndTrace) = true
 EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
+
+# The same leaky vaccine with its arguments typed, as the style guide asks for.
+struct LeakyVaccineTyped <: EpiBranch.AbstractIntervention
+    efficacy::Float64
+    from_time::Float64
+end
+function EpiBranch.competing_risk(v::LeakyVaccineTyped, parent::Individual,
+        contact::Individual, state::EpiBranch.SimulationState)
+    Risk(event_time = v.from_time, block_probability = v.efficacy)
+end
 
 @testset "HomogeneousProcess (Sellke fixed pool)" begin
     @testset "deterministic final size (major outbreaks)" begin
@@ -160,6 +177,7 @@ EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
         # one that traces, since the pool names no contacts to trace along.
         prog_pool = HomogeneousProcess(; transmission_rate = 1.5, population_size = 200)
         for (iv, name) in ((DoseNewContacts(), r"DoseNewContacts"),
+            (DoseNewContactsTyped(), r"DoseNewContactsTyped"),
             (KeepFringeActive(), r"KeepFringeActive"), (DoseAndTrace(), r"DoseAndTrace"))
             @test !EpiBranch._sellke_honours(prog_pool, iv)
             @test_logs (:warn, name) match_mode=:any simulate(
@@ -287,6 +305,9 @@ EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
         for s in 1:15) / 15
 
         base = mean_size(AbstractIntervention[])
+        # The same risk with typed arguments is found and applied the same way.
+        @test mean_size([LeakyVaccineTyped(0.5, 0.0)]) ==
+              mean_size([LeakyVaccine(0.5, 0.0)])
         @test mean_size([LeakyVaccine(0.0, 0.0)]) == base
         @test mean_size([LeakyVaccine(0.5, 0.0)]) < 0.9 * base
         @test mean_size([LeakyVaccine(1.0, 0.0)]) == 3         # only the seeds
@@ -557,9 +578,12 @@ EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
         @test_throws r"Isolation" band1_attack(1; interventions = [leaky])
         @test_throws r"Isolation" band1_attack(1;
             interventions = [Scheduled(leaky; start_time = 5.0)])
-        # A user's own risk may read the infector, so it is refused too.
+        # A user's own risk may read the infector, so it is refused too, whether
+        # or not its arguments are typed.
         @test_throws r"LeakyVaccine" band1_attack(1;
             interventions = [LeakyVaccine(0.5, 0.0)])
+        @test_throws r"LeakyVaccineTyped" band1_attack(1;
+            interventions = [LeakyVaccineTyped(0.5, 0.0)])
         # Perfect isolation closes the window, so it never blocks a drawn contact.
         @test !EpiBranch._blocks_by_infector(
             Isolation(onset_to_isolation_delay = Exponential(1.0)))
