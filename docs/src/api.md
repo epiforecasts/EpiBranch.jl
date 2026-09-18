@@ -14,6 +14,15 @@ single_type_offspring
 EpiBranch.draw_offspring
 ```
 
+## Household offspring law
+
+```@docs
+household_offspring
+HouseholdOffspring
+household_offspring_law
+household_final_size
+```
+
 ## Household likelihood
 
 ```@docs
