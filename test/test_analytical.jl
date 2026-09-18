@@ -259,6 +259,84 @@
             @test ll_quad ≈ ll_closed atol=0.05
         end
 
+        @testset "Cluster-mixed reproduction number and extinction probability" begin
+            # A two-point mixing law gives the average of the single-type results.
+            two_point = ClusterMixed(Poisson, DiscreteNonParametric([0.5, 2.0], [0.5, 0.5]))
+            @test reproduction_number(two_point) ≈ 1.25
+            @test extinction_probability(two_point) ≈
+                  0.5 + 0.5 * extinction_probability(Poisson(2.0)) atol=1e-8
+            @test epidemic_probability(two_point) ≈ 1 - extinction_probability(two_point)
+
+            # Quadrature over a continuous mixing law matches the closed-form mean,
+            # and a function builder agrees with the Poisson marker.
+            k, R = 2.0, 1.2
+            cm = ClusterMixed(Poisson, Gamma(k, R / k))
+            cm_fn = ClusterMixed(λ -> Poisson(λ), Gamma(k, R / k))
+            @test reproduction_number(cm) ≈ R
+            @test reproduction_number(cm_fn)≈R atol=1e-6
+            @test extinction_probability(cm_fn) ≈ extinction_probability(cm)
+
+            # A mixing law concentrated at one value reduces to the fixed law.
+            narrow = ClusterMixed(R -> NegBin(R, 0.5),
+                truncated(Normal(2.0, 1e-6); lower = 1.9, upper = 2.1))
+            @test reproduction_number(narrow)≈2.0 atol=1e-6
+            @test extinction_probability(narrow)≈extinction_probability(2.0, 0.5) atol=1e-6
+
+            # A degenerate law has its own PGF derivative; a geometric law sums the
+            # truncated series and matches NegBin with k = 1, whose extinction
+            # probability is 1/R.
+            @test EpiBranch._pgf_derivative(Dirac(0), 0.3) == 0.0
+            @test EpiBranch._pgf_derivative(Dirac(3), 0.5) ≈ 0.75
+            @test EpiBranch._pgf_derivative(Geometric(1 / 3), 0.5) ≈
+                  EpiBranch._pgf_derivative(NegBin(2.0, 1.0), 0.5)
+            degenerate = ClusterMixed(θ -> Dirac(round(Int, θ)),
+                DiscreteNonParametric([0.0, 2.0], [0.3, 0.7]))
+            @test extinction_probability(degenerate) ≈ 0.3
+            geometric = ClusterMixed(θ -> Geometric(1 / (1 + θ)),
+                DiscreteNonParametric([0.5, 2.0], [0.4, 0.6]))
+            @test extinction_probability(geometric)≈0.4 + 0.6 * 0.5 atol=1e-8
+
+            # Newton's method stopped early warns and returns an iterate below
+            # the root, since the iterates rise towards it.
+            stop_early = () -> EpiBranch._extinction_at_fixed_law(Poisson(2.0);
+                tol = 1e-12, max_iter = 2)
+            early = @test_logs (:warn, r"without converging") match_mode=:any stop_early()
+            @test 0 < early < extinction_probability(Poisson(2.0))
+
+            # Near-critical laws converge without warning and match a precise root.
+            @test (@test_logs EpiBranch._extinction_at_fixed_law(Poisson(1.0001);
+                tol = 1e-12, max_iter = 1000))≈0.9998000266635559 atol=1e-10
+
+            # The model and ModelSpec forms delegate to the offspring.
+            nb = ClusterMixed(R -> NegBin(R, 0.5), Gamma(4.0, 0.5))
+            model = BranchingProcess(nb, Exponential(5.0))
+            @test reproduction_number(model) ≈ reproduction_number(nb)
+            @test extinction_probability(ModelSpec(model)) ≈ extinction_probability(nb)
+
+            # The average reproduction number is no threshold: a mixture with
+            # mean below 1 still has chains that take off.
+            @test reproduction_number(ClusterMixed(Poisson, Gamma(0.5, 1.6))) < 1
+            @test epidemic_probability(ClusterMixed(Poisson, Gamma(0.5, 1.6))) > 0
+
+            # For a mixture straddling R = 1, integrating the single-type result
+            # over θ directly, split at the threshold, gives the same value.
+            straddling = Gamma(0.5, 1.6)
+            direct = cdf(straddling, 1.0) +
+                     EpiBranch.quadgk(
+                θ -> extinction_probability(Poisson(θ); tol = 1e-14,
+                    max_iter = 10^7) * pdf(straddling, θ),
+                1.0, 1.001, 1.01, 1.1, 2.0, Inf; rtol = 1e-10)[1]
+            @test extinction_probability(ClusterMixed(Poisson, straddling))≈direct atol=1e-7
+
+            # Simulation agrees: each run draws θ for its index case. Chains are
+            # capped at `max_cases`, which counts large chains that would still
+            # die out as outbreaks, so the mixture here sits mostly above R = 1.
+            bp = BranchingProcess(nb, Exponential(1.0))
+            rng = StableRNG(11)
+            extinct = mean(simulate(bp; max_cases = 500, rng).extinct for _ in 1:4000)
+            @test extinct≈extinction_probability(nb) atol=0.03
+        end
+
         @testset "Multi-seed and right-censored chain sizes" begin
             # Default-metadata path matches the direct distribution PMF.
             d = GammaBorel(0.5, 0.8)

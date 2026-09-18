@@ -531,8 +531,8 @@ function _resolve!(model::TransmissionModel, state::SimulationState,
             target.chain_id = parent.chain_id
             # Onset follows from the *infection* time. A minted contact is
             # created at its infection time, so this is idempotent; a
-            # pre-instantiated network node was created at t=0, so this
-            # recomputes its onset from the time it was actually infected.
+            # pre-instantiated node was created with no infection time (NaN),
+            # so this derives its onset from the time it was actually infected.
             _set_onset_from_incubation!(target)
             # Freshly created contacts were already registered on their
             # parent by `make_contact!`; shared network nodes are not.
@@ -541,10 +541,12 @@ function _resolve!(model::TransmissionModel, state::SimulationState,
         elseif !is_new[i]
             # A pre-instantiated node exposed but not infected this
             # generation stays a clean susceptible; clear the provisional
-            # parent left from the failed exposure. (Minted "contact-only"
-            # individuals keep their parent — they are real contacts.)
+            # parent and infection time left from the failed exposure. A NaN
+            # infection time marks it as never infected; 0.0 would mean
+            # infected at time 0. (Minted "contact-only" individuals keep their
+            # parent because they are real contacts.)
             target.parent_id = 0
-            target.infection_time = 0.0
+            target.infection_time = NaN
         end
         _drop_stale_abort!(target)
     end
@@ -633,20 +635,27 @@ function new_state(model::TransmissionModel, transitions, attributes,
 end
 
 """
-    add_individuals!(state, n, interventions; n_types = 1, setup = (ind, i) -> nothing)
+    add_individuals!(state, n, interventions; n_types = 1, setup = (ind, i) -> nothing,
+                     infection_time = NaN)
 
-Create `n` individuals, append them to `state`, and return them. For each,
-`setup(ind, i)` runs first (to stamp model-specific state such as a node or
-household id), then a random type is assigned for multi-type models, then
-each intervention's `initialise_individual!` runs. Used by a model's
-`initialise_state` to build its population.
+Create `n` individuals, append them to `state`, and return them. Each starts
+with the given `infection_time`, `NaN` by default because none is infected
+yet; [`seed!`](@ref) stamps the seed cases' infection time, and a model's own
+transmission logic stamps everyone else's should they go on to be infected.
+Pass `infection_time = 0` when every individual created is an index case, so
+that attributes, which run at creation, already see the time they are seeded
+at. For each, `setup(ind, i)` runs after the attributes (to stamp
+model-specific state such as a node or household id), then a random type is
+assigned for multi-type models, then each intervention's
+`initialise_individual!` runs. Used by a model's `initialise_state` to build
+its population.
 """
 function add_individuals!(state::SimulationState, n::Integer, interventions;
-        n_types::Integer = 1, setup = (ind, i) -> nothing)
+        n_types::Integer = 1, setup = (ind, i) -> nothing, infection_time::Real = NaN)
     base = length(state.individuals)
     added = eltype(state.individuals)[]
     for i in 1:n
-        ind = _create_individual(state, 0, base + i, base + i, 0.0)
+        ind = _create_individual(state, 0, base + i, base + i, infection_time)
         setup(ind, i)
         # Match the new-contact path's ordering (`make_contact!` sets
         # `:type` before the engine calls `initialise_individual!`) so an
@@ -666,16 +675,18 @@ end
     seed!(state, ids, interventions, transitions) -> state
 
 Mark the individuals with the given `ids` as infected index cases: set
-`:infected`, derive `:onset_time` from any incubation period, validate that
-the interventions' and transitions' required fields are present (on the
-first id, before any transition closure runs, so a missing field surfaces
-as the engine's friendly message), and record the run's initial bookkeeping
-(`cumulative_cases`, `active_ids`, `extinct`). Used by a model's
-`initialise_state` after [`add_individuals!`](@ref).
+`infection_time` to 0, set `:infected`, derive `:onset_time` from any
+incubation period, validate that the interventions' and transitions' required
+fields are present (on the first id, before any transition closure runs, so a
+missing field surfaces as the engine's friendly message), and record the
+run's initial bookkeeping (`cumulative_cases`, `active_ids`, `extinct`). Used
+by a model's `initialise_state` after [`add_individuals!`](@ref).
 """
 function seed!(state::SimulationState, ids, interventions, transitions)
+    T = _timetype(state)
     for id in ids
         ind = state.individuals[id]
+        ind.infection_time = zero(T)
         ind.state[:infected] = true
         _set_onset_from_incubation!(ind)
     end
@@ -704,8 +715,10 @@ cases with [`seed!`](@ref).
 function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
         interventions, transitions, attributes, rng::AbstractRNG)
     state = new_state(model, transitions, attributes, rng)
+    # Every individual created here is an index case, so attributes that read
+    # the infection time at creation must see the time of 0 they are seeded at.
     add_individuals!(state, sim_opts.n_initial, interventions;
-        n_types = n_types(model))
+        n_types = n_types(model), infection_time = 0)
     seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
     return state
 end

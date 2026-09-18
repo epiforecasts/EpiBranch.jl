@@ -489,7 +489,7 @@ end
         @test late.individuals[3].infection_time == 2.0
         early = race([ProtectFromExposure(1.0)])
         @test !is_infected(early.individuals[3])
-        @test early.individuals[3].infection_time == 0.0
+        @test isnan(early.individuals[3].infection_time)
 
         # Traits at their defaults contribute no risk, draw nothing from the rng,
         # and leave the race stream exactly as it was.

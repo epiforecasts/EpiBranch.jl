@@ -260,6 +260,25 @@ end
         @test all(isolation_time(ind) >= onset_time(ind) for ind in secondary)
     end
 
+    @testset "FlagOnly tracing isolates traced members through the traced pathway" begin
+        # With no test-positive cases, only the traced pathway can isolate. A
+        # member is traced before the race has settled its onset, so this
+        # checks that the trace is still recorded and turned into isolation.
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 0.0)
+        flag = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), FlagOnly())
+        m = ModelSpec(HouseholdProcess(fill(6, 50), Exponential(3.0));
+            progression = _sir(10.0), attributes = clinical, interventions = [iso, flag])
+        isolated = [ind
+                    for s in 1:20
+                    for ind in simulate(m; rng = StableRNG(s)).individuals
+                    if is_infected(ind) && isfinite(isolation_time(ind))]
+        @test !isempty(isolated)
+        @test all(is_traced, isolated)
+        @test all(isolation_time(ind) >= onset_time(ind) for ind in isolated)
+    end
+
     @testset "external force of infection introduces community cases" begin
         m = ModelSpec(
             HouseholdProcess(fill(4, 300), Exponential(3.0);
@@ -737,4 +756,6 @@ end
             simulate(ModelSpec(bare; progression = _sir(6.0)); rng = StableRNG(2)), bare)
         @test length(data) == 200
     end
+
+    include("test_offspring.jl")
 end
