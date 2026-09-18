@@ -212,18 +212,20 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 - Community introductions under an `external_hazard` are put to the risks that
   act on the person being introduced — their susceptibility, a vaccine's
   protection, a risk of the model's or the user's own — so a vaccine protects
-  against them too; before, they bypassed every risk. The risks of interventions
-  scoped to `EpiBranch.RemovalRoutes()`, isolation and quarantine among them, are
+  against them too; before, they bypassed every risk. Isolation and quarantine risks are
   not applied there: they stand in for removing an infector, and an
   introduction's source is outside the population.
 - A model with per-contact risks is no longer the exact generative model of the
   pairwise likelihood unless the risk is in force throughout and the kernel
   family is closed under proportional hazards. A model with no risks in play
-  draws nothing extra and reproduces earlier runs exactly for the same seed. A
-  pool whose infectious windows never close and whose every contact is then
-  blocked has no end to reach, and now says so rather than running on.
+  draws nothing extra and reproduces earlier runs exactly for the same seed.
+  Repeated contacts after a block require finite remaining integrated hazard
+  on a race, or finite removal times for active pool sources; unsupported
+  continuations raise `ArgumentError`. Static protection can instead be
+  composed into the kernel or host traits.
 - On a model with several routes, the routes an intervention's risks reach are
-  set by the new `EpiBranch.risk_scope` trait: `Isolation` and `ContactTracing`
+  selected by `EpiBranch.risk_applies(intervention, route)`: `Isolation` and
+  `ContactTracing`
   reach only the routes that list `EpiBranch.INTERVENTION_REMOVAL` in their
   `until`, while vaccinations, and by default any other intervention, reach
   every route.

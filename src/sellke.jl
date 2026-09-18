@@ -72,6 +72,8 @@ end
 # contacts it delivers: a clique of this race and an equivalent pool are then the
 # same process. A degenerate kernel (`Dirac`) has one contact and no more, so a
 # block ends that pair.
+# Rejection continuations require finite remaining integrated hazard; otherwise
+# an opaque risk could reject contacts forever and the model is refused.
 #
 # It is not what a block means on the generation engine, where a parent draws a
 # fixed set of contacts and a blocked one is a transmission lost with nothing to
@@ -86,9 +88,8 @@ end
 # trace, is not: the likelihood has no term for a blocked contact.
 #
 # On a model with several routes, which interventions' risks a route resolves is
-# each intervention's `risk_scope`: a removal's risk only on the routes that opted
-# into intervention removal, anything else on every route — see the proposal
-# loop for why. The model's own risks and the per-individual multipliers apply on
+# selected by `risk_applies(intervention, route)`: removal effects use the
+# route's censoring states, while protection defaults to every route. The model's own risks and the per-individual multipliers apply on
 # every route.
 #
 # The built-in sources return no risk at all when every multiplier is 1, so
@@ -267,11 +268,19 @@ end
 # multiplier. A kernel whose support ends at or before `dt` has no survival left
 # and so no later contact to give: a degenerate (`Dirac`) contact interval is one
 # such, offering exactly one contact.
-_next_contact(::AbstractRNG, ::Nothing, ::Real, dt) = Inf
-function _next_contact(rng::AbstractRNG, kernel, m::Real, dt)
+_next_contact(::AbstractRNG, ::Nothing, ::Real, dt, end_dt) = Inf
+function _next_contact(rng::AbstractRNG, kernel, m::Real, dt, end_dt)
     m <= 0 && return Inf
     ls = logccdf(kernel, dt)
     isfinite(ls) || return Inf
+    # An opaque risk may block forever. Rejection sampling is supported only
+    # when the remaining integrated hazard is finite; a finite time alone is
+    # insufficient for a continuous kernel whose support ends in the window.
+    isfinite(logccdf(kernel, end_dt)) || throw(ArgumentError(
+        "repeated contacts after a blocked proposal require finite remaining " *
+        "integrated hazard. Close the infectious or introduction window before " *
+        "the kernel survival reaches zero, or encode static protection in the " *
+        "contact kernel or host traits."))
     nxt = _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
     return nxt > dt ? nxt : Inf
 end
@@ -311,12 +320,6 @@ function _proposal_blocked(state::SimulationState, parent, contact, transmission
     end
 end
 
-# The interventions whose risks apply on a route that has not opted into
-# intervention removal.
-function _every_route_interventions(interventions)
-    filter(iv -> risk_scope(iv) isa EveryRoute, interventions)
-end
-
 """
     INTERVENTION_REMOVAL
 
@@ -336,8 +339,8 @@ route lists it, so isolating a case ends its community transmission; a
 household route does not, so the case goes on infecting the people it lives
 with. That difference is the whole reason routes are separated. The same holds
 for the per-contact risk of a leaky isolation, but not for a vaccine's
-protection, which applies on every route; see [`risk_scope`](@ref
-EpiBranch.risk_scope).
+protection, which applies on every route; see [`risk_applies`](@ref
+EpiBranch.risk_applies).
 """
 const INTERVENTION_REMOVAL = :intervention_removal
 
@@ -498,8 +501,8 @@ A model with several transmission routes passes `routes`, a collection of
 `(RouteWindow, targets)` pairs, in place of `from`/`until`/`targets`. Each route
 opens and closes on its own window, and only a route listing
 `INTERVENTION_REMOVAL` in its `until` is cut by the interventions' removals and
-blocked by the risks of those whose [`risk_scope`](@ref) is `RemovalRoutes()`.
-The risks of every other intervention apply on every route.
+blocked by removal risks such as isolation. Other risks select their routes
+through [`risk_applies`](@ref).
 
 `introduction`, when given, is the `(kernel, until)` of the community hazard the
 model seeded its members from: the contact-interval distribution of an
@@ -508,7 +511,7 @@ closes. It says that a seeded time is a community introduction rather than an
 index case, so the risks that act on the person are resolved against it — a
 vaccinated person is protected from the community as from a neighbour — and a
 blocked introduction is followed by the next one from the same hazard. The risks
-of interventions whose [`risk_scope`](@ref) is `RemovalRoutes()` are not: they
+of isolation and quarantine are not: they
 stand in for removing an infector, and an introduction's source is outside the
 population. Omit `introduction` for a model whose seeds are index cases, which
 are put to no risk at all.
@@ -560,9 +563,9 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
     # protected at home too, so risks scoped to every route still apply. The
     # model's own risks and the per-individual multipliers always apply, since
     # they belong to the people and the edge.
-    every_route_interventions = _every_route_interventions(interventions)
-    route_interventions = [INTERVENTION_REMOVAL in w.until ? interventions :
-                           every_route_interventions for (w, _) in rts]
+    introduction_interventions = filter(iv -> risk_applies(iv, nothing), interventions)
+    route_interventions = [filter(iv -> risk_applies(iv, w), interventions)
+                           for (w, _) in rts]
 
     seed!(best, members, rng)
 
@@ -628,7 +631,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         # from outside the population, so it is put to the risks that act on the
         # person being introduced: their susceptibility, a vaccine's protection,
         # a risk of the model's own. Not to the risks that stand in for removing
-        # an infector — `RemovalRoutes()`, which is isolation and quarantine —
+        # an infector — isolation and quarantine —
         # since the source is outside the population and no measure taken here
         # removes it: being isolated is not protection from acquiring an
         # infection. The person stands in for the infector those risks read, so a
@@ -638,7 +641,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         source = infector_id == 0 ? ind : state.individuals[infector_id]
         if may_block && (infector_id != 0 || introduction !== nothing) &&
            _proposal_blocked(state, source, ind, bt, risks,
-               opening.route == 0 ? every_route_interventions :
+               opening.route == 0 ? introduction_interventions :
                route_interventions[opening.route])
             # The contact did not transmit, and the source goes on meeting the
             # person: the next contact is a draw from the same hazard conditioned
@@ -658,7 +661,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                 close_t = opening.close_t
                 mult = source.infectiousness * ind.susceptibility
             end
-            nxt = open_t + _next_contact(rng, kernel, mult, bt - open_t)
+            nxt = open_t + _next_contact(rng, kernel, mult, bt - open_t, close_t - open_t)
             proposals[p] = _at(proposals[p], nxt <= close_t ? nxt : T(Inf))
             _requeue!(pending, proposals, head, best, represents, j)
             continue

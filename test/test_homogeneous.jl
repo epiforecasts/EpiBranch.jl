@@ -365,21 +365,19 @@ end
         # threshold, so no contact is ever delivered and the run ends at once.)
         pool40 = HomogeneousProcess(; transmission_rate = 2.0, population_size = 40)
         m = ModelSpec(pool40; interventions = [LeakyVaccine(1.0, 0.0)])
-        @test_throws ErrorException simulate(m; rng = StableRNG(1), n_initial = 2)
+        @test_throws ArgumentError simulate(m; rng = StableRNG(1), n_initial = 2)
         @test simulate(
             ModelSpec(pool40;
                 attributes = transmission_traits(susceptibility = 0.0));
             rng = StableRNG(1), n_initial = 2).cumulative_cases == 2
 
-        # A rare but possible infection is no endless loop. With a block
-        # probability of 1 - 1e-4 about 10,000 contacts are blocked between one
-        # infection and the next, and about 2 million over the run, more than the
-        # guard allows in a row; counting them across infections would refuse a
-        # model that finishes.
-        rare = ModelSpec(
-            HomogeneousProcess(; transmission_rate = 2.0, population_size = 200);
-            interventions = [LeakyVaccine(1.0 - 1e-4, 0.0)])
-        @test simulate(rare; rng = StableRNG(1), n_initial = 2).cumulative_cases == 200
+        # Even a risk that sometimes permits infection has no finite contact
+        # budget here. Use susceptibility for this static proportional effect.
+        rare = ModelSpec(pool40; interventions = [LeakyVaccine(1.0 - 1e-4, 0.0)])
+        @test_throws ArgumentError simulate(rare; rng = StableRNG(1), n_initial = 2)
+        scaled = ModelSpec(pool40;
+            attributes = transmission_traits(susceptibility = 1e-4))
+        @test simulate(scaled; rng = StableRNG(1), n_initial = 2).cumulative_cases == 40
 
         # A removal transition is all it takes: the outbreak ends at the seeds.
         with_removal = ModelSpec(pool40;

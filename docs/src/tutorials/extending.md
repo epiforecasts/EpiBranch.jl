@@ -204,7 +204,7 @@ ones your intervention needs (all default to no-ops).
 | `trace_contacts!(iv, state, infector, contacts[, not_before])` | Continuous-time models only: once per case, when the race settles it | The case, the contacts it reached that are not yet settled, and, from a model whose contacts can come about after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing` (mutate the contacts' `state` in place) |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to gather contacts at all | Nothing | `true` if this intervention implements `trace_contacts!` (default `false`) |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
-| `risk_scope(iv)` | Continuous-time models with several routes: when deciding which routes this intervention's `competing_risk` applies on | Nothing | `EpiBranch.EveryRoute()` (default) or `EpiBranch.RemovalRoutes()` for a risk that stands in for a removal |
+| `risk_applies(iv, route)` | Continuous-time models selecting risks for a route (`nothing` for an external introduction) | Nothing | `Bool`; defaults to `true` |
 
 ### Which hooks fire on which engine
 
@@ -252,22 +252,20 @@ What this means in practice:
   turns a pair's contact-interval survival `S(t)` into `S(t)^m`, the pool scales
   each susceptible's threshold and weights each infective's share of the force,
   and a community introduction's hazard is scaled the same way. A multiplier of
-  0 never transmits and draws nothing. One consequence to know: no thinning
-  touches an infinite integrated hazard, so a contact interval whose support ends
-  before the window does transmits for certain whatever is applied to it, a
-  multiplier and an intervention's `Risk` alike — with `Uniform(0.1, 0.5)` in a
-  two-day window, a risk blocking half the contacts still infects every pair,
-  because the pair simply meets again. The exception is a degenerate contact
-  interval (a `Dirac`), where there is one contact and no more: a multiplier
-  leaves it alone, and an intervention's `Risk` blocks it and ends the pair.
-  Certainty is also the one place the arithmetic falls short: each blocked
-  contact on a bounded support lands closer to its end than the last, so a risk
-  that blocks nearly every contact runs out of floats before it runs out of
-  contacts, and the pair can escape an infection the law says it cannot. How
-  deep a kernel can be thinned before that happens is its own survival's: one
-  with a `logccdf` of its own goes as far as the time grid allows, while one
-  whose survival is computed as `1 - cdf`, a `MixtureModel` for instance, stops
-  where that subtraction does, at a survival of about 1e-16.
+  0 never transmits and draws nothing. Static proportional effects can use these
+  traits or an effective kernel directly, avoiding repeated rejected contacts.
+- Repeated-contact sampling after a blocked proposal requires finite remaining
+  integrated hazard. A race rejects a continuation if the kernel's survival is
+  zero at the end of its window, including an unbounded Exponential window or a
+  continuous bounded kernel whose support ends inside the window. A pool
+  requires finite removal times for all active sources when a contact is
+  blocked. These cases raise `ArgumentError`, even for a risk that might later
+  permit infection: an opaque callback cannot establish eventual termination.
+  Supply a finite infectious/introduction window with nonzero kernel survival
+  at its end, or represent static protection through host traits or the kernel.
+  A `Dirac` kernel has no contact after its atom and needs no continuation.
+  Numerical accuracy still depends on the kernel's survival implementation:
+  one computed as `1 - cdf` loses tail precision when the CDF rounds to one.
 - That is the per-exposure reading of a leaky vaccine, and it is **not** what
   the same `Risk`
   does on the generation engine. There a parent's contacts are a fixed set of
@@ -284,34 +282,23 @@ What this means in practice:
   disagree.
 - A community introduction, on a model with an `external_hazard`, is put to the
   risks that act on the person being introduced: their susceptibility, a
-  vaccine's protection, a risk of your own. Not to those of interventions whose
-  `EpiBranch.risk_scope` is `RemovalRoutes()`, isolation and quarantine among
-  them, which stand in for removing an infector that here is outside the
-  population. An introduction has no infector at all, so the person stands in
-  for one; return `nothing` from your risk when `parent === contact` if it reads
-  the infector for something a community source cannot have.
-- On a model with several routes, the routes an intervention's risks apply on
-  are its [`EpiBranch.risk_scope`](@ref). `Isolation` and `ContactTracing`
-  return `EpiBranch.RemovalRoutes()`: their effect is a removal, and a route
-  opts into removal by listing `EpiBranch.INTERVENTION_REMOVAL` in its `until`,
-  so a household route that runs on through an isolation is not blocked by that
-  isolation's per-contact risk either. Vaccinations return
-  `EpiBranch.EveryRoute()`, for both the contact's protection and
-  `onward_efficacy`: a vaccinated person is protected at home as well as in the
-  community. Per-individual susceptibility and infectiousness, and anything the
-  model contributes through `transmission_risks`, also apply on every route.
-- Your own intervention defaults to `EveryRoute()`. The generation engine has no
-  routes and applies every risk to every contact, so with this default a risk
-  written for it means the same on a routed model. The custom risks in this
-  guide and the test suite (a border closure, an age-conditional block, a leaky
-  vaccine) all gate on who the people in a contact are rather than on whether
-  the infector has been removed. The opposite default would leave such a protection silently
-  inert on every route without the removal listing. If your risk stands in for
-  taking a case out of circulation, typically alongside an
-  `infectious_removal_time` method, scope it to the routes that removal cuts:
+  vaccine's protection, a risk of your own. Isolation and quarantine do not
+  remove an external source. An introduction has no infector record, so the
+  person stands in for one; return `nothing` from your risk when
+  `parent === contact` if it reads properties a community source cannot have.
+- [`EpiBranch.risk_applies`](@ref) selects which routes an intervention's risk
+  acts on. It receives the existing route window, or `nothing` for a community
+  introduction. Its default `true` keeps vaccination protection on every route.
+  Isolation and contact tracing test whether the route lists
+  `EpiBranch.INTERVENTION_REMOVAL` in `until`. Wrappers forward the predicate.
+  The generation engine applies every risk to every contact; model-provided
+  risks and host multipliers also apply on every route.
+- An external intervention can choose any subset of routes without adding a
+  scope type. For example, a removal effect can follow the window's censoring:
 
   ```julia
-  EpiBranch.risk_scope(::MyLeakyQuarantine) = EpiBranch.RemovalRoutes()
+  EpiBranch.risk_applies(::MyLeakyQuarantine, route) =
+      route !== nothing && EpiBranch.INTERVENTION_REMOVAL in route.until
   ```
 - An intervention that reaches its targets through `apply_post_transmission!`
   or `keep_active` — `MassVaccination`'s rollout doses each new contact as the

@@ -183,59 +183,18 @@ Default: no-op.
 reset!(::AbstractIntervention, ::Individual) = nothing
 
 """
-    RiskScope
+    risk_applies(intervention, route) -> Bool
 
-Which of a continuous-time model's transmission routes an intervention's
-[`competing_risk`](@ref)s apply on, as returned by
-[`risk_scope`](@ref EpiBranch.risk_scope). The rule is per route: a route that
-lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` resolves every
-risk, and one that does not resolves only those scoped to every route. The
-single-route shorthand the network, household and homogeneous processes use
-lists it, so every risk applies there, as every risk applies to every contact on
-the generation-based engine; a [`RouteWindow`](@ref) of a `RoutedNetwork` need
-not, whether the model has one route or several. A community introduction
-resolves only the risks scoped to every route, on any model, because its source
-is outside the population.
+Whether an intervention's [`competing_risk`](@ref) applies to a continuous-time
+route. `route` is the existing [`RouteWindow`](@ref), or `nothing` for a
+community introduction whose source is outside the population. The default is
+`true`, so protection follows a person across routes. Wrappers delegate to their
+wrapped intervention.
 
-  - [`EveryRoute`](@ref EpiBranch.EveryRoute): the risks apply on every route.
-  - [`RemovalRoutes`](@ref EpiBranch.RemovalRoutes): the risks apply only on
-    routes that list [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in their `until`.
+[`Isolation`](@ref) and [`ContactTracing`](@ref) apply only to routes listing
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in `until`; they do not protect against
+community introductions. External interventions may select routes by any window
+property. This predicate does not filter model-provided risk sources or the
+generation-based engine's contacts.
 """
-abstract type RiskScope end
-
-"""
-    EveryRoute()
-
-The [`RiskScope`](@ref EpiBranch.RiskScope) of a risk that belongs to the people
-in a contact whatever route it travels along, such as a vaccine's protection of
-the contact or its reduction of the infector's onward transmission. A vaccinated
-person is then as protected at home as in the community.
-"""
-struct EveryRoute <: RiskScope end
-
-"""
-    RemovalRoutes()
-
-The [`RiskScope`](@ref EpiBranch.RiskScope) of a risk that stands in for taking
-the infector out of circulation, such as leaky isolation. It applies only on the
-routes the removal itself would cut, which are those listing
-[`EpiBranch.INTERVENTION_REMOVAL`](@ref), so a household route that runs on
-through an isolation is not blocked by that isolation's risk either.
-"""
-struct RemovalRoutes <: RiskScope end
-
-"""
-    risk_scope(intervention) -> RiskScope
-
-The routes on which `intervention`'s [`competing_risk`](@ref)s apply on a
-continuous-time model — those listing [`EpiBranch.INTERVENTION_REMOVAL`](@ref)
-in their `until`, or all of them — and whether they reach a community
-introduction, which only those scoped to every route do. Default:
-[`EveryRoute`](@ref EpiBranch.EveryRoute), which matches the generation-based
-engine, where every risk applies to every contact. [`Isolation`](@ref) and
-[`ContactTracing`](@ref) return [`RemovalRoutes`](@ref EpiBranch.RemovalRoutes),
-because their effect is a removal and a route opts into removal. An intervention
-whose risk expresses a removal, typically one that also defines
-[`infectious_removal_time`](@ref), should return `RemovalRoutes()` too.
-"""
-risk_scope(::AbstractIntervention) = EveryRoute()
+risk_applies(::AbstractIntervention, route) = true

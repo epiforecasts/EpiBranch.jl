@@ -343,13 +343,6 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
 
     t = zero(T)
 
-    # Contacts blocked in a row while nothing but the draw can change, and the
-    # budget past which that is taken as a model that cannot finish (see the
-    # blocked branch). The budget is generous enough that a block probability up
-    # to about 1 - 1/1000 runs to its end on an average pool.
-    frozen_blocks = 0
-    block_budget = 1_000 * N + 1_000_000
-
     while true
         # Each group's next threshold, and the force on a susceptible in it at the
         # current infectious counts. The force is piecewise-constant between
@@ -436,6 +429,18 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             blocked = src != 0 && _proposal_blocked(
                 state, state.individuals[src], ind, t, risks, interventions)
             if blocked
+                # With an opaque risk, an immortal infectious source can keep
+                # generating rejected contacts forever. Require every active
+                # source to have a finite removal time instead of guessing from
+                # how many rejections have occurred.
+                all(infectious_ids) do source_id
+                    source = state.individuals[source_id]
+                    isfinite(min(_window_close(source, until),
+                        _intervention_removal_time(source, interventions)))
+                end || throw(ArgumentError(
+                    "repeated contacts after a blocked pool proposal require " *
+                    "finite infectious windows. Add a removal transition, or " *
+                    "encode static protection in host susceptibility or force."))
                 # The contact did not transmit. Put the susceptible back with the
                 # residual of its resistance: a fresh Exponential(1) above the
                 # threshold this contact consumed.
@@ -448,31 +453,7 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
                         convert(T, rand(rng, Exponential(1.0))) /
                         state.individuals[id].susceptibility,
                         id))
-                # With no window left to open or close, the infectious set and so
-                # the force of infection are fixed for the rest of time, and the
-                # only thing separating one contact from the next is the draw. If
-                # the risks block with certainty there, the run has no end: the
-                # pressure keeps arriving, every contact of it is refused, and
-                # nothing can ever change. Refuse the model instead of looping,
-                # once enough contacts have been blocked that a merely unlucky run
-                # is out of the question. Any model whose cases recover, die or are
-                # isolated keeps a window on the queues and never reaches this.
-                if isempty(open_heap) && isempty(close_heap)
-                    frozen_blocks += 1
-                    frozen_blocks > block_budget && error(
-                        "the fixed-size pool cannot finish: no infectious window " *
-                        "ever closes, so the force of infection never decays, and " *
-                        "every contact it has delivered since is blocked by a " *
-                        "competing risk. Give the progression a removal transition " *
-                        "(e.g. `Transition(:recovered; from = :infection, " *
-                        "delay = ..., terminal = true)`) so the infectious period ends.")
-                else
-                    frozen_blocks = 0
-                end
             else
-                # An infection changes the infectious set, so the run of blocked
-                # contacts the guard counts ends here.
-                frozen_blocks = 0
                 stamp!(ind, t, src)
                 equal_infectiousness &= ind.infectiousness == 1
                 push_windows!(ind)

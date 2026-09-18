@@ -28,4 +28,4 @@ end
 traces_contacts(w::InterventionWrapper) = traces_contacts(w.intervention)
 _unwrap_scheduled(w::InterventionWrapper) = _unwrap_scheduled(w.intervention)
 
-risk_scope(w::InterventionWrapper) = risk_scope(w.intervention)
+risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route)
