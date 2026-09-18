@@ -24,7 +24,8 @@ Rate-based transmission over a fixed contact network. `adjacency[i]` lists
 the graph neighbours of node `i` (1-based); the graph is the population.
 `kernel` is the **contact interval** — the one required input — a continuous
 `Distributions.jl` distribution shared by every edge, a callable
-`(infector, susceptible) -> Distribution` for covariate models, or a
+`(infector, susceptible) -> Distribution` for covariate models, a
+[`ContextualKernel`](@ref) that also reads the infector's infection time, or a
 per-edge vector of distributions parallel to `adjacency`
 (`kernel[i][k]` for node `i`'s `k`-th listed neighbour). The kernel times
 each infectious contact from the infector's `from` state.
@@ -128,7 +129,7 @@ end
 # The contact-interval kernel is stored in whatever form the constructor was
 # given — a shared distribution, a callable `(infector, susceptible) ->
 # Distribution`, or a per-edge vector parallel to the adjacency list — and
-# resolved per contact by `_edge_kernel(model, infector, position)`, where
+# resolved per contact by `_edge_kernel(model, infector, position, state)`, where
 # `position` is the index of the neighbour within `adjacency[infector]`.
 
 # A shared distribution is used as-is; a per-edge vector is validated to line
@@ -146,9 +147,11 @@ end
 _validate_kernel(k, adj) = k   # callable (infector, susceptible) -> Distribution
 
 # The contact-interval distribution for the `pos`-th neighbour of node `i`.
-function _edge_kernel(m::NetworkProcess, i::Int, pos::Int)
-    _resolve_kernel(m.edge_kernel, m, i, pos)
+function _edge_kernel(m::NetworkProcess, i::Int, pos::Int, state)
+    _resolve_kernel(m.edge_kernel, m, i, pos, state)
 end
-_resolve_kernel(k::ContinuousUnivariateDistribution, m, i, pos) = k
-_resolve_kernel(k::AbstractVector, m, i, pos) = k[i][pos]
-_resolve_kernel(k, m, i, pos) = k(i, m.adjacency[i][pos])
+_resolve_kernel(k::ContinuousUnivariateDistribution, m, i, pos, state) = k
+_resolve_kernel(k::AbstractVector, m, i, pos, state) = k[i][pos]
+function _resolve_kernel(k, m, i, pos, state)
+    EpiBranch.pair_kernel(k, i, m.adjacency[i][pos], state.individuals[i].infection_time)
+end

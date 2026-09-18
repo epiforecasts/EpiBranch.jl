@@ -9,4 +9,5 @@ using Graphs
     include("test_network_process.jl")
     include("test_graphs_ext.jl")
     include("test_network_likelihood.jl")
+    include("test_contextual_kernels.jl")
 end
