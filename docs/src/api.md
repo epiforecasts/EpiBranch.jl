@@ -128,6 +128,8 @@ EpiBranch.traces
 EpiBranch.draw_trace_delay
 EpiBranch.apply_trace!
 AbstractVaccination
+VaccineEffect
+EpiBranch.vaccine_effect
 RingVaccination
 MassVaccination
 GroupVaccination

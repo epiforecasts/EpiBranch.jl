@@ -523,6 +523,89 @@ results = simulate(model, 200; max_cases = 500, rng = rng)
 println("Isolation + border closure: $(round(containment_probability(results), digits=3))")
 ```
 
+### A custom vaccination
+
+A new vaccination differs from the built-in ones in who it reaches and when.
+The parameters describing what a dose does once given (`efficacy`,
+`severity_efficacy`, `delay_to_immunity`, `mode` and `dose_label`) live in a
+[`VaccineEffect`](@ref), which every [`AbstractVaccination`](@ref) holds. A
+subtype stores one and returns it from `EpiBranch.vaccine_effect`; the rest of
+the vaccination machinery reads these parameters only through that method. The
+subtype then inherits:
+
+- `initialise_individual!`, which sets `:vaccinated` and `:vaccination_time`
+  (namespaced by `dose_label`) on every individual;
+- `competing_risk`, the susceptibility-side block described in
+  [`AbstractVaccination`](@ref);
+- the dose-schedule checks made when a `ModelSpec` is built, so it can give the
+  dose a later [`RingVaccination`](@ref) names in `requires_dose`.
+
+It adds an `apply_post_transmission!` method choosing whom to vaccinate and
+when. That method records each dose with `EpiBranch._record_vaccination!(v, ind,
+vaccination_time, rng)`, which writes the per-dose keys listed under
+[Reserved keys](#Reserved-keys) and draws `efficacy`, `severity_efficacy` and
+`delay_to_immunity` for that individual, whichever of the `Real`,
+`Distribution` and function forms they were given in. Here, a campaign on day
+10 reaches everyone aged 60 or over:
+
+```@example extending
+struct OlderAdultVaccination{V <: VaccineEffect, B} <: AbstractVaccination
+    effect::V
+    min_age::Int
+    campaign_time::Float64
+    booster_uptake::B
+end
+
+function OlderAdultVaccination(; min_age, campaign_time, booster_uptake = 0.0,
+        kwargs...)
+    OlderAdultVaccination(VaccineEffect(; kwargs...), min_age, campaign_time,
+        booster_uptake)
+end
+
+EpiBranch.vaccine_effect(v::OlderAdultVaccination) = v.effect
+EpiBranch.required_fields(::OlderAdultVaccination) = [:age]
+
+function EpiBranch.apply_post_transmission!(v::OlderAdultVaccination, state, new_contacts)
+    for ind in new_contacts
+        ind.state[:age] >= v.min_age || continue
+        EpiBranch._record_vaccination!(v, ind, v.campaign_time, state.rng)
+    end
+    return nothing
+end
+
+older = OlderAdultVaccination(min_age = 60, campaign_time = 10.0,
+    efficacy = 0.8, delay_to_immunity = 14.0)
+older_model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0));
+    interventions = [older], attributes = demographics())
+older_results = simulate(older_model, 50; max_cases = 200, rng = StableRNG(1))
+n_cases = sum(s -> length(s.individuals), older_results)
+n_vaccinated = sum(s -> count(is_vaccinated, s.individuals), older_results)
+println("Vaccinated: $n_vaccinated of $n_cases cases")
+```
+
+Forwarding keywords to `VaccineEffect` lets the constructor take the same effect
+keywords as the built-in vaccinations. A parameter describing what a dose does
+belongs in `VaccineEffect`, where every vaccination gains it at once; a
+parameter describing whom a dose reaches belongs on the subtype.
+
+An effect only your vaccination has is a field on it, `booster_uptake` above,
+and its per-dose draw goes through the `_record_effect_draws!` hook, which
+`_record_vaccination!` calls for every vaccination. `RingVaccination` records
+`post_exposure_efficacy` and `onward_efficacy` that way:
+
+```julia
+_booster_uptake_key(label) = Symbol("booster_uptake_", label)
+
+function EpiBranch._record_effect_draws!(v::OlderAdultVaccination, contact, label, rng)
+    EpiBranch._store_draw!(v.booster_uptake, _booster_uptake_key, label, contact, rng)
+    return nothing
+end
+```
+
+For a scalar, `_store_draw!` stores nothing and `EpiBranch._dose_value` reads
+the value straight off the vaccination; for a distribution or a function it
+stores the draw.
+
 ## Tree-shaping via the offspring distribution
 
 Some interventions don't filter individual transmissions — they change
@@ -1396,6 +1479,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Extension point | Mechanism | When called |
 |---|---|---|
 | Custom intervention | Struct `<: AbstractIntervention` + hook methods | Each generation |
+| Custom vaccination | Struct `<: AbstractVaccination` holding a `VaccineEffect` + `vaccine_effect` + `apply_post_transmission!` | Each generation |
 | Time-dependent intervention | `Scheduled(iv; start_time = ...)` + `intervention_time`, `reset!` on `iv` | After each hook |
 | Capacity-constrained intervention | `CapacityConstrained(iv; budget_per_period = ...)` + `capacity_key`, `capacity_time_key` on `iv` | `apply_post_transmission!` |
 | Custom attributes | Function `(rng, ind) -> nothing` | Individual creation |
