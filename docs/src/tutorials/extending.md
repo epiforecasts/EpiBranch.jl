@@ -1644,7 +1644,10 @@ They must work without a pending contact's infection time. Ring delivery support
 an infinite eligibility window and zero post-exposure efficacy; group delivery
 uses known triggering cases. Schedules and capacity wrappers use the same action
 contract as the generation engine. Mass vaccination and the homogeneous pool
-remain unsupported on this path.
+remain unsupported on this path. With several households, capacity requires
+`period = Inf` for a shared lifetime budget. Finite periods are rejected because
+the simulator completes each household separately and resets its clock for the
+next household. A single household supports finite periods.
 
 Continuous-time admission affects pending people and the current case. Earlier
 finalised cases and their clinical outcomes are not revised. An action whose date
