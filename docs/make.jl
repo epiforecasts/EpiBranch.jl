@@ -24,6 +24,7 @@ makedocs(;
             "Clinical transitions" => "tutorials/transitions.md",
             "Multi-type models" => "tutorials/multi-type.md",
             "Network models" => "tutorials/networks.md",
+            "Contextual pair kernels" => "tutorials/pair_kernels.md",
             "Household models" => "tutorials/households.md",
             "Homogeneous models" => "tutorials/homogeneous.md",
             "Line lists and contacts" => "tutorials/linelist.md",

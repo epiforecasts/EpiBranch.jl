@@ -26,6 +26,9 @@ household_final_size
 ## Pairwise survival likelihood
 
 ```@docs
+ContextualKernel
+PairContext
+EpiBranch.pair_kernel
 pairwise_surv_loglik
 PairwiseSurvivalData
 InfectionLayer
