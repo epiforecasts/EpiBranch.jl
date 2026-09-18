@@ -83,3 +83,82 @@ end
 function _calendar_interval(distribution, opening)
     truncated(distribution; lower = opening) - opening
 end
+
+"""
+    StatefulKernel(state, callback)
+
+A pair kernel with explicit host state. In simulation, `state(individual)` selects
+an immutable record (for example a named tuple of attributes and event dates).
+`callback(context::PairContext, source, target)` returns the contact-interval
+law from those records. Wrap in [`CalendarKernel`](@ref) for calendar-time laws.
+
+For likelihood evaluation, supply a vector of records indexed by population ID
+as `state`, or use [`record_kernel`](@ref) to extract them after simulation.
+The callback is identical in both paths. Records may contain typed covariates
+and dated histories; the likelihood does not construct individuals.
+
+Callbacks must describe a predictable hazard: adding an event at time `t` must
+not change the hazard before `t`. A final vaccinated flag alone is insufficient;
+retain its date and the earlier hazard. State changes occur through the existing
+case-resolution and intervention hooks. Simulation refreshes pending contacts
+after each resolved case, conditioning on survival to that time. This costs a
+pass over all active edges per case. Recorded vectors describe fixed histories
+and do not require refreshes. The callback and projection must not mutate state.
+"""
+struct StatefulKernel{S, F}
+    state::S
+    callback::F
+end
+
+_pair_state(project, individual) = project(individual)
+_pair_state(records::AbstractVector, individual) = records[individual.id]
+_live_kernel(k) = false
+_live_kernel(k::StatefulKernel) = true
+_live_kernel(k::StatefulKernel{<:AbstractVector}) = false
+_live_kernel(k::CalendarKernel) = _live_kernel(k.kernel)
+
+# The extra argument is supplied only by simulation; ordinary kernels retain
+# their existing extension methods and compiled likelihood fast paths.
+function pair_kernel(k, i, j, infection_time, opening, state)
+    pair_kernel(k, i, j, infection_time, opening)
+end
+function pair_kernel(k::StatefulKernel, i, j, infection_time, opening, state)
+    k.callback(PairContext(i, j, infection_time),
+        _pair_state(k.state, state.individuals[i]),
+        _pair_state(k.state, state.individuals[j]))
+end
+function pair_kernel(k::StatefulKernel{<:AbstractVector}, i, j, infection_time)
+    k.callback(PairContext(i, j, infection_time), k.state[i], k.state[j])
+end
+function pair_kernel(::StatefulKernel, i, j, infection_time)
+    throw(ArgumentError("a live StatefulKernel needs simulation state; " *
+                        "supply recorded host states for likelihood evaluation with record_kernel"))
+end
+function pair_kernel(k::CalendarKernel, i, j, infection_time, opening, state)
+    _calendar_interval(pair_kernel(k.kernel, i, j, infection_time, opening, state), opening)
+end
+
+"""
+    record_kernel(kernel, state::SimulationState)
+
+Return a kernel with the same callback and a vector of host records extracted
+from a finished simulation. For a `StatefulKernel`, apply its projection to each
+individual and copy the results so later simulation mutations cannot change the
+record. A `CalendarKernel` preserves its calendar-time conversion. Other kernels
+are returned unchanged.
+
+The projection must retain event dates or full histories when hazards change.
+This is extraction, not automatic history logging: overwritten past values cannot
+be recovered. The resulting likelihood evaluates the transmission contribution along these
+histories. Include separate attribute/intervention models when their probabilities
+also belong in the joint likelihood. During inference, construct
+`StatefulKernel(records, callback)` with the current latent records on each call.
+"""
+record_kernel(k, state::SimulationState) = k
+function record_kernel(k::StatefulKernel, state::SimulationState)
+    StatefulKernel([deepcopy(_pair_state(k.state, ind)) for ind in state.individuals],
+        k.callback)
+end
+function record_kernel(k::CalendarKernel, state::SimulationState)
+    CalendarKernel(record_kernel(k.kernel, state))
+end

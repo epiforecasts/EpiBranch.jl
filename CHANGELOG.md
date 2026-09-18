@@ -12,6 +12,10 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- `StatefulKernel` shares sampled attributes and dated intervention histories
+  between structured simulation and likelihoods. `record_kernel` extracts typed
+  host records; live kernels refresh pending contacts after each case.
+
 - `CalendarKernel` aligns calendar-time contact hazards with infectious openings
   in network and household simulation and likelihoods.
 

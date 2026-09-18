@@ -526,7 +526,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; seed!, targets = nothing,
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
         routes = nothing, interventions = (), contacts = nothing, risks = (),
-        introduction = nothing)
+        introduction = nothing, refresh_kernels = false)
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
     # shorthand's one window opts into intervention removal, which is what a
@@ -560,6 +560,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                            for (w, _) in rts]
 
     seed!(best, members, rng)
+    initial_times = refresh_kernels ? copy(best) : nothing
 
     T = eltype(best)
     # A popped entry is final unless the risks block it: every other pending
@@ -591,10 +592,10 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         id -> (ind = state.individuals[id];
             ind.susceptibility != 1 || ind.infectiousness != 1),
         members)
-    may_block = !isempty(risks) ||
+    may_block = refresh_kernels || !isempty(risks) ||
                 any(
-        iv -> _has_own_method(competing_risk, typeof(iv),
-            AbstractIntervention), interventions)
+                    iv -> _has_own_method(competing_risk, typeof(iv),
+                        AbstractIntervention), interventions)
     openings = _RouteOpening{T}[] # one per case and route it transmits along
     proposals = _Pending{T}[]  # every proposal made, when something can block
     head = zeros(Int, may_block ? m : 0)  # first proposal to each member
@@ -655,6 +656,9 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             end
             nxt = open_t + _next_contact(rng, kernel, mult, bt - open_t, close_t - open_t)
             proposals[p] = _at(proposals[p], nxt <= close_t ? nxt : T(Inf))
+            if refresh_kernels && opening.route == 0
+                initial_times[j] = proposals[p].time
+            end
             _requeue!(pending, proposals, head, best, represents, j)
             continue
         end
@@ -690,6 +694,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             close_t = _route_close(ind, w, interventions)
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
+            refresh_kernels && continue
 
             for (target_id, kernel) in route_targets(members[j], state)
                 k = get(pos, target_id, 0)
@@ -707,6 +712,56 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                 cand <= close_t || continue
                 _propose!(pending, proposals, head, best, represents, k, opening_id,
                     cand, may_block)
+            end
+        end
+        if refresh_kernels
+            _refresh_contacts!(pending, proposals, head, best, represents,
+                openings, initial_times, processed, members, pos, rts, state, bt, rng)
+        end
+    end
+    return nothing
+end
+
+# A newly recorded action can change an edge that had no pending proposal (its
+# previous draw may have exceeded the window). Rebuild from every open route,
+# preserving external introductions and conditioning internal contacts on the
+# elapsed exposure. Fixed kernels never take this path.
+function _refresh_contacts!(pending, proposals, head, best, represents,
+        openings, initial_times, processed, members, pos, rts, state, now, rng)
+    empty!(pending)
+    empty!(proposals)
+    fill!(head, 0)
+    fill!(best, Inf)
+    fill!(represents, 0)
+    for j in eachindex(members)
+        processed[j] && continue
+        isfinite(initial_times[j]) || continue
+        _propose!(pending, proposals, head, best, represents, j, 1, initial_times[j], true)
+    end
+    for oi in 2:length(openings)
+        opening = openings[oi]
+        opening.close_t < now && continue
+        source = state.individuals[opening.infector]
+        for (ri, (_, targets)) in enumerate(rts)
+            ri == opening.route || continue
+            for (id, kernel) in targets(opening.infector, state)
+                j = get(pos, id, 0)
+                (j == 0 || processed[j]) && continue
+                m = source.infectiousness * state.individuals[id].susceptibility
+                m <= 0 && continue
+                dt = if now <= opening.open_t
+                    _traits_scaled_draw(rng, kernel, m)
+                else
+                    elapsed = now - opening.open_t
+                    ls = logccdf(kernel, elapsed)
+                    isfinite(ls) || continue
+                    _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
+                end
+                candidate = opening.open_t + dt
+                ((now <= opening.open_t ? candidate >= now : candidate > now) &&
+                 candidate <= opening.close_t) || continue
+                _propose!(
+                    pending, proposals, head, best, represents, j, oi, candidate, true)
             end
         end
     end
