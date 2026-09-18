@@ -17,10 +17,10 @@ contacts that becomes active at the `from` state, times each contact by
   `Symbol(s, :_time)`. Empty by default (no censoring). Isolation censoring
   comes from the `Isolation` intervention, not from a state here.
 - `kernel` is the contact interval, measured from `from`: a
-  `Distribution`, a `Function (ind) -> Distribution`, or
+  `Distribution`, a callable `(ind) -> Distribution`, or
   `NoGenerationTime()` (contacts land at the `from` time).
 - `offspring` is the window's own draw: a `Distribution` (single-type), a
-  `Function (rng, ind[, state]) -> Int` / `-> Vector{Int}` (multi-type),
+  callable `(rng, ind[, state]) -> Int` / `-> Vector{Int}` (multi-type),
   or any spec [`draw_offspring`](@ref) accepts.
 
 Several windows on one [`BranchingProcess`](@ref) (community, funeral)
@@ -156,7 +156,7 @@ function Base.show(io::IO, m::BranchingProcess)
 end
 
 # Single-type with a contact interval (one default window).
-function BranchingProcess(offspring::Distribution, gt::Union{Distribution, Function};
+function BranchingProcess(offspring::Distribution, gt;
         population_size::Union{Int, NoPopulation} = NoPopulation())
     BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, 1,
         NoTypeLabels())
@@ -169,7 +169,7 @@ function BranchingProcess(offspring::Distribution;
 end
 
 # Multi-type with an explicit offspring function.
-function BranchingProcess(offspring::Function, gt::Union{Distribution, Function};
+function BranchingProcess(offspring, gt;
         n_types::Int = 1, population_size::Union{Int, NoPopulation} = NoPopulation(),
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
     BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, n_types,
@@ -211,11 +211,11 @@ function draw_offspring(rng::AbstractRNG, offspring::Distribution,
     rand(rng, offspring)
 end
 
-"""Function-based offspring draw. The function may be called as
+"""Callable offspring draw. The rule may be called as
 `(rng, individual)` or `(rng, individual, state)`; the latter form lets
 the offspring rule read population-level state (e.g. cumulative cases
 for time- or policy-dependent caps)."""
-function draw_offspring(rng::AbstractRNG, offspring::Function,
+function draw_offspring(rng::AbstractRNG, offspring,
         individual, state::SimulationState)
     if applicable(offspring, rng, individual, state)
         return offspring(rng, individual, state)

@@ -105,3 +105,39 @@
         end
     end
 end
+
+struct CallableContactInterval end
+(::CallableContactInterval)(ind) = Exponential(2.0)
+struct CallableOffspring end
+(::CallableOffspring)(rng, ind) = rand(rng, Poisson(0.6))
+struct CallableStateOffspring end
+(::CallableStateOffspring)(rng, ind) = error("The state-aware method should be used")
+(::CallableStateOffspring)(rng, ind, state) = state.cumulative_cases < 8 ? 1 : 0
+struct CallableOffspringFamily end
+(::CallableOffspringFamily)(R) = Poisson(R)
+
+@testset "Callable model inputs" begin
+    signature(state) = [(i.parent_id, i.infection_time, i.generation)
+                        for i in state.individuals]
+    compare(a, b) = @test signature(simulate(a; rng = StableRNG(718))) ==
+                          signature(simulate(b; rng = StableRNG(718)))
+    compare(BranchingProcess(CallableOffspring(), CallableContactInterval()),
+        BranchingProcess((rng, ind) -> rand(rng, Poisson(0.6)),
+            ind -> Exponential(2.0)))
+    compare(BranchingProcess(Poisson(0.6), CallableContactInterval()),
+        BranchingProcess(Poisson(0.6), Exponential(2.0)))
+    compare(BranchingProcess(CallableStateOffspring(), CallableContactInterval()),
+        BranchingProcess((rng, ind, state) -> state.cumulative_cases < 8 ? 1 : 0,
+            Exponential(2.0)))
+    M = [0.3 0.1; 0.2 0.4]
+    compare(BranchingProcess(M, CallableOffspringFamily(), CallableContactInterval()),
+        BranchingProcess(M, R -> Poisson(R), Exponential(2.0)))
+    mixed = ClusterMixed(Poisson, Gamma(2.0, 0.1))
+    compare(BranchingProcess(mixed, CallableContactInterval()),
+        BranchingProcess(mixed, Exponential(2.0)))
+    @test EpiBranch.single_type_offspring(BranchingProcess(mixed,
+        CallableContactInterval())) === mixed
+    windows = (Infectiousness(Poisson(0.2); kernel = CallableContactInterval()),
+        Infectiousness(Poisson(0.3); kernel = CallableContactInterval()))
+    @test BranchingProcess(windows...).infectiousness == windows
+end
