@@ -96,6 +96,18 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   with ring size. Listing a `RingVaccination` before a `GroupVaccination` with
   the same `dose_label` makes the group dose a pure fallback: a member the
   ring already reached is skipped.
+- `RingVaccination`, `GroupVaccination`, and `MassVaccination` gain `waning`,
+  an optional function `dt -> Real` giving the fraction of `efficacy` (and, on
+  `RingVaccination`, `onward_efficacy` and `post_exposure_efficacy`) still in
+  force `dt` time units after immunity develops, evaluated at each exposure.
+  It scales the value that individual was given, so it composes with
+  efficacies drawn per individual from a distribution or a function. A
+  post-exposure abort happens as immunity arrives and therefore uses
+  `waning(0)`. A dose with its own `dose_label` decays from its own immunity
+  time, and a multi-dose schedule's doses still compose as independent
+  competing risks.
+  `severity_efficacy` does not wane. Defaults to `nothing`, which keeps the
+  existing constant-protection behaviour.
 
 ### Changed
 

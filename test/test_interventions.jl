@@ -393,6 +393,180 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                   containment_probability(results_delayed) - 0.05
         end
 
+        @testset "Waning immunity" begin
+            # A dose that can no longer abort anything must not draw, or it shifts every
+            # later draw in the run.
+            @testset "A fully waned post-exposure dose leaves the stream untouched" begin
+                clinical = clinical_presentation(
+                    incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+                iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+                    post_isolation_transmission = 0.4)
+                ct = ContactTracing(probability = 0.8,
+                    isolation_to_trace_delay = Exponential(0.5),
+                    quarantine_on_trace = false)
+                process = BranchingProcess(Poisson(2.2), Exponential(5.0))
+                cases(interventions) = sum(1:40) do seed
+                    state = simulate(
+                        ModelSpec(process; interventions = interventions,
+                            attributes = clinical);
+                        max_cases = 400, rng = StableRNG(seed))
+                    count(is_infected, state.individuals)
+                end
+
+                none = cases([iso, ct])
+                waned = cases([iso, ct,
+                    RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8,
+                        waning = dt -> 0.0)])
+                @test waned == none
+            end
+
+            # Probe the closure `_susceptibility_risk` builds directly, at
+            # increasing times since immunity onset (`delay_to_immunity = 0`,
+            # so immunity onset coincides with vaccination).
+            decay(dt) = exp(-dt / 10.0)
+            rv = RingVaccination(efficacy = 0.9, waning = decay)
+            contact = Individual(id = 2)
+            EpiBranch._record_vaccination!(rv, contact, 0.0, StableRNG(1))
+
+            dts = [0.0, 5.0, 20.0, 100.0]
+            probs = map(dts) do dt
+                contact.infection_time = dt
+                risk = EpiBranch._susceptibility_risk(rv, contact)
+                EpiBranch._sample_value(
+                    risk.block_probability, StableRNG(1), nothing, contact, nothing)
+            end
+
+            @test probs ≈ 0.9 .* decay.(dts)
+            @test issorted(probs, rev = true)
+            @test allunique(probs)
+
+            @testset "Fully decayed waning blocks nothing" begin
+                rv0 = RingVaccination(efficacy = 0.9, waning = dt -> 0.0)
+                contact0 = Individual(id = 3)
+                EpiBranch._record_vaccination!(rv0, contact0, 0.0, StableRNG(1))
+                contact0.infection_time = 50.0
+                risk = EpiBranch._susceptibility_risk(rv0, contact0)
+                @test EpiBranch._sample_value(
+                    risk.block_probability, StableRNG(1), nothing, contact0, nothing) == 0.0
+            end
+
+            @testset "Waning at full strength matches the constant-efficacy risk" begin
+                rv1 = RingVaccination(efficacy = 0.9, waning = dt -> 1.0)
+                contact1 = Individual(id = 4)
+                EpiBranch._record_vaccination!(rv1, contact1, 0.0, StableRNG(1))
+                contact1.infection_time = 30.0
+                risk = EpiBranch._susceptibility_risk(rv1, contact1)
+                @test EpiBranch._sample_value(
+                    risk.block_probability, StableRNG(1), nothing, contact1, nothing) == 0.9
+            end
+
+            @testset "Onward-infectiousness risk also wanes" begin
+                rv2 = RingVaccination(efficacy = 0.0, onward_efficacy = 0.8, waning = decay)
+                parent = Individual(id = 5)
+                parent.state[:vaccinated] = true
+                parent.state[:vaccination_time] = 0.0
+                contact2 = Individual(id = 6)
+
+                risk = EpiBranch._onward_risk(rv2, parent)
+
+                contact2.infection_time = 0.0
+                prob_now = EpiBranch._sample_value(
+                    risk.block_probability, StableRNG(1), parent, contact2, nothing)
+                contact2.infection_time = 40.0
+                prob_later = EpiBranch._sample_value(
+                    risk.block_probability, StableRNG(1), parent, contact2, nothing)
+
+                @test prob_now ≈ 0.8
+                @test prob_later ≈ 0.8 * decay(40.0)
+                @test prob_later < prob_now
+            end
+
+            # The post-exposure block for a dose already in place at exposure
+            # wanes with the same factor as `efficacy`.
+            function contact_block(rv; exposure)
+                c = Individual(id = 7)
+                EpiBranch._record_vaccination!(rv, c, 0.0, StableRNG(1))
+                c.infection_time = exposure
+                risk = EpiBranch._contact_risk(rv, c)
+                return EpiBranch._sample_value(
+                    risk.block_probability, StableRNG(1), nothing, c, nothing)
+            end
+
+            @testset "A fully waned post-exposure dose blocks nothing" begin
+                rv3 = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8,
+                    waning = dt -> 0.0)
+                @test contact_block(rv3; exposure = 100.0) == 0.0
+            end
+
+            @testset "A partially waned post-exposure dose blocks less" begin
+                rv4 = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8,
+                    waning = decay)
+                @test contact_block(rv4; exposure = 0.0) ≈ 0.8
+                @test contact_block(rv4; exposure = 20.0) ≈ 0.8 * decay(20.0)
+            end
+
+            @testset "Waning takes the combined block below post-exposure efficacy" begin
+                rv5 = RingVaccination(efficacy = 0.5, post_exposure_efficacy = 0.8,
+                    waning = decay)
+                @test contact_block(rv5; exposure = 0.0) ≈ 1 - 0.5 * 0.2
+                retained = decay(20.0)
+                waned = contact_block(rv5; exposure = 20.0)
+                @test waned ≈ 1 - (1 - 0.5 * retained) * (1 - 0.8 * retained)
+                @test waned < 0.8
+            end
+
+            @testset "The abort takes the protection retained at immunity onset" begin
+                c = Individual(id = 8, infection_time = 10.0)
+                c.state[:incubation_period] = 6.0
+                c.state[:onset_time] = 16.0
+                rv6 = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0,
+                    waning = dt -> dt == 0.0 ? 0.0 : 1.0)
+                EpiBranch._abort_infection!(rv6, c, 12.0, StableRNG(1))
+                @test !haskey(c.state, :infection_aborted_time)
+
+                rv7 = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0,
+                    waning = dt -> 1.0)
+                EpiBranch._abort_infection!(rv7, c, 12.0, StableRNG(1))
+                @test c.state[:infection_aborted_time] == 12.0
+
+                @testset "Waning scales the value each individual was given" begin
+                    # `efficacy`, `post_exposure_efficacy` and `onward_efficacy`
+                    # drawn per individual, and an immunity time drawn with them:
+                    # waning scales each contact's own draw, on the clock that
+                    # starts at that contact's own immunity onset.
+                    rv8 = RingVaccination(efficacy = Uniform(0.3, 0.9),
+                        post_exposure_efficacy = (rng, ind) -> 0.6,
+                        onward_efficacy = Uniform(0.2, 0.8),
+                        delay_to_immunity = Uniform(7.0, 21.0), waning = decay)
+                    c = Individual(id = 9)
+                    EpiBranch._record_vaccination!(rv8, c, 3.0, StableRNG(7))
+                    eff = c.state[:vaccine_efficacy]
+                    onward = c.state[:onward_efficacy]
+                    imm_t = immunity_time(c)
+                    @test 0.3 <= eff <= 0.9
+                    @test 0.2 <= onward <= 0.8
+                    @test 10.0 <= imm_t <= 24.0  # vaccinated at 3, plus the drawn delay
+
+                    c.infection_time = imm_t + 20.0
+                    retained = decay(20.0)
+                    @test EpiBranch._sample_value(
+                        EpiBranch._contact_risk(rv8, c).block_probability,
+                        StableRNG(1), nothing, c, nothing) ≈
+                          1 - (1 - eff * retained) * (1 - 0.6 * retained)
+
+                    other = Individual(id = 10, infection_time = imm_t + 20.0)
+                    @test EpiBranch._sample_value(
+                        EpiBranch._onward_risk(rv8, c).block_probability,
+                        StableRNG(1), c, other, nothing) ≈ onward * retained
+
+                    # The abort takes the contact's own post-exposure draw at
+                    # `waning(0)`, which `decay` leaves at full strength.
+                    @test EpiBranch._post_exposure_efficacy(rv8, c) *
+                          EpiBranch._retained(decay, 0.0) ≈ 0.6
+                end
+            end
+        end
+
         @testset "Distributional delay_to_immunity samples once per contact" begin
             # A vaccine that takes one to three weeks to protect. The draw
             # is stored on the contact at vaccination time (see

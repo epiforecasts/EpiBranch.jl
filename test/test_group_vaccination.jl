@@ -97,6 +97,33 @@ end
         @test GroupVaccination(efficacy = 0.9).severity_efficacy == 0.0
     end
 
+    @testset "Waning decays protection against infection but not severity efficacy" begin
+        decay(dt) = exp(-dt / 10.0)
+        gv = GroupVaccination(efficacy = 0.9, severity_efficacy = 0.4,
+            delay_to_immunity = 5.0, dose_delay = 1.0, waning = decay)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+
+        confirmed = _group_member(gv, 1, :A, test_positive = true)
+        set_isolated!(confirmed, 2.0)
+        member = _group_member(gv, 2, :A, test_positive = false)
+        new_contacts = [confirmed, member]
+        append!(state.individuals, new_contacts)
+
+        EpiBranch.apply_post_transmission!(gv, state, new_contacts)
+
+        # Vaccinated at 2 + 1 = 3, immune from 3 + 5 = 8.
+        risk = EpiBranch._susceptibility_risk(gv, member)
+        @test risk.event_time == 8.0
+        for exposure in (8.0, 18.0, 58.0)
+            member.infection_time = exposure
+            block = EpiBranch._sample_value(
+                risk.block_probability, StableRNG(1), nothing, member, nothing)
+            @test block ≈ 0.9 * decay(exposure - 8.0)
+            @test severity_efficacy(member) == 0.4
+        end
+    end
+
     @testset "Members created after the trigger are still reached" begin
         gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 1.0)
