@@ -618,7 +618,7 @@ end
     rng = StableRNG(1)
     state = EpiBranch.new_state(BranchingProcess(Poisson(0.0), Exponential(1.0)),
         AbstractClinicalTransition[], NoAttributes(), rng)
-    interventions = [FlatBlock(1.0)]
+    interventions = [ProtectTo(1)]
     EpiBranch.add_individuals!(state, 1, interventions)
     @test_throws ArgumentError EpiBranch._sellke_race!(state, [1], rng;
         from = :infection, until = (), interventions,
