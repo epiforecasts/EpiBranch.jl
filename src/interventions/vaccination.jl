@@ -434,6 +434,10 @@ end
 # parent's `:vaccination_time` is set by ring vaccination when the parent
 # was traced, and the onward immunity takes effect at that time plus
 # `delay_to_immunity`, as on the susceptibility side.
+# An infector that is not the contact itself, which is every case on the
+# generation engine and every real infector on the race.
+_onward_risk(rv::RingVaccination, parent) = _onward_risk(rv, parent, nothing)
+
 function _onward_risk(rv::RingVaccination, parent, contact)
     # A community introduction has no infector, and the person stands in for it
     # on the continuous-time models. A dose cannot reduce what a source outside
@@ -910,10 +914,15 @@ function _advance_ring_dose!(rv::RingVaccination, ind)
     label = dose_label(rv)
     get(ind.state, _vaccinated_key(label), false) || return nothing
     vacc_t = get(ind.state, :trace_time, Inf) + rv.dose_delay
-    vacc_t < ind.state[_vaccination_time_key(label)] || return nothing
+    old_vacc_t = ind.state[_vaccination_time_key(label)]
+    vacc_t < old_vacc_t || return nothing
     _has_required_dose(rv, ind, vacc_t) || return nothing
     ind.state[_vaccination_time_key(label)] = vacc_t
-    ind.state[_immunity_time_key(label)] = vacc_t + delay_to_immunity(rv)
+    # A drawn `delay_to_immunity` was stored when the dose was given, so the
+    # immunity time moves with the dose rather than being drawn afresh.
+    ind.state[_immunity_time_key(label)] = vacc_t +
+                                           (ind.state[_immunity_time_key(label)] -
+                                            old_vacc_t)
     return nothing
 end
 
