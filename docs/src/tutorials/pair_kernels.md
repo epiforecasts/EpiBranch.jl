@@ -230,8 +230,8 @@ contact dates coincide exactly with a policy change.
 
 The race initially schedules contacts using the information then available.
 After a case is resolved, a live state-aware kernel is evaluated again for all
-active pairs. Pending contacts are redrawn conditional on no contact before the
-current time. This includes pairs whose previous contact draw lay beyond their
+active pairs. Contacts already due at the current time are preserved, including ties.
+Later contacts are redrawn conditional on no contact through the current time. This includes pairs whose previous contact draw lay beyond their
 infectious window. A recorded vector represents fixed histories and uses the
 ordinary simulation path.
 

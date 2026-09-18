@@ -56,7 +56,8 @@ end
 """
     CalendarKernel(kernel)
 
-Interpret a shared distribution, pair callback or `ContextualKernel` on the
+Interpret a shared distribution, pair callback, `ContextualKernel` or
+`StatefulKernel` on the
 simulation's calendar-time axis. In network and household models, condition the
 returned distribution on surviving to the infector's infectious opening, then
 subtract that opening to obtain a contact interval. Network per-edge distribution
@@ -65,8 +66,9 @@ vectors are supported too.
 The distribution's hazard at calendar date `t` is the pair's contact rate at `t`.
 The same conditioning is used by infection-layer likelihoods, including when
 infectious opening times change during inference. The calendar law must have
-positive survival at each opening. Its parameters and any covariate tables must
-remain fixed throughout a simulation and be supplied consistently to inference.
+positive survival at each opening. Supply parameters and covariates consistently to simulation and inference.
+A live `StatefulKernel` may update its hazard through dated histories; other
+kernels remain fixed throughout a simulation.
 """
 struct CalendarKernel{K}
     kernel::K

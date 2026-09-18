@@ -25,7 +25,8 @@ the graph neighbours of node `i` (1-based); the graph is the population.
 `kernel` is the **contact interval** — the one required input — a continuous
 `Distributions.jl` distribution shared by every edge, a callable
 `(infector, susceptible) -> Distribution` for covariate models, a
-[`ContextualKernel`](@ref) that also reads the infector's infection time, or a
+[`ContextualKernel`](@ref) that also reads the infector's infection time,
+or a [`StatefulKernel`](@ref) with sampled attributes and dated histories, or a
 per-edge vector of distributions parallel to `adjacency`
 (`kernel[i][k]` for node `i`'s `k`-th listed neighbour). The kernel times
 each infectious contact from the infector's `from` state.

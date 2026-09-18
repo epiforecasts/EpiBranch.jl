@@ -50,6 +50,44 @@ function test_stateful_simulation(make_process, extract)
         @test isequal([i.infection_time for i in a.individuals], [i.infection_time
                                                                   for i in b.individuals])
     end
+    @testset "Recorded endogenous histories reproduce integrated hazards" begin
+        project(ind) = (date = get(ind.state, :policy_time, Inf)::Float64,)
+        kernel = CalendarKernel(StatefulKernel(project,
+            (c, a, b) -> state_policy_law(0.4, 0.1, b.date)))
+        model = ModelSpec(make_process(kernel);
+            progression = [Transition(:infectious; delay = 0.3),
+                Transition(:recovered; from = :infectious, delay = 5.0, terminal = true)],
+            interventions = [RecordKernelPolicy()])
+        observed_policy = false
+        for seed in 1:20
+            state = simulate(model; initial_cases = [1], rng = StableRNG(seed))
+            data = extract(state, model)
+            recorded = record_kernel(kernel, state)
+            dates = [r.date for r in recorded.kernel.state]
+            observed_policy |= isfinite(dates[3])
+            expected = 0.0
+            for j in eachindex(data.infection_time)
+                tj = isnan(data.infection_time[j]) ? Inf : data.infection_time[j]
+                hazard = 0.0
+                for i in eachindex(data.infection_time)
+                    i == j && continue
+                    opening = data.infectious_time[i]
+                    isfinite(opening) || continue
+                    stop = min(tj, data.removal_time[i])
+                    date = dates[j]
+                    if stop > opening
+                        expected -= 0.4 * (min(stop, date) - min(opening, date)) +
+                                    0.1 * (max(stop - date, 0.0) - max(opening - date, 0.0))
+                    end
+                    opening < tj <= data.removal_time[i] &&
+                        (hazard += tj < date ? 0.4 : 0.1)
+                end
+                isfinite(tj) && !data.is_index[j] && (expected += log(hazard))
+            end
+            @test pairwise_surv_loglik(recorded, data) ≈ expected
+        end
+        @test observed_policy
+    end
     @testset "Refresh preserves blocked external introductions" begin
         live = StatefulKernel(_ -> nothing, (c, a, b) -> Dirac(20.0))
         process = make_process(live; external_hazard = 0.8, obs_end = 3.0)

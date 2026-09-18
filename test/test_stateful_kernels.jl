@@ -53,3 +53,25 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
     @test !EpiBranch._live_kernel(saved)
     @test EpiBranch._live_kernel(CalendarKernel(live))
 end
+
+@testset "Differentiable recorded event dates" begin
+    data = StateKernelInfections([0.0, 3.0], [1.0, 4.0], [5.0, 6.0], [true, false], 0.0)
+    layout = compile_contact_pairs(data)
+    f = function (x)
+        records = [(date = x[3],), (date = x[3],)]
+        callback = function (c, a, b)
+            survival = exp(-x[1] * b.date)
+            MixtureModel(
+                [truncated(Exponential(inv(x[1])); upper = b.date),
+                    b.date + Exponential(inv(x[2]))],
+                [1 - survival, survival])
+        end
+        pairwise_surv_loglik(CalendarKernel(StatefulKernel(records, callback)), data, layout)
+    end
+    reference(x) = log(x[2]) - x[1] * (x[3] - 1) - x[2] * (3 - x[3])
+    x = [0.4, 0.1, 2.0]
+    @test f(x) ≈ reference(x)
+    @test ForwardDiff.gradient(f, x) ≈ ForwardDiff.gradient(reference, x)
+    @test DifferentiationInterface.gradient(f, AutoMooncake(), x) ≈
+          ForwardDiff.gradient(reference, x)
+end
