@@ -80,7 +80,7 @@ end
 function Isolation(;
         onset_to_isolation_delay::Distribution,
         eligibility::IsolationEligibility = SymptomaticOnly(),
-        test_sensitivity::Union{Real, Distribution, Function} = 1.0,
+        test_sensitivity = 1.0,
         post_isolation_transmission::Real = 0.0)
     return Isolation(eligibility, onset_to_isolation_delay, test_sensitivity,
         Float64(post_isolation_transmission))

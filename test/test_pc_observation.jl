@@ -1,3 +1,27 @@
+struct _CaseDetection end
+(::_CaseDetection)(rng, ind) = isodd(ind.id) ? 1.0 : 0.0
+struct _CaseDelay end
+(::_CaseDelay)(rng, ind) = Float64(ind.id)
+struct _CaseAnchor end
+(::_CaseAnchor)(ind) = ind.infection_time + 5.0
+
+@testset "Callable observation parameters" begin
+    for obs in (PerCaseObservation(_CaseDetection(), _CaseDelay()),
+        PerCaseObservation(detection_prob = _CaseDetection(),
+        delay = _CaseDelay(), from = _CaseAnchor()))
+        state = simulate(
+            ModelSpec(BranchingProcess(Poisson(0.0), Exponential(1.0));
+                observation = obs);
+            n_initial = 4, rng = StableRNG(7))
+        for ind in state.individuals
+            @test ind.state[:reported] == isodd(ind.id)
+            offset = obs.from isa _CaseAnchor ? 5.0 : 0.0
+            @test ind.state[:report_time] == ind.infection_time + offset + ind.id
+        end
+        @test_throws ArgumentError EpiBranch.scalar_detection_prob(obs)
+    end
+end
+
 @testset "PerCaseObservation trait seams" begin
     @testset "Default keyword constructor reproduces previous behaviour" begin
         o = PerCaseObservation()

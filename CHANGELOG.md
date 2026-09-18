@@ -9,6 +9,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- Callable objects can supply observation probabilities, delays and anchors,
+  attribute-builder parameters, isolation test sensitivity and scheduling
+  predicates, using the same signatures as ordinary functions.
+
 - A worked recipe for repeat group vaccination visits using existing coverage,
   dose-delay distributions and individual attributes to distinguish temporary
   absence from permanent refusal.

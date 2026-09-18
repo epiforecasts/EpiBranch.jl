@@ -1,3 +1,23 @@
+struct _CaseSensitivity end
+(::_CaseSensitivity)(rng, ind) = isodd(ind.id) ? 1.0 : 0.0
+struct _PolicyEnabled
+    enabled::Bool
+end
+(p::_PolicyEnabled)(state) = p.enabled
+
+@testset "Callable isolation and scheduling parameters" begin
+    for enabled in (false, true)
+        iso = Isolation(onset_to_isolation_delay = Dirac(1.0),
+            test_sensitivity = _CaseSensitivity())
+        model = ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0));
+            attributes = clinical_presentation(incubation_period = Dirac(2.0)),
+            interventions = [Scheduled(iso, _PolicyEnabled(enabled))])
+        state = simulate(model; n_initial = 4, rng = StableRNG(7))
+        @test all(is_isolated(ind) == (enabled && isodd(ind.id))
+        for ind in state.individuals)
+    end
+end
+
 # A minimal intervention that overrides nothing, used to check the protocol's
 # defaults are inert.
 struct _NoTraceIntervention <: AbstractIntervention end

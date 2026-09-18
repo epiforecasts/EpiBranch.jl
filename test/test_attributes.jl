@@ -1,6 +1,11 @@
 struct _AttributeTagger end
 (::_AttributeTagger)(rng, ind) = (ind.state[:tag] = ind.id)
 
+struct _AttributeValue{T}
+    value::T
+end
+(f::_AttributeValue)(rng, ind) = f.value
+
 @testset "Attributes builders" begin
     @testset "Callable structs compose with attribute builders" begin
         for attributes in (
@@ -14,6 +19,24 @@ struct _AttributeTagger end
             @test all(ind.state[:tag] == ind.id for ind in state.individuals)
             @test all(haskey(ind.state, :group) for ind in state.individuals)
         end
+    end
+
+    @testset "Callable parameter objects" begin
+        attrs = [
+            clinical_presentation(incubation_period = Dirac(2.0),
+                prob_asymptomatic = _AttributeValue(0.0)),
+            transmission_traits(susceptibility = _AttributeValue(0.4),
+                infectiousness = _AttributeValue(0.7)),
+            groups(1), vaccine_acceptance(propensity = _AttributeValue(0.6))]
+        run = simulate(
+            ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0));
+                attributes = attrs);
+            n_initial = 3, rng = StableRNG(1))
+        @test all(ind.susceptibility == 0.4 for ind in run.individuals)
+        @test all(ind.infectiousness == 0.7 for ind in run.individuals)
+        @test all(ind.state[:vaccine_acceptance] == 0.6 for ind in run.individuals)
+        @test all(ind.state[:onset_time] == ind.infection_time + 2.0
+        for ind in run.individuals)
     end
 
     @testset "transmission_traits" begin

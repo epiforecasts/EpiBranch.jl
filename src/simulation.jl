@@ -1221,7 +1221,7 @@ attributes = [
 See also [`demographics`](@ref).
 """
 function clinical_presentation(; incubation_period::Distribution,
-        prob_asymptomatic::Union{Real, Distribution, Function} = 0.0)
+        prob_asymptomatic = 0.0)
     return function (rng, ind)
         pa = _sample_value(prob_asymptomatic, rng, ind)
         is_asymp = rand(rng) < pa
@@ -1324,7 +1324,7 @@ Each argument accepts:
 
 - a `Real`: assigned directly to every individual.
 - a `Distribution`: sampled per individual via `rand(rng, dist)`.
-- a `Function` `(rng, ind) -> value`: called per individual; the
+- a callable `(rng, ind) -> value`: called per individual; the
   returned value is assigned. Use this for attribute-dependent rules
   (e.g. age-conditional susceptibility) — place the builder after
   `demographics` in the attributes list so `ind.state[:age]` is set first.
@@ -1367,8 +1367,8 @@ not cover.
 See also [`clinical_presentation`](@ref), [`demographics`](@ref).
 """
 function transmission_traits(;
-        susceptibility::Union{Real, Distribution, Function} = 1.0,
-        infectiousness::Union{Real, Distribution, Function} = 1.0)
+        susceptibility = 1.0,
+        infectiousness = 1.0)
     sus = _trait_sampler(susceptibility)
     inf = _trait_sampler(infectiousness)
     return function (rng, ind)
@@ -1382,7 +1382,7 @@ _trait_sampler(x::Real) =
         (rng, ind) -> v
     end
 _trait_sampler(d::Distribution) = (rng, ind) -> float(rand(rng, d))
-_trait_sampler(f::Function) = (rng, ind) -> float(f(rng, ind))
+_trait_sampler(f) = (rng, ind) -> float(f(rng, ind))
 
 """
     vaccine_acceptance(; propensity, group_key = :group, key = :vaccine_acceptance)
@@ -1442,7 +1442,7 @@ See also [`groups`](@ref), [`clinical_presentation`](@ref),
 [`demographics`](@ref).
 """
 function vaccine_acceptance(;
-        propensity::Union{Real, Distribution, Function},
+        propensity,
         group_key::Symbol = :group,
         key::Symbol = :vaccine_acceptance)
     return GroupAttribute(key, group_key, propensity, Dict{Any, Any}())
