@@ -23,7 +23,8 @@ Household-structured transmission. `sizes` gives the size of each household (so
 within-household **contact interval** — the one required input — any continuous
 `Distributions.jl` distribution on the positive reals, or a callable
 `(infector, susceptible) -> Distribution` for covariate models, or a
-[`ContextualKernel`](@ref) that also reads the infector's infection time. The kernel times
+[`ContextualKernel`](@ref) that also reads the infector's infection time,
+or a [`StatefulKernel`](@ref) with sampled attributes and dated histories. The kernel times
 each infectious contact from the infector's `from` state.
 
 The process describes the transmission alone. The natural history is a `progression`

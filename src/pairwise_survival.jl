@@ -49,8 +49,8 @@ Base.length(d::PairwiseSurvivalData) = length(d.sus)
 # callable `r -> Distribution` through which covariates enter.
 _rowkernel(k::ContinuousUnivariateDistribution, r) = k
 _rowkernel(k, r) = k(r)
-function _rowkernel(::Union{ContextualKernel, CalendarKernel}, r)
-    throw(ArgumentError("ContextualKernel and CalendarKernel require an InfectionLayer with source times; " *
+function _rowkernel(::Union{ContextualKernel, CalendarKernel, StatefulKernel}, r)
+    throw(ArgumentError("ContextualKernel, CalendarKernel and StatefulKernel require an InfectionLayer with source times; " *
                         "for counting-process rows, supply a row-indexed kernel with those data"))
 end
 

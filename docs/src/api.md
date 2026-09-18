@@ -28,6 +28,8 @@ household_final_size
 ```@docs
 ContextualKernel
 CalendarKernel
+StatefulKernel
+record_kernel
 PairContext
 EpiBranch.pair_kernel
 pairwise_surv_loglik

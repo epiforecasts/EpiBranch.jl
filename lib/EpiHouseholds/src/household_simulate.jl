@@ -53,20 +53,23 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
     # Reuse the population lookup across household races.
     initial_cases = sim_opts.initial_cases === nothing ? nothing :
                     Set(sim_opts.initial_cases)
-    for mem in model.members
+    live = EpiBranch._live_kernel(model.kernel)
+    races = live ? (collect(eachindex(model.household_of)),) : model.members
+    for mem in races
         EpiBranch._sellke_race!(state, mem, rng;
             from = from, until = model.until, interventions = interventions,
             risks = EpiBranch.transmission_risks(model),
-            seed! = (best, members, r) -> _seed_clique!(
-                best, members, state, model.external_hazard, Tobs, r;
-                initial_cases = initial_cases),
+            refresh_kernels = live,
+            seed! = (best, members, r) -> _seed_household_race!(
+                best, members, model, state, Tobs, r, initial_cases, live),
             introduction = _ext_active(model.external_hazard) ?
                            (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
             targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid, st, from))
-            for oid in mem if oid != inf),
+            for oid in model.members[model.household_of[inf]] if oid != inf),
             # A case's contacts are its household-mates, traced whether or not
             # transmission reached them.
-            contacts = (inf, st) -> (oid for oid in mem if oid != inf))
+            contacts = (inf, st) -> (oid
+            for oid in model.members[model.household_of[inf]] if oid != inf))
     end
 
     _reconcile_sellke_bookkeeping!(state)
@@ -99,7 +102,7 @@ end
 # susceptible) pair: a shared distribution, or a callable for covariate models.
 function _pairkernel(k, i, j, state, from)
     EpiBranch.pair_kernel(k, i, j, state.individuals[i].infection_time,
-        EpiBranch._window_open(state.individuals[i], from))
+        EpiBranch._window_open(state.individuals[i], from), state)
 end
 
 function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpts)
@@ -117,4 +120,16 @@ function _validate_household_capacity(iv::CapacityConstrained)
         "finite-period capacity budgets require chronological admission across households; " *
         "use period = Inf for a shared lifetime budget, or simulate one household"))
     _validate_household_capacity(iv.intervention)
+end
+
+function _seed_household_race!(best, members, model, state, Tobs, rng, initial_cases, live)
+    if live
+        for mem in model.members
+            _seed_clique!(view(best, mem), mem, state, model.external_hazard, Tobs, rng;
+                initial_cases)
+        end
+    else
+        _seed_clique!(best, members, state, model.external_hazard, Tobs, rng; initial_cases)
+    end
+    return nothing
 end
