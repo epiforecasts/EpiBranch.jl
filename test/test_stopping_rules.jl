@@ -92,3 +92,27 @@ end
     @test opts.stopping_rules == rules
     @test opts.stopping_rules isa Vector{AbstractStoppingRule}
 end
+
+@testset "Initial-case control validation and population mapping" begin
+    ids = [3, 9]
+    opts = SimOpts(; initial_cases = ids)
+    @test opts.n_initial == 2
+    push!(ids, 12)
+    @test opts.initial_cases == [3, 9]
+    @test_throws ArgumentError SimOpts(; initial_cases = [3, 3])
+    @test_throws ArgumentError SimOpts(; initial_cases = [0])
+    @test_throws ArgumentError SimOpts(; initial_cases = [-1])
+    @test_throws ArgumentError SimOpts(; initial_cases = [3], n_initial = 1)
+    @test EpiBranch._validate_initial_case_ids(opts, 9, 0.0) === nothing
+    @test_throws ArgumentError EpiBranch._validate_initial_case_ids(opts, 8, 0.0)
+    @test_throws ArgumentError EpiBranch._validate_initial_case_ids(opts, 9, 0.1)
+    @test EpiBranch._validate_initial_case_ids(SimOpts(), 9, 0.1) === nothing
+    @test_throws ArgumentError simulate(BranchingProcess(Poisson(0.0)); initial_cases = [3])
+    # Race positions differ from population IDs, as they do within households.
+    best = fill(Inf, 3)
+    EpiBranch._seed_initial_cases!(best, [9, 3, 6], opts.initial_cases)
+    @test best == [0.0, 0.0, Inf]
+    empty_opts = SimOpts(; initial_cases = Int[], stopping_rules = [MaxCases(10)])
+    @test empty_opts.n_initial == 0
+    @test empty_opts.initial_cases == Int[]
+end
