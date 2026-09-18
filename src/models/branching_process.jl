@@ -215,8 +215,7 @@ end
 `(rng, individual)` or `(rng, individual, state)`; the latter form lets
 the offspring rule read population-level state (e.g. cumulative cases
 for time- or policy-dependent caps)."""
-function draw_offspring(rng::AbstractRNG, offspring,
-        individual, state::SimulationState)
+function draw_offspring(rng, offspring, individual, state)
     if applicable(offspring, rng, individual, state)
         return offspring(rng, individual, state)
     end

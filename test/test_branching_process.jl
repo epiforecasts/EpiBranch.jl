@@ -141,3 +141,11 @@ struct CallableOffspringFamily end
         Infectiousness(Poisson(0.3); kernel = CallableContactInterval()))
     @test BranchingProcess(windows...).infectiousness == windows
 end
+
+struct ExternalOffspringRule end
+EpiBranch.draw_offspring(rng, ::ExternalOffspringRule, ind, state) = 0
+
+@testset "External offspring dispatch" begin
+    model = BranchingProcess(Infectiousness(ExternalOffspringRule()))
+    @test simulate(model; rng = StableRNG(42)).cumulative_cases == 1
+end
