@@ -1,0 +1,10 @@
+# A commit's report is the four coverage uploads together: the root package on
+# two Julia versions, EpiNetwork and EpiHouseholds. When a job fails, its flag
+# never uploads, and without carry-forward the files it covers vanish from the
+# report: a failing root job left main measured on 483 lines of 2913, so every
+# pull request afterwards read as a two-point drop. Carrying a missing flag
+# forward from the last commit that did upload it keeps the comparison about
+# the change rather than about which jobs happened to run.
+flag_management:
+  default_rules:
+    carryforward: true
