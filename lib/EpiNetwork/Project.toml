@@ -1,7 +1,7 @@
 name = "EpiNetwork"
 uuid = "6a3f08e3-1d24-409d-b706-3344905be32e"
 authors = ["Sebastian Funk <sebastian.funk@lshtm.ac.uk>"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
@@ -16,7 +16,7 @@ EpiNetworkGraphsExt = "Graphs"
 
 [compat]
 Distributions = "0.25"
-EpiBranch = "0.1"
+EpiBranch = "0.2"
 Graphs = "1"
 Random = "1"
 julia = "1.11"
