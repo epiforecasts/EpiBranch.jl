@@ -488,12 +488,12 @@ println("Isolation + border closure: $(round(containment_probability(results), d
 ### A custom vaccination
 
 A new vaccination differs from the built-in ones in who it reaches and when.
-What a dose does once given (`efficacy`, `severity_efficacy`,
-`delay_to_immunity`, `mode` and `dose_label`) lives in a [`VaccineEffect`](@ref),
-which every [`AbstractVaccination`](@ref) holds. A subtype stores one and
-returns it from `EpiBranch.vaccine_effect`; the rest of the vaccination
-machinery reads these parameters only through that method. The subtype then
-inherits:
+The parameters describing what a dose does once given (`efficacy`,
+`severity_efficacy`, `delay_to_immunity`, `mode` and `dose_label`) live in a
+[`VaccineEffect`](@ref), which every [`AbstractVaccination`](@ref) holds. A
+subtype stores one and returns it from `EpiBranch.vaccine_effect`; the rest of
+the vaccination machinery reads these parameters only through that method. The
+subtype then inherits:
 
 - `initialise_individual!`, which sets `:vaccinated` and `:vaccination_time`
   (namespaced by `dose_label`) on every individual;
@@ -502,8 +502,8 @@ inherits:
 - the dose-schedule checks made when a `ModelSpec` is built, so it can give the
   dose a later [`RingVaccination`](@ref) names in `requires_dose`.
 
-What it adds is an `apply_post_transmission!` method choosing whom to vaccinate
-and when. It records each dose with `EpiBranch._record_vaccination!(v, ind,
+It adds an `apply_post_transmission!` method choosing whom to vaccinate and
+when. That method records each dose with `EpiBranch._record_vaccination!(v, ind,
 vaccination_time, rng)`, which writes the per-dose keys listed under
 [Reserved keys](#Reserved-keys) and draws `efficacy`, `severity_efficacy` and
 `delay_to_immunity` for that individual, whichever of the `Real`,
@@ -564,9 +564,9 @@ function EpiBranch._record_effect_draws!(v::OlderAdultVaccination, contact, labe
 end
 ```
 
-`_store_draw!` stores nothing for a scalar, which is read straight off the
-vaccination by `EpiBranch._dose_value`, and stores the draw for a distribution
-or function.
+For a scalar, `_store_draw!` stores nothing and `EpiBranch._dose_value` reads
+the value straight off the vaccination; for a distribution or a function it
+stores the draw.
 
 ## Tree-shaping via the offspring distribution
 

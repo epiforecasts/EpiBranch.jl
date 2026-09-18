@@ -4,14 +4,14 @@ Base type for vaccination interventions. A vaccination has an
 and a `delay_to_immunity` (time between vaccination and protection).
 
 Concrete subtypes differ only in eligibility — who gets vaccinated
-when. What a dose does is a [`VaccineEffect`](@ref) (`efficacy`,
-`severity_efficacy`, `delay_to_immunity`, `mode`, `dose_label`), which each
-subtype holds and returns from [`vaccine_effect`](@ref EpiBranch.vaccine_effect);
-shared code reads these parameters only through that method. An effect only
-some vaccinations have, such as `RingVaccination`'s `post_exposure_efficacy`,
-stays on the type that has it and records its per-dose draw through the
-`_record_effect_draws!` hook. Subtypes share the
-[`competing_risk`](@ref) machinery: a vaccinated
+when. The parameters describing what a dose does (`efficacy`,
+`severity_efficacy`, `delay_to_immunity`, `mode`, `dose_label`) are a
+[`VaccineEffect`](@ref), which each subtype holds and returns from
+[`vaccine_effect`](@ref EpiBranch.vaccine_effect); shared code reads these
+parameters only through that method. An effect only some vaccinations have,
+such as `RingVaccination`'s `post_exposure_efficacy`, stays on the type that
+has it and records its per-dose draw through the `_record_effect_draws!` hook.
+Subtypes share the [`competing_risk`](@ref) machinery: a vaccinated
 contact whose immunity has developed by their transmission time has
 their infection blocked with probability `efficacy`.
 
@@ -93,10 +93,10 @@ struct AllOrNothingMode <: AbstractEffectMode end
     VaccineEffect(; efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
         mode = LeakyMode(), dose_label = :default)
 
-What a dose does once given, whoever receives it and whenever: the parameters
-every [`AbstractVaccination`](@ref) shares. A vaccination type holds one
-`VaccineEffect` and adds only the fields deciding who is vaccinated and when,
-so shared code reads these parameters through
+The parameters every [`AbstractVaccination`](@ref) shares: what a dose does
+once it is given, whoever receives it and whenever. A vaccination type holds
+one `VaccineEffect` and adds only the fields deciding who is vaccinated and
+when. Shared code reads these parameters through
 [`vaccine_effect`](@ref EpiBranch.vaccine_effect) and the accessors built on
 it, whatever the concrete type.
 
@@ -113,7 +113,7 @@ The first three each accept a `Real`, a `Distribution`, or a function
 `(rng, ind) -> Real`, drawn once per vaccinated individual when the dose is
 given.
 
-The built-in vaccinations take these as keywords and build the
+The built-in vaccinations take these as keywords and produce the
 `VaccineEffect` themselves; construct one directly for a custom vaccination
 type (see the Extending guide).
 """
@@ -150,11 +150,10 @@ drawn for one individual."""
 severity_efficacy(v::AbstractVaccination) = vaccine_effect(v).severity_efficacy
 
 """Time between vaccination and the onset of protective immunity, in any of the
-forms [`VaccineEffect`](@ref) accepts, so a varying one is a distribution or a
-function rather than a number. `_immunity_time` turns it into the event time of
-the competing risk: a `Real` is added to the vaccination time, and a varying
-delay is drawn once when the dose is given and read back from the stored
-`:immunity_time`."""
+forms [`VaccineEffect`](@ref) accepts: a `Real`, a `Distribution` or a function.
+`_immunity_time` turns it into the event time of the competing risk. A `Real` is
+added to the vaccination time; a varying delay is drawn once when the dose is
+given and read back from the stored `:immunity_time`."""
 delay_to_immunity(v::AbstractVaccination) = vaccine_effect(v).delay_to_immunity
 
 """The vaccination's [`AbstractEffectMode`](@ref)."""
@@ -176,8 +175,8 @@ dose_label(v::AbstractVaccination) = vaccine_effect(v).dose_label
 # the fields, so a parameter added to `VaccineEffect` or to one vaccination
 # type appears without further edits. The keyword constructors pass their
 # effect keywords on to `VaccineEffect` for the same reason, checking them
-# first so that a misspelt keyword is reported against the vaccination the
-# caller named.
+# first, which reports a misspelt keyword against the vaccination the caller
+# named.
 const _VACCINE_EFFECT_FIELDS = fieldnames(VaccineEffect)
 
 function _effect_getproperty(v, name::Symbol)

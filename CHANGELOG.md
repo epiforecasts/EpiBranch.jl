@@ -117,10 +117,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   exported `VaccineEffect`, which `RingVaccination`, `MassVaccination` and
   `GroupVaccination` each hold. Their keyword constructors, and reading these
   parameters as properties (`rv.efficacy`), work as before, and results for a
-  given seed are unchanged. A vaccination type of your own subtypes
-  `AbstractVaccination`, stores a `VaccineEffect` and returns it from
-  `EpiBranch.vaccine_effect` to inherit the shared dose recording, competing
-  risk and dose-schedule checks. An effect only some vaccinations have, such as
+  given seed are unchanged. A vaccination type of your own inherits the shared
+  dose recording, competing risk and dose-schedule checks by subtyping
+  `AbstractVaccination`, storing a `VaccineEffect` and returning it from
+  `EpiBranch.vaccine_effect`. An effect only some vaccinations have, such as
   `RingVaccination`'s `post_exposure_efficacy`, stays on the type that has it
   and records its per-dose draw through the `_record_effect_draws!` hook. The
   positional constructors now take the `VaccineEffect` followed by the type's

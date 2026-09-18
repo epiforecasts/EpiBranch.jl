@@ -308,7 +308,7 @@ end
     @test ForwardDiff.derivative(boost_time, 28.0) == n_boosted
 end
 
-# Efficacy and delay to immunity are carried as duals through every vaccination
+# Efficacy and delay to immunity propagate as duals through every vaccination
 # type into the state each dose records. The recorded immunity time moves one
 # for one with the delay, so its derivative is the number of doses given.
 @testset "AD through vaccination efficacy and delay to immunity" begin
