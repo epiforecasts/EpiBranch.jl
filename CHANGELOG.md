@@ -9,6 +9,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- Callable objects can supply branching-process offspring rules, generation-time
+  distributions and multi-type offspring families.
 - Candidate intervention actions separate discovery from scheduling and resource
   admission. Capacity constraints now ration actual group-vaccination members.
 - Network and household races support ring and group actions with cached discovery

@@ -117,7 +117,7 @@ descendant via `parent_id` lookup. The per-individual draw is
 The process describes the transmission alone; attach interventions, attributes
 or an observation model with a [`ModelSpec`](@ref).
 """
-function BranchingProcess(offspring::ClusterMixed, gt::Union{Distribution, Function};
+function BranchingProcess(offspring::ClusterMixed, gt;
         population_size::Union{Int, NoPopulation} = NoPopulation())
     BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, 1,
         NoTypeLabels())

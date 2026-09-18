@@ -78,8 +78,8 @@ Construct a multi-type branching process from an offspring matrix.
 type-`j` parent. `dist_fn` maps each type's R to an offspring distribution.
 """
 function BranchingProcess(offspring_matrix::Matrix{Float64},
-        dist_fn::Function,
-        gt::Union{Distribution, Function};
+        dist_fn,
+        gt;
         population_size::Union{Int, NoPopulation} = NoPopulation(),
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
     offspring = MultiTypeOffspring(offspring_matrix, dist_fn)
