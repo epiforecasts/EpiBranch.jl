@@ -1113,12 +1113,12 @@ end
 """
 Attributes-list element that draws one value per group and shares it with
 every member of that group (see [`vaccine_acceptance`](@ref)). The group is
-read from `group_key` on the individual, so whatever labels the groups —
-[`groups`](@ref), or any earlier attributes function writing that key —
-decides what the value is shared across. Values are drawn lazily, the first
-time each group is seen, and held in `cache` for the rest of the run.
+read from `group_key` on the individual, so the value is shared across
+whatever labels those groups: [`groups`](@ref), or any earlier attributes
+function writing that key. Values are drawn lazily, the first time each group
+is seen, and held in `cache` for the rest of the run.
 
-Construct with [`vaccine_acceptance`](@ref) rather than directly.
+Use [`vaccine_acceptance`](@ref) to construct one.
 """
 struct GroupAttribute{D}
     key::Symbol
@@ -1138,10 +1138,10 @@ function _apply_attributes!(attribute::GroupAttribute, rng, ind)
     return nothing
 end
 
-"""Attributes for one run. An element that caches per-run draws — a
-[`GroupAttribute`](@ref EpiBranch.GroupAttribute) — gets a fresh, empty
-cache, so one attributes object can be reused across runs and across
-threads without them sharing draws. Everything else passes through."""
+"""Attributes for one run. An element that caches per-run draws (a
+[`GroupAttribute`](@ref EpiBranch.GroupAttribute)) gets a fresh, empty cache,
+so one attributes object can be reused across runs and across threads, each
+run drawing its own values. Everything else passes through."""
 _fresh_attributes(x) = x
 function _fresh_attributes(a::GroupAttribute)
     GroupAttribute(a.key, a.group_key, a.propensity, Dict{Any, Any}())
@@ -1376,10 +1376,10 @@ _trait_sampler(f::Function) = (rng, ind) -> float(f(rng, ind))
 
 Return an attributes function that sets `key` (default `:vaccine_acceptance`)
 on each individual, drawn once per group and shared by every member of that
-group. The group is whatever the individual carries under `group_key`
+group. The group is whatever the individual holds under `group_key`
 (`:group` by default, as [`groups`](@ref) assigns it), so refusal clusters in
-the same unit [`GroupVaccination`](@ref) vaccinates, and the value a group
-holds lasts for the whole run, across generations.
+the same unit [`GroupVaccination`](@ref) vaccinates, and a group's value lasts
+for the whole run, across generations.
 
 Engagement with a response clusters by household or community: the
 contacts who evade tracing tend to be the same ones who decline a dose.
@@ -1389,21 +1389,21 @@ own; this builder supplies one. Read it back with a closure such as
 `coverage = (rng, ind) -> ind.state[:vaccine_acceptance]`, so members of one
 group share an acceptance probability while other groups draw their own.
 
-`group_key` has to be set on the individual by the time this runs, so list
-the attributes function that sets it (`groups`, or a custom one labelling
-households or villages) ahead of this one. Applying it to an individual
-without that key raises an `ArgumentError`.
+List the attributes function that sets `group_key` (`groups`, or a custom one
+labelling households or villages) ahead of this one, since the key has to be
+on the individual by the time this runs. Applying it to an individual without
+that key raises an `ArgumentError`.
 
 `propensity` accepts a `Real`, a `Distribution`, or a function
 `(rng, ind) -> Real`; it is sampled once per group, for the first member of
 that group to be created. Each member still draws its own coin against the
-shared value, so a constant `Real` propensity gives every group the same
-probability and is indistinguishable from independent per-contact draws at
-that probability. A `Distribution` propensity varies the shared probability
-group to group, giving the same average coverage as independent draws but
-more variance in per-group coverage: some groups mostly covered, others
-mostly untouched, without making any one group's outcome uniform. Only a
-propensity that is itself degenerate at `0` or `1` (e.g. `(rng, ind) ->
+shared value. A constant `Real` propensity therefore gives every group the
+same probability, indistinguishable from independent per-contact draws at that
+probability. A `Distribution` propensity varies the shared probability group to
+group, giving the same average coverage as independent draws but more variance
+in per-group coverage: some groups mostly covered, others mostly untouched,
+while any one group's members still differ among themselves. Only a propensity
+that is itself degenerate at `0` or `1` (e.g. `(rng, ind) ->
 Float64(rand(rng, Bernoulli(p)))`) makes a group accept or decline as a
 block.
 

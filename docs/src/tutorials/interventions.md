@@ -282,8 +282,8 @@ same contacts who evade tracing tend to be the ones who decline a dose.
 
 [`vaccine_acceptance`](@ref) draws an acceptance propensity once per group
 and shares it with every member of that group. The group is the `:group`
-label [`groups`](@ref) assigns, so list `groups` ahead of it in the
-attributes. `coverage` then reads the propensity back:
+label [`groups`](@ref) assigns, so `groups` comes first in the attributes
+list. `coverage` then reads the propensity back:
 
 ```@example interventions
 village = groups(20)  # 20 villages
@@ -328,7 +328,7 @@ println("Villages under 20% or over 80% covered: clustered $(round(lumpy(cluster
 
 Average coverage is the same either way. Clustering moves it out of the
 middle, leaving some villages almost fully covered and others almost
-untouched, and a per-contact coverage probability has no way to express that.
+untouched.
 
 A propensity degenerate at 0 or 1, such as
 `(rng, ind) -> Float64(rand(rng, Bernoulli(0.5)))`, makes each village accept
@@ -337,9 +337,9 @@ members drawing their own coins against a shared probability.
 
 The propensity lasts the whole run, so a village that declines still declines
 in later generations. Give [`GroupVaccination`](@ref) the same `coverage`
-closure to cluster refusal inside the unit it vaccinates, and
-[`MassVaccination`](@ref)'s `eligibility_time` can read the propensity the
-same way.
+closure to cluster refusal inside the unit it vaccinates;
+[`MassVaccination`](@ref)'s `eligibility_time` reads the propensity the same
+way.
 
 ### Mass vaccination
 
