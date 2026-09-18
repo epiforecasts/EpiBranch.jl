@@ -1269,15 +1269,20 @@ See also [`demographics`](@ref).
 """
 function clinical_presentation(; incubation_period::Distribution,
         prob_asymptomatic = 0.0)
-    return function (rng, ind)
-        pa = _sample_value(prob_asymptomatic, rng, ind)
-        is_asymp = rand(rng) < pa
-        ind.state[:asymptomatic] = is_asymp
-        # Incubation period is a host property; :onset_time follows from
-        # it and the infection time via `_set_onset_from_incubation!`.
-        ind.state[:incubation_period] = is_asymp ? NaN : rand(rng, incubation_period)
-        _set_onset_from_incubation!(ind)
-    end
+    return ClinicalPresentation(incubation_period, prob_asymptomatic)
+end
+
+struct ClinicalPresentation{D, P}
+    incubation_period::D
+    prob_asymptomatic::P
+end
+
+function (clinical::ClinicalPresentation)(rng, ind)
+    pa = _sample_value(clinical.prob_asymptomatic, rng, ind)
+    is_asymp = rand(rng) < pa
+    ind.state[:asymptomatic] = is_asymp
+    ind.state[:incubation_period] = is_asymp ? NaN : rand(rng, clinical.incubation_period)
+    _set_onset_from_incubation!(ind)
 end
 
 """

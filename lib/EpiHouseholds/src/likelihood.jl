@@ -45,8 +45,8 @@ EpiBranch.contact_structure(d::HouseholdInfections) = d.household_of
 
 Read the [`InfectionLayer`](@ref) out of a `state` simulated from `model`, with
 each member's household as the contact structure. The infectious windows are
-read as described for `InfectionLayer`, which makes the
-`simulate → loglikelihood` round trip exact. A bare `HouseholdProcess` is
+read as described for `InfectionLayer`. Additional hazard modifications require
+an effective kernel when scoring; extraction records the windows only. A bare `HouseholdProcess` is
 accepted too (its window opens at `:infection`, and it has no interventions).
 """
 function household_infections(state::SimulationState,
@@ -75,6 +75,7 @@ end
 
 function Distributions.loglikelihood(data::HouseholdInfections,
         model::ModelSpec{<:HouseholdProcess})
+    EpiBranch._validate_infection_likelihood(model)
     loglikelihood(data, model.process)
 end
 

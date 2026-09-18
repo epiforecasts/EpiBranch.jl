@@ -11,3 +11,5 @@ using Graphs
     include("test_network_likelihood.jl")
     include("test_contextual_kernels.jl")
 end
+
+include("test_likelihood_composition.jl")
