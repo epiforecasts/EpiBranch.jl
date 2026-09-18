@@ -197,31 +197,32 @@ ones your intervention needs (all default to no-ops).
 | `initialise_individual!(iv, individual, state)` | Once when each individual is created | An `Individual` whose typed fields are set but whose `state` dict is empty | `nothing` (mutate `individual.state` in place) |
 | `resolve_individual!(iv, individual, state)` | Once per active individual at the start of each generation, before offspring are drawn | The parent for the upcoming step | `nothing` (mutate `individual.state` in place) |
 | `apply_post_transmission!(iv, state, new_contacts)` | Once per generation after all contacts for that generation have been created (across every active parent) | A `Vector{Individual}` of the new contacts | `nothing` (mutate any of the contacts' `state` in place) |
-| `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair during infection resolution, after `apply_post_transmission!` has run | The parent and a single new contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
+| `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair: on the generation engine during infection resolution, after `apply_post_transmission!` has run; on the continuous-time models as each infection is proposed | The parent and a single contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
 | `keep_active(iv, state, targets, is_new)` | Once per generation after infection is resolved, while the engine builds the next active set | This generation's `targets` and an `is_new` flag per target | An iterable of contact ids to keep generating contacts into the next generation (default: none) |
 | `trace_contacts!(iv, state, infector, contacts[, not_before])` | Continuous-time models only: once per case, when the race settles it | The case, the contacts it reached that are not yet settled, and, from a model whose contacts can come about after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing` (mutate the contacts' `state` in place) |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to gather contacts at all | Nothing | `true` if this intervention implements `trace_contacts!` (default `false`) |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
+| `risk_applies(iv, route)` | Continuous-time models selecting risks for a route (`nothing` for an external introduction) | Nothing | `Bool`; defaults to `true` |
 
 ### Which hooks fire on which engine
 
 The hooks above are not all available everywhere, because the engines are
 built differently. The generation-based engine creates a fresh `Individual`
-for every contact, infected or not, so it can hand you contact objects and
-resolve a per-pair decision for each. The continuous-time (Sellke) models
-have no such objects: every node exists from the start and the simulation
-only settles *when* each is infected, by a race between contact-interval
-draws. There is no per-pair decision point to hang a `Risk` on, and the one
-seam an intervention has is the infectious window.
+for every contact, infected or not, so it can hand you a batch of contact
+objects. The continuous-time (Sellke) models have no such objects: every node
+exists from the start and the simulation only settles *when* each is infected,
+by a race between contact-interval draws. What they do have is the potential
+infection itself — a drawn time for a named pair — so a `Risk` has somewhere to
+hang after all, alongside the infectious window.
 
 | Hook | Generation engine | Network / household (Sellke race) | Homogeneous pool |
 |---|---|---|---|
 | `initialise_individual!` | yes | yes | yes |
 | `resolve_individual!` | yes | yes | yes |
+| `competing_risk` | yes | yes | yes |
 | `infectious_removal_time` | not read | yes | yes |
 | `trace_contacts!` | not called | yes | no contact set |
 | `apply_post_transmission!` | yes | not called | not called |
-| `competing_risk` | yes | not called | not called |
 | `keep_active` | yes | not called | not called |
 
 What this means in practice:
@@ -231,9 +232,81 @@ What this means in practice:
   infectious window, which every engine has.
 - An intervention whose effect is a **per-contact competing risk** against
   the infection event — leaky vaccination, a partial-efficacy prophylaxis —
-  works only on the generation-based engine. On the continuous-time models
-  it is reported with a warning and has no effect, rather than being
-  silently ignored.
+  works everywhere too, and so do per-individual susceptibility and
+  infectiousness, which ride the same surface. The continuous-time models put
+  each potential infection to the composed risks at the moment they propose it,
+  against the time they propose it for. A blocked contact does not transmit and
+  the contact process carries on: on a graph the pair's next contact is drawn
+  from its own hazard conditioned on falling later, and in the mass-action pool
+  the susceptible waits for the next contact with a fresh resistance. Blocking
+  each contact with probability `p` therefore thins the force of infection to
+  `(1 - p)` of it on both, so the two agree — a two-person clique with a
+  one-day mean contact interval and a two-day infectious period is the same
+  process as a pool of two at `β = 2`, and at efficacy 0.5 both infect
+  `1 - exp(-1) = 0.63` of the time.
+- Per-individual susceptibility and infectiousness reach the same thinning by a
+  shorter route. They are constants of the two people rather than something that
+  arrives at a time, so the models fold them into the draw: a multiplier `m`
+  turns a pair's contact-interval survival `S(t)` into `S(t)^m`, the pool scales
+  each susceptible's threshold and weights each infective's share of the force,
+  and a community introduction's hazard is scaled the same way. A multiplier of
+  0 never transmits and draws nothing. Static proportional effects can use these
+  traits or an effective kernel directly, avoiding repeated rejected contacts.
+- Repeated-contact sampling after a blocked proposal requires finite remaining
+  integrated hazard. A race rejects a continuation if the kernel's survival is
+  zero at the end of its window, including an unbounded Exponential window or a
+  continuous bounded kernel whose support ends inside the window. A pool
+  requires finite removal times for all active sources when a contact is
+  blocked. These cases raise `ArgumentError`, even for a risk that might later
+  permit infection: an opaque callback cannot establish eventual termination.
+  Supply a finite infectious/introduction window with nonzero kernel survival
+  at its end, or represent static protection through host traits or the kernel.
+  A `Dirac` kernel has no contact after its atom and needs no continuation.
+  Numerical accuracy still depends on the kernel's survival implementation:
+  one computed as `1 - cdf` loses tail precision when the CDF rounds to one.
+- That is the per-exposure reading of a leaky vaccine, and it is **not** what
+  the same `Risk`
+  does on the generation engine. There a parent's contacts are a fixed set of
+  draws, so a blocked one is a transmission lost with nothing to follow it, and
+  an efficacy of 0.5 halves that pair's transmissions. The same efficacy bites
+  less per pair on a continuous-time model, because the pair goes on meeting
+  (0.63 above, against 0.43 for a halved probability).
+- Thinning the hazard leaves the pair's contact process in the family the
+  pairwise likelihood works with, its hazard scaled: a constant susceptibility
+  is still representable wherever that family is closed under proportional
+  hazards, as an exponential contact interval is. A risk that arrives partway
+  through the window — an isolation, or a dose a trace gives — is not, so
+  simulating with those and scoring the result with `loglikelihood` will
+  disagree.
+- A community introduction, on a model with an `external_hazard`, is put to the
+  risks that act on the person being introduced: their susceptibility, a
+  vaccine's protection, a risk of your own. Isolation and quarantine do not
+  remove an external source. An introduction has no infector record, so the
+  person stands in for one; return `nothing` from your risk when
+  `parent === contact` if it reads properties a community source cannot have.
+- [`EpiBranch.risk_applies`](@ref) selects which routes an intervention's risk
+  acts on. It receives the existing route window, or `nothing` for a community
+  introduction. Its default `true` keeps vaccination protection on every route.
+  Isolation and contact tracing test whether the route lists
+  `EpiBranch.INTERVENTION_REMOVAL` in `until`. Wrappers forward the predicate.
+  The generation engine applies every risk to every contact; model-provided
+  risks and host multipliers also apply on every route.
+- An external intervention can choose any subset of routes without adding a
+  scope type. For example, a removal effect can follow the window's censoring:
+
+  ```julia
+  EpiBranch.risk_applies(::MyLeakyQuarantine, route) =
+      route !== nothing && EpiBranch.INTERVENTION_REMOVAL in route.until
+  ```
+- An intervention that reaches its targets through `apply_post_transmission!`
+  or `keep_active` — `MassVaccination`'s rollout doses each new contact as the
+  engine creates it — has nothing to act on when no contacts are created. You
+  need not declare this: when your type has a method of its own for either hook,
+  the continuous-time models name it in their warning. The exception is an
+  intervention that also traces contacts (`traces_contacts` returns `true`),
+  whose `trace_contacts!` is taken as the continuous-time counterpart of those
+  hooks; it is honoured on a model that can name a case's contacts and reported
+  on one that cannot, such as the mass-action pool.
 - **Contact tracing** spans the two. Its action is a removal, so it applies
   on both, but it needs to know who a case's contacts were. The generation
   engine reads that off each contact's `parent_id`; the continuous-time
@@ -271,8 +344,9 @@ Ordering guarantees:
 - `apply_post_transmission!` runs strictly before any `competing_risk` call, so a competing risk can read whatever post-transmission hook wrote on the contact (e.g. `:vaccination_time`).
 - `keep_active` runs after infection is resolved, so it can read each target's `:infected` and anything `apply_post_transmission!` wrote on it this generation.
 - Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
+- On the continuous-time models the counterpart holds through tracing: a case is traced when it settles, before it proposes any infection of its own, so a risk can read what `trace_contacts!` wrote on a contact. Built-in vaccination delivery still uses the generation engine’s post-transmission hook and is reported as unsupported on the continuous-time path.
 
-A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms: `RingVaccination` returns a susceptibility risk on the contact alongside a risk on the parent for reduced onward infectiousness.
+A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. On the continuous-time models the transmission time it is compared against is the candidate infection time the race has just drawn for that pair. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms: `RingVaccination` returns a susceptibility risk on the contact alongside a risk on the parent for reduced onward infectiousness.
 
 Tree-shaping changes — capping offspring per parent, gathering-size limits, anything that's really "this parent produces fewer contacts than its natural offspring distribution would say" — belong in the offspring distribution itself, not in the intervention protocol. See [Tree-shaping via the offspring distribution](#tree-shaping-via-the-offspring-distribution) below.
 
@@ -392,6 +466,12 @@ A trait of `1.0` contributes no risk, so the defaults are silent unless
 an attributes function sets a susceptibility or infectiousness below one.
 You can replace or extend them by adding your own `competing_risk` the
 same way.
+
+`HostSusceptibility` and `InfectorInfectiousness` are the generation engine's
+sources for the two traits. The continuous-time models carry the same two as
+multipliers on the transmission hazard instead (see above), so they do not
+resolve them contact by contact; everything else on this surface, yours
+included, is resolved there as it is here.
 
 ### Growing the contact graph with `keep_active`
 
@@ -1291,8 +1371,9 @@ group a susceptible belongs to. You supply it as two pieces:
    group, which recovers the homogeneous case.
 2. **The force of infection** `force(group, counts)` — the hazard on a
    susceptible in a given group. `counts` is a `Dict` mapping each mixing group to
-   how many individuals are currently infectious in it. Homogeneous mixing is
-   `β/N` times the total infectious count; structured mixing applies a contact
+   the infectiousness-weighted number currently infectious in it, each case
+   contributing its own `infectiousness` (1 by default). Homogeneous mixing is
+   `β/N` times the total of those counts; structured mixing applies a contact
    matrix to the per-group prevalence.
 
 A mixing group is always the *tuple* of `mixing_by` values, so it stays a tuple
@@ -1366,6 +1447,19 @@ as its group and a `counts` Dict keyed by `(band, ses)` pairs. From there you ca
 write whatever contact structure you want: a full matrix over every
 `(band, ses)` combination, or a factorised one where band and SES contacts
 multiply independently.
+
+Competing risks carry over with one restriction. The pool attributes each
+contact to an infector drawn in proportion to infectiousness, which is a uniform
+draw while every infective is at the default, because `force` does not say how
+much each infective contributes to it. With more than one mixing group that
+attribution is not weighted by the contact matrix, so a risk that depends on who
+the infector is would be applied against the wrong infectors. The pool therefore
+refuses, with an error, a leaky `Isolation` and any intervention with its own
+`competing_risk` other than the vaccinations' protection of the contact.
+Per-individual infectiousness is not refused: it reaches the force through the
+weighted counts, so it needs no attribution to be exact. Risks on the contact
+alone, such as a per-individual susceptibility, apply exactly. Differences in infectiousness
+between groups belong in `force`.
 
 The natural history, isolation and line-list output are all unchanged from
 `HomogeneousProcess`. Internally these map to the engine's build, time, intervene

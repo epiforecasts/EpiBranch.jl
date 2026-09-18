@@ -713,6 +713,11 @@ function infectious_removal_time(::ContactTracing, ind::Individual)
     get(ind.state, :quarantined, false) ? isolation_time(ind) : Inf
 end
 
+# A quarantine is a removal, so it reaches only the routes a removal can cut.
+function risk_applies(::ContactTracing, route)
+    route !== nothing && INTERVENTION_REMOVAL in route.until
+end
+
 """Keep uninfected ring members generating contacts so the ring can
 reach contacts-of-contacts. A traced contact with ring budget left
 stays active for one more generation; the [`InfectiousSource`](@ref

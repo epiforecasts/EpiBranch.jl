@@ -12,6 +12,16 @@ using ADTypes: AutoMooncake
 # ModelSpec. A recovery removal (SIR) unless a latent step is prepended (SEIR).
 _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = true)]
 
+# Sample variance, for the standard error of a mean.
+_var(v) = (m = sum(v) / length(v); sum((x - m)^2 for x in v) / (length(v) - 1))
+
+# A per-contact risk written from outside the package, blocking every
+# transmission it is asked about.
+struct BlockEverything <: EpiBranch.AbstractIntervention end
+function EpiBranch.competing_risk(::BlockEverything, parent, contact, state)
+    Risk(block_probability = 1.0)
+end
+
 @testset "EpiHouseholds.jl" begin
     @testset "construction" begin
         m = HouseholdProcess([3, 4, 2], Exponential(3.0))
@@ -116,6 +126,85 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test iso_cases < base_cases
     end
 
+    @testset "per-individual susceptibility and infectiousness apply" begin
+        # The race puts each contact it proposes to the composed competing risks,
+        # and a blocked contact leaves the pair meeting, so a susceptibility of s
+        # scales each pair's hazard by s. Households of six with a mean contact
+        # interval of six days and a two-day infectious period are far enough
+        # from saturation for that to show in the outbreak size.
+        sizes = fill(6, 200)
+        build(attrs) = ModelSpec(HouseholdProcess(sizes, Exponential(6.0));
+            progression = _sir(2.0), attributes = attrs)
+        meansize(attrs) = sum(simulate(build(attrs);
+                                  rng = StableRNG(s)).cumulative_cases for s in 1:10) / 10
+
+        full = meansize(transmission_traits(susceptibility = 1.0))
+        half = meansize(transmission_traits(susceptibility = 0.5))
+        @test half < full
+        @test meansize(transmission_traits(susceptibility = 0.2)) < half
+
+        # Susceptibility 0 blocks every contact, however many the pair makes:
+        # only the one index case per household is ever infected.
+        blocked = simulate(build(transmission_traits(susceptibility = 0.0));
+            rng = StableRNG(1))
+        @test blocked.cumulative_cases == length(sizes)
+
+        # Infectiousness acts on the other side of the same pair.
+        @test meansize(transmission_traits(infectiousness = 0.5)) < full
+        silent = simulate(build(transmission_traits(infectiousness = 0.0));
+            rng = StableRNG(1))
+        @test silent.cumulative_cases == length(sizes)
+    end
+
+    @testset "a blocked contact thins the hazard, as in the pool" begin
+        # A clique whose pairs meet at rate 1 is the same process as a fixed-size
+        # pool of the same size at β = N, because a susceptible there feels
+        # β/N = 1 per infective. A per-contact block thins the hazard on both, so
+        # the two agree with a susceptibility as well as without one.
+        prog = [Transition(:recovered; from = :infection, delay = 2.0, terminal = true)]
+        function race_sizes(size, sus)
+            spec = ModelSpec(HouseholdProcess(fill(size, 400), Exponential(1.0));
+                progression = prog,
+                attributes = transmission_traits(susceptibility = sus))
+            sizes = Float64[]
+            for s in 1:5
+                st = simulate(spec; rng = StableRNG(s))
+                counts = zeros(Int, 400)
+                for ind in st.individuals
+                    is_infected(ind) && (counts[(ind.id - 1) ÷ size + 1] += 1)
+                end
+                append!(sizes, counts)
+            end
+            return sizes
+        end
+        function pool_sizes(size, sus)
+            spec = ModelSpec(
+                HomogeneousProcess(; transmission_rate = float(size),
+                    population_size = size);
+                progression = prog,
+                attributes = transmission_traits(susceptibility = sus))
+            return [Float64(simulate(spec; rng = StableRNG(s), n_initial = 1).cumulative_cases)
+                    for s in 1:2000]
+        end
+        # A two-person clique at susceptibility 0.5: the secondary case is
+        # infected with probability 1 - exp(-0.5 * 2), where blocking the
+        # transmission probability instead would give half of 1 - exp(-2).
+        pair = race_sizes(2, 0.5)
+        @test isapprox(sum(pair) / length(pair) - 1, 1 - exp(-1.0); atol = 0.03)
+        @test sum(pair) / length(pair) - 1 > 0.5 * (1 - exp(-2.0)) + 0.05
+
+        for (size, sus) in ((2, 1.0), (2, 0.5), (5, 0.5))
+            race = race_sizes(size, sus)
+            pool = pool_sizes(size, sus)
+            # Three standard errors of the difference, and never fewer than 0.05
+            # cases, so a real disagreement of the kind a probability-thinning
+            # race showed (4.07 against 4.82 for households of five) fails.
+            se = sqrt(_var(race) / length(race) + _var(pool) / length(pool))
+            @test abs(sum(race) / length(race) - sum(pool) / length(pool)) <
+                  max(3 * se, 0.05)
+        end
+    end
+
     @testset "onset is measured from each case's own infection time" begin
         # Members are created, and their incubation periods drawn, before the
         # race sets their infection times. Isolation depends on onset, so onset
@@ -164,6 +253,22 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         @test count(df.index) >= 1                 # community introductions happened
         @test size(df, 1) > count(df.index)        # plus within-household spread
         @test count(df.index) != length(m.process.members) # not the one-index fallback
+
+        # An introduction is put to the risks like any other contact: a member
+        # with no susceptibility is never introduced from the community, and
+        # neither is anyone while a risk blocks every transmission.
+        build(attrs, ivs) = ModelSpec(
+            HouseholdProcess(fill(4, 300), Exponential(3.0);
+                external_hazard = 0.05, obs_end = 30.0);
+            progression = _sir(6.0), attributes = attrs, interventions = ivs)
+        @test !any(is_infected,
+            simulate(
+                build(transmission_traits(susceptibility = 0.0),
+                    AbstractIntervention[]);
+                rng = StableRNG(5)).individuals)
+        @test !any(is_infected,
+            simulate(build(EpiBranch.NoAttributes(), [BlockEverything()]);
+                rng = StableRNG(5)).individuals)
     end
 
     @testset "simulate → loglikelihood round trip recovers the kernel" begin

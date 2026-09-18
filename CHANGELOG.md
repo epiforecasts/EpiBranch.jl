@@ -198,6 +198,58 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Changed
 
+- The continuous-time models (`HomogeneousProcess`, and `NetworkProcess`,
+  `RoutedNetwork` and `HouseholdProcess` in the companion packages) now resolve
+  per-contact competing risks, so an intervention whose effect is a per-contact
+  block — a leaky `Isolation`, a vaccine's efficacy, or a risk a user writes
+  themselves — takes effect there. Each contact is put to the composed risks at
+  the moment it happens, as on the generation-based engine, and a blocked
+  contact does not transmit; the contact process then carries on, so blocking a
+  fraction `p` of the contacts thins the force of infection to `(1 - p)` of it.
+  That is the per-exposure reading of a leaky vaccine, and it makes the race and
+  the pool the same process: a two-person clique meeting at rate 1 over a
+  two-day infectious period, at efficacy 0.5, infects `1 - exp(-1)` of the time
+  on both. It is not the generation engine's reading, where a parent's contacts
+  are a fixed set of draws and a blocked one is simply lost.
+- Per-individual susceptibility and infectiousness apply on the continuous-time
+  models, as multipliers on the transmission hazard: they scale the rate at
+  which a pair meets, the pressure a susceptible in the pool absorbs, the weight
+  an infective adds to the pool's force, and the hazard a community
+  introduction arrives at. A multiplier of 0 never transmits.
+- Community introductions under an `external_hazard` are put to the risks that
+  act on the person being introduced — their susceptibility, a vaccine's
+  protection, a risk of the model's or the user's own — so a vaccine protects
+  against them too; before, they bypassed every risk. Isolation and quarantine risks are
+  not applied there: they stand in for removing an infector, and an
+  introduction's source is outside the population.
+- A model with per-contact risks is no longer the exact generative model of the
+  pairwise likelihood unless the risk is in force throughout and the kernel
+  family is closed under proportional hazards. A model with no risks in play
+  draws nothing extra and reproduces earlier runs exactly for the same seed.
+  Repeated contacts after a block require finite remaining integrated hazard
+  on a race, or finite removal times for active pool sources; unsupported
+  continuations raise `ArgumentError`. Static protection can instead be
+  composed into the kernel or host traits.
+- On a model with several routes, the routes an intervention's risks reach are
+  selected by `EpiBranch.risk_applies(intervention, route)`: `Isolation` and
+  `ContactTracing`
+  reach only the routes that list `EpiBranch.INTERVENTION_REMOVAL` in their
+  `until`, while vaccinations, and by default any other intervention, reach
+  every route.
+- A fixed-size pool with more than one mixing type refuses risks that depend on
+  the infector (a leaky `Isolation`, or an intervention's own `competing_risk`
+  other than a vaccine's protection of the contact), because it draws each
+  contact's infector without weighting by the mixing structure. Risks acting on
+  the contact alone still apply, and so does per-individual infectiousness,
+  which is carried by the force itself.
+- The continuous-time models' warning about interventions they cannot honour
+  now names only those that reach their targets through the generation engine's
+  post-transmission hooks — vaccination delivery —
+  and `ContactTracing` on the mass-action
+  pool, which has no pairwise contact structure to act along. An intervention
+  defined outside the package is named too when it has its own
+  `apply_post_transmission!` or `keep_active` method and does not trace
+  contacts, with nothing for its author to declare.
 - Individuals created up front by a structure-driven model and never infected
   now have `infection_time = NaN` in state, which is also the default of
   `add_individuals!`. They previously had `0.0`, which looked the same as a case

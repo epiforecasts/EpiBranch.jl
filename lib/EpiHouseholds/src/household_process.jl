@@ -63,11 +63,18 @@ household-mates are its contacts, and quarantining a traced contact closes that
 contact's window in turn. Because a case's trace time is only known once the
 race has settled its timeline, tracing reaches the contacts that are not yet
 themselves settled, which in a fast-mixing household means the ones infected
-later. An intervention whose effect is purely a per-contact competing risk
-against the infection event, such as leaky vaccination, has no window
-representation and is reported with a warning rather than applied.
-Non-pharmaceutical control expressed as a removal `Transition` in the
-progression always applies.
+later. An intervention whose effect is a per-contact competing risk, such as a
+leaky isolation or a vaccine's efficacy, is resolved against each infection the
+race proposes between household members; a blocked proposal is declined and the
+pair goes on meeting, so blocking a fraction of the contacts thins that pair's
+hazard by the same fraction. Per-individual susceptibility and infectiousness
+reach the same thinning through the contact-interval draw, which turns a pair's
+survival `S(t)` into `S(t)^m`. Built-in vaccination delivery
+(`RingVaccination`, `MassVaccination` and `GroupVaccination`) requires the
+generation engine's post-transmission hook and is reported with a warning
+rather than applied here. Existing protection can instead use host traits,
+a composed kernel or a user-defined competing risk. Non-pharmaceutical control expressed as a removal
+`Transition` in the progression always applies.
 
 # Example
 

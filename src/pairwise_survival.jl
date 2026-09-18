@@ -437,6 +437,9 @@ _ext_survival(d::ContinuousUnivariateDistribution) = d
 
 # A community introduction time drawn under the hazard.
 _ext_draw(rng::AbstractRNG, source) = rand(rng, _ext_survival(source))
+function _ext_draw(rng::AbstractRNG, source, susceptibility)
+    _traits_scaled_draw(rng, _ext_survival(source), susceptibility)
+end
 
 # ── Evaluation ───────────────────────────────────────────────────────
 

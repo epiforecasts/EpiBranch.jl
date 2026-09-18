@@ -107,15 +107,23 @@ spreads on is a modelling choice. A few that map onto common assumptions:
   the distances, so take the first element.
 
 The kernel, progression and attributes attach exactly as before — only the
-source of the graph changes. Interventions attach through the infectious
-window: one that removes a case from transmission — `Isolation` — shortens
-that window and curtails spread (see below). `ContactTracing` applies too,
-because a node's contacts are its graph neighbours and quarantining a traced
-neighbour closes that neighbour's own window; see
-[Contact tracing on a network](#Contact-tracing-on-a-network). An intervention
-whose effect is purely a per-contact competing risk against the infection event,
-such as leaky vaccination, has no representation on the continuous-time network
-path and is reported with a warning rather than applied. Graphs.jl is an optional
+source of the graph changes. Interventions attach through two seams. One that
+removes a case from transmission — `Isolation` — shortens its infectious window
+and curtails spread (see below). One whose effect is a per-contact block — a
+leaky isolation, a vaccine's efficacy — is put to each infection the race
+proposes along an edge; a blocked contact does not transmit and the pair goes on
+meeting, so blocking a fraction of the contacts thins that edge's hazard by the
+same fraction. Per-individual susceptibility and infectiousness reach the same
+thinning through the contact-interval draw, which turns a pair's survival `S(t)`
+into `S(t)^m`, where on the generation-based engine they block each contact with
+probability `1 - m`.
+`ContactTracing` applies too, because a node's contacts are its graph neighbours
+and quarantining a traced neighbour closes that neighbour's own window; see
+[Contact tracing on a network](#Contact-tracing-on-a-network). Built-in vaccination delivery
+(`RingVaccination`, `MassVaccination` and `GroupVaccination`) uses the generation
+engine's post-transmission hook, so it is reported as unsupported and doses no
+one on this path. Existing protection may instead be represented by host traits,
+a composed kernel or a user-defined competing risk. Graphs.jl is an optional
 dependency: this constructor becomes available once you load Graphs.jl,
 and the adjacency-list and matrix constructors need nothing extra. For a
 directed graph, a node's out-neighbours are the contacts it can infect.
@@ -244,9 +252,10 @@ that case's trace time is known. It therefore reaches the neighbours that are
 not yet settled themselves. Tracing *backwards*, to the already-settled
 neighbour a case was infected by, is not supported on either engine.
 
-An intervention whose effect is a competing risk against the infection event
-rather than a removal, such as leaky `RingVaccination`, still has no
-representation here and is reported with a warning.
+Competing risks can read this tracing state at exposure time. Built-in
+vaccination delivery still requires the generation engine and is reported
+with a warning; supporting its actions on this path is separate from
+evaluating an existing protection effect.
 
 ## Several routes at once
 

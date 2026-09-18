@@ -185,6 +185,17 @@ of a simulation. Because the Sellke construction is the likelihood's generative
 model, `simulate → loglikelihood` is an exact round trip, so the simulated outbreak
 recovers the kernel.
 
+!!! note "Per-contact risks thin the hazard"
+    A model that also carries per-contact competing risks — a per-individual
+    susceptibility or infectiousness, a leaky isolation, a vaccine's efficacy —
+    blocks some of the contacts the race proposes, and the pair goes on meeting
+    afterwards. Blocking a fraction `p` of contacts thins each pair's hazard to
+    `(1 - p)` of it, which for an exponential contact interval is the same
+    process at a rate scaled by `1 - p`. The round trip then holds against the
+    scaled kernel rather than the one the model was given, and only for a risk
+    that is in place throughout: an isolation, or a dose a trace gives, arrives
+    partway through a window and has no term in the pairwise likelihood at all.
+
 ```@example households
 truth = ModelSpec(HouseholdProcess(fill(4, 500), Exponential(4.0));
     progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])

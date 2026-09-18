@@ -27,3 +27,5 @@ function infectious_removal_time(w::InterventionWrapper, ind::Individual)
 end
 traces_contacts(w::InterventionWrapper) = traces_contacts(w.intervention)
 _unwrap_scheduled(w::InterventionWrapper) = _unwrap_scheduled(w.intervention)
+
+risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route)

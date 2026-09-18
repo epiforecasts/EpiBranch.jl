@@ -128,9 +128,19 @@ mechanism — e.g. ring vaccination's susceptibility reduction on the
 contact *and* its onward-infectiousness reduction on the parent — may
 return a tuple of risks instead; the engine applies each independently.
 
-Resolution happens after `apply_post_transmission!` so that risks can
-read state that other interventions have written on the contact
-(e.g. `:vaccination_time` set by tracing-driven vaccination).
+A community introduction on a continuous-time model has no infector, and the
+person being introduced stands in for one, so a risk that reads the infector
+sees the contact itself. Return `nothing` when `parent === contact` if that is
+not what your risk means, as [`RingVaccination`](@ref)'s onward-transmission
+risk does.
+
+On the generation-based engine, resolution happens after
+`apply_post_transmission!` so that risks can read state that other
+interventions have written on the contact (e.g. `:vaccination_time`
+set by tracing-driven vaccination). The continuous-time models resolve
+the same risks against each infection they propose, after the infector
+has been traced, which is where their own tracing-driven state is
+written.
 """
 competing_risk(::AbstractIntervention, parent, contact, state) = nothing
 
@@ -151,14 +161,14 @@ intervention_time(::AbstractIntervention, ::Individual) = -Inf
 
 The time at which this intervention takes `individual` out of onward
 transmission. The continuous-time (Sellke) transmission models
-([`HomogeneousProcess`](@ref), and the network/household processes) express
-interventions only through the infectious window, closing it at the earliest
-removal time across the interventions. `Isolation` removes a case at its
-isolation time, and `ContactTracing` removes a quarantined contact at its trace
-time. The default is `Inf` (no removal), so an intervention whose effect is a
-per-contact competing risk against the infection event rather than a removal,
-such as leaky vaccination, contributes nothing to the window and has no
-continuous-time representation. Not read by the generation-based engine.
+([`HomogeneousProcess`](@ref), and the network/household processes) close the
+infectious window at the earliest removal time across the interventions.
+`Isolation` removes a case at its isolation time, and `ContactTracing` removes a
+quarantined contact at its trace time. The default is `Inf` (no removal), which
+is what an intervention whose effect is a per-contact block rather than a
+removal wants — a leaky vaccination, say: those reach the continuous-time models
+through [`competing_risk`](@ref) instead, resolved against each infection the
+model proposes. Not read by the generation-based engine.
 """
 infectious_removal_time(::AbstractIntervention, ::Individual) = Inf
 
@@ -171,3 +181,22 @@ Undo the effect of an intervention on an individual. Called by
 Default: no-op.
 """
 reset!(::AbstractIntervention, ::Individual) = nothing
+
+"""
+    risk_applies(intervention, route) -> Bool
+
+Whether an intervention's [`competing_risk`](@ref) applies to a continuous-time
+route. `route` is the existing [`RouteWindow`](@ref), or `nothing` for a
+community introduction whose source is outside the population. Models using
+the single-route shorthand, including the homogeneous pool, supply a window
+named `:transmission`. The default is
+`true`, so protection follows a person across routes. Wrappers delegate to their
+wrapped intervention.
+
+[`Isolation`](@ref) and [`ContactTracing`](@ref) apply only to routes listing
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in `until`; they do not protect against
+community introductions. External interventions may select routes by any window
+property. This predicate does not filter model-provided risk sources or the
+generation-based engine's contacts.
+"""
+risk_applies(::AbstractIntervention, route) = true

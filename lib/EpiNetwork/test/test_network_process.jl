@@ -1,8 +1,18 @@
+# A user-defined risk reuses tracing state without implementing dose delivery.
+struct _TraceProtection <: EpiBranch.AbstractIntervention end
+function EpiBranch.competing_risk(::_TraceProtection, parent, contact, state)
+    is_traced(contact) || return nothing
+    return Risk(event_time = contact.state[:trace_time], block_probability = 1.0)
+end
+
 # Tests for NetworkProcess: a rate-based (contact-interval) network run
 # on the shared continuous-time Sellke race.
 
-# A ring graph on `n` nodes: each node linked to its two neighbours.
-ring_adjacency(n) = [[mod1(i - 1, n), mod1(i + 1, n)] for i in 1:n]
+# A ring graph on `n` nodes: each node linked to its `k` nearest neighbours on
+# either side.
+function ring_adjacency(n, k = 1)
+    [vcat([mod1(i - d, n) for d in 1:k], [mod1(i + d, n) for d in 1:k]) for i in 1:n]
+end
 
 # Number of infected nodes in a finished simulation.
 n_infected(state) = count(is_infected, state.individuals)
@@ -10,6 +20,13 @@ n_infected(state) = count(is_infected, state.individuals)
 # The within-host natural history, composed onto the process with a ModelSpec:
 # a recovery removal (SIR) unless a latent step is prepended (SEIR).
 _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = true)]
+
+# A per-contact risk written from outside the package, blocking every
+# transmission it is asked about.
+struct BlockEverything <: EpiBranch.AbstractIntervention end
+function EpiBranch.competing_risk(::BlockEverything, parent, contact, state)
+    Risk(block_probability = 1.0)
+end
 
 @testset "NetworkProcess" begin
     @testset "construction" begin
@@ -126,6 +143,55 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
               n_infected(simulate(baseline; rng = StableRNG(3)))
     end
 
+    @testset "per-individual susceptibility and infectiousness apply" begin
+        # Both multipliers thin the edge's hazard, folded into the
+        # contact-interval draw as `S(t)^m`, rather than blocking each contact
+        # with probability `1 - m` as they do on the generation engine.
+        n = 300
+        ring = ring_adjacency(n, 2)
+        build(attrs) = ModelSpec(NetworkProcess(ring, Exponential(1.5));
+            progression = _sir(Exponential(4.0)), attributes = attrs)
+        meansize(attrs) = sum(simulate(build(attrs);
+                                  rng = StableRNG(s), n_initial = 3).cumulative_cases
+        for s in 1:10) / 10
+
+        full = meansize(transmission_traits(susceptibility = 1.0))
+        half = meansize(transmission_traits(susceptibility = 0.5))
+        @test half < full
+        @test meansize(transmission_traits(susceptibility = 0.2)) < half
+
+        # Susceptibility 0 blocks every proposal, so only the seeds are infected.
+        blocked = simulate(build(transmission_traits(susceptibility = 0.0));
+            rng = StableRNG(1), n_initial = 3)
+        @test blocked.cumulative_cases == 3
+
+        @test meansize(transmission_traits(infectiousness = 0.5)) < full
+        silent = simulate(build(transmission_traits(infectiousness = 0.0));
+            rng = StableRNG(1), n_initial = 3)
+        @test silent.cumulative_cases == 3
+    end
+
+    @testset "a risk reads another case's trace before exposure" begin
+        # A different case can trace a node after its infector has settled but
+        # before exposure. Resolve the risk at exposure time so it sees that trace.
+        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
+            prob_asymptomatic = 0.4)
+        ivs = [
+            Isolation(onset_to_isolation_delay = Exponential(0.5), test_sensitivity = 1.0,
+                post_isolation_transmission = 1.0),
+            ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(0.2),
+                quarantine_on_trace = false),
+            _TraceProtection()]
+        model = ModelSpec(NetworkProcess(ring_adjacency(400, 3), Exponential(3.0));
+            progression = _sir(Exponential(6.0)), interventions = ivs,
+            attributes = clinical)
+        traced_at_infection(ind) = is_traced(ind) && ind.parent_id != 0 &&
+                                   ind.state[:trace_time] <= ind.infection_time
+        runs = [simulate(model; rng = StableRNG(s), n_initial = 3) for s in 1:15]
+        @test any(st -> count(is_traced, st.individuals) > 0, runs)
+        @test !any(st -> any(traced_at_infection, st.individuals), runs)
+    end
+
     @testset "onset is measured from each case's own infection time" begin
         # Nodes are created, and their incubation periods drawn, before the
         # race sets their infection times. Isolation depends on onset, so onset
@@ -212,6 +278,52 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
         df = linelist(state)
         @test count(df.index) >= 1                       # community introductions happened
         @test size(df, 1) > count(df.index)              # plus onward spread on the graph
+    end
+
+    @testset "risks reach community introductions" begin
+        # An introduction comes from outside the population, and is put to the
+        # same risks as a contact from a neighbour: the person's susceptibility
+        # scales the community hazard, and an intervention's block stops the
+        # introduction it is in force for.
+        n = 200
+        infected(state) = count(is_infected, state.individuals)
+        function community(ext, susceptibility, ivs = AbstractIntervention[])
+            m = ModelSpec(
+                # a contact interval far beyond the window leaves only
+                # community introductions
+                NetworkProcess(ring_adjacency(n), Exponential(1e6);
+                    external_hazard = ext, obs_end = 30.0);
+                progression = _sir(6.0), interventions = ivs,
+                attributes = transmission_traits(; susceptibility))
+            return infected(simulate(m; rng = StableRNG(5)))
+        end
+        for ext in (0.05, Exponential(20.0))
+            @test community(ext, 0.0) == 0
+            @test 0 < community(ext, 0.2) < community(ext, 1.0)
+            # A user's own risk blocking everything blocks them too.
+            @test community(ext, 1.0, [BlockEverything()]) == 0
+        end
+
+        # An introduction's source is outside the population, so a risk that
+        # stands in for removing an infector does not reach it: isolating a
+        # person, or quarantining them on being traced, is no protection from
+        # acquiring an infection from the community.
+        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
+            prob_asymptomatic = 0.0)
+        function introductions(ivs)
+            m = ModelSpec(
+                NetworkProcess(ring_adjacency(n), Exponential(1e6);
+                    external_hazard = 0.05, obs_end = 30.0);
+                progression = _sir(6.0), interventions = ivs, attributes = clinical)
+            return sum(infected(simulate(m; rng = StableRNG(s))) for s in 1:5) / 5
+        end
+        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+        plain = introductions(AbstractIntervention[])
+        for residual in (0.0, 0.5)
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+                test_sensitivity = 1.0, post_isolation_transmission = residual)
+            @test isapprox(introductions([iso, ct]), plain; rtol = 0.05)
+        end
     end
 
     @testset "a fixed seed reproduces a pinned outbreak" begin
@@ -699,9 +811,30 @@ _sir(ip) = [Transition(:recovered; from = :infection, delay = ip, terminal = tru
             isolation_to_trace_delay = Exponential(500.0))
         @test meansize([iso, late]) <= meansize([iso]) * 1.05
 
-        # An intervention with no window representation still warns.
-        @test_logs (:warn, r"RingVaccination") match_mode=:any simulate(
-            build([iso, ct, RingVaccination(efficacy = 0.8)]);
+        # Dosing remains a generation-engine operation, even when the graph
+        # supplies contacts for tracing. Report it and leave contacts undosed.
+        model = build([iso]).process
+        for rv in (RingVaccination(efficacy = 0.8),
+            RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8),
+            RingVaccination(efficacy = 0.8, eligibility_window = 21.0),
+            Scheduled(RingVaccination(efficacy = 0.8); start_time = 0.0))
+            @test !EpiBranch._sellke_honours(model, rv)
+            warning_name = rv isa Scheduled ? r"Scheduled" : r"RingVaccination"
+            undosed = @test_logs (:warn, warning_name) match_mode=:any simulate(
+                build([iso, ct, rv]); n_initial = 1, rng = StableRNG(4))
+            @test !any(is_vaccinated, undosed.individuals)
+            @test all(!haskey(ind.state, :ring_dose_delay) &&
+                          !haskey(ind.state, :ring_dose_offered)
+            for ind in undosed.individuals)
+        end
+        @test_logs (:warn, r"MassVaccination") match_mode=:any simulate(
+            build([iso, ct, MassVaccination(efficacy = 0.8, eligibility_time = 0.0)]);
+            n_initial = 1, rng = StableRNG(4))
+
+        # Tracing has a continuous-time hook; vaccination delivery does not.
+        honoured = [iso, ct]
+        @test all(iv -> EpiBranch._sellke_honours(model, iv), honoured)
+        @test_logs min_level=Base.CoreLogging.Warn simulate(build(honoured);
             n_initial = 1, rng = StableRNG(4))
     end
 end

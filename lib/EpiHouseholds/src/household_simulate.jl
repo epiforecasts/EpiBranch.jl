@@ -52,8 +52,11 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
     for mem in model.members
         EpiBranch._sellke_race!(state, mem, rng;
             from = from, until = model.until, interventions = interventions,
+            risks = EpiBranch.transmission_risks(model),
             seed! = (best, members, r) -> _seed_clique!(
-                best, members, model.external_hazard, Tobs, r),
+                best, members, state, model.external_hazard, Tobs, r),
+            introduction = _ext_active(model.external_hazard) ?
+                           (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
             targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid))
             for oid in mem if oid != inf),
             # A case's contacts are its household-mates, traced whether or not
@@ -71,11 +74,11 @@ end
 # Seed one household's candidate table: community introductions under the
 # external hazard (each member drawn, kept if it lands within `[0, Tobs]`), or a
 # single seeded index at time 0 when there is no external source.
-function _seed_clique!(best, members, extsrc, Tobs, rng)
+function _seed_clique!(best, members, state, extsrc, Tobs, rng)
     m = length(members)
     if _ext_active(extsrc)
         for k in 1:m
-            t = _ext_draw(rng, extsrc)
+            t = _ext_draw(rng, extsrc, state.individuals[members[k]].susceptibility)
             t <= Tobs && (best[k] = t)
         end
     else

@@ -118,6 +118,7 @@ end
 # resolves it against the running clock, so a case whose infection time is
 # before `start_time` never has its wrapped intervention run (its gate is
 # closed) and so is not removed.
+
 function competing_risk(s::Scheduled, parent, contact, state)
     is_active(s, state) ? competing_risk(s.intervention, parent, contact, state) : nothing
 end
