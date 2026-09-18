@@ -211,6 +211,7 @@ clear_isolated!
 
 ```@docs
 linelist
+event_time_metadata
 contacts
 chain_statistics
 compute_trace_level!

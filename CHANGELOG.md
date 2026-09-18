@@ -18,6 +18,8 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   distributions and multi-type offspring families.
 - `EpiBranch.transition_time` shares clinical event sampling with external
   transitions, preserving the named transitions' state keys and random draws.
+- `event_time_metadata` lets external event producers retain dates for uninfected
+  people in line lists. Labelled vaccination and immunity dates use the same rules.
 - Structured infection likelihoods check composed components through
   `infection_likelihood_compatible`, rejecting effects omitted by the supplied
   infection layer and bare kernel.
