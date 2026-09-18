@@ -1624,3 +1624,29 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
+
+### Reusing clinical event sampling
+
+An external clinical transition can call `EpiBranch.transition_time` after reading
+its starting event. The helper checks that the starting time is finite, evaluates
+the probability and samples the delay. It returns `nothing` when the event is
+absent:
+
+```julia
+function EpiBranch.resolve_individual!(visit::FollowupVisit, ind, state)
+    time = EpiBranch.transition_time(state.rng, ind, ind.infection_time,
+        visit.delay; probability = visit.probability)
+    time === nothing || (ind.state[:followup_time] = time)
+    return nothing
+end
+```
+
+Here `FollowupVisit` is a user-defined subtype of `AbstractClinicalTransition`
+with `delay` and `probability` fields. It owns its output keys and can implement
+`initialise_individual!` for their defaults. Terminal transitions also implement
+`is_terminal` and `terminal_event` to join the existing arbitration.
+
+A supplied probability consumes an acceptance draw even at zero or one. Omit
+`probability` for an unconditional event without that draw, as `Recovery` does.
+Missing starting events consume no draws. `Transition` sets its flag before its
+delay callback; `Reporting` and `Hospitalisation` set their flags afterwards.

@@ -79,6 +79,31 @@ _resolve_delay(d::Distribution, rng, ind) = float(rand(rng, d))
 _resolve_delay(x::Real, rng, ind) = float(x)         # a fixed, deterministic delay
 _resolve_delay(f, rng, ind) = float(f(rng, ind))
 
+"""
+    transition_time(rng, individual, start_time, delay; probability = nothing)
+
+Sample a clinical event time from a finite `start_time`, returning `nothing`
+when the event is absent. `delay` accepts a real number, distribution or callable
+`(rng, individual) -> Real`. `probability` accepts a real number or callable with
+the same arguments. A supplied probability consumes one uniform draw, including
+when it is zero or one; `nothing` skips that draw. An absent starting event
+(non-finite `start_time`) consumes no random draws.
+
+The caller resolves the starting event and writes the returned time to its own
+state keys. Terminal-event arbitration remains the caller's responsibility.
+"""
+function transition_time(rng, individual, start_time, delay; probability = nothing)
+    _transition_selected(rng, individual, start_time, probability) || return nothing
+    return start_time + _resolve_delay(delay, rng, individual)
+end
+
+function _transition_selected(rng, individual, start_time, probability)
+    _anchor_ok(start_time) || return false
+    probability === nothing && return true
+    p = _resolve_probability(probability, rng, individual)
+    return rand(rng) < p
+end
+
 # Anchor for a transition's `delay`. A `Symbol` is looked up in
 # `ind.state` (e.g. `:onset_time`, `:test_time`, `:admission_time`); a
 # `Function (ind) -> Real` is called directly (use this for fields on

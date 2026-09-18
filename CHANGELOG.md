@@ -9,6 +9,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- `EpiBranch.transition_time` shares clinical event sampling with external
+  transitions, preserving the named transitions' state keys and random draws.
+
 - Callable objects can supply observation probabilities, delays and anchors,
   attribute-builder parameters, isolation test sensitivity and scheduling
   predicates, using the same signatures as ordinary functions.
