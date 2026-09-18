@@ -95,10 +95,10 @@ end
 # is kept, and it leaves the dynamics exact as long as no risk depends on who the
 # infector is:
 # the contact's susceptibility or a vaccine's protection of the contact are
-# fine, whereas the infector's infectiousness or a leaky isolation would weight
-# blocks by the wrong infectors. Those are refused. Per-individual infectiousness
-# is not among them: it is carried by the force itself, as each infective's
-# weight in the counts, so it needs no attribution to be exact.
+# fine, whereas a leaky isolation would weight blocks by the wrong infectors.
+# Those are refused. Per-individual infectiousness is not among them: it is
+# carried by the force itself, as each infective's weight in the counts, so it
+# needs no attribution to be exact.
 
 # Whether a risk source can block a contact differently depending on its
 # infector. A model's own risk source is opaque, so it is assumed to; an
