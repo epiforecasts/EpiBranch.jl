@@ -626,6 +626,59 @@ Under quarantine neither parameter has transmission left to block, and
 has symptoms, so the contacts it infected before its dose are no longer
 traced from it.
 
+
+## Repeat campaign visits
+
+A person missed on one visit may be reached on a later one. Permanent refusal
+can be represented separately, as an individual attribute. Neither requires
+additional intervention fields: [`GroupVaccination`](@ref) accepts a final
+campaign `coverage` and a distribution for `dose_delay`.
+
+For three visits, each independently reaching a willing person with probability
+`c`, the probabilities of first reaching them on each visit are `c`, `(1-c)*c`
+and `(1-c)^2*c`. Their sum is the chance of ever being reached. Conditional on
+being reached, these weights define the distribution of the first successful
+visit's delay from the group trigger.
+
+```@example interventions
+visit_times = [0.0, 7.0, 14.0]
+reach_per_visit = 0.6
+first_reached = [reach_per_visit * (1 - reach_per_visit)^(i - 1)
+                 for i in eachindex(visit_times)]
+campaign_reach = sum(first_reached)
+visit_delay = DiscreteNonParametric(visit_times, first_reached ./ campaign_reach)
+
+# Draw willingness once when a person is created, separately from being reached.
+willingness = (rng, ind) -> (ind.state[:willing] = rand(rng) < 0.9)
+repeated_campaign = GroupVaccination(efficacy = 0.8,
+    coverage = (rng, ind) -> ind.state[:willing] ? campaign_reach : 0.0,
+    dose_delay = visit_delay)
+
+campaign_model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+    attributes = [clinical, groups(3), willingness],
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0)),
+        repeated_campaign])
+```
+
+Here, `coverage` keeps its final-campaign meaning. Among willing people, 93.6%
+are reached; with 90% willing, expected overall coverage is 84.24%. A person
+with `:willing == false` refuses throughout the campaign. A willing person
+left unvaccinated was never reached. For zero reach probability, use
+`coverage = 0.0` directly; there is no successful-visit distribution to normalise.
+A single visit recovers the usual one-opportunity campaign.
+
+The campaign samples a person's eventual dose and its time once, recording a
+future dose at the selected visit time. Protection starts at the usual immunity
+time. Further simulation rounds do not create extra visits or duplicate doses.
+Use a different `dose_label` for another dose. Willingness can be shared across
+doses, as above, or stored in separate attributes when it differs by dose.
+
+This recipe assumes independent reach opportunities with fixed probabilities.
+It does not execute a visit-by-visit event process, respond to changing capacity,
+or record unsuccessful visits. As with other group campaigns, it applies to the
+generation-based engine. A campaign whose later visits depend on evolving state
+would need a separate scheduling design.
+
 ## Effort tracking
 
 Because all contacts are stored (infected and non-infected), intervention

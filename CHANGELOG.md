@@ -9,12 +9,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
-- `GroupVaccination` accepts a finite `visit_delays` schedule for repeat visits.
-  `coverage` is the chance of reaching a member on each visit, while `acceptance`
-  is drawn once per member per dose label and represents willingness to receive
-  the dose through the group campaign. The default remains a single visit with
-  everyone willing to receive it. A missed visit can be followed by vaccination
-  on a later visit; simulation rounds do not create extra attempts.
+- A worked recipe for repeat group vaccination visits using existing coverage,
+  dose-delay distributions and individual attributes to distinguish temporary
+  absence from permanent refusal.
 
 - `vaccine_acceptance(; propensity, group_key = :group)`, an attributes
   function that draws a vaccine-acceptance propensity once per group and

@@ -274,7 +274,7 @@ end
         @test 70 < length(first_round) < 130
 
         # The group comes back in each later round, once for every member that
-        # turns up among the new contacts. Members not reached get no unscheduled extra visits.
+        # turns up among the new contacts. Nobody who declined is asked again.
         for _ in 1:10
             EpiBranch.apply_post_transmission!(gv, state, [members[1]])
         end
@@ -282,83 +282,62 @@ end
     end
 end
 
-@testset "Explicit group vaccination visits" begin
-    @testset "Temporary absence, refusal and finite opportunities" begin
-        attempts = Dict{Int, Int}()
-        willingness = Dict{Int, Int}()
-        acceptance = (rng, ind) -> begin
-            willingness[ind.id] = get(willingness, ind.id, 0) + 1
-            ind.id == 3 ? 0.0 : 1.0
-        end
-        coverage = (rng, ind) -> begin
-            attempts[ind.id] = get(attempts, ind.id, 0) + 1
-            ind.id == 4 ? 0.0 : Float64(attempts[ind.id] == 2)
-        end
-        gv = GroupVaccination(efficacy = 0.9, coverage = coverage,
-            acceptance = acceptance, visit_delays = (0.0, 7.0, 14.0),
-            dose_delay = 2.0, delay_to_immunity = 3.0)
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(17))
-        members = [_group_member(gv, i, :A, test_positive = i == 1) for i in 1:4]
-        set_isolated!(members[1], 5.0)
-        append!(state.individuals, members)
-        EpiBranch.apply_post_transmission!(gv, state, members)
-        @test is_vaccinated(members[2])
-        @test members[2].state[:vaccination_time] == 14.0
-        @test immunity_time(members[2]) == 17.0
-        @test !is_vaccinated(members[3])
-        @test members[3].state[:vaccination_refused]
-        @test !is_vaccinated(members[4])
-        @test !get(members[4].state, :vaccination_refused, false)
-        @test attempts == Dict(1 => 2, 2 => 2, 4 => 3)
-        for _ in 1:5
-            EpiBranch.apply_post_transmission!(gv, state, members)
-        end
-        @test attempts == Dict(1 => 2, 2 => 2, 4 => 3)
-        @test all(==(1), values(willingness))
-        @test members[2].state[:vaccination_time] == 14.0
+@testset "Repeat visits composed from coverage and dose delay" begin
+    visit_times = [0.0, 7.0, 14.0]
+    reach = 0.6
+    first_reached = [reach * (1 - reach)^(i - 1) for i in eachindex(visit_times)]
+    campaign_reach = sum(first_reached)
+    delay = DiscreteNonParametric(visit_times, first_reached ./ campaign_reach)
+    willingness = (rng, ind) -> (ind.state[:willing] = rand(rng) < 0.9)
+    gv = GroupVaccination(efficacy = 0.8, delay_to_immunity = 2.0,
+        coverage = (rng, ind) -> ind.state[:willing] ? campaign_reach : 0.0,
+        dose_delay = delay)
 
-        # A refusal of one labelled dose does not decide another campaign.
-        boost = GroupVaccination(efficacy = 0.9, dose_label = :boost,
-            acceptance = Dirac(1.0), visit_delays = (0.0, 7.0))
-        for member in members
-            EpiBranch.initialise_individual!(boost, member, state)
-        end
-        EpiBranch.apply_post_transmission!(boost, state, members)
-        @test is_vaccinated(members[3]; dose_label = :boost)
-        @test !is_vaccinated(members[3])
+    function campaign(seed)
+        campaign_state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], willingness, StableRNG(seed))
+        EpiBranch.add_individuals!(campaign_state, 4000, [gv];
+            setup = (ind, i) -> (ind.state[:group] = :A))
+        campaign_state.individuals[1].state[:test_positive] = true
+        set_isolated!(campaign_state.individuals[1], 5.0)
+        EpiBranch.apply_post_transmission!(gv, campaign_state, campaign_state.individuals)
+        return campaign_state
     end
 
-    @testset "Seeded vaccination probability across visits" begin
-        function campaign(seed)
-            gv = GroupVaccination(efficacy = 0.9, acceptance = 0.6,
-                coverage = 0.5, visit_delays = (0.0, 7.0, 14.0))
-            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(seed))
-            members = [_group_member(gv, i, :A, test_positive = i == 1) for i in 1:4000]
-            set_isolated!(members[1], 5.0)
-            append!(state.individuals, members)
-            EpiBranch.apply_post_transmission!(gv, state, members)
-            return [ind.state[:vaccination_time] for ind in members if is_vaccinated(ind)]
-        end
-        times = campaign(123)
-        @test abs(length(times) / 4000 - 0.6 * (1 - 0.5^3)) < 0.025
-        @test Set(times) == Set((5.0, 12.0, 19.0))
-        @test campaign(123) == times
+    state = campaign(19)
+    for (i, time) in enumerate(visit_times)
+        share = count(
+            ind -> is_vaccinated(ind) &&
+                   ind.state[:vaccination_time] == 5.0 + time,
+            state.individuals) / length(state.individuals)
+        @test isapprox(share, 0.9 * first_reached[i]; atol = 0.025)
     end
+    refused = filter(ind -> !ind.state[:willing], state.individuals)
+    absent = filter(ind -> ind.state[:willing] && !is_vaccinated(ind), state.individuals)
+    later = filter(ind -> is_vaccinated(ind) && ind.state[:vaccination_time] > 5.0,
+        state.individuals)
+    @test !isempty(refused)
+    @test !isempty(absent)
+    @test !isempty(later)
+    @test all(ind -> !is_vaccinated(ind), refused)
+    @test all(ind -> immunity_time(ind) == ind.state[:vaccination_time] + 2.0, later)
 
-    @testset "Visit schedule validation" begin
-        @test GroupVaccination(efficacy = 0.9).visit_delays == (0.0,)
-        for delays in ((), (1.0,), (0.0, 0.0), (0.0, 7.0, 3.0),
-            (0.0, -1.0), (0.0, Inf), (0.0, NaN))
-            @test_throws ArgumentError GroupVaccination(efficacy = 0.9, visit_delays = delays)
-        end
-        for acceptance in (-0.1, 1.1, NaN)
-            @test_throws ArgumentError GroupVaccination(efficacy = 0.9, acceptance = acceptance)
-        end
-        delays = [0.0, 7.0]
-        gv = GroupVaccination(efficacy = 0.9, visit_delays = delays)
-        delays[2] = 1.0
-        @test gv.visit_delays == (0.0, 7.0)
+    outcomes(st) = [(ind.state[:willing], is_vaccinated(ind),
+                        ind.state[:vaccination_time]) for ind in st.individuals]
+    original = outcomes(state)
+    @test isequal(outcomes(campaign(19)), original)
+    for _ in 1:5
+        EpiBranch.apply_post_transmission!(gv, state, state.individuals)
     end
+    @test isequal(outcomes(state), original)
+
+    # Another labelled dose can have different willingness without altering this one.
+    boost = GroupVaccination(efficacy = 0.8, dose_label = :boost, dose_delay = Dirac(21.0))
+    for ind in state.individuals
+        EpiBranch.initialise_individual!(boost, ind, state)
+    end
+    EpiBranch.apply_post_transmission!(boost, state, state.individuals)
+    @test all(ind -> is_vaccinated(ind; dose_label = :boost), refused)
+    @test isequal(outcomes(state), original)
 end
