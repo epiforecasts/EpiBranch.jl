@@ -9,6 +9,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- Callable objects can supply branching-process offspring rules, generation-time
+  distributions and multi-type offspring families.
 - `event_time_metadata` lets external event producers retain dates for uninfected
   people in line lists. Labelled vaccination and immunity dates use the same rules.
 
