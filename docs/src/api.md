@@ -33,6 +33,7 @@ EpiBranch.pair_kernel
 pairwise_surv_loglik
 PairwiseSurvivalData
 InfectionLayer
+EpiBranch.infection_likelihood_compatible
 EpiBranch.contact_structure
 EpiBranch.followup_end
 ContactPairsLayout

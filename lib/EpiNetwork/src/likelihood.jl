@@ -50,8 +50,8 @@ EpiBranch.contact_structure(d::NetworkInfections) = d.contacts
 
 Read the [`InfectionLayer`](@ref) out of a `state` simulated from `model`, with
 the model's adjacency as the contact structure. The infectious windows are read
-as described for `InfectionLayer`, which makes the `simulate → loglikelihood`
-round trip exact. A bare `NetworkProcess` is accepted too (its window opens at
+as described for `InfectionLayer`. Additional hazard modifications require an
+effective kernel when scoring; extraction records the windows only. A bare `NetworkProcess` is accepted too (its window opens at
 `:infection`, and it has no interventions).
 """
 function network_infections(state::SimulationState,
@@ -84,5 +84,6 @@ end
 
 function Distributions.loglikelihood(data::NetworkInfections,
         model::ModelSpec{<:NetworkProcess})
+    EpiBranch._validate_infection_likelihood(model)
     return loglikelihood(data, model.process)
 end
