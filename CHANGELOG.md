@@ -91,10 +91,13 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   which a pair meets, the pressure a susceptible in the pool absorbs, the weight
   an infective adds to the pool's force, and the hazard a community
   introduction arrives at. A multiplier of 0 never transmits.
-- Community introductions under an `external_hazard` are put to the composed
-  risks like any other contact, with the person standing in for the infector
-  outside the population, so a vaccine or a user's risk protects against them
-  too; before, they bypassed every risk.
+- Community introductions under an `external_hazard` are put to the risks that
+  act on the person being introduced — their susceptibility, a vaccine's
+  protection, a risk of the model's or the user's own — so a vaccine protects
+  against them too; before, they bypassed every risk. The risks of interventions
+  scoped to `EpiBranch.RemovalRoutes()`, isolation and quarantine among them, are
+  not applied there: they stand in for removing an infector, and an
+  introduction's source is outside the population.
 - A model with per-contact risks is no longer the exact generative model of the
   pairwise likelihood unless the risk is in force throughout and the kernel
   family is closed under proportional hazards. A model with no risks in play

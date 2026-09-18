@@ -260,6 +260,14 @@ What this means in practice:
   through the window — an isolation, or a dose a trace gives — is not, so
   simulating with those and scoring the result with `loglikelihood` will
   disagree.
+- A community introduction, on a model with an `external_hazard`, is put to the
+  risks that act on the person being introduced: their susceptibility, a
+  vaccine's protection, a risk of your own. Not to those of interventions whose
+  `EpiBranch.risk_scope` is `RemovalRoutes()`, isolation and quarantine among
+  them, which stand in for removing an infector that here is outside the
+  population. An introduction has no infector at all, so the person stands in
+  for one; return `nothing` from your risk when `parent === contact` if it reads
+  the infector for something a community source cannot have.
 - On a model with several routes, the routes an intervention's risks apply on
   are its [`EpiBranch.risk_scope`](@ref). `Isolation` and `ContactTracing`
   return `EpiBranch.RemovalRoutes()`: their effect is a removal, and a route

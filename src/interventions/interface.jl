@@ -128,6 +128,12 @@ mechanism — e.g. ring vaccination's susceptibility reduction on the
 contact *and* its onward-infectiousness reduction on the parent — may
 return a tuple of risks instead; the engine applies each independently.
 
+A community introduction on a continuous-time model has no infector, and the
+person being introduced stands in for one, so a risk that reads the infector
+sees the contact itself. Return `nothing` when `parent === contact` if that is
+not what your risk means, as [`RingVaccination`](@ref)'s onward-transmission
+risk does.
+
 On the generation-based engine, resolution happens after
 `apply_post_transmission!` so that risks can read state that other
 interventions have written on the contact (e.g. `:vaccination_time`

@@ -437,10 +437,13 @@ The risks of every other intervention apply on every route.
 model seeded its members from: the contact-interval distribution of an
 introduction from outside the population, and the time the introduction window
 closes. It says that a seeded time is a community introduction rather than an
-index case, so the composed risks are resolved against it — a vaccinated person
-is protected from the community as from a neighbour — and a blocked introduction
-is followed by the next one from the same hazard. Omit it for a model whose
-seeds are index cases.
+index case, so the risks that act on the person are resolved against it — a
+vaccinated person is protected from the community as from a neighbour — and a
+blocked introduction is followed by the next one from the same hazard. The risks
+of interventions whose [`risk_scope`](@ref) is `RemovalRoutes()` are not: they
+stand in for removing an infector, and an introduction's source is outside the
+population. Omit `introduction` for a model whose seeds are index cases, which
+are put to no risk at all.
 
 `contacts(infective_id, state)` yields the ids of everyone that case was in
 contact with, whether or not transmission followed, which is what contact
@@ -558,15 +561,21 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         ind = state.individuals[members[j]]
         # A seeded time is a community introduction when the model gave the race
         # an `introduction`, and an index case otherwise. An introduction arrives
-        # from outside the population, so it is put to the risks like any other
-        # contact, with the person standing in for the infector the model does
-        # not have; an index case is where an outbreak is defined to start and is
-        # put to none, as on the generation engine.
+        # from outside the population, so it is put to the risks that act on the
+        # person being introduced: their susceptibility, a vaccine's protection,
+        # a risk of the model's own. Not to the risks that stand in for removing
+        # an infector — `RemovalRoutes()`, which is isolation and quarantine —
+        # since the source is outside the population and no measure taken here
+        # removes it: being isolated is not protection from acquiring an
+        # infection. The person stands in for the infector those risks read, so a
+        # risk of your own that reads the infector should return nothing when the
+        # two are the same individual. An index case is where an outbreak is
+        # defined to start, and is put to no risk at all.
         source = infector_id == 0 ? ind : state.individuals[infector_id]
         if may_block && (infector_id != 0 || introduction !== nothing) &&
-           _proposal_blocked(
-               state, source, ind, bt, risks,
-               opening.route == 0 ? interventions : route_interventions[opening.route])
+           _proposal_blocked(state, source, ind, bt, risks,
+               opening.route == 0 ? every_route_interventions :
+               route_interventions[opening.route])
             # The contact did not transmit, and the source goes on meeting the
             # person: the next contact is a draw from the same hazard conditioned
             # on falling later, kept while the window is still open for it.

@@ -350,6 +350,27 @@ end
             # A user's own risk blocking everything blocks them too.
             @test community(ext, 1.0, [BlockEverything()]) == 0
         end
+
+        # An introduction's source is outside the population, so a risk that
+        # stands in for removing an infector does not reach it: isolating a
+        # person, or quarantining them on being traced, is no protection from
+        # acquiring an infection from the community.
+        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
+            prob_asymptomatic = 0.0)
+        function introductions(ivs)
+            m = ModelSpec(
+                NetworkProcess(ring_adjacency(n), Exponential(1e6);
+                    external_hazard = 0.05, obs_end = 30.0);
+                progression = _sir(6.0), interventions = ivs, attributes = clinical)
+            return sum(infected(simulate(m; rng = StableRNG(s))) for s in 1:5) / 5
+        end
+        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+        plain = introductions(AbstractIntervention[])
+        for residual in (0.0, 0.5)
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+                test_sensitivity = 1.0, post_isolation_transmission = residual)
+            @test isapprox(introductions([iso, ct]), plain; rtol = 0.05)
+        end
     end
 
     @testset "a fixed seed reproduces a pinned outbreak" begin
