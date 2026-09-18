@@ -156,8 +156,9 @@ function _validate_initial_case_ids(opts::SimOpts, n, external_hazard)
 end
 
 # Candidate times are local to a race; chosen IDs refer to the whole population.
-function _seed_initial_cases!(best, members, ids)
-    chosen = Set(ids)
+_seed_initial_cases!(best, members, ids) = _seed_initial_cases!(best, members, Set(ids))
+
+function _seed_initial_cases!(best, members, chosen::AbstractSet)
     for (k, id) in enumerate(members)
         id in chosen && (best[k] = 0)
     end

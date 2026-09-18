@@ -49,13 +49,16 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
     add_individuals!(state, length(model.household_of), interventions;
         setup = (ind, i) -> (ind.state[:household] = model.household_of[i]))
 
+    # Reuse the population lookup across household races.
+    initial_cases = sim_opts.initial_cases === nothing ? nothing :
+                    Set(sim_opts.initial_cases)
     for mem in model.members
         EpiBranch._sellke_race!(state, mem, rng;
             from = from, until = model.until, interventions = interventions,
             risks = EpiBranch.transmission_risks(model),
             seed! = (best, members, r) -> _seed_clique!(
                 best, members, state, model.external_hazard, Tobs, r;
-                initial_cases = sim_opts.initial_cases),
+                initial_cases = initial_cases),
             introduction = _ext_active(model.external_hazard) ?
                            (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
             targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid))

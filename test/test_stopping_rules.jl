@@ -116,3 +116,22 @@ end
     @test empty_opts.n_initial == 0
     @test empty_opts.initial_cases == Int[]
 end
+
+# Many small races must reuse the population lookup without copying it.
+function seed_household_population!(best, chosen, n_households)
+    for household in 1:n_households
+        fill!(best, Inf)
+        EpiBranch._seed_initial_cases!(best, (2household - 1, 2household), chosen)
+    end
+    return nothing
+end
+
+@testset "Population seed lookup reuse" begin
+    chosen = Set(1:2:60000)
+    best = fill(Inf, 2)
+    seed_household_population!(best, chosen, 1)
+    allocated = @allocated seed_household_population!(best, chosen, 30000)
+    @test best == [0.0, Inf]
+    @test length(chosen) == 30000
+    @test allocated < 1_000_000
+end
