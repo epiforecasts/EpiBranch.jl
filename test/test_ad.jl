@@ -142,7 +142,9 @@ end
     @test EpiBranch._timetype(plain) === Float64
     @test EpiBranch._timetype(dual) <: ForwardDiff.Dual
     @test dual.cumulative_cases == plain.cumulative_cases
-    @test all(ForwardDiff.value(d.infection_time) == p.infection_time
+    # `isequal`, not `==`, since a never-infected individual's `infection_time`
+    # is `NaN` on both sides.
+    @test all(isequal(ForwardDiff.value(d.infection_time), p.infection_time)
     for (d, p) in zip(dual.individuals, plain.individuals))
 
     grad = ForwardDiff.derivative(total_infection_time, β0)
@@ -293,8 +295,20 @@ end
     run_with(interventions) = simulate(
         ModelSpec(process; interventions = interventions, attributes = clinical);
         condition = 50:200, max_cases = 200, rng = StableRNG(31))
-    dosed(state) = filter(ind -> get(ind.state, :vaccinated_boost, false),
-        state.individuals)
+    dosed(state, flag = :vaccinated_boost) = filter(
+        ind -> get(ind.state, flag, false), state.individuals)
+
+    # A dose with no prerequisite reaches the schedule validation by a different
+    # path from a boost, so cover it on its own as well.
+    single(delay) = sum(ind.state[:vaccination_time]
+    for ind in dosed(
+        run_with([iso, ct, RingVaccination(efficacy = 0.5, dose_delay = delay)]),
+        :vaccinated))
+    n_single = length(dosed(
+        run_with([iso, ct, RingVaccination(efficacy = 0.5, dose_delay = 7.0)]),
+        :vaccinated))
+    @test n_single > 0  # otherwise the test is vacuous
+    @test ForwardDiff.derivative(single, 7.0) == n_single
 
     # Each boost lands `dose_delay` days after its trace, so the derivative of
     # the boosts' total timing is the number of boosts given.
@@ -348,4 +362,48 @@ end
         @test n_doses > 0
         @test ForwardDiff.derivative(x -> f(x)[1], 0.5) == n_doses
     end
+end
+
+# The multi-type analytics accept any number type. A dual dispersion enters
+# through `dist_fn`. A dual scale on the offspring mean gives a dual mean matrix,
+# so the spectral radius uses power iteration.
+@testset "AD through multi-type analytics" begin
+    M = [1.5 0.6;
+         0.5 0.9]
+    fdm = central_fdm(5, 1)
+
+    q1(k) = extinction_probability(
+        BranchingProcess(M, R -> NegBin(R, k), Exponential(5.0)))[1]
+    @test ForwardDiff.derivative(q1, 0.5) ≈ fdm(q1, 0.5) rtol = 1e-5
+
+    rstar(θ) = reproduction_number(
+        BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0)))
+    @test ForwardDiff.derivative(rstar, 1.2) ≈ rstar(1.0) rtol = 1e-6
+
+    # When the eigenvectors depend on the parameter, the power iteration must
+    # still give the right derivative. Equal row sums make `ones` the right
+    # eigenvector at the start, which is the case where the iterates' values
+    # settle before their derivative parts.
+    for M0 in ([1.4 0.1; 0.2 1.3], [1.0 0.5; 0.8 0.7])
+        rpow(θ) = reproduction_number(
+            BranchingProcess(M0, R -> Poisson(R^θ), Exponential(5.0)))
+        @test ForwardDiff.derivative(rpow, 1.0) ≈ fdm(rpow, 1.0) rtol = 1e-8
+    end
+    # Dual entries of the matrix. The spectral radii are 1.2 + 0.3√θ and
+    # 0.1 + 2√θ, with derivatives 0.15 and 1 at θ = 1.
+    rentry(θ) = reproduction_number(
+        EpiBranch.MultiTypeOffspring([1.2 0.3θ; 0.3 1.2], R -> Poisson(R)))
+    @test ForwardDiff.derivative(rentry, 1.0) ≈ 0.15 rtol = 1e-10
+    rcross(θ) = EpiBranch._spectral_radius([0.1 2.0θ; 2.0 0.1])
+    @test ForwardDiff.derivative(rcross, 1.0) ≈ 1.0 rtol = 1e-10
+
+    q2(θ) = extinction_probability(
+        BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0)))[2]
+    @test ForwardDiff.derivative(q2, 1.2) ≈ fdm(q2, 1.2) rtol = 1e-5
+
+    # A reducible matrix whose second type reaches no class with R > 1.
+    qred(θ) = extinction_probability(
+        BranchingProcess([2.0 0.0; 1.0 1.0], R -> Poisson(θ * R), Exponential(5.0)))
+    @test ForwardDiff.derivative(θ -> qred(θ)[1], 0.9) ≈ fdm(θ -> qred(θ)[1], 0.9) rtol = 1e-5
+    @test ForwardDiff.derivative(θ -> qred(θ)[2], 0.9) == 0
 end

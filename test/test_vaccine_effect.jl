@@ -16,6 +16,19 @@ function EpiBranch.apply_post_transmission!(v::_TestCampaignVaccination, state,
 end
 
 @testset "VaccineEffect" begin
+    @testset "Waning is shared by built-in and custom vaccinations" begin
+        decay = dt -> exp(-dt / 30)
+        effect = VaccineEffect(efficacy = 0.8, waning = decay)
+        custom = _TestCampaignVaccination(effect, 0.0)
+        @test EpiBranch.waning(custom) === decay
+        for v in (RingVaccination(efficacy = 0.8, waning = decay),
+                GroupVaccination(efficacy = 0.8, waning = decay),
+                MassVaccination(efficacy = 0.8, waning = decay, eligibility_time = 0.0))
+            @test EpiBranch.vaccine_effect(v).waning === decay
+            @test EpiBranch.waning(v) === v.waning === decay
+        end
+    end
+
     @testset "Keyword constructors build the shared effect" begin
         rv = RingVaccination(efficacy = 0.7, delay_to_immunity = 14.0,
             severity_efficacy = 0.3, mode = AllOrNothingMode(), dose_label = :prime,
@@ -91,7 +104,7 @@ end
         rv = RingVaccination(efficacy = 0.9, dose_label = :boost, requires_dose = :prime)
         @test repr(rv) ==
               "RingVaccination(efficacy = 0.9, severity_efficacy = 0.0, " *
-              "delay_to_immunity = 0.0, mode = LeakyMode(), dose_label = :boost, " *
+                          "delay_to_immunity = 0.0, waning = nothing, mode = LeakyMode(), dose_label = :boost, " *
               "coverage = 1.0, dose_delay = 0.0, requires_dose = :prime, " *
               "eligibility_window = Inf, post_exposure_efficacy = 0.0, " *
               "onward_efficacy = 0.0)"

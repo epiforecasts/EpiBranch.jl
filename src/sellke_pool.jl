@@ -82,8 +82,8 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
         end
-        # Onset was first drawn when the member was created at time 0.
-        # Recompute it from the infection time before transitions and
+        # A pre-created member has no infection time, and so no onset, until
+        # now. Derive the onset from the infection time before transitions and
         # interventions read it.
         _set_onset_from_incubation!(ind)
         resolve_transitions!(state, ind)
