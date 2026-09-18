@@ -12,6 +12,7 @@ public trace_contacts!
 public traces_contacts
 public supplies_contacts
 public competing_risk
+public persistent_competing_risks
 public reset!
 public required_fields
 public infectious_removal_time

@@ -114,3 +114,44 @@ end
         @test !haskey(ind.state, :capacity_admission_time_vaccinated)
     end
 end
+
+struct RecordedProtection <: EpiBranch.AbstractIntervention end
+EpiBranch.persistent_competing_risks(::RecordedProtection) = true
+function EpiBranch.competing_risk(::RecordedProtection, parent, contact, state)
+    haskey(contact.state, :protected_at) || return nothing
+    return Risk(event_time = contact.state[:protected_at], block_probability = 1.0)
+end
+
+@testset "Recorded effects persist beyond delivery admission" begin
+    process = BranchingProcess(Poisson(10.0), Dirac(20.0))
+    vaccine = MassVaccination(efficacy = 1.0, eligibility_time = 10.0)
+    wraps = (
+        v -> Scheduled(v; start_time = 10.0, end_time = 10.0),
+        v -> Scheduled(CapacityConstrained(v; budget_per_period = Inf);
+            start_time = 10.0, end_time = 10.0),
+        v -> CapacityConstrained(Scheduled(v; start_time = 10.0, end_time = 10.0);
+            budget_per_period = Inf))
+    for wrap in wraps
+        iv = wrap(vaccine)
+        state = simulate(ModelSpec(process; interventions = [iv]);
+            max_generations = 1, rng = MersenneTwister(1))
+        @test count(is_vaccinated, state.individuals) == 9
+        @test state.cumulative_cases == 1
+        contact = state.individuals[2]
+        state.max_infection_time = 30.0
+        risk = EpiBranch.competing_risk(iv, state.individuals[1], contact, state)
+        @test risk.event_time == 10.0
+        @test risk.block_probability == 1.0
+    end
+    state = EpiBranch.new_state(process,
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18))
+    parent = Individual(id = 1)
+    contact = Individual(id = 2)
+    iv = Scheduled(RecordedProtection(), st -> false)
+    @test EpiBranch.competing_risk(iv, parent, contact, state) === nothing
+    contact.state[:protected_at] = 10.0
+    @test EpiBranch.competing_risk(iv, parent, contact, state).event_time == 10.0
+    @test !EpiBranch.persistent_competing_risks(AppointmentAction())
+    @test EpiBranch.competing_risk(Scheduled(AppointmentAction(), st -> false),
+        parent, contact, state) === nothing
+end

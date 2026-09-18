@@ -1629,6 +1629,14 @@ scheduling still applies. Ring vaccination uses this for protection from an
 existing dose at a new exposure, with the current simulation time as its action
 time.
 
+Recorded protection follows its effect date even when the delivery schedule is
+inactive. Vaccination declares this with
+`EpiBranch.persistent_competing_risks(iv) = true`. An external intervention can
+use the same method when its `competing_risk` reads recorded effects and returns
+`nothing` before delivery. The default is `false`, for risks that apply only
+while the scheduled policy is active. Capacity and scheduling wrappers delegate
+this declaration.
+
 Use `EpiBranch.action_draw!(sample, individual, key)` to retain a delay or acceptance
 draw across repeated discovery. Keys identify an action or visit; distinct visits
 need distinct keys. Ring and group delivery cache these draws per policy and
