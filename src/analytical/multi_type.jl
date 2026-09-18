@@ -35,12 +35,12 @@ end
 
 # The range of counts a truncated series has to cover. `maximum` gives it for a
 # bounded law. For an unbounded one, ask the law how much mass sits above each
-# count until what is left is negligible. Subtracting the masses one at a time
-# instead would leave a residual of the order of the number of terms times
-# `eps`, which for a few dozen terms sits above any useful tolerance, so the
-# walk would run to its cap; and `quantile` is no use either, because on a
-# truncated law it clamps to the bounds and an integer law clamped to an
-# infinite bound throws.
+# count until what is left is negligible. Two simpler routes fail here.
+# Subtracting the masses one at a time leaves a residual of the order of the
+# number of terms times `eps`, which for a few dozen terms sits above any useful
+# tolerance and sends the walk to its cap. `quantile` on a truncated law clamps
+# to the truncation bounds, and an integer law clamped to an infinite bound
+# throws.
 function _series_range(d::DiscreteUnivariateDistribution, tail::Real = 1e-14,
         cap::Int = 1_000_000)
     lo = round(Int, minimum(d))
@@ -78,9 +78,9 @@ _spectral_radius(A::AbstractMatrix{<:LinearAlgebra.BlasReal}) = maximum(abs, eig
 # unit diagonal keeps every iterate strictly positive, so the iteration converges
 # even when `A` is reducible.
 #
-# The stopping test compares values only, so for dual numbers the derivative
-# parts of the iterates may still be far from their limits when it passes. The
-# method therefore iterates on `A + I` and its transpose together and returns
+# The stopping test compares values only. For dual numbers the derivative parts
+# of the iterates can therefore still be far from their limits when it passes.
+# The method iterates on `A + I` and its transpose together and returns
 # the quotient uᵀAv / uᵀv of the right (`v`) and left (`u`) eigenvectors. This
 # quotient is stationary in `u` and `v` at the eigenvectors, so once `u` and `v`
 # have converged in value its first derivative is uᵀ(dA)v / uᵀv, whatever their
@@ -141,18 +141,20 @@ end
 Reproduction number of a branching process, computed from its offspring
 specification.
 
-For a single-type model this is the mean of the offspring distribution, and
-for [`ClusterMixed`](@ref) offspring that mean averaged over the mixing
-distribution. For a multi-type model built from an offspring matrix it is R*,
-the dominant eigenvalue (spectral radius) of the mean next-generation matrix,
-whose `[i, j]` entry is the expected number of type-`i` offspring from a
-type-`j` parent. For single-type and multi-type models an outbreak can grow
-with positive probability only if the reproduction number exceeds 1. For
-`ClusterMixed` offspring the average is no threshold, because each chain's
-growth depends on its own mixing draw: a mixture with mean below 1 can still
-produce chains that take off. Use [`extinction_probability`](@ref) instead.
+A single-type model gives the mean of the offspring distribution, and
+[`ClusterMixed`](@ref) offspring that mean averaged over the mixing
+distribution. A multi-type model built from an offspring matrix gives R*, the
+dominant eigenvalue (spectral radius) of the mean next-generation matrix, whose
+`[i, j]` entry is the expected number of type-`i` offspring from a type-`j`
+parent.
 
-For a matrix whose types cannot all infect one another, R* above 1 says that
+In the single-type and multi-type cases an outbreak can grow with positive
+probability only if the reproduction number exceeds 1. The `ClusterMixed`
+average gives no such threshold, because each chain's growth depends on its own
+mixing draw: a mixture with mean below 1 can still produce chains that take
+off. Use [`extinction_probability`](@ref) there.
+
+When the types of a matrix cannot all infect one another, R* above 1 says that
 some group of types can grow, and not that a case of any given type can: an
 index case of a type that never reaches such a group still dies out for
 certain. [`extinction_probability`](@ref) answers that per type.
@@ -188,12 +190,12 @@ are split across types. Fixed-point iteration from zero converges to it.
 A type-`j` outbreak can grow only if type-`j` cases lead, through some chain
 of transmission, to a group of types that infect each other with a
 reproduction number above 1. Types without such a chain, and every type when
-[`reproduction_number`](@ref) is at most 1, get exactly 1. Both of those take
-the offspring count to vary: a deterministic law, such as `Dirac(1)` at R = 1,
-gives every case exactly one offspring and so never dies out, whether it is a
-class of its own or one the other types feed, and 1 is the wrong answer for it.
+[`reproduction_number`](@ref) is at most 1, get exactly 1. Both rules assume
+the offspring count varies. A deterministic law, such as `Dirac(1)` at R = 1,
+gives every case exactly one offspring and never dies out, whether its type is
+a class of its own or one the other types feed, so 1 is the wrong answer there.
 
-Iteration that has not converged by `max_iter` warns, which happens when the
+Iteration that has not converged by `max_iter` warns; that happens when the
 reproduction number is close to 1.
 
 To use it on a model built with

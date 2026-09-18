@@ -21,9 +21,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   type of index case. The extinction probability is the fixed point of the vector
   PGF of the simulator's draw (a total count from the distribution family, split
   multinomially across types) and equals the single-type result when there is
-  one type. An extinction probability whose iteration has not converged by
-  `max_iter` now warns, which happens near R = 1, in the multi-type and the
-  single-type functions alike.
+  one type. Iteration that has not converged by `max_iter` now warns, in the
+  multi-type and the single-type functions alike; that happens near R = 1.
 - `reproduction_number`, `extinction_probability` and `epidemic_probability` for
   `ClusterMixed` offspring and models built from it. The reproduction number is
   the offspring mean averaged over the mixing distribution, and the extinction

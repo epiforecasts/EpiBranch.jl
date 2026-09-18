@@ -211,8 +211,8 @@ Probability that a chain started by a single index case dies out under
 cluster-level heterogeneity. The chain's `θ` is drawn once from `mixing`, so
 this is the extinction probability of `build(θ)` averaged over `mixing`. At each
 `θ` it is the smallest fixed point of the offspring PGF, found by Newton's
-method, and exactly 1 when the mean of `build(θ)` is at most 1, which takes the
-offspring count to vary.
+method, and exactly 1 when the mean of `build(θ)` is at most 1, which assumes
+the offspring count varies.
 
 `mixing` can be any continuous distribution, integrated by adaptive quadrature
 on the probability scale, or a `DiscreteNonParametric`, summed over its support.

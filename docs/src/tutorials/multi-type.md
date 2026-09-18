@@ -29,9 +29,10 @@ end
 ```
 
 The matrix is read by column: column `j` holds what a type-`j` parent produces.
-The contact matrix above is symmetric, so the numbers look the same either way
-round and the convention stays invisible. It shows in an asymmetric example,
-where adults infect children more often than children infect adults:
+The contact matrix above is symmetric, so its numbers read the same either way
+round and the convention makes no difference to them. An asymmetric example
+brings it out, where adults infect children more often than children infect
+adults:
 
 ```@example multitype
 asymmetric = [1.0 1.2;
@@ -80,10 +81,10 @@ end
 ```
 
 A parent draws its total offspring from the distribution family and splits it
-across types in proportion to its column of `M`, and the extinction
-probability accounts for that joint draw. Each simulated run starts from one
-case of a random type, so the simulated containment probability estimates the
-average of the per-type values, and the two agree.
+across types in proportion to its column of `M`. The extinction probability
+accounts for that joint draw. Each simulated run starts from one case of a
+random type, so the simulated containment probability estimates the average of
+the per-type values, and the two agree.
 
 ```@example multitype
 results = simulate(model, 1000; max_cases = 200, rng = StableRNG(1))
