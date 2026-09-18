@@ -248,7 +248,10 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     # uniform, which is what a run without the trait did before it was honoured.
     equal_infectiousness = all(id -> state.individuals[id].infectiousness == 1, members)
 
-    length(counts) > 1 && _refuse_infector_side_risks(state, members, risks, interventions)
+    route = _shorthand_window(from, until)
+    risk_interventions = filter(iv -> risk_applies(iv, route), interventions)
+    length(counts) > 1 &&
+        _refuse_infector_side_risks(state, members, risks, risk_interventions)
 
     open_heap = Tuple{T, Int}[]         # pending window-open (becomes infectious)
     close_heap = Tuple{T, Int}[]        # pending window-close (recovers/isolates)
@@ -427,7 +430,7 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             # An introduction with no infector has no pair to resolve risks over,
             # as an index case on the generation engine has none either.
             blocked = src != 0 && _proposal_blocked(
-                state, state.individuals[src], ind, t, risks, interventions)
+                state, state.individuals[src], ind, t, risks, risk_interventions)
             if blocked
                 # With an opaque risk, an immortal infectious source can keep
                 # generating rejected contacts forever. Require every active

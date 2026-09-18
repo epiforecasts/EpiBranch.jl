@@ -187,7 +187,9 @@ reset!(::AbstractIntervention, ::Individual) = nothing
 
 Whether an intervention's [`competing_risk`](@ref) applies to a continuous-time
 route. `route` is the existing [`RouteWindow`](@ref), or `nothing` for a
-community introduction whose source is outside the population. The default is
+community introduction whose source is outside the population. Models using
+the single-route shorthand, including the homogeneous pool, supply a window
+named `:transmission`. The default is
 `true`, so protection follows a person across routes. Wrappers delegate to their
 wrapped intervention.
 

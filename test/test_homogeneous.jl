@@ -58,7 +58,41 @@ function EpiBranch.resolve_individual!(iv::ResolveInfectiousness, ind, state)
     return nothing
 end
 
+struct RouteSelectedBlock <: EpiBranch.AbstractIntervention
+    route::Symbol
+end
+function EpiBranch.risk_applies(iv::RouteSelectedBlock, route)
+    route !== nothing && route.name == iv.route
+end
+function EpiBranch.competing_risk(::RouteSelectedBlock, parent, contact, state)
+    Risk(block_probability = 1.0)
+end
+function EpiBranch.resolve_individual!(::RouteSelectedBlock, ind, state)
+    (ind.state[:route_block_resolved] = true)
+end
+
 @testset "HomogeneousProcess (Sellke fixed pool)" begin
+    @testset "Pool risk selection preserves other intervention hooks" begin
+        process = HomogeneousProcess(; transmission_rate = 20.0, population_size = 20)
+        progression = [Transition(:recovered; from = :infection,
+            delay = 10.0, terminal = true)]
+        run(ivs) = simulate(ModelSpec(process; progression, interventions = ivs);
+            rng = StableRNG(1))
+        baseline = run(AbstractIntervention[])
+        for iv in (RouteSelectedBlock(:household),
+            Scheduled(
+            Scheduled(RouteSelectedBlock(:household);
+                start_time = 0.0); start_time = 0.0))
+            selected = run([iv])
+            @test selected.cumulative_cases == baseline.cumulative_cases == 20
+            @test getfield.(selected.individuals, :infection_time) ==
+                  getfield.(baseline.individuals, :infection_time)
+            @test all(get(ind.state, :route_block_resolved, false)
+            for ind in selected.individuals)
+        end
+        @test run([RouteSelectedBlock(:transmission)]).cumulative_cases == 1
+    end
+
     @testset "Infector selection uses traits set during resolution" begin
         for include_seeds in (true, false)
             model = ModelSpec(
@@ -608,6 +642,11 @@ end
                 state.individuals) / half
         end
         major(ars) = mean(filter(>(0.2), ars))
+        @test band1_attack(1; interventions = [RouteSelectedBlock(:household)]) ==
+              band1_attack(1)
+        @test band1_attack(1;
+            interventions = [Scheduled(RouteSelectedBlock(:household); start_time = 0.0)]) ==
+              band1_attack(1)
 
         leaky = Isolation(onset_to_isolation_delay = Exponential(1.0),
             post_isolation_transmission = 0.5)
