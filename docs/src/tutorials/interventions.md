@@ -586,9 +586,10 @@ dose cap, a ceiling on how many people a zone's programme can reach — and
 `CapacityConstrained` wraps [`RingVaccination`](@ref) or
 [`MassVaccination`](@ref) the way [`Scheduled`](@ref) wraps an intervention
 for time, but rations *how many* candidates a call reaches rather than
-*when* it acts. `budget_per_period` doses become available every `period`
-days; candidates in excess of what remains are simply not vaccinated this
-call, first-come-first-served by trace time by default:
+*when* it acts. `budget_per_period` candidates may be admitted for a dose
+every `period` days of simulated time; candidates in excess of what remains
+are simply not vaccinated this call, first-come-first-served by trace time
+by default:
 
 ```@example interventions
 rv = RingVaccination(efficacy = 0.8)
@@ -599,8 +600,16 @@ state_uncapped = simulate(scenario([iso, ct, rv]); condition = 50:200, max_cases
 state_capped = simulate(scenario([iso, ct, rv_capped]); condition = 50:200, max_cases = 200, rng = StableRNG(42))
 
 println("Doses without a cap: $(count(is_vaccinated, state_uncapped.individuals))")
-println("Doses at 5/day: $(count(is_vaccinated, state_capped.individuals))")
+println("Doses under a cap of 5 admissions a day: $(count(is_vaccinated, state_capped.individuals))")
 ```
+
+!!! warning "The cap is on admissions, not on the doses given each day"
+    A call is charged to the period `state.max_infection_time` falls in when
+    it is made, and the dose it admits is dated later, at
+    `trace_time + dose_delay`. Doses therefore bunch up on days other than
+    the one whose budget paid for them, and a generation spanning several
+    days is admitted out of a single day's budget. A single day can see
+    several times `budget_per_period` doses under the cap above.
 
 [`capacity_usage`](@ref) reads back doses used against the running
 allowance at the point a simulation reached:
@@ -632,9 +641,9 @@ rv_stockpile = CapacityConstrained(rv; budget_per_period = 200.0)
 nothing # hide
 ```
 
-With a `period`, `carry_over = true` (the default) lets a day's unused doses
-add to the next day's allowance; `carry_over = false` loses them instead —
-only that day's own `budget_per_period` is ever available.
+With a `period`, `carry_over = true` (the default) lets a day's unused
+allowance add to the next day's; `carry_over = false` loses it instead, so
+only that day's own `budget_per_period` admissions are ever available.
 
 ### Scope
 
