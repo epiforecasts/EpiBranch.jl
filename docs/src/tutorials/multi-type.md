@@ -28,6 +28,18 @@ for (i, label) in enumerate(["Children", "Adults", "Elderly"])
 end
 ```
 
+Column `j` gives the expected offspring of a type-`j` parent. The symmetric
+contact matrix above has each row equal to its corresponding column. In this asymmetric
+example, adults infect children more often than children infect adults:
+
+```@example multitype
+asymmetric = [1.0 1.2;
+              0.3 0.9]
+println("an adult infects $(asymmetric[1, 2]) children")
+println("a child infects $(asymmetric[2, 1]) adults")
+println("R for a child: $(sum(asymmetric[:, 1])), for an adult: $(sum(asymmetric[:, 2]))")
+```
+
 ## Simulation
 
 Pass the matrix and a function that maps each type's R to an offspring distribution:
@@ -48,6 +60,34 @@ for (i, label) in enumerate(["0-14", "15-64", "65+"])
     n = count(ind -> individual_type(ind) == i, infected)
     println("$label: $n cases")
 end
+```
+
+## Threshold and extinction probability
+
+The analytical calculations use the matrix and distribution family stored in
+the model. `reproduction_number` returns R\*, the dominant eigenvalue of the
+next-generation matrix. An outbreak can take off only if R\* exceeds 1.
+`extinction_probability` returns one value per type:
+the probability that an outbreak seeded by a single case of that type dies out.
+
+```@example multitype
+println("R* = $(round(reproduction_number(model), digits = 2))")
+q = extinction_probability(model)
+for (label, q_j) in zip(["0-14", "15-64", "65+"], q)
+    println("  extinction from one $label case: $(round(q_j, digits = 3))")
+end
+```
+
+A parent draws its total offspring from the distribution family and splits it
+across types in proportion to its column of `M`. The extinction probability
+accounts for that joint draw. Each simulated run starts from one case of a
+random type. The simulated containment probability therefore estimates the
+average of the per-type values and agrees with the analytical result.
+
+```@example multitype
+results = simulate(model, 1000; max_cases = 200, rng = StableRNG(1))
+println("Analytical: $(round(sum(q) / length(q), digits = 3))")
+println("Simulated:  $(round(containment_probability(results), digits = 3))")
 ```
 
 ## Custom offspring function

@@ -69,6 +69,11 @@ function single_type_offspring(model::TransmissionModel)
 end
 n_types(::TransmissionModel) = 1
 
+# The offspring specification the analytical helpers dispatch on. By default it
+# comes from `single_type_offspring`, which a custom model defines;
+# `BranchingProcess` returns its `MultiTypeOffspring` here when it has one.
+_analytic_offspring(model::TransmissionModel) = single_type_offspring(model)
+
 # ── Individual state ────────────────────────────────────────────────
 
 """
