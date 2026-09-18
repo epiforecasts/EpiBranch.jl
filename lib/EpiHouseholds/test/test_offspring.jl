@@ -1,10 +1,10 @@
 # The within-household final size and the household-level offspring law.
 #
 # The Markovian household (exponential contact interval, exponential infectious
-# window) is resolved twice by independent routes — Ball's final-size recursion
-# for the mean, a Markov-chain recursion for the whole offspring law — so the
-# two checking each other is the backbone of these tests, with the simulator as
-# a third opinion.
+# window) is resolved twice by independent routes: Ball's final-size recursion
+# for the mean, and a Markov-chain recursion for the whole offspring law. Most
+# of these tests check the two against each other, with the simulator as a
+# third opinion.
 
 # Each household's total infectious time in a run whose cases are infectious
 # from infection to recovery.

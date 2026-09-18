@@ -13,9 +13,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   offspring law of a household-structured model: how many *households* one
   infected household infects, one law per household type (its size, or, under
   a covariate kernel, its own members). It takes the community contact rate as
-  `global_rate` and reads everything else — household sizes,
-  contact-interval kernel, infectious window, interventions — off the model, so
-  isolation lowers R* through the window it shortens. `reproduction_number`
+  `global_rate` and reads everything else (household sizes, contact-interval
+  kernel, infectious window, interventions) off the model, so isolation lowers
+  R* through the window it shortens. `reproduction_number`
   gives R*; `extinction_probability` gives the chance a chain of household-to-household
   transmission started by one infected household of each type dies out; and
   `household_offspring_law` gives the law itself as a `Distributions.jl`
@@ -25,8 +25,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   A `Scheduled` intervention is rejected, with a pointer to deriving the law
   with and without the intervention for R* before and after it starts.
 - `household_final_size` (in `EpiHouseholds`) gives the exact final-size
-  distribution of the epidemic within one household — how many of its members are
-  ultimately infected — for any contact-interval kernel and infectious window,
+  distribution of the epidemic within one household (how many of its members are
+  ultimately infected) for any contact-interval kernel and infectious window,
   from Ball's (1986) triangular recursion.
 - `HomogeneousProcess`, a closed, homogeneously-mixing population of fixed size
   simulated by the Sellke threshold construction. Every infectious individual
