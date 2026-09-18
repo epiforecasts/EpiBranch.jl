@@ -12,6 +12,9 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- `ContextualKernel` shares fixed and infector-infection-time covariates between
+  network or household simulation and the compiled pairwise likelihood.
+
 - Clean-project installation checks for matching source revisions and published
   companion-package installations.
 - Callable objects can supply branching-process offspring rules, generation-time

@@ -850,4 +850,5 @@ end
     include("test_offspring.jl")
 end
 
+include("test_contextual_kernels.jl")
 include("test_initial_cases.jl")

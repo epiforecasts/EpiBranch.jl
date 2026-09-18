@@ -55,7 +55,7 @@ function _simulate(model::NetworkProcess, sim_opts::SimOpts;
             initial_cases = sim_opts.initial_cases),
         introduction = _ext_active(model.external_hazard) ?
                        (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
-        targets = (inf, st) -> ((nb, _edge_kernel(model, inf, k))
+        targets = (inf, st) -> ((nb, _edge_kernel(model, inf, k, st))
         for (k, nb) in enumerate(model.adjacency[inf])
         if !is_infected(st.individuals[nb])),
         # Tracing reaches every neighbour, infected or not, so it reads the
