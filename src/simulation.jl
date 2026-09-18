@@ -1096,12 +1096,15 @@ Both engines resolve a transmission through this one function — the
 generation engine on each contact it created, the continuous-time models on
 each candidate infection time they propose — so an intervention writes one
 [`Risk`](@ref) for both. What that risk does to the epidemic still differs: the
-generation engine blocks a contact and loses it, while a continuous-time model
-lets the pair go on meeting, so blocking a fraction of the contacts thins that
-pair's hazard by the same fraction. `builtin_blocks` is where the two part
-company, dropping four of the five built-in sources on a continuous-time model:
-two that cannot fire there, and the per-individual susceptibility and
-infectiousness, which are already in the contact-interval draw.
+generation engine blocks a contact and loses it, while on a continuous-time
+model the contact comes round again — the race redraws the pair's contact
+interval, the pool gives the susceptible a fresh resistance above the pressure
+it has absorbed — so blocking a fraction of the contacts thins the hazard by
+the same fraction. `builtin_blocks` is where the two part company, dropping
+four of the five built-in sources on a continuous-time model: two that cannot
+fire there, and the per-individual susceptibility and infectiousness, which
+those models already carry in the contact-interval draw and in the pool's
+threshold and force.
 Nothing is drawn from the rng unless a risk actually applies."""
 function _composed_risks_block(state::SimulationState, parent, contact,
         transmission_time, model_risks, interventions,
