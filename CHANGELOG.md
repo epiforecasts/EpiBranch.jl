@@ -14,7 +14,8 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 - Clean-project installation checks for matching source revisions and published
   companion-package installations.
-
+- Callable objects can supply branching-process offspring rules, generation-time
+  distributions and multi-type offspring families.
 - Callable objects can supply observation probabilities, delays and anchors,
   attribute-builder parameters, isolation test sensitivity and scheduling
   predicates, using the same signatures as ordinary functions.
