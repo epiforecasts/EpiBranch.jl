@@ -230,3 +230,37 @@ using Dates
         @test all(df.date_vaccination .== df.date_infection .+ Day(7))
     end
 end
+
+function EpiBranch.event_time_metadata(::Val{:appointment_time})
+    (column = :date_appointment, requires_infection = false)
+end
+
+@testset "External event dates" begin
+    state = simulate(BranchingProcess(Poisson(0.0)); n_initial = 4, rng = StableRNG(42))
+    reference = Date(2020, 1, 1)
+    for (i, ind) in enumerate(state.individuals)
+        ind.state[:infected] = i == 1
+        ind.state[:appointment_time] = (2.0, 3.0, Inf, missing)[i]
+        ind.state[:onset_time] = 4.0
+        ind.state[:admission_time] = 5.0
+        ind.state[:custom_disease_time] = 6.0
+        ind.state[:vaccination_time_booster] = i == 3 ? NaN : 7.0
+        ind.state[:immunity_time_booster] = i == 4 ? "unknown" : 8.0
+        ind.state[:trace_time] = 1.0
+    end
+    df = linelist(state; infected_only = false, reference_date = reference)
+    @test isequal(df.date_appointment, [
+        reference + Day(2), reference + Day(3), missing, missing])
+    for key in (:date_onset, :date_admission, :date_custom_disease)
+        @test all(ismissing, df[2:4, key])
+        @test !ismissing(df[1, key])
+    end
+    @test isequal(df.date_vaccination_booster,
+        [reference + Day(7), reference + Day(7), missing, reference + Day(7)])
+    @test isequal(df.date_immunity_booster,
+        [reference + Day(8), reference + Day(8), reference + Day(8), missing])
+    @test all(==(reference + Day(1)), df.date_trace)
+    @test nrow(linelist(state)) == 1
+    @test event_time_metadata(Val(:ordinary_value)) === nothing
+    @test event_time_metadata(Val(:custom_disease_time)).requires_infection
+end

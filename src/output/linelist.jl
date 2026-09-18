@@ -1,4 +1,44 @@
 """
+    event_time_metadata(::Val{key})
+
+Describe a state key used as an event date by [`linelist`](@ref). Return
+`(column = :date_name, requires_infection = true)` or `nothing` for an ordinary
+state column. By default, keys ending in `_time` become `date_` columns and
+require infection. Non-finite or non-numeric event times produce `missing`.
+
+An event producer can declare a date that also applies to uninfected people:
+
+```julia
+EpiBranch.event_time_metadata(::Val{:appointment_time}) =
+    (column = :date_appointment, requires_infection = false)
+```
+
+Tracing, vaccination and immunity dates, including labelled doses, are independent
+of infection. Isolation dates retain the recorded quarantine time when a
+provisional onset replaced it. Metadata affects output only.
+"""
+function event_time_metadata(::Val{key}) where {key}
+    name = String(key)
+    # Dose labels follow the time marker rather than preceding it.
+    for event in (:vaccination, :immunity)
+        prefix = string(event, "_time_")
+        if startswith(name, prefix)
+            label = name[(length(prefix) + 1):end]
+            return (column = Symbol("date_", event, "_", label),
+                requires_infection = false)
+        end
+    end
+    endswith(name, "_time") || return nothing
+    return (column = Symbol("date_", name[1:(end - length("_time"))]),
+        requires_infection = true)
+end
+for key in (:trace_time, :vaccination_time, :immunity_time)
+    column = Symbol("date_", String(key)[1:(end - length("_time"))])
+    @eval event_time_metadata(::Val{$(QuoteNode(key))}) = (
+        column = $(QuoteNode(column)), requires_infection = false)
+end
+
+"""
     linelist(state::SimulationState; reference_date=Date(2020, 1, 1),
              infected_only=true)
 
@@ -14,12 +54,13 @@ With `infected_only = false`, the table has a row for every individual in
 offspring-driven model such as `BranchingProcess` it is the cases plus every
 contact they exposed who was not infected. An uninfected row has `missing` for
 `date_infection` and for every date derived from it (onset, reporting,
-admission, outcome, a traced isolation held back to onset, and any custom
-`_time` field). Dates of events that happen to a person whether or not they
+admission, outcome, a traced isolation held back to onset, and custom
+events whose metadata requires infection). Dates of events that happen to a person whether or not they
 are infected are kept: `date_trace`, `date_vaccination`, `date_immunity`, and
 `date_isolation` when the isolation is a quarantine on tracing. Where
 [`Isolation`](@ref) derived the isolation from a provisional onset, the column
 reports the quarantine it replaced, if there was one, and `missing` otherwise.
+Use [`event_time_metadata`](@ref) to declare additional event dates.
 Columns that are not dates are reported as stored.
 
 To add a column, write the field during the simulation. `linelist`
@@ -99,16 +140,15 @@ values. Other keys pass through. Columns are omitted only if every
 case's value is `missing` (or, for `_time` keys, every value is
 non-finite/non-numeric)."""
 function _add_state_column!(cols, cases, key::Symbol, reference_date)
-    key_name = String(key)
-    if endswith(key_name, "_time")
-        prefix = key_name[1:(end - length("_time"))]
-        col_name = Symbol("date_" * prefix)
+    metadata = event_time_metadata(Val(key))
+    if metadata !== nothing
+        col_name = metadata.column
         col_name in keys(cols) && return nothing  # don't shadow core columns
         values = Vector{Union{Date, Missing}}(undef, length(cases))
         any_finite = false
         for (i, ind) in pairs(cases)
             t = is_infected(ind) ? get(ind.state, key, missing) :
-                _uninfected_event_time(ind, key)
+                _uninfected_event_time(ind, key, metadata)
             d = t isa Real ? _to_date(reference_date, t) : missing
             values[i] = d
             d === missing || (any_finite = true)
@@ -141,15 +181,13 @@ regardless of infection: being traced, vaccinated, gaining vaccine immunity, or
 being quarantined. An isolation written by `Isolation` came from the
 provisional onset; where one replaced a quarantine, that quarantine's time is
 reported in its place."""
-function _uninfected_event_time(ind, key::Symbol)
-    if key in (:trace_time, :vaccination_time, :immunity_time)
-        return get(ind.state, key, missing)
-    elseif key === :isolation_time
+function _uninfected_event_time(ind, key::Symbol, metadata)
+    if key === :isolation_time
         get(ind.state, :isolated_by_isolation, false) ||
             return get(ind.state, key, missing)
         return get(ind.state, :isolation_time_before_isolation, missing)
     end
-    return missing
+    return metadata.requires_infection ? missing : get(ind.state, key, missing)
 end
 
 """Convert `Symbol` entries to `String` so DataFrames serialises cleanly;
