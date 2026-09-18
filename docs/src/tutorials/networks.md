@@ -414,13 +414,15 @@ nodes stay fixed, [`compile_contact_pairs`](@ref) enumerates the rows once and t
 three-argument `pairwise_surv_loglik` reuses them while the kernel parameters
 change. That form is differentiable in those parameters and can be optimised
 with Optim or added to a Turing `@model` through `@addlogprob!`, as the
-households tutorial shows. With an `external_hazard`, pass it to
-`pairwise_surv_loglik` and compile the layout with `external = true`. As in the
-simulation, the community hazard introduces cases up to the data's `obs_end`
-and spread along the edges continues after it. Data that stop at a date are
-scored up to it by passing that date as `followup_end` to `NetworkInfections`
-(or `network_infections`): infections and exposure after it are ignored, and a
-node still infectious at the end of follow-up keeps a removal time of `Inf`.
+households tutorial shows.
+
+With an `external_hazard`, pass it to `pairwise_surv_loglik` and compile the
+layout with `external = true`. As in the simulation, the community hazard
+introduces cases up to the data's `obs_end` and spread along the edges continues
+after it. To score data that stop at a date, pass that date as `followup_end` to
+`NetworkInfections` (or `network_infections`): infections and exposure after it
+are ignored, and a node still infectious at the end of follow-up keeps a removal
+time of `Inf`.
 
 Because the possible infectors are read off the graph, a structure that is not a
 partition fits the same way. A network *within* households, where not every
@@ -434,8 +436,7 @@ augments them and conditions the observed onsets through the progression, as for
 households. An impossible configuration, such as a node infected when no
 in-neighbour is infectious and no community hazard can reach it, has zero
 density. `pairwise_surv_loglik` returns `-Inf` for it with a zero gradient, since
-whether a configuration is possible at all is fixed by the times and not by the
-kernel's parameters.
+whether a configuration is possible at all depends on the times alone.
 
 Fitting the community hazard itself has the same caveat as for households: a
 positive `external_hazard` and no community hazard are different conditionings,

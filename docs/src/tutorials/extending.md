@@ -1015,8 +1015,8 @@ spec, define methods on `loglikelihood` directly.
 
 A structure-driven model simulated by the continuous-time race can reuse the
 pairwise survival likelihood, whose generative model is that race. Beyond the
-infection times, the density needs to know who could have infected whom. Define an infection-layer type that subtypes
-[`InfectionLayer`](@ref) and give it a
+infection times, the density needs to know who could have infected whom. Define
+an infection-layer type that subtypes [`InfectionLayer`](@ref) and give it a
 [`contact_structure`](@ref EpiBranch.contact_structure) method that returns a
 membership vector for groups whose members all mix, or an adjacency list for
 anything else. [`compile_contact_pairs`](@ref) and [`pairwise_surv_loglik`](@ref)

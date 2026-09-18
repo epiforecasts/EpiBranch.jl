@@ -539,11 +539,10 @@ method. Fit a `Gamma` with a reverse-mode backend such as Mooncake. `Weibull`
 and `Exponential` differentiate under either mode.
 
 !!! warning "A vanishing community hazard is not the no-community case"
-    The two are different conditionings, and the density does not pass
-    continuously from one to the other. With `external_hazard = α > 0` an index
-    case infected at time `t` contributes `log(α) − αt`, which falls to `-Inf` as
-    `α → 0`, because a model that admits community introductions has to explain
-    the ones it saw. At exactly `external_hazard = 0` index cases are instead
+    The two are different conditionings, and the density jumps between them at
+    `α = 0`. With `external_hazard = α > 0` an index case infected at time `t`
+    contributes `log(α) − αt`, which falls to `-Inf` as `α → 0`, because a model
+    that admits community introductions has to explain the ones it saw. At exactly `external_hazard = 0` index cases are instead
     conditioned on and contribute nothing, leaving a finite value. A likelihood
     ratio between "some community transmission" and "none" therefore cannot be
     read off by letting `α` approach zero: score the two models separately.

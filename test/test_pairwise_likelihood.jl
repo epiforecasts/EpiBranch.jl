@@ -427,10 +427,10 @@ end
         # Two components. In {1, 2} host 1 is a community case at 0 and infects 2
         # at 1.0, which the parameters do move. In {3, 4} host 4 is infected at
         # 8.0, after obs_end and before its only possible infector is infectious,
-        # so nothing can explain it. The density is -Inf over a whole
-        # neighbourhood of the parameters — possibility is fixed by the times —
-        # so the derivative must be exactly zero, and must not pick up the other
-        # component's finite terms.
+        # so nothing can explain it. Whether a configuration is possible at all
+        # depends on the times alone, which makes the density -Inf over a whole
+        # neighbourhood of the parameters. The derivative must then be exactly
+        # zero, and must not pick up the other component's finite terms.
         inf = [0.0, 1.0, 10.0, 8.0]
         removal = [5.0, 6.0, 12.0, 13.0]
         index = [true, false, true, false]
@@ -485,7 +485,7 @@ end
         fs(s) = pairwise_surv_loglik(Exponential(s), data, L)
         @test ForwardDiff.derivative(fe, 2.5) ≈ ForwardDiff.derivative(fs, 2.5)
 
-        # a kernel whose first internal pair carries no fitted parameter
+        # a kernel whose first internal pair holds no fitted parameter
         first_inf = L.infector[findfirst(!, L.is_ext)]
         fc(s) = pairwise_surv_loglik(
             (i, j) -> i == first_inf ? Exponential(3.0) : Exponential(s), data, L)
