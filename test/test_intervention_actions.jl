@@ -88,3 +88,29 @@ EpiBranch.continuous_actions(::AppointmentAction) = true
     @test_throws ErrorException EpiBranch.apply_actions!(broken, state, [state.individuals[3]])
     @test state.max_infection_time == 11.0
 end
+
+@testset "Existing-dose effects require admission" begin
+    rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0)
+    for active in (false, true),
+        wrap in (
+            v -> Scheduled(v, st -> active),
+            v -> Scheduled(CapacityConstrained(v; budget_per_period = 0.0), st -> active),
+            v -> CapacityConstrained(Scheduled(v, st -> active); budget_per_period = 0.0))
+
+        state = EpiBranch.new_state(BranchingProcess(Poisson(0.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18))
+        ind = Individual(id = 1, infection_time = 1.0,
+            state = Dict{Symbol, Any}(:traced => true, :trace_time => 1.0,
+                :incubation_period => 10.0, :vaccinated => true, :vaccination_time => 2.0))
+        push!(state.individuals, ind)
+        state.max_infection_time = 3.0
+        iv = wrap(rv)
+        actions = EpiBranch.intervention_actions(iv, state, [ind])
+        @test !haskey(ind.state, :infection_aborted_time)
+        @test only(actions).time == 3.0
+        EpiBranch.apply_actions!(iv, state, [ind])
+        @test get(ind.state, :infection_aborted_time, Inf) == (active ? 2.0 : Inf)
+        @test ind.state[:vaccination_time] == 2.0
+        @test !haskey(ind.state, :capacity_admission_time_vaccinated)
+    end
+end

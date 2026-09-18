@@ -1623,7 +1623,11 @@ time as `state.max_infection_time`, with the current case count and generation.
 Both wrapper orders follow those rules. The budget counts admissions, including
 future-dated deliveries; it is not a count of doses administered per calendar day.
 An external resource producer supplies `capacity_key` and `capacity_time_key` and
-sets the resource flag only after successful delivery.
+sets the resource flag only after successful delivery. An action on a person who
+already has that flag passes through capacity admission without another charge;
+scheduling still applies. Ring vaccination uses this for protection from an
+existing dose at a new exposure, with the current simulation time as its action
+time.
 
 Use `EpiBranch.action_draw!(sample, individual, key)` to retain a delay or acceptance
 draw across repeated discovery. Keys identify an action or visit; distinct visits

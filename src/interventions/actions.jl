@@ -82,7 +82,9 @@ end
 
 function _admit_actions!(cc::CapacityConstrained, state, actions)
     key = capacity_key(cc.intervention)
+    already_used = filter(a -> get(a.individual.state, key, false), actions)
     candidates = filter(a -> !get(a.individual.state, key, false), actions)
+    _admit_actions!(cc.intervention, state, already_used)
     order = sortperm([cc.priority(a.individual, state) for a in candidates]; alg = MergeSort)
     usage = _capacity_usage(cc, state)
     used = usage.used
@@ -122,8 +124,12 @@ function intervention_actions(rv::RingVaccination, state, candidates)
     for ind in candidates
         is_traced(ind) || continue
         if get(ind.state, _vaccinated_key(label), false)
-            _maybe_positive(rv.post_exposure_efficacy) &&
-                _abort_infection!(rv, ind, ind.state[_vaccination_time_key(label)], state.rng)
+            if _maybe_positive(rv.post_exposure_efficacy)
+                # Reconsider protection at this exposure without recording a new dose.
+                effect! = (person, at, st) -> _abort_infection!(
+                    rv, person, person.state[_vaccination_time_key(label)], st.rng)
+                push!(actions, InterventionAction(ind, state.max_infection_time, effect!))
+            end
             continue
         end
         trace_t = haskey(ind.state, :trace_time) ? ind.state[:trace_time] :
