@@ -226,7 +226,8 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
         routes = routes, interventions = interventions,
         risks = EpiBranch.transmission_risks(model),
         seed! = (best, members, r) -> _seed_network!(
-            best, members, state, model.external_hazard, sim_opts.n_initial, Tobs, r),
+            best, members, state, model.external_hazard, sim_opts.n_initial, Tobs, r;
+            initial_cases = sim_opts.initial_cases),
         introduction = _ext_active(model.external_hazard) ?
                        (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
         contacts = (inf, st) -> _route_contacts(
@@ -242,4 +243,8 @@ function _route_targets(w::RouteWindow)
     adjacency, kernel = w.reach, w.kernel
     return (inf, st) -> ((nb, kernel) for nb in adjacency[inf]
     if !is_infected(st.individuals[nb]))
+end
+
+function EpiBranch._validate_initial_cases(model::RoutedNetwork, opts::SimOpts)
+    EpiBranch._validate_initial_case_ids(opts, model.n, model.external_hazard)
 end

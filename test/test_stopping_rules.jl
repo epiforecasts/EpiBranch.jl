@@ -83,3 +83,55 @@ end
         @test is_extinct(state)
     end
 end
+
+@testset "Positional simulation options" begin
+    rules = [MaxCases(10)]
+    opts = SimOpts(1, rules)
+    @test opts.n_initial == 1
+    @test opts.initial_cases === nothing
+    @test opts.stopping_rules == rules
+    @test opts.stopping_rules isa Vector{AbstractStoppingRule}
+end
+
+@testset "Initial-case control validation and population mapping" begin
+    ids = [3, 9]
+    opts = SimOpts(; initial_cases = ids)
+    @test opts.n_initial == 2
+    push!(ids, 12)
+    @test opts.initial_cases == [3, 9]
+    @test_throws ArgumentError SimOpts(; initial_cases = [3, 3])
+    @test_throws ArgumentError SimOpts(; initial_cases = [0])
+    @test_throws ArgumentError SimOpts(; initial_cases = [-1])
+    @test_throws ArgumentError SimOpts(; initial_cases = [3], n_initial = 1)
+    @test EpiBranch._validate_initial_case_ids(opts, 9, 0.0) === nothing
+    @test_throws ArgumentError EpiBranch._validate_initial_case_ids(opts, 8, 0.0)
+    @test_throws ArgumentError EpiBranch._validate_initial_case_ids(opts, 9, 0.1)
+    @test EpiBranch._validate_initial_case_ids(SimOpts(), 9, 0.1) === nothing
+    @test_throws ArgumentError simulate(BranchingProcess(Poisson(0.0)); initial_cases = [3])
+    # Race positions differ from population IDs, as they do within households.
+    best = fill(Inf, 3)
+    EpiBranch._seed_initial_cases!(best, [9, 3, 6], opts.initial_cases)
+    @test best == [0.0, 0.0, Inf]
+    empty_opts = SimOpts(; initial_cases = Int[], stopping_rules = [MaxCases(10)])
+    @test empty_opts.n_initial == 0
+    @test empty_opts.initial_cases == Int[]
+end
+
+# Many small races must reuse the population lookup without copying it.
+function seed_household_population!(best, chosen, n_households)
+    for household in 1:n_households
+        fill!(best, Inf)
+        EpiBranch._seed_initial_cases!(best, (2household - 1, 2household), chosen)
+    end
+    return nothing
+end
+
+@testset "Population seed lookup reuse" begin
+    chosen = Set(1:2:60000)
+    best = fill(Inf, 2)
+    seed_household_population!(best, chosen, 1)
+    allocated = @allocated seed_household_population!(best, chosen, 30000)
+    @test best == [0.0, Inf]
+    @test length(chosen) == 30000
+    @test allocated < 1_000_000
+end

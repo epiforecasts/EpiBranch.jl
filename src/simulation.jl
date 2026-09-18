@@ -1,7 +1,7 @@
 """
     simulate(model::TransmissionModel;
              max_cases=10_000, max_generations=100, max_time=nothing,
-             n_initial=1, stopping_rules=nothing,
+             n_initial=nothing, initial_cases=nothing, stopping_rules=nothing,
              rng=Random.default_rng(), condition=nothing, max_attempts=10_000)
 
 Run a single outbreak simulation.
@@ -14,7 +14,14 @@ runs with the empty defaults. `simulate` itself takes only execution controls.
 Termination is set by `max_cases`, `max_generations`, and `max_time` (any
 of which may be `nothing` to drop that limit); the run always stops on
 extinction. For finer control pass a `stopping_rules` vector of
-[`AbstractStoppingRule`](@ref). `n_initial` is the number of seed cases.
+[`AbstractStoppingRule`](@ref). `n_initial` is the number of seed cases (default 1).
+
+`NetworkProcess`, `RoutedNetwork` and `HouseholdProcess` accept `initial_cases`
+as a vector of distinct population IDs to infect at time zero, including an empty
+vector. It replaces each process's default seeding rule. Supply either
+`initial_cases` or `n_initial`; out-of-range IDs raise an error. Chosen initial
+cases currently require `external_hazard = 0`. Other processes reject this
+keyword when a vector is supplied. Random seeding is unchanged when it is omitted.
 
 The case's clinical timeline — the [`AbstractClinicalTransition`](@ref)s a
 case moves through (latent, onset, severity, death/recovery, burial) — is the
@@ -28,7 +35,8 @@ until one produces an outbreak whose cumulative cases fall within the range,
 up to `max_attempts`.
 """
 function simulate(model::TransmissionModel;
-        n_initial::Int = 1,
+        n_initial::Union{Int, Nothing} = nothing,
+        initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
         max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
@@ -42,8 +50,9 @@ function simulate(model::TransmissionModel;
     _validate_process_windows(model, _progression(model))
     _warn_ignored_termination(
         model, max_cases, max_generations, max_time, stopping_rules)
-    sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
+    sim_opts = SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time,
         stopping_rules)
+    _validate_initial_cases(model, sim_opts)
     return _simulate(model, sim_opts; interventions = interventions(model),
         attributes = attributes(model), progression = _progression(model),
         observation = observation(model), rng, condition, max_attempts)
@@ -92,7 +101,8 @@ using independent RNG streams derived from the provided `rng`. Use
 `julia --threads N` to enable multi-threading.
 """
 function simulate(model::TransmissionModel, n::Int;
-        n_initial::Int = 1,
+        n_initial::Union{Int, Nothing} = nothing,
+        initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
         max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
@@ -102,8 +112,9 @@ function simulate(model::TransmissionModel, n::Int;
     _validate_process_windows(model, _progression(model))
     _warn_ignored_termination(
         model, max_cases, max_generations, max_time, stopping_rules)
-    sim_opts = SimOpts(; n_initial, max_cases, max_generations, max_time,
+    sim_opts = SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time,
         stopping_rules)
+    _validate_initial_cases(model, sim_opts)
     return _simulate_n(model, n, sim_opts; interventions = interventions(model),
         attributes = attributes(model), progression = _progression(model),
         observation = observation(model), rng, parallel)

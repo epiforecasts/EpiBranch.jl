@@ -29,6 +29,8 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 - Structured infection likelihoods check composed components through
   `infection_likelihood_compatible`, rejecting effects omitted by the supplied
   infection layer and bare kernel.
+- Network and household simulations accept `initial_cases` to choose population
+  IDs infected at time zero, including repeated and parallel runs.
 - Callable objects can supply observation probabilities, delays and anchors,
   attribute-builder parameters, isolation test sensitivity and scheduling
   predicates, using the same signatures as ordinary functions.

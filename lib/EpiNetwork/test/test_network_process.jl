@@ -838,3 +838,37 @@ end
             n_initial = 1, rng = StableRNG(4))
     end
 end
+
+@testset "Chosen initial cases" begin
+    adjacency = [Int[] for _ in 1:5]
+    process = NetworkProcess(adjacency, Exponential(1.0))
+    routed = RoutedNetwork([RouteWindow(:contacts; reach = adjacency,
+        kernel = Exponential(1.0))])
+    infected_ids(state) = [i.id for i in state.individuals if is_infected(i)]
+    for model in (process, ModelSpec(process), routed, ModelSpec(routed))
+        ids = [4, 2]
+        state = simulate(model; initial_cases = ids, rng = StableRNG(7))
+        @test infected_ids(state) == [2, 4]
+        @test ids == [4, 2]
+        @test all(i -> i.infection_time == 0 && i.parent_id == 0,
+            filter(is_infected, state.individuals))
+        @test isempty(infected_ids(simulate(model; initial_cases = Int[], rng = StableRNG(7))))
+        for parallel in (false, true)
+            states = simulate(model, 4; initial_cases = ids, parallel, rng = StableRNG(8))
+            @test all(s -> infected_ids(s) == [2, 4], states)
+        end
+        @test_throws ArgumentError simulate(model; initial_cases = [2, 2])
+        @test_throws ArgumentError simulate(model; initial_cases = [0])
+        @test_throws ArgumentError simulate(model; initial_cases = [6])
+        @test_throws ArgumentError simulate(model; initial_cases = [2], n_initial = 1)
+    end
+    external = NetworkProcess(adjacency, Exponential(1.0); external_hazard = 0.1, obs_end = 5.0)
+    @test_throws ArgumentError simulate(external; initial_cases = [2])
+    @test_throws ArgumentError simulate(BranchingProcess(Poisson(0.0)); initial_cases = [2])
+    @test infected_ids(simulate(process; rng = StableRNG(42))) ==
+          infected_ids(simulate(process; n_initial = 1, rng = StableRNG(42)))
+    opts_ids = [2, 4]
+    opts = EpiBranch.SimOpts(; initial_cases = opts_ids)
+    push!(opts_ids, 5)
+    @test opts.initial_cases == [2, 4]
+end
