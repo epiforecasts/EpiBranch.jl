@@ -30,9 +30,9 @@ end
 
 function resolve_individual!(r::Recovery, individual, state)
     anchor = _resolve_anchor(r.from, individual)
-    _anchor_ok(anchor) || return nothing
-    delay = _resolve_delay(r.delay, state.rng, individual)
-    individual.state[:recovery_candidate_time] = anchor + delay
+    time = transition_time(state.rng, individual, anchor, r.delay)
+    time === nothing && return nothing
+    individual.state[:recovery_candidate_time] = time
     return nothing
 end
 
@@ -106,11 +106,10 @@ end
 
 function resolve_individual!(d::Death, individual, state)
     anchor = _resolve_anchor(d.from, individual)
-    _anchor_ok(anchor) || return nothing
-    p = _resolve_probability(d.probability, state.rng, individual)
-    rand(state.rng) < p || return nothing
-    delay = _resolve_delay(d.delay, state.rng, individual)
-    individual.state[:death_candidate_time] = anchor + delay
+    time = transition_time(state.rng, individual, anchor, d.delay;
+        probability = d.probability)
+    time === nothing && return nothing
+    individual.state[:death_candidate_time] = time
     return nothing
 end
 

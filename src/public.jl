@@ -46,6 +46,7 @@ public transmission_time
 
 # Resolve a case's natural history (the model's `progression`). The engine calls
 # this for every new case; a model running its own simulation loop calls it.
+public transition_time
 public resolve_transitions!
 
 # Apply the model's observation to a finished state (the simulation side of the
