@@ -117,116 +117,150 @@
         end
     end
 
-    @testset "vaccine_acceptance draws once per ring" begin
+    @testset "vaccine_acceptance draws once per group" begin
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        process = BranchingProcess(Poisson(1.0), Exponential(5.0))
+        read_acceptance = (rng, ind) -> ind.state[:vaccine_acceptance]
 
-        @testset "contacts of the same case share one value; other cases differ" begin
-            model = BranchingProcess(Poisson(1.0), Exponential(5.0))
-            attrs = vaccine_acceptance(propensity = Beta(2, 2))
-            rng = StableRNG(1)
+        @testset "members of one group share a value; other groups differ" begin
+            attrs = [groups(2), vaccine_acceptance(propensity = Beta(2, 2))]
             state = EpiBranch.new_state(
-                model, EpiBranch.AbstractClinicalTransition[], attrs, rng)
-            parent1, parent2 = EpiBranch.add_individuals!(state, 2, [])
-            ring1 = [make_contact!(state, parent1, 1.0) for _ in 1:20]
-            ring2 = [make_contact!(state, parent2, 1.0) for _ in 1:20]
-            @test length(unique(c.state[:vaccine_acceptance] for c in ring1)) == 1
-            @test length(unique(c.state[:vaccine_acceptance] for c in ring2)) == 1
-            @test ring1[1].state[:vaccine_acceptance] != ring2[1].state[:vaccine_acceptance]
-        end
-
-        @testset "key is customisable" begin
-            model = BranchingProcess(Poisson(1.0), Exponential(5.0))
-            attrs = vaccine_acceptance(propensity = Beta(2, 2), key = :acceptance)
-            rng = StableRNG(1)
-            state = EpiBranch.new_state(
-                model, EpiBranch.AbstractClinicalTransition[], attrs, rng)
-            parent = only(EpiBranch.add_individuals!(state, 1, []))
-            contact = make_contact!(state, parent, 1.0)
-            @test haskey(contact.state, :acceptance)
-            @test !haskey(contact.state, :vaccine_acceptance)
-        end
-
-        @testset "clusters GroupVaccination coverage by ring within a group" begin
-            gv = GroupVaccination(efficacy = 0.9,
-                coverage = (rng, ind) -> ind.state[:vaccine_acceptance])
-            attrs = [groups(1),
-                vaccine_acceptance(propensity = (rng, case) -> case.id == 1 ? 1.0 : 0.0)]
-            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-                EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1))
-            accepting, declining = EpiBranch.add_individuals!(state, 2, [])
-            accepting_ring = [make_contact!(state, accepting, 1.0) for _ in 1:10]
-            declining_ring = [make_contact!(state, declining, 1.0) for _ in 1:10]
-            for ind in state.individuals
-                ind.state[:test_positive] = ind === accepting
+                process, EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1))
+            people = EpiBranch.add_individuals!(state, 60, [])
+            by_group = Dict{Int, Set{Float64}}()
+            for ind in people
+                push!(get!(by_group, ind.state[:group], Set{Float64}()),
+                    ind.state[:vaccine_acceptance])
             end
-            set_isolated!(accepting, 2.0)
-
-            EpiBranch.apply_post_transmission!(gv, state, state.individuals)
-
-            @test all(is_vaccinated, accepting_ring)
-            @test !any(is_vaccinated, declining_ring)
+            @test length(by_group) == 2
+            @test all(length(v) == 1 for v in values(by_group))
+            @test length(union(values(by_group)...)) == 2
         end
 
-        @testset "applied without simulation state errors" begin
-            attrs = vaccine_acceptance(propensity = 0.5)
+        @testset "the shared value outlives the generation it was drawn in" begin
+            attrs = [groups(1), vaccine_acceptance(propensity = Beta(2, 2))]
+            state = EpiBranch.new_state(
+                process, EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1))
+            case = only(EpiBranch.add_individuals!(state, 1, []))
+            child = make_contact!(state, case, 1.0)
+            grandchild = make_contact!(state, child, 2.0)
+            @test child.state[:vaccine_acceptance] == case.state[:vaccine_acceptance]
+            @test grandchild.state[:vaccine_acceptance] == case.state[:vaccine_acceptance]
+        end
+
+        @testset "separate runs draw their own values" begin
+            attrs = [groups(1), vaccine_acceptance(propensity = Beta(2, 2))]
+            drawn = map(1:20) do seed
+                state = EpiBranch.new_state(process,
+                    EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(seed))
+                only(EpiBranch.add_individuals!(state, 1, [])).state[:vaccine_acceptance]
+            end
+            @test length(unique(drawn)) == 20
+        end
+
+        @testset "keys are customisable" begin
+            attrs = [groups(2; key = :village),
+                vaccine_acceptance(propensity = Beta(2, 2),
+                    group_key = :village, key = :acceptance)]
+            state = EpiBranch.new_state(
+                process, EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1))
+            ind = only(EpiBranch.add_individuals!(state, 1, []))
+            @test haskey(ind.state, :acceptance)
+            @test !haskey(ind.state, :vaccine_acceptance)
+        end
+
+        @testset "a missing group key is an error naming the key" begin
+            attrs = vaccine_acceptance(propensity = 0.5, group_key = :village)
             ind = Individual(id = 1)
-            @test_throws ArgumentError EpiBranch._apply_attributes!(attrs, StableRNG(1), ind)
+            err = try
+                EpiBranch._apply_attributes!(attrs, StableRNG(1), ind)
+            catch e
+                e
+            end
+            @test err isa ArgumentError
+            @test occursin(":village", err.msg)
         end
 
-        @testset "0/1 propensity gives all-or-nothing rings at the independent-case mean" begin
+        @testset "clusters GroupVaccination coverage inside the group" begin
+            gv = GroupVaccination(efficacy = 0.9, coverage = read_acceptance)
+            # Villages 1 and 2 accept and decline as blocks; which is which
+            # follows from the group label, so the test does not depend on
+            # the order the propensities are drawn in.
+            attrs = [groups(2),
+                vaccine_acceptance(
+                    propensity = (rng, ind) -> ind.state[:group] == 1 ? 1.0 : 0.0)]
+            state = EpiBranch.new_state(process,
+                EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1))
+            people = EpiBranch.add_individuals!(state, 40, [])
+            for ind in people
+                ind.state[:test_positive] = true
+                set_isolated!(ind, 2.0)
+            end
+
+            EpiBranch.apply_post_transmission!(gv, state, people)
+
+            accepting = filter(ind -> ind.state[:group] == 1, people)
+            declining = filter(ind -> ind.state[:group] == 2, people)
+            @test !isempty(accepting) && !isempty(declining)
+            @test all(is_vaccinated, accepting)
+            @test !any(is_vaccinated, declining)
+        end
+
+        @testset "0/1 propensity gives all-or-nothing groups at the independent mean" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
             p = 0.4
-            attrs = [clinical,
+            attrs = [clinical, groups(10),
                 vaccine_acceptance(
                     propensity = (rng, ind) -> Float64(rand(rng, Bernoulli(p))))]
-            rv = RingVaccination(efficacy = 0.9,
-                coverage = (rng, ind) -> ind.state[:vaccine_acceptance])
-            state = simulate(
+            rv = RingVaccination(efficacy = 0.9, coverage = read_acceptance)
+            states = simulate(
                 ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv], attributes = attrs);
+                    interventions = [iso, ct, rv], attributes = attrs), 20;
                 max_cases = 300, rng = StableRNG(3))
 
-            rings = Dict{Int, Vector{Bool}}()
-            for ind in state.individuals
-                is_traced(ind) || continue
-                push!(get!(rings, ind.parent_id, Bool[]), is_vaccinated(ind))
+            traced = [ind for state in states
+                      for ind in state.individuals
+                      if is_traced(ind)]
+            @test !isempty(traced)
+            for state in states
+                by_group = Dict{Int, Vector{Bool}}()
+                for ind in filter(is_traced, state.individuals)
+                    push!(get!(by_group, ind.state[:group], Bool[]), is_vaccinated(ind))
+                end
+                @test all(length(unique(v)) == 1 for v in values(by_group))
             end
-            @test !isempty(rings)
-            @test all(length(unique(v)) == 1 for v in values(rings))
-
-            traced = filter(is_traced, state.individuals)
             rate = count(is_vaccinated, traced) / length(traced)
-            @test p - 0.15 <= rate <= p + 0.15
+            @test p - 0.1 <= rate <= p + 0.1
         end
 
-        @testset "clustered coverage inflates the variance of per-ring coverage at the same mean" begin
-            # Many synthetic rings, each contact's coverage decided by the
-            # package's own `_covers`, comparing a shared Beta-distributed
-            # propensity per ring (drawn via `vaccine_acceptance`) against
-            # independent per-contact draws at the same mean coverage.
-            k = 20        # contacts per ring
-            n_rings = 500
+        @testset "clustering inflates the variance of per-group coverage at the same mean" begin
+            # Coverage is decided by the package's own `_covers`, comparing a
+            # Beta propensity shared within a village against independent
+            # per-individual draws at the same mean coverage.
+            n_villages = 200
+            per_village = 20
             propensity = Beta(2, 2)  # mean 0.5
-            model = BranchingProcess(Poisson(1.0), Exponential(5.0))
-            attrs = vaccine_acceptance(propensity = propensity)
-            coverage = (rng, ind) -> ind.state[:vaccine_acceptance]
+            attrs = [groups(n_villages), vaccine_acceptance(propensity = propensity)]
             rng = StableRNG(4)
+            state = EpiBranch.new_state(
+                process, EpiBranch.AbstractClinicalTransition[], attrs, rng)
+            people = EpiBranch.add_individuals!(
+                state, n_villages * per_village, [])
 
-            clustered_means = map(1:n_rings) do _
-                state = EpiBranch.new_state(
-                    model, EpiBranch.AbstractClinicalTransition[], attrs, rng)
-                parent = only(EpiBranch.add_individuals!(state, 1, []))
-                ring = [make_contact!(state, parent, 1.0) for _ in 1:k]
-                mean(EpiBranch._covers(coverage, c, rng) for c in ring)
+            covered = Dict{Int, Vector{Bool}}()
+            for ind in people
+                push!(get!(covered, ind.state[:group], Bool[]),
+                    EpiBranch._covers(read_acceptance, ind, rng))
             end
-            independent_means = map(1:n_rings) do _
-                mean(EpiBranch._covers(mean(propensity), nothing, rng) for _ in 1:k)
-            end
+            clustered_means = [mean(v) for v in values(covered) if length(v) >= 5]
+            independent_means = [mean(EpiBranch._covers(mean(propensity), nothing, rng)
+                                 for _ in 1:per_village)
+                                 for _ in 1:n_villages]
 
             @test isapprox(mean(clustered_means), mean(independent_means); atol = 0.05)
-            @test var(clustered_means) > var(independent_means)
+            @test var(clustered_means) > 2 * var(independent_means)
         end
     end
 

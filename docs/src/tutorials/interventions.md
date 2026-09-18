@@ -275,47 +275,71 @@ println("Iso + tracing + PEP: $(round(containment_probability(results), digits=3
 
 ### Clustered vaccine refusal
 
-`coverage` drawn independently per contact means every ring's covered
-fraction concentrates near the mean, whatever any one contact's own
-tendency to refuse. In practice engagement with a response clusters by
-household or community: the same contacts who evade tracing tend to be
-the ones who decline a dose.
+A `coverage` drawn independently per contact leaves every village's covered
+fraction sitting near the mean, whatever one contact's own tendency to
+refuse. Engagement with a response clusters by household or community: the
+same contacts who evade tracing tend to be the ones who decline a dose.
 
-[`vaccine_acceptance`](@ref) draws a propensity once per ring, shared by
-the contacts created from the same case, rather than once per contact.
-`coverage` reads it back, so those contacts share one acceptance
-probability instead of each drawing an independent one:
+[`vaccine_acceptance`](@ref) draws an acceptance propensity once per group
+and shares it with every member of that group. The group is the `:group`
+label [`groups`](@ref) assigns, so list `groups` ahead of it in the
+attributes. `coverage` then reads the propensity back:
 
 ```@example interventions
-acceptance = vaccine_acceptance(propensity = Beta(2, 2))  # mean 0.5, varies ring to ring
+village = groups(20)  # 20 villages
+acceptance = vaccine_acceptance(propensity = Beta(2, 2))  # mean 0.5, varies village to village
+
 rv_clustered = RingVaccination(efficacy = 0.8,
     coverage = (rng, ind) -> ind.state[:vaccine_acceptance])
-
-rng = StableRNG(42)
-results_clustered = simulate(
-    scenario([iso, ct, rv_clustered], [clinical, acceptance]), 200;
-    max_cases = 500, rng = rng)
-println("Clustered refusal (mean coverage 0.5): $(round(containment_probability(results_clustered), digits=3))")
+rv_independent = RingVaccination(efficacy = 0.8, coverage = 0.5)
+nothing # hide
 ```
 
-Compared with independent refusal at the same mean coverage:
+Coverage among traced contacts, village by village:
 
 ```@example interventions
-rv_independent = RingVaccination(efficacy = 0.8, coverage = 0.5)
+function coverage_by_village(states)
+    out = Float64[]
+    for state in states, g in 1:20
+        members = filter(state.individuals) do ind
+            is_traced(ind) && get(ind.state, :group, 0) == g
+        end
+        length(members) >= 5 || continue
+        push!(out, count(is_vaccinated, members) / length(members))
+    end
+    return out
+end
 
 rng = StableRNG(42)
-results_independent = simulate(scenario([iso, ct, rv_independent]), 200; max_cases = 500, rng = rng)
-println("Independent refusal (mean coverage 0.5): $(round(containment_probability(results_independent), digits=3))")
+clustered = coverage_by_village(simulate(
+    scenario([iso, ct, rv_clustered], [clinical, village, acceptance]), 50;
+    max_cases = 300, rng = rng))
+
+rng = StableRNG(42)
+independent = coverage_by_village(simulate(
+    scenario([iso, ct, rv_independent], [clinical, village]), 50;
+    max_cases = 300, rng = rng))
+
+average(x) = sum(x) / length(x)
+lumpy(x) = count(c -> c < 0.2 || c > 0.8, x) / length(x)
+println("Mean village coverage: clustered $(round(average(clustered), digits=3)), independent $(round(average(independent), digits=3))")
+println("Villages under 20% or over 80% covered: clustered $(round(lumpy(clustered), digits=3)), independent $(round(lumpy(independent), digits=3))")
 ```
 
-The mean coverage is the same in both; clustering only spreads it across
-rings, some mostly covered and others mostly untouched. Under this tracing
-`efficacy` has no effect (see the warning above), so coverage does not
-change containment and the two numbers differ only by simulation noise.
-Where the vaccine does act, for example through `onward_efficacy` when
-tracing does not quarantine, the shared propensity widens the spread of
-each case's onward infections at the same mean, which can raise
-containment slightly and never lowers it.
+Average coverage is the same either way. Clustering moves it out of the
+middle, leaving some villages almost fully covered and others almost
+untouched, and a per-contact coverage probability has no way to express that.
+
+A propensity degenerate at 0 or 1, such as
+`(rng, ind) -> Float64(rand(rng, Bernoulli(0.5)))`, makes each village accept
+or decline as a block. A `Beta` propensity, as here, keeps the village's
+members drawing their own coins against a shared probability.
+
+The propensity lasts the whole run, so a village that declines still declines
+in later generations. Give [`GroupVaccination`](@ref) the same `coverage`
+closure to cluster refusal inside the unit it vaccinates, and
+[`MassVaccination`](@ref)'s `eligibility_time` can read the propensity the
+same way.
 
 ### Mass vaccination
 

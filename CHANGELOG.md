@@ -9,13 +9,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
-- `vaccine_acceptance(; propensity)`, an attributes function that draws a
-  vaccine-acceptance propensity once per ring, shared by the contacts created
-  from the same case, rather than independently per contact, so refusal
-  clusters the way it does in practice. `RingVaccination`'s `coverage` and
-  `MassVaccination`'s `eligibility_time` already accept a function of the
-  contact; read the propensity back from `ind.state[:vaccine_acceptance]`
-  to draw that correlation in.
+- `vaccine_acceptance(; propensity, group_key = :group)`, an attributes
+  function that draws a vaccine-acceptance propensity once per group and
+  shares it with every member of that group, so refusal clusters the way it
+  does in practice. `GroupVaccination`'s and `RingVaccination`'s `coverage`
+  and `MassVaccination`'s `eligibility_time` already accept a function of the
+  individual; read the propensity back from `ind.state[:vaccine_acceptance]`
+  to draw that correlation in. Groups come from `groups`, or from any
+  attributes function that labels individuals under `group_key`.
 - `HomogeneousProcess`, a closed, homogeneously-mixing population of fixed size
   simulated by the Sellke threshold construction. Every infectious individual
   exerts the same force of infection on every susceptible, giving the exact

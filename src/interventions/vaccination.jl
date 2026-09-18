@@ -237,7 +237,7 @@ refusal, absence, exclusion criteria, logistical gaps). Defaults to
 `1.0`. Accepts a `Real`, `Distribution`, or `Function`
 `(rng, contact) -> Real` for per-individual coverage (e.g.
 age-dependent), or reading a value set by
-[`vaccine_acceptance`](@ref) to cluster refusal by ring.
+[`vaccine_acceptance`](@ref) to cluster refusal by group.
 
 `eligibility_window` skips vaccination when the time since the
 contact's exposure exceeds the window — typical of filovirus-type
@@ -742,7 +742,9 @@ doses scale with group size where [`RingVaccination`](@ref) doses scale
 with ring size.
 
 `coverage`, `efficacy`, `severity_efficacy`, `delay_to_immunity`, `mode`,
-and `dose_label` mean what they do for [`RingVaccination`](@ref).
+and `dose_label` mean what they do for [`RingVaccination`](@ref). Pairing
+`coverage` with [`vaccine_acceptance`](@ref) on the same `group_key`
+clusters refusal in the unit being vaccinated.
 `severity_efficacy` defaults to `0.0` (no severity effect) and, as there,
 acts only through a clinical transition that reads it via the
 [`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors.
@@ -873,8 +875,8 @@ own transmission time.
   age-stratified rollout or any other state-dependent schedule.
   Return `Inf` for individuals who never become eligible. Reading a
   value set by [`vaccine_acceptance`](@ref) here clusters refusal by
-  ring, e.g. `(rng, ind) -> ind.state[:vaccine_acceptance] > 0.5 ? 30.0 : Inf`
-  declines a whole ring whose propensity is at most `0.5`; uptake is then
+  group, e.g. `(rng, ind) -> ind.state[:vaccine_acceptance] > 0.5 ? 30.0 : Inf`
+  declines a whole group whose propensity is at most `0.5`; uptake is then
   `P(propensity > 0.5)`.
 
 `efficacy` and `delay_to_immunity` accept the same set, drawn once per

@@ -298,7 +298,7 @@ demographics
 transmission_traits
 groups
 vaccine_acceptance
-EpiBranch.RingAttribute
+EpiBranch.GroupAttribute
 ```
 
 ## Convenience constructors
