@@ -82,6 +82,7 @@ downstream packages should pick names that do not collide.
 | `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:ring_dose_offered[_<label>]` | `Bool` | — | `RingVaccination` (continuous-time models) | `trace_contacts!` |
+| `:ring_dose_delay[_<label>]` | `Float64` | — | `RingVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
@@ -1276,14 +1277,16 @@ write whatever contact structure you want: a full matrix over every
 multiply independently.
 
 Competing risks carry over with one restriction. The pool attributes each
-contact to an infector drawn uniformly from everyone infectious, because `force`
-does not say how much each infective contributes to it. With more than one mixing
-group that attribution is not weighted by the contact matrix, so a risk that
-depends on who the infector is would be applied against the wrong infectors. The
-pool therefore refuses, with an error, per-individual infectiousness, a leaky
-`Isolation`, and any intervention with its own `competing_risk` other than the
-vaccinations' protection of the contact. Risks on the contact alone, such as a
-per-individual susceptibility, apply exactly. Differences in infectiousness
+contact to an infector drawn in proportion to infectiousness, which is a uniform
+draw while every infective is at the default, because `force` does not say how
+much each infective contributes to it. With more than one mixing group that
+attribution is not weighted by the contact matrix, so a risk that depends on who
+the infector is would be applied against the wrong infectors. The pool therefore
+refuses, with an error, a leaky `Isolation` and any intervention with its own
+`competing_risk` other than the vaccinations' protection of the contact.
+Per-individual infectiousness is not refused: it reaches the force through the
+weighted counts, so it needs no attribution to be exact. Risks on the contact
+alone, such as a per-individual susceptibility, apply exactly. Differences in infectiousness
 between groups belong in `force`.
 
 The natural history, isolation and line-list output are all unchanged from

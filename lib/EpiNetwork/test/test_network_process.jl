@@ -232,6 +232,33 @@ end
         @test isapprox(count(is_vaccinated, traced) / length(traced), 0.5; atol = 0.05)
     end
 
+    @testset "a drawn dose delay survives a node being traced again" begin
+        # An earlier trace moves a dose that has already been given, and the
+        # delay drawn with it moves too. Drawing again, or adding the
+        # distribution itself, would throw on the second trace.
+        clinical = clinical_presentation(incubation_period = LogNormal(0.0, 0.3),
+            prob_asymptomatic = 0.0)
+        ivs = [
+            Isolation(onset_to_isolation_delay = Exponential(0.5), test_sensitivity = 1.0,
+                post_isolation_transmission = 1.0),
+            ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.2),
+                quarantine_on_trace = false),
+            RingVaccination(efficacy = 0.0, dose_delay = Uniform(1.0, 3.0))]
+        model = ModelSpec(NetworkProcess(ring_adjacency(300, 2), Exponential(4.0));
+            progression = _sir(Exponential(8.0)), interventions = ivs,
+            attributes = clinical)
+        dosed = [ind
+                 for s in 1:5
+                 for ind in simulate(model; rng = StableRNG(s), n_initial = 3).individuals
+                 if is_vaccinated(ind)]
+        @test length(dosed) > 100
+        offsets = [ind.state[:vaccination_time] - ind.state[:trace_time] for ind in dosed]
+        @test all(o -> 1.0 <= o <= 3.0, offsets)
+        # The draw varies between nodes, so the delay is a draw rather than a
+        # bound that every dose happens to sit on.
+        @test length(unique(round.(offsets, digits = 6))) > 10
+    end
+
     @testset "a dose given along another case's trace protects before exposure" begin
         # With incomplete tracing and asymptomatic cases, a node is often dosed by
         # the trace of a case other than the one that later infects it, and that
