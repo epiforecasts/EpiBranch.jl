@@ -158,7 +158,8 @@ end
 
 function VaccineEffect(; efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
         waning = nothing, mode = LeakyMode(), dose_label = :default)
-    return VaccineEffect(efficacy, severity_efficacy, delay_to_immunity, waning, mode, dose_label)
+    return VaccineEffect(
+        efficacy, severity_efficacy, delay_to_immunity, waning, mode, dose_label)
 end
 
 """
@@ -911,7 +912,7 @@ one timed from it."""
 _dose_offset(::AbstractVaccination) = nothing
 _dose_offset(rv::RingVaccination) = rv.dose_delay
 
-# The intervention inside a wrapper; `Scheduled` adds a method.
+# The intervention inside a wrapper; `InterventionWrapper` adds a method.
 _unwrap_scheduled(iv) = iv
 
 function apply_post_transmission!(rv::RingVaccination, state, new_contacts)

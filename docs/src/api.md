@@ -23,15 +23,32 @@ household_offspring_law
 household_final_size
 ```
 
-## Household likelihood
+## Pairwise survival likelihood
+
+```@docs
+pairwise_surv_loglik
+PairwiseSurvivalData
+InfectionLayer
+EpiBranch.contact_structure
+EpiBranch.followup_end
+ContactPairsLayout
+compile_contact_pairs
+```
+
+### Household likelihood
 
 ```@docs
 household_infections
 HouseholdInfections
-pairwise_surv_loglik
-PairwiseSurvivalData
 HouseholdPairsLayout
 compile_household_pairs
+```
+
+### Network likelihood
+
+```@docs
+network_infections
+NetworkInfections
 ```
 
 ## Types
@@ -120,6 +137,11 @@ AbstractEffectMode
 LeakyMode
 AllOrNothingMode
 Scheduled
+CapacityConstrained
+capacity_usage
+EpiBranch.capacity_key
+EpiBranch.capacity_time_key
+default_capacity_priority
 Risk
 EpiBranch.HostSusceptibility
 EpiBranch.InfectorInfectiousness
