@@ -529,9 +529,15 @@ end
 # Scalar defaults short-circuit without drawing from the rng so that
 # coverage = 1.0 and eligibility_window = Inf reproduce the previous
 # deterministic behaviour exactly.
-_within_eligibility_window(w::Real, ind, vacc_t, rng) = vacc_t - ind.infection_time <= w
+_within_eligibility_window(w::Real, ind, vacc_t, rng) = _within_window(w, ind, vacc_t)
 function _within_eligibility_window(w, ind, vacc_t, rng)
-    vacc_t - ind.infection_time <= _sample_value(w, rng, ind)
+    _within_window(_sample_value(w, rng, ind), ind, vacc_t)
+end
+
+# A contact with no exposure yet (a `NaN` infection time) has not exceeded any
+# window, so a pre-exposure dose is always within it.
+function _within_window(w, ind, vacc_t)
+    isnan(ind.infection_time) || vacc_t - ind.infection_time <= w
 end
 
 _covers(p::Real, ind, rng) = p >= 1.0 || rand(rng) < p

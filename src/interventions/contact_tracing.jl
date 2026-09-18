@@ -400,19 +400,26 @@ function apply_trace!(::Quarantine, contact, state, trace_time, rng)
     return nothing
 end
 
-"""Flag the contact as traced without quarantining them. If the
-contact has a known onset time, record a `:traced_isolation_time` so
-[`Isolation`](@ref) can later pick the earlier of self-reporting and
-tracing."""
+"""Flag the contact as traced without quarantining them, and record a
+`:traced_isolation_time` so [`Isolation`](@ref) can later pick the earlier of
+self-reporting and tracing. The recorded time is the later of the trace time
+and the contact's onset, or the trace time alone while the onset is not yet
+known. An asymptomatic contact has no onset to isolate at, so none is
+recorded."""
 struct FlagOnly <: TraceAction end
 function apply_trace!(::FlagOnly, contact, state, trace_time, rng)
     contact.state[:traced] = true
     contact.state[:quarantined] = false
+    is_asymptomatic(contact) && return nothing
+    # A continuous-time model traces a contact before the race has settled its
+    # infection, so its onset is still unknown. Isolation holds the recorded
+    # time back to the onset once it is known, and never isolates a contact
+    # that has none, which makes the trace time alone safe to record here.
+    # A contact reached by several infectors keeps its earliest trace.
     ind_onset = onset_time(contact)
-    if !isnan(ind_onset)
-        traced_iso = max(ind_onset, trace_time)
-        contact.state[:traced_isolation_time] = traced_iso
-    end
+    traced_iso = isnan(ind_onset) ? trace_time : max(ind_onset, trace_time)
+    contact.state[:traced_isolation_time] = min(
+        get(contact.state, :traced_isolation_time, Inf), traced_iso)
     return nothing
 end
 

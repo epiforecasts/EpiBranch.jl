@@ -142,7 +142,9 @@ end
     @test EpiBranch._timetype(plain) === Float64
     @test EpiBranch._timetype(dual) <: ForwardDiff.Dual
     @test dual.cumulative_cases == plain.cumulative_cases
-    @test all(ForwardDiff.value(d.infection_time) == p.infection_time
+    # `isequal`, not `==`, since a never-infected individual's `infection_time`
+    # is `NaN` on both sides.
+    @test all(isequal(ForwardDiff.value(d.infection_time), p.infection_time)
     for (d, p) in zip(dual.individuals, plain.individuals))
 
     grad = ForwardDiff.derivative(total_infection_time, β0)
