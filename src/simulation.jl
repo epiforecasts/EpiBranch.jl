@@ -630,7 +630,7 @@ function new_state(model::TransmissionModel, transitions, attributes,
         rng::AbstractRNG)
     T = _time_type(model)
     SimulationState(Individual{T}[], Int[], 0, rng, 0, false,
-        population_size(model), zero(T), attributes,
+        population_size(model), zero(T), _fresh_attributes(attributes),
         convert(Vector{AbstractClinicalTransition}, transitions))
 end
 
@@ -1151,13 +1151,51 @@ end
 
 """Apply attributes function to an individual. No-op for NoAttributes."""
 _apply_attributes!(::NoAttributes, rng, ind) = nothing
-_apply_attributes!(f::Function, rng, ind) = f(rng, ind)
+_apply_attributes!(f, rng, ind) = f(rng, ind)
 function _apply_attributes!(builders::Union{Tuple, AbstractVector}, rng, ind)
     for build! in builders
-        build!(rng, ind)
+        _apply_attributes!(build!, rng, ind)
     end
     return nothing
 end
+
+"""
+Attributes-list element that draws one value per group and shares it with
+every member of that group (see [`vaccine_acceptance`](@ref)). The group is
+read from `group_key` on the individual, so the value is shared across
+whatever labels those groups: [`groups`](@ref), or any earlier attributes
+function writing that key. Values are drawn lazily, the first time each group
+is seen, and held in `cache` for the rest of the run.
+
+Use [`vaccine_acceptance`](@ref) to construct one.
+"""
+struct GroupAttribute{D}
+    key::Symbol
+    group_key::Symbol
+    propensity::D
+    cache::Dict{Any, Any}
+end
+
+function _apply_attributes!(attribute::GroupAttribute, rng, ind)
+    haskey(ind.state, attribute.group_key) || throw(ArgumentError(
+        "vaccine_acceptance needs :$(attribute.group_key) set on an individual " *
+        "before it runs; list `groups(n; key = :$(attribute.group_key))`, or " *
+        "another attributes function setting that key, ahead of it."))
+    ind.state[attribute.key] = get!(attribute.cache, ind.state[attribute.group_key]) do
+        _sample_value(attribute.propensity, rng, ind)
+    end
+    return nothing
+end
+
+"""Attributes for one run. An element that caches per-run draws (a
+[`GroupAttribute`](@ref EpiBranch.GroupAttribute)) gets a fresh, empty cache,
+so one attributes object can be reused across runs and across threads, each
+run drawing its own values. Everything else passes through."""
+_fresh_attributes(x) = x
+function _fresh_attributes(a::GroupAttribute)
+    GroupAttribute(a.key, a.group_key, a.propensity, Dict{Any, Any}())
+end
+_fresh_attributes(xs::Union{Tuple, AbstractVector}) = map(_fresh_attributes, xs)
 
 # ── Attributes function constructors ─────────────────────────────────
 
@@ -1302,7 +1340,7 @@ A named unit, for a builder that also sets other fields:
 attributes = [groups(10; key = :household), clinical_presentation(...)]
 ```
 
-See also [`GroupVaccination`](@ref).
+See also [`GroupVaccination`](@ref), [`vaccine_acceptance`](@ref).
 """
 function groups(n_groups::Integer; key::Symbol = :group)
     n_groups >= 1 || throw(ArgumentError("n_groups must be at least 1, got $n_groups"))
@@ -1383,6 +1421,70 @@ _trait_sampler(x::Real) =
     end
 _trait_sampler(d::Distribution) = (rng, ind) -> float(rand(rng, d))
 _trait_sampler(f::Function) = (rng, ind) -> float(f(rng, ind))
+
+"""
+    vaccine_acceptance(; propensity, group_key = :group, key = :vaccine_acceptance)
+
+Return an attributes function that sets `key` (default `:vaccine_acceptance`)
+on each individual, drawn once per group and shared by every member of that
+group. The group is whatever the individual holds under `group_key`
+(`:group` by default, as [`groups`](@ref) assigns it), so refusal clusters in
+the same unit [`GroupVaccination`](@ref) vaccinates, and a group's value lasts
+for the whole run, across generations.
+
+Engagement with a response clusters by household or community: the
+contacts who evade tracing tend to be the same ones who decline a dose.
+A vaccination's `coverage` (or `MassVaccination`'s `eligibility_time`)
+accepts a function `(rng, ind) -> Real`, but has no group to read on its
+own; this builder supplies one. Read it back with a closure such as
+`coverage = (rng, ind) -> ind.state[:vaccine_acceptance]`, so members of one
+group share an acceptance probability while other groups draw their own.
+
+List the attributes function that sets `group_key` (`groups`, or a custom one
+labelling households or villages) ahead of this one, since the key has to be
+on the individual by the time this runs. Applying it to an individual without
+that key raises an `ArgumentError`.
+
+`propensity` accepts a `Real`, a `Distribution`, or a function
+`(rng, ind) -> Real`; it is sampled once per group, for the first member of
+that group to be created. Each member still draws its own coin against the
+shared value. A constant `Real` propensity therefore gives every group the
+same probability, indistinguishable from independent per-contact draws at that
+probability. A `Distribution` propensity varies the shared probability group to
+group, giving the same average coverage as independent draws but more variance
+in per-group coverage: some groups mostly covered, others mostly untouched,
+while any one group's members still differ among themselves. Only a propensity
+that is itself degenerate at `0` or `1` (e.g. `(rng, ind) ->
+Float64(rand(rng, Bernoulli(p)))`) makes a group accept or decline as a
+block.
+
+# Examples
+
+Each village's coverage is Beta-distributed around a mean of 60%:
+
+```julia
+attributes = [groups(20),
+    vaccine_acceptance(propensity = Beta(6, 4))]
+gv = GroupVaccination(efficacy = 0.8,
+    coverage = (rng, ind) -> ind.state[:vaccine_acceptance])
+```
+
+Households, under a key of their own:
+
+```julia
+attributes = [groups(50; key = :household),
+    vaccine_acceptance(propensity = Beta(2, 2), group_key = :household)]
+```
+
+See also [`groups`](@ref), [`clinical_presentation`](@ref),
+[`demographics`](@ref).
+"""
+function vaccine_acceptance(;
+        propensity::Union{Real, Distribution, Function},
+        group_key::Symbol = :group,
+        key::Symbol = :vaccine_acceptance)
+    return GroupAttribute(key, group_key, propensity, Dict{Any, Any}())
+end
 
 # ── Intervention field validation ────────────────────────────────────
 

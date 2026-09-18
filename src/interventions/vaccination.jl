@@ -303,7 +303,8 @@ actually receives the vaccine, capturing programme reach (consent
 refusal, absence, exclusion criteria, logistical gaps). Defaults to
 `1.0`. Accepts a `Real`, `Distribution`, or `Function`
 `(rng, contact) -> Real` for per-individual coverage (e.g.
-age-dependent).
+age-dependent), or reading a value set by
+[`vaccine_acceptance`](@ref) to cluster refusal by group.
 
 `eligibility_window` skips vaccination when the time since the
 contact's exposure exceeds the window — typical of filovirus-type
@@ -868,10 +869,12 @@ with ring size.
 
 `coverage`, `efficacy`, `severity_efficacy`, `delay_to_immunity`,
 `waning`, `mode`, and `dose_label` mean what they do for
-[`RingVaccination`](@ref). `severity_efficacy` defaults to `0.0` (no
-severity effect) and, as there, acts only through a clinical transition
-that reads it via the [`severity_efficacy`](@ref) and
-[`immunity_time`](@ref) accessors; `waning` does not apply to it.
+[`RingVaccination`](@ref). Pairing `coverage` with
+[`vaccine_acceptance`](@ref) on the same `group_key` clusters refusal in
+that group. `severity_efficacy` defaults to `0.0` (no severity effect)
+and acts only through a clinical transition that reads it via the
+[`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors;
+`waning` does not apply to it.
 `dose_delay` accepts the same forms, drawn once per member, so members of one
 group can be reached at different times.
 
@@ -1081,7 +1084,11 @@ own transmission time.
   independently (e.g. `Exponential(60.0)` for a slow random rollout).
 - a `Function` `(rng, ind) -> Real`: per-individual rule; use for
   age-stratified rollout or any other state-dependent schedule.
-  Return `Inf` for individuals who never become eligible.
+  Return `Inf` for individuals who never become eligible. Reading a
+  value set by [`vaccine_acceptance`](@ref) here clusters refusal by
+  group, e.g. `(rng, ind) -> ind.state[:vaccine_acceptance] > 0.5 ? 30.0 : Inf`
+  declines a whole group whose propensity is at most `0.5`; uptake is then
+  `P(propensity > 0.5)`.
 
 `efficacy` and `delay_to_immunity` accept the same set, drawn once per
 vaccinated contact (see [`AbstractVaccination`](@ref)), for example an
