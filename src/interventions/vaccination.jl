@@ -107,6 +107,9 @@ end
 function _onward_efficacy_key(label::Symbol)
     label === :default ? :onward_efficacy : Symbol("onward_efficacy_", label)
 end
+function _coverage_declined_key(label::Symbol)
+    label === :default ? :coverage_declined : Symbol("coverage_declined_", label)
+end
 function _immunity_time_key(label::Symbol)
     label === :default ? :immunity_time : Symbol("immunity_time_", label)
 end
@@ -832,6 +835,7 @@ function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
     key = gv.group_key
     label = dose_label(gv)
     vacc_key = _vaccinated_key(label)
+    declined_key = _coverage_declined_key(label)
 
     groups_here = Set{Any}()
     for ind in new_contacts
@@ -844,7 +848,17 @@ function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
         for m in state.individuals
             get(m.state, key, nothing) == group || continue
             get(m.state, vacc_key, false) && continue
-            _covers(gv.coverage, m, state.rng) || continue
+            # A group reappears whenever any of its members turns up among
+            # the new contacts, and this loop walks the whole group each time.
+            # A member who lost its coverage draw keeps that answer, so
+            # `coverage` stays the per-member probability the user set. Drawing
+            # afresh each round would vaccinate a member present for k rounds
+            # with probability 1 - (1 - coverage)^k.
+            get(m.state, declined_key, false) && continue
+            if !_covers(gv.coverage, m, state.rng)
+                m.state[declined_key] = true
+                continue
+            end
             vacc_t = trigger + _sample_value(gv.dose_delay, state.rng, m)
             _record_vaccination!(gv, m, vacc_t, state.rng)
         end

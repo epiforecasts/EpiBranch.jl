@@ -115,6 +115,12 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Fixed
 
+- `GroupVaccination` draws `coverage` once per member per dose. A group is
+  walked again whenever any of its members appears among a round's new
+  contacts, and a member who declined was previously asked again each time, so
+  a member present for `k` rounds was vaccinated with probability
+  `1 - (1 - coverage)^k`. The declined answer is now recorded under
+  `:coverage_declined[_<label>]`.
 - Combined tracing eligibility policies now time the trace from the conditions
   that are met. Each condition, custom policies included, is checked with
   `is_eligible` against the contact being traced. With a custom `Over65` policy,
