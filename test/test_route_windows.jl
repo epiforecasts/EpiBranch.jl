@@ -306,6 +306,13 @@ end
             count(secondary(kernel, sus, ivs, period, seed) for seed in 1:4000) / 4000
         end
 
+        # A schedule is evaluated at the proposed contact time, even if the
+        # most recent accepted infection is the seed at time zero.
+        @test !secondary(Dirac(10.0), 1.0,
+            [Scheduled(FlatBlock(1.0); start_time = 5.0)], 20.0, 1)
+        @test secondary(Dirac(10.0), 1.0,
+            [Scheduled(FlatBlock(1.0); end_time = 5.0)], 20.0, 1)
+
         # The trait folds into the contact-interval draw.
         @test isapprox(share(Exponential(1.0), 1.0), 1 - exp(-2.0); atol = 0.025)
         for m in (0.5, 0.25)

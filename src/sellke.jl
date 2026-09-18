@@ -295,11 +295,20 @@ end
 function _proposal_blocked(state::SimulationState, parent, contact, transmission_time,
         model_risks, interventions)
     previous = contact.infection_time
+    previous_clock = state.max_infection_time
     contact.infection_time = transmission_time
-    blocked = _composed_risks_block(state, parent, contact, transmission_time,
-        model_risks, interventions, _sellke_builtin_risk_blocks)
-    blocked && (contact.infection_time = previous)
-    return blocked
+    # Scheduled risks use the proposed contact time even when earlier contacts
+    # were blocked. Outside this evaluation the clock records accepted infections.
+    state.max_infection_time = transmission_time
+    blocked = true
+    try
+        blocked = _composed_risks_block(state, parent, contact, transmission_time,
+            model_risks, interventions, _sellke_builtin_risk_blocks)
+        return blocked
+    finally
+        state.max_infection_time = previous_clock
+        blocked && (contact.infection_time = previous)
+    end
 end
 
 # The interventions whose risks apply on a route that has not opted into

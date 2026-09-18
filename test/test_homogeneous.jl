@@ -49,6 +49,18 @@ function EpiBranch.competing_risk(v::LeakyVaccineTyped, parent::Individual,
 end
 
 @testset "HomogeneousProcess (Sellke fixed pool)" begin
+    @testset "A scheduled block expires after blocked contacts" begin
+        model = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 20.0, population_size = 20);
+            progression = [Transition(:recovered; from = :infection,
+                delay = 10.0, terminal = true)],
+            interventions = [Scheduled(LeakyVaccine(1.0, 0.0); end_time = 1.0)])
+        state = simulate(model; n_initial = 2, rng = StableRNG(1))
+        secondary = filter(ind -> ind.parent_id != 0, state.individuals)
+        @test !isempty(secondary)
+        @test all(ind.infection_time > 1.0 for ind in secondary)
+    end
+
     @testset "deterministic final size (major outbreaks)" begin
         # With β = 2 and mean infectious period 1, R0 = β·E[T] = 2; the
         # deterministic attack rate solves z = 1 - exp(-R0·z), z ≈ 0.7968.
