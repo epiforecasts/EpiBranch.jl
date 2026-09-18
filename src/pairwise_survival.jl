@@ -126,8 +126,11 @@ A companion package reads a simulated outbreak back into its layer
 opens at the process's `from` state and closes at the earliest of its `until`
 states and the time the model's interventions take the host out of transmission,
 such as by isolation or quarantine after tracing. These are the windows the
-simulation used, which makes scoring the layer under the kernel that simulated it
-an exact `simulate → loglikelihood` round trip. Passing a reader the `followup_end`
+simulation used. Exact scoring also requires the kernel to include every hazard
+modification; the layer contains no host multipliers or partial blocking effects.
+Structured `loglikelihood(data, spec)` methods check the composed components using
+[`infection_likelihood_compatible`](@ref). Use `pairwise_surv_loglik` with an
+explicit effective kernel when additional effects must be represented. Passing a reader the `followup_end`
 keyword scores the outbreak as if observation had stopped at that time.
 """
 abstract type InfectionLayer end
@@ -198,6 +201,51 @@ function _infection_layer_columns(state::SimulationState, model::ModelSpec)
         is_index[k] = get(ind.state, :index, false)
     end
     return (; infection_time, infectious_time, removal_time, is_index)
+end
+
+"""
+    infection_likelihood_compatible(component) -> Bool
+
+Declare that a composed component's effects on infection hazards are fully
+represented by the infectious opening and removal times in an [`InfectionLayer`](@ref).
+The default is `false`. External components may opt in when they change only
+these times or have no effect on infection hazards. Partial blocking, host
+susceptibility or infectiousness multipliers, and altered contact kernels require
+an explicitly effective kernel instead.
+
+This declaration is a modelling contract. It does not evaluate callbacks or
+verify their side effects. The infection likelihood conditions on the supplied
+infection layer; it excludes the probability of clinical outcomes, intervention
+assignment, attribute draws and observations.
+"""
+infection_likelihood_compatible(component) = false
+infection_likelihood_compatible(::NoAttributes) = true
+infection_likelihood_compatible(::ClinicalPresentation) = true
+function infection_likelihood_compatible(components::Union{Tuple, AbstractVector})
+    all(infection_likelihood_compatible, components)
+end
+infection_likelihood_compatible(::Transition) = true
+infection_likelihood_compatible(::Union{Reporting, Hospitalisation, Recovery, Death}) = true
+infection_likelihood_compatible(iso::Isolation) = iso.post_isolation_transmission == 0
+function infection_likelihood_compatible(ct::ContactTracing)
+    infection_likelihood_compatible(ct.action)
+end
+infection_likelihood_compatible(::Union{Quarantine, FlagOnly}) = true
+function infection_likelihood_compatible(w::Union{Scheduled, CapacityConstrained})
+    infection_likelihood_compatible(w.intervention)
+end
+
+function _validate_infection_likelihood(model::ModelSpec)
+    for component in (model.attributes, model.progression, model.interventions)
+        infection_likelihood_compatible(component) && continue
+        throw(ArgumentError(
+            "infection-layer likelihood cannot represent all effects of " *
+            "$(typeof(component)). Use pairwise_surv_loglik with an explicit " *
+            "effective kernel (and external_hazard where needed), or define " *
+            "infection_likelihood_compatible for an external component whose " *
+            "effects are fully represented by the layer's infectious windows."))
+    end
+    return nothing
 end
 
 # ── Compiled pair layout ─────────────────────────────────────────────

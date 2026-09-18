@@ -1624,3 +1624,36 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
+
+### Structured infection likelihoods and composed effects
+
+The network and household infection likelihoods condition on infection times,
+infectious opening and removal times, index-case status and the contact structure.
+They sum over possible infectors. They do not include the probability of the
+clinical timeline, intervention assignment, attribute draws or observations.
+
+Window censoring, including complete isolation, is represented by the extracted
+removal times. A partial transmission reduction or a susceptibility multiplier
+also changes the hazard within that window. The infection layer does not store
+those effects. `loglikelihood(data, spec)` rejects components whose effects have
+not been declared compatible with its bare process kernel.
+
+An external component that only changes an infectious window can opt in:
+
+```julia
+EpiBranch.infection_likelihood_compatible(::MyWindowRemoval) = true
+```
+
+Its `infectious_removal_time` method must describe the removal used in simulation.
+The same declaration is available for custom clinical transitions and callable
+attribute builders. Unknown attribute callbacks are rejected conservatively;
+`clinical_presentation` is supported. Declaring compatibility promises that the
+component's only hazard effects are those represented by the extracted windows.
+The package does not inspect callback side effects.
+
+For additional hazard effects, extract the infection layer and call
+`pairwise_surv_loglik(effective_kernel, data; external_hazard)` explicitly. The
+supplied kernel must represent the full pairwise hazard, including any host or
+intervention modifiers, and the external hazard must represent community
+introductions. This path retains differentiation through kernel parameters.
+Extraction alone does not certify that a bare kernel reproduces a composed model.

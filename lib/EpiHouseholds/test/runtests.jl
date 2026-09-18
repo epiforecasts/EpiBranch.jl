@@ -849,3 +849,5 @@ end
 
     include("test_offspring.jl")
 end
+
+include("test_likelihood_composition.jl")
