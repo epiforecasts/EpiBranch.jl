@@ -1198,8 +1198,9 @@ group a susceptible belongs to. You supply it as two pieces:
    group, which recovers the homogeneous case.
 2. **The force of infection** `force(group, counts)` — the hazard on a
    susceptible in a given group. `counts` is a `Dict` mapping each mixing group to
-   how many individuals are currently infectious in it. Homogeneous mixing is
-   `β/N` times the total infectious count; structured mixing applies a contact
+   the infectiousness-weighted number currently infectious in it, each case
+   contributing its own `infectiousness` (1 by default). Homogeneous mixing is
+   `β/N` times the total of those counts; structured mixing applies a contact
    matrix to the per-group prevalence.
 
 A mixing group is always the *tuple* of `mixing_by` values, so it stays a tuple
