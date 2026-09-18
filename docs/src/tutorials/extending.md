@@ -84,6 +84,7 @@ downstream packages should pick names that do not collide.
 | `:group_vaccination_assessed[_<label>]` | `Bool` | `false` | `GroupVaccination` (visit schedule sampled) | `apply_post_transmission!` |
 | `:vaccination_refused[_<label>]` | `Bool` | `false` | `GroupVaccination` (`acceptance` draw failed) | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
+| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
@@ -456,6 +457,38 @@ Then a user schedules the intervention like:
 # Activate border closure on day 10
 Scheduled(BorderClosure(0.0, 0.05); start_time = 10.0)
 ```
+
+### Making the intervention capacity-constrained
+
+[`CapacityConstrained`](@ref) rations `apply_post_transmission!` — the one
+hook the engine calls with a whole generation's contacts at once, so it is
+the only point where several individuals compete for a shared, finite
+resource in the same call. To let a custom intervention be wrapped this
+way, define:
+
+- **`EpiBranch.capacity_key(intervention)`** — the `Individual.state` flag
+  that records the resource having been used (a dose flag, a "traced"
+  flag, …).
+- **`EpiBranch.capacity_time_key(intervention)`** — the key recording *when*
+  it was used, needed only if the intervention is ever wrapped with
+  `carry_over = false`. There it places usage `CapacityConstrained` did not
+  itself admit, such as a dose from another intervention writing the same
+  `capacity_key`, in a period; usage the wrapper admitted is placed by the
+  time of the call that admitted it.
+
+`RingVaccination` and `MassVaccination` implement these with their
+dose-recording keys:
+
+```julia
+EpiBranch.capacity_key(v::RingVaccination) = _vaccinated_key(dose_label(v))
+EpiBranch.capacity_time_key(v::RingVaccination) = _vaccination_time_key(dose_label(v))
+```
+
+This only rations an intervention whose effect is actually recorded inside
+`apply_post_transmission!` on the contacts it is handed. `GroupVaccination`
+is the counter-example: it reaches a triggered group by scanning the whole
+population, not the batch this hook receives, so limiting that batch would
+not limit the doses given, and it does not define `capacity_key`.
 
 ### Requiring fields on individuals
 
@@ -1017,6 +1050,36 @@ specification (`reproduction_number`, `extinction_probability`,
 For **likelihoods** on data types that don't go through the offspring
 spec, define methods on `loglikelihood` directly.
 
+A structure-driven model simulated by the continuous-time race can reuse the
+pairwise survival likelihood, whose generative model is that race. Beyond the
+infection times, the density needs to know who could have infected whom. Define
+an infection-layer type that subtypes [`InfectionLayer`](@ref) and give it a
+[`contact_structure`](@ref EpiBranch.contact_structure) method that returns a
+membership vector for groups whose members all mix, or an adjacency list for
+anything else. [`compile_contact_pairs`](@ref) and [`pairwise_surv_loglik`](@ref)
+then work on it with no further methods, including the per-edge, covariate and
+community-hazard terms, and `loglikelihood` needs one method that forwards to
+them:
+
+```julia
+struct MyInfections{T <: Real} <: InfectionLayer
+    contacts::Vector{Vector{Int}}    # contacts[i]: who host i can infect
+    infection_time::Vector{T}        # NaN if never infected
+    infectious_time::Vector{T}       # the infectious window opens
+    removal_time::Vector{T}          # and closes (Inf if still open)
+    is_index::Vector{Bool}           # introduced from outside
+    obs_end::T                       # community introductions stop
+    followup_end::T                  # observation ends (optional; Inf if absent)
+end
+EpiBranch.contact_structure(d::MyInfections) = d.contacts
+
+Distributions.loglikelihood(d::MyInfections, m::MyModel) =
+    pairwise_surv_loglik(m.kernel, d; external_hazard = m.external_hazard)
+```
+
+`HouseholdInfections` in `EpiHouseholds` and `NetworkInfections` in `EpiNetwork`
+are the worked examples.
+
 For optional **state accessors**, override `population_size` and
 `n_types` if your model has values for them. The defaults
 (`NoPopulation()`, `1`) are fine if not.
@@ -1333,6 +1396,7 @@ your new data type inherits the same closed forms for `Borel`,
 |---|---|---|
 | Custom intervention | Struct `<: AbstractIntervention` + hook methods | Each generation |
 | Time-dependent intervention | `Scheduled(iv; start_time = ...)` + `intervention_time`, `reset!` on `iv` | After each hook |
+| Capacity-constrained intervention | `CapacityConstrained(iv; budget_per_period = ...)` + `capacity_key`, `capacity_time_key` on `iv` | `apply_post_transmission!` |
 | Custom attributes | Function `(rng, ind) -> nothing` | Individual creation |
 | Layered attributes | `[f1, f2, ...]` | Individual creation |
 | Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |
@@ -1341,6 +1405,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
 | Transmission route | `RouteWindow(name; from, until, kernel, reach)` on a process that reads them | Continuous-time race, per case |
 | Structured fixed-size pool | Reuse the Sellke pool: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply a `force(group, counts)` | Simulation |
+| Pairwise likelihood for a structure | Struct `<: InfectionLayer` + `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood evaluation |
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
