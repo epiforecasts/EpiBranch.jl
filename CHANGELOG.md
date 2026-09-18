@@ -9,10 +9,15 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- Callable objects can supply observation probabilities, delays and anchors,
+  attribute-builder parameters, isolation test sensitivity and scheduling
+  predicates, using the same signatures as ordinary functions.
+- `group_attribute(key; value, group_key = :group)` exposes the existing
+  per-group numeric attribute builder for uses such as shared reporting
+  probabilities. `vaccine_acceptance` delegates to the same operation.
 - A worked recipe for repeat group vaccination visits using existing coverage,
   dose-delay distributions and individual attributes to distinguish temporary
   absence from permanent refusal.
-
 - `vaccine_acceptance(; propensity, group_key = :group)`, an attributes
   function that draws a vaccine-acceptance propensity once per group and
   shares it with every member of that group, so refusal clusters the way it
@@ -120,7 +125,6 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   it. A contact reachable on several routes is named with the highest of those
   routes' probabilities. Routes left at the default give the same outbreaks as
   before for the same seed.
-
 - `RingVaccination`, `MassVaccination` and `GroupVaccination` gain
   `severity_efficacy`, the probability that a vaccinated individual's own
   disease course is milder once their immunity has developed — e.g. a lower
@@ -130,7 +134,6 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   a dose whose immunity has not yet developed by the outcome it would affect
   confers no protection. Recorded per dose as `:severity_efficacy` and
   `:immunity_time`, alongside the existing `:vaccine_efficacy`.
-
 - `RingVaccination` gains `post_exposure_efficacy`, the probability that a dose
   given to an already-exposed contact aborts that infection, which it can do
   whenever immunity arrives before the contact's symptom onset. An aborted

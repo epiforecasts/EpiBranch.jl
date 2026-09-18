@@ -739,6 +739,22 @@ that sets fields on each individual when they are created (before any
 intervention hooks run). The built-in constructors `clinical_presentation`,
 `demographics`, and `transmission_traits` return such functions.
 
+Observation parameters, attribute-builder parameters and intervention predicates
+accept callable objects as well as functions. Their argument signatures stay the
+same. For example, a reporting rule can hold its threshold in a struct:
+
+```@example extending
+struct AgeDetection
+    minimum_age::Float64
+end
+(rule::AgeDetection)(rng, ind) = ind.state[:age] >= rule.minimum_age ? 1.0 : 0.0
+age_observation = PerCaseObservation(detection_prob = AgeDetection(50.0))
+```
+
+A callable observation anchor takes only `ind`, and a callable `Scheduled`
+predicate takes the simulation state. Scalar and distribution inputs retain
+their usual meanings wherever those forms are supported.
+
 ### Writing your own
 
 For fields without a dedicated builder — anything in `ind.state` — write a
@@ -762,6 +778,27 @@ state = simulate(model; max_cases = 100, rng = rng)
 n_high = count(ind -> get(ind.state, :risk_group, :low) == :high, state.individuals)
 println("High-risk individuals: $n_high / $(length(state.individuals))")
 ```
+
+### Sharing attributes within groups
+
+Use `group_attribute` for a numeric value shared by a household, village or
+other group. It samples once for the first member of each group and keeps that
+value for the run. Here reporting probabilities vary between households:
+
+```@example extending
+reporting_attributes = [groups(50; key = :household),
+    group_attribute(:reporting_probability; value = Beta(6, 4),
+        group_key = :household)]
+reporting_model = ModelSpec(BranchingProcess(Poisson(0.5), Exponential(5.0));
+    attributes = reporting_attributes,
+    observation = PerCaseObservation(
+        detection_prob = (rng, ind) -> ind.state[:reporting_probability],
+        from = :infection_time))
+reporting_state = simulate(reporting_model; n_initial = 10, rng = StableRNG(42))
+```
+
+The group label must be set before the shared attribute. Reusing these builders
+in further simulations draws fresh values, including when running in parallel.
 
 ### Composing attributes functions
 
