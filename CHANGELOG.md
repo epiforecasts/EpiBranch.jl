@@ -26,6 +26,8 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 - Structured infection likelihoods check composed components through
   `infection_likelihood_compatible`, rejecting effects omitted by the supplied
   infection layer and bare kernel.
+- Network and household simulations accept `initial_cases` to choose population
+  IDs infected at time zero, including repeated and parallel runs.
 - Candidate intervention actions separate discovery from scheduling and resource
   admission. Capacity constraints now ration actual group-vaccination members.
 - Network and household races support ring and group actions with cached discovery

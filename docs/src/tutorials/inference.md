@@ -58,7 +58,7 @@ println("MLE: R=$(round(mle_params.R, digits=2)), k=$(round(mle_params.k, digits
 ### Bayesian estimation
 
 ```@example inference
-chain = sample(offspring_model(data), NUTS(), 1000; progress=false)
+chain = sample(StableRNG(11), offspring_model(data), NUTS(), 1000; progress=false)
 println("Posterior R: $(round(mean(chain[:R]), digits=2)) " *
         "(95% CI: $(round(quantile(vec(chain[:R]), 0.025), digits=2))–" *
         "$(round(quantile(vec(chain[:R]), 0.975), digits=2)))")
@@ -105,7 +105,7 @@ println("MLE: R=$(round(R_mle, digits=2))")
     data ~ chain_size_distribution(BranchingProcess(Poisson(R)))
 end
 
-chain = sample(chain_size_model(sizes), NUTS(), 1000; progress=false)
+chain = sample(StableRNG(12), chain_size_model(sizes), NUTS(), 1000; progress=false)
 println("True R = $true_R")
 println("Posterior R: $(round(mean(chain[:R]), digits=2)) " *
         "(95% CI: $(round(quantile(vec(chain[:R]), 0.025), digits=2))–" *
@@ -188,7 +188,7 @@ P(size = cap).
 end
 
 chain = sample(
-    intervention_model(observed_sizes, iso, clinical),
+    StableRNG(13), intervention_model(observed_sizes, iso, clinical),
     MH(), 1000; progress=false
 )
 println("True R = $true_R")
@@ -223,10 +223,16 @@ println("Clusters: $(length(sizes)) (seeds 1 / 2: " *
 @model function cluster_size_model(sizes, seeds)
     R ~ LogNormal(0.0, 1.0)
     k ~ LogNormal(-1.0, 1.0)
-    sizes ~ chain_size_distribution(BranchingProcess(NegativeBinomial(k, k / (k + R))); seeds = seeds)
+    p = k / (k + R)
+    # Reject proposals whose success probability saturates at a numerical boundary.
+    if !isfinite(log(p)) || !isfinite(log1p(-p))
+        Turing.@addlogprob! -Inf
+        return
+    end
+    sizes ~ chain_size_distribution(BranchingProcess(NegativeBinomial(k, p)); seeds = seeds)
 end
 
-chain = sample(cluster_size_model(sizes, seeds), NUTS(), 1000; progress = false)
+chain = sample(StableRNG(14), cluster_size_model(sizes, seeds), NUTS(), 1000; progress = false)
 r_post = vec(chain[:R])
 k_post = vec(chain[:k])
 println("True R=$true_R, k=$true_k")

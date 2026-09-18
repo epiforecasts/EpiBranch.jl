@@ -852,4 +852,5 @@ end
 
 include("test_contextual_kernels.jl")
 include("test_likelihood_composition.jl")
+include("test_initial_cases.jl")
 include("test_actions.jl")

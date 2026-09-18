@@ -1717,6 +1717,32 @@ intervention modifiers, and the external hazard must represent community
 introductions. This path retains differentiation through kernel parameters.
 Extraction alone does not certify that a bare kernel reproduces a composed model.
 
+### Choosing initial cases in a fixed population
+
+Network and household simulations accept population IDs through `initial_cases`.
+Selection criteria belong in the calling code:
+
+```julia
+using EpiBranch, EpiNetwork, Distributions, Random
+
+adjacency = [Int[] for _ in 1:5]
+process = NetworkProcess(adjacency, Exponential(2.0))
+chosen = [2, 4]
+state = simulate(ModelSpec(process); initial_cases = chosen, rng = Xoshiro(42))
+```
+
+With no edges, only IDs 2 and 4 are infected. The same keyword works with
+`RoutedNetwork`, `HouseholdProcess` and repeated or parallel simulation. IDs refer
+to the whole population, including across households. An empty vector starts
+with no infections. The simulator copies the vector and checks for duplicates and
+IDs outside the population.
+
+Omitting `initial_cases` preserves default seeding and its random draws. A chosen
+vector replaces that rule: it cannot be combined with `n_initial` or an active
+`external_hazard`. Initial cases are infections at time zero; ongoing external
+introductions describe a separate process. Select IDs with an explicit RNG in
+caller code when selection itself is random.
+
 ## Intervention actions
 
 An intervention proposes actions, and its wrappers decide which actions may go
