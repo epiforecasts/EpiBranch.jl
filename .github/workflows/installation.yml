@@ -1,0 +1,43 @@
+name: Installation
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: 'Published companion revision to test against General'
+        required: true
+        default: 'v0.2.0'
+permissions:
+  contents: read
+jobs:
+  source-installation:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [source, reject-old]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32
+        with:
+          version: '1'
+      - run: julia --startup-file=no scripts/check_installation.jl "$INSTALL_MODE" "$INSTALL_REPO" "$INSTALL_REV"
+        env:
+          INSTALL_MODE: ${{ matrix.mode }}
+          INSTALL_REPO: ${{ github.workspace }}
+          INSTALL_REV: HEAD
+  released-installation:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32
+        with:
+          version: '1'
+      - run: julia --startup-file=no scripts/check_installation.jl released "$INSTALL_REPO" "$INSTALL_REV"
+        env:
+          INSTALL_REPO: https://github.com/${{ github.repository }}
+          INSTALL_REV: ${{ inputs.revision }}
