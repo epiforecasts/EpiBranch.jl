@@ -9,6 +9,10 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- `group_attribute(key; value, group_key = :group)` exposes the existing
+  per-group numeric attribute builder for uses such as shared reporting
+  probabilities. `vaccine_acceptance` delegates to the same operation.
+
 - A worked recipe for repeat group vaccination visits using existing coverage,
   dose-delay distributions and individual attributes to distinguish temporary
   absence from permanent refusal.

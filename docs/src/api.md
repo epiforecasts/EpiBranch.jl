@@ -331,6 +331,7 @@ clinical_presentation
 demographics
 transmission_traits
 groups
+group_attribute
 vaccine_acceptance
 EpiBranch.GroupAttribute
 ```

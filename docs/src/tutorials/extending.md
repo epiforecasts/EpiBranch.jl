@@ -683,6 +683,27 @@ n_high = count(ind -> get(ind.state, :risk_group, :low) == :high, state.individu
 println("High-risk individuals: $n_high / $(length(state.individuals))")
 ```
 
+### Sharing attributes within groups
+
+Use `group_attribute` for a numeric value shared by a household, village or
+other group. It samples once for the first member of each group and keeps that
+value for the run. Here reporting probabilities vary between households:
+
+```@example extending
+reporting_attributes = [groups(50; key = :household),
+    group_attribute(:reporting_probability; value = Beta(6, 4),
+        group_key = :household)]
+reporting_model = ModelSpec(BranchingProcess(Poisson(0.5), Exponential(5.0));
+    attributes = reporting_attributes,
+    observation = PerCaseObservation(
+        detection_prob = (rng, ind) -> ind.state[:reporting_probability],
+        from = :infection_time))
+reporting_state = simulate(reporting_model; n_initial = 10, rng = StableRNG(42))
+```
+
+The group label must be set before the shared attribute. Reusing these builders
+in further simulations draws fresh values, including when running in parallel.
+
 ### Composing attributes functions
 
 The attributes list is applied in order, so later builders or closures can

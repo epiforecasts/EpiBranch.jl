@@ -134,6 +134,45 @@ struct _AttributeTagger end
         end
     end
 
+    @testset "group_attribute shares reporting probabilities per run" begin
+        attrs = [groups(2; key = :household),
+            group_attribute(:reporting_probability; value = Beta(6, 4),
+                group_key = :household)]
+        model = ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0));
+            attributes = attrs,
+            observation = PerCaseObservation(
+                detection_prob = (rng, ind) -> ind.state[:reporting_probability],
+                from = :infection_time))
+        serial = simulate(model, 10; n_initial = 30, rng = StableRNG(42))
+        parallel = simulate(model, 10; n_initial = 30, rng = StableRNG(42),
+            parallel = true)
+        probabilities(states) = [[ind.state[:reporting_probability]
+                                  for ind in run.individuals] for run in states]
+        @test probabilities(parallel) == probabilities(simulate(model, 10;
+            n_initial = 30, rng = StableRNG(42), parallel = true))
+        @test length(unique(first.(probabilities(serial)))) == 10
+        @test length(unique(first.(probabilities(parallel)))) == 10
+        for run in vcat(serial, parallel)
+            per_household = [unique([ind.state[:reporting_probability]
+                                     for ind in run.individuals
+                                     if ind.state[:household] == h]) for h in 1:2]
+            @test all(length(v) == 1 for v in per_household)
+            @test only(per_household[1]) != only(per_household[2])
+        end
+        @test isempty(attrs[2].cache)
+
+        # The callback reads the first member, not each subsequent member.
+        callback_attrs = [groups(1),
+            group_attribute(:first_member; value = (rng, ind) -> ind.id)]
+        callback_state = simulate(
+            ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0)); attributes = callback_attrs);
+            n_initial = 3, rng = StableRNG(1))
+        @test all(ind.state[:first_member] == 1 for ind in callback_state.individuals)
+        @test_throws ArgumentError simulate(ModelSpec(
+            BranchingProcess(Poisson(0.0), Exponential(5.0));
+            attributes = group_attribute(:shared; value = 0.5)))
+    end
+
     @testset "vaccine_acceptance draws once per group" begin
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         process = BranchingProcess(Poisson(1.0), Exponential(5.0))
