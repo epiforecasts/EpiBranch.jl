@@ -62,7 +62,7 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
                 initial_cases = initial_cases),
             introduction = _ext_active(model.external_hazard) ?
                            (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
-            targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid, st))
+            targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid, st, from))
             for oid in mem if oid != inf),
             # A case's contacts are its household-mates, traced whether or not
             # transmission reached them.
@@ -97,8 +97,9 @@ end
 
 # Resolve the contact-interval distribution for an ordered (infector,
 # susceptible) pair: a shared distribution, or a callable for covariate models.
-function _pairkernel(k, i, j, state)
-    EpiBranch.pair_kernel(k, i, j, state.individuals[i].infection_time)
+function _pairkernel(k, i, j, state, from)
+    EpiBranch.pair_kernel(k, i, j, state.individuals[i].infection_time,
+        EpiBranch._window_open(state.individuals[i], from))
 end
 
 function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpts)

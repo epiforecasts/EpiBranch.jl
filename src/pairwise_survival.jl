@@ -49,8 +49,8 @@ Base.length(d::PairwiseSurvivalData) = length(d.sus)
 # callable `r -> Distribution` through which covariates enter.
 _rowkernel(k::ContinuousUnivariateDistribution, r) = k
 _rowkernel(k, r) = k(r)
-function _rowkernel(::ContextualKernel, r)
-    throw(ArgumentError("ContextualKernel requires an InfectionLayer with infector infection times; " *
+function _rowkernel(::Union{ContextualKernel, CalendarKernel}, r)
+    throw(ArgumentError("ContextualKernel and CalendarKernel require an InfectionLayer with source times; " *
                         "for counting-process rows, supply a row-indexed kernel with those data"))
 end
 
@@ -507,7 +507,12 @@ function _pair_kernel(k::AbstractVector{<:AbstractVector}, layout::ContactPairsL
 end
 function _pair_kernel(k, layout::ContactPairsLayout, r, data)
     i = layout.infector[r]
-    pair_kernel(k, i, layout.sus[r], data.infection_time[i])
+    pair_kernel(k, i, layout.sus[r], data.infection_time[i], data.infectious_time[i])
+end
+
+function _pair_kernel(k::CalendarKernel, layout::ContactPairsLayout, r, data)
+    _calendar_interval(_pair_kernel(k.kernel, layout, r, data),
+        data.infectious_time[layout.infector[r]])
 end
 
 # Streaming logsumexp, so the per-susceptible reduction allocates no
@@ -545,6 +550,9 @@ _value(acc::_LogSumExpAcc{T}) where {T} = acc.nseen == 0 ? T(-Inf) : acc.m + log
 function _kernel_partype(
         kernel::ContinuousUnivariateDistribution, layout, data, ::Type{T}) where {T}
     Distributions.partype(kernel)
+end
+function _kernel_partype(kernel::CalendarKernel, layout, data, ::Type{T}) where {T}
+    _kernel_partype(kernel.kernel, layout, data, T)
 end
 function _kernel_partype(kernel, layout, data, ::Type{T}) where {T}
     for r in eachindex(layout.is_ext)

@@ -14,3 +14,4 @@ end
 
 include("test_likelihood_composition.jl")
 include("test_actions.jl")
+include("test_calendar_kernels.jl")
