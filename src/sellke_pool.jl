@@ -277,6 +277,7 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     for k in 1:n_initial
         ind = state.individuals[order[k]]
         stamp!(ind, zero(T), 0)
+        equal_infectiousness &= ind.infectiousness == 1
         push_windows!(ind)
     end
 
@@ -473,6 +474,7 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
                 # contacts the guard counts ends here.
                 frozen_blocks = 0
                 stamp!(ind, t, src)
+                equal_infectiousness &= ind.infectiousness == 1
                 push_windows!(ind)
             end
         end

@@ -48,7 +48,32 @@ function EpiBranch.competing_risk(v::LeakyVaccineTyped, parent::Individual,
     Risk(event_time = v.from_time, block_probability = v.efficacy)
 end
 
+struct ResolveInfectiousness <: EpiBranch.AbstractIntervention
+    include_seeds::Bool
+end
+function EpiBranch.resolve_individual!(iv::ResolveInfectiousness, ind, state)
+    if iv.include_seeds || ind.parent_id != 0
+        ind.infectiousness = isodd(ind.id) ? 0.0 : 1.0
+    end
+    return nothing
+end
+
 @testset "HomogeneousProcess (Sellke fixed pool)" begin
+    @testset "Infector selection uses traits set during resolution" begin
+        for include_seeds in (true, false)
+            model = ModelSpec(
+                HomogeneousProcess(; transmission_rate = 4.0, population_size = 100);
+                progression = [Transition(:recovered; from = :infection,
+                    delay = 10.0, terminal = true)],
+                interventions = [ResolveInfectiousness(include_seeds)])
+            state = simulate(model; n_initial = 20, rng = MersenneTwister(1))
+            parents = [ind.parent_id for ind in state.individuals if ind.parent_id != 0]
+            @test !isempty(parents)
+            @test any(ind.infectiousness == 0 for ind in state.individuals)
+            @test all(state.individuals[id].infectiousness > 0 for id in parents)
+        end
+    end
+
     @testset "A scheduled block expires after blocked contacts" begin
         model = ModelSpec(
             HomogeneousProcess(; transmission_rate = 20.0, population_size = 20);
