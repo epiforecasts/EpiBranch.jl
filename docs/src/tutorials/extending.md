@@ -1664,6 +1664,105 @@ delay callback; `Reporting` and `Hospitalisation` set their flags afterwards.
 
 ## Intervention actions
 
+An intervention proposes actions, and its wrappers decide which actions may go
+ahead. Each proposal names a person, a date and a function that records the
+effect. `Scheduled` checks that date; `CapacityConstrained` checks the available
+budget. These decisions happen before the effect is recorded.
+
+### Schedule delivery and retain its protection
+
+Suppose an index case makes two contacts on day 20. Both contacts can be
+vaccinated on day 10, when the campaign is open:
+
+```@example action_delivery
+using EpiBranch, Distributions, Random
+
+process = BranchingProcess(Dirac(2), Dirac(20.0))
+vaccine = MassVaccination(efficacy = 1.0, eligibility_time = 10.0)
+campaign = Scheduled(vaccine; start_time = 10.0, end_time = 10.0)
+model = ModelSpec(process; interventions = [campaign])
+state = simulate(model; max_generations = 1, rng = Xoshiro(42))
+
+(cases = state.cumulative_cases,
+ doses = count(is_vaccinated, state.individuals))
+```
+
+The result is one case and two doses: the index case remains infected, and both
+contacts are protected before their day-20 exposures. The campaign's end on day
+10 stops new deliveries; the recorded protection remains effective afterwards.
+
+Now limit the campaign to one dose:
+
+```@example action_delivery
+limited = CapacityConstrained(campaign; budget_per_period = 1.0)
+limited_model = ModelSpec(process; interventions = [limited])
+limited_state = simulate(limited_model; max_generations = 1, rng = Xoshiro(42))
+
+(cases = limited_state.cumulative_cases,
+ doses = count(is_vaccinated, limited_state.individuals))
+```
+
+This gives two cases and one dose. Only one of the two contacts receives
+protection. `Scheduled(CapacityConstrained(vaccine; budget_per_period = 1.0);
+start_time = 10.0, end_time = 10.0)` gives the same result: both wrapper orders
+check the proposed delivery date and charge only admitted doses.
+
+Capacity counts decisions to admit actions. In this example the index case is
+processed at time zero, so the day-10 dose uses the budget available at time
+zero. Setting `period = 7.0` would not move that charge into the second week.
+The default `period = Inf` gives one budget for the whole simulation.
+
+### Write a custom action producer
+
+A clinic appointment can use the same wrappers. This example offers a fixed
+date to each new contact and records attendance only after admission:
+
+```@example clinic_action
+using EpiBranch, Distributions, Random
+
+struct ClinicAppointment <: EpiBranch.AbstractIntervention
+    time::Float64
+end
+
+function record_attendance!(person, time, state)
+    person.state[:attended] = true
+    person.state[:appointment_time] = time
+    return nothing
+end
+
+function EpiBranch.intervention_actions(visit::ClinicAppointment, state, candidates)
+    [EpiBranch.InterventionAction(person, visit.time, record_attendance!)
+     for person in candidates if !get(person.state, :attended, false)]
+end
+
+function EpiBranch.apply_post_transmission!(visit::ClinicAppointment, state, candidates)
+    EpiBranch.apply_actions!(visit, state, candidates)
+end
+
+EpiBranch.capacity_key(::ClinicAppointment) = :attended
+EpiBranch.capacity_time_key(::ClinicAppointment) = :appointment_time
+
+appointments = CapacityConstrained(
+    Scheduled(ClinicAppointment(10.0); start_time = 9.0, end_time = 11.0);
+    budget_per_period = 1.0)
+model = ModelSpec(BranchingProcess(Dirac(2), Dirac(20.0));
+    interventions = [appointments])
+state = simulate(model; max_generations = 1, rng = Xoshiro(42))
+
+[person.state[:appointment_time] for person in state.individuals
+ if get(person.state, :attended, false)]
+```
+
+The output is `[10.0]`. Discovery proposes two appointments; admission permits
+one. The attendance function records the resource flag and date. Appointment
+attendance has no transmission effect, so all three people are infected here.
+
+Changing the appointment to day 12 produces no attendance, because the schedule
+ends on day 11. A candidate that a wrapper rejects is reconsidered only if the
+producer discovers it again; the engine does not keep an appointment queue.
+
+### Discovery, admission and persistent effects
+
 An action producer implements `EpiBranch.intervention_actions(iv, state, candidates)`
 and returns `EpiBranch.InterventionAction(individual, time, effect!)` values.
 `effect!(individual, time, state)` records an admitted action. Discovery can expand
@@ -1698,6 +1797,22 @@ but is not queued automatically. Earlier triggers can bring an unadmitted action
 forward using the same delay. Admission fixes its recorded date and effect draws;
 later triggers do not revise completed actions. Dose prerequisites are checked
 against the proposed date before admission.
+
+For example, draw one visit time and reuse it if admission is attempted again:
+
+```@example cached_visit
+using EpiBranch, Distributions, Random
+
+person = Individual(id = 1)
+rng = Xoshiro(42)
+draw_time() = rand(rng, Uniform(9.0, 11.0))
+first_time = EpiBranch.action_draw!(draw_time, person, :clinic_visit)
+next_time = EpiBranch.action_draw!(draw_time, person, :clinic_visit)
+first_time == next_time
+```
+
+The result is `true`: the second call uses the stored draw. Give a new
+visit a different key. Repeated discovery of the same visit should keep its key.
 
 Network and household races run supported actions after tracing a newly finalised
 case. External producers opt in with `EpiBranch.continuous_actions(iv) = true`.
