@@ -622,7 +622,7 @@ end
 _time_type(::TransmissionModel) = Float64
 _kernel_time_type(::NoGenerationTime) = Float64
 _kernel_time_type(k::Distribution) = float(Distributions.partype(k))
-_kernel_time_type(::Function) = Float64
+_kernel_time_type(::Any) = Float64
 function _time_type(m::BranchingProcess)
     mapreduce(w -> _kernel_time_type(w.kernel), promote_type, m.infectiousness;
         init = Float64)
