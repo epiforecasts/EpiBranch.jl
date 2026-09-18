@@ -139,6 +139,11 @@ AllOrNothingMode
 Scheduled
 CapacityConstrained
 capacity_usage
+EpiBranch.InterventionAction
+EpiBranch.intervention_actions
+EpiBranch.action_draw!
+EpiBranch.apply_actions!
+EpiBranch.continuous_actions
 EpiBranch.capacity_key
 EpiBranch.capacity_time_key
 default_capacity_priority

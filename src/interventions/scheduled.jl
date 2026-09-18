@@ -6,6 +6,12 @@ the policy activates), but `resolve_individual!` and
 
 # Time-based scheduling
 
+For interventions implementing `intervention_actions`, scheduling tests each
+proposed action time before delivery. Predicates see that time as
+`state.max_infection_time`; case counts and generation remain at discovery.
+Capacity admission uses the original simulation clock in either wrapper order.
+The batch-hook behaviour below applies to interventions without this protocol.
+
 `Scheduled` is the single entry point for time-based intervention
 scheduling. It enforces start times at two levels:
 
@@ -97,6 +103,11 @@ function resolve_individual!(s::Scheduled, ind, state)
 end
 
 function apply_post_transmission!(s::Scheduled, state, new_contacts)
+    actions = intervention_actions(s, state, new_contacts)
+    if actions !== nothing
+        _admit_actions!(s, state, actions)
+        return nothing
+    end
     is_active(s, state) || return nothing
     apply_post_transmission!(s.intervention, state, new_contacts)
     for c in new_contacts

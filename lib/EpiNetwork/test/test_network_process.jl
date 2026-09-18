@@ -811,13 +811,10 @@ end
             isolation_to_trace_delay = Exponential(500.0))
         @test meansize([iso, late]) <= meansize([iso]) * 1.05
 
-        # Dosing remains a generation-engine operation, even when the graph
-        # supplies contacts for tracing. Report it and leave contacts undosed.
+        # Exposure-dependent eligibility and PEP require a known infection time.
         model = build([iso]).process
-        for rv in (RingVaccination(efficacy = 0.8),
-            RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8),
-            RingVaccination(efficacy = 0.8, eligibility_window = 21.0),
-            Scheduled(RingVaccination(efficacy = 0.8); start_time = 0.0))
+        for rv in (RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8),
+            RingVaccination(efficacy = 0.8, eligibility_window = 21.0))
             @test !EpiBranch._sellke_honours(model, rv)
             warning_name = rv isa Scheduled ? r"Scheduled" : r"RingVaccination"
             undosed = @test_logs (:warn, warning_name) match_mode=:any simulate(
@@ -831,8 +828,8 @@ end
             build([iso, ct, MassVaccination(efficacy = 0.8, eligibility_time = 0.0)]);
             n_initial = 1, rng = StableRNG(4))
 
-        # Tracing has a continuous-time hook; vaccination delivery does not.
-        honoured = [iso, ct]
+        # Tracing and actions share the continuous-time candidate state.
+        honoured = [iso, ct, RingVaccination(efficacy = 0.8)]
         @test all(iv -> EpiBranch._sellke_honours(model, iv), honoured)
         @test_logs min_level=Base.CoreLogging.Warn simulate(build(honoured);
             n_initial = 1, rng = StableRNG(4))

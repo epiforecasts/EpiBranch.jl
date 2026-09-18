@@ -9,6 +9,12 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- Candidate intervention actions separate discovery from scheduling and resource
+  admission. Capacity constraints now ration actual group-vaccination members.
+- Network and household races support ring and group actions with cached discovery
+  draws. Ring delivery requires zero post-exposure efficacy and an infinite
+  eligibility window on these engines.
+
 - Callable objects can supply observation probabilities, delays and anchors,
   attribute-builder parameters, isolation test sensitivity and scheduling
   predicates, using the same signatures as ordinary functions.
