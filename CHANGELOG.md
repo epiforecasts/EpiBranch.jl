@@ -22,6 +22,20 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   exerts the same force of infection on every susceptible, giving the exact
   stochastic SIR final-size law (`R0 = β·E[infectious period]`) and an infection
   time for every case.
+- Analytical results for multi-type branching processes built from an offspring
+  matrix. `reproduction_number(model)` returns R*, the dominant eigenvalue of the
+  next-generation matrix (the offspring mean for a single-type model), and
+  `extinction_probability(model)` returns the extinction probability for each
+  type of index case. The extinction probability is the fixed point of the vector
+  PGF of the simulator's draw (a total count from the distribution family, split
+  multinomially across types) and equals the single-type result when there is
+  one type. Iteration that has not converged by `max_iter` now warns, in the
+  multi-type and the single-type functions alike; that happens near R = 1.
+- `reproduction_number`, `extinction_probability` and `epidemic_probability` for
+  `ClusterMixed` offspring and models built from it. The reproduction number is
+  the offspring mean averaged over the mixing distribution, and the extinction
+  probability is the single-type extinction probability averaged over it, since
+  every case in a chain shares its index case's parameter.
 - `trigger_time(eligibility, infector, contact, state)` gives the trace's
   trigger time for the contact being traced, and `ContactTracing` calls it. A
   custom policy can define it to time the trace from the contact, and combinators
