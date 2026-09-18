@@ -1102,7 +1102,7 @@ end
 
 """Apply attributes function to an individual. No-op for NoAttributes."""
 _apply_attributes!(::NoAttributes, rng, ind) = nothing
-_apply_attributes!(f::Function, rng, ind) = f(rng, ind)
+_apply_attributes!(f, rng, ind) = f(rng, ind)
 function _apply_attributes!(builders::Union{Tuple, AbstractVector}, rng, ind)
     for build! in builders
         _apply_attributes!(build!, rng, ind)

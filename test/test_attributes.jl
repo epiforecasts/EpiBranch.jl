@@ -1,4 +1,21 @@
+struct _AttributeTagger end
+(::_AttributeTagger)(rng, ind) = (ind.state[:tag] = ind.id)
+
 @testset "Attributes builders" begin
+    @testset "Callable structs compose with attribute builders" begin
+        for attributes in (
+                (groups(2), _AttributeTagger()),
+                [groups(2), _AttributeTagger()],
+            )
+            state = simulate(
+                ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0)); attributes);
+                n_initial = 3, rng = StableRNG(1))
+            @test length(state.individuals) == 3
+            @test all(ind.state[:tag] == ind.id for ind in state.individuals)
+            @test all(haskey(ind.state, :group) for ind in state.individuals)
+        end
+    end
+
     @testset "transmission_traits" begin
         @testset "constants" begin
             attrs = transmission_traits(susceptibility = 0.3, infectiousness = 0.7)
