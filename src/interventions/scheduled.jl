@@ -78,7 +78,7 @@ function Scheduled(intervention::AbstractIntervention;
 end
 
 # Predicate constructor: no individual-level reset
-function Scheduled(intervention::AbstractIntervention, condition::Function)
+function Scheduled(intervention::AbstractIntervention, condition)
     Scheduled(intervention, condition, 0.0)
 end
 

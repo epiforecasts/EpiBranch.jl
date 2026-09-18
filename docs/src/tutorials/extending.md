@@ -659,6 +659,22 @@ that sets fields on each individual when they are created (before any
 intervention hooks run). The built-in constructors `clinical_presentation`,
 `demographics`, and `transmission_traits` return such functions.
 
+Observation parameters, attribute-builder parameters and intervention predicates
+accept callable objects as well as functions. Their argument signatures stay the
+same. For example, a reporting rule can hold its threshold in a struct:
+
+```@example extending
+struct AgeDetection
+    minimum_age::Float64
+end
+(rule::AgeDetection)(rng, ind) = ind.state[:age] >= rule.minimum_age ? 1.0 : 0.0
+age_observation = PerCaseObservation(detection_prob = AgeDetection(50.0))
+```
+
+A callable observation anchor takes only `ind`, and a callable `Scheduled`
+predicate takes the simulation state. Scalar and distribution inputs retain
+their usual meanings wherever those forms are supported.
+
 ### Writing your own
 
 For fields without a dedicated builder — anything in `ind.state` — write a
