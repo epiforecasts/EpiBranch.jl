@@ -232,7 +232,7 @@ import{_ as i,o as a,c as n,ao as t}from"./chunks/framework.CE89aEl1.js";const E
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    # Three isolation pathways, each independent:</span></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    #   - test_isolation_time:  onset + delay, fires iff test_positive</span></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    #   - traced_isolation_time: set by ContactTracing&#39;s FlagOnly action</span></span>
-<span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    #     (for symptomatic traced contacts), fires iff contact was traced</span></span>
+<span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    #     for traced contacts, fires iff contact was traced and has an onset</span></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    # Isolation fires at the earlier of any active pathway. A</span></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    # test-negative-but-traced contact is still isolated via tracing.</span></span>
 <span class="line"><span style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;">    #</span></span>
