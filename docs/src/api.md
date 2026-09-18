@@ -329,6 +329,8 @@ clinical_presentation
 demographics
 transmission_traits
 groups
+vaccine_acceptance
+EpiBranch.GroupAttribute
 ```
 
 ## Convenience constructors

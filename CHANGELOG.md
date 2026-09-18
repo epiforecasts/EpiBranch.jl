@@ -16,6 +16,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
   everyone willing to receive it. A missed visit can be followed by vaccination
   on a later visit; simulation rounds do not create extra attempts.
 
+- `vaccine_acceptance(; propensity, group_key = :group)`, an attributes
+  function that draws a vaccine-acceptance propensity once per group and
+  shares it with every member of that group, so refusal clusters the way it
+  does in practice. `GroupVaccination`'s and `RingVaccination`'s `coverage`
+  and `MassVaccination`'s `eligibility_time` already accept a function of the
+  individual; read the propensity back from `ind.state[:vaccine_acceptance]`
+  to draw that correlation in. Groups come from `groups`, or from any
+  attributes function that labels individuals under `group_key`.
 - `CapacityConstrained`, wrapping an intervention to ration a scarce,
   population-level resource across the individuals competing for it in the
   same period — `budget_per_period` candidates may be admitted for the
