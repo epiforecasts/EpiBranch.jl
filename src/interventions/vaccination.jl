@@ -38,19 +38,19 @@ of vaccinated individuals and leaves the rest unaffected.
 `efficacy` still in force `dt` time units after immunity develops
 (`dt = 0` at immunity onset). It multiplies `efficacy` (and, on
 [`RingVaccination`](@ref), `onward_efficacy` and `post_exposure_efficacy`)
-when checked against a transmission, so a dose otherwise blocking at
-strength `efficacy` instead blocks at `efficacy * waning(dt)` when a
-decayed protection is wanted — pre-emptively vaccinated individuals whose
+when checked against a transmission: a dose that would otherwise block at
+strength `efficacy` blocks at `efficacy * waning(dt)` instead. Use it
+where protection decays, for pre-emptively vaccinated individuals whose
 exposure comes months after their immunity developed, say. `dt` is the
 time from that individual's own immunity onset to the exposure under
-evaluation, and what it scales is the value that individual was given, so
-a dose drawn per individual decays from its own level on its own clock.
-`waning` itself takes only the elapsed time, one shape of decay for the
-whole dose, with the per-individual variation in the draws it scales. A
-post-exposure abort happens the moment immunity arrives, so it uses
-`post_exposure_efficacy * waning(0)`, which differs from
+evaluation, and it scales the value that individual was given; a dose
+drawn per individual therefore decays from its own level on its own
+clock. `waning` takes only the elapsed time, one shape of decay for the
+whole dose, and the per-individual variation lives in the draws it
+scales. A post-exposure abort happens the moment immunity arrives and
+uses `post_exposure_efficacy * waning(0)`, which differs from
 `post_exposure_efficacy` only for a `waning` that does not start at 1.
-`waning` does not reach `severity_efficacy`, which stays at the value
+`waning` does not apply to `severity_efficacy`, which stays at the value
 sampled at vaccination for the whole run; [`RingVaccination`](@ref) shows
 how to apply a decay to it in the clinical transition that reads it.
 Defaults to `nothing`, which keeps protection constant once immunity
@@ -58,9 +58,10 @@ develops. A dose with its own `dose_label` in a multi-dose
 schedule decays from its own immunity time, independently of any other
 dose's. Doses still compose as competing risks, each blocking an exposure
 on its own, so a schedule leaves an exposure unblocked with probability
-`prod(1 - eff_i * w_i)` over its doses, where `eff_i` is what dose `i` was
-given and `w_i` what it retains at that exposure. A prime at 0.6 and a
-boost at 0.7, both at full strength, block 0.88 between them.
+`prod(1 - eff_i * w_i)` over its doses, where `eff_i` is the efficacy
+dose `i` was given and `w_i` the fraction it retains at that exposure. A
+prime at 0.6 and a boost at 0.7, both at full strength, block 0.88
+between them.
 
 !!! note "In a pure branching process the two modes are equivalent"
     Every contact in a branching process is a unique exposure, so
@@ -406,12 +407,13 @@ might, would count a not-yet-immune dose as protective. Defaults to `0.0`
 `efficacy`.
 
 `severity_efficacy` does not wane. [`severity_efficacy`](@ref) returns the
-value sampled at vaccination for the whole run, and `waning` never touches
-it: a transition's `probability` sees only the individual, not the dose and
-its `waning` function. A dose with `waning` set therefore protects against
-infection less and less over time while its protection against severe
-outcomes stays at full strength. To let the latter fade too, apply the
-decay inside the closure, from immunity onset to the individual's own onset:
+value sampled at vaccination for the whole run, and `waning` does not
+apply to it: a transition's `probability` sees only the individual, and
+cannot reach the dose or its `waning` function. A dose with `waning` set
+therefore protects against infection less and less over time while its
+protection against severe outcomes stays at full strength. To let the
+latter fade too, apply the decay inside the closure, from immunity onset
+to the individual's own onset:
 
 ```julia
 decay(dt) = exp(-dt / 180)
@@ -484,10 +486,10 @@ So does `dose_delay`, drawn once when the dose is scheduled.
 
 `waning` is the exception: it is a function `dt -> Real` of the time since
 this contact's immunity developed, and one shape of decay serves the whole
-dose, because what it scales is already each contact's own draw (see
+dose, because it already scales each contact's own draw (see
 [`AbstractVaccination`](@ref)). It scales `efficacy`, `post_exposure_efficacy`
 and `onward_efficacy`, and leaves `severity_efficacy` alone. The
-post-exposure abort acts the moment immunity arrives, so it uses `waning(0)`:
+post-exposure abort acts the moment immunity arrives and uses `waning(0)`:
 a decay that builds up first, such as `dt -> min(1, dt / 14)`, therefore
 aborts nothing.
 """
@@ -515,7 +517,7 @@ required_dose(rv::RingVaccination) = rv.requires_dose
 
 # Full-strength post-exposure and onward efficacies of dose `rv` for `ind`: the
 # scalar off the intervention, or the draw stored when the dose was given. A
-# contact with no dose of this vaccination has no draw stored and so reads zero.
+# contact with no dose of this vaccination has no draw stored and reads zero.
 function _post_exposure_efficacy(rv::RingVaccination, ind)
     _dose_value(rv.post_exposure_efficacy, _post_exposure_efficacy_key,
         dose_label(rv), ind)
@@ -595,7 +597,7 @@ function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     immunity = _immunity_time(rv, contact, vacc_t)
     exposure = contact.infection_time
     exposure < immunity < exposure + incubation || return nothing
-    # The abort acts the moment immunity arrives, so it takes the protection the
+    # The abort acts the moment immunity arrives and takes the protection the
     # dose retains then: the block `_contact_risk` applies to an exposure
     # coinciding with immunity.
     post *= _retained(waning(rv), 0.0)
@@ -848,7 +850,7 @@ with ring size.
 [`RingVaccination`](@ref). `severity_efficacy` defaults to `0.0` (no
 severity effect) and, as there, acts only through a clinical transition
 that reads it via the [`severity_efficacy`](@ref) and
-[`immunity_time`](@ref) accessors; `waning` does not reach it.
+[`immunity_time`](@ref) accessors; `waning` does not apply to it.
 `dose_delay` accepts the same forms, drawn once per member, so members of one
 group can be reached at different times.
 
