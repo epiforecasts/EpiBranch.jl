@@ -83,3 +83,12 @@ end
         @test is_extinct(state)
     end
 end
+
+@testset "Positional simulation options" begin
+    rules = [MaxCases(10)]
+    opts = SimOpts(1, rules)
+    @test opts.n_initial == 1
+    @test opts.initial_cases === nothing
+    @test opts.stopping_rules == rules
+    @test opts.stopping_rules isa Vector{AbstractStoppingRule}
+end

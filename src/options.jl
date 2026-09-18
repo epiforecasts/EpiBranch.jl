@@ -134,7 +134,7 @@ function _case_cap(opts::SimOpts)
 end
 
 # Preserve the positional constructor used by external simulation methods.
-function SimOpts(n_initial::Int, rules::Vector{AbstractStoppingRule})
+function SimOpts(n_initial, rules)
     SimOpts(n_initial, nothing, rules)
 end
 
