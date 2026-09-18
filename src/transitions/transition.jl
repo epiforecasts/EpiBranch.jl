@@ -91,9 +91,8 @@ end
 
 function resolve_individual!(t::Transition, individual, state)
     anchor = _state_time(individual, t.from)
-    _anchor_ok(anchor) || return nothing
-    p = _resolve_probability(t.probability, state.rng, individual)
-    rand(state.rng) < p || return nothing
+    _transition_selected(state.rng, individual, anchor, t.probability) || return nothing
+    # Delay callbacks can read the newly reached state.
     individual.state[t.state] = true
     individual.state[t.time_key] = anchor + _resolve_delay(t.delay, state.rng, individual)
     return nothing

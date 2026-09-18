@@ -189,6 +189,7 @@ Recovery
 is_terminal
 terminal_event
 EpiBranch.resolve_transitions!
+EpiBranch.transition_time
 ```
 
 ## State accessors

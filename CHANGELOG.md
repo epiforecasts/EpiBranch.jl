@@ -16,6 +16,8 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   companion-package installations.
 - Callable objects can supply branching-process offspring rules, generation-time
   distributions and multi-type offspring families.
+- `EpiBranch.transition_time` shares clinical event sampling with external
+  transitions, preserving the named transitions' state keys and random draws.
 - Candidate intervention actions separate discovery from scheduling and resource
   admission. Capacity constraints now ration actual group-vaccination members.
 - Network and household races support ring and group actions with cached discovery
