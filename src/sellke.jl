@@ -351,6 +351,15 @@ function _route_close(ind, w::RouteWindow, interventions)
     return t
 end
 
+# The one window of `_sellke_race!`'s `from`/`until`/`targets` shorthand. Reading
+# a single-route model's infectious windows back out of a simulation for the
+# likelihood uses the same window, and the simulator and the likelihood then
+# close each case's window at the same time.
+function _shorthand_window(from, until)
+    return RouteWindow(:transmission; from = something(from, :infection),
+        until = (something(until, ())..., INTERVENTION_REMOVAL), kernel = nothing)
+end
+
 # Whether a continuous-time model honours an intervention. Between the two seams
 # these models have — the infectious window and the per-contact competing risk —
 # an intervention is honoured when its effect is a removal (perfect isolation
@@ -360,6 +369,7 @@ end
 # `Scheduled` delegates to its wrapped intervention — the loop exposes the running
 # clock/count (see `_resolve_interventions!`), so its time/count gate is honoured
 # whenever the wrapped intervention is.
+
 #
 # What has no continuous-time representation is a *generation-shaped* hook.
 # `apply_post_transmission!` and `keep_active` act on a batch of freshly created
@@ -531,11 +541,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
     if routes === nothing
         targets === nothing && throw(ArgumentError(
             "_sellke_race! needs either `routes` or the `targets` shorthand"))
-        rts = ((
-            RouteWindow(:transmission; from = something(from, :infection),
-                until = (something(until, ())..., INTERVENTION_REMOVAL),
-                kernel = nothing),
-            targets),)
+        rts = ((_shorthand_window(from, until), targets),)
     else
         (targets === nothing && from === nothing && until === nothing) ||
             throw(ArgumentError(

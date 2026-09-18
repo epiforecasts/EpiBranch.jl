@@ -383,3 +383,74 @@ df = linelist(state)
 println("Cases: ", size(df, 1),
     "; community introductions: ", count(df.index))
 ```
+
+## Fitting on a network
+
+A `NetworkProcess` model can be fitted as well as simulated. The continuous-time
+race that simulates it is the generative model of the pairwise survival
+likelihood (Kenah 2011), which the [household models](households.md) also use.
+The likelihood scores the **infection layer**: who was infected, when, and when
+each case's infectious window opened and closed. Who infected whom is not needed.
+Each node accrues hazard from every infectious in-neighbour over the time they
+overlapped, and each infected node adds the hazard summed over all its possible
+infectors at the moment it was infected.
+
+[`network_infections`](@ref) reads that layer out of a simulation, and
+`loglikelihood(data, model)` evaluates it under the model's kernel. The windows
+it reads close where the simulation closed them: a case that the model's
+interventions isolate exposes its neighbours only until it is isolated. In this
+example, maximising the likelihood over a grid for an outbreak simulated on a
+small-world network recovers the kernel scale used in the simulation:
+
+```@example networks
+g_fit = watts_strogatz(2000, 6, 0.1; rng = StableRNG(5))
+truth = ModelSpec(NetworkProcess(g_fit, Exponential(6.0));
+    progression = [
+        Transition(:infectious; from = :infection, delay = LogNormal(0.5, 0.3)),
+        Transition(:recovered; from = :infectious, delay = 5.0, terminal = true)])
+data = network_infections(simulate(truth; n_initial = 5, rng = StableRNG(6)), truth)
+
+layout = compile_contact_pairs(data)   # the (susceptible, possible infector) rows, once
+ll(scale) = pairwise_surv_loglik(Exponential(scale), data, layout)
+grid = 3.0:0.25:9.0
+grid[argmax(ll.(grid))]                # ≈ the true scale, 6.0
+```
+
+`loglikelihood(data, truth)` is the same density at the model's own kernel. The
+kernel can be anything `NetworkProcess` accepts: a shared distribution, a
+callable `(infector, susceptible) -> Distribution` for covariates, or a per-edge
+vector parallel to the adjacency. Because the structure and the set of infected
+nodes stay fixed, [`compile_contact_pairs`](@ref) enumerates the rows once and the
+three-argument `pairwise_surv_loglik` reuses them while the kernel parameters
+change. That form is differentiable in those parameters and can be optimised
+with Optim or added to a Turing `@model` through `@addlogprob!`, as the
+households tutorial shows.
+
+With an `external_hazard`, pass it to `pairwise_surv_loglik` and compile the
+layout with `external = true`. As in the simulation, the community hazard
+introduces cases up to the data's `obs_end` and spread along the edges continues
+after it. To score data that stop at a date, pass that date as `followup_end` to
+`NetworkInfections` (or `network_infections`): infections and exposure after it
+are ignored, and a node still infectious at the end of follow-up keeps a removal
+time of `Inf`.
+
+Because the possible infectors are read off the graph, a structure that is not a
+partition fits the same way. A network *within* households, where not every
+household member is in contact with every other, is a `NetworkProcess` whose
+adjacency is the within-household subgraph. On a directed graph, a node's
+possible infectors are the nodes that list it as a contact.
+
+The likelihood covers single-route `NetworkProcess` models; `RoutedNetwork` has
+no likelihood yet. In real data the infection times are unobserved, and a model
+augments them and conditions the observed onsets through the progression, as for
+households. An impossible configuration, such as a node infected when no
+in-neighbour is infectious and no community hazard can reach it, has zero
+density. `pairwise_surv_loglik` returns `-Inf` for it with a zero gradient, since
+whether a configuration is possible at all depends on the times alone.
+
+Fitting the community hazard itself has the same caveat as for households: a
+positive `external_hazard` and no community hazard are different conditionings,
+and the density jumps between them at `α = 0`. Score the two models separately;
+[Fitting a community hazard](@ref) explains why and shows the log-density near
+zero. The same automatic-differentiation limit also applies: fit a `Gamma` kernel
+or community hazard with a reverse-mode backend such as Mooncake.

@@ -152,30 +152,3 @@ end
 _resolve_kernel(k::ContinuousUnivariateDistribution, m, i, pos) = k
 _resolve_kernel(k::AbstractVector, m, i, pos) = k[i][pos]
 _resolve_kernel(k, m, i, pos) = k(i, m.adjacency[i][pos])
-
-# ── External-hazard helpers ──────────────────────────────────────────
-#
-# Mirror the HouseholdProcess helpers: this model shares the same
-# community-introduction machinery.
-
-# The external community source: a non-negative scalar (constant hazard) or any
-# continuous distribution on the non-negative reals (a calendar-time hazard).
-_valid_external(α::Real) = α >= 0
-_valid_external(d::ContinuousUnivariateDistribution) = minimum(d) >= 0
-_valid_external(_) = false
-_normalise_external(α::Real) = Float64(α)
-_normalise_external(d::ContinuousUnivariateDistribution) = d
-
-_ext_active(α::Real) = α > 0
-_ext_active(::ContinuousUnivariateDistribution) = true
-
-# The contact-interval distribution of a community introduction: a constant
-# hazard is an exponential waiting time, a distribution stands for itself.
-_ext_kernel(α::Real) = Exponential(1 / α)
-_ext_kernel(d::ContinuousUnivariateDistribution) = d
-
-# A community introduction time under that hazard, with the node's
-# susceptibility scaling it as it scales a pair kernel's.
-function _ext_draw(rng, extsrc, susceptibility)
-    EpiBranch._traits_scaled_draw(rng, _ext_kernel(extsrc), susceptibility)
-end

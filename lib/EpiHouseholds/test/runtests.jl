@@ -306,21 +306,6 @@ end
                 rng = StableRNG(5)).individuals)
     end
 
-    @testset "pairwise survival likelihood: basics and differentiability" begin
-        rows = PairwiseSurvivalData([1, 1, 2, 2], [0.0, 0.0, 0.0, 0.0],
-            [2.0, 4.0, 1.5, 5.0], [true, false, true, false])
-        @test isfinite(pairwise_surv_loglik(Exponential(3.0), rows))
-        # a constant per-row callable equals the shared distribution
-        @test pairwise_surv_loglik(r -> Exponential(3.0), rows) ≈
-              pairwise_surv_loglik(Exponential(3.0), rows)
-        # differentiable in a log-rate parameter (what makes it fittable)
-        f(θ) = pairwise_surv_loglik(Exponential(exp(θ)), rows)
-        g = ForwardDiff.derivative(f, log(3.0))
-        @test isfinite(g)
-        fd = (f(log(3.0) + 1e-6) - f(log(3.0) - 1e-6)) / 2e-6
-        @test isapprox(g, fd; rtol = 1e-4)
-    end
-
     @testset "simulate → loglikelihood round trip recovers the kernel" begin
         # the Sellke construction is the generative model the pairwise likelihood
         # assumes, so the simulated infection layer recovers the kernel scale.
@@ -332,8 +317,8 @@ end
         data = household_infections(state, m)
         @test count(data.is_index) == 1500            # one index per household
 
-        rows = first(EpiHouseholds._survival_rows(data))
-        ll(s) = pairwise_surv_loglik(Exponential(s), rows)
+        layout = compile_household_pairs(data)
+        ll(s) = pairwise_surv_loglik(Exponential(s), data, layout)
         @test ll(true_scale) > ll(true_scale / 2)
         @test ll(true_scale) > ll(true_scale * 2)
         grid = 2.0:0.5:6.0
@@ -341,6 +326,37 @@ end
 
         # the dispatched loglikelihood routes through pairwise_surv_loglik
         @test loglikelihood(data, m) ≈ ll(true_scale)
+    end
+
+    @testset "isolation ends the infectious window in the infection layer" begin
+        # the race closes a case's window when it is isolated and the data must
+        # too; otherwise the likelihood sees cases infectious after isolation and
+        # overestimates the kernel scale
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0)
+        m = ModelSpec(HouseholdProcess(fill(4, 1500), Exponential(4.0));
+            progression = _sir(8.0), interventions = [iso], attributes = clinical)
+        state = simulate(m; rng = StableRNG(201))
+        data = household_infections(state, m)
+
+        infected = findall(!isnan, data.infection_time)
+        expected = [min(data.infection_time[i] + 8.0,
+                        EpiBranch.isolation_time(state.individuals[i])) for i in infected]
+        @test data.removal_time[infected] == expected
+        @test count(data.removal_time[infected] .< data.infection_time[infected] .+ 8.0) >
+              length(infected) / 2
+
+        layout = compile_household_pairs(data)
+        f(θ) = pairwise_surv_loglik(Exponential(exp(θ)), data, layout)
+        d2(z) = ForwardDiff.derivative(y -> ForwardDiff.derivative(f, y), z)
+        θhat = log(4.0)
+        for _ in 1:20
+            θhat -= ForwardDiff.derivative(f, θhat) / d2(θhat)
+        end
+        se = 1 / sqrt(-d2(θhat))
+        @test abs(θhat - log(4.0)) < 3 * se
     end
 
     @testset "external (community) term: round trip recovers the kernel" begin
@@ -358,12 +374,73 @@ end
         @test count(data.is_index) >= 1
         @test isfinite(loglikelihood(data, m))          # dispatched form with external
 
-        rows, _, is_ext = EpiHouseholds._survival_rows(
-            data; external = true, obs_end = Tobs)
-        extdist = Exponential(1 / 0.05)
-        ll(s) = pairwise_surv_loglik(r -> is_ext[r] ? extdist : Exponential(s), rows)
+        layout = compile_household_pairs(data; external = true)
+        ll(s) = pairwise_surv_loglik(Exponential(s), data, layout; external_hazard = 0.05)
         grid = 1.5:0.5:5.0
         @test abs(grid[argmax([ll(s) for s in grid])] - true_scale) <= 1.5
+    end
+
+    @testset "community introductions stop at obs_end and household spread goes on" begin
+        # with a short obs_end most infections come later, within households; the
+        # likelihood must give them no community hazard and keep uninfected
+        # members exposed over their household-mates' whole windows
+        Tobs = 2.0
+        m = ModelSpec(
+            HouseholdProcess(fill(6, 1500), Exponential(10.0);
+                external_hazard = 0.1, obs_end = Tobs);
+            progression = _sir(12.0))
+        data = household_infections(simulate(m; rng = StableRNG(71)), m)
+        inf = filter(!isnan, data.infection_time)
+        @test count(>(Tobs), inf) > length(inf) / 2
+
+        layout = compile_household_pairs(data; external = true)
+        @test loglikelihood(data, m) ≈
+              pairwise_surv_loglik(Exponential(10.0), data, layout;
+            external_hazard = 0.1)
+        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout;
+            external_hazard = exp(θ[2]))
+        θ = [log(10.0), log(0.1)]
+        θhat = copy(θ)
+        for _ in 1:20
+            θhat -= ForwardDiff.hessian(g, θhat) \ ForwardDiff.gradient(g, θhat)
+        end
+        Σ = inv(-ForwardDiff.hessian(g, θhat))
+        se = sqrt.([Σ[1, 1], Σ[2, 2]])
+        @test all(abs.(θhat - θ) .< 3 .* se)
+    end
+
+    @testset "an outbreak still going at the end of follow-up" begin
+        m = ModelSpec(
+            HouseholdProcess(fill(6, 1500), Exponential(10.0);
+                external_hazard = 0.1, obs_end = 2.0);
+            progression = _sir(12.0))
+        state = simulate(m; rng = StableRNG(71))
+        tf = 6.0
+        full = household_infections(state, m)
+        late = .!(full.infection_time .<= tf)
+        nan_late(x) = [l ? NaN : v for (v, l) in zip(x, late)]
+        ongoing = HouseholdInfections(full.household_of, nan_late(full.infection_time),
+            nan_late(full.infectious_time),
+            [l ? NaN : (r > tf ? Inf : r) for (r, l) in zip(full.removal_time, late)],
+            full.is_index .& .!late; obs_end = 2.0, followup_end = tf)
+        @test any(isinf, ongoing.removal_time)
+        @test count(!isnan, ongoing.infection_time) < count(!isnan, full.infection_time)
+
+        read = household_infections(state, m; followup_end = tf)
+        @test read.followup_end == tf
+        k = Exponential(10.0)
+        v = loglikelihood(ongoing, m)
+        @test isfinite(v)
+        @test v ≈ loglikelihood(read, m)
+        layout = compile_household_pairs(ongoing; external = true)
+        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), ongoing, layout;
+            external_hazard = exp(θ[2]))
+        θ = [log(10.0), log(0.1)]
+        @test g(θ) ≈ v
+        grad = ForwardDiff.gradient(g, θ)
+        h = 1e-4
+        fd = [(g(θ .+ h .* e) - g(θ .- h .* e)) / 2h for e in ([1.0, 0.0], [0.0, 1.0])]
+        @test grad ≈ fd rtol = 1e-5
     end
 
     @testset "inference-friendly likelihood: kernel varies over a fixed infection layer" begin
@@ -401,10 +478,14 @@ end
         @test 0 < count(df.reported) < size(df, 1)       # ~half detected, not all
     end
 
-    @testset "compiled pair layout matches the dynamic path (shared kernel)" begin
-        # the layout captures the fixed row structure once; evaluating it over a
-        # grid of kernel scales must reproduce the dynamic HouseholdInfections
-        # path exactly (up to row order) while the same layout object is reused.
+    @testset "a reused layout matches a freshly compiled one (shared kernel)" begin
+        # the two-argument form is the three-argument one with a layout compiled
+        # on the spot, and this is not an independent check of the density. That
+        # cross-check against hand-built counting-process rows lives in the root
+        # suite, in "evaluation matches hand-built counting-process rows". This
+        # test checks that evaluating a layout leaves it unchanged: one object
+        # reused across a grid of kernel scales keeps agreeing with a fresh one,
+        # which inference relies on.
         m = ModelSpec(HouseholdProcess(fill(4, 500), Exponential(3.0));
             progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(101)), m)
@@ -420,7 +501,8 @@ end
                   pairwise_surv_loglik(Exponential(s), data)
         end
 
-        # single-arg constructor reads the at-risk mask off the data and agrees
+        # the single-argument constructor derives the at-risk mask from the data,
+        # and must land on the same layout as passing that mask explicitly
         layout1 = compile_household_pairs(data.household_of, data.is_index,
             .!isnan.(data.infection_time))
         @test length(layout1) == length(layout)
@@ -428,10 +510,10 @@ end
               pairwise_surv_loglik(Exponential(3.0), data, layout)
     end
 
-    @testset "compiled pair layout matches the dynamic path (external hazard)" begin
+    @testset "a reused layout matches a freshly compiled one (community hazard)" begin
         # with a community term every susceptible also carries an external row;
-        # the layout must be built with external=true and agree with the dynamic
-        # external path across kernel scales.
+        # the layout must be built with external=true, and reusing it across
+        # kernel scales must keep agreeing with a layout compiled per call.
         Tobs = 30.0
         m = ModelSpec(
             HouseholdProcess(fill(4, 500), Exponential(3.0);
@@ -456,8 +538,9 @@ end
     end
 
     @testset "compiled pair layout: covariate (per-pair) kernel" begin
-        # a two-argument (infector, susceptible) -> Distribution kernel routes
-        # through _pair on both the dynamic and the compiled path, so they agree.
+        # a two-argument (infector, susceptible) -> Distribution kernel is
+        # resolved per row on both paths, and a reused layout agrees with one
+        # compiled per call.
         m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
             progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(103)), m)
@@ -503,8 +586,9 @@ end
 
         ll(θ; by_infector = true) = pairwise_surv_loglik(
             kernel(exp.(θ)...; by_infector), data, layout)
-        # the compiled layout and the dynamic form agree for the covariate kernel,
-        # and `loglikelihood` on the model passes its own kernel the same way
+        # a reused layout and one compiled per call agree for the covariate
+        # kernel, and `loglikelihood` on the model passes its own kernel the
+        # same way
         for θ in (log.(truth), log.([2.0, 5.0]), log.([6.0, 3.0]))
             @test ll(θ) ≈ pairwise_surv_loglik(kernel(exp.(θ)...), data)
         end
@@ -536,12 +620,13 @@ end
         @test ll(θ̂) > swapped(newton(swapped, log.([4.0, 4.0]))) + 10
     end
 
-    @testset "compiled pair layout: differentiable and matches dynamic gradient" begin
+    @testset "a reused layout propagates AD duals like a freshly compiled one" begin
         # the fast path exists to be differentiated in the kernel parameters
         # (its whole reason for being reused across gradient evaluations). The
         # fitted parameter rides the kernel, not the data, so the layout must
         # carry the AD duals through both the cumulative-hazard pass and the
-        # per-susceptible log-sum-exp. Checked in all three kernel modes.
+        # per-susceptible log-sum-exp, and must still do so after being
+        # evaluated. Checked in all three kernel modes.
         m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
             progression = _sir(6.0))
         data = household_infections(simulate(m; rng = StableRNG(104)), m)
@@ -599,6 +684,7 @@ end
         @test 3 in layout.sus_unique && 2 in layout.sus_unique
         @test !(1 in layout.sus_unique)
 
+        # and the reused layout keeps agreeing with one compiled per call
         for s in 1.0:1.0:5.0
             @test pairwise_surv_loglik(Exponential(s), data, layout) ≈
                   pairwise_surv_loglik(Exponential(s), data)
@@ -616,7 +702,8 @@ end
         # a household where the sole housemate escapes: the index recovers at
         # t=3 and member 2 is never infected. There is still one structural row
         # (member 2 at risk from the index), whose only contribution is the
-        # escaped cumulative hazard — finite and equal to the dynamic path.
+        # escaped cumulative hazard, which is finite and the same however the
+        # layout was obtained.
         lone = HouseholdInfections([1, 1], [0.0, NaN], [0.0, NaN], [3.0, Inf],
             [true, false])
         llayout = compile_household_pairs(lone)
@@ -641,14 +728,52 @@ end
         # mismatched input lengths are rejected at compile time
         @test_throws ArgumentError compile_household_pairs([1, 1], [true],
             [true, false])
+        @test_throws ArgumentError HouseholdInfections([1, 1], [0.0], [0.0], [1.0],
+            [true])
+    end
+
+    @testset "simulated index cases at time 0 scored with a community hazard" begin
+        # index cases simulated at 0 without a community hazard, scored with one
+        m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
+            progression = _sir(5.0))
+        sim = household_infections(simulate(m; rng = StableRNG(1)), m)
+        d = HouseholdInfections(sim.household_of, sim.infection_time,
+            sim.infectious_time, sim.removal_time, sim.is_index; obs_end = 20.0)
+        @test count(==(0.0), filter(!isnan, d.infection_time)) == 300
+        ld = compile_household_pairs(d; external = true)
+        for α in (0.001, 0.01, 0.1, 1.0)
+            @test pairwise_surv_loglik(Exponential(3.0), d, ld; external_hazard = α) ≈
+                  pairwise_surv_loglik(Exponential(3.0), d; external_hazard = α)
+        end
+    end
+
+    @testset "simulated infection layers never have zero density" begin
+        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0)
+        latent = [Transition(:infectious; from = :infection, delay = LogNormal(0.3, 0.3)),
+            Transition(:recovered; from = :infectious, delay = 5.0, terminal = true)]
+        for seed in 1:4, (ext, Tobs) in ((0.0, Inf), (0.03, 10.0)),
+            interventions in ([], [iso])
+            m = ModelSpec(
+                HouseholdProcess(rand(StableRNG(seed), 1:6, 200), Weibull(1.5, 4.0);
+                    external_hazard = ext, obs_end = Tobs);
+                progression = latent, interventions, attributes = clinical)
+            d = household_infections(simulate(m; n_initial = 2, rng = StableRNG(seed)), m)
+            layout = compile_household_pairs(d; external = ext > 0)
+            @test isfinite(loglikelihood(d, m))
+            @test isfinite(pairwise_surv_loglik(Weibull(1.5, 4.0), d, layout;
+                external_hazard = ext))
+        end
     end
 
     @testset "compiled pair layout: inference workflow (compile once, reuse)" begin
-        # the documented workflow: the household structure is fixed, so the layout
+        # the documented workflow: with the household structure fixed, the layout
         # is compiled once and reused across every gradient evaluation of the fit.
-        # Recovering the kernel scale by Newton MLE — feeding the same layout to
-        # every step — must land on the same optimum as the dynamic path and near
-        # the truth.
+        # Recovering the kernel scale by Newton MLE with the same layout at every
+        # step must land on the same optimum as compiling a layout per call, and
+        # near the truth.
         true_scale = 4.0
         m = ModelSpec(HouseholdProcess(fill(4, 800), Exponential(true_scale));
             progression = _sir(6.0))
@@ -670,10 +795,10 @@ end
 
         x_fast = mle(f_fast)
         x_dyn = mle(f_dyn)
-        @test x_fast ≈ x_dyn                              # same optimum as dynamic path
+        @test x_fast ≈ x_dyn                              # same optimum either way
         @test isapprox(exp(-x_fast), true_scale; rtol = 0.2)  # recovers the scale
 
-        # a scan reusing the one layout object matches the dynamic scan pointwise
+        # a scan reusing the one layout object matches a per-call scan pointwise
         grid = 2.0:0.5:6.0
         @test [f_fast(log(1 / s)) for s in grid] ≈ [f_dyn(log(1 / s)) for s in grid]
     end

@@ -56,7 +56,7 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
             seed! = (best, members, r) -> _seed_clique!(
                 best, members, state, model.external_hazard, Tobs, r),
             introduction = _ext_active(model.external_hazard) ?
-                           (_ext_kernel(model.external_hazard), Tobs) : nothing,
+                           (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
             targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid))
             for oid in mem if oid != inf),
             # A case's contacts are its household-mates, traced whether or not
@@ -91,14 +91,3 @@ end
 # susceptible) pair: a shared distribution, or a callable for covariate models.
 _pairkernel(k::ContinuousUnivariateDistribution, i, j) = k
 _pairkernel(k, i, j) = k(i, j)
-
-# The contact-interval distribution of a community introduction: a constant
-# hazard is an exponential waiting time, a distribution stands for itself.
-_ext_kernel(α::Real) = Exponential(1 / α)
-_ext_kernel(d::ContinuousUnivariateDistribution) = d
-
-# A community introduction time under that hazard, with the member's
-# susceptibility scaling it as it scales a pair kernel's.
-function _ext_draw(rng, extsrc, susceptibility)
-    EpiBranch._traits_scaled_draw(rng, _ext_kernel(extsrc), susceptibility)
-end

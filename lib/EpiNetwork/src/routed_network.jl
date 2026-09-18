@@ -228,7 +228,7 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, sim_opts.n_initial, Tobs, r),
         introduction = _ext_active(model.external_hazard) ?
-                       (_ext_kernel(model.external_hazard), Tobs) : nothing,
+                       (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
         contacts = (inf, st) -> _route_contacts(
             windows, interventions, st.individuals[inf], inf, st.rng))
 
