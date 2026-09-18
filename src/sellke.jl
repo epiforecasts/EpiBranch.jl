@@ -241,6 +241,10 @@ function _bisect_log_survival(kernel, lp)
     lo = float(invlogccdf(kernel, max(lp, -30)))
     (isfinite(lo) && logccdf(kernel, lo) >= lp) || (lo = float(minimum(kernel)))
     isfinite(lo) || return oftype(lo, Inf)
+    # A kernel whose mass sits at its lower bound, an atom or a censored law,
+    # has already fallen past `lp` there, so the bracket lies beyond the answer
+    # and bisecting it would land a float late.
+    logccdf(kernel, lo) <= lp && return lo
     hi = lo + max(one(lo), abs(lo))
     steps = 0
     while logccdf(kernel, hi) > lp && steps < 2000

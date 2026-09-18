@@ -253,7 +253,7 @@ What this means in practice:
   deep a kernel can be thinned before that happens is its own survival's: one
   with a `logccdf` of its own goes as far as the time grid allows, while one
   whose survival is computed as `1 - cdf`, a `MixtureModel` for instance, stops
-  at about 37 multiples of its mean.
+  where that subtraction does, at a survival of about 1e-16.
 - That is the per-exposure reading of a leaky vaccine, and it is **not** what
   the same `Risk`
   does on the generation engine. There a parent's contacts are a fixed set of
