@@ -246,6 +246,14 @@ What this means in practice:
   because the pair simply meets again. The exception is a degenerate contact
   interval (a `Dirac`), where there is one contact and no more: a multiplier
   leaves it alone, and an intervention's `Risk` blocks it and ends the pair.
+  Certainty is also the one place the arithmetic falls short: each blocked
+  contact on a bounded support lands closer to its end than the last, so a risk
+  that blocks nearly every contact runs out of floats before it runs out of
+  contacts, and the pair can escape an infection the law says it cannot. How
+  deep a kernel can be thinned before that happens is its own survival's: one
+  with a `logccdf` of its own goes as far as the time grid allows, while one
+  whose survival is computed as `1 - cdf`, a `MixtureModel` for instance, stops
+  at about 37 multiples of its mean.
 - That is the per-exposure reading of a leaky vaccine, and it is **not** what
   the same `Risk`
   does on the generation engine. There a parent's contacts are a fixed set of

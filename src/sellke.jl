@@ -201,18 +201,58 @@ end
 # multiplier `m` on the pair kernel, rather than a Bernoulli thin: scaling a
 # hazard by `m` turns its survival function S(t) into S(t)^m, so the draw is the
 # time whose survival is `U^(1/m)` for `U ~ Uniform(0, 1)`. Both the survival and
-# its inverse are taken in logs, `invlogccdf(kernel, log(U)/m)`: a small
-# multiplier sends `U^(1/m)` itself to zero below about 1e-324, and puts it into
-# the range where the inverse of a `Gamma` survival raises a `DomainError` long
-# before that. In logs the argument is `log(U)/m`, which stays an ordinary
-# number, and every kernel's own `invlogccdf` reads it. `rand(rng, kernel)` is
-# the `m == 1` case of the same draw, kept as a fast path since every pair
-# without either trait set takes it. `m <= 0` (either trait exactly zero) never
-# transmits, and draws nothing.
+# its inverse are taken in logs, at `log(U)/m`: a small multiplier sends
+# `U^(1/m)` itself to zero below about 1e-324, and puts it into the range where
+# the inverse of a `Gamma` survival raises a `DomainError` long before that,
+# while `log(U)/m` stays an ordinary number. `rand(rng, kernel)` is the `m == 1`
+# case of the same draw, kept as a fast path since every pair without either
+# trait set takes it. `m <= 0` (either trait exactly zero) never transmits, and
+# draws nothing.
 function _traits_scaled_draw(rng::AbstractRNG, kernel, m::Real)
     m == 1 && return rand(rng, kernel)
     m <= 0 && return oftype(float(m), Inf)
-    return invlogccdf(kernel, log(rand(rng)) / m)
+    return _time_at_log_survival(kernel, log(rand(rng)) / m)
+end
+
+# The time whose log-survival under `kernel` is `lp`. A kernel with an
+# `invlogccdf` of its own answers directly. One without gets Distributions'
+# generic method, which rebuilds the argument as `-expm1(lp)` and so reaches
+# exactly 1 below `lp ≈ -37`, handing back the top of the support and losing a
+# contact that may be well inside the window: `Rayleigh`, a `MixtureModel`, a
+# `truncated` or shifted distribution and anything written outside Distributions
+# are all in that position. Rather than ask which kernel is which, the answer is
+# checked against the kernel's own `logccdf` — specialised far more widely, and
+# generic to `log(ccdf(...))` otherwise — and inverted by bisection on it when
+# the check fails. That costs one `logccdf` on each scaled draw, and the
+# bisection only where a direct answer would be wrong.
+function _time_at_log_survival(kernel, lp)
+    isfinite(lp) || return oftype(float(lp), Inf)
+    t = invlogccdf(kernel, lp)
+    isfinite(t) && isapprox(logccdf(kernel, t), lp; rtol = 1e-6, atol = 1e-12) && return t
+    return _bisect_log_survival(kernel, lp)
+end
+
+# Bisect `logccdf`, which decreases in `t`, for the earliest time at or past the
+# log-survival `lp`. The bracket starts at the time for a survival the direct
+# inverse does get right and grows until the kernel's survival has fallen far
+# enough, which a bounded support reaches at once. The loop ends when the two
+# ends are adjacent floats, so it is bounded by their exponent range.
+function _bisect_log_survival(kernel, lp)
+    lo = float(invlogccdf(kernel, max(lp, -30)))
+    (isfinite(lo) && logccdf(kernel, lo) >= lp) || (lo = float(minimum(kernel)))
+    isfinite(lo) || return oftype(lo, Inf)
+    hi = lo + max(one(lo), abs(lo))
+    steps = 0
+    while logccdf(kernel, hi) > lp && steps < 2000
+        hi = lo + 2 * (hi - lo)
+        steps += 1
+        isfinite(hi) || return oftype(hi, Inf)
+    end
+    while true
+        mid = lo + (hi - lo) / 2
+        (lo < mid < hi) || return hi
+        logccdf(kernel, mid) > lp ? (lo = mid) : (hi = mid)
+    end
 end
 
 # The pair's next contact after the one at `dt`, as a time from the window
@@ -228,7 +268,7 @@ function _next_contact(rng::AbstractRNG, kernel, m::Real, dt)
     m <= 0 && return Inf
     ls = logccdf(kernel, dt)
     isfinite(ls) || return Inf
-    nxt = invlogccdf(kernel, ls + log(rand(rng)) / m)
+    nxt = _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
     return nxt > dt ? nxt : Inf
 end
 

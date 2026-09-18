@@ -342,13 +342,46 @@ end
         # unit interval — `Gamma` below shape 1, whose inverse raises a
         # `DomainError` on a small enough probability — is drawn from in logs for
         # the same reason, so a small multiplier runs rather than throwing.
-        gamma_law(kernel, m, period) = 1 - ccdf(kernel, period)^m
+        scaled_law(kernel, m, period) = 1 - ccdf(kernel, period)^m
         for (kernel, m) in ((Gamma(0.3, 2.0), 0.01), (Gamma(0.7, 1.0), 0.005))
-            @test isapprox(share(kernel, m; period = 6.0), gamma_law(kernel, m, 6.0);
+            @test isapprox(share(kernel, m; period = 6.0), scaled_law(kernel, m, 6.0);
                 atol = 0.025)
         end
         @test isapprox(share(Gamma(0.3, 2.0), 1.0, [FlatBlock(0.99)]; period = 6.0),
-            gamma_law(Gamma(0.3, 2.0), 0.01, 6.0); atol = 0.025)
+            scaled_law(Gamma(0.3, 2.0), 0.01, 6.0); atol = 0.025)
+
+        # A kernel with no inverse survival of its own falls back on one that
+        # rebuilds the argument in linear space and hands back the top of the
+        # support, losing contacts that are still inside the window: the same law
+        # would then give different answers written as `Rayleigh(1)` or as
+        # `Weibull(2, sqrt(2))`. Inverting the kernel's own log-survival instead
+        # keeps them together, and covers a mixture, a truncated and a shifted
+        # distribution too.
+        @test isapprox(share(Rayleigh(1.0), 0.005; period = 20.0),
+            share(Weibull(2.0, sqrt(2)), 0.005; period = 20.0); atol = 0.025)
+        fallbacks = ((Rayleigh(1.0), 20.0, 0.005), (Rayleigh(1.0), 20.0, 0.05),
+            (1.0 + Exponential(1.0), 100.0, 0.01),
+            (MixtureModel([Exponential(1.0), Exponential(5.0)]), 100.0, 0.01),
+            (truncated(Exponential(1.0), 0.0, 5.0), 20.0, 0.05))
+        for (kernel, period, m) in fallbacks
+            @test isapprox(share(kernel, m; period), scaled_law(kernel, m, period);
+                atol = 0.025)
+        end
+        # and through the blocked-contact continuation, which inverts the same
+        # survival from the time of the contact it blocked
+        for (kernel, period, m) in fallbacks[1:(end - 1)]
+            @test isapprox(share(kernel, 1.0, [FlatBlock(1 - m)]; period),
+                scaled_law(kernel, m, period); atol = 0.03)
+        end
+        # The last of them is bounded, and there the continuation runs into the
+        # float grid rather than the kernel: the law says a pair whose support
+        # ends inside the window transmits for certain, and each blocked contact
+        # pushes the next closer to that end than the last, so a strong block
+        # stops short of certainty. A multiplier, which needs one draw rather
+        # than a run of them, does not (the case above).
+        @test 0.8 <
+              share(truncated(Exponential(1.0), 0.0, 5.0), 1.0, [FlatBlock(0.95)];
+                  period = 20.0) < 1.0
 
         # A kernel with all its mass inside the window carries an infinite
         # integrated hazard, and no thinning touches that: the pair transmits for
