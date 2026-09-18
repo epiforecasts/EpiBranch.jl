@@ -28,10 +28,10 @@
 # The infector of a pool infection, drawn from `infectious_ids` with probability
 # proportional to infectiousness. When every member has the default
 # infectiousness the draw is uniform, which keeps seeded runs without the trait
-# unchanged. With no infectious weight at all — an empty pool under a custom
+# unchanged. With no infectious weight at all (an empty pool under a custom
 # `force` with a count-independent hazard, e.g. external importation, or only
-# zero-infectiousness cases — there is no infector to attribute to, so fall back
-# to the index-case label 0.
+# zero-infectiousness cases) there is no infector to attribute to, and the draw
+# falls back to the index-case label 0.
 function _draw_infector(rng::AbstractRNG, state::SimulationState,
         infectious_ids::AbstractVector{Int}, equal_infectiousness::Bool)
     isempty(infectious_ids) && return 0
@@ -71,7 +71,7 @@ input is the mixing rule between types:
     susceptible of mixing type `type`, given `counts`, a `Dict` mapping each
     mixing type to the infectiousness-weighted number currently infectious of
     that type (each infective contributes its own `infectiousness`, 1 by
-    default, rather than a flat 1). It must be piecewise-constant
+    default). It must be piecewise-constant
     between events, which it is: `counts` only changes at an infection, a window
     opening or a window closing. Homogeneous mixing is
     `force = (type, counts) -> beta / N * sum(values(counts))`.
@@ -132,8 +132,8 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     # persistent Dict, mutated in place and handed to `force` (never
     # reallocated). Every type present starts at 0, so index cases and
     # susceptibles of any type key in without a miss. Weighting by each
-    # infective's own `infectiousness` (1 by default, carrying T like every
-    # other pressure term) is the pool's reading of the built-in
+    # infective's own `infectiousness` (1 by default, of element type T like
+    # every other pressure term) is the pool's reading of the built-in
     # infectiousness trait: a case with half the infectiousness contributes
     # half the force a default case would.
     counts = Dict{Any, T}()
@@ -188,7 +188,7 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     #
     # A susceptible's own `susceptibility` (1 by default) scales the pressure it
     # feels, `Λ(t)·susceptibility ≥ Q`, so its *effective* threshold is
-    # `Q/susceptibility` — the group's shared pressure crosses it later exactly
+    # `Q/susceptibility`: the group's shared pressure crosses it later exactly
     # in proportion to how resistant this individual is. Dividing once here (and
     # sorting on the result) keeps the rest of the race, which only ever compares
     # against the group's pressure, unchanged; a susceptibility of 0 is an
@@ -196,8 +196,8 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     type_group = Dict{Any, Int}()    # type value → group index
     types = Any[]                       # group index → type value
     sus_by_group = Vector{Int}[]
-    # Carries T (e.g. a dual under AD), not hardcoded Float64: the effective
-    # threshold is arithmetic on susceptibility, which does too.
+    # Element type T (e.g. a dual under AD), since the effective threshold is
+    # arithmetic on susceptibility, which is of type T too.
     Q_by_group = Vector{T}[]
     for id in @view order[(n_initial + 1):end]
         tp = typ[id]

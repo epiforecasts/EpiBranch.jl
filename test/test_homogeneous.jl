@@ -49,9 +49,10 @@
     end
 
     @testset "transmission_traits susceptibility and infectiousness scale the pool" begin
-        # The pool's force is a built-in engine seam (`_sellke_pool!`), not a
-        # model-specific one, so `transmission_traits` should bear on it exactly
-        # as it does on the generation-based engine's default risk sources.
+        # The pool's force is a built-in engine seam (`_sellke_pool!`) shared by
+        # every model that uses the pool, so `transmission_traits` should bear on
+        # it exactly as it does on the generation-based engine's default risk
+        # sources.
         N = 2000
         build(attrs) = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = N);

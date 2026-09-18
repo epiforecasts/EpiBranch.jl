@@ -158,13 +158,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 - Per-individual susceptibility and infectiousness (`transmission_traits`, or
   any attributes function) now bear on `NetworkProcess`, `RoutedNetwork` and
   `HouseholdProcess` (in the companion packages). Previously `competing_risk`
-  was never evaluated on the continuous-time race, so the two built-in risk
-  sources it carries were silently ignored. They now scale the rate of the
-  pair kernel directly, the continuous-time reading of a rate multiplier: a
-  trait of exactly `0` blocks transmission along that pair entirely, and a
-  fractional value lowers the chance of transmission within a finite infectious
-  window; a pair whose window never closes still transmits eventually, later on
-  average.
+  was never evaluated on the continuous-time race, which left its two built-in
+  risk sources silently ignored. Both traits now scale the rate of the pair
+  kernel directly, the continuous-time reading of a rate multiplier: a trait of
+  exactly `0` blocks transmission along that pair entirely, and a fractional
+  value lowers the chance of transmission within a finite infectious window. A
+  pair whose window never closes still transmits eventually, later on average.
+  Susceptibility scales the community hazard the same way when
+  `external_hazard` is set.
 - The same traits now bear on `HomogeneousProcess` too: infectiousness weights
   each case's contribution to the pool's force, and susceptibility scales the
   pressure each individual needs to accumulate before it is infected.
