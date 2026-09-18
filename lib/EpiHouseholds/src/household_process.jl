@@ -69,12 +69,11 @@ race proposes between household members; a blocked proposal is declined and the
 pair goes on meeting, so blocking a fraction of the contacts thins that pair's
 hazard by the same fraction. Per-individual susceptibility and infectiousness
 reach the same thinning through the contact-interval draw, which turns a pair's
-survival `S(t)` into `S(t)^m`. `RingVaccination` doses the
-household members a trace reaches, unless it sets an `eligibility_window` or a
-`post_exposure_efficacy`, which are timed from an exposure the race has not
-settled yet. That ring, and interventions that act only on newly created
-contacts, such as `MassVaccination` and `GroupVaccination`, are reported with a
-warning rather than applied. Non-pharmaceutical control expressed as a removal
+survival `S(t)` into `S(t)^m`. Built-in vaccination delivery
+(`RingVaccination`, `MassVaccination` and `GroupVaccination`) requires the
+generation engine's post-transmission hook and is reported with a warning
+rather than applied here. Existing protection can instead use host traits,
+a composed kernel or a user-defined competing risk. Non-pharmaceutical control expressed as a removal
 `Transition` in the progression always applies.
 
 # Example
