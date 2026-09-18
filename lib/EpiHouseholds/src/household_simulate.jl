@@ -35,6 +35,7 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
             observation, rng, condition = nothing, max_attempts),
         condition, max_attempts)
 
+    length(model.members) > 1 && foreach(_validate_household_capacity, interventions)
     from = _resolve_infectious_from(model.from, progression)
     Tobs = model.obs_end
 
@@ -102,4 +103,17 @@ end
 
 function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpts)
     EpiBranch._validate_initial_case_ids(opts, length(model.household_of), model.external_hazard)
+end
+
+# Separate household races revisit earlier times. Periodic shared budgets need
+# a single chronological race; lifetime budgets remain valid across races.
+_validate_household_capacity(::EpiBranch.AbstractIntervention) = nothing
+function _validate_household_capacity(iv::EpiBranch.InterventionWrapper)
+    _validate_household_capacity(iv.intervention)
+end
+function _validate_household_capacity(iv::CapacityConstrained)
+    isfinite(iv.period) && throw(ArgumentError(
+        "finite-period capacity budgets require chronological admission across households; " *
+        "use period = Inf for a shared lifetime budget, or simulate one household"))
+    _validate_household_capacity(iv.intervention)
 end

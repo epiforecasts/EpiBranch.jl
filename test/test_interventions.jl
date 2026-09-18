@@ -1269,7 +1269,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 slow(post) = RingVaccination(efficacy = 0.0,
                     post_exposure_efficacy = post, delay_to_immunity = 100.0)
                 fingerprint(states) = [(ind.id, ind.infection_time,
-                                           sort!(collect(ind.state); by = first))
+                                           sort!(
+                                               [kv
+                                                for kv in ind.state
+                                                if first(kv) != :_intervention_actions];
+                                               by = first))
                                        for s in states for ind in s.individuals]
                 base = simulate(scen([iso, ct, slow(0.0)]), 100; max_cases = 200,
                     rng = StableRNG(3))

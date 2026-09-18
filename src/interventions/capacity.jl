@@ -1,134 +1,47 @@
 """
-Ration a scarce, population-level resource across the individuals competing
-for it in the same period. Wraps an intervention in the way [`Scheduled`](@ref)
-wraps one for time: `Scheduled` gates *when* an intervention's action may
-occur, `CapacityConstrained` gates *how many* of a period's competing
-candidates it may reach.
+    CapacityConstrained(intervention; budget_per_period, period=Inf,
+                        carry_over=true, priority=default_capacity_priority)
 
-Out of the box this rations vaccine doses ([`RingVaccination`](@ref),
-[`MassVaccination`](@ref)); a resource other than doses (contact-tracing
-teams, geographic reach) needs a [`capacity_key`](@ref EpiBranch.capacity_key)
-method for the intervention that stands for it, which is not yet defined for
-anything in this package.
+Limit admissions to an intervention using a shared resource budget. Ring,
+group and mass vaccination expose their candidate actions before admission;
+group candidates include every eligible member of a triggered group. External
+producers implement `intervention_actions` and the `capacity_key` protocol.
+Legacy batch interventions still receive admitted candidates one at a time.
 
-# How it works
+Candidates are ordered by `priority(individual, state)`, lower first, with
+stable ties. The default uses trace time; candidates without one retain their
+incoming order. Priority is evaluated once per candidate. A rejected action
+uses no budget, and a completed action is not charged again.
 
-`apply_post_transmission!` is the one hook the engine calls with a whole
-generation's contacts at once — the only point in the protocol where several
-individuals compete for the same resource in the same call.
-`CapacityConstrained` intercepts that call: it ranks `new_contacts` by
-`priority` (lower goes first) and hands them to the wrapped intervention one
-at a time in that order, stopping once the budget is exhausted. The rest are
-simply never handed to the wrapped intervention this call, so it never acts
-on them; a call whose demand the budget covers in full is unaffected,
-whatever the ranking. A candidate the wrapped intervention turns away for its
-own reasons (failed `coverage`, outside `eligibility_window`, and so on) uses
-no budget, so it does not stop a later-ranked candidate from being tried.
+`budget_per_period` becomes available every `period` units on the admission
+clock, `state.max_infection_time`. With `carry_over=true`, unused allowances
+accumulate. Otherwise each period has a separate allowance. `period=Inf` is a
+single lifetime budget. Fractional remaining capacity cannot admit a whole
+action.
 
-Every other generation-engine hook (`competing_risk`, `resolve_individual!`,
-`keep_active`, …) is delegated unchanged, so `CapacityConstrained` only ever rations the
-population-level batch, never a per-pair decision. It rations
-[`AbstractVaccination`](@ref)'s dose-recording hook out of the box (for
-[`RingVaccination`](@ref) and [`MassVaccination`](@ref); see
-[`capacity_key`](@ref EpiBranch.capacity_key) for why [`GroupVaccination`](@ref)
-is not supported), and any other intervention that defines
-[`capacity_key`](@ref EpiBranch.capacity_key) for itself.
+This budget counts admissions. An admitted action can have a future delivery
+date, so it may be recorded in a different calendar period. Usage from another
+intervention with the same `capacity_key` counts against the shared budget;
+when it has no admission stamp, its delivery time determines the period.
+Use distinct dose labels for independent budgets. [`capacity_usage`](@ref)
+reports the used and available allowances.
 
-# Budget
+[`Scheduled`](@ref) and this wrapper compose in either order. For action
+producers, the schedule tests each candidate's action time while the budget
+uses the admission clock. Candidates denied admission are not queued, but
+later discovery may offer them again with their cached draws.
 
-`budget_per_period` doses become available every `period` time units,
-measured on the simulation's own continuous clock (`state.max_infection_time`),
-not the generation index. `period = Inf` (the default) is a single lifetime
-budget that never replenishes.
-
-!!! warning "Generation-based models only"
-    `CapacityConstrained` acts through `apply_post_transmission!`, which only
-    the generation-based engine calls. A continuous-time model does not call
-    it, so wrapping an intervention with `CapacityConstrained` there has no
-    effect and triggers the usual "no effect" warning for an unhonoured
-    intervention. For the same reason `CapacityConstrained` does not pass the
-    continuous-time tracing hook (`trace_contacts!`) through: the wrapped
-    intervention would otherwise act there with no budget.
-
-`carry_over = true` (the default) lets an unused allowance from an earlier
-period add to a later one: the running total available by time `t` is
-`budget_per_period * (floor(t / period) + 1)`, compared against the lifetime
-count used. With `carry_over = false`, a period's unused budget is lost —
-only `budget_per_period` is available within the current period, measured
-against the admissions charged to that period.
-
-!!! warning "The budget caps admissions per period, not doses given per calendar period"
-    Each call is charged to the period `state.max_infection_time` falls in
-    when the call is made, which on the generation-based engine is still the
-    previous generation's latest infection time. A dose is dated later, at
-    `trace_time + dose_delay` or at the eligibility time, so a dose admitted
-    in one period may be given in another, and a generation spanning several
-    periods gets a single period's budget. `budget_per_period = 5.0,
-    period = 1.0` therefore limits how many candidates are admitted per day
-    of simulated time, not how many doses land on any one day.
-
-!!! warning "The budget is shared by every intervention with the same dose label"
-    Usage is counted over every individual carrying the
-    [`capacity_key`](@ref EpiBranch.capacity_key) flag, which for
-    [`RingVaccination`](@ref) and [`MassVaccination`](@ref) is the dose flag
-    for their `dose_label`. Any other vaccination writing that flag, whether
-    capacity-constrained or not, draws on this budget: an uncapped
-    `MassVaccination` that has already dosed more people than the budget
-    allows leaves none for a capped `RingVaccination` with the same label.
-    Give the capped intervention its own `dose_label` to keep its budget
-    separate.
-
-Demand denied this call is not queued: a candidate who is not reached while
-the budget is exhausted is not revisited in a later call. Reporting what is
-left of a call's own demand is the caller's job (e.g. counting
-eligible-but-unreached candidates on the finished [`linelist`](@ref)), not
-this wrapper's.
-
-# Priority
-
-`priority(individual, state) -> Real`, lower served first, decides who is
-served when a call's demand exceeds what remains of the budget. The default,
-[`default_capacity_priority`](@ref), is first-come-first-served by
-`:trace_time` (a candidate with no recorded trace time sorts last). Pass any
-function for a different rule: nearest-first from a custom distance, a
-random draw for lottery allocation, or a composite of several factors. Ties
-are broken by the order `new_contacts` arrives in.
-
-!!! warning "The default is not first-come-first-served for every intervention"
-    [`MassVaccination`](@ref) candidates carry no `:trace_time`, so every one
-    ties at `Inf` under the default and the tie-break — arrival order in
-    `new_contacts` — decides instead. That order follows contact creation,
-    not any notion of when a candidate became eligible, and favours whichever
-    chain happens to be processed first (including the seeds). Pass a
-    `priority` that reads a field `MassVaccination` actually sets (there is
-    none before its own call records `:vaccination_time`) for a rule that
-    means something for it.
-
-# Reporting
-
-[`capacity_usage`](@ref) reads back doses used against doses available at a
-given point in the simulation.
-
-# Composing with `Scheduled`
-
-`CapacityConstrained` and [`Scheduled`](@ref) wrap in either order —
-`CapacityConstrained(Scheduled(rv); ...)` and `Scheduled(CapacityConstrained(rv;
-...))` both work — since each delegates the other's hooks through.
-
-# Examples
+Network and household races execute supported ring and group actions through
+this protocol. Mass vaccination and legacy batch-only interventions remain
+unsupported there. Ring delivery on these races requires an infinite eligibility
+window and zero post-exposure efficacy; pending infection times are unknown.
+The homogeneous pool has no contact-tracing action path.
 
 ```julia
-# Five doses a day, replenishing, ring vaccination
-CapacityConstrained(RingVaccination(efficacy = 0.8); budget_per_period = 5.0, period = 1.0)
-
-# A one-off stockpile of 200 doses for the whole outbreak
-CapacityConstrained(MassVaccination(efficacy = 0.85, eligibility_time = 30.0);
-    budget_per_period = 200.0)
-
-# Random allocation among a day's competing demand instead of FCFS
 CapacityConstrained(RingVaccination(efficacy = 0.8);
-    budget_per_period = 5.0, period = 1.0,
-    priority = (ind, state) -> rand(state.rng))
+    budget_per_period = 5.0, period = 1.0)
+CapacityConstrained(GroupVaccination(efficacy = 0.8);
+    budget_per_period = 200.0)
 ```
 """
 struct CapacityConstrained{I <: AbstractIntervention, F} <: InterventionWrapper
@@ -172,10 +85,8 @@ for their `dose_label`). Define this — together with
 [`capacity_time_key`](@ref) unless `carry_over = true` is always used — for
 a custom intervention to make it capacity-constrained the same way.
 
-[`GroupVaccination`](@ref) does not define it: it vaccinates a triggered
-group by scanning the whole population, not the batch `new_contacts` that
-`CapacityConstrained` can ration, so limiting that batch would not limit the
-doses actually given.
+[`GroupVaccination`](@ref) uses the same dose keys. Its action discovery expands
+a triggered group before the wrapper admits individual members.
 """
 function capacity_key(iv::AbstractIntervention)
     throw(ArgumentError(
@@ -208,13 +119,8 @@ capacity_time_key(v::RingVaccination) = _vaccination_time_key(dose_label(v))
 capacity_key(v::MassVaccination) = _vaccinated_key(dose_label(v))
 capacity_time_key(v::MassVaccination) = _vaccination_time_key(dose_label(v))
 
-function capacity_key(::GroupVaccination)
-    throw(ArgumentError(
-        "CapacityConstrained does not support GroupVaccination: it " *
-        "vaccinates a triggered group by scanning the whole population, not " *
-        "the batch CapacityConstrained can ration, so limiting the batch " *
-        "would not limit the doses given."))
-end
+capacity_key(v::GroupVaccination) = _vaccinated_key(dose_label(v))
+capacity_time_key(v::GroupVaccination) = _vaccination_time_key(dose_label(v))
 
 # The `Individual.state` key on which `CapacityConstrained` stamps the time
 # of the call that admitted an individual, so a later call in the same period
@@ -273,6 +179,11 @@ end
 # candidate instead of stopping after a fixed count, which would otherwise
 # leave it under-used.
 function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
+    actions = intervention_actions(cc, state, new_contacts)
+    if actions !== nothing
+        _admit_actions!(cc, state, actions)
+        return nothing
+    end
     key = capacity_key(cc.intervention)
     already_used = filter(ind -> get(ind.state, key, false), new_contacts)
     candidates = filter(ind -> !get(ind.state, key, false), new_contacts)

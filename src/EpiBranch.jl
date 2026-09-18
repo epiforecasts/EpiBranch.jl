@@ -29,6 +29,7 @@ include("interventions/vaccination.jl")
 include("interventions/wrapper.jl")
 include("interventions/scheduled.jl")
 include("interventions/capacity.jl")
+include("interventions/actions.jl")
 
 # Clinical transitions — case-state Markov chain layered on the
 # intervention framework. Same hook shape as interventions; sibling

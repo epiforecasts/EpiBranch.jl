@@ -159,18 +159,25 @@ end
         @test !haskey(contact.state, :traced)
     end
 
-    @testset "GroupVaccination is rejected with a clear error" begin
+    @testset "Group actions ration actual members" begin
         gv = GroupVaccination(efficacy = 0.9)
-        @test_throws ArgumentError EpiBranch.capacity_key(gv)
-
-        cc = CapacityConstrained(gv; budget_per_period = 1.0)
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1))
-        @test_throws ArgumentError EpiBranch.apply_post_transmission!(cc, state, Individual[])
-
-        scheduled = CapacityConstrained(Scheduled(gv; start_time = 1.0); budget_per_period = 1.0)
-        @test_throws ArgumentError EpiBranch.apply_post_transmission!(
-            scheduled, state, Individual[])
+        @test EpiBranch.capacity_key(gv) == :vaccinated
+        for wrap in (v -> CapacityConstrained(v; budget_per_period = 1.0),
+            v -> Scheduled(CapacityConstrained(v; budget_per_period = 1.0); start_time = 1.0),
+            v -> CapacityConstrained(Scheduled(v; start_time = 1.0); budget_per_period = 1.0))
+            iv = wrap(gv)
+            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0)),
+                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+            for i in 1:3
+                ind = Individual(id = i,
+                    state = Dict{Symbol, Any}(:group => :A,
+                        :test_positive => i == 1, :isolation_time => 2.0))
+                EpiBranch.initialise_individual!(gv, ind, state)
+                push!(state.individuals, ind)
+            end
+            EpiBranch.apply_post_transmission!(iv, state, [state.individuals[1]])
+            @test count(is_vaccinated, state.individuals) == 1
+        end
     end
 
     @testset "Severity efficacy is recorded only for contacts within the budget" begin

@@ -344,7 +344,7 @@ Ordering guarantees:
 - `apply_post_transmission!` runs strictly before any `competing_risk` call, so a competing risk can read whatever post-transmission hook wrote on the contact (e.g. `:vaccination_time`).
 - `keep_active` runs after infection is resolved, so it can read each target's `:infected` and anything `apply_post_transmission!` wrote on it this generation.
 - Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
-- On the continuous-time models the counterpart holds through tracing: a case is traced when it settles, before it proposes any infection of its own, so a risk can read what `trace_contacts!` wrote on a contact. Built-in vaccination delivery still uses the generation engine’s post-transmission hook and is reported as unsupported on the continuous-time path.
+- On the continuous-time models the counterpart holds through tracing: a case is traced when it settles, before it proposes any infection of its own, so a risk can read what `trace_contacts!` wrote on a contact. Supported ring and group actions are discovered after tracing and admitted through their schedule and capacity wrappers.
 
 A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. On the continuous-time models the transmission time it is compared against is the candidate infection time the race has just drawn for that pair. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms: `RingVaccination` returns a susceptibility risk on the contact alongside a risk on the parent for reduced onward infectiousness.
 
@@ -540,35 +540,18 @@ Scheduled(BorderClosure(0.0, 0.05); start_time = 10.0)
 
 ### Making the intervention capacity-constrained
 
-[`CapacityConstrained`](@ref) rations `apply_post_transmission!` — the one
-hook the engine calls with a whole generation's contacts at once, so it is
-the only point where several individuals compete for a shared, finite
-resource in the same call. To let a custom intervention be wrapped this
-way, define:
+[`CapacityConstrained`](@ref) admits candidate actions against a shared resource
+budget. Define `EpiBranch.capacity_key(iv)` for the Boolean state flag recording
+resource use, and `EpiBranch.capacity_time_key(iv)` for the delivery-time key.
+The latter places usage from other interventions in a period when
+`carry_over=false`; actions admitted by this wrapper use their admission stamps.
+Ring, group and mass vaccination use their dose-label keys.
 
-- **`EpiBranch.capacity_key(intervention)`** — the `Individual.state` flag
-  that records the resource having been used (a dose flag, a "traced"
-  flag, …).
-- **`EpiBranch.capacity_time_key(intervention)`** — the key recording *when*
-  it was used, needed only if the intervention is ever wrapped with
-  `carry_over = false`. There it places usage `CapacityConstrained` did not
-  itself admit, such as a dose from another intervention writing the same
-  `capacity_key`, in a period; usage the wrapper admitted is placed by the
-  time of the call that admitted it.
-
-`RingVaccination` and `MassVaccination` implement these with their
-dose-recording keys:
-
-```julia
-EpiBranch.capacity_key(v::RingVaccination) = _vaccinated_key(dose_label(v))
-EpiBranch.capacity_time_key(v::RingVaccination) = _vaccination_time_key(dose_label(v))
-```
-
-This only rations an intervention whose effect is actually recorded inside
-`apply_post_transmission!` on the contacts it is handed. `GroupVaccination`
-is the counter-example: it reaches a triggered group by scanning the whole
-population, not the batch this hook receives, so limiting that batch would
-not limit the doses given, and it does not define `capacity_key`.
+Action discovery exposes every proposed recipient before admission, including
+members found by a group-wide search. See [Intervention actions](@ref) for the
+producer contract and timing rules. A legacy batch intervention can still use
+the capacity keys, provided its batch hook affects only the individuals it
+receives.
 
 ### Requiring fields on individuals
 
@@ -1759,3 +1742,172 @@ vector replaces that rule: it cannot be combined with `n_initial` or an active
 `external_hazard`. Initial cases are infections at time zero; ongoing external
 introductions describe a separate process. Select IDs with an explicit RNG in
 caller code when selection itself is random.
+
+## Intervention actions
+
+An intervention proposes actions, and its wrappers decide which actions may go
+ahead. Each proposal names a person, a date and a function that records the
+effect. `Scheduled` checks that date; `CapacityConstrained` checks the available
+budget. These decisions happen before the effect is recorded.
+
+### Schedule delivery and retain its protection
+
+Suppose an index case makes two contacts on day 20. Both contacts can be
+vaccinated on day 10, when the campaign is open:
+
+```@example action_delivery
+using EpiBranch, Distributions, Random
+
+process = BranchingProcess(Dirac(2), Dirac(20.0))
+vaccine = MassVaccination(efficacy = 1.0, eligibility_time = 10.0)
+campaign = Scheduled(vaccine; start_time = 10.0, end_time = 10.0)
+model = ModelSpec(process; interventions = [campaign])
+state = simulate(model; max_generations = 1, rng = Xoshiro(42))
+
+(cases = state.cumulative_cases,
+ doses = count(is_vaccinated, state.individuals))
+```
+
+The result is one case and two doses: the index case remains infected, and both
+contacts are protected before their day-20 exposures. The campaign's end on day
+10 stops new deliveries; the recorded protection remains effective afterwards.
+
+Now limit the campaign to one dose:
+
+```@example action_delivery
+limited = CapacityConstrained(campaign; budget_per_period = 1.0)
+limited_model = ModelSpec(process; interventions = [limited])
+limited_state = simulate(limited_model; max_generations = 1, rng = Xoshiro(42))
+
+(cases = limited_state.cumulative_cases,
+ doses = count(is_vaccinated, limited_state.individuals))
+```
+
+This gives two cases and one dose. Only one of the two contacts receives
+protection. `Scheduled(CapacityConstrained(vaccine; budget_per_period = 1.0);
+start_time = 10.0, end_time = 10.0)` gives the same result: both wrapper orders
+check the proposed delivery date and charge only admitted doses.
+
+Capacity counts decisions to admit actions. In this example the index case is
+processed at time zero, so the day-10 dose uses the budget available at time
+zero. Setting `period = 7.0` would not move that charge into the second week.
+The default `period = Inf` gives one budget for the whole simulation.
+
+### Write a custom action producer
+
+A clinic appointment can use the same wrappers. This example offers a fixed
+date to each new contact and records attendance only after admission:
+
+```@example clinic_action
+using EpiBranch, Distributions, Random
+
+struct ClinicAppointment <: EpiBranch.AbstractIntervention
+    time::Float64
+end
+
+function record_attendance!(person, time, state)
+    person.state[:attended] = true
+    person.state[:appointment_time] = time
+    return nothing
+end
+
+function EpiBranch.intervention_actions(visit::ClinicAppointment, state, candidates)
+    [EpiBranch.InterventionAction(person, visit.time, record_attendance!)
+     for person in candidates if !get(person.state, :attended, false)]
+end
+
+function EpiBranch.apply_post_transmission!(visit::ClinicAppointment, state, candidates)
+    EpiBranch.apply_actions!(visit, state, candidates)
+end
+
+EpiBranch.capacity_key(::ClinicAppointment) = :attended
+EpiBranch.capacity_time_key(::ClinicAppointment) = :appointment_time
+
+appointments = CapacityConstrained(
+    Scheduled(ClinicAppointment(10.0); start_time = 9.0, end_time = 11.0);
+    budget_per_period = 1.0)
+model = ModelSpec(BranchingProcess(Dirac(2), Dirac(20.0));
+    interventions = [appointments])
+state = simulate(model; max_generations = 1, rng = Xoshiro(42))
+
+[person.state[:appointment_time] for person in state.individuals
+ if get(person.state, :attended, false)]
+```
+
+The output is `[10.0]`. Discovery proposes two appointments; admission permits
+one. The attendance function records the resource flag and date. Appointment
+attendance has no transmission effect, so all three people are infected here.
+
+Changing the appointment to day 12 produces no attendance, because the schedule
+ends on day 11. A candidate that a wrapper rejects is reconsidered only if the
+producer discovers it again; the engine does not keep an appointment queue.
+
+### Discovery, admission and persistent effects
+
+An action producer implements `EpiBranch.intervention_actions(iv, state, candidates)`
+and returns `EpiBranch.InterventionAction(individual, time, effect!)` values.
+`effect!(individual, time, state)` records an admitted action. Discovery can expand
+its input, as group vaccination does when it finds every member of a triggered
+group. Its generation hook calls `EpiBranch.apply_actions!`.
+
+`Scheduled` tests the proposed action time before delivery. A predicate sees that
+time as `state.max_infection_time`, with the current case count and generation.
+`CapacityConstrained` uses the original simulation clock for admission accounting.
+Both wrapper orders follow those rules. The budget counts admissions, including
+future-dated deliveries; it is not a count of doses administered per calendar day.
+An external resource producer supplies `capacity_key` and `capacity_time_key` and
+sets the resource flag only after successful delivery. An action on a person who
+already has that flag passes through capacity admission without another charge;
+scheduling still applies. Ring vaccination uses this for protection from an
+existing dose at a new exposure, with the current simulation time as its action
+time.
+
+Recorded protection follows its effect date even when the delivery schedule is
+inactive. Vaccination declares this with
+`EpiBranch.persistent_competing_risks(iv) = true`. An external intervention can
+use the same method when its `competing_risk` reads recorded effects and returns
+`nothing` before delivery. The default is `false`, for risks that apply only
+while the scheduled policy is active. Capacity and scheduling wrappers delegate
+this declaration.
+
+Use `EpiBranch.action_draw!(sample, individual, key)` to retain a delay or acceptance
+draw across repeated discovery. Keys identify an action or visit; distinct visits
+need distinct keys. Ring and group delivery cache these draws per policy and
+individual. A denied admission may be reconsidered when it is discovered again,
+but is not queued automatically. Earlier triggers can bring an unadmitted action
+forward using the same delay. Admission fixes its recorded date and effect draws;
+later triggers do not revise completed actions. Dose prerequisites are checked
+against the proposed date before admission.
+
+For example, draw one visit time and reuse it if admission is attempted again:
+
+```@example cached_visit
+using EpiBranch, Distributions, Random
+
+person = Individual(id = 1)
+rng = Xoshiro(42)
+draw_time() = rand(rng, Uniform(9.0, 11.0))
+first_time = EpiBranch.action_draw!(draw_time, person, :clinic_visit)
+next_time = EpiBranch.action_draw!(draw_time, person, :clinic_visit)
+first_time == next_time
+```
+
+The result is `true`: the second call uses the stored draw. Give a new
+visit a different key. Repeated discovery of the same visit should keep its key.
+
+Network and household races run supported actions after tracing a newly finalised
+case. External producers opt in with `EpiBranch.continuous_actions(iv) = true`.
+They must work without a pending contact's infection time. Ring delivery supports
+an infinite eligibility window and zero post-exposure efficacy; group delivery
+uses known triggering cases. Schedules and capacity wrappers use the same action
+contract as the generation engine. Mass vaccination and the homogeneous pool
+remain unsupported on this path. With several households, capacity requires
+`period = Inf` for a shared lifetime budget. Finite periods are rejected because
+the simulator completes each household separately and resets its clock for the
+next household. A single household supports finite periods.
+
+Continuous-time admission affects pending people and the current case. Earlier
+finalised cases and their clinical outcomes are not revised. An action whose date
+precedes the current simulation clock has expired and is skipped. Selection and
+delay callbacks must use information available at discovery. Protection still
+uses proposal-time competing risks and the recorded delivery and immunity dates.

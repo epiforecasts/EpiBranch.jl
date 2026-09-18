@@ -84,6 +84,7 @@ function linelist(state::SimulationState;
     for ind in cases
         union!(state_keys, keys(ind.state))
     end
+    delete!(state_keys, :_intervention_actions)
     delete!(state_keys, :infected)  # encoded by the row's existence, or the column above
 
     for key in state_keys

@@ -392,9 +392,10 @@ end
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
 # neighbours and a household its members, but the mass-action pool has no
 # pairwise contact structure, so tracing has nothing to act along there and stays
-# unhonoured. Vaccination delivery uses the generation engine's post-transmission
-# hook and has no continuous-time counterpart yet.
+# unhonoured. Supported candidate actions run after tracing through the shared
+# admission protocol; legacy batch-only delivery remains unsupported.
 function _sellke_honours(model, iv::AbstractIntervention)
+    continuous_actions(iv) && return supplies_contacts(model)
     _has_generation_hook(iv) || return true
     return traces_contacts(iv) && supplies_contacts(model)
 end
@@ -675,6 +676,8 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         resolve_transitions!(state, ind)
         _resolve_interventions!(state, ind, interventions)
         _trace_from!(state, ind, interventions, contacts, pos, processed)
+        contacts === nothing ||
+            _apply_continuous_actions!(state, ind, interventions, members, processed)
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1
 
         # Each route opens and closes on its own states, so a case can still be

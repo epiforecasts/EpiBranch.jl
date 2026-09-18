@@ -12,6 +12,7 @@ public trace_contacts!
 public traces_contacts
 public supplies_contacts
 public competing_risk
+public persistent_competing_risks
 public reset!
 public required_fields
 public infectious_removal_time
@@ -64,3 +65,5 @@ public followup_end
 
 public pair_kernel
 public infection_likelihood_compatible
+public InterventionAction, intervention_actions, action_draw!, apply_actions!,
+       continuous_actions

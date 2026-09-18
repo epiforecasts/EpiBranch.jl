@@ -13,3 +13,4 @@ using Graphs
 end
 
 include("test_likelihood_composition.jl")
+include("test_actions.jl")
