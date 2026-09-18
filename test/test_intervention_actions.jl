@@ -155,3 +155,45 @@ end
     @test EpiBranch.competing_risk(Scheduled(AppointmentAction(), st -> false),
         parent, contact, state) === nothing
 end
+
+struct LegacyService <: EpiBranch.AbstractIntervention end
+EpiBranch.capacity_key(::LegacyService) = :served
+EpiBranch.capacity_time_key(::LegacyService) = :service_time
+function EpiBranch.apply_post_transmission!(::LegacyService, state, candidates)
+    for ind in candidates
+        ind.state[:visits] = get(ind.state, :visits, 0) + 1
+        get(ind.state, :served, false) && continue
+        get(ind.state, :eligible, true) || continue
+        ind.state[:served] = true
+        ind.state[:service_time] = state.max_infection_time + 10.0
+    end
+end
+
+@testset "Legacy batch admission remains supported" begin
+    state = EpiBranch.new_state(BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18))
+    contacts = [Individual(id = i) for i in 1:5]
+    contacts[1].state[:eligible] = false
+    contacts[5].state[:served] = true
+    contacts[5].state[:service_time] = 0.0
+    append!(state.individuals, contacts)
+    cc = CapacityConstrained(LegacyService(); budget_per_period = 2.0,
+        period = 10.0, carry_over = false)
+    EpiBranch.apply_post_transmission!(cc, state, contacts)
+    @test [get(i.state, :served, false) for i in contacts] ==
+          [false, true, false, false, true]
+    @test contacts[1].state[:visits] == 1
+    @test contacts[5].state[:visits] == 1
+    @test contacts[2].state[:service_time] == 10.0
+    @test capacity_usage(cc, state) == (used = 2, available = 2.0)
+    state.max_infection_time = 10.0
+    @test capacity_usage(cc, state) == (used = 0, available = 2.0)
+    EpiBranch.apply_post_transmission!(cc, state, contacts[3:4])
+    @test all(i -> i.state[:served], contacts[2:5])
+    @test contacts[3].state[:service_time] == 20.0
+    @test contacts[3].state[:capacity_admission_time_served] == 10.0
+    @test capacity_usage(cc, state) == (used = 2, available = 2.0)
+    EpiBranch.apply_post_transmission!(cc, state, contacts[3:4])
+    @test contacts[3].state[:visits] == 2
+    @test capacity_usage(cc, state) == (used = 2, available = 2.0)
+end
