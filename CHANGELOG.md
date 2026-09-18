@@ -16,6 +16,8 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   companion-package installations.
 - Callable objects can supply branching-process offspring rules, generation-time
   distributions and multi-type offspring families.
+- `EpiBranch.transition_time` shares clinical event sampling with external
+  transitions, preserving the named transitions' state keys and random draws.
 - Network and household simulations accept `initial_cases` to choose population
   IDs infected at time zero, including repeated and parallel runs.
 - Callable objects can supply observation probabilities, delays and anchors,
