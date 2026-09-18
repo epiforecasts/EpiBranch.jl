@@ -1,3 +1,22 @@
+# Fixed-point iteration converges slowly near a reproduction number of 1.
+# At R = 1.005, the default 1000 iterations end about 7e-5 from the answer;
+# the gap grows as R approaches 1. Warn when `max_iter` is reached to identify
+# results that are still unconverged.
+#
+# A macro gives each iteration its own warning call site and `maxlog` count.
+# A shared function would let one
+# unconverged multi-type call silence every later single-type one in the session.
+# The expansion drops the line numbers of this definition, which attributes its
+# code to the call site, where coverage tools look for it.
+macro warn_unconverged_extinction(max_iter, cause)
+    return esc(Base.remove_linenums!(quote
+        @warn "Fixed-point iteration for the extinction probability stopped " *
+              "after $($max_iter) iterations without converging, which happens " *
+              "when $($cause) is close to 1. The result may be inaccurate; " *
+              "raise `max_iter`." maxlog=1
+    end))
+end
+
 """
     extinction_probability(R::Real, k::Real; tol=1e-10, max_iter=1000)
 
@@ -14,18 +33,16 @@ function extinction_probability(R::Real, k::Real; tol::Real = 1e-10, max_iter::I
 
     R <= 1.0 && return 1.0
 
-    # PGF of NegBin(k, p) is (p / (1 - (1-p)*s))^k
-    # where p = k/(k+R). Fixed point: q = pgf(q).
-    p = k / (k + R)
+    offspring = NegativeBinomial(k, k / (k + R))
 
-    # Start from a value close to 0
     q = 0.5
     for _ in 1:max_iter
-        q_new = (p / (1.0 - (1.0 - p) * q))^k
+        q_new = _pgf(offspring, q)
         abs(q_new - q) < tol && return q_new
         q = q_new
     end
 
+    @warn_unconverged_extinction(max_iter, "the reproduction number")
     return q
 end
 
@@ -39,15 +56,15 @@ For Poisson(λ): the PGF exp(λ(s-1)) is used.
 For NegativeBinomial: R and k are extracted and the closed-form PGF is applied.
 """
 function extinction_probability(d::Poisson; tol::Real = 1e-10, max_iter::Int = 1000)
-    λ = mean(d)
-    λ <= 1.0 && return 1.0
+    mean(d) <= 1.0 && return 1.0
 
     q = 0.5
     for _ in 1:max_iter
-        q_new = exp(λ * (q - 1.0))
+        q_new = _pgf(d, q)
         abs(q_new - q) < tol && return q_new
         q = q_new
     end
+    @warn_unconverged_extinction(max_iter, "the reproduction number")
     return q
 end
 
@@ -68,12 +85,16 @@ function epidemic_probability(R::Real, k::Real; kwargs...)
 end
 
 """
-    epidemic_probability(d::Distribution; kwargs...)
+    epidemic_probability(offspring; kwargs...)
+    epidemic_probability(model; kwargs...)
 
-Probability of a major epidemic for a given offspring distribution.
+Probability that a single introduction leads to a major epidemic, one minus
+[`extinction_probability`](@ref), for any offspring specification or model that
+function accepts. For a multi-type model the result has one entry per type of
+index case.
 """
-function epidemic_probability(d::Distribution; kwargs...)
-    1.0 - extinction_probability(d; kwargs...)
+function epidemic_probability(offspring; kwargs...)
+    1.0 .- extinction_probability(offspring; kwargs...)
 end
 
 # ── BranchingProcess dispatch ────────────────────────────────────────
@@ -81,22 +102,15 @@ end
 """
     extinction_probability(model::TransmissionModel; kwargs...)
 
-Extinction probability for a single-type transmission model, extracted
-from the model's offspring specification via `single_type_offspring`.
-Works for `BranchingProcess` and wrappers that delegate that accessor
-(e.g. `Observed`).
+Extinction probability for a transmission model, computed from the model's
+offspring specification. For a single-type model the result is a number,
+computed from the law returned by `single_type_offspring`; this covers
+`BranchingProcess` and wrappers that delegate that accessor (e.g. `Observed`).
+For a multi-type model built from an offspring matrix the result is a vector
+with one entry per type of index case.
 """
 function extinction_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
-    return extinction_probability(single_type_offspring(model); kwargs...)
-end
-
-"""
-    epidemic_probability(model::TransmissionModel; kwargs...)
-
-Epidemic probability for a single-type transmission model.
-"""
-function epidemic_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
-    1.0 - extinction_probability(model; kwargs...)
+    return extinction_probability(_analytic_offspring(model); kwargs...)
 end
 
 # ── Containment probability (analytical) ─────────────────────────────
@@ -139,17 +153,21 @@ function probability_contain(R::Real, k::Real;
     R_eff = (1.0 - pop_control) * R
     R_eff <= 1.0 && return 1.0
 
-    p = k / (k + R_eff)
+    offspring = NegativeBinomial(k, k / (k + R_eff))
 
     # Fixed-point iteration: q = ind_control + (1-ind_control) * pgf(q)
     q = 0.5
     for _ in 1:max_iter
-        pgf_q = (p / (1.0 - (1.0 - p) * q))^k
-        q_new = ind_control + (1.0 - ind_control) * pgf_q
+        q_new = ind_control + (1.0 - ind_control) * _pgf(offspring, q)
         abs(q_new - q) < tol && return q_new^n_initial
         q = q_new
     end
 
+    # This iteration's rate at the fixed point is `(1 - ind_control)` times the
+    # effective reproduction number, which includes `pop_control`. Convergence
+    # slows when this product approaches 1.
+    @warn_unconverged_extinction(max_iter,
+        "the effective reproduction number times one minus `ind_control`")
     return q^n_initial
 end
 

@@ -56,6 +56,39 @@ end
         end
     end
 
+    @testset "MassVaccination with waning already decayed to zero blocks nothing" begin
+        # `waning` decayed to zero by every transmission time contributes a
+        # block probability of zero throughout, so the run should be
+        # indistinguishable from having no vaccination at all.
+        mv = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
+            delay_to_immunity = 0.0, waning = dt -> 0.0)
+        for seed in 1:5
+            with_vacc = simulate(
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [mv], attributes = clinical);
+                max_cases = 200, rng = StableRNG(seed))
+            without_vacc = simulate(
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    attributes = clinical);
+                max_cases = 200, rng = StableRNG(seed))
+            @test with_vacc.cumulative_cases == without_vacc.cumulative_cases
+        end
+    end
+
+    @testset "MassVaccination with waning at full strength matches constant efficacy" begin
+        # `waning = _ -> 1.0` should reproduce the un-waned, constant-efficacy
+        # behaviour: immunity in place at every transmission blocks it outright.
+        mv = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
+            delay_to_immunity = 0.0, waning = dt -> 1.0)
+        for seed in 1:5
+            state = simulate(
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [mv], attributes = clinical);
+                max_cases = 500, rng = StableRNG(seed))
+            @test state.cumulative_cases == 1
+        end
+    end
+
     @testset "MassVaccination respects delay to immunity" begin
         # Vaccination eligible far in the future — no contact's
         # transmission should land after eligibility + delay, so the
