@@ -9,23 +9,22 @@ offspring from a type-`j` parent. A type-`j` parent draws its total number of
 offspring from `dist_fn(R_j)`, where `R_j` is the sum of column `j`, and
 allocates them across types multinomially in proportion to that column.
 
-A column reaches the draw in two parts: its sum is the argument to `dist_fn`,
-and the proportions within it split whatever comes back. A parent's expected
-number of offspring is therefore the mean of `dist_fn(R_j)`, which is `R_j`
-only for a family with mean R. Any other family rescales the process, and the
-column sums are then no longer its reproduction numbers. That is deliberate,
-and `R -> Poisson(θ * R)` uses it to put a scale parameter on a fixed matrix.
-It also catches people out:
-`Distributions.NegativeBinomial(R, p)` takes a number of failures rather than a
-mean, and a matrix with a spectral radius of 1.045 passed to
-`R -> NegativeBinomial(R, 0.3)` runs at 2.44. [`reproduction_number`](@ref)
-reports what the model actually does, so check it against the matrix when the
-two are meant to agree; `NegBin(R, k)` is the mean-and-dispersion
-parameterisation.
+A column's sum is the argument to `dist_fn`, and its proportions determine how
+the sampled count is split across types. A parent's expected number of offspring
+is the mean of `dist_fn(R_j)`. This equals `R_j` only when the distribution family
+has mean R. Other families rescale the process: `R -> Poisson(θ * R)`, for
+example, applies a scale parameter to a fixed matrix.
+
+Check the distribution's parameterisation when the column sums are intended to
+give the reproduction numbers. `Distributions.NegativeBinomial(R, p)` takes a
+number of failures rather than a mean. With `R -> NegativeBinomial(R, 0.3)`, a
+matrix whose spectral radius is 1.045 gives a process with R* = 2.44.
+[`reproduction_number`](@ref) reports the model's reproduction number;
+`NegBin(R, k)` uses the mean-and-dispersion parameterisation.
 
 A [`BranchingProcess`](@ref) built with
-`BranchingProcess(offspring_matrix, dist_fn, generation_time)` stores one, so
-the offspring draw and the multi-type analytics
+`BranchingProcess(offspring_matrix, dist_fn, generation_time)` stores this
+specification. The offspring draw and the multi-type analytics
 ([`reproduction_number`](@ref), [`extinction_probability`](@ref)) use the same
 matrix and distribution family.
 """

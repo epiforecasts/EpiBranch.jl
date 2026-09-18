@@ -33,14 +33,13 @@ function _law_mean(d::DiscreteUnivariateDistribution)
     return sum(x * pdf(d, x) for x in lo:hi)
 end
 
-# The range of counts a truncated series has to cover. `maximum` gives it for a
-# bounded law. For an unbounded one, ask the law how much mass sits above each
-# count until what is left is negligible. Two simpler routes fail here.
-# Subtracting the masses one at a time leaves a residual of the order of the
-# number of terms times `eps`, which for a few dozen terms sits above any useful
-# tolerance and sends the walk to its cap. `quantile` on a truncated law clamps
-# to the truncation bounds, and an integer law clamped to an infinite bound
-# throws.
+# Bounds for a truncated series. A bounded law supplies its upper limit through
+# `maximum`. For an unbounded law, use the tail probability to find a count above
+# which the remaining mass is negligible. Subtracting individual masses leaves
+# a rounding residual of order `eps` times the number of terms; even a few dozen
+# terms can exceed the tolerance and exhaust the iteration limit. `quantile` on
+# a truncated law clamps to its bounds and throws for an integer law with an
+# infinite bound.
 function _series_range(d::DiscreteUnivariateDistribution, tail::Real = 1e-14,
         cap::Int = 1_000_000)
     lo = round(Int, minimum(d))
@@ -141,23 +140,23 @@ end
 Reproduction number of a branching process, computed from its offspring
 specification.
 
-A single-type model gives the mean of the offspring distribution, and
-[`ClusterMixed`](@ref) offspring that mean averaged over the mixing
-distribution. A multi-type model built from an offspring matrix gives R*, the
+A single-type model gives the mean of the offspring distribution.
+For [`ClusterMixed`](@ref) offspring, the result is that mean averaged over the
+mixing distribution. A multi-type model built from an offspring matrix gives R*, the
 dominant eigenvalue (spectral radius) of the mean next-generation matrix, whose
 `[i, j]` entry is the expected number of type-`i` offspring from a type-`j`
 parent.
 
 In the single-type and multi-type cases an outbreak can grow with positive
 probability only if the reproduction number exceeds 1. The `ClusterMixed`
-average gives no such threshold, because each chain's growth depends on its own
-mixing draw: a mixture with mean below 1 can still produce chains that take
-off. Use [`extinction_probability`](@ref) there.
+average is not a growth threshold: each chain's growth depends on its own
+mixing draw, and a mixture with mean below 1 can still produce chains that take
+off. Use [`extinction_probability`](@ref) for the probability of extinction.
 
-When the types of a matrix cannot all infect one another, R* above 1 says that
-some group of types can grow, and not that a case of any given type can: an
-index case of a type that never reaches such a group still dies out for
-certain. [`extinction_probability`](@ref) answers that per type.
+When the types cannot all infect one another, R* above 1 indicates that some
+group of types can sustain growth. An outbreak from an index case whose type
+cannot reach that group still dies out with certainty.
+[`extinction_probability`](@ref) gives the probability for each type.
 
 # Examples
 
@@ -187,13 +186,14 @@ It is the smallest fixed point in `[0, 1]` of the vector PGF,
 `a_ij = M[i, j] / R_j` the proportions in which a type-`j` parent's offspring
 are split across types. Fixed-point iteration from zero converges to it.
 
-A type-`j` outbreak can grow only if type-`j` cases lead, through some chain
-of transmission, to a group of types that infect each other with a
-reproduction number above 1. Types without such a chain, and every type when
-[`reproduction_number`](@ref) is at most 1, get exactly 1. Both rules assume
-the offspring count varies. A deterministic law, such as `Dirac(1)` at R = 1,
-gives every case exactly one offspring and never dies out, whether its type is
-a class of its own or one the other types feed, so 1 is the wrong answer there.
+A type-`j` outbreak can grow only if transmission from type-`j` cases can reach
+a group of types that infect each other with a reproduction number above 1.
+The function returns exactly 1 for types without such a path, and for every
+type when [`reproduction_number`](@ref) is at most 1. These rules assume the
+offspring count varies. For example, `Dirac(1)` at R = 1 gives every case exactly
+one offspring and the chain persists indefinitely. This remains true whether
+the type forms its own class or receives infections from other types; returning
+1 is incorrect for this deterministic law.
 
 Iteration that has not converged by `max_iter` warns; that happens when the
 reproduction number is close to 1.

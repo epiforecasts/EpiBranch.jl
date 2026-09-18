@@ -208,11 +208,11 @@ reproduction_number(o::ClusterMixed{PoissonFamily}) = mean(o.mixing)
     extinction_probability(o::ClusterMixed; tol=1e-10, max_iter=1000)
 
 Probability that a chain started by a single index case dies out under
-cluster-level heterogeneity. The chain's `θ` is drawn once from `mixing`, so
-this is the extinction probability of `build(θ)` averaged over `mixing`. At each
-`θ` it is the smallest fixed point of the offspring PGF, found by Newton's
-method, and exactly 1 when the mean of `build(θ)` is at most 1, which assumes
-the offspring count varies.
+cluster-level heterogeneity. The chain's `θ` is drawn once from `mixing`.
+The result averages the extinction probability of `build(θ)` over `mixing`.
+At each `θ`, Newton's method finds the smallest fixed point of the offspring
+PGF. When the mean of `build(θ)` is at most 1, the function returns exactly 1;
+this assumes the offspring count varies.
 
 `mixing` can be any continuous distribution, integrated by adaptive quadrature
 on the probability scale, or a `DiscreteNonParametric`, summed over its support.

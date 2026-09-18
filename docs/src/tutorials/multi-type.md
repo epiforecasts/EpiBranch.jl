@@ -28,11 +28,9 @@ for (i, label) in enumerate(["Children", "Adults", "Elderly"])
 end
 ```
 
-The matrix is read by column: column `j` holds what a type-`j` parent produces.
-The contact matrix above is symmetric, so its numbers read the same either way
-round and the convention makes no difference to them. An asymmetric example
-brings it out, where adults infect children more often than children infect
-adults:
+Column `j` gives the expected offspring of a type-`j` parent. The symmetric
+contact matrix above has each row equal to its corresponding column. In this asymmetric
+example, adults infect children more often than children infect adults:
 
 ```@example multitype
 asymmetric = [1.0 1.2;
@@ -66,10 +64,10 @@ end
 
 ## Threshold and extinction probability
 
-The model stores the matrix and the distribution family, so the threshold and
-the extinction probability follow analytically. `reproduction_number` returns
-R\*, the dominant eigenvalue of the next-generation matrix. An outbreak can take
-off only if R\* exceeds 1. `extinction_probability` returns one value per type:
+The analytical calculations use the matrix and distribution family stored in
+the model. `reproduction_number` returns R\*, the dominant eigenvalue of the
+next-generation matrix. An outbreak can take off only if R\* exceeds 1.
+`extinction_probability` returns one value per type:
 the probability that an outbreak seeded by a single case of that type dies out.
 
 ```@example multitype
@@ -83,8 +81,8 @@ end
 A parent draws its total offspring from the distribution family and splits it
 across types in proportion to its column of `M`. The extinction probability
 accounts for that joint draw. Each simulated run starts from one case of a
-random type, so the simulated containment probability estimates the average of
-the per-type values, and the two agree.
+random type. The simulated containment probability therefore estimates the
+average of the per-type values and agrees with the analytical result.
 
 ```@example multitype
 results = simulate(model, 1000; max_cases = 200, rng = StableRNG(1))

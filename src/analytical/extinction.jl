@@ -1,11 +1,10 @@
-# The fixed-point iteration converges slowly when the reproduction number is
-# close to 1, so it can stop at `max_iter` well short of the answer: at R = 1.005
-# the default 1000 iterations end about 7e-5 away, and the gap grows as R
-# approaches 1. Warn when that happens, so the caller knows the result is only
-# the last iterate.
+# Fixed-point iteration converges slowly near a reproduction number of 1.
+# At R = 1.005, the default 1000 iterations end about 7e-5 from the answer;
+# the gap grows as R approaches 1. Warn when `max_iter` is reached to identify
+# results that are still unconverged.
 #
-# A macro rather than a function, so that each iteration warns from its own call
-# site and `maxlog` counts them separately. A shared function would let one
+# A macro gives each iteration its own warning call site and `maxlog` count.
+# A shared function would let one
 # unconverged multi-type call silence every later single-type one in the session.
 # The expansion drops the line numbers of this definition, which attributes its
 # code to the call site, where coverage tools look for it.
@@ -165,8 +164,8 @@ function probability_contain(R::Real, k::Real;
     end
 
     # This iteration's rate at the fixed point is `(1 - ind_control)` times the
-    # effective reproduction number, which already has `pop_control` in it, so
-    # that product is what stalls it.
+    # effective reproduction number, which includes `pop_control`. Convergence
+    # slows when this product approaches 1.
     @warn_unconverged_extinction(max_iter,
         "the effective reproduction number times one minus `ind_control`")
     return q^n_initial
