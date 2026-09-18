@@ -9,6 +9,22 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 
 ### Added
 
+- `CapacityConstrained`, wrapping an intervention to ration a scarce,
+  population-level resource across the individuals competing for it in the
+  same period — `budget_per_period` candidates may be admitted for the
+  resource every `period` days, measured on the simulation's own continuous
+  clock, though the dose one of them is admitted for is dated later and may
+  land on another day. It acts through
+  `apply_post_transmission!`, so it only takes effect on the generation-based
+  engine; a continuous-time model does not call that hook and warns that it
+  has no effect there. Demand in excess of what remains is ordered by a
+  `priority` function (first-come-first-served by trace time, by default)
+  and only the front of that order is admitted; `carry_over` decides
+  whether an unused allowance rolls into the next period. Rations
+  `RingVaccination` and `MassVaccination` out of the box; a resource other
+  than doses needs its own `capacity_key` method, not yet defined for
+  anything else in this package. `capacity_usage` reads back doses used
+  against doses available.
 - `household_offspring` (in `EpiHouseholds`) returns the household-level
   offspring law of a household-structured model: how many *households* one
   infected household infects, one law per household type (its size, or, under

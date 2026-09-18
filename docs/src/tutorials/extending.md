@@ -83,6 +83,7 @@ downstream packages should pick names that do not collide.
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
+| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
@@ -455,6 +456,38 @@ Then a user schedules the intervention like:
 # Activate border closure on day 10
 Scheduled(BorderClosure(0.0, 0.05); start_time = 10.0)
 ```
+
+### Making the intervention capacity-constrained
+
+[`CapacityConstrained`](@ref) rations `apply_post_transmission!` — the one
+hook the engine calls with a whole generation's contacts at once, so it is
+the only point where several individuals compete for a shared, finite
+resource in the same call. To let a custom intervention be wrapped this
+way, define:
+
+- **`EpiBranch.capacity_key(intervention)`** — the `Individual.state` flag
+  that records the resource having been used (a dose flag, a "traced"
+  flag, …).
+- **`EpiBranch.capacity_time_key(intervention)`** — the key recording *when*
+  it was used, needed only if the intervention is ever wrapped with
+  `carry_over = false`. There it places usage `CapacityConstrained` did not
+  itself admit, such as a dose from another intervention writing the same
+  `capacity_key`, in a period; usage the wrapper admitted is placed by the
+  time of the call that admitted it.
+
+`RingVaccination` and `MassVaccination` implement these with their
+dose-recording keys:
+
+```julia
+EpiBranch.capacity_key(v::RingVaccination) = _vaccinated_key(dose_label(v))
+EpiBranch.capacity_time_key(v::RingVaccination) = _vaccination_time_key(dose_label(v))
+```
+
+This only rations an intervention whose effect is actually recorded inside
+`apply_post_transmission!` on the contacts it is handed. `GroupVaccination`
+is the counter-example: it reaches a triggered group by scanning the whole
+population, not the batch this hook receives, so limiting that batch would
+not limit the doses given, and it does not define `capacity_key`.
 
 ### Requiring fields on individuals
 
@@ -1362,6 +1395,7 @@ your new data type inherits the same closed forms for `Borel`,
 |---|---|---|
 | Custom intervention | Struct `<: AbstractIntervention` + hook methods | Each generation |
 | Time-dependent intervention | `Scheduled(iv; start_time = ...)` + `intervention_time`, `reset!` on `iv` | After each hook |
+| Capacity-constrained intervention | `CapacityConstrained(iv; budget_per_period = ...)` + `capacity_key`, `capacity_time_key` on `iv` | `apply_post_transmission!` |
 | Custom attributes | Function `(rng, ind) -> nothing` | Individual creation |
 | Layered attributes | `[f1, f2, ...]` | Individual creation |
 | Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |
