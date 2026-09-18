@@ -129,7 +129,7 @@ end
 # The contact-interval kernel is stored in whatever form the constructor was
 # given — a shared distribution, a callable `(infector, susceptible) ->
 # Distribution`, or a per-edge vector parallel to the adjacency list — and
-# resolved per contact by `_edge_kernel(model, infector, position, state)`, where
+# resolved per contact by `_edge_kernel(model, infector, position, state, from)`, where
 # `position` is the index of the neighbour within `adjacency[infector]`.
 
 # A shared distribution is used as-is; a per-edge vector is validated to line
@@ -144,14 +144,21 @@ function _validate_kernel(k::AbstractVector{<:AbstractVector}, adj)
     end
     return [collect(row) for row in k]
 end
+_validate_kernel(k::CalendarKernel, adj) = CalendarKernel(_validate_kernel(k.kernel, adj))
 _validate_kernel(k, adj) = k   # callable (infector, susceptible) -> Distribution
 
 # The contact-interval distribution for the `pos`-th neighbour of node `i`.
-function _edge_kernel(m::NetworkProcess, i::Int, pos::Int, state)
-    _resolve_kernel(m.edge_kernel, m, i, pos, state)
+function _edge_kernel(m::NetworkProcess, i::Int, pos::Int, state, from)
+    _resolve_kernel(m.edge_kernel, m, i, pos, state, from)
 end
-_resolve_kernel(k::ContinuousUnivariateDistribution, m, i, pos, state) = k
-_resolve_kernel(k::AbstractVector, m, i, pos, state) = k[i][pos]
-function _resolve_kernel(k, m, i, pos, state)
-    EpiBranch.pair_kernel(k, i, m.adjacency[i][pos], state.individuals[i].infection_time)
+_resolve_kernel(k::ContinuousUnivariateDistribution, m, i, pos, state, from) = k
+_resolve_kernel(k::AbstractVector, m, i, pos, state, from) = k[i][pos]
+function _resolve_kernel(k, m, i, pos, state, from)
+    EpiBranch.pair_kernel(k, i, m.adjacency[i][pos], state.individuals[i].infection_time,
+        EpiBranch._window_open(state.individuals[i], from))
+end
+
+function _resolve_kernel(k::CalendarKernel, m, i, pos, state, from)
+    EpiBranch._calendar_interval(_resolve_kernel(k.kernel, m, i, pos, state, from),
+        EpiBranch._window_open(state.individuals[i], from))
 end

@@ -851,3 +851,5 @@ end
 end
 
 include("test_contextual_kernels.jl")
+
+include("test_calendar_kernels.jl")

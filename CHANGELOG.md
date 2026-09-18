@@ -12,6 +12,9 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- `CalendarKernel` aligns calendar-time contact hazards with infectious openings
+  in network and household simulation and likelihoods.
+
 - `ContextualKernel` shares fixed and infector-infection-time covariates between
   network or household simulation and the compiled pairwise likelihood.
 
