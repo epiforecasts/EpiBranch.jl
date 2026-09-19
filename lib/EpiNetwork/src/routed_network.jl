@@ -130,6 +130,17 @@ end
 population_size(::RoutedNetwork) = NoPopulation()
 _honours_termination_controls(::RoutedNetwork) = false
 
+# Each route closes independently at the earliest of its own `until` states
+# (see `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl),
+# so a terminal state missing from one route's `until` leaves that route open
+# even if every other route covers it.
+function _validate_process_windows(m::RoutedNetwork, progression)
+    for w in m.windows
+        _warn_uncovered_terminal_states(w.until, progression; route = w.name, from = w.from)
+    end
+    return nothing
+end
+
 EpiBranch.supplies_contacts(::RoutedNetwork) = true
 
 # Contacts for tracing are the union of the neighbours on every route, each

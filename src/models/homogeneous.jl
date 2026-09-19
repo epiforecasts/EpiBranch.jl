@@ -91,6 +91,11 @@ population_size(m::HomogeneousProcess) = m.population_size
 # termination controls do not apply; `simulate` warns if any is set.
 _honours_termination_controls(::HomogeneousProcess) = false
 
+# See `_warn_uncovered_terminal_states` in branching_process.jl.
+function _validate_process_windows(m::HomogeneousProcess, progression)
+    _warn_uncovered_terminal_states(m.until, progression; from = m.from)
+end
+
 # The state's timing type follows β's type, so a dual β makes an
 # `Individual{Dual}` pool and gradients flow through the crossing times.
 _time_type(::HomogeneousProcess{T}) where {T} = T

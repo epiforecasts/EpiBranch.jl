@@ -54,6 +54,23 @@ end
             [2], Exponential(1.0); external_hazard = -1.0)
     end
 
+    @testset "uncovered terminal state warns" begin
+        process = HouseholdProcess([2, 2], Exponential(1.0))
+        # `:censored` is a terminal transition `until` does not list, so a case
+        # reaching it would never have its window closed: composing warns.
+        censored = [
+            Transition(:infectious; from = :infection, delay = 1.0),
+            Transition(:recovered; from = :infectious, delay = 1.0, terminal = true),
+            Transition(:censored; from = :infection, delay = 5.0, terminal = true)
+        ]
+        @test_logs (:warn, r":censored") match_mode=:any ModelSpec(
+            process; progression = censored)
+        matched = HouseholdProcess([2, 2], Exponential(1.0);
+            until = (:recovered, :died, :isolated, :censored))
+        @test_logs ModelSpec(matched; progression = censored)
+        @test_logs ModelSpec(process; progression = _sir(1.0))
+    end
+
     @testset "simulation seeds one index per household and spreads within it" begin
         m = ModelSpec(HouseholdProcess(fill(4, 100), Weibull(1.3, 2.0));
             progression = _sir(6.0))
