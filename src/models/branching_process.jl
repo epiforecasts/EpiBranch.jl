@@ -103,6 +103,54 @@ function _validate_windows(windows, progression)
     return nothing
 end
 
+# Shared by the continuous-time structure-driven models (`HomogeneousProcess`,
+# `NetworkProcess`, `HouseholdProcess`, `RouteWindow`): a case's window closes
+# at the earliest `Symbol(s, :_time)` for `s in until` (`_window_close` in
+# sellke.jl). A progression's terminal transition writes its own
+# `state => true`/`state_time` pair regardless of whether `state` is in
+# `until`, so a state missing from `until` is simply never consulted: a case
+# reaching it keeps generating exposure proposals as if still infectious.
+# `_terminal_target` (defined per transition type, alongside `is_terminal`)
+# gives the state label without needing an individual to resolve a time from —
+# `Transition` reads it off `.state`, `Death`/`Recovery` are hardcoded to
+# :died/:recovered. A terminal transition that does not implement it (any
+# custom one following only the documented `is_terminal`/`terminal_event`
+# contract) is not checkable here and stays silently exempt. `from`, when it
+# names a terminal state itself (e.g. a funeral `RouteWindow` with
+# `from = :died`), is excluded too: a window that only opens once a case
+# reaches that state cannot sensibly be asked to also close on it.
+function _uncovered_terminal_states(until::Tuple, progression; from = nothing)
+    covered = Set{Symbol}(until)
+    from isa Symbol && push!(covered, from)
+    states = Symbol[]
+    for t in progression
+        is_terminal(t) || continue
+        target = _terminal_target(t)
+        target === nothing && continue
+        target in covered || push!(states, target)
+    end
+    return unique(states)
+end
+
+# Warn once (per `ModelSpec`) when `until` does not cover every terminal state
+# the progression can reach, so the silent runaway is discoverable instead of
+# only showing up as an implausibly large outbreak. `route` labels the warning
+# when `until` belongs to one window among several (a `RouteWindow`); `from`
+# is that window's own opening state, excluded from the check (see above).
+function _warn_uncovered_terminal_states(until::Tuple, progression;
+        route = nothing, from = nothing)
+    states = _uncovered_terminal_states(until, progression; from)
+    isempty(states) && return nothing
+    on_route = route === nothing ? "" : " on route :$route"
+    @warn "Progression has a terminal transition to " *
+          "$(join((":" * String(s) for s in states), ", ")), which `until`" *
+          "$on_route $until does not list. A case reaching it never has its " *
+          "infectious/exposure window closed, and keeps generating exposure " *
+          "proposals indefinitely. Add it to `until` if it should end " *
+          "transmission."
+    return nothing
+end
+
 # Natural history, interventions, attributes and observation are not carried by
 # the process — they are composed onto it with a [`ModelSpec`](@ref). The
 # shared accessors (in model_inputs.jl and model_spec.jl) resolve to empty

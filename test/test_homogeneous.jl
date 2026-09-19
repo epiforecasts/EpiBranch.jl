@@ -734,4 +734,46 @@ end
         @test EpiBranch._honours_termination_controls(
             BranchingProcess(Poisson(1.5), Exponential(2.0)))
     end
+
+    @testset "uncovered terminal state warns" begin
+        process = HomogeneousProcess(; transmission_rate = 2.0, population_size = 200)
+        # `:censored` is a terminal transition `until` does not list, so a case
+        # reaching it would never have its window closed: composing warns.
+        censored = [
+            Transition(:infectious; from = :infection, delay = 1.0),
+            Transition(:recovered; from = :infectious, delay = 1.0, terminal = true),
+            Transition(:censored; from = :infection, delay = 5.0, terminal = true)
+        ]
+        @test_logs (:warn, r":censored") match_mode=:any ModelSpec(
+            process; progression = censored)
+        # Listing the extra terminal state in `until` silences the warning.
+        covered = HomogeneousProcess(; transmission_rate = 2.0, population_size = 200,
+            until = (:recovered, :died, :isolated, :censored))
+        @test_logs ModelSpec(covered; progression = censored)
+        # No custom terminal transition beyond the defaults → no warning.
+        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        @test_logs ModelSpec(process; progression = prog)
+        # A window that only opens once a case reaches a terminal state (e.g.
+        # a post-mortem pool with `from = :died`) is not warned about for
+        # missing that same state from `until`.
+        died = [
+            Transition(:recovered; from = :infection, delay = 1.0, terminal = true),
+            Transition(:died; from = :infection, delay = 2.0, terminal = true)
+        ]
+        after_death = HomogeneousProcess(; transmission_rate = 2.0,
+            population_size = 200, from = :died, until = (:recovered,))
+        @test_logs ModelSpec(after_death; progression = died)
+        # `Death`/`Recovery` are only covered by the *default* `until`; narrow
+        # it and the check must still see them, not exempt them permanently.
+        narrowed = HomogeneousProcess(; transmission_rate = 2.0,
+            population_size = 200, until = (:isolated,))
+        @test_logs (:warn, r":recovered") match_mode=:any ModelSpec(
+            narrowed; progression = [Recovery(delay = Exponential(5.0))])
+        @test_logs (:warn, r":died") match_mode=:any ModelSpec(
+            narrowed; progression = [Death(delay = Exponential(5.0), probability = 0.3)])
+        # The default `until` covers both without a warning.
+        @test_logs ModelSpec(process;
+            progression = [Recovery(delay = Exponential(5.0)),
+                Death(delay = Exponential(5.0), probability = 0.3)])
+    end
 end
