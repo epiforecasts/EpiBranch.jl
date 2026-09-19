@@ -22,6 +22,7 @@ end
 
 required_fields(r::Recovery) = _from_required(r.from)
 is_terminal(::Recovery) = true
+_terminal_target(::Recovery) = :recovered
 
 function initialise_individual!(::Recovery, individual, state)
     individual.state[:recovery_candidate_time] = Inf
@@ -98,6 +99,7 @@ end
 
 required_fields(d::Death) = _from_required(d.from)
 is_terminal(::Death) = true
+_terminal_target(::Death) = :died
 
 function initialise_individual!(::Death, individual, state)
     individual.state[:death_candidate_time] = Inf

@@ -763,5 +763,17 @@ end
         after_death = HomogeneousProcess(; transmission_rate = 2.0,
             population_size = 200, from = :died, until = (:recovered,))
         @test_logs ModelSpec(after_death; progression = died)
+        # `Death`/`Recovery` are only covered by the *default* `until`; narrow
+        # it and the check must still see them, not exempt them permanently.
+        narrowed = HomogeneousProcess(; transmission_rate = 2.0,
+            population_size = 200, until = (:isolated,))
+        @test_logs (:warn, r":recovered") match_mode=:any ModelSpec(
+            narrowed; progression = [Recovery(delay = Exponential(5.0))])
+        @test_logs (:warn, r":died") match_mode=:any ModelSpec(
+            narrowed; progression = [Death(delay = Exponential(5.0), probability = 0.3)])
+        # The default `until` covers both without a warning.
+        @test_logs ModelSpec(process;
+            progression = [Recovery(delay = Exponential(5.0)),
+                Death(delay = Exponential(5.0), probability = 0.3)])
     end
 end
