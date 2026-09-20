@@ -201,7 +201,7 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   the wrong order go without the boost. A function, or a distribution that
   reports no support, is left to the per-contact check at run time.
 - `groups`, an attributes function that labels each individual with a group
-  (a village, a health area, a household) under `:group` or an arbitrary key,
+  (a community, a health area, a household) under `:group` or an arbitrary key,
   and `GroupVaccination`, which vaccinates every member of a group once any
   case in it meets a [`TraceEligibility`](@ref) policy such as
   `OnLabConfirmation()` — the fallback an outbreak response reaches for when

@@ -764,7 +764,7 @@ println("High-risk individuals: $n_high / $(length(state.individuals))")
 
 ### Sharing attributes within groups
 
-Use `group_attribute` for a numeric value shared by a household, village or
+Use `group_attribute` for a numeric value shared by a household, community or
 other group. It samples once for the first member of each group and keeps that
 value for the run. Here reporting probabilities vary between households:
 

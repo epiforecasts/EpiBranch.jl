@@ -930,7 +930,7 @@ end
 """
 Vaccinate every member of the group a confirmed case belongs to — the
 fallback an outbreak response reaches for when no ring can be built, such
-as a village, a health area, or a household. Individuals carry their
+as a community, a health area, or a household. Individuals carry their
 group under `group_key` (`:group` by default; see [`groups`](@ref)), and
 every member sharing a triggering case's group is vaccinated at the
 trigger time plus `dose_delay`, whether or not it has any traced
@@ -1006,7 +1006,7 @@ for a composition using these existing inputs.
 
 # Examples
 
-Vaccinate the whole village once a case there is lab-confirmed, 2 days
+Vaccinate the whole community once a case there is lab-confirmed, 2 days
 later:
 
 ```julia

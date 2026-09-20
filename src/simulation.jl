@@ -1331,7 +1331,7 @@ Return an attributes function that assigns each individual to one of
 under `key` (`:group` by default).
 
 The branching process has no geography, but a group does not need one:
-`key` can stand for a village, a health area, or a household, and
+`key` can stand for a community, a health area, or a household, and
 [`GroupVaccination`](@ref) targets whichever one it names without the
 model knowing where it is. `groups` only labels individuals, uniformly and
 independently of who infected whom, which is enough to test a
@@ -1344,7 +1344,7 @@ this one that assigns `:group` from whatever labels the model's types
 
 # Examples
 
-Twenty equally likely villages:
+Twenty equally likely communities:
 
 ```julia
 attributes = groups(20)
@@ -1486,7 +1486,7 @@ own; this builder supplies one. Read it back with a closure such as
 group share an acceptance probability while other groups draw their own.
 
 List the attributes function that sets `group_key` (`groups`, or a custom one
-labelling households or villages) ahead of this one, since the key has to be
+labelling households or communities) ahead of this one, since the key has to be
 on the individual by the time this runs. Applying it to an individual without
 that key raises an `ArgumentError`.
 
@@ -1505,7 +1505,7 @@ block.
 
 # Examples
 
-Each village's coverage is Beta-distributed around a mean of 60%:
+Each community's coverage is Beta-distributed around a mean of 60%:
 
 ```julia
 attributes = [groups(20),
