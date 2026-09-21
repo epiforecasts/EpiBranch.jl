@@ -114,6 +114,11 @@ EpiBranch.supplies_contacts(::NetworkProcess) = true
 # controls do not apply; `simulate` warns if any is set.
 _honours_termination_controls(::NetworkProcess) = false
 
+# See `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl.
+function _validate_process_windows(m::NetworkProcess, progression)
+    _warn_uncovered_terminal_states(m.until, progression; from = m.from)
+end
+
 function Base.show(io::IO, m::NetworkProcess)
     n = length(m.adjacency)
     n_edges = sum(length, m.adjacency; init = 0) ÷ 2
