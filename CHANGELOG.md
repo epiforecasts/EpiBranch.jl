@@ -12,6 +12,10 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- The households tutorial casts the classical households model as a branching
+  process over households: the size-one limit against `Borel`/`GammaBorel`,
+  the household offspring matrix as a multi-type `BranchingProcess`, and what
+  the formulation buys and costs relative to a depleting finite population.
 - `CalendarKernel` aligns calendar-time contact hazards with infectious openings
   in network and household simulation and likelihoods.
 
