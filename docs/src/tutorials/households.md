@@ -88,16 +88,16 @@ reproduction_number(offspring)
 
 Shrinking every household to a single member switches the within-household
 epidemic off: there is no household-mate left to infect, so the household-level
-offspring law is nothing but a single case's own community contacts. This is
-the ordinary branching process — the household construction's degenerate case
-— and it is a check the construction has to pass: everything
+offspring law reduces to a single case's own community contacts. This is the
+ordinary branching process, the household construction's degenerate case, and
+it is a check the construction has to pass: everything
 [`chain_size_distribution`](@ref) and [`extinction_probability`](@ref) already
 gave for a plain [`BranchingProcess`](@ref) has to fall out unchanged.
 
 With a fixed six-day infectious window, community contacts arrive at a constant
 Poisson rate for exactly that long, so the offspring law is a plain Poisson and
-[`chain_size_distribution`](@ref) recovers `Borel` exactly — no simulation on
-either side of the comparison:
+[`chain_size_distribution`](@ref) recovers `Borel` exactly, with no simulation
+on either side of the comparison:
 
 ```@example households
 lone = ModelSpec(HouseholdProcess(fill(1, 1), Exponential(1.0));
@@ -110,8 +110,8 @@ chains = chain_size_distribution(BranchingProcess(Poisson(R_lone)))
 ```
 
 An exponential window instead makes the community-infectious period itself
-random, and a Poisson count compounded over an exponential mean is a geometric
-— a Negative Binomial with one degree of freedom — so the chain size is
+random. A Poisson count compounded over an exponential mean is a geometric, a
+Negative Binomial with one degree of freedom, so the chain size is
 `GammaBorel`, again exactly:
 
 ```@example households
@@ -125,10 +125,10 @@ typeof(chain_size_distribution(BranchingProcess(NegBin(R_lone_exp, 1.0))))
 
 A real household, of more than one member, breaks this. The compounding then
 runs over the household's own final-size distribution rather than one case's
-window, and nothing forces the result back into a named family.
+window, and the result no longer falls into a named family.
 `reproduction_number` and `extinction_probability` answer the same questions
-regardless — they never assumed a family — but `chain_size_distribution` has
-nothing to dispatch on beyond `Poisson` and `NegativeBinomial`, so the number of
+regardless, since they never assumed a family, but `chain_size_distribution`
+has nothing to dispatch on beyond `Poisson` and `NegativeBinomial`, so the number of
 households ultimately infected has no closed form once households hold more
 than one person.
 
@@ -171,8 +171,8 @@ parent's type was. That is exactly the offspring matrix of a multi-type
 [`BranchingProcess`](@ref): `M[i, j] = mixing[i] * means[j]`, a rank-one matrix
 whose column `j` gives type-`j`'s contribution and whose rows share the same
 proportions. Built this way, the general multi-type
-[`reproduction_number`](@ref) and [`extinction_probability`](@ref) — the ones
-that work from any offspring matrix, not just a household's — apply directly:
+[`reproduction_number`](@ref) and [`extinction_probability`](@ref), which work
+from any offspring matrix and not just a household's, apply directly:
 
 ```@example households
 M = sized.mixing * sized.means'
@@ -182,7 +182,7 @@ household_bp = BranchingProcess(M, R -> Poisson(R), Exponential(5.0))
 
 R\* agrees exactly, because it depends on the offspring matrix alone. Choosing
 `Poisson` to turn each type's mean into a distribution is an assumption `sized`
-never makes — it carries the household's own, generally non-Poisson law — and
+never makes: it uses the household's own, generally non-Poisson law instead.
 `extinction_probability` depends on more than the mean, so the two part ways
 there:
 
@@ -238,9 +238,9 @@ exactly as analytic as the plain branching process it specialises, R\* and
 `extinction_probability` come from the same fixed-point machinery, and an
 intervention on the household layer is read straight through into the
 global offspring law without a separate global-level parameter to
-recalibrate. What it buys is bought at the within-household level, and only
-there — the household kernel is resolved exactly when it is Markovian and
-otherwise by simulating households, which is exact per household but leaves a
+recalibrate. The cost falls entirely on the within-household level: the
+household kernel is resolved exactly when it is Markovian and otherwise by
+simulating households, which is exact per household but leaves a
 Monte Carlo error in the fed-forward mean once an intervention with
 individual-level timing enters the household's own infectious window.
 
@@ -248,8 +248,8 @@ The construction is a branching approximation, not an epidemic model: every
 community contact is assumed to reach a household untouched by the outbreak
 so far, which holds only while infected households are a small fraction of
 all households. There is no population to deplete, so there is no epidemic
-peak and no final size for the whole population to compute — only the early,
-branching phase this chapter describes, R\* and how likely a single
+peak and no final size for the whole population to compute, only the early,
+branching phase this chapter describes: R\*, and how likely a single
 introduction is to die out. A model that keeps a finite, depleting pool of
 households for the phase this one cannot reach is a different piece of work.
 
@@ -258,7 +258,7 @@ same `ContactTracing` shown in [Interventions](interventions.md), attached to
 [`HouseholdProcess`](@ref), where a case's household-mates are already its
 contacts. Tracing therefore finds a flagged case's household-mates one at a
 time, through the same competing-risk resolution as any other contact, rather
-than as a single action against the household as a whole — so it gets no
+than as a single action against the household as a whole, so it gets no
 benefit from the fact that a real household's members share one exposure and
 could in principle all be flagged together.
 
