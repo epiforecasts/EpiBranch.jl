@@ -12,6 +12,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- `max_time` now ends homogeneous, household and network simulations at that
+  time: people whose infection would fall later stay uninfected, matching the
+  full run restricted to infections up to `max_time`. The other termination
+  controls still do not apply to these models.
+
 - `CalendarKernel` aligns calendar-time contact hazards with infectious openings
   in network and household simulation and likelihoods.
 

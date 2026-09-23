@@ -508,6 +508,10 @@ stand in for removing an infector, and an introduction's source is outside the
 population. Omit `introduction` for a model whose seeds are index cases, which
 are put to no risk at all.
 
+`max_time` ends the race at that time: individuals whose infection would fall
+later are left uninfected, and the state is exactly the full run's state
+restricted to infections up to `max_time`.
+
 `contacts(infective_id, state)` yields the ids of everyone that case was in
 contact with, whether or not transmission followed, which is what contact
 tracing acts on; it is therefore usually wider than `targets`, which yields only
@@ -526,7 +530,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; seed!, targets = nothing,
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
         routes = nothing, interventions = (), contacts = nothing, risks = (),
-        introduction = nothing)
+        introduction = nothing, max_time = Inf)
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
     # shorthand's one window opts into intervention removal, which is what a
@@ -612,6 +616,9 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
 
     while !isempty(pending)
         bt, j, p = _heap_pop!(pending)
+        # Pops come in increasing time, so every later infection also falls
+        # after `max_time`: those individuals stay uninfected.
+        bt > max_time && break
         may_block && (proposals[p] = _dequeue(proposals[p]))
         (processed[j] || represents[j] != p) && continue
         opening = openings[may_block ? proposals[p].opening : p]
