@@ -170,8 +170,10 @@ function _warn_ignored_termination(
     ignored = String[]
     max_cases != _DEFAULT_MAX_CASES && push!(ignored, "max_cases")
     max_generations != _DEFAULT_MAX_GENERATIONS && push!(ignored, "max_generations")
-    stopping_rules !== nothing && any(r -> !(r isa MaxTime), stopping_rules) &&
-        push!(ignored, "stopping_rules other than MaxTime")
+    # Extinction and MaxTime are the two ways these runs end, so both hold.
+    stopping_rules !== nothing &&
+        any(r -> !(r isa MaxTime || r isa Extinction), stopping_rules) &&
+        push!(ignored, "stopping_rules other than MaxTime and Extinction")
     isempty(ignored) && return nothing
     @warn "$(nameof(typeof(model))) runs to extinction or `max_time` over its " *
           "fixed population and ignores the other termination controls; " *

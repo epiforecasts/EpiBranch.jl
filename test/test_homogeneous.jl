@@ -740,6 +740,9 @@ end
             spec; n_initial = 3, max_cases = 50, rng = StableRNG(1))
         # No termination keyword set → no warning.
         @test_logs simulate(spec; n_initial = 3, rng = StableRNG(1))
+        # Extinction and MaxTime are both honoured, so neither warns.
+        @test_logs simulate(spec; n_initial = 3,
+            stopping_rules = [Extinction(), MaxTime(2.0)], rng = StableRNG(1))
         # The trait itself: the pool ignores the controls, the generation engine
         # honours them.
         @test !EpiBranch._honours_termination_controls(
