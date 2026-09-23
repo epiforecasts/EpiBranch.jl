@@ -102,10 +102,12 @@ and dated histories; the likelihood does not construct individuals.
 Callbacks must describe a predictable hazard: adding an event at time `t` must
 not change the hazard before `t`. A final vaccinated flag alone is insufficient;
 retain its date and the earlier hazard. State changes occur through the existing
-case-resolution and intervention hooks. Simulation refreshes pending contacts
-after each resolved case, conditioning on survival to that time. This costs a
-pass over all active edges per case. Recorded vectors describe fixed histories
-and do not require refreshes. The callback and projection must not mutate state.
+case-resolution and intervention hooks. The callback and projection must not
+mutate state, and a kernel may read host state only through its projection,
+since that record is all the likelihood is given.
+
+Simulation keeps contacts consistent with the hazards in force as records
+change; a run whose records never change matches an ordinary kernel exactly.
 """
 struct StatefulKernel{S, F}
     state::S
@@ -114,10 +116,25 @@ end
 
 _pair_state(project, individual) = project(individual)
 _pair_state(records::AbstractVector, individual) = records[individual.id]
-_live_kernel(k) = false
-_live_kernel(k::StatefulKernel) = true
-_live_kernel(k::StatefulKernel{<:AbstractVector}) = false
-_live_kernel(k::CalendarKernel) = _live_kernel(k.kernel)
+# The projection a live kernel reads host state through, or `nothing` for a
+# kernel whose hazards cannot change during a run. A race compares successive
+# projections to decide whether pending contacts need redrawing, so a kernel may
+# depend on host state only through this record — the restriction `record_kernel`
+# already relies on to reproduce a run's hazards from recorded records alone.
+_kernel_projection(k) = nothing
+_kernel_projection(k::StatefulKernel) = k.state
+_kernel_projection(k::StatefulKernel{<:AbstractVector}) = nothing
+_kernel_projection(k::CalendarKernel) = _kernel_projection(k.kernel)
+_live_kernel(k) = _kernel_projection(k) !== nothing
+
+# The projection a race has to watch for changes. Resolving a case writes only to
+# that case's own record, and no contact already drawn depends on it: contacts to
+# the case are settled, and its own contacts are drawn afterwards. So records that
+# pending contacts depend on can move only through an intervention, and without
+# one a live kernel races exactly as an ordinary kernel does.
+function _watched_projection(kernel, interventions)
+    isempty(interventions) ? nothing : _kernel_projection(kernel)
+end
 
 # The extra argument is supplied only by simulation; ordinary kernels retain
 # their existing extension methods and compiled likelihood fast paths.

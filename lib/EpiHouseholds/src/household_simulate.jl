@@ -53,13 +53,16 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
     # Reuse the population lookup across household races.
     initial_cases = sim_opts.initial_cases === nothing ? nothing :
                     Set(sim_opts.initial_cases)
-    live = EpiBranch._live_kernel(model.kernel)
+    # Only a policy that can read cases in other households needs every household
+    # on one clock, and only an intervention can write such a policy.
+    watched = EpiBranch._watched_projection(model.kernel, interventions)
+    live = watched !== nothing
     races = live ? (collect(eachindex(model.household_of)),) : model.members
     for mem in races
         EpiBranch._sellke_race!(state, mem, rng;
             from = from, until = model.until, interventions = interventions,
             risks = EpiBranch.transmission_risks(model),
-            refresh_kernels = live,
+            refresh_projection = watched,
             seed! = (best, members, r) -> _seed_household_race!(
                 best, members, model, state, Tobs, r, initial_cases, live),
             introduction = _ext_active(model.external_hazard) ?

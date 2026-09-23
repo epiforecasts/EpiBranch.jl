@@ -93,13 +93,41 @@ function stateful_test_race(kernel, initial_times; interventions = (), introduct
     EpiBranch._sellke_race!(state, collect(1:n), rng;
         seed! = (best, members, r) -> copyto!(best, initial_times),
         targets, from = :infection, until = (:recovered,), interventions,
-        introduction, refresh_kernels = EpiBranch._live_kernel(kernel))
+        introduction, refresh_projection = EpiBranch._kernel_projection(kernel))
     return state
 end
 
+@testset "An unchanging live kernel leaves the race stream alone" begin
+    seeds = [0.0; fill(Inf, 11)]
+    for d in (Exponential(1.5), Weibull(2.0, 2.0), Gamma(3.0, 0.7))
+        live = StatefulKernel(ind -> (tag = get(ind.state, :tag, 0.0)::Float64,),
+            (c, a, b) -> d)
+        @test isequal([i.infection_time for i in stateful_test_race(d, seeds).individuals],
+            [i.infection_time for i in stateful_test_race(live, seeds).individuals])
+    end
+end
+
+@testset "A mutable history is seen to change" begin
+    state = EpiBranch.new_state(BranchingProcess(Poisson(0.0)), [], NoAttributes(),
+        StableRNG(233))
+    EpiBranch.add_individuals!(state, 2, [])
+    for ind in state.individuals
+        ind.state[:history] = Float64[]
+    end
+    project = ind -> ind.state[:history]
+    members = [1, 2]
+    records = [deepcopy(project(state.individuals[i])) for i in members]
+    @test !EpiBranch._records_changed!(records, project, state, members)
+    # An intervention appending in place must not compare equal to its own
+    # remembered record, which is why the race keeps a copy rather than an alias.
+    push!(state.individuals[2].state[:history], 1.0)
+    @test EpiBranch._records_changed!(records, project, state, members)
+    @test !EpiBranch._records_changed!(records, project, state, members)
+end
+
 @testset "Shared race refreshes live pair kernels" begin
-    ties = StatefulKernel(_ -> nothing, (c, a, b) -> Dirac(1.0))
-    state = stateful_test_race(ties, [0.0, Inf, Inf])
+    ties = StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0))
+    state = stateful_test_race(ties, [0.0, Inf, Inf]; interventions = [TickEveryCase()])
     @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0]
 
     project(ind) = (date = get(ind.state, :policy_time, Inf)::Float64,)
@@ -131,9 +159,10 @@ end
 
     # Retried introductions must remain later than the admission boundary even
     # when another introduction settles and refreshes the remaining queue.
-    inactive = StatefulKernel(_ -> nothing, (c, a, b) -> Dirac(20.0))
+    inactive = StatefulKernel(tick_state, (c, a, b) -> Dirac(20.0))
     introduced = stateful_test_race(inactive, [0.1, 0.2, 0.3];
-        interventions = [WaitForKernelDay()], introduction = (Exponential(0.2), 3.0))
+        interventions = [WaitForKernelDay(), TickEveryCase()],
+        introduction = (Exponential(0.2), 3.0))
     cases = filter(is_infected, introduced.individuals)
     @test length(cases) == 3
     @test all(i -> 1.0 <= i.infection_time <= 3.0, cases)

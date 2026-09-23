@@ -20,11 +20,44 @@ function EpiBranch.competing_risk(::WaitForKernelDay, parent, contact, state)
     Risk(block_probability = state.max_infection_time < 1.0 ? 1.0 : 0.0)
 end
 
+# Moves every host's record on every case, so the race redraws pending contacts
+# at each step. A kernel whose records never move takes the ordinary path, which
+# is the point of the equivalence test below, so a test about redrawing has to
+# make something move.
+struct TickEveryCase <: AbstractIntervention end
+function EpiBranch.resolve_individual!(::TickEveryCase, ind, state)
+    for person in state.individuals
+        person.state[:tick] = state.cumulative_cases
+    end
+    return nothing
+end
+tick_state(ind) = (tick = get(ind.state, :tick, 0)::Int,)
+
 function test_stateful_simulation(make_process, extract)
+    @testset "An unchanging live kernel races as an ordinary one" begin
+        # Redrawing exists for hazards that move. A kernel whose records never
+        # move must leave the race exactly where an ordinary kernel leaves it,
+        # random stream included: a refresh that fires anyway is both wasted and
+        # free to change the answer without any test noticing.
+        project(ind) = (tag = get(ind.state, :tag, 0.0)::Float64,)
+        progression = [Transition(:recovered; delay = 3.0, terminal = true)]
+        for d in (Exponential(1.5), Weibull(2.0, 2.0), Gamma(3.0, 0.7))
+            ordinary = ModelSpec(make_process(d); progression)
+            stateful = ModelSpec(make_process(StatefulKernel(project, (c, a, b) -> d));
+                progression)
+            for seed in 1:25
+                a = simulate(ordinary; initial_cases = [1], rng = StableRNG(seed))
+                b = simulate(stateful; initial_cases = [1], rng = StableRNG(seed))
+                @test isequal([i.infection_time for i in a.individuals],
+                    [i.infection_time for i in b.individuals])
+            end
+        end
+    end
     @testset "Simultaneous contacts survive refresh" begin
-        kernel = StatefulKernel(_ -> nothing, (c, a, b) -> Dirac(1.0))
+        kernel = StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0))
         model = ModelSpec(make_process(kernel);
-            progression = [Transition(:recovered; delay = 5.0, terminal = true)])
+            progression = [Transition(:recovered; delay = 5.0, terminal = true)],
+            interventions = [TickEveryCase()])
         state = simulate(model; initial_cases = [1], rng = StableRNG(1))
         @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0]
     end
@@ -89,11 +122,11 @@ function test_stateful_simulation(make_process, extract)
         @test observed_policy
     end
     @testset "Refresh preserves blocked external introductions" begin
-        live = StatefulKernel(_ -> nothing, (c, a, b) -> Dirac(20.0))
+        live = StatefulKernel(tick_state, (c, a, b) -> Dirac(20.0))
         process = make_process(live; external_hazard = 0.8, obs_end = 3.0)
         model = ModelSpec(process;
             progression = [Transition(:recovered; delay = 4.0, terminal = true)],
-            interventions = [WaitForKernelDay()])
+            interventions = [WaitForKernelDay(), TickEveryCase()])
         infected = 0
         for seed in 1:500
             state = simulate(model; rng = StableRNG(seed))

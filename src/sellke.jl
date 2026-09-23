@@ -526,7 +526,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; seed!, targets = nothing,
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
         routes = nothing, interventions = (), contacts = nothing, risks = (),
-        introduction = nothing, refresh_kernels = false)
+        introduction = nothing, refresh_projection = nothing)
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
     # shorthand's one window opts into intervention removal, which is what a
@@ -560,7 +560,12 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                            for (w, _) in rts]
 
     seed!(best, members, rng)
-    initial_times = refresh_kernels ? copy(best) : nothing
+    live = refresh_projection !== nothing
+    initial_times = live ? copy(best) : nothing
+    # What each member's host record held when contacts were last drawn from it.
+    records = live ?
+              [deepcopy(_pair_state(refresh_projection, state.individuals[id]))
+               for id in members] : nothing
 
     T = eltype(best)
     # A popped entry is final unless the risks block it: every other pending
@@ -592,7 +597,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         id -> (ind = state.individuals[id];
             ind.susceptibility != 1 || ind.infectiousness != 1),
         members)
-    may_block = refresh_kernels || !isempty(risks) ||
+    may_block = live || !isempty(risks) ||
                 any(
                     iv -> _has_own_method(competing_risk, typeof(iv),
                         AbstractIntervention), interventions)
@@ -656,7 +661,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             end
             nxt = open_t + _next_contact(rng, kernel, mult, bt - open_t, close_t - open_t)
             proposals[p] = _at(proposals[p], nxt <= close_t ? nxt : T(Inf))
-            if refresh_kernels && opening.route == 0
+            if live && opening.route == 0
                 initial_times[j] = proposals[p].time
             end
             _requeue!(pending, proposals, head, best, represents, j)
@@ -684,6 +689,13 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             _apply_continuous_actions!(state, ind, interventions, members, processed)
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1
 
+        # Only a live kernel whose host records actually moved needs its pending
+        # contacts redrawn. Resolving a case usually leaves every record alone —
+        # a policy fires on one case out of hundreds — and then the contacts
+        # already drawn still come from the hazards in force, so the race takes
+        # the ordinary path and draws this case's own openings inline.
+        dirty = live && _records_changed!(records, refresh_projection, state, members)
+
         # Each route opens and closes on its own states, so a case can still be
         # transmitting on one while another has been cut. A route whose `from`
         # state was never reached contributes nothing, which is how a survivor
@@ -694,7 +706,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             close_t = _route_close(ind, w, interventions)
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
-            refresh_kernels && continue
+            dirty && continue
 
             for (target_id, kernel) in route_targets(members[j], state)
                 k = get(pos, target_id, 0)
@@ -714,12 +726,31 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                     cand, may_block)
             end
         end
-        if refresh_kernels
+        if dirty
             _refresh_contacts!(pending, proposals, head, best, represents,
                 openings, initial_times, processed, members, pos, rts, state, bt, rng)
         end
     end
     return nothing
+end
+
+# Keep a record to compare against later. A projection may hand back a mutable
+# history that an intervention appends to in place, which would then compare
+# equal to itself and hide the change, so anything that is not plain bits is
+# copied. The usual named tuple of numbers is bits and is kept as it stands.
+_remember(record) = isbits(record) ? record : deepcopy(record)
+
+# Whether any host record a live kernel reads has moved since contacts were last
+# drawn from it, updating the remembered records as it goes.
+function _records_changed!(records, project, state, members)
+    changed = false
+    for k in eachindex(members)
+        current = _pair_state(project, state.individuals[members[k]])
+        isequal(records[k], current) && continue
+        records[k] = _remember(current)
+        changed = true
+    end
+    return changed
 end
 
 # A newly recorded action can change an edge that had no pending proposal (its

@@ -228,18 +228,13 @@ As in the earlier mixture example, the density at the exact policy date follows
 the component endpoint conventions. Use an appropriate convention when observed
 contact dates coincide exactly with a policy change.
 
-The race initially schedules contacts using the information then available.
-After a case is resolved, a live state-aware kernel is evaluated again for all
-active pairs. Contacts already due at the current time are preserved, including ties.
-Later contacts are redrawn conditional on no contact through the current time. This includes pairs whose previous contact draw lay beyond their
-infectious window. A recorded vector represents fixed histories and uses the
-ordinary simulation path.
+A contact scheduled before a policy took effect still follows the hazard in
+force once it has: simulation keeps pending contacts consistent with the records
+as they change, and a run whose records never change matches an ordinary kernel
+exactly.
 
-Refreshing costs a pass over the active edges after each case. Live household
-kernels use one chronological race across all households, preserving their
-separate contact sets and seeding rules. This allows a policy to depend on cases
-across households. The existing restriction on periodic shared capacity budgets
-still applies.
+A policy can depend on cases in other households. The existing restriction on
+periodic shared capacity budgets still applies.
 
 ## History and inference contracts
 
