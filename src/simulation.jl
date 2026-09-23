@@ -155,8 +155,10 @@ _honours_termination_controls(::TransmissionModel) = true
 
 # The time at which a structure-driven run ends: the earliest `MaxTime` among
 # the stopping rules, or `Inf`.
-_max_time(sim_opts) = minimum((r.t for r in sim_opts.stopping_rules if r isa MaxTime);
-    init = Inf)
+function _max_time(sim_opts)
+    minimum((r.t for r in sim_opts.stopping_rules if r isa MaxTime);
+        init = Inf)
+end
 
 # Warn when a termination control is set on a model that ignores it, so the
 # silent no-op is discoverable. Compares against the keyword defaults, so only
