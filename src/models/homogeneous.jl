@@ -49,11 +49,12 @@ its targets only among newly created contacts — `MassVaccination`'s rollout,
 along in a mass-action pool — is reported with a warning rather than applied. Control expressed as a
 removal `Transition` in the progression always applies.
 
-The pool is always simulated to extinction over its fixed population, so the
-`simulate` termination controls (`max_cases`, `max_generations`, `max_time`,
-`stopping_rules`) do not apply; only `n_initial` (and `condition`) are used.
-`simulate` warns if you set one. This holds for the structure-driven models
-generally.
+The pool is simulated over its fixed population until extinction or `max_time`,
+whichever comes first; with `max_time`, individuals whose infection would fall
+later stay uninfected. The other `simulate` termination controls
+(`max_cases`, `max_generations`, `stopping_rules` other than `MaxTime`) do not
+apply, and `simulate` warns if you set one. This holds for the structure-driven
+models generally.
 
 # Example
 
@@ -87,8 +88,8 @@ end
 
 population_size(m::HomogeneousProcess) = m.population_size
 
-# The pool always runs to extinction over its fixed population, so the
-# termination controls do not apply; `simulate` warns if any is set.
+# The pool runs over its fixed population until extinction or `max_time`; the
+# other termination controls do not apply, and `simulate` warns if any is set.
 _honours_termination_controls(::HomogeneousProcess) = false
 
 # See `_warn_uncovered_terminal_states` in branching_process.jl.
@@ -143,7 +144,7 @@ function _simulate(model::HomogeneousProcess, sim_opts::SimOpts;
     _sellke_pool!(state, collect(1:model.population_size), rng;
         force = (type, counts) -> β / model.population_size * sum(values(counts)),
         n_initial = n_initial, from = from, until = model.until, interventions,
-        risks = transmission_risks(model))
+        risks = transmission_risks(model), max_time = _max_time(sim_opts))
 
     _reconcile_sellke_bookkeeping!(state)
     apply_observation!(observation, state, rng)

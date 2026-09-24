@@ -110,8 +110,8 @@ population_size(::NetworkProcess) = NoPopulation()
 # act along here (see `EpiBranch.trace_contacts!`).
 EpiBranch.supplies_contacts(::NetworkProcess) = true
 
-# The outbreak runs to extinction over the fixed graph, so the termination
-# controls do not apply; `simulate` warns if any is set.
+# The outbreak runs over the fixed graph until extinction or `max_time`; the
+# other termination controls do not apply, and `simulate` warns if any is set.
 _honours_termination_controls(::NetworkProcess) = false
 
 # See `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl.

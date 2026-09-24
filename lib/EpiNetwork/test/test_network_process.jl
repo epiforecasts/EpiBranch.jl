@@ -921,3 +921,17 @@ end
     push!(opts_ids, 5)
     @test opts.initial_cases == [2, 4]
 end
+
+@testset "max_time ends the network race at that time" begin
+    # A ring lattice where each node meets its two neighbours on either side.
+    n = 300
+    adjacency = [[mod1(i + d, n) for d in (-2, -1, 1, 2)] for i in 1:n]
+    spec = ModelSpec(NetworkProcess(adjacency, Exponential(1.0));
+        progression = [Transition(:recovered; from = :infection, delay = 3.0,
+            terminal = true)])
+    full = simulate(spec; n_initial = 3, rng = StableRNG(8))
+    cut = @test_logs simulate(spec; n_initial = 3, max_time = 5.0, rng = StableRNG(8))
+    by(state, t) = [is_infected(i) && i.infection_time <= t for i in state.individuals]
+    @test is_infected.(cut.individuals) == by(full, 5.0)
+    @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+end

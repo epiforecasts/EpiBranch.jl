@@ -716,6 +716,19 @@ end
             repr(HomogeneousProcess(; transmission_rate = 2.0, population_size = 10)))
     end
 
+    @testset "max_time ends the pool at that time" begin
+        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        spec = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 500);
+            progression = prog)
+        full = simulate(spec; n_initial = 3, rng = StableRNG(4))
+        # Honoured, so no warning; the cut run matches the full run up to 2.
+        cut = @test_logs simulate(spec; n_initial = 3, max_time = 2.0, rng = StableRNG(4))
+        by(state, t) = [is_infected(i) && i.infection_time <= t for i in state.individuals]
+        @test is_infected.(cut.individuals) == by(full, 2.0)
+        @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+    end
+
     @testset "termination controls warn on the fixed pool" begin
         prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
         spec = ModelSpec(
@@ -723,10 +736,13 @@ end
             progression = prog)
         # A set termination control has no effect on the extinction-run pool, so
         # `simulate` warns rather than silently ignoring it.
-        @test_logs (:warn, r"ignores termination controls") simulate(
+        @test_logs (:warn, r"ignores the other termination controls") simulate(
             spec; n_initial = 3, max_cases = 50, rng = StableRNG(1))
         # No termination keyword set → no warning.
         @test_logs simulate(spec; n_initial = 3, rng = StableRNG(1))
+        # Extinction and MaxTime are both honoured, so neither warns.
+        @test_logs simulate(spec; n_initial = 3,
+            stopping_rules = [Extinction(), MaxTime(2.0)], rng = StableRNG(1))
         # The trait itself: the pool ignores the controls, the generation engine
         # honours them.
         @test !EpiBranch._honours_termination_controls(

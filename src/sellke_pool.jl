@@ -183,7 +183,7 @@ refused: it reaches the force through the weighted `counts`.
 """
 function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; mixing_by::Tuple = (), force, n_initial::Integer,
-        from::Symbol, until::Tuple, interventions = (), risks = ())
+        from::Symbol, until::Tuple, interventions = (), risks = (), max_time = Inf)
     N = length(members)
     N == 0 && return nothing
 
@@ -374,6 +374,8 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
 
         t_event = min(t_open, t_close, t_inf)
         isfinite(t_event) || break
+        # Events come in increasing time; past `max_time` the run is over.
+        t_event > max_time && break
 
         # Advance every group's pressure over [t, t_event] at the force that held
         # during the interval. The min event includes each group's next crossing,

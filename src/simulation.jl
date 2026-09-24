@@ -148,10 +148,17 @@ end
 
 # Whether a model's simulation honours the termination controls (`max_cases`,
 # `max_generations`, `max_time`, `stopping_rules`). The generation-based engine
-# does; the structure-driven pools always run to extinction over their fixed
-# population and ignore them, so passing a termination control to one has no
-# effect. Structure-driven models override this to `false`.
+# does. The structure-driven pools run over their fixed population until
+# extinction or `max_time`, and ignore the other controls; they override this
+# to `false`.
 _honours_termination_controls(::TransmissionModel) = true
+
+# The time at which a structure-driven run ends: the earliest `MaxTime` among
+# the stopping rules, or `Inf`.
+function _max_time(sim_opts)
+    minimum((r.t for r in sim_opts.stopping_rules if r isa MaxTime);
+        init = Inf)
+end
 
 # Warn when a termination control is set on a model that ignores it, so the
 # silent no-op is discoverable. Compares against the keyword defaults, so only
@@ -163,12 +170,14 @@ function _warn_ignored_termination(
     ignored = String[]
     max_cases != _DEFAULT_MAX_CASES && push!(ignored, "max_cases")
     max_generations != _DEFAULT_MAX_GENERATIONS && push!(ignored, "max_generations")
-    max_time !== nothing && push!(ignored, "max_time")
-    stopping_rules !== nothing && push!(ignored, "stopping_rules")
+    # Extinction and MaxTime are the two ways these runs end, so both hold.
+    stopping_rules !== nothing &&
+        any(r -> !(r isa MaxTime || r isa Extinction), stopping_rules) &&
+        push!(ignored, "stopping_rules other than MaxTime and Extinction")
     isempty(ignored) && return nothing
-    @warn "$(nameof(typeof(model))) runs to extinction over its fixed " *
-          "population and ignores termination controls; " *
-          "$(join(ignored, ", ")) had no effect (only n_initial and " *
+    @warn "$(nameof(typeof(model))) runs to extinction or `max_time` over its " *
+          "fixed population and ignores the other termination controls; " *
+          "$(join(ignored, ", ")) had no effect (only n_initial, max_time and " *
           "condition apply)."
     return nothing
 end
