@@ -25,7 +25,8 @@ the graph neighbours of node `i` (1-based); the graph is the population.
 `kernel` is the **contact interval** — the one required input — a continuous
 `Distributions.jl` distribution shared by every edge, a callable
 `(infector, susceptible) -> Distribution` for covariate models, a
-[`ContextualKernel`](@ref) that also reads the infector's infection time, or a
+[`ContextualKernel`](@ref) that also reads the infector's infection time,
+or a [`StatefulKernel`](@ref) with sampled attributes and dated histories, or a
 per-edge vector of distributions parallel to `adjacency`
 (`kernel[i][k]` for node `i`'s `k`-th listed neighbour). The kernel times
 each infectious contact from the infector's `from` state.
@@ -160,7 +161,7 @@ _resolve_kernel(k::ContinuousUnivariateDistribution, m, i, pos, state, from) = k
 _resolve_kernel(k::AbstractVector, m, i, pos, state, from) = k[i][pos]
 function _resolve_kernel(k, m, i, pos, state, from)
     EpiBranch.pair_kernel(k, i, m.adjacency[i][pos], state.individuals[i].infection_time,
-        EpiBranch._window_open(state.individuals[i], from))
+        EpiBranch._window_open(state.individuals[i], from), state)
 end
 
 function _resolve_kernel(k::CalendarKernel, m, i, pos, state, from)
