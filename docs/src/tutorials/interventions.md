@@ -351,7 +351,7 @@ above). A run of `rv_clustered` against `rv_independent` under that tracing
 would not be measuring a vaccination effect at all — it would come out the
 same even with `efficacy = 0.0`.
 
-To see what clustering does to containment, vaccination has to actually be
+For that effect to show up, vaccination has to actually be
 able to prevent an infection, so this comparison drops quarantine on trace:
 
 ```@example interventions
@@ -377,7 +377,7 @@ count while leaving the mean unchanged, and on a convex offspring
 generating function extra variance can only push the extinction
 probability up (Jensen's inequality): clustered refusal should raise
 containment slightly, or leave it unchanged, and never lower it. Measured
-here it does not clearly rise: 0.203 against 0.192 is a difference of
+here, it does not clearly rise: 0.203 against 0.192 is a difference of
 about the same size as the Monte Carlo noise at 3,000 replicates (a
 binomial standard error of roughly 0.01 on each side). Repeating the
 comparison at other replicate counts, the sign of the difference is not
