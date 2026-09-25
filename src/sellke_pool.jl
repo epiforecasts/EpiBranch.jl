@@ -169,6 +169,11 @@ instant its accumulated pressure, scaled by its own `susceptibility` (1 by
 default), crosses it; pressure accumulates at the force felt by its mixing type. Writes per-individual state directly; the caller
 reconciles aggregate bookkeeping and applies observation.
 
+`max_time` ends the pool at that time: individuals whose infection would fall
+later are left uninfected. Returns `true` when the pool ran until no group had
+any force left and no window was pending (the population reached extinction),
+and `false` when it was cut off at `max_time` with events still pending.
+
 Each contact is put to the composed competing risks — the model's own `risks`
 (what [`transmission_risks`](@ref) reports) and the interventions; the two
 per-individual traits are already in the construction, as the weights in
@@ -185,7 +190,7 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; mixing_by::Tuple = (), force, n_initial::Integer,
         from::Symbol, until::Tuple, interventions = (), risks = (), max_time = Inf)
     N = length(members)
-    N == 0 && return nothing
+    N == 0 && return true
 
     # The pool carries the state's timing type `T` (Float64 by default, a dual
     # or stochastic-triple type under automatic differentiation): pressures,
@@ -373,9 +378,11 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         t_close, _ = _heap_peek(close_heap)
 
         t_event = min(t_open, t_close, t_inf)
-        isfinite(t_event) || break
-        # Events come in increasing time; past `max_time` the run is over.
-        t_event > max_time && break
+        # No group has any force left and no window is pending: extinction.
+        isfinite(t_event) || return true
+        # Events come in increasing time; past `max_time` the run is over,
+        # cut off short of extinction with events still pending.
+        t_event > max_time && return false
 
         # Advance every group's pressure over [t, t_event] at the force that held
         # during the interval. The min event includes each group's next crossing,
@@ -465,6 +472,4 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             end
         end
     end
-
-    return nothing
 end

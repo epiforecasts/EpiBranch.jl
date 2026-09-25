@@ -47,7 +47,7 @@ function _simulate(model::NetworkProcess, sim_opts::SimOpts;
         throw(ArgumentError(
             "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
             "the whole network); build the process with e.g. `obs_end = 30.0`"))
-    EpiBranch._sellke_race!(state, collect(1:n), rng;
+    extinct = EpiBranch._sellke_race!(state, collect(1:n), rng;
         from = from, until = model.until, interventions = interventions,
         max_time = EpiBranch._max_time(sim_opts),
         risks = EpiBranch.transmission_risks(model),
@@ -63,7 +63,7 @@ function _simulate(model::NetworkProcess, sim_opts::SimOpts;
         # adjacency directly rather than the susceptible-only `targets`.
         contacts = (inf, st) -> model.adjacency[inf])
 
-    _reconcile_sellke_bookkeeping!(state)
+    _reconcile_sellke_bookkeeping!(state, extinct)
     # Apply the observation model (under-reporting, report delays), as core
     # `simulate` does. A no-op for the default `NoObservation`.
     apply_observation!(observation, state, rng)
