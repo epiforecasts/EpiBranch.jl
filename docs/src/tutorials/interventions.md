@@ -341,6 +341,51 @@ closure to cluster refusal inside the unit it vaccinates;
 [`MassVaccination`](@ref)'s `eligibility_time` reads the propensity the same
 way.
 
+#### What clustering does to containment
+
+Coverage is not the outcome that matters; containment is. Under the `ct`
+used above, nothing changes it: `quarantine_on_trace` is left at its
+default `true`, so every traced contact is quarantined whether or not it
+was vaccinated, and `efficacy` has nothing left to block (see the warning
+above). A run of `rv_clustered` against `rv_independent` under that tracing
+would not be measuring a vaccination effect at all — it would come out the
+same even with `efficacy = 0.0`.
+
+To see what clustering does to containment, vaccination has to actually be
+able to prevent an infection, so this comparison drops quarantine on trace:
+
+```@example interventions
+ct_noquarantine = ContactTracing(probability = 0.7,
+    isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = false)
+
+rng = StableRNG(42)
+containment_clustered = containment_probability(simulate(
+    scenario([iso, ct_noquarantine, rv_clustered], [clinical, community, acceptance]), 3000;
+    max_cases = 200, rng = rng))
+
+rng = StableRNG(42)
+containment_independent = containment_probability(simulate(
+    scenario([iso, ct_noquarantine, rv_independent], [clinical, community]), 3000;
+    max_cases = 200, rng = rng))
+
+println("Containment: clustered $(round(containment_clustered, digits=3)), ",
+    "independent $(round(containment_independent, digits=3))")
+```
+
+The shared per-group propensity adds variance to each case's offspring
+count while leaving the mean unchanged, and on a convex offspring
+generating function extra variance can only push the extinction
+probability up (Jensen's inequality): clustered refusal should raise
+containment slightly, or leave it unchanged, and never lower it. Measured
+here it does not clearly rise: 0.203 against 0.192 is a difference of
+about the same size as the Monte Carlo noise at 3,000 replicates (a
+binomial standard error of roughly 0.01 on each side). Repeating the
+comparison at other replicate counts, the sign of the difference is not
+stable — negative as often as positive — so this scenario cannot put a
+number on the effect beyond what the theory already gives: whatever shift
+clustering produces at this level of refusal is too small to separate from
+sampling noise here.
+
 ### Mass vaccination
 
 [`MassVaccination`](@ref) vaccinates contacts on a rolling schedule
