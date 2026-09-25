@@ -335,7 +335,7 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 ### Fixed
 
 - `HomogeneousProcess`, `HouseholdProcess`, `NetworkProcess` and `RoutedNetwork`
-  now set `state.extinct` at the end of their Sellke run, so `is_extinct` and
+  now set `state.extinct` at the end of their Sellke run. `is_extinct` and
   `containment_probability` report real values instead of always `false`/`0`
   for these models. A household population counts as extinct only when every
   household's race ran to its own extinction.
