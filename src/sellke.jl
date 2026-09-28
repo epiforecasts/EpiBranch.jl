@@ -573,9 +573,11 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
     seed!(best, members, rng)
     live = refresh_projection !== nothing
     # What each member's host record held when contacts were last drawn from it.
+    # An intervention can change a record's type as well as its value (a date
+    # that was `nothing` until a dose), so the store takes any record.
     records = live ?
-              [deepcopy(_pair_state(refresh_projection, state.individuals[id]))
-               for id in members] : nothing
+              Any[deepcopy(_pair_state(refresh_projection, state.individuals[id]))
+                  for id in members] : nothing
 
     T = eltype(best)
     # A popped entry is final unless the risks block it: every other pending

@@ -33,6 +33,16 @@ function EpiBranch.resolve_individual!(::TickEveryCase, ind, state)
 end
 tick_state(ind) = (tick = get(ind.state, :tick, 0)::Int,)
 
+# Gives every host a dose date at the first case, so a record that read
+# `nothing` before then reads a number afterwards.
+struct DoseEveryone <: AbstractIntervention end
+function EpiBranch.resolve_individual!(::DoseEveryone, ind, state)
+    for person in state.individuals
+        get!(person.state, :dose_time, ind.infection_time + 0.5)
+    end
+    return nothing
+end
+
 # Stamps only the case being settled, which no pending contact reads.
 struct StampOwnCase <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::StampOwnCase, ind, state)
@@ -74,6 +84,16 @@ function test_stateful_simulation(make_process, extract)
             @test isequal([i.infection_time for i in a.individuals],
                 [i.infection_time for i in b.individuals])
         end
+    end
+    @testset "A record may change type during a run" begin
+        project(ind) = (dose = get(ind.state, :dose_time, nothing),)
+        kernel = StatefulKernel(project,
+            (c, a, b) -> Exponential(b.dose === nothing ? 1.0 : 2.0))
+        model = ModelSpec(make_process(kernel);
+            progression = [Transition(:recovered; delay = 3.0, terminal = true)],
+            interventions = [DoseEveryone()])
+        state = simulate(model; initial_cases = [1], rng = StableRNG(4))
+        @test all(i -> i.state[:dose_time] isa Float64, state.individuals)
     end
     @testset "Simultaneous contacts survive refresh" begin
         kernel = StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0))
