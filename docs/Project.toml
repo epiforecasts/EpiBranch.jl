@@ -12,8 +12,10 @@ StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 EpiHouseholds = "8b7e9a81-fac4-48f6-84d3-5750de169a00"
 EpiNetwork = "6a3f08e3-1d24-409d-b706-3344905be32e"
+EpiTrial = "eb7d4740-45f8-469f-938e-e12e6ec7d90c"
 
 [sources]
 EpiBranch = {path = ".."}
 EpiHouseholds = {path = "../lib/EpiHouseholds"}
 EpiNetwork = {path = "../lib/EpiNetwork"}
+EpiTrial = {path = "../lib/EpiTrial"}

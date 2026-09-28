@@ -50,6 +50,7 @@ updates:
       - "/"
       - "/lib/EpiNetwork"
       - "/lib/EpiHouseholds"
+      - "/lib/EpiTrial"
     schedule:
       interval: "weekly"
     cooldown:

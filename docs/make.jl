@@ -3,9 +3,10 @@ using DocumenterVitepress
 using EpiBranch
 using EpiNetwork
 using EpiHouseholds
+using EpiTrial
 
 makedocs(;
-    modules = [EpiBranch, EpiNetwork, EpiHouseholds],
+    modules = [EpiBranch, EpiNetwork, EpiHouseholds, EpiTrial],
     sitename = "EpiBranch.jl",
     authors = "epiforecasts contributors",
     remotes = nothing,
@@ -27,6 +28,7 @@ makedocs(;
             "Contextual pair kernels" => "tutorials/pair_kernels.md",
             "Household models" => "tutorials/households.md",
             "Homogeneous models" => "tutorials/homogeneous.md",
+            "Vaccine trials" => "tutorials/trials.md",
             "Line lists and contacts" => "tutorials/linelist.md",
             "Chain statistics" => "tutorials/chains.md",
             "Inference" => "tutorials/inference.md",

@@ -358,6 +358,28 @@ scale_distribution
 incubation_linked_generation_time
 ```
 
+## Vaccine trials
+
+From the companion `EpiTrial` package.
+
+```@docs
+EpiTrial.IndividualRandomisation
+EpiTrial.arm
+EpiTrial.TrialVaccination
+EpiTrial.Trial
+EpiTrial.AbstractEndpoint
+EpiTrial.Infection
+EpiTrial.trial_data
+EpiTrial.simulate(::EpiTrial.Trial)
+EpiTrial.AbstractEstimator
+EpiTrial.RiskRatio
+EpiTrial.CoxHazardRatio
+EpiTrial.estimate(::EpiTrial.RiskRatio, ::Any)
+EpiTrial.trial_estimates
+EpiTrial.operating_characteristics
+EpiTrial.expected_ve
+```
+
 ## Internals
 
 These functions are not part of the public API but are documented for
