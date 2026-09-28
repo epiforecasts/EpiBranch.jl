@@ -615,6 +615,12 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
 
     # The seeds' own opening: no infector, so nothing about it is ever read.
     push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
+    # For a live kernel, the openings still open and the unsettled members each
+    # one reaches. A pending or future draw reads only these hosts' records, so
+    # only they are compared: scanning every member on every case would make
+    # the race quadratic in the population.
+    open_openings = Int[]
+    reach = live ? [Int[]] : Vector{Int}[]
     for k in 1:m
         best[k] < Inf || continue
         seeded = best[k]
@@ -704,7 +710,8 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         # a policy fires on one case out of hundreds — and then the contacts
         # already drawn still come from the hazards in force, so the race takes
         # the ordinary path and draws this case's own openings inline.
-        dirty = live && _records_changed!(records, refresh_projection, state, members)
+        dirty = live && _records_changed!(records, refresh_projection, state, members,
+            j, bt, open_openings, openings, reach, pos, processed)
 
         # Each route opens and closes on its own states, so a case can still be
         # transmitting on one while another has been cut. A route whose `from`
@@ -716,11 +723,22 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             close_t = _route_close(ind, w, interventions)
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
-            dirty && continue
+            if live
+                push!(reach, Int[])
+                push!(open_openings, opening_id)
+            end
 
             for (target_id, kernel) in route_targets(members[j], state)
                 k = get(pos, target_id, 0)
                 (k == 0 || processed[k]) && continue
+                if live
+                    # This opening's draws come from the target's record as it
+                    # stands now, which is what later comparisons start from.
+                    push!(reach[opening_id], k)
+                    records[k] = _remember(_pair_state(
+                        refresh_projection, state.individuals[target_id]))
+                end
+                dirty && continue
                 # Both per-individual traits are rate multipliers on this
                 # pair's contact interval, folded into the draw rather than
                 # resolved contact by contact. A pair at the default 1 draws
@@ -750,17 +768,33 @@ end
 # copied. The usual named tuple of numbers is bits and is kept as it stands.
 _remember(record) = isbits(record) ? record : deepcopy(record)
 
-# Whether any host record a live kernel reads has moved since contacts were last
-# drawn from it, updating the remembered records as it goes.
-function _records_changed!(records, project, state, members)
+# Whether a host record that a pending or future draw reads has moved since
+# contacts were last drawn from it, updating the remembered records as it goes.
+# Those are the infectors whose openings are still open and the unsettled
+# members they reach. The settled case's own record is brought up to date
+# without counting as a move: contacts to it are settled, and its own contacts
+# are drawn after this check.
+function _records_changed!(records, project, state, members, case, now,
+        open_openings, openings, reach, pos, processed)
+    records[case] = _remember(_pair_state(project, state.individuals[members[case]]))
+    filter!(oi -> openings[oi].close_t >= now, open_openings)
     changed = false
-    for k in eachindex(members)
-        current = _pair_state(project, state.individuals[members[k]])
-        isequal(records[k], current) && continue
-        records[k] = _remember(current)
-        changed = true
+    for oi in open_openings
+        changed |= _record_moved!(records, project, state, members,
+            pos[openings[oi].infector])
+        for k in reach[oi]
+            processed[k] && continue
+            changed |= _record_moved!(records, project, state, members, k)
+        end
     end
     return changed
+end
+
+function _record_moved!(records, project, state, members, k)
+    current = _pair_state(project, state.individuals[members[k]])
+    isequal(records[k], current) && return false
+    records[k] = _remember(current)
+    return true
 end
 
 # A newly recorded action can change an edge that had no pending proposal (its

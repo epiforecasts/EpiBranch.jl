@@ -110,19 +110,34 @@ end
 @testset "A mutable history is seen to change" begin
     state = EpiBranch.new_state(BranchingProcess(Poisson(0.0)), [], NoAttributes(),
         StableRNG(233))
-    EpiBranch.add_individuals!(state, 2, [])
+    EpiBranch.add_individuals!(state, 3, [])
     for ind in state.individuals
         ind.state[:history] = Float64[]
     end
     project = ind -> ind.state[:history]
-    members = [1, 2]
+    members = [1, 2, 3]
     records = [deepcopy(project(state.individuals[i])) for i in members]
-    @test !EpiBranch._records_changed!(records, project, state, members)
+    # Case 1 has an open opening that reaches member 2; member 3 is out of reach.
+    openings = [EpiBranch._RouteOpening(0, 0, 0.0, Inf),
+        EpiBranch._RouteOpening(1, 1, 0.0, 5.0)]
+    reach = [Int[], [2]]
+    pos = Dict(1 => 1, 2 => 2, 3 => 3)
+    processed = [true, false, false]
+    changed!(case) = EpiBranch._records_changed!(records, project, state, members,
+        case, 1.0, [2], openings, reach, pos, processed)
+    @test !changed!(1)
     # An intervention appending in place must not compare equal to its own
     # remembered record, which is why the race keeps a copy rather than an alias.
     push!(state.individuals[2].state[:history], 1.0)
-    @test EpiBranch._records_changed!(records, project, state, members)
-    @test !EpiBranch._records_changed!(records, project, state, members)
+    @test changed!(1)
+    @test !changed!(1)
+    # No pending or future draw reads a member out of reach, and the settled
+    # case's own record is only brought up to date.
+    push!(state.individuals[3].state[:history], 1.0)
+    @test !changed!(1)
+    push!(state.individuals[1].state[:history], 1.0)
+    @test !changed!(1)
+    @test records[1] == [1.0]
 end
 
 @testset "Shared race refreshes live pair kernels" begin

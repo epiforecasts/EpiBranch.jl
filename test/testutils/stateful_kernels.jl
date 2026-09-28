@@ -33,6 +33,13 @@ function EpiBranch.resolve_individual!(::TickEveryCase, ind, state)
 end
 tick_state(ind) = (tick = get(ind.state, :tick, 0)::Int,)
 
+# Stamps only the case being settled, which no pending contact reads.
+struct StampOwnCase <: AbstractIntervention end
+function EpiBranch.resolve_individual!(::StampOwnCase, ind, state)
+    ind.state[:stamp] = ind.infection_time + 1.0
+    return nothing
+end
+
 function test_stateful_simulation(make_process, extract)
     @testset "An unchanging live kernel races as an ordinary one" begin
         # Redrawing exists for hazards that move. A kernel whose records never
@@ -51,6 +58,21 @@ function test_stateful_simulation(make_process, extract)
                 @test isequal([i.infection_time for i in a.individuals],
                     [i.infection_time for i in b.individuals])
             end
+        end
+    end
+    @testset "A case moving its own record races as an ordinary kernel" begin
+        project(ind) = (stamp = get(ind.state, :stamp, Inf)::Float64,)
+        progression = [Transition(:recovered; delay = 3.0, terminal = true)]
+        d = Exponential(1.5)
+        ordinary = ModelSpec(make_process(d); progression,
+            interventions = [StampOwnCase()])
+        stateful = ModelSpec(make_process(StatefulKernel(project, (c, a, b) -> d));
+            progression, interventions = [StampOwnCase()])
+        for seed in 1:25
+            a = simulate(ordinary; initial_cases = [1], rng = StableRNG(seed))
+            b = simulate(stateful; initial_cases = [1], rng = StableRNG(seed))
+            @test isequal([i.infection_time for i in a.individuals],
+                [i.infection_time for i in b.individuals])
         end
     end
     @testset "Simultaneous contacts survive refresh" begin
