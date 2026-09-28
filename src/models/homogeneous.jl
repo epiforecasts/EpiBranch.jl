@@ -141,12 +141,12 @@ function _simulate(model::HomogeneousProcess, sim_opts::SimOpts;
     # no attributes name the mixing, so every individual feels the same force
     # β/N per unit of infectiousness (`sum(values(counts))` = the
     # infectiousness-weighted number currently infectious).
-    _sellke_pool!(state, collect(1:model.population_size), rng;
+    extinct = _sellke_pool!(state, collect(1:model.population_size), rng;
         force = (type, counts) -> β / model.population_size * sum(values(counts)),
         n_initial = n_initial, from = from, until = model.until, interventions,
         risks = transmission_risks(model), max_time = _max_time(sim_opts))
 
-    _reconcile_sellke_bookkeeping!(state)
+    _reconcile_sellke_bookkeeping!(state, extinct)
     apply_observation!(observation, state, rng)
     return state
 end
