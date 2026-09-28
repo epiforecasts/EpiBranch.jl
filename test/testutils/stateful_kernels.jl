@@ -125,6 +125,22 @@ function test_stateful_simulation(make_process, extract)
         @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 3.0]
         @test state.individuals[3].parent_id == 2
     end
+    @testset "A moved record keeps an atom at the current clock" begin
+        # Contacts at one and three days are equally likely. Stamping a date the
+        # kernel ignores leaves the hazard unchanged, so a contact due at the
+        # clock where a record moves must still be possible then.
+        project(ind) = (dose = get(ind.state, :dose_time, Inf)::Float64,)
+        delay = DiscreteNonParametric([1.0, 3.0], [0.5, 0.5])
+        progression = [Transition(:recovered; delay = 5.0, terminal = true)]
+        live = ModelSpec(make_process(StatefulKernel(project, (c, a, b) -> delay));
+            progression, interventions = [DoseAtSecondCase()])
+        n = 4000
+        early = count(1:n) do seed
+            state = simulate(live; initial_cases = [1], rng = StableRNG(seed))
+            state.individuals[3].infection_time == 1.0
+        end
+        @test isapprox(early / n, 0.5; atol = 0.03)
+    end
     @testset "Simultaneous contacts survive refresh" begin
         kernel = StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0))
         model = ModelSpec(make_process(kernel);

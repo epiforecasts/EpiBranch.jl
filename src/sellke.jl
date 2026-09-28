@@ -717,7 +717,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         if live && _records_changed!(records, refresh_projection, state, members,
             j, bt, watch, openings, processed)
             orphans += _redraw_moved!(pending, proposals, head, best, represents,
-                watch, openings, processed, members, pos, rts, state, bt, rng)
+                watch, openings, processed, pos, rts, state, bt, rng)
             if orphans > max(m, length(proposals) ÷ 2)
                 _compact_proposals!(pending, proposals, head, best, represents, processed)
                 orphans = 0
@@ -883,7 +883,7 @@ _link(p::_Pending, chain) = _Pending(p.opening, chain, p.time, p.queued)
 # change. Fixed kernels never take this path. Returns how many proposals it
 # unlinked.
 function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatch,
-        openings, processed, members, pos, rts, state, now, rng)
+        openings, processed, pos, rts, state, now, rng)
     # Opening => the members whose pairs with it are drawn again, or `nothing`
     # for all of them.
     redo = Dict{Int, Union{Nothing, Set{Int}}}()
@@ -905,19 +905,7 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
             processed[j] || push!(hit, j)
         end
     end
-    # A record change at this clock governs a contact due at the same clock, as
-    # it does any later one. The contact stays due only when the hazard now in
-    # force cannot be redrawn either: an atom's survival is zero at its contact
-    # time, so there is nothing later to condition on.
-    function still_due(oi, j)
-        opening = openings[oi]
-        kernel = _route_pair_kernel(rts, opening.route, opening.infector,
-            members[j], state)
-        kernel === nothing && return false
-        return !isfinite(logccdf(kernel, now - opening.open_t))
-    end
     # Unlink the proposals drawn again, keeping the rest in order.
-    tied = Set{Tuple{Int, Int}}()
     unlinked = 0
     for j in hit
         q = head[j]
@@ -926,9 +914,7 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
         while q != 0
             proposal = proposals[q]
             next_q = proposal.chain
-            redrawn = redoes(proposal.opening, j)
-            if !redrawn || (proposal.time == now && still_due(proposal.opening, j))
-                redrawn && push!(tied, (proposal.opening, j))
+            if !redoes(proposal.opening, j)
                 last == 0 ? (head[j] = q) : (proposals[last] = _link(proposals[last], q))
                 last = q
             else
@@ -940,6 +926,13 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
         best[j] = oftype(best[j], Inf)
         represents[j] = 0
     end
+    # A record change at this clock governs contacts at this clock too, so each
+    # pair is drawn again given no contact strictly before `now`, and a contact
+    # due at `now` under the new hazard, an atom there, stays due. The exposure
+    # elapsed is recomputed as `now - open_t`, which can miss a contact time
+    # stored as `open_t + dt` by the clock's resolution, so contacts within
+    # `slack` of `now` are taken to fall at `now`.
+    slack = 2 * eps(float(now))
     for (oi, members_hit) in redo
         opening = openings[oi]
         source = state.individuals[opening.infector]
@@ -947,21 +940,20 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
             ri == opening.route || continue
             for (id, kernel) in targets(opening.infector, state)
                 j = get(pos, id, 0)
-                (j == 0 || processed[j] || (oi, j) in tied) && continue
+                (j == 0 || processed[j]) && continue
                 members_hit === nothing || j in members_hit || continue
                 m = source.infectiousness * state.individuals[id].susceptibility
                 m <= 0 && continue
-                dt = if now <= opening.open_t
+                elapsed = now - opening.open_t
+                dt = if elapsed <= slack
                     _traits_scaled_draw(rng, kernel, m)
                 else
-                    elapsed = now - opening.open_t
-                    ls = logccdf(kernel, elapsed)
+                    ls = logccdf(kernel, elapsed - slack)
                     isfinite(ls) || continue
                     _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
                 end
-                candidate = opening.open_t + dt
-                ((now <= opening.open_t ? candidate >= now : candidate > now) &&
-                 candidate <= opening.close_t) || continue
+                candidate = max(opening.open_t + dt, now)
+                candidate <= opening.close_t || continue
                 _propose!(
                     pending, proposals, head, best, represents, j, oi, candidate, true)
             end
