@@ -38,8 +38,14 @@ efficacy against every exposure it faces.
 
 `mode` is an [`AbstractEffectMode`](@ref): [`LeakyMode`](@ref) (the
 default) reduces each exposure's success probability by `efficacy`,
-while [`AllOrNothingMode`](@ref) fully protects a fraction `efficacy`
-of vaccinated individuals and leaves the rest unaffected.
+while [`AllOrNothingMode`](@ref) draws, once per vaccinated individual
+when the dose is recorded, whether that individual is a full responder
+(fully protected against every exposure from their immunity time on) or
+gains no protection at all, with responder probability `efficacy`. The
+draw is stored alongside the other per-dose state, so it is made once
+and read back at every exposure the individual faces, however many
+there are. `AllOrNothingMode` cannot yet be combined with `waning` (see
+below); a `VaccineEffect` combining them raises an `ArgumentError`.
 
 `waning` is an optional function `dt -> Real` giving the fraction of
 `efficacy` still in force `dt` time units after immunity develops
@@ -70,15 +76,19 @@ dose `i` was given and `w_i` the fraction it retains at that exposure. A
 prime at 0.6 and a boost at 0.7, both at full strength, block 0.88
 between them.
 
-!!! note "In a pure branching process the two modes are equivalent"
+!!! note "The two modes agree only where every exposure is unique"
     Every contact in a branching process is a unique exposure, so
     per-exposure and per-individual semantics give the **same**
-    per-contact infection probability. Switching between `LeakyMode`
-    and `AllOrNothingMode` here will not change simulation results.
-    The distinction only starts to matter once network models permit
-    multiple exposures per individual (e.g. the planned
-    `EpiBranchHouseholds`); the two modes are exposed now so that
-    code written for the household model has the right vocabulary.
+    per-contact infection probability there, and `LeakyMode` and
+    `AllOrNothingMode` agree in distribution. Switching between them on
+    a `BranchingProcess` will not change simulation results. The two
+    modes diverge once a susceptible can be exposed more than once by
+    the same infector, which happens on the structure-driven models —
+    the household, network and routed-network processes: there, a
+    responder under `AllOrNothingMode` is protected against every such
+    exposure and a non-responder against none, whereas `LeakyMode`
+    blocks each exposure independently and so is worn down by repeated
+    exposure.
 
 # Multi-dose vaccination
 
@@ -113,9 +123,10 @@ abstract type AbstractEffectMode end
 independently with probability `efficacy`. Default mode."""
 struct LeakyMode <: AbstractEffectMode end
 
-"""Per-individual efficacy: a fraction `efficacy` of vaccinated
-individuals are fully protected (susceptibility = 0); the rest gain
-no protection."""
+"""Per-individual efficacy: a Bernoulli draw made once per individual when
+the dose is recorded decides, with probability `efficacy`, whether they
+are a full responder (fully protected against every exposure from their
+immunity time on) or gain no protection at all."""
 struct AllOrNothingMode <: AbstractEffectMode end
 
 """
@@ -135,6 +146,7 @@ it, whatever the concrete type.
   disease course is milder once immunity has developed.
 - `delay_to_immunity`: time from vaccination to protection.
 - `waning`: a function of time since immunity, or `nothing` for constant protection.
+  Not yet supported together with `mode = AllOrNothingMode()`.
 - `mode`: an [`AbstractEffectMode`](@ref).
 - `dose_label`: namespaces the per-individual state the dose writes (see
   [`AbstractVaccination`](@ref)).
@@ -158,6 +170,14 @@ end
 
 function VaccineEffect(; efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
         waning = nothing, mode = LeakyMode(), dose_label = :default)
+    # `waning` decays a per-exposure block, which `AllOrNothingMode` has none
+    # of: a responder is blocked with certainty from immunity onward, not at a
+    # strength that fades. Reject the combination rather than silently
+    # ignoring `waning`.
+    waning === nothing || !(mode isa AllOrNothingMode) ||
+        throw(ArgumentError(
+            "`waning` is not yet supported together with `mode = AllOrNothingMode()`. " *
+            "Use `LeakyMode` with `waning`, or drop `waning` under `AllOrNothingMode`."))
     return VaccineEffect(
         efficacy, severity_efficacy, delay_to_immunity, waning, mode, dose_label)
 end
@@ -380,6 +400,14 @@ function competing_risk(v::AbstractVaccination, parent, contact, state)
     _susceptibility_risk(v, contact)
 end
 
+# The efficacy stored on the contact by `_record_vaccination!`, given the
+# sampled value `eff` (a `Real`, a draw from a `Distribution`, or a call to a
+# function — already resolved by `_sample_value`) and the vaccination's mode.
+_realised_efficacy(::LeakyMode, eff, rng) = eff
+function _realised_efficacy(::AllOrNothingMode, eff, rng)
+    rand(rng, Bernoulli(eff)) ? 1.0 : 0.0
+end
+
 # Helper for concrete subtypes: write per-dose state on a contact at
 # vaccination time. Samples efficacy, severity efficacy, and the
 # immunity delay via `_sample_value` so scalar, distribution, and
@@ -388,11 +416,23 @@ end
 # same against every exposure it faces. Storing the resulting immunity
 # time also lets a clinical transition check it without reaching for the
 # vaccination object, which it never sees.
+#
+# `_susceptibility_risk` reads the stored efficacy back unchanged at every
+# exposure, so this is also where the two effect modes part ways. Under
+# `LeakyMode` the sampled efficacy is stored as-is, and every exposure is
+# blocked with that same probability. Under `AllOrNothingMode` a single
+# Bernoulli draw, made here once, decides whether this individual responds: a
+# responder's stored efficacy becomes 1 (certain block once immune) and a
+# non-responder's becomes 0 (no risk built at all — `_susceptibility_risk`
+# skips a non-positive efficacy). `rand(rng, Bernoulli(e))` is what a
+# StochasticAD pass differentiates without bias; a continuous relaxation of
+# the draw would reintroduce leaky semantics.
 function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     label = dose_label(v)
     contact.state[_vaccinated_key(label)] = true
     contact.state[_vaccination_time_key(label)] = vacc_t
-    contact.state[_vaccine_efficacy_key(label)] = _sample_value(efficacy(v), rng, contact)
+    contact.state[_vaccine_efficacy_key(label)] = _realised_efficacy(
+        effect_mode(v), _sample_value(efficacy(v), rng, contact), rng)
     contact.state[_immunity_time_key(label)] = vacc_t +
                                                _sample_value(
         delay_to_immunity(v), rng, contact)

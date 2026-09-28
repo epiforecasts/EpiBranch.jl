@@ -334,6 +334,13 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
+- `AllOrNothingMode` now has an effect: a vaccinated individual's responder
+  status is drawn once, when the dose is recorded, rather than resolved
+  per-exposure, so a responder is protected against every exposure and a
+  non-responder against none. Previously the stored efficacy was checked
+  against each exposure independently, giving leaky results regardless of
+  `mode`. A `VaccineEffect` combining `AllOrNothingMode` with `waning` now
+  raises an `ArgumentError`, since waning a certain block has no meaning yet.
 - `household_infections` (in `EpiHouseholds`) ends each case's infectious window
   when the model's interventions remove it from transmission, such as by
   isolation or quarantine after tracing, as the simulation does. Fitting an
