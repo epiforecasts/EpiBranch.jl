@@ -130,6 +130,17 @@ end
 population_size(::RoutedNetwork) = NoPopulation()
 _honours_termination_controls(::RoutedNetwork) = false
 
+# Each route closes independently at the earliest of its own `until` states
+# (see `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl),
+# so a terminal state missing from one route's `until` leaves that route open
+# even if every other route covers it.
+function _validate_process_windows(m::RoutedNetwork, progression)
+    for w in m.windows
+        _warn_uncovered_terminal_states(w.until, progression; route = w.name, from = w.from)
+    end
+    return nothing
+end
+
 EpiBranch.supplies_contacts(::RoutedNetwork) = true
 
 # Contacts for tracing are the union of the neighbours on every route, each
@@ -222,8 +233,9 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
     windows = [_start_unset(w, derived) for w in model.windows]
     routes = Tuple((w, _route_targets(w)) for w in windows)
 
-    EpiBranch._sellke_race!(state, collect(1:model.n), rng;
+    extinct = EpiBranch._sellke_race!(state, collect(1:model.n), rng;
         routes = routes, interventions = interventions,
+        max_time = EpiBranch._max_time(sim_opts),
         risks = EpiBranch.transmission_risks(model),
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, sim_opts.n_initial, Tobs, r;
@@ -233,7 +245,7 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
         contacts = (inf, st) -> _route_contacts(
             windows, interventions, st.individuals[inf], inf, st.rng))
 
-    _reconcile_sellke_bookkeeping!(state)
+    _reconcile_sellke_bookkeeping!(state, extinct)
     apply_observation!(observation, state, rng)
     return state
 end

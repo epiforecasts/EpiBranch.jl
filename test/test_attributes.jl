@@ -238,9 +238,9 @@ end
         end
 
         @testset "keys are customisable" begin
-            attrs = [groups(2; key = :village),
+            attrs = [groups(2; key = :community),
                 vaccine_acceptance(propensity = Beta(2, 2),
-                    group_key = :village, key = :acceptance)]
+                    group_key = :community, key = :acceptance)]
             state = EpiBranch.new_state(
                 process, EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1))
             ind = only(EpiBranch.add_individuals!(state, 1, []))
@@ -249,7 +249,7 @@ end
         end
 
         @testset "a missing group key is an error naming the key" begin
-            attrs = vaccine_acceptance(propensity = 0.5, group_key = :village)
+            attrs = vaccine_acceptance(propensity = 0.5, group_key = :community)
             ind = Individual(id = 1)
             err = try
                 EpiBranch._apply_attributes!(attrs, StableRNG(1), ind)
@@ -257,12 +257,12 @@ end
                 e
             end
             @test err isa ArgumentError
-            @test occursin(":village", err.msg)
+            @test occursin(":community", err.msg)
         end
 
         @testset "clusters GroupVaccination coverage inside the group" begin
             gv = GroupVaccination(efficacy = 0.9, coverage = read_acceptance)
-            # Villages 1 and 2 accept and decline as blocks; which is which
+            # Communities 1 and 2 accept and decline as blocks; which is which
             # follows from the group label, so the test does not depend on
             # the order the propensities are drawn in.
             attrs = [groups(2),
@@ -316,17 +316,17 @@ end
 
         @testset "clustering inflates the variance of per-group coverage at the same mean" begin
             # Coverage is decided by the package's own `_covers`, comparing a
-            # Beta propensity shared within a village against independent
+            # Beta propensity shared within a community against independent
             # per-individual draws at the same mean coverage.
-            n_villages = 200
-            per_village = 20
+            n_communities = 200
+            per_community = 20
             propensity = Beta(2, 2)  # mean 0.5
-            attrs = [groups(n_villages), vaccine_acceptance(propensity = propensity)]
+            attrs = [groups(n_communities), vaccine_acceptance(propensity = propensity)]
             rng = StableRNG(4)
             state = EpiBranch.new_state(
                 process, EpiBranch.AbstractClinicalTransition[], attrs, rng)
             people = EpiBranch.add_individuals!(
-                state, n_villages * per_village, [])
+                state, n_communities * per_community, [])
 
             covered = Dict{Int, Vector{Bool}}()
             for ind in people
@@ -335,8 +335,8 @@ end
             end
             clustered_means = [mean(v) for v in values(covered) if length(v) >= 5]
             independent_means = [mean(EpiBranch._covers(mean(propensity), nothing, rng)
-                                 for _ in 1:per_village)
-                                 for _ in 1:n_villages]
+                                 for _ in 1:per_community)
+                                 for _ in 1:n_communities]
 
             @test isapprox(mean(clustered_means), mean(independent_means); atol = 0.05)
             @test var(clustered_means) > 2 * var(independent_means)

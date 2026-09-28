@@ -16,6 +16,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   between structured simulation and likelihoods. `record_kernel` extracts typed
   host records for inference.
 
+- `max_time` now ends homogeneous, household and network simulations at that
+  time: people whose infection would fall later stay uninfected, matching the
+  full run restricted to infections up to `max_time`. The other termination
+  controls still do not apply to these models.
+
 - `CalendarKernel` aligns calendar-time contact hazards with infectious openings
   in network and household simulation and likelihoods.
 
@@ -205,7 +210,7 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   the wrong order go without the boost. A function, or a distribution that
   reports no support, is left to the per-contact check at run time.
 - `groups`, an attributes function that labels each individual with a group
-  (a village, a health area, a household) under `:group` or an arbitrary key,
+  (a community, a health area, a household) under `:group` or an arbitrary key,
   and `GroupVaccination`, which vaccinates every member of a group once any
   case in it meets a [`TraceEligibility`](@ref) policy such as
   `OnLabConfirmation()` — the fallback an outbreak response reaches for when
@@ -333,6 +338,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
+- `HomogeneousProcess`, `HouseholdProcess`, `NetworkProcess` and `RoutedNetwork`
+  now set `state.extinct` at the end of their Sellke run. `is_extinct` and
+  `containment_probability` report real values instead of always `false`/`0`
+  for these models. A household population counts as extinct only when every
+  household's race ran to its own extinction.
 - `household_infections` (in `EpiHouseholds`) ends each case's infectious window
   when the model's interventions remove it from transmission, such as by
   isolation or quarantine after tracing, as the simulation does. Fitting an
@@ -393,6 +403,10 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   at symptom onset and traced contacts who were asymptomatic got no dose. With
   `:trace_time` recorded at every tracing depth, `linelist` now has a
   `date_trace` column at the default `depth = 1` as well.
+- `AbstractVaccination`'s `initialise_individual!` no longer overwrites
+  `:vaccinated` and `:vaccination_time` that an `attributes` function already
+  set, such as a dose recorded from an earlier campaign. It now only fills in
+  the unvaccinated defaults when those keys are absent.
 
 ## [0.1.0] - 2026-06-16
 

@@ -836,6 +836,58 @@ end
     end
 end
 
+@testset "Uncovered terminal state warns" begin
+    adjacency = [[2], [1]]
+    # `:censored` is a terminal transition `until` does not list, so a case
+    # reaching it would never have its window closed at the transmission
+    # level: composing warns.
+    censored = [
+        Transition(:infectious; from = :infection, delay = 1.0),
+        Transition(:recovered; from = :infectious, delay = 1.0, terminal = true),
+        Transition(:censored; from = :infection, delay = 5.0, terminal = true)
+    ]
+    covered = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+
+    @testset "NetworkProcess" begin
+        process = NetworkProcess(adjacency, Exponential(1.0))
+        @test_logs (:warn, r":censored") match_mode=:any ModelSpec(
+            process; progression = censored)
+        matched = NetworkProcess(adjacency, Exponential(1.0);
+            until = (:recovered, :died, :isolated, :censored))
+        @test_logs ModelSpec(matched; progression = censored)
+        @test_logs ModelSpec(process; progression = covered)
+    end
+
+    @testset "RoutedNetwork warns per route" begin
+        routed = RoutedNetwork([
+            RouteWindow(:household; until = (:recovered,), reach = adjacency,
+                kernel = Exponential(1.0)),
+            RouteWindow(:community; until = (:recovered, :censored), reach = adjacency,
+                kernel = Exponential(1.0))
+        ])
+        # Only the :household route is missing :censored from its `until`.
+        @test_logs (:warn, Regex(":censored.*route :household")) match_mode=:any ModelSpec(
+            routed; progression = censored)
+        @test_logs ModelSpec(routed; progression = covered)
+    end
+
+    @testset "a route's own from-state is not required in its until" begin
+        # A funeral route that only opens at :died cannot sensibly also be
+        # asked to close on :died: excluded from the check, not warned about.
+        died = [
+            Transition(:recovered; from = :infection, delay = 1.0, terminal = true),
+            Transition(:died; from = :infection, delay = 2.0, terminal = true)
+        ]
+        funeral = RoutedNetwork([
+            RouteWindow(:community; until = (:recovered, :died), reach = adjacency,
+                kernel = Exponential(1.0)),
+            RouteWindow(:funeral; from = :died, until = (:recovered,), reach = adjacency,
+                kernel = Exponential(1.0))
+        ])
+        @test_logs ModelSpec(funeral; progression = died)
+    end
+end
+
 @testset "Chosen initial cases" begin
     adjacency = [Int[] for _ in 1:5]
     process = NetworkProcess(adjacency, Exponential(1.0))
@@ -868,4 +920,37 @@ end
     opts = EpiBranch.SimOpts(; initial_cases = opts_ids)
     push!(opts_ids, 5)
     @test opts.initial_cases == [2, 4]
+end
+
+@testset "max_time ends the network race at that time" begin
+    # A ring lattice where each node meets its two neighbours on either side.
+    n = 300
+    adjacency = [[mod1(i + d, n) for d in (-2, -1, 1, 2)] for i in 1:n]
+    spec = ModelSpec(NetworkProcess(adjacency, Exponential(1.0));
+        progression = [Transition(:recovered; from = :infection, delay = 3.0,
+            terminal = true)])
+    full = simulate(spec; n_initial = 3, rng = StableRNG(8))
+    cut = @test_logs simulate(spec; n_initial = 3, max_time = 5.0, rng = StableRNG(8))
+    by(state, t) = [is_infected(i) && i.infection_time <= t for i in state.individuals]
+    @test is_infected.(cut.individuals) == by(full, 5.0)
+    @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+    # The race ran to extinction on its own, but the cut run was stopped with
+    # candidates still pending, so only the full run is extinct.
+    @test is_extinct(full)
+    @test !is_extinct(cut)
+end
+
+@testset "max_time ends the routed race at that time" begin
+    n = 300
+    adjacency = [[mod1(i + d, n) for d in (-2, -1, 1, 2)] for i in 1:n]
+    route = RouteWindow(:ring; until = (:recovered,), kernel = Exponential(1.0),
+        reach = adjacency)
+    spec = ModelSpec(RoutedNetwork([route]);
+        progression = [Transition(:recovered; from = :infection, delay = 3.0,
+            terminal = true)])
+    full = simulate(spec; n_initial = 3, rng = StableRNG(8))
+    cut = @test_logs simulate(spec; n_initial = 3, max_time = 5.0, rng = StableRNG(8))
+    @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+    @test is_extinct(full)
+    @test !is_extinct(cut)
 end

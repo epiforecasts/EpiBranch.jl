@@ -341,10 +341,15 @@ function _maybe_positive(d::Distribution)
 end
 _maybe_positive(x) = true
 
+"""Set the default (unvaccinated) state for a dose, without disturbing a
+prior dose an `attributes` function already recorded — for example a
+campaign that ran before the simulation starts. `get!` only writes the
+default when the key is absent, so an individual created already carrying
+`:vaccinated = true` keeps that dose, and its `:vaccination_time`."""
 function initialise_individual!(v::AbstractVaccination, individual, state)
     label = dose_label(v)
-    individual.state[_vaccinated_key(label)] = false
-    individual.state[_vaccination_time_key(label)] = Inf
+    get!(individual.state, _vaccinated_key(label), false)
+    get!(individual.state, _vaccination_time_key(label), Inf)
     return nothing
 end
 
@@ -930,7 +935,7 @@ end
 """
 Vaccinate every member of the group a confirmed case belongs to — the
 fallback an outbreak response reaches for when no ring can be built, such
-as a village, a health area, or a household. Individuals carry their
+as a community, a health area, or a household. Individuals carry their
 group under `group_key` (`:group` by default; see [`groups`](@ref)), and
 every member sharing a triggering case's group is vaccinated at the
 trigger time plus `dose_delay`, whether or not it has any traced
@@ -1006,7 +1011,7 @@ for a composition using these existing inputs.
 
 # Examples
 
-Vaccinate the whole village once a case there is lab-confirmed, 2 days
+Vaccinate the whole community once a case there is lab-confirmed, 2 days
 later:
 
 ```julia

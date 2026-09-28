@@ -131,9 +131,15 @@ The size of each household in `model`.
 """
 household_sizes(m::HouseholdProcess) = length.(m.members)
 
-# Each household runs to extinction over its finite membership, so the
-# termination controls do not apply; `simulate` warns if any is set.
+# Each household runs over its finite membership until extinction or
+# `max_time`; the other termination controls do not apply, and `simulate` warns
+# if any is set.
 _honours_termination_controls(::HouseholdProcess) = false
+
+# See `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl.
+function _validate_process_windows(m::HouseholdProcess, progression)
+    _warn_uncovered_terminal_states(m.until, progression; from = m.from)
+end
 
 # A case's contacts are its household-mates, so contact tracing has a set to act
 # along here (see `EpiBranch.trace_contacts!`).

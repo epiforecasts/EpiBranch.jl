@@ -99,6 +99,7 @@ function resolve_individual!(t::Transition, individual, state)
 end
 
 is_terminal(t::Transition) = t.terminal
+_terminal_target(t::Transition) = t.terminal ? t.state : nothing
 function terminal_event(t::Transition, individual::Individual{T}) where {T}
     t.terminal || return nothing
     tm = convert(T, get(individual.state, t.time_key, T(Inf)))

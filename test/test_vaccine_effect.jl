@@ -83,7 +83,7 @@ end
             () -> RingVaccination(efficacy = 0.5, requires_dse = :prime),
             () -> RingVaccination(efficacy = 0.5, eligibilty_window = 3.0),
             () -> MassVaccination(efficacy = 0.5, eligibility_time = 1.0,
-                group_key = :village),
+                group_key = :community),
             () -> GroupVaccination(efficacy = 0.5, eligibility_time = 1.0)]
         for make in typos
             err = try
@@ -113,7 +113,7 @@ end
             repr(MassVaccination(efficacy = 0.5, eligibility_time = 1.0,
                 delay_to_immunity = Uniform(7.0, 21.0))))
         for v in (rv, MassVaccination(efficacy = 0.5, eligibility_time = 3.0),
-            GroupVaccination(efficacy = 0.5, group_key = :village))
+            GroupVaccination(efficacy = 0.5, group_key = :community))
             @test eval(Meta.parse(repr(v))) == v
         end
     end

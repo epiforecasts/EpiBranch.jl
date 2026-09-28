@@ -191,9 +191,9 @@ end
         @test :test_positive in fields
 
         custom = GroupVaccination(efficacy = 0.9, eligibility = OnSymptomOnset(),
-            group_key = :village)
+            group_key = :community)
         fields2 = EpiBranch.required_fields(custom)
-        @test :village in fields2
+        @test :community in fields2
         @test :onset_time in fields2
     end
 

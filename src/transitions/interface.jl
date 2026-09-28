@@ -39,6 +39,15 @@ resolve_individual!(::AbstractClinicalTransition, individual, state) = nothing
 """Whether this transition is terminal (i.e. ends the case). Default: false."""
 is_terminal(::AbstractClinicalTransition) = false
 
+# The state label a terminal transition writes, known without an individual
+# (unlike `terminal_event`, which needs one to resolve the *time*). Used only
+# by the `until`-coverage check in branching_process.jl; a transition that
+# does not override this is simply not checkable there, so a custom terminal
+# transition written to the `is_terminal`/`terminal_event` contract above
+# without also adding this is silently exempt from that check. Not part of
+# the transition interface documented in `extending.md`.
+_terminal_target(::AbstractClinicalTransition) = nothing
+
 """
     terminal_event(transition, individual) -> Union{Nothing, Tuple{Float64, Symbol}}
 

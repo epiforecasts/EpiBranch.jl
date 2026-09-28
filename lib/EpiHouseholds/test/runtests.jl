@@ -23,6 +23,24 @@ function EpiBranch.competing_risk(::BlockEverything, parent, contact, state)
 end
 
 @testset "EpiHouseholds.jl" begin
+    @testset "max_time ends each household race at that time" begin
+        spec = ModelSpec(HouseholdProcess(fill(6, 40), Exponential(2.0));
+            progression = _sir(4.0))
+        full = simulate(spec; rng = StableRNG(5))
+        cut = @test_logs simulate(spec; max_time = 1.5, rng = StableRNG(5))
+        by(state, t) = [is_infected(i) && i.infection_time <= t for i in state.individuals]
+        # Households race in turn on one RNG, so stopping one early shifts the
+        # draws of those after it; only the first matches the full run exactly.
+        @test is_infected.(cut.individuals[1:6]) == by(full, 1.5)[1:6]
+        @test all(i.infection_time <= 1.5 for i in cut.individuals if is_infected(i))
+        @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+        # Every household race in the full run reached its own extinction, but
+        # at least one was cut off mid-race in `cut`, so only the full run
+        # counts as extinct overall.
+        @test is_extinct(full)
+        @test !is_extinct(cut)
+    end
+
     @testset "construction" begin
         m = HouseholdProcess([3, 4, 2], Exponential(3.0))
         @test m isa HouseholdProcess
@@ -52,6 +70,23 @@ end
         @test_throws ArgumentError HouseholdProcess([0, 2], Exponential(1.0))
         @test_throws ArgumentError HouseholdProcess(
             [2], Exponential(1.0); external_hazard = -1.0)
+    end
+
+    @testset "uncovered terminal state warns" begin
+        process = HouseholdProcess([2, 2], Exponential(1.0))
+        # `:censored` is a terminal transition `until` does not list, so a case
+        # reaching it would never have its window closed: composing warns.
+        censored = [
+            Transition(:infectious; from = :infection, delay = 1.0),
+            Transition(:recovered; from = :infectious, delay = 1.0, terminal = true),
+            Transition(:censored; from = :infection, delay = 5.0, terminal = true)
+        ]
+        @test_logs (:warn, r":censored") match_mode=:any ModelSpec(
+            process; progression = censored)
+        matched = HouseholdProcess([2, 2], Exponential(1.0);
+            until = (:recovered, :died, :isolated, :censored))
+        @test_logs ModelSpec(matched; progression = censored)
+        @test_logs ModelSpec(process; progression = _sir(1.0))
     end
 
     @testset "simulation seeds one index per household and spreads within it" begin
