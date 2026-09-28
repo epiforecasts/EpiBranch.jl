@@ -28,6 +28,9 @@ import EpiBranch: vaccine_effect, initialise_individual!, required_fields
 import EpiBranch: AbstractVaccination, VaccineEffect, LeakyMode, AllOrNothingMode,
                   _record_vaccination!, _check_effect_keywords, _effect_getproperty,
                   _effect_propertynames, _show_keywords
+# The simulation options and the run end time they imply, read the way
+# `simulate` reads them, so a trial can check the run covers its follow-up.
+import EpiBranch: SimOpts, _max_time
 
 export IndividualRandomisation, arm
 export TrialVaccination

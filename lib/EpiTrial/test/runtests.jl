@@ -87,6 +87,10 @@ end
         @test all(reps.events .> 0)
         # A simulation that stops before the end of follow-up is rejected.
         @test_throws ArgumentError simulate(trial; rng = StableRNG(14), max_time = 30.0)
+        @test_throws ArgumentError simulate(trial; rng = StableRNG(14),
+            stopping_rules = [MaxTime(30.0)])
+        @test nrow(simulate(trial; rng = StableRNG(14), n_initial = 10,
+            max_time = nothing)) == 490
     end
 
     @testset "estimators on a fixed table" begin
