@@ -595,8 +595,11 @@ subtype stores one and returns it from `EpiBranch.vaccine_effect`; the rest of
 the vaccination machinery reads these parameters only through that method. The
 subtype then inherits:
 
-- `initialise_individual!`, which sets `:vaccinated` and `:vaccination_time`
-  (namespaced by `dose_label`) on every individual;
+- `initialise_individual!`, which defaults `:vaccinated` and
+  `:vaccination_time` (namespaced by `dose_label`) to unvaccinated on every
+  individual, unless an `attributes` function already set them — such as a
+  dose recorded from an earlier campaign — in which case it leaves them
+  alone;
 - `competing_risk`, the susceptibility-side block described in
   [`AbstractVaccination`](@ref);
 - the dose-schedule checks made when a `ModelSpec` is built, so it can give the

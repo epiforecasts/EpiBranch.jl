@@ -56,6 +56,61 @@ end
         end
     end
 
+    @testset "Prior vaccination set via attributes survives initialise_individual!" begin
+        # A dose recorded directly on `ind.state` by an attributes function
+        # (e.g. a campaign that ran before the simulation starts) must not be
+        # discarded when the engine initialises the vaccination's own state.
+        mv = MassVaccination(efficacy = 0.0, eligibility_time = Inf)
+        ind = Individual(id = 1,
+            state = Dict{Symbol, Any}(
+                :vaccinated => true, :vaccination_time => -500.0,
+                :vaccine_efficacy => 0.6))
+        EpiBranch.initialise_individual!(mv, ind, nothing)
+        @test is_vaccinated(ind)
+        @test ind.state[:vaccination_time] == -500.0
+        @test ind.state[:vaccine_efficacy] == 0.6
+    end
+
+    @testset "Attribute-vaccinated individual is blocked with the recorded efficacy" begin
+        # Same outcome as a t=0 MassVaccination rollout, but the dose is
+        # recorded by `attributes` before the individual is created rather
+        # than administered by the intervention's own campaign
+        # (`eligibility_time = Inf` never fires).
+        prior_dose = (rng, ind) -> begin
+            ind.state[:vaccinated] = true
+            ind.state[:vaccination_time] = -500.0
+            ind.state[:vaccine_efficacy] = 1.0
+        end
+        mv = MassVaccination(efficacy = 0.0, eligibility_time = Inf)
+        for seed in 1:5
+            state = simulate(
+                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [mv], attributes = [clinical, prior_dose]);
+                max_cases = 500,
+                rng = StableRNG(seed))
+            @test state.cumulative_cases == 1
+        end
+    end
+
+    @testset "Waning reads the pre-start vaccination time attributes recorded" begin
+        # Immunity from a dose given 500 time units before the simulation
+        # starts should already have waned by the time any contact is
+        # exposed, so `waning` must see that true elapsed time rather than
+        # whatever `initialise_individual!` would otherwise reset it to.
+        mv = MassVaccination(efficacy = 0.0, eligibility_time = Inf,
+            waning = dt -> dt >= 500.0 ? 0.4 : 1.0)
+        parent = Individual(id = 1)
+        contact = Individual(id = 2, infection_time = 0.0,
+            state = Dict{Symbol, Any}(:vaccinated => true,
+                :vaccination_time => -500.0, :vaccine_efficacy => 1.0))
+        EpiBranch.initialise_individual!(mv, contact, nothing)
+        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+
+        risk = EpiBranch.competing_risk(mv, parent, contact, state)
+        @test risk.block_probability(state.rng, parent, contact, state) ≈ 0.4
+    end
+
     @testset "MassVaccination with waning already decayed to zero blocks nothing" begin
         # `waning` decayed to zero by every transmission time contributes a
         # block probability of zero throughout, so the run should be

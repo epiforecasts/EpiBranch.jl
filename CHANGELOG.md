@@ -412,6 +412,10 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   and none is unconditional, so the gap is caught at composition instead of
   surfacing as an implausible outbreak or an unrelated rejection-sampling
   error; that error's message now names the likely cause.
+- `AbstractVaccination`'s `initialise_individual!` no longer overwrites
+  `:vaccinated` and `:vaccination_time` that an `attributes` function already
+  set, such as a dose recorded from an earlier campaign. It now only fills in
+  the unvaccinated defaults when those keys are absent.
 
 ## [0.1.0] - 2026-06-16
 

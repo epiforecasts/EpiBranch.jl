@@ -341,10 +341,15 @@ function _maybe_positive(d::Distribution)
 end
 _maybe_positive(x) = true
 
+"""Set the default (unvaccinated) state for a dose, without disturbing a
+prior dose an `attributes` function already recorded — for example a
+campaign that ran before the simulation starts. `get!` only writes the
+default when the key is absent, so an individual created already carrying
+`:vaccinated = true` keeps that dose, and its `:vaccination_time`."""
 function initialise_individual!(v::AbstractVaccination, individual, state)
     label = dose_label(v)
-    individual.state[_vaccinated_key(label)] = false
-    individual.state[_vaccination_time_key(label)] = Inf
+    get!(individual.state, _vaccinated_key(label), false)
+    get!(individual.state, _vaccination_time_key(label), Inf)
     return nothing
 end
 
