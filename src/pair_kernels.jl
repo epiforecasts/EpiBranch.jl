@@ -40,12 +40,18 @@ end
 """
     pair_kernel(kernel, infector, susceptible, infector_infection_time)
     pair_kernel(kernel, infector, susceptible, infector_infection_time, infectious_time)
+    pair_kernel(kernel, infector, susceptible, infector_infection_time, infectious_time,
+        state)
 
 Resolve a contact-interval distribution for an ordered pair. A shared continuous
 distribution is returned unchanged; an ordinary callable receives the two IDs;
 a [`ContextualKernel`](@ref) receives a [`PairContext`](@ref). Structured-process
 extensions can use this method to share kernel semantics with the likelihood.
 The five-argument form supplies the infectious opening required by `CalendarKernel`.
+The six-argument form also passes the `SimulationState`, from which a live
+[`StatefulKernel`](@ref) reads both hosts' records; simulation must use it, since
+the shorter forms are for likelihoods and throw for a live kernel. Every other
+kernel returns what the five-argument form does.
 """
 pair_kernel(k::ContinuousUnivariateDistribution, i, j, infection_time) = k
 pair_kernel(k, i, j, infection_time) = k(i, j)
