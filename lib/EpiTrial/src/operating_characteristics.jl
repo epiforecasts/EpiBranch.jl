@@ -1,18 +1,21 @@
 """
     trial_estimates(trial, estimators; n_sim = 1000, rng = Random.default_rng(),
-        level = 0.95) -> DataFrame
+        level = 0.95, sim_kwargs...) -> DataFrame
 
 Simulate `n_sim` replicate trials and apply each estimator in `estimators` to
 each. Returns one row per replicate and estimator, with columns `replicate`,
 `estimator`, `events`, `ve`, `lower`, `upper` and `p_value`. Every estimator is
 applied to the same simulated trials, so differences between them are not
-Monte Carlo noise from separate runs.
+Monte Carlo noise from separate runs. Other keywords are passed to
+[`simulate`](@ref EpiBranch.simulate) on the trial, and from there to the
+outbreak simulation.
 """
 function trial_estimates(trial::Trial, estimators;
-        n_sim::Integer = 1000, rng::AbstractRNG = default_rng(), level = 0.95)
+        n_sim::Integer = 1000, rng::AbstractRNG = default_rng(), level = 0.95,
+        sim_kwargs...)
     rows = NamedTuple[]
     for r in 1:n_sim
-        data = simulate(trial; rng)
+        data = simulate(trial; rng, sim_kwargs...)
         events = count(data.event)
         for est in estimators
             push!(rows,
@@ -26,7 +29,7 @@ end
 """
     operating_characteristics(estimates; null_ve = 0.0, target = nothing) -> DataFrame
     operating_characteristics(trial, estimators; null_ve = 0.0, target = nothing,
-        n_sim = 1000, rng = Random.default_rng(), level = 0.95) -> DataFrame
+        n_sim = 1000, rng = Random.default_rng(), level = 0.95, sim_kwargs...) -> DataFrame
 
 Summarise replicate trials, one row per estimator:
 
@@ -43,7 +46,7 @@ Summarise replicate trials, one row per estimator:
   `est -> expected_ve(est, LeakyMode(), 0.6, 1.0)`.
 
 The first form summarises the output of [`trial_estimates`](@ref); the second
-simulates the replicates first.
+simulates the replicates first, passing any other keywords on to it.
 """
 function operating_characteristics(estimates::DataFrame; null_ve = 0.0, target = nothing)
     return combine(groupby(estimates, :estimator; sort = false)) do g

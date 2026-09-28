@@ -71,11 +71,14 @@ function trial_data(trial::Trial, state)
 end
 
 """
-    simulate(trial::Trial; rng = Random.default_rng()) -> DataFrame
+    simulate(trial::Trial; rng = Random.default_rng(), sim_kwargs...) -> DataFrame
 
 Simulate one outbreak from `trial.spec` and return the [`trial_data`](@ref)
-of the trial run within it.
+of the trial run within it. Other keywords (`n_initial`, `initial_cases`,
+`max_time`, …) are passed to `simulate` on `trial.spec`, for example to seed
+the outbreak with several cases so it rarely dies out before the trial accrues
+events.
 """
-function EpiBranch.simulate(trial::Trial; rng::AbstractRNG = default_rng())
-    return trial_data(trial, simulate(trial.spec; rng))
+function EpiBranch.simulate(trial::Trial; rng::AbstractRNG = default_rng(), sim_kwargs...)
+    return trial_data(trial, simulate(trial.spec; rng, sim_kwargs...))
 end

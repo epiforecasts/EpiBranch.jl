@@ -71,6 +71,20 @@ end
             attributes = IndividualRandomisation(),
             interventions = [TrialVaccination(efficacy = 0.5)])
         @test nrow(simulate(Trial(spec; follow_up = 30.0); rng = StableRNG(5))) == 80
+
+        # Simulation options reach the outbreak: seeding a homogeneous epidemic
+        # with ten cases removes them from the participants.
+        spec = ModelSpec(
+            HomogeneousProcess(transmission_rate = 1.5, population_size = 500);
+            progression = [Transition(:recovered; from = :infection,
+                delay = Exponential(1.0), terminal = true)],
+            attributes = IndividualRandomisation(),
+            interventions = [TrialVaccination(efficacy = 0.6)])
+        trial = Trial(spec; follow_up = 60.0)
+        @test nrow(simulate(trial; rng = StableRNG(12), n_initial = 10)) == 490
+        reps = trial_estimates(trial, [RiskRatio()]; n_sim = 3, rng = StableRNG(13),
+            n_initial = 10)
+        @test all(reps.events .> 0)
     end
 
     @testset "estimators on a fixed table" begin
