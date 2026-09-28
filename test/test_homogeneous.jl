@@ -422,6 +422,32 @@ end
               2
     end
 
+    @testset "a non-exclusive terminal gate refuses with a pointed hint" begin
+        # Two terminal transitions gated independently at p and 1 - p leave
+        # about p(1 - p) of cases with neither outcome, so their infectious
+        # window never closes; with a blocking risk in play, the rejection
+        # sampler cannot find a way out either — and should say why rather
+        # than just naming the symptom.
+        pool40 = HomogeneousProcess(; transmission_rate = 2.0, population_size = 40)
+        non_exclusive = [
+            Transition(:recovered; from = :infection, delay = Exponential(1.0),
+                probability = 0.36, terminal = true),
+            Transition(:died; from = :infection, delay = Exponential(1.0),
+                probability = 0.64, terminal = true)
+        ]
+        m = @test_logs (:warn, r"gated below.*probability 1") match_mode=:any ModelSpec(
+            pool40; progression = non_exclusive, interventions = [LeakyVaccine(1.0, 0.0)])
+        err = try
+            simulate(m; rng = StableRNG(3), n_initial = 2)
+            nothing
+        catch caught
+            caught
+        end
+        @test err isa ArgumentError
+        @test occursin("infectious window never closes", err.msg)
+        @test occursin("exclusive_probabilities", err.msg)
+    end
+
     @testset "Scheduled interventions gate on the running clock on the pool" begin
         # The loop exposes each case's infection time as the running clock, so a
         # Scheduled(Isolation; start_time) isolates only cases infected at/after

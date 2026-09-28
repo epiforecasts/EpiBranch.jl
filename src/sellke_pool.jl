@@ -452,7 +452,13 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
                 end || throw(ArgumentError(
                     "repeated contacts after a blocked pool proposal require " *
                     "finite infectious windows. Add a removal transition, or " *
-                    "encode static protection in host susceptibility or force."))
+                    "encode static protection in host susceptibility or force. " *
+                    "The likely cause is a case whose infectious window never " *
+                    "closes — either the progression has no terminal transition " *
+                    "reaching one of `until`'s states, or one is reachable but " *
+                    "gated so that some cases fire none of them (see " *
+                    "`exclusive_probabilities` for terminal transitions meant " *
+                    "to partition the population exactly)."))
                 # The contact did not transmit. Put the susceptible back with the
                 # residual of its resistance: a fresh Exponential(1) above the
                 # threshold this contact consumed.
