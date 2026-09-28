@@ -52,6 +52,14 @@ end
                 terminal = true)],
             interventions = [TrialVaccination(efficacy = 0.5)])
         @test_throws ArgumentError simulate(spec; rng = StableRNG(3))
+
+        # The dose's parameters read like any other vaccination's.
+        v = TrialVaccination(efficacy = 0.7, delay_to_immunity = 5.0)
+        @test v.efficacy == 0.7
+        @test v.delay_to_immunity == 5.0
+        @test :efficacy in propertynames(v)
+        @test occursin("efficacy", sprint(show, v))
+        @test_throws ArgumentError TrialVaccination(efficacy = 0.7, coverage = 0.5)
     end
 
     @testset "trial data" begin
@@ -183,6 +191,12 @@ end
         null = operating_characteristics(cohort_trial(; n, λ = Λ / T, T, efficacy = 0.0),
             [CoxHazardRatio()]; n_sim = 400, rng = StableRNG(9))
         @test only(null.power) < 0.06
+
+        # A single number serves as the target for every estimator.
+        numeric = operating_characteristics(
+            trial_estimates(trial, [CoxHazardRatio()]; n_sim = 20, rng = StableRNG(15));
+            target = e)
+        @test hasproperty(numeric, :coverage)
 
         # Summarising stored replicates gives the same table.
         reps = trial_estimates(trial, [CoxHazardRatio()]; n_sim = 20, rng = StableRNG(10))
