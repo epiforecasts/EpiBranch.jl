@@ -107,7 +107,10 @@ mutate state, and a kernel may read host state only through its projection,
 since that record is all the likelihood is given.
 
 Simulation keeps contacts consistent with the hazards in force as records
-change; a run whose records never change matches an ordinary kernel exactly.
+change, and a run whose records never change follows the same distribution as
+an ordinary kernel. With interventions, a household model races every household
+together so that a policy can read cases in other households, which draws the
+same outbreak from a different random stream.
 """
 struct StatefulKernel{S, F}
     state::S

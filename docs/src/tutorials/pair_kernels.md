@@ -230,8 +230,8 @@ contact dates coincide exactly with a policy change.
 
 A contact scheduled before a policy took effect still follows the hazard in
 force once it has: simulation keeps pending contacts consistent with the records
-as they change, and a run whose records never change matches an ordinary kernel
-exactly.
+as they change, and a run whose records never change follows the same
+distribution as an ordinary kernel.
 
 A policy can depend on cases in other households. The existing restriction on
 periodic shared capacity budgets still applies.
