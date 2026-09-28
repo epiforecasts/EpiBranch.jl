@@ -597,9 +597,9 @@ subtype then inherits:
 
 - `initialise_individual!`, which defaults `:vaccinated` and
   `:vaccination_time` (namespaced by `dose_label`) to unvaccinated on every
-  individual, unless an `attributes` function already set them — a prior
-  dose recorded that way, e.g. from a campaign before the simulation starts,
-  is left alone;
+  individual, unless an `attributes` function already set them — such as a
+  dose recorded from an earlier campaign — in which case it leaves them
+  alone;
 - `competing_risk`, the susceptibility-side block described in
   [`AbstractVaccination`](@ref);
 - the dose-schedule checks made when a `ModelSpec` is built, so it can give the
