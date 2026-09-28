@@ -334,6 +334,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
+- `HomogeneousProcess`, `HouseholdProcess`, `NetworkProcess` and `RoutedNetwork`
+  now set `state.extinct` at the end of their Sellke run. `is_extinct` and
+  `containment_probability` report real values instead of always `false`/`0`
+  for these models. A household population counts as extinct only when every
+  household's race ran to its own extinction.
 - `household_infections` (in `EpiHouseholds`) ends each case's infectious window
   when the model's interventions remove it from transmission, such as by
   isolation or quarantine after tracing, as the simulation does. Fitting an
@@ -394,6 +399,10 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   at symptom onset and traced contacts who were asymptomatic got no dose. With
   `:trace_time` recorded at every tracing depth, `linelist` now has a
   `date_trace` column at the default `depth = 1` as well.
+- `AbstractVaccination`'s `initialise_individual!` no longer overwrites
+  `:vaccinated` and `:vaccination_time` that an `attributes` function already
+  set, such as a dose recorded from an earlier campaign. It now only fills in
+  the unvaccinated defaults when those keys are absent.
 
 ## [0.1.0] - 2026-06-16
 

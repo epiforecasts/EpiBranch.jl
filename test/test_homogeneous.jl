@@ -727,6 +727,10 @@ end
         by(state, t) = [is_infected(i) && i.infection_time <= t for i in state.individuals]
         @test is_infected.(cut.individuals) == by(full, 2.0)
         @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+        # The pool ran to extinction on its own, but the cut run was stopped
+        # with candidates still pending, so only the full run is extinct.
+        @test is_extinct(full)
+        @test !is_extinct(cut)
     end
 
     @testset "termination controls warn on the fixed pool" begin

@@ -934,4 +934,23 @@ end
     by(state, t) = [is_infected(i) && i.infection_time <= t for i in state.individuals]
     @test is_infected.(cut.individuals) == by(full, 5.0)
     @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+    # The race ran to extinction on its own, but the cut run was stopped with
+    # candidates still pending, so only the full run is extinct.
+    @test is_extinct(full)
+    @test !is_extinct(cut)
+end
+
+@testset "max_time ends the routed race at that time" begin
+    n = 300
+    adjacency = [[mod1(i + d, n) for d in (-2, -1, 1, 2)] for i in 1:n]
+    route = RouteWindow(:ring; until = (:recovered,), kernel = Exponential(1.0),
+        reach = adjacency)
+    spec = ModelSpec(RoutedNetwork([route]);
+        progression = [Transition(:recovered; from = :infection, delay = 3.0,
+            terminal = true)])
+    full = simulate(spec; n_initial = 3, rng = StableRNG(8))
+    cut = @test_logs simulate(spec; n_initial = 3, max_time = 5.0, rng = StableRNG(8))
+    @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+    @test is_extinct(full)
+    @test !is_extinct(cut)
 end

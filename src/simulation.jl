@@ -198,19 +198,23 @@ function _retry_for_condition(run, condition, max_attempts)
 end
 
 """
-    _reconcile_sellke_bookkeeping!(state) -> state
+    _reconcile_sellke_bookkeeping!(state, extinct) -> state
 
 Set `cumulative_cases` and `max_infection_time` from the per-individual state a
-continuous-time (Sellke) loop writes directly, keeping the returned state
-consistent with the generation engine's bookkeeping.
+continuous-time (Sellke) loop writes directly, and `extinct` to the given
+`extinct`, keeping the returned state consistent with the generation engine's
+bookkeeping. `extinct` is whether the Sellke loop(s) that built `state` ran
+until no candidate infection remained, rather than being cut off at
+`max_time` with candidates still pending.
 """
-function _reconcile_sellke_bookkeeping!(state::SimulationState)
+function _reconcile_sellke_bookkeeping!(state::SimulationState, extinct::Bool)
     state.cumulative_cases = count(
         ind -> get(ind.state, :infected, false), state.individuals)
     state.max_infection_time = maximum(
         (ind.infection_time
         for ind in state.individuals if get(ind.state, :infected, false));
         init = 0.0)
+    state.extinct = extinct
     return state
 end
 

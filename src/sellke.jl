@@ -510,7 +510,9 @@ are put to no risk at all.
 
 `max_time` ends the race at that time: individuals whose infection would fall
 later are left uninfected, and the state is exactly the full run's state
-restricted to infections up to `max_time`.
+restricted to infections up to `max_time`. Returns `true` when the race ran
+until no candidate infection remained (the population reached extinction) and
+`false` when it was cut off at `max_time` with candidates still pending.
 
 `contacts(infective_id, state)` yields the ids of everyone that case was in
 contact with, whether or not transmission followed, which is what contact
@@ -617,8 +619,9 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
     while !isempty(pending)
         bt, j, p = _heap_pop!(pending)
         # Pops come in increasing time, so every later infection also falls
-        # after `max_time`: those individuals stay uninfected.
-        bt > max_time && break
+        # after `max_time`: those individuals stay uninfected, and the race
+        # was cut off rather than reaching extinction on its own.
+        bt > max_time && return false
         may_block && (proposals[p] = _dequeue(proposals[p]))
         (processed[j] || represents[j] != p) && continue
         opening = openings[may_block ? proposals[p].opening : p]
@@ -717,5 +720,5 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             end
         end
     end
-    return nothing
+    return true
 end
