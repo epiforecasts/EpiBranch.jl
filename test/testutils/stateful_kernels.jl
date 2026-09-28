@@ -58,6 +58,12 @@ function EpiBranch.competing_risk(::BlockOneToThree, parent, contact, state)
     Risk(block_probability = (parent.id, contact.id) == (1, 3) ? 1.0 : 0.0)
 end
 
+# Blocks half the contacts from host 1 to host 2.
+struct HalfBlockOneToTwo <: AbstractIntervention end
+function EpiBranch.competing_risk(::HalfBlockOneToTwo, parent, contact, state)
+    Risk(block_probability = (parent.id, contact.id) == (1, 2) ? 0.5 : 0.0)
+end
+
 # Stamps only the case being settled, which no pending contact reads.
 struct StampOwnCase <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::StampOwnCase, ind, state)
@@ -140,6 +146,28 @@ function test_stateful_simulation(make_process, extract)
             state.individuals[3].infection_time == 1.0
         end
         @test isapprox(early / n, 0.5; atol = 0.03)
+    end
+    @testset "A moved record leaves a resolved atom resolved" begin
+        # Host 2 comes before host 3 in the race, so by the time host 3 settles
+        # at t = 1 every contact to host 2 at t = 1 has been resolved: a draw
+        # that fell later, or a contact that was blocked. Moving records then
+        # must not offer host 2 the atom at t = 1 again.
+        progression = [Transition(:recovered; delay = 5.0, terminal = true)]
+        n = 2000
+        at_one(model) = count(1:n) do seed
+            state = simulate(model; initial_cases = [1], rng = StableRNG(seed))
+            state.individuals[2].infection_time == 1.0
+        end / n
+        two_atoms = DiscreteNonParametric([1.0, 2.0], [0.5, 0.5])
+        kernel = StatefulKernel(tick_state,
+            (c, a, b) -> c.susceptible == 2 ? two_atoms : Dirac(1.0))
+        drawn_later = ModelSpec(make_process(kernel); progression,
+            interventions = [TickEveryCase()])
+        @test isapprox(at_one(drawn_later), 0.5; atol = 0.04)
+        blocked = ModelSpec(
+            make_process(StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0)));
+            progression, interventions = [HalfBlockOneToTwo(), TickEveryCase()])
+        @test isapprox(at_one(blocked), 0.5; atol = 0.04)
     end
     @testset "Simultaneous contacts survive refresh" begin
         kernel = StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0))

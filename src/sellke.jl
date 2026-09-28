@@ -717,7 +717,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         if live && _records_changed!(records, refresh_projection, state, members,
             j, bt, watch, openings, processed)
             orphans += _redraw_moved!(pending, proposals, head, best, represents,
-                watch, openings, processed, pos, rts, state, bt, rng)
+                watch, openings, processed, pos, rts, state, bt, j, rng)
             if orphans > max(m, length(proposals) ÷ 2)
                 _compact_proposals!(pending, proposals, head, best, represents, processed)
                 orphans = 0
@@ -891,7 +891,7 @@ end
 # change. Fixed kernels never take this path. Returns how many proposals it
 # unlinked.
 function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatch,
-        openings, processed, pos, rts, state, now, rng)
+        openings, processed, pos, rts, state, now, case, rng)
     # Opening => the members whose pairs with it are drawn again, or `nothing`
     # for all of them.
     redo = Dict{Int, Union{Nothing, Set{Int}}}()
@@ -934,9 +934,13 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
         best[j] = oftype(best[j], Inf)
         represents[j] = 0
     end
-    # A record change at this clock governs contacts at this clock too, so each
+    # A record change at this clock governs contacts at this clock too, so a
     # pair is drawn again given no contact strictly before `now`, and a contact
-    # due at `now` under the new hazard, an atom there, stays due. Contact times
+    # due at `now` under the new hazard, an atom there, stays due. That holds
+    # only for members the race has not yet reached at this clock: the heap
+    # breaks ties on the member's position, so every contact at `now` to a
+    # member before the settling `case` has already been resolved, and its pair
+    # is drawn given no contact up to and including `now`. Contact times
     # are stored as `open_t + dt`, and the exposure recomputed as `now - open_t`
     # can be off by the clock's resolution, so the draw starts `slack` early and
     # is then carried past any contact whose stored time falls before `now`.
@@ -957,8 +961,9 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
                      _draw_beyond(rng, kernel, m, lower)
                 # The next contact after one in the past is the same hazard
                 # conditioned on falling later, so this draws exactly given no
-                # contact before `now`.
-                while opening.open_t + dt < now
+                # contact before `now`, or none up to it once `now` is resolved.
+                resolved = j < case
+                while opening.open_t + dt < now || (resolved && opening.open_t + dt == now)
                     dt = _draw_beyond(rng, kernel, m, dt)
                 end
                 candidate = opening.open_t + dt
