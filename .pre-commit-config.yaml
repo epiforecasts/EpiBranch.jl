@@ -1,0 +1,43 @@
+repos:
+  # Basic file cleanliness
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      # `--assume-in-merge` runs the check on every commit. The default fires
+      # only while `.git/MERGE_HEAD` exists, so a conflict marker committed
+      # after a resolve, or with `--no-verify`, reaches CI unnoticed.
+      - id: check-merge-conflict
+        args: [--assume-in-merge]
+      - id: debug-statements
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+
+  # `check-merge-conflict` looks for `<<<<<<<`, `=======` and `>>>>>>>` only.
+  # A `diff3` or `zdiff3` resolve also writes a `|||||||` base marker, which it
+  # misses. Seven pipes at the start of a line is that marker's shape and
+  # appears in neither Julia nor a Markdown table.
+  - repo: local
+    hooks:
+      - id: forbid-diff3-base-marker
+        name: forbid diff3 conflict base marker
+        entry: '^\|\|\|\|\|\|\|'
+        language: pygrep
+        types: [text]
+
+  # Secrets. A manifest pins resolved package hashes that read as high-entropy
+  # strings, so it is excluded rather than listed in the baseline.
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: '.*/Manifest\.toml$'
+
+# Julia formatting stays in `test/test_quality.jl`, which runs JuliaFormatter
+# from the test environment over the whole repository. A second copy pinned
+# here would disagree with that one as soon as either moved.
