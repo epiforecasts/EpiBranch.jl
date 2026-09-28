@@ -120,11 +120,12 @@ end
     # Case 1 has an open opening that reaches member 2; member 3 is out of reach.
     openings = [EpiBranch._RouteOpening(0, 0, 0.0, Inf),
         EpiBranch._RouteOpening(1, 1, 0.0, 5.0)]
-    reach = [Int[], [2]]
-    pos = Dict(1 => 1, 2 => 2, 3 => 3)
+    watch = EpiBranch._LiveWatch(3)
+    EpiBranch._watch_opening!(watch, 1)
+    EpiBranch._watch_target!(watch, 2, 2)
     processed = [true, false, false]
-    changed!(case) = EpiBranch._records_changed!(records, project, state, members,
-        case, 1.0, [2], openings, reach, pos, processed)
+    changed!(case, now = 1.0) = EpiBranch._records_changed!(records, project, state,
+        members, case, now, watch, openings, processed)
     @test !changed!(1)
     # An intervention appending in place must not compare equal to its own
     # remembered record, which is why the race keeps a copy rather than an alias.
@@ -138,6 +139,18 @@ end
     push!(state.individuals[1].state[:history], 1.0)
     @test !changed!(1)
     @test records[1] == [1.0]
+    # Member 2 is compared once however many open openings reach it, and leaves
+    # the watch once they have all closed.
+    push!(openings, EpiBranch._RouteOpening(1, 1, 0.0, 8.0))
+    EpiBranch._watch_opening!(watch, 1)
+    EpiBranch._watch_target!(watch, 3, 2)
+    @test sort(watch.tracked) == [1, 2]
+    @test !changed!(1, 6.0)
+    @test watch.open == [3]
+    @test !changed!(1, 9.0)
+    @test isempty(watch.tracked)
+    push!(state.individuals[2].state[:history], 2.0)
+    @test !changed!(1, 9.0)
 end
 
 @testset "Shared race refreshes live pair kernels" begin

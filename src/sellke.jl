@@ -615,12 +615,9 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
 
     # The seeds' own opening: no infector, so nothing about it is ever read.
     push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
-    # For a live kernel, the openings still open and the unsettled members each
-    # one reaches. A pending or future draw reads only these hosts' records, so
-    # only they are compared: scanning every member on every case would make
-    # the race quadratic in the population.
-    open_openings = Int[]
-    reach = live ? [Int[]] : Vector{Int}[]
+    # For a live kernel, which hosts' records a pending or future draw reads.
+    # Empty and unused otherwise.
+    watch = _LiveWatch(live ? m : 0)
     for k in 1:m
         best[k] < Inf || continue
         seeded = best[k]
@@ -711,7 +708,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         # already drawn still come from the hazards in force, so the race takes
         # the ordinary path and draws this case's own openings inline.
         dirty = live && _records_changed!(records, refresh_projection, state, members,
-            j, bt, open_openings, openings, reach, pos, processed)
+            j, bt, watch, openings, processed)
 
         # Each route opens and closes on its own states, so a case can still be
         # transmitting on one while another has been cut. A route whose `from`
@@ -723,10 +720,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             close_t = _route_close(ind, w, interventions)
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
-            if live
-                push!(reach, Int[])
-                push!(open_openings, opening_id)
-            end
+            live && _watch_opening!(watch, j)
 
             for (target_id, kernel) in route_targets(members[j], state)
                 k = get(pos, target_id, 0)
@@ -734,7 +728,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                 if live
                     # This opening's draws come from the target's record as it
                     # stands now, which is what later comparisons start from.
-                    push!(reach[opening_id], k)
+                    _watch_target!(watch, opening_id, k)
                     records[k] = _remember(_pair_state(
                         refresh_projection, state.individuals[target_id]))
                 end
@@ -768,24 +762,89 @@ end
 # copied. The usual named tuple of numbers is bits and is kept as it stands.
 _remember(record) = isbits(record) ? record : deepcopy(record)
 
+# The hosts whose records a pending or future draw of a live kernel reads: the
+# infectors of openings still open and the unsettled members those openings
+# reach. Only these are compared after a case settles, each once however many
+# openings read it, so the check costs what is in play rather than the whole
+# population.
+struct _LiveWatch
+    open::Vector{Int}              # openings still open
+    source::Vector{Int}            # each opening's infector, by position
+    reach::Vector{Vector{Int}}     # the members each opening reached when drawn
+    as_infector::Vector{Int}       # open openings each member is the infector of
+    as_target::Vector{Int}         # open openings that reached each member
+    tracked::Vector{Int}           # members any open opening reads
+    slot::Vector{Int}              # each member's place in `tracked`, or 0
+end
+# The seeds' opening has no infector and a fixed kernel, so it is never watched.
+function _LiveWatch(m::Int)
+    _LiveWatch(Int[], [0], [Int[]], zeros(Int, m), zeros(Int, m), Int[], zeros(Int, m))
+end
+
+function _track!(w::_LiveWatch, k)
+    w.slot[k] == 0 || return nothing
+    push!(w.tracked, k)
+    w.slot[k] = length(w.tracked)
+    return nothing
+end
+
+function _untrack_at!(w::_LiveWatch, idx)
+    k = w.tracked[idx]
+    moved = pop!(w.tracked)
+    if idx <= length(w.tracked)
+        w.tracked[idx] = moved
+        w.slot[moved] = idx
+    end
+    w.slot[k] = 0
+    return nothing
+end
+
+function _watch_opening!(w::_LiveWatch, infector)
+    push!(w.source, infector)
+    push!(w.reach, Int[])
+    push!(w.open, length(w.reach))
+    w.as_infector[infector] += 1
+    _track!(w, infector)
+end
+
+function _watch_target!(w::_LiveWatch, opening, k)
+    push!(w.reach[opening], k)
+    w.as_target[k] += 1
+    _track!(w, k)
+end
+
 # Whether a host record that a pending or future draw reads has moved since
 # contacts were last drawn from it, updating the remembered records as it goes.
-# Those are the infectors whose openings are still open and the unsettled
-# members they reach. The settled case's own record is brought up to date
-# without counting as a move: contacts to it are settled, and its own contacts
-# are drawn after this check.
+# The settled case's own record is brought up to date without counting as a
+# move: contacts to it are settled, and its own contacts are drawn after this
+# check.
 function _records_changed!(records, project, state, members, case, now,
-        open_openings, openings, reach, pos, processed)
+        w::_LiveWatch, openings, processed)
     records[case] = _remember(_pair_state(project, state.individuals[members[case]]))
-    filter!(oi -> openings[oi].close_t >= now, open_openings)
-    changed = false
-    for oi in open_openings
-        changed |= _record_moved!(records, project, state, members,
-            pos[openings[oi].infector])
-        for k in reach[oi]
-            processed[k] && continue
-            changed |= _record_moved!(records, project, state, members, k)
+    kept = 0
+    for oi in w.open
+        if openings[oi].close_t >= now
+            kept += 1
+            w.open[kept] = oi
+        else
+            w.as_infector[w.source[oi]] -= 1
+            for k in w.reach[oi]
+                w.as_target[k] -= 1
+            end
+            empty!(w.reach[oi])
         end
+    end
+    resize!(w.open, kept)
+    changed = false
+    idx = 1
+    while idx <= length(w.tracked)
+        k = w.tracked[idx]
+        if w.as_infector[k] == 0 && (processed[k] || w.as_target[k] == 0)
+            _untrack_at!(w, idx)
+            continue
+        end
+        changed |= _record_moved!(records, project, state, members, k)
+        idx += 1
     end
     return changed
 end
