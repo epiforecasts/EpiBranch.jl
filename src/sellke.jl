@@ -874,6 +874,14 @@ end
 
 _link(p::_Pending, chain) = _Pending(p.opening, chain, p.time, p.queued)
 
+# A pair's contact interval under its kernel scaled by the multiplier `m`, given
+# that it exceeds `after`; infinite when no mass lies beyond.
+function _draw_beyond(rng::AbstractRNG, kernel, m::Real, after)
+    ls = logccdf(kernel, after)
+    isfinite(ls) || return oftype(float(after), Inf)
+    return _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
+end
+
 # A record that moved changes only the pairs it enters: those of an open opening
 # whose infector moved, and those reaching a moved member that has not settled.
 # Their contacts are drawn again from the hazards now in force, conditioned on
@@ -928,10 +936,10 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
     end
     # A record change at this clock governs contacts at this clock too, so each
     # pair is drawn again given no contact strictly before `now`, and a contact
-    # due at `now` under the new hazard, an atom there, stays due. The exposure
-    # elapsed is recomputed as `now - open_t`, which can miss a contact time
-    # stored as `open_t + dt` by the clock's resolution, so contacts within
-    # `slack` of `now` are taken to fall at `now`.
+    # due at `now` under the new hazard, an atom there, stays due. Contact times
+    # are stored as `open_t + dt`, and the exposure recomputed as `now - open_t`
+    # can be off by the clock's resolution, so the draw starts `slack` early and
+    # is then carried past any contact whose stored time falls before `now`.
     slack = 2 * eps(float(now))
     for (oi, members_hit) in redo
         opening = openings[oi]
@@ -944,15 +952,16 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
                 members_hit === nothing || j in members_hit || continue
                 m = source.infectiousness * state.individuals[id].susceptibility
                 m <= 0 && continue
-                elapsed = now - opening.open_t
-                dt = if elapsed <= slack
-                    _traits_scaled_draw(rng, kernel, m)
-                else
-                    ls = logccdf(kernel, elapsed - slack)
-                    isfinite(ls) || continue
-                    _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
+                lower = now - opening.open_t - slack
+                dt = lower <= 0 ? _traits_scaled_draw(rng, kernel, m) :
+                     _draw_beyond(rng, kernel, m, lower)
+                # The next contact after one in the past is the same hazard
+                # conditioned on falling later, so this draws exactly given no
+                # contact before `now`.
+                while opening.open_t + dt < now
+                    dt = _draw_beyond(rng, kernel, m, dt)
                 end
-                candidate = max(opening.open_t + dt, now)
+                candidate = opening.open_t + dt
                 candidate <= opening.close_t || continue
                 _propose!(
                     pending, proposals, head, best, represents, j, oi, candidate, true)
