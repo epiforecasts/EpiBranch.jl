@@ -717,7 +717,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         if live && _records_changed!(records, refresh_projection, state, members,
             j, bt, watch, openings, processed)
             orphans += _redraw_moved!(pending, proposals, head, best, represents,
-                watch, openings, processed, pos, rts, state, bt, rng)
+                watch, openings, processed, members, pos, rts, state, bt, rng)
             if orphans > max(m, length(proposals) ÷ 2)
                 _compact_proposals!(pending, proposals, head, best, represents, processed)
                 orphans = 0
@@ -883,7 +883,7 @@ _link(p::_Pending, chain) = _Pending(p.opening, chain, p.time, p.queued)
 # change. Fixed kernels never take this path. Returns how many proposals it
 # unlinked.
 function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatch,
-        openings, processed, pos, rts, state, now, rng)
+        openings, processed, members, pos, rts, state, now, rng)
     # Opening => the members whose pairs with it are drawn again, or `nothing`
     # for all of them.
     redo = Dict{Int, Union{Nothing, Set{Int}}}()
@@ -905,9 +905,18 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
             processed[j] || push!(hit, j)
         end
     end
-    # Unlink the proposals drawn again, keeping the rest in order. Contacts
-    # already due at this clock remain due: an atom's survival is zero at its
-    # contact time, so it cannot be redrawn afterwards.
+    # A record change at this clock governs a contact due at the same clock, as
+    # it does any later one. The contact stays due only when the hazard now in
+    # force cannot be redrawn either: an atom's survival is zero at its contact
+    # time, so there is nothing later to condition on.
+    function still_due(oi, j)
+        opening = openings[oi]
+        kernel = _route_pair_kernel(rts, opening.route, opening.infector,
+            members[j], state)
+        kernel === nothing && return false
+        return !isfinite(logccdf(kernel, now - opening.open_t))
+    end
+    # Unlink the proposals drawn again, keeping the rest in order.
     tied = Set{Tuple{Int, Int}}()
     unlinked = 0
     for j in hit
@@ -917,8 +926,9 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
         while q != 0
             proposal = proposals[q]
             next_q = proposal.chain
-            if !redoes(proposal.opening, j) || proposal.time == now
-                redoes(proposal.opening, j) && push!(tied, (proposal.opening, j))
+            redrawn = redoes(proposal.opening, j)
+            if !redrawn || (proposal.time == now && still_due(proposal.opening, j))
+                redrawn && push!(tied, (proposal.opening, j))
                 last == 0 ? (head[j] = q) : (proposals[last] = _link(proposals[last], q))
                 last = q
             else

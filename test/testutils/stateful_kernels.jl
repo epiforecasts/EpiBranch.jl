@@ -43,6 +43,21 @@ function EpiBranch.resolve_individual!(::DoseEveryone, ind, state)
     return nothing
 end
 
+# From the second case on, gives every host a dose dated at that case's
+# infection time, and blocks every contact from host 1 to host 3.
+struct DoseAtSecondCase <: AbstractIntervention end
+function EpiBranch.resolve_individual!(::DoseAtSecondCase, ind, state)
+    ind.id == 1 && return nothing
+    for person in state.individuals
+        get!(person.state, :dose_time, ind.infection_time)
+    end
+    return nothing
+end
+struct BlockOneToThree <: AbstractIntervention end
+function EpiBranch.competing_risk(::BlockOneToThree, parent, contact, state)
+    Risk(block_probability = (parent.id, contact.id) == (1, 3) ? 1.0 : 0.0)
+end
+
 # Stamps only the case being settled, which no pending contact reads.
 struct StampOwnCase <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::StampOwnCase, ind, state)
@@ -94,6 +109,21 @@ function test_stateful_simulation(make_process, extract)
             interventions = [DoseEveryone()])
         state = simulate(model; initial_cases = [1], rng = StableRNG(4))
         @test all(i -> i.state[:dose_time] isa Float64, state.individuals)
+    end
+    @testset "A record change governs a contact due at the same clock" begin
+        # Host 3's dose at t = 1 moves its contacts from one day after an
+        # infector's infection to two, including the contact from host 1 due at
+        # t = 1 itself. That contact is drawn again at t = 2 and blocked; host
+        # 2's contact under the new hazard infects host 3 at t = 3.
+        project(ind) = (dose = get(ind.state, :dose_time, Inf)::Float64,)
+        callback(c, a, b) = b.dose <= c.infector_infection_time + 1.0 ? Dirac(2.0) :
+                            Dirac(1.0)
+        model = ModelSpec(make_process(StatefulKernel(project, callback));
+            progression = [Transition(:recovered; delay = 4.0, terminal = true)],
+            interventions = [DoseAtSecondCase(), BlockOneToThree()])
+        state = simulate(model; initial_cases = [1], rng = StableRNG(1))
+        @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 3.0]
+        @test state.individuals[3].parent_id == 2
     end
     @testset "Simultaneous contacts survive refresh" begin
         kernel = StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0))
