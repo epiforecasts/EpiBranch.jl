@@ -153,6 +153,33 @@ end
     @test !changed!(1, 9.0)
 end
 
+@testset "Compaction keeps each member's live proposals" begin
+    P = EpiBranch._Pending{Float64}
+    # Member 1 has settled; member 2 lists proposals 3 then 1, with 2 unlinked by
+    # a redraw; member 3 lists proposal 4.
+    proposals = [P(2, 0, 1.5, true), P(3, 0, 0.5, true), P(4, 1, 2.5, false),
+        P(5, 0, 3.0, true), P(6, 0, 0.7, true)]
+    head = [5, 3, 4]
+    best = [0.7, 1.5, 3.0]
+    represents = [5, 1, 4]
+    pending = Tuple{Float64, Int, Int}[(0.5, 2, 2), (1.5, 2, 1), (3.0, 3, 4), (0.7, 1, 5)]
+    EpiBranch._compact_proposals!(pending, proposals, head, best, represents,
+        [true, false, false])
+    @test length(proposals) == 3
+    @test head[1] == 0 && represents[1] == 0
+    chain = Float64[]
+    q = head[2]
+    while q != 0
+        push!(chain, proposals[q].time)
+        q = proposals[q].chain
+    end
+    @test chain == [2.5, 1.5]
+    @test proposals[represents[2]].time == 1.5 && proposals[represents[2]].queued
+    @test proposals[represents[3]].time == 3.0
+    @test count(p -> p.queued, proposals) == 2
+    @test sort(pending) == [(1.5, 2, represents[2]), (3.0, 3, represents[3])]
+end
+
 @testset "Shared race refreshes live pair kernels" begin
     ties = StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0))
     state = stateful_test_race(ties, [0.0, Inf, Inf]; interventions = [TickEveryCase()])

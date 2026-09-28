@@ -619,6 +619,9 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
 
     # The seeds' own opening: no infector, so nothing about it is ever read.
     push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
+    # Proposals a redraw has unlinked, which stay in `proposals` and the heap
+    # until they are compacted away.
+    orphans = 0
     # For a live kernel, which hosts' records a pending or future draw reads.
     # Empty and unused otherwise.
     watch = _LiveWatch(live ? m : 0)
@@ -711,8 +714,12 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         # inline below, from the records as they now stand.
         if live && _records_changed!(records, refresh_projection, state, members,
             j, bt, watch, openings, processed)
-            _redraw_moved!(pending, proposals, head, best, represents, watch,
-                openings, processed, pos, rts, state, bt, rng)
+            orphans += _redraw_moved!(pending, proposals, head, best, represents,
+                watch, openings, processed, pos, rts, state, bt, rng)
+            if orphans > max(m, length(proposals) ÷ 2)
+                _compact_proposals!(pending, proposals, head, best, represents, processed)
+                orphans = 0
+            end
         end
 
         # Each route opens and closes on its own states, so a case can still be
@@ -871,7 +878,8 @@ _link(p::_Pending, chain) = _Pending(p.opening, chain, p.time, p.queued)
 # the exposure already elapsed, and every other proposal stands, external
 # introductions included. A pair with no pending proposal is drawn again too:
 # its earlier draw may have fallen past the window, which a new record can
-# change. Fixed kernels never take this path.
+# change. Fixed kernels never take this path. Returns how many proposals it
+# unlinked.
 function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatch,
         openings, processed, pos, rts, state, now, rng)
     # Opening => the members whose pairs with it are drawn again, or `nothing`
@@ -899,6 +907,7 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
     # already due at this clock remain due: an atom's survival is zero at its
     # contact time, so it cannot be redrawn afterwards.
     tied = Set{Tuple{Int, Int}}()
+    unlinked = 0
     for j in hit
         q = head[j]
         head[j] = 0
@@ -910,6 +919,8 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
                 redoes(proposal.opening, j) && push!(tied, (proposal.opening, j))
                 last == 0 ? (head[j] = q) : (proposals[last] = _link(proposals[last], q))
                 last = q
+            else
+                unlinked += 1
             end
             q = next_q
         end
@@ -948,5 +959,37 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
     for j in hit
         _requeue!(pending, proposals, head, best, represents, j)
     end
+    return unlinked
+end
+
+# Rebuild `proposals` and the heap from the proposals still linked to members
+# that have not settled, dropping those a redraw unlinked and those to members
+# already settled. Each member keeps its proposals in order, and only its
+# earliest goes back in the heap: an entry for any other is skipped when popped,
+# and a blocked contact requeues the next earliest.
+function _compact_proposals!(pending, proposals, head, best, represents, processed)
+    kept = empty(proposals)
+    empty!(pending)
+    for j in eachindex(head)
+        q = head[j]
+        head[j] = 0
+        representative = 0
+        last = 0
+        while !processed[j] && q != 0
+            proposal = proposals[q]
+            push!(kept, _Pending(proposal.opening, 0, proposal.time, false))
+            id = length(kept)
+            last == 0 ? (head[j] = id) : (kept[last] = _link(kept[last], id))
+            q == represents[j] && (representative = id)
+            last = id
+            q = proposal.chain
+        end
+        represents[j] = representative
+        if representative != 0
+            kept[representative] = _queue(kept[representative])
+            _heap_push!(pending, (best[j], j, representative))
+        end
+    end
+    copy!(proposals, kept)
     return nothing
 end
