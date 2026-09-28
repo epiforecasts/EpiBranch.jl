@@ -86,4 +86,59 @@
         @test_throws ArgumentError single_type_offspring(
             HomogeneousProcess(; transmission_rate = 1.0, population_size = 100))
     end
+
+    @testset "incomplete terminal coverage warns" begin
+        bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        # Two terminal transitions gated independently at p and 1 - p: neither
+        # is unconditional, so about p(1 - p) of cases clear both gates'
+        # failure and reach no terminal state.
+        non_exclusive = [
+            Transition(:recovered; from = :infection, delay = Exponential(1.0),
+                probability = 0.36, terminal = true),
+            Transition(:died; from = :infection, delay = Exponential(1.0),
+                probability = 0.64, terminal = true)
+        ]
+        @test_logs (:warn, r"gated below.*probability 1") match_mode=:any ModelSpec(
+            bp; progression = non_exclusive)
+
+        # `exclusive_probabilities` shares one draw, so each gate's own
+        # probability is a `Function` — unknowable without an individual, so
+        # the check is silently skipped rather than risk a false warning.
+        died_p, recovered_p = exclusive_probabilities([0.64, 0.36])
+        exclusive = [
+            Transition(:recovered; from = :infection, delay = Exponential(1.0),
+                probability = recovered_p, terminal = true),
+            Transition(:died; from = :infection, delay = Exponential(1.0),
+                probability = died_p, terminal = true)
+        ]
+        @test_logs ModelSpec(bp; progression = exclusive)
+
+        # `Recovery` has no `probability` field at all — always fires once its
+        # anchor is reached — so pairing it with a gated `Death` guarantees
+        # coverage and stays silent.
+        @test_logs ModelSpec(bp;
+            progression = [Recovery(delay = Exponential(1.0)),
+                Death(delay = Exponential(1.0), probability = 0.3)])
+
+        # A single terminal transition at the default probability (1.0) is
+        # unconditional on its own.
+        @test_logs ModelSpec(bp;
+            progression = [Transition(:recovered; from = :infection,
+                delay = Exponential(1.0), terminal = true)])
+
+        # A single terminal transition gated below 1, with nothing else to
+        # cover the shortfall, warns even alone.
+        @test_logs (:warn, r"gated below.*probability 1") match_mode=:any ModelSpec(
+            bp; progression = [Death(delay = Exponential(1.0), probability = 0.3)])
+
+        # A `Function`-valued probability cannot be judged statically, so it
+        # is not flagged even though it might leave some cases uncovered.
+        @test_logs ModelSpec(bp;
+            progression = [Death(delay = Exponential(1.0),
+                probability = (rng, ind) -> 0.3)])
+
+        # No terminal transitions at all is not the gap this check catches.
+        @test_logs ModelSpec(bp;
+            progression = [Transition(:onset; from = :infection, delay = 1.0)])
+    end
 end

@@ -195,6 +195,7 @@ Death
 Recovery
 is_terminal
 terminal_event
+exclusive_probabilities
 EpiBranch.resolve_transitions!
 EpiBranch.transition_time
 ```

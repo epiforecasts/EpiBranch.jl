@@ -280,7 +280,12 @@ function _next_contact(rng::AbstractRNG, kernel, m::Real, dt, end_dt)
         "repeated contacts after a blocked proposal require finite remaining " *
         "integrated hazard. Close the infectious or introduction window before " *
         "the kernel survival reaches zero, or encode static protection in the " *
-        "contact kernel or host traits."))
+        "contact kernel or host traits. The likely cause is a case whose " *
+        "infectious window never closes — either the progression has no " *
+        "terminal transition reaching one of `until`'s states, or one is " *
+        "reachable but gated so that some cases fire none of them (see " *
+        "`exclusive_probabilities` for terminal transitions meant to " *
+        "partition the population exactly)."))
     nxt = _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
     return nxt > dt ? nxt : Inf
 end
