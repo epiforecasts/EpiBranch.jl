@@ -233,8 +233,9 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
     windows = [_start_unset(w, derived) for w in model.windows]
     routes = Tuple((w, _route_targets(w)) for w in windows)
 
-    EpiBranch._sellke_race!(state, collect(1:model.n), rng;
+    extinct = EpiBranch._sellke_race!(state, collect(1:model.n), rng;
         routes = routes, interventions = interventions,
+        max_time = EpiBranch._max_time(sim_opts),
         risks = EpiBranch.transmission_risks(model),
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, sim_opts.n_initial, Tobs, r;
@@ -244,7 +245,7 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
         contacts = (inf, st) -> _route_contacts(
             windows, interventions, st.individuals[inf], inf, st.rng))
 
-    _reconcile_sellke_bookkeeping!(state)
+    _reconcile_sellke_bookkeeping!(state, extinct)
     apply_observation!(observation, state, rng)
     return state
 end
