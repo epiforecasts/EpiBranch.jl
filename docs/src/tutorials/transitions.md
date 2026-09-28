@@ -368,10 +368,10 @@ outcomes, or whatever else your disease timeline needs.
 
 Each terminal transition's `probability` is its own Bernoulli draw, so gating
 two of them independently at `p` and `1 - p` does not partition cases
-exactly: about `p(1 - p)` of cases fire both (resolved by whichever candidate
-time is earlier) and another `p(1 - p)` fire neither, leaving `:outcome`
-unset. [`exclusive_probabilities`](@ref) fixes this by sharing one uniform
-draw between the siblings, so exactly one of them fires:
+exactly: about `p(1 - p)` of cases pass both gates (resolved by whichever
+candidate time is earlier) and another `p(1 - p)` pass neither gate, leaving
+`:outcome` unset. [`exclusive_probabilities`](@ref) fixes this by sharing one
+uniform draw between the siblings, so exactly one of them triggers:
 
 ```@example transitions
 death_p, recovered_p = exclusive_probabilities([0.05, 0.95])
@@ -393,8 +393,8 @@ println("Died: ", n_died, " of ", length(symptomatic))
 ```
 
 `ModelSpec` warns at composition when every terminal transition is gated
-below certainty and none is unconditional — the same gap this section
-describes — so the mistake surfaces before a run, not as an implausible
+below certainty and none is unconditional, the same gap this section
+describes, so the mistake surfaces before a run rather than as an implausible
 outbreak or a rejection-sampling error on a structure-driven model.
 
 ## Writing a non-terminal custom transition

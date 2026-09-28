@@ -229,11 +229,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   `severity_efficacy` does not wane. Defaults to `nothing`, which keeps the
   existing constant-protection behaviour.
 - `exclusive_probabilities` builds matched `probability` callables for sibling
-  terminal transitions meant to partition a population exactly (an exact
-  case-fatality ratio split between `Death` and a competing `recovered`
-  `Transition`, say): the siblings share one uniform draw per case instead of
-  each drawing its own, so the case falls in exactly one of the given
-  proportions, never both and never neither.
+  terminal transitions that should partition a population exactly (for
+  example, an exact case-fatality ratio split between `Death` and a competing
+  `recovered` `Transition`): the siblings share one uniform draw per case
+  instead of each drawing its own, so each case lands in exactly one of the
+  given proportions.
 
 ### Changed
 
@@ -403,15 +403,15 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 - Two terminal transitions gated independently at `p` and `1 - p` (the pattern
   the `Death` docstring used to recommend for an exact case-fatality ratio) do
   not give an exclusive outcome: each is its own Bernoulli draw, so about
-  `p(1 - p)` of cases fire both, resolved by whichever candidate time is
-  earlier, and another `p(1 - p)` fire neither, leaving `:outcome` unset — and,
-  on a structure-driven model, that case's infectious window never closes. The
-  `Death` docstring no longer recommends the broken pattern, and points to the
-  new `exclusive_probabilities` instead. `ModelSpec` now warns when every
-  terminal transition in `progression` is gated below certainty and none is
-  unconditional, so the gap is caught at composition rather than surfacing as
-  an implausible outbreak or an unrelated rejection-sampling error; that
-  error's message now names the likely cause.
+  `p(1 - p)` of cases pass both gates, resolved by whichever candidate time is
+  earlier, and another `p(1 - p)` pass neither gate, leaving `:outcome` unset.
+  On a structure-driven model, that case's infectious window then never
+  closes. The `Death` docstring no longer recommends the broken pattern and
+  instead points to the new `exclusive_probabilities`. `ModelSpec` now warns
+  when every terminal transition in `progression` is gated below certainty
+  and none is unconditional, so the gap is caught at composition instead of
+  surfacing as an implausible outbreak or an unrelated rejection-sampling
+  error; that error's message now names the likely cause.
 
 ## [0.1.0] - 2026-06-16
 
