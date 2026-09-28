@@ -84,6 +84,49 @@ offspring = household_offspring(model; global_rate = 0.1, rng = StableRNG(5))
 reproduction_number(offspring)
 ```
 
+### Households of one
+
+A household of one member has nobody to infect at home, so its offspring law is
+one case's community contacts and the construction reduces to an ordinary
+branching process. With a fixed six-day infectious window those contacts arrive
+at a constant rate, so the law should be Poisson:
+
+```@example households
+lone = ModelSpec(HouseholdProcess(fill(1, 1), Exponential(1.0));
+    progression = [Transition(:recovered; from = :infection, delay = 6.0,
+        terminal = true)])
+lone_law = household_offspring_law(household_offspring(lone; global_rate = 0.1,
+    rng = StableRNG(9)))
+R_lone = mean(lone_law)
+maximum(abs(pdf(lone_law, k) - pdf(Poisson(R_lone), k)) for k in support(lone_law))
+```
+
+The law is held as a truncated table of probabilities, so it is a
+`DiscreteNonParametric` and the agreement stops at the truncation error. The
+number of households infected then follows `Borel`:
+
+```@example households
+chain_size_distribution(BranchingProcess(Poisson(R_lone)))
+```
+
+An exponential window makes the infectious period random. A Poisson count
+compounded over it is geometric, so the chain size is `GammaBorel`:
+
+```@example households
+lone_exp = ModelSpec(HouseholdProcess(fill(1, 1), Exponential(1.0));
+    progression = [Transition(:recovered; from = :infection,
+        delay = Exponential(6.0), terminal = true)])
+R_lone_exp = reproduction_number(household_offspring(lone_exp; global_rate = 0.1,
+    rng = StableRNG(9)))
+chain_size_distribution(BranchingProcess(NegBin(R_lone_exp, 1.0)))
+```
+
+Larger households have no such closed form: the compounding runs over the
+household's own final-size distribution, which belongs to no named family, and
+[`chain_size_distribution`](@ref) dispatches only on `Poisson` and
+`NegativeBinomial`. [`reproduction_number`](@ref) and
+[`extinction_probability`](@ref) still apply, since they never assumed a family.
+
 The law itself is a `Distributions.jl` distribution, so it can be plotted, sampled,
 or handed to a [`BranchingProcess`](@ref) to simulate chains of infected households:
 
@@ -114,6 +157,31 @@ thing that is not drawn from the mixing weights.
 ```@example households
 extinction_probability(sized)
 ```
+
+### As a multi-type `BranchingProcess`
+
+A household's type decides how many other households it infects, while which
+households those are comes from the size-biased mixing weights whatever the
+parent's type. The offspring matrix is therefore rank one,
+`M[i, j] = mixing[i] * means[j]`, and the multi-type
+[`BranchingProcess`](@ref) methods apply to it directly:
+
+```@example households
+M = sized.mixing * sized.means'
+household_bp = BranchingProcess(M, R -> Poisson(R), Exponential(5.0))
+(exact = reproduction_number(sized), multitype = reproduction_number(household_bp))
+```
+
+R\* agrees, because it depends on the matrix alone. Extinction depends on the
+whole offspring law, and `Poisson` here is a guess that `sized` never makes,
+since it uses the household's own law:
+
+```@example households
+(exact = extinction_probability(sized),
+    poisson_approximation = extinction_probability(household_bp))
+```
+
+Take R\* from the matrix and extinction from [`household_offspring`](@ref)'s law.
 
 With a covariate kernel, households of one size need not be alike: who the
 members are decides how fast the household outbreak runs. The law is then built
@@ -149,6 +217,28 @@ isolated = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
 reproduction_number(household_offspring(isolated; global_rate = 0.1,
     rng = StableRNG(7)))
 ```
+
+### Scope
+
+The global level is as analytic as the plain branching process it specialises.
+R\* and `extinction_probability` come from the same fixed-point machinery, and an
+intervention on the household layer feeds through into the global offspring law
+with no separate global parameter to recalibrate. The cost sits at the household
+level, where the kernel is resolved exactly when it is Markovian and by
+simulating households otherwise, which leaves Monte Carlo error in the mean
+passed upwards once an intervention has individual-level timing.
+
+Every community contact is assumed to reach a household the outbreak has not
+touched, which holds while infected households are a small fraction of the
+total. Nothing depletes, so the model covers the early phase: R\*, and the chance
+that a single introduction dies out. An epidemic peak and a whole-population
+final size need a finite, depleting pool of households.
+
+Between-household contact tracing is the `ContactTracing` of
+[Interventions](interventions.md) attached to [`HouseholdProcess`](@ref), where a
+case's household-mates are already its contacts. It finds them one at a time
+through the same competing-risk resolution as any other contact, so a household
+whose members share one exposure gains nothing from being flagged together.
 
 The within-household epidemic behind all of these is available on its own.
 [`household_final_size`](@ref) gives the exact distribution of how many of a
