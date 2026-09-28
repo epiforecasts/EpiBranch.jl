@@ -74,11 +74,15 @@ end
     simulate(trial::Trial; rng = Random.default_rng(), sim_kwargs...) -> DataFrame
 
 Simulate one outbreak from `trial.spec` and return the [`trial_data`](@ref)
-of the trial run within it. Other keywords (`n_initial`, `initial_cases`,
-`max_time`, …) are passed to `simulate` on `trial.spec`, for example to seed
-the outbreak with several cases so it rarely dies out before the trial accrues
-events.
+of the trial run within it. Other keywords (`n_initial`, `initial_cases`, …)
+are passed to `simulate` on `trial.spec`, for example to seed the outbreak with
+several cases so it rarely dies out before the trial accrues events. A
+`max_time` must cover the follow-up, since nobody is infected once the
+simulation stops.
 """
 function EpiBranch.simulate(trial::Trial; rng::AbstractRNG = default_rng(), sim_kwargs...)
+    get(sim_kwargs, :max_time, Inf) >= trial.follow_up || throw(ArgumentError(
+        "max_time ($(sim_kwargs[:max_time])) ends the simulation before the " *
+        "end of follow-up ($(trial.follow_up))"))
     return trial_data(trial, simulate(trial.spec; rng, sim_kwargs...))
 end

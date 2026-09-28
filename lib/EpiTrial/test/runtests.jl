@@ -85,6 +85,8 @@ end
         reps = trial_estimates(trial, [RiskRatio()]; n_sim = 3, rng = StableRNG(13),
             n_initial = 10)
         @test all(reps.events .> 0)
+        # A simulation that stops before the end of follow-up is rejected.
+        @test_throws ArgumentError simulate(trial; rng = StableRNG(14), max_time = 30.0)
     end
 
     @testset "estimators on a fixed table" begin
