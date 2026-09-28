@@ -12,6 +12,44 @@
 # the forcing inputs the engine already threads. So there are no per-method
 # forwards — only the entry points know about the spec.
 
+# Whether a terminal transition's own probability, taken alone, guarantees it
+# fires once its anchor is reached: no `probability` field at all (`Recovery`,
+# or any custom terminal transition following the same contract) means
+# unconditional, so `true`; a constant `probability` is `true` only at exactly
+# `1`; a `Function` depends on the individual and cannot be judged here, so
+# `missing`.
+function _terminal_certain(t)
+    hasproperty(t, :probability) ? _certain_probability(t.probability) : true
+end
+_certain_probability(p::Real) = isone(p)
+_certain_probability(p) = missing
+
+# Warn when every terminal transition in `progression` is independently gated
+# below certainty: with none that always fires, a case can clear every gate
+# and reach no terminal state at all — `:outcome` stays unset and, on a
+# structure-driven model, the infectious window this case opened never closes
+# (a different symptom of the same gap that `_warn_uncovered_terminal_states`,
+# in branching_process.jl, catches for states missing from `until`). Skipped
+# when any terminal's probability is a `Function`: unknowable without an
+# individual, so silence over a possible false warning.
+function _warn_incomplete_terminal_coverage(progression)
+    terminals = filter(is_terminal, progression)
+    isempty(terminals) && return nothing
+    certainties = _terminal_certain.(terminals)
+    any(isequal(true), certainties) && return nothing
+    any(ismissing, certainties) && return nothing
+    @warn "Every terminal transition in `progression` is gated below " *
+          "probability 1, and independent gates do not give an exclusive " *
+          "outcome: a case can clear every gate and reach no terminal state, " *
+          "leaving `:outcome` unset and, on a structure-driven model, its " *
+          "infectious window never closed. If the outcomes are meant to " *
+          "partition the population exactly (an exact case-fatality ratio, " *
+          "say), build their probabilities with `exclusive_probabilities`; " *
+          "otherwise add an unconditional terminal transition to guarantee " *
+          "every case ends somewhere."
+    return nothing
+end
+
 struct ModelSpec{P <: TransmissionModel, A, O}
     process::P
     progression::Vector{AbstractClinicalTransition}
@@ -40,6 +78,7 @@ function ModelSpec(process::TransmissionModel;
         observation = observation(process))
     prog = _progvec(progression)
     _validate_process_windows(process, prog)
+    _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
     _validate_dose_schedule(ivs)
     return ModelSpec(process, prog, ivs, attributes, observation)
