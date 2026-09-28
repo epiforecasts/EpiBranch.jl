@@ -58,6 +58,7 @@ end
         trial = cohort_trial(n = 500, λ = 0.01, T = 50.0, efficacy = 0.5)
         data = simulate(trial; rng = StableRNG(4))
         @test names(data) == ["id", "arm", "exit_time", "event"]
+        @test_throws ArgumentError Trial(trial.spec; follow_up = Inf)
         @test nrow(data) == 500
         @test all(data.exit_time .<= 50.0)
         @test all(data.exit_time[.!data.event] .== 50.0)

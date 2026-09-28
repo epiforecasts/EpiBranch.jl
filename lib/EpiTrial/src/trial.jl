@@ -38,7 +38,8 @@ struct Trial{S <: ModelSpec, E <: AbstractEndpoint}
     follow_up::Float64
     endpoint::E
     function Trial(spec::S, follow_up::Real, endpoint::E) where {S, E}
-        follow_up > 0 || throw(ArgumentError("follow_up must be positive"))
+        isfinite(follow_up) && follow_up > 0 ||
+            throw(ArgumentError("follow_up must be positive and finite"))
         return new{S, E}(spec, Float64(follow_up), endpoint)
     end
 end
