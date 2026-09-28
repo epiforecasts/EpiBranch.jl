@@ -395,9 +395,9 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   `:trace_time` recorded at every tracing depth, `linelist` now has a
   `date_trace` column at the default `depth = 1` as well.
 - `AbstractVaccination`'s `initialise_individual!` no longer overwrites
-  `:vaccinated` and `:vaccination_time` an `attributes` function already set,
-  such as a dose recorded from an earlier campaign. It now only fills in the
-  unvaccinated defaults when those keys are absent.
+  `:vaccinated` and `:vaccination_time` that an `attributes` function already
+  set, such as a dose recorded from an earlier campaign. It now only fills in
+  the unvaccinated defaults when those keys are absent.
 
 ## [0.1.0] - 2026-06-16
 
