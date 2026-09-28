@@ -44,10 +44,11 @@ function simulate(model::TransmissionModel;
         rng::AbstractRNG = Random.default_rng(),
         condition::Union{UnitRange{Int}, Nothing} = nothing,
         max_attempts::Int = 10_000)
-    # A bare process is composed with no ModelSpec, so run the window check the
-    # spec constructor would otherwise do (a ModelSpec routes here via its own
+    # A bare process is composed with no ModelSpec, so run the checks the spec
+    # constructor would otherwise do (a ModelSpec routes here via its own
     # `simulate`, already validated at composition, so it never double-warns).
     _validate_process_windows(model, _progression(model))
+    _warn_incomplete_terminal_coverage(_progression(model))
     _warn_ignored_termination(
         model, max_cases, max_generations, max_time, stopping_rules)
     sim_opts = SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time,
@@ -110,6 +111,7 @@ function simulate(model::TransmissionModel, n::Int;
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false)
     _validate_process_windows(model, _progression(model))
+    _warn_incomplete_terminal_coverage(_progression(model))
     _warn_ignored_termination(
         model, max_cases, max_generations, max_time, stopping_rules)
     sim_opts = SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time,
