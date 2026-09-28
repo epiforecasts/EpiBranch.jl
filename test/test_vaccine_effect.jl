@@ -148,4 +148,81 @@ end
         results = simulate(model, 20; max_cases = 100, rng = StableRNG(3))
         @test all(s -> s.cumulative_cases == 1, results)
     end
+
+    @testset "AllOrNothingMode draws a responder once, at dose time" begin
+        # At efficacy 1.0 every dose makes a responder: certain block from
+        # immunity time on, exactly as LeakyMode would give at that efficacy.
+        full = RingVaccination(efficacy = 1.0, mode = AllOrNothingMode())
+        responder = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+        EpiBranch._record_vaccination!(full, responder, 0.0, StableRNG(1))
+        @test EpiBranch._vaccine_efficacy(full, responder) == 1.0
+        risk = EpiBranch.competing_risk(full, Individual(id = 1), responder, nothing)
+        @test risk.block_probability == 1.0
+
+        # At efficacy 0.0 nobody responds: no risk is built at all, so a
+        # non-responder is exposed exactly as an unvaccinated contact.
+        none = RingVaccination(efficacy = 0.0, mode = AllOrNothingMode())
+        non_responder = Individual(id = 3, parent_id = 1, infection_time = 10.0)
+        EpiBranch._record_vaccination!(none, non_responder, 0.0, StableRNG(1))
+        @test EpiBranch._vaccine_efficacy(none, non_responder) == 0.0
+        @test EpiBranch.competing_risk(none, Individual(id = 1), non_responder, nothing) ===
+              nothing
+
+        # At an intermediate efficacy the stored value is always 0 or 1 — a
+        # Bernoulli(efficacy) draw — never the raw efficacy LeakyMode would
+        # keep, and responders occur with roughly that probability.
+        half = RingVaccination(efficacy = 0.5, mode = AllOrNothingMode())
+        draws = map(1:1000) do i
+            contact = Individual(id = i, parent_id = 0, infection_time = 10.0)
+            EpiBranch._record_vaccination!(half, contact, 0.0, StableRNG(i))
+            EpiBranch._vaccine_efficacy(half, contact)
+        end
+        @test all(x -> x == 0.0 || x == 1.0, draws)
+        @test 0.4 < count(==(1.0), draws) / length(draws) < 0.6
+
+        # LeakyMode is unaffected: the stored value is the sampled efficacy
+        # itself, whatever it is.
+        leaky = RingVaccination(efficacy = 0.5, mode = LeakyMode())
+        contact = Individual(id = 1, parent_id = 0, infection_time = 10.0)
+        EpiBranch._record_vaccination!(leaky, contact, 0.0, StableRNG(1))
+        @test EpiBranch._vaccine_efficacy(leaky, contact) == 0.5
+    end
+
+    @testset "waning has no AllOrNothingMode meaning yet" begin
+        decay = dt -> exp(-dt / 30)
+        @test_throws ArgumentError VaccineEffect(
+            efficacy = 0.5, waning = decay, mode = AllOrNothingMode())
+        @test_throws ArgumentError RingVaccination(
+            efficacy = 0.5, waning = decay, mode = AllOrNothingMode())
+        # Either on its own is fine.
+        @test VaccineEffect(efficacy = 0.5, waning = decay, mode = LeakyMode()) isa
+              VaccineEffect
+        @test VaccineEffect(efficacy = 0.5, mode = AllOrNothingMode()) isa VaccineEffect
+    end
+
+    @testset "Branching process: the two modes agree in distribution" begin
+        # Every contact on a branching process is exposed exactly once, so the
+        # marginal probability a vaccinated contact escapes infection is
+        # `efficacy` under both modes (see the AbstractVaccination docstring).
+        clinical = clinical_presentation(
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+        function vaccinated_attack_rate(mode, seed)
+            rv = RingVaccination(efficacy = 0.6, mode = mode)
+            results = simulate(
+                ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical),
+                300; max_cases = 4000, rng = StableRNG(seed))
+            vaccinated = [ind for s in results
+                          for ind in s.individuals
+                          if is_vaccinated(ind)]
+            return count(is_infected, vaccinated), length(vaccinated)
+        end
+        leaky_infected, leaky_n = vaccinated_attack_rate(LeakyMode(), 101)
+        aon_infected, aon_n = vaccinated_attack_rate(AllOrNothingMode(), 102)
+        @test leaky_n > 500 && aon_n > 500
+        @test isapprox(leaky_infected / leaky_n, aon_infected / aon_n; atol = 0.05)
+    end
 end
