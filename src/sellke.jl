@@ -572,7 +572,6 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
 
     seed!(best, members, rng)
     live = refresh_projection !== nothing
-    initial_times = live ? copy(best) : nothing
     # What each member's host record held when contacts were last drawn from it.
     records = live ?
               [deepcopy(_pair_state(refresh_projection, state.individuals[id]))
@@ -679,9 +678,6 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             end
             nxt = open_t + _next_contact(rng, kernel, mult, bt - open_t, close_t - open_t)
             proposals[p] = _at(proposals[p], nxt <= close_t ? nxt : T(Inf))
-            if live && opening.route == 0
-                initial_times[j] = proposals[p].time
-            end
             _requeue!(pending, proposals, head, best, represents, j)
             continue
         end
@@ -711,9 +707,13 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         # contacts redrawn. Resolving a case usually leaves every record alone —
         # a policy fires on one case out of hundreds — and then the contacts
         # already drawn still come from the hazards in force, so the race takes
-        # the ordinary path and draws this case's own openings inline.
-        dirty = live && _records_changed!(records, refresh_projection, state, members,
+        # the ordinary path. Either way this case's own openings are drawn
+        # inline below, from the records as they now stand.
+        if live && _records_changed!(records, refresh_projection, state, members,
             j, bt, watch, openings, processed)
+            _redraw_moved!(pending, proposals, head, best, represents, watch,
+                openings, processed, pos, rts, state, bt, rng)
+        end
 
         # Each route opens and closes on its own states, so a case can still be
         # transmitting on one while another has been cut. A route whose `from`
@@ -737,7 +737,6 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                     records[k] = _remember(_pair_state(
                         refresh_projection, state.individuals[target_id]))
                 end
-                dirty && continue
                 # Both per-individual traits are rate multipliers on this
                 # pair's contact interval, folded into the draw rather than
                 # resolved contact by contact. A pair at the default 1 draws
@@ -752,10 +751,6 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                 _propose!(pending, proposals, head, best, represents, k, opening_id,
                     cand, may_block)
             end
-        end
-        if dirty
-            _refresh_contacts!(pending, proposals, head, best, represents,
-                openings, initial_times, processed, members, pos, rts, state, bt, rng)
         end
     end
     return true
@@ -780,10 +775,14 @@ struct _LiveWatch
     as_target::Vector{Int}         # open openings that reached each member
     tracked::Vector{Int}           # members any open opening reads
     slot::Vector{Int}              # each member's place in `tracked`, or 0
+    opened_by::Vector{Vector{Int}} # the openings each member made
+    reached_by::Vector{Vector{Int}} # the openings that reached each member
+    moved::Vector{Int}             # members whose records moved at this case
 end
 # The seeds' opening has no infector and a fixed kernel, so it is never watched.
 function _LiveWatch(m::Int)
-    _LiveWatch(Int[], [0], [Int[]], zeros(Int, m), zeros(Int, m), Int[], zeros(Int, m))
+    _LiveWatch(Int[], [0], [Int[]], zeros(Int, m), zeros(Int, m), Int[], zeros(Int, m),
+        [Int[] for _ in 1:m], [Int[] for _ in 1:m], Int[])
 end
 
 function _track!(w::_LiveWatch, k)
@@ -808,18 +807,21 @@ function _watch_opening!(w::_LiveWatch, infector)
     push!(w.source, infector)
     push!(w.reach, Int[])
     push!(w.open, length(w.reach))
+    push!(w.opened_by[infector], length(w.reach))
     w.as_infector[infector] += 1
     _track!(w, infector)
 end
 
 function _watch_target!(w::_LiveWatch, opening, k)
     push!(w.reach[opening], k)
+    push!(w.reached_by[k], opening)
     w.as_target[k] += 1
     _track!(w, k)
 end
 
 # Whether a host record that a pending or future draw reads has moved since
-# contacts were last drawn from it, updating the remembered records as it goes.
+# contacts were last drawn from it, updating the remembered records as it goes
+# and listing the members that moved in `w.moved`.
 # The settled case's own record is brought up to date without counting as a
 # move: contacts to it are settled, and its own contacts are drawn after this
 # check.
@@ -840,7 +842,7 @@ function _records_changed!(records, project, state, members, case, now,
         end
     end
     resize!(w.open, kept)
-    changed = false
+    empty!(w.moved)
     idx = 1
     while idx <= length(w.tracked)
         k = w.tracked[idx]
@@ -848,10 +850,10 @@ function _records_changed!(records, project, state, members, case, now,
             _untrack_at!(w, idx)
             continue
         end
-        changed |= _record_moved!(records, project, state, members, k)
+        _record_moved!(records, project, state, members, k) && push!(w.moved, k)
         idx += 1
     end
-    return changed
+    return !isempty(w.moved)
 end
 
 function _record_moved!(records, project, state, members, k)
@@ -861,47 +863,69 @@ function _record_moved!(records, project, state, members, k)
     return true
 end
 
-# A newly recorded action can change an edge that had no pending proposal (its
-# previous draw may have exceeded the window). Rebuild from every open route,
-# preserving external introductions and conditioning internal contacts on the
-# elapsed exposure. Fixed kernels never take this path.
-function _refresh_contacts!(pending, proposals, head, best, represents,
-        openings, initial_times, processed, members, pos, rts, state, now, rng)
-    # Contacts already due at this clock remain due. In particular an atom's
-    # survival is zero at its contact time, so it cannot be redrawn afterwards.
-    tied = Set{Tuple{Int, Int}}()
-    for j in eachindex(members)
-        processed[j] && continue
-        q = head[j]
-        while q != 0
-            proposal = proposals[q]
-            proposal.opening != 1 && proposal.time == now &&
-                push!(tied, (proposal.opening, j))
-            q = proposal.chain
+_link(p::_Pending, chain) = _Pending(p.opening, chain, p.time, p.queued)
+
+# A record that moved changes only the pairs it enters: those of an open opening
+# whose infector moved, and those reaching a moved member that has not settled.
+# Their contacts are drawn again from the hazards now in force, conditioned on
+# the exposure already elapsed, and every other proposal stands, external
+# introductions included. A pair with no pending proposal is drawn again too:
+# its earlier draw may have fallen past the window, which a new record can
+# change. Fixed kernels never take this path.
+function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatch,
+        openings, processed, pos, rts, state, now, rng)
+    # Opening => the members whose pairs with it are drawn again, or `nothing`
+    # for all of them.
+    redo = Dict{Int, Union{Nothing, Set{Int}}}()
+    for k in w.moved
+        for oi in w.opened_by[k]
+            openings[oi].close_t >= now && (redo[oi] = nothing)
+        end
+        processed[k] && continue
+        for oi in w.reached_by[k]
+            openings[oi].close_t >= now || continue
+            members_hit = get!(Set{Int}, redo, oi)
+            members_hit === nothing || push!(members_hit, k)
         end
     end
-    empty!(pending)
-    empty!(proposals)
-    fill!(head, 0)
-    fill!(best, Inf)
-    fill!(represents, 0)
-    for j in eachindex(members)
-        processed[j] && continue
-        isfinite(initial_times[j]) || continue
-        _propose!(pending, proposals, head, best, represents, j, 1, initial_times[j], true)
+    redoes(oi, j) = haskey(redo, oi) && (redo[oi] === nothing || j in redo[oi])
+    hit = Set{Int}()
+    for (oi, members_hit) in redo
+        for j in (members_hit === nothing ? w.reach[oi] : members_hit)
+            processed[j] || push!(hit, j)
+        end
     end
-    for (oi, j) in tied
-        _propose!(pending, proposals, head, best, represents, j, oi, now, true)
+    # Unlink the proposals drawn again, keeping the rest in order. Contacts
+    # already due at this clock remain due: an atom's survival is zero at its
+    # contact time, so it cannot be redrawn afterwards.
+    tied = Set{Tuple{Int, Int}}()
+    for j in hit
+        q = head[j]
+        head[j] = 0
+        last = 0
+        while q != 0
+            proposal = proposals[q]
+            next_q = proposal.chain
+            if !redoes(proposal.opening, j) || proposal.time == now
+                redoes(proposal.opening, j) && push!(tied, (proposal.opening, j))
+                last == 0 ? (head[j] = q) : (proposals[last] = _link(proposals[last], q))
+                last = q
+            end
+            q = next_q
+        end
+        last == 0 || (proposals[last] = _link(proposals[last], 0))
+        best[j] = oftype(best[j], Inf)
+        represents[j] = 0
     end
-    for oi in 2:length(openings)
+    for (oi, members_hit) in redo
         opening = openings[oi]
-        opening.close_t < now && continue
         source = state.individuals[opening.infector]
         for (ri, (_, targets)) in enumerate(rts)
             ri == opening.route || continue
             for (id, kernel) in targets(opening.infector, state)
                 j = get(pos, id, 0)
                 (j == 0 || processed[j] || (oi, j) in tied) && continue
+                members_hit === nothing || j in members_hit || continue
                 m = source.infectiousness * state.individuals[id].susceptibility
                 m <= 0 && continue
                 dt = if now <= opening.open_t
@@ -919,6 +943,10 @@ function _refresh_contacts!(pending, proposals, head, best, represents,
                     pending, proposals, head, best, represents, j, oi, candidate, true)
             end
         end
+    end
+    # Each member's earliest proposal, kept or new, takes its place in the heap.
+    for j in hit
+        _requeue!(pending, proposals, head, best, represents, j)
     end
     return nothing
 end
