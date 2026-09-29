@@ -78,22 +78,31 @@ function household_infections(
 end
 
 """
-    loglikelihood(data::HouseholdInfections, model::HouseholdProcess) -> Float64
+    loglikelihood(data::HouseholdInfections, model::HouseholdProcess; condition_on = :is_index) -> Float64
 
 The contact-process log-density of `model`'s kernel given the infection layer
-`data`: `pairwise_surv_loglik(model.kernel, data; external_hazard =
-model.external_hazard)`.
+`data`, on the layout [`compile_household_pairs`](@ref) builds for
+`condition_on` (see there): `pairwise_surv_loglik(model.kernel, data, layout;
+external_hazard = model.external_hazard)`.
 """
-function Distributions.loglikelihood(data::HouseholdInfections, model::HouseholdProcess)
-    return pairwise_surv_loglik(model.kernel, data; external_hazard = model.external_hazard)
+function Distributions.loglikelihood(
+        data::HouseholdInfections, model::HouseholdProcess;
+        condition_on::Symbol = :is_index
+    )
+    layout = compile_household_pairs(
+        data; external = _ext_active(model.external_hazard), condition_on
+    )
+    return pairwise_surv_loglik(
+        model.kernel, data, layout; external_hazard = model.external_hazard
+    )
 end
 
 function Distributions.loglikelihood(
         data::HouseholdInfections,
-        model::ModelSpec{<:HouseholdProcess}
+        model::ModelSpec{<:HouseholdProcess}; condition_on::Symbol = :is_index
     )
     EpiBranch._validate_infection_likelihood(model)
-    return loglikelihood(data, model.process)
+    return loglikelihood(data, model.process; condition_on)
 end
 
 # ── Compiled pair layout ─────────────────────────────────────────────
@@ -112,12 +121,26 @@ const HouseholdPairsLayout = ContactPairsLayout
 
 """
     compile_household_pairs(household_of, is_index, infected; external=false)
-    compile_household_pairs(data::HouseholdInfections; external=false)
+    compile_household_pairs(data::HouseholdInfections; external=false, condition_on=:is_index)
 
 [`compile_contact_pairs`](@ref) on a household partition, where household-mates
 are each other's possible infectors. The arguments and the layout are as
 described there. Evaluate the result with
 `pairwise_surv_loglik(kernel, data, layout; external_hazard)`.
+
+`condition_on` chooses which host in each household the likelihood does not
+need to explain, when there is no community hazard (`external = false`; with
+one every host is explained and `condition_on` has no effect). `:is_index`,
+the default, conditions on the recruited index, `data.is_index`, fixed at
+read time. `:earliest` instead conditions on whichever household member has
+the lowest `infection_time` in `data` (ties keep the lowest host id),
+resolved afresh on every call. Use it when the recruited index need not be
+the first household member infected, which is otherwise expected in real
+recruited households and can otherwise turn an infection time augmented
+below the recruited index's into an impossible (`-Inf`) configuration. Because
+the conditioned host can change between calls, compile a fresh layout for
+`:earliest` on every evaluation rather than reusing one across augmented
+draws.
 """
 function compile_household_pairs(
         household_of::AbstractVector{<:Integer},
@@ -128,6 +151,50 @@ function compile_household_pairs(
     return compile_contact_pairs(household_of, is_index, infected; external)
 end
 
-function compile_household_pairs(d::HouseholdInfections; external::Bool = false)
-    return compile_contact_pairs(d; external)
+function compile_household_pairs(
+        d::HouseholdInfections; external::Bool = false,
+        condition_on::Symbol = :is_index
+    )
+    infected = .!isnan.(d.infection_time)
+    return compile_contact_pairs(
+        d.household_of, _condition_mask(d, condition_on), infected; external
+    )
+end
+
+# The `is_index` mask `compile_household_pairs` conditions on for `data`: the
+# recruited index (`condition_on = :is_index`) or each household's
+# earliest-infected member, resolved from `data.infection_time`
+# (`condition_on = :earliest`).
+function _condition_mask(data::HouseholdInfections, condition_on::Symbol)
+    condition_on === :is_index && return data.is_index
+    condition_on === :earliest && return _earliest_infected(
+        data.household_of, data.infection_time, .!isnan.(data.infection_time)
+    )
+    throw(
+        ArgumentError(
+            "condition_on must be :is_index or :earliest, got $(repr(condition_on))"
+        )
+    )
+end
+
+# The earliest-infected member of each household named in `household_of`,
+# among the hosts `infected` marks, as an `is_index`-shaped mask: `true` for
+# each household's earliest case, `false` elsewhere (including households with
+# no infected member). Ties keep the lowest host id.
+function _earliest_infected(household_of, infection_time, infected::AbstractVector{Bool})
+    n = length(household_of)
+    earliest_time = Dict{Int, eltype(infection_time)}()
+    earliest_host = Dict{Int, Int}()
+    for i in 1:n
+        infected[i] || continue
+        h = household_of[i]
+        t = infection_time[i]
+        if !haskey(earliest_time, h) || t < earliest_time[h]
+            earliest_time[h] = t
+            earliest_host[h] = i
+        end
+    end
+    is_earliest = falses(n)
+    is_earliest[collect(values(earliest_host))] .= true
+    return is_earliest
 end

@@ -833,6 +833,58 @@ end
         end
     end
 
+    @testset "condition_on = :earliest resolves the conditioned host from infection times" begin
+        # a household of 3 recruited on member 1, but with augmented times where
+        # member 2 turns out to be the first infected: conditioning on the fixed
+        # recruited index (the default) leaves member 2 with no possible infector,
+        # since neither household-mate is infectious before it is infected — the
+        # impossible configuration the issue describes. Conditioning on the
+        # earliest infection instead explains member 1 and member 3 from member 2
+        # and gives a finite density, the one scoring member 2 as the index by
+        # hand (the documented workaround) also gives.
+        data = HouseholdInfections(
+            [1, 1, 1], [1.0, 0.2, 2.0], [1.0, 0.2, 2.0],
+            [Inf, Inf, Inf], [true, false, false]
+        )
+        @test pairwise_surv_loglik(Exponential(3.0), data) == -Inf
+        index_layout = compile_household_pairs(data)
+        @test pairwise_surv_loglik(Exponential(3.0), data, index_layout) == -Inf
+
+        earliest_layout = compile_household_pairs(data; condition_on = :earliest)
+        ll = pairwise_surv_loglik(Exponential(3.0), data, earliest_layout)
+        @test isfinite(ll)
+
+        relabelled = HouseholdInfections(
+            data.household_of, data.infection_time, data.infectious_time,
+            data.removal_time, [false, true, false]
+        )
+        @test ll ≈ pairwise_surv_loglik(Exponential(3.0), relabelled)
+
+        m = ModelSpec(HouseholdProcess([3], Exponential(3.0)); progression = _sir(6.0))
+        @test loglikelihood(data, m) == -Inf
+        @test loglikelihood(data, m; condition_on = :earliest) ≈ ll
+
+        @test_throws ArgumentError compile_household_pairs(data; condition_on = :bogus)
+
+        # a community hazard already explains every host, so which host
+        # `condition_on` names makes no difference to the layout
+        ext_index = compile_household_pairs(data; external = true, condition_on = :is_index)
+        ext_earliest = compile_household_pairs(
+            data; external = true, condition_on = :earliest
+        )
+        @test ext_index.sus == ext_earliest.sus
+        @test ext_index.infector == ext_earliest.infector
+
+        # a household with a single case has no household-mate to condition
+        # against either way, and both modes score it the same
+        solo = HouseholdInfections([1], [0.0], [0.0], [Inf], [true])
+        @test pairwise_surv_loglik(Exponential(3.0), solo) ≈
+            pairwise_surv_loglik(
+            Exponential(3.0), solo,
+            compile_household_pairs(solo; condition_on = :earliest)
+        )
+    end
+
     @testset "compiled pair layout: edge cases" begin
         # empty population → empty layout, zero log-likelihood, consistent length
         empty = HouseholdInfections(Int[], Float64[], Float64[], Float64[], Bool[])
