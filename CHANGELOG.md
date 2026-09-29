@@ -352,7 +352,7 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   settles that member's own infection, aborting it with the usual probability
   when immunity falls between exposure and onset. Previously
   `continuous_actions` refused a nonzero `post_exposure_efficacy` on these
-  models outright, so no dose was ever given. A route's window on these models
+  models outright, so no dose was given. A route's window on these models
   also now closes at a post-exposure abort, matching the `AbortedInfection`
   risk that already blocks transmission from that time, rather than staying
   open indefinitely when the abort undoes the removal state it would
