@@ -13,6 +13,36 @@ function loglikelihood(data::OffspringCounts, offspring::Distribution)
 end
 
 """
+    loglikelihood(data::OffspringCounts, offspring::AbstractVector{<:Distribution})
+
+Log-likelihood of observed secondary case counts under a per-case offspring
+distribution, e.g. `NegBin.(exp.(X * β), k)` for a case-level covariate
+matrix `X`. `offspring` must have one distribution per observation in
+`data`.
+
+A zero-truncated variant, for data that list only cases with at least one
+secondary case, needs no dedicated method: pass `truncated.(offspring, 1, Inf)`
+(or a scalar `truncated(dist, 1, Inf)` to the single-distribution method).
+
+# Examples
+
+```julia
+counts = OffspringCounts([0, 1, 4, 0, 2])
+μ = [0.5, 0.8, 3.0, 0.5, 1.2]
+loglikelihood(counts, NegBin.(μ, 0.5))
+```
+"""
+function loglikelihood(data::OffspringCounts, offspring::AbstractVector{<:Distribution})
+    length(offspring) == length(data.data) || throw(
+        ArgumentError(
+            "offspring must have the same length as data " *
+                "($(length(data.data))); got $(length(offspring))"
+        )
+    )
+    return sum(logpdf(d, x) for (d, x) in zip(offspring, data.data))
+end
+
+"""
     loglikelihood(data::ChainSizes, offspring::Distribution; prob_concluded = nothing)
 
 Log-likelihood of observed chain sizes under the analytical chain size

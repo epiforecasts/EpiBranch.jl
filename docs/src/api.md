@@ -330,10 +330,17 @@ data wrapper:
 
 ```julia
 loglikelihood(OffspringCounts(data), Poisson(0.5))
+loglikelihood(OffspringCounts(data), NegBin.(μ, 0.5))  # one distribution per case
 loglikelihood(ChainSizes(data), NegBin(0.8, 0.5))
 loglikelihood(ChainLengths(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), model)   # interventions/observation read from model
 ```
+
+The vector form of `loglikelihood(::OffspringCounts, ...)` scores each count
+against its own distribution, for case-level covariates such as `NegBin.(exp.(X * β), k)`.
+Pass `truncated.(offspring, 1, Inf)` for the zero-truncated case (data listing
+only cases with at least one secondary case); `Distributions.truncated`
+composes with either the scalar or the vector method.
 
 For maximum-likelihood estimation, pair the `loglikelihood` interface
 with Optim.jl, or use Turing's `maximum_likelihood` — the same model that
