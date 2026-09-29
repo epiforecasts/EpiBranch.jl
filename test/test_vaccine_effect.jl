@@ -230,25 +230,20 @@ end
         # Every contact on a branching process is exposed exactly once, so the
         # marginal probability a vaccinated contact escapes infection is
         # `efficacy` under both modes (see the AbstractVaccination docstring).
-        clinical = clinical_presentation(
-            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-        ct = ContactTracing(
-            probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
-        function vaccinated_attack_rate(mode, seed)
-            rv = RingVaccination(efficacy = 0.6, mode = mode)
+        # Vaccinating everyone before the outbreak lets the dose act on every
+        # exposure, so both modes must change containment by the same amount.
+        function containment(efficacy, mode, seed)
+            mv = MassVaccination(efficacy = efficacy, eligibility_time = 0.0, mode = mode)
             results = simulate(
-                ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0));
-                    interventions = [iso, ct, rv], attributes = clinical),
-                300; max_cases = 4000, rng = StableRNG(seed))
-            vaccinated = [ind for s in results
-                          for ind in s.individuals
-                          if is_vaccinated(ind)]
-            return count(is_infected, vaccinated), length(vaccinated)
+                ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+                    interventions = [mv]),
+                2000; max_cases = 200, rng = StableRNG(seed))
+            return containment_probability(results)
         end
-        leaky_infected, leaky_n = vaccinated_attack_rate(LeakyMode(), 101)
-        aon_infected, aon_n = vaccinated_attack_rate(AllOrNothingMode(), 102)
-        @test leaky_n > 500 && aon_n > 500
-        @test isapprox(leaky_infected / leaky_n, aon_infected / aon_n; atol = 0.05)
+        unvaccinated = containment(0.0, LeakyMode(), 101)
+        leaky = containment(0.4, LeakyMode(), 102)
+        all_or_nothing = containment(0.4, AllOrNothingMode(), 103)
+        @test leaky > unvaccinated + 0.3
+        @test isapprox(leaky, all_or_nothing; atol = 0.05)
     end
 end
