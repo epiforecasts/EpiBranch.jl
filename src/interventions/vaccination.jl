@@ -424,9 +424,7 @@ end
 # sampled value `eff` (a `Real`, a draw from a `Distribution`, or a call to a
 # function — already resolved by `_sample_value`) and the vaccination's mode.
 _realised_efficacy(::LeakyMode, eff, rng) = eff
-function _realised_efficacy(::AllOrNothingMode, eff, rng)
-    rand(rng, Bernoulli(eff)) ? 1.0 : 0.0
-end
+_realised_efficacy(::AllOrNothingMode, eff, rng) = float(rand(rng, Bernoulli(eff)))
 
 # Helper for concrete subtypes: write per-dose state on a contact at
 # vaccination time. Samples efficacy, severity efficacy, and the
