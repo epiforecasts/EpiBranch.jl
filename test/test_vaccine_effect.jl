@@ -188,6 +188,32 @@ end
         @test EpiBranch._vaccine_efficacy(leaky, contact) == 0.5
     end
 
+    @testset "AllOrNothingMode draws a responder for a dose recorded beforehand" begin
+        # A campaign before the run records its dose through `attributes`.
+        # Under AllOrNothingMode its efficacy becomes a responder status once,
+        # when the individual is set up; a recorded 0 or 1 is kept as it is.
+        prior(eff) = Individual(id = 1,
+            state = Dict{Symbol, Any}(:vaccinated => true, :vaccination_time => -10.0,
+                :vaccine_efficacy => eff))
+        all_or_nothing = RingVaccination(efficacy = 0.5, mode = AllOrNothingMode())
+        draws = map(1:1000) do i
+            ind = prior(0.5)
+            EpiBranch.initialise_individual!(all_or_nothing, ind, (; rng = StableRNG(i)))
+            EpiBranch._vaccine_efficacy(all_or_nothing, ind)
+        end
+        @test all(x -> x == 0.0 || x == 1.0, draws)
+        @test 0.4 < count(==(1.0), draws) / length(draws) < 0.6
+        for status in (0.0, 1.0)
+            ind = prior(status)
+            EpiBranch.initialise_individual!(all_or_nothing, ind, (; rng = StableRNG(1)))
+            @test EpiBranch._vaccine_efficacy(all_or_nothing, ind) == status
+        end
+        leaky = RingVaccination(efficacy = 0.5, mode = LeakyMode())
+        ind = prior(0.5)
+        EpiBranch.initialise_individual!(leaky, ind, (; rng = StableRNG(1)))
+        @test EpiBranch._vaccine_efficacy(leaky, ind) == 0.5
+    end
+
     @testset "waning has no AllOrNothingMode meaning yet" begin
         decay = dt -> exp(-dt / 30)
         @test_throws ArgumentError VaccineEffect(

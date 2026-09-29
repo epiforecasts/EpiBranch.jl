@@ -365,11 +365,26 @@ _maybe_positive(x) = true
 prior dose an `attributes` function already recorded — for example a
 campaign that ran before the simulation starts. `get!` only writes the
 default when the key is absent, so an individual created already carrying
-`:vaccinated = true` keeps that dose, and its `:vaccination_time`."""
+`:vaccinated = true` keeps that dose, and its `:vaccination_time`.
+
+Under `AllOrNothingMode` a prior dose's recorded efficacy is turned into this
+individual's responder status here, once, as `_record_vaccination!` does for a
+dose given during the run. A recorded efficacy of 0 or 1 is already a responder
+status and is kept as it is."""
 function initialise_individual!(v::AbstractVaccination, individual, state)
     label = dose_label(v)
     get!(individual.state, _vaccinated_key(label), false)
     get!(individual.state, _vaccination_time_key(label), Inf)
+    _realise_prior_dose!(effect_mode(v), individual, label, state)
+    return nothing
+end
+
+_realise_prior_dose!(::LeakyMode, individual, label, state) = nothing
+function _realise_prior_dose!(mode::AllOrNothingMode, individual, label, state)
+    key = _vaccine_efficacy_key(label)
+    eff = get(individual.state, key, nothing)
+    (eff isa Real && 0 < eff < 1) || return nothing
+    individual.state[key] = _realised_efficacy(mode, eff, state.rng)
     return nothing
 end
 
