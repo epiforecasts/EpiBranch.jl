@@ -346,6 +346,13 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
+- A `RoutedNetwork` route's `kernel` now accepts a covariate callable, a
+  `ContextualKernel`, a `StatefulKernel` and a per-edge vector, resolved per
+  pair exactly as `NetworkProcess` resolves its edge kernel, in both the route's
+  targets and the continuation drawn after a blocked contact. Previously every
+  such form other than a shared distribution was passed unresolved to the race
+  and raised a `MethodError`, so frequency-dependent transmission and covariate
+  kernels were unusable on a route.
 - `AllOrNothingMode` now draws a vaccinated individual's responder status once,
   when the dose is recorded, rather than resolving it per-exposure, so a
   responder is protected against infection at every exposure and a
