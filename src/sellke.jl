@@ -146,16 +146,21 @@ function _propose!(pending, proposals, head, best, represents, k, w, t, may_bloc
     return nothing
 end
 
-# After a member's earliest contact was blocked, hand its place to the next
-# earliest. That one may still have an entry in the heap, from before a later
-# proposal overtook it, in which case there is nothing to push.
+# After a member's earliest contact was blocked, or its proposals were redrawn,
+# hand its place to the earliest remaining. Contacts at the same time go to the
+# opening made first, as `_propose!` orders them, so the infector does not
+# depend on the order the chain was built in. The chosen proposal may still have
+# an entry in the heap, from before a later proposal overtook it, in which case
+# there is nothing to push.
 function _requeue!(pending, proposals, head, best, represents, k)
     pid = 0
     t = oftype(best[k], Inf)
     q = Int(head[k])
     while q != 0
-        if proposals[q].time < t
-            t = proposals[q].time
+        time = proposals[q].time
+        if time < t ||
+           (time == t && pid != 0 && proposals[q].opening < proposals[pid].opening)
+            t = time
             pid = q
         end
         q = proposals[q].chain

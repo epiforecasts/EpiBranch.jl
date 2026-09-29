@@ -69,3 +69,30 @@ end
     state = simulate(model; initial_cases = [1], rng = StableRNG(1))
     @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0, 1.0, 1.0]
 end
+
+@testset "Simultaneous contacts go to the infector whose opening came first" begin
+    # Hosts 2 and 3 both reach host 4 at t = 3; host 2 opened first, so it is
+    # the infector however many unrelated leaves host 1 also reaches.
+    function law(i, j)
+        i == 1 || return i == 2 ? Dirac(2.0) : Dirac(1.0)
+        return Dirac(j == 2 ? 1.0 : j == 3 ? 2.0 : j == 5 ? 2.5 : 0.5)
+    end
+    kernel = StatefulKernel(tick_state, (c, a, b) -> law(c.infector, c.susceptible))
+    for leaves in 0:8
+        adjacency = [Int[] for _ in 1:(5 + leaves)]
+        for (x, y) in [(1, 2), (1, 3), (1, 5), (2, 4), (3, 4)]
+            push!(adjacency[x], y)
+            push!(adjacency[y], x)
+        end
+        for leaf in 6:(5 + leaves)
+            push!(adjacency[1], leaf)
+            push!(adjacency[leaf], 1)
+        end
+        model = ModelSpec(NetworkProcess(adjacency, kernel);
+            progression = [Transition(:recovered; delay = 5.0, terminal = true)],
+            interventions = [TickEveryCase()])
+        state = simulate(model; initial_cases = [1], rng = StableRNG(1))
+        @test state.individuals[4].infection_time == 3.0
+        @test state.individuals[4].parent_id == 2
+    end
+end
