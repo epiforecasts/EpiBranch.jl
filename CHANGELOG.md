@@ -12,12 +12,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
-- `pairwise_surv_loglik_by_component` breaks the pairwise survival
-  log-likelihood down by connected component of the contact structure (a
-  household on a household partition), reusing one compiled
-  `ContactPairsLayout`. A sampler updating the latent infection layer
-  component by component can accept or reject each move on its own share of
-  the likelihood.
+- `pairwise_surv_loglik_by_component` splits the pairwise survival
+  log-likelihood by connected component of the contact structure (households,
+  under a household partition), reusing one compiled `ContactPairsLayout` so
+  a sampler updating the latent infection layer component by component can
+  accept or reject each move on its own share of the likelihood.
 - `StatefulKernel` shares sampled attributes and dated intervention histories
   between structured simulation and likelihoods. `record_kernel` extracts typed
   host records for inference. An infection layer can hold per-host times such
