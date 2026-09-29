@@ -89,6 +89,67 @@ _resolve_delay(x::Real, rng, ind) = float(x)         # a fixed, deterministic de
 _resolve_delay(f, rng, ind) = float(f(rng, ind))
 
 """
+    exclusive_probabilities(ps::AbstractVector{<:Real}) -> Vector{Function}
+
+Build matched `probability` callables for `length(ps)` sibling transitions
+whose outcomes are meant to be mutually exclusive — an exact case-fatality
+ratio split between death and recovery, say.
+
+Passing raw probabilities straight to each sibling's own `probability` field
+draws an *independent* Bernoulli per transition (`_transition_selected`
+consumes its own `rand(rng)`): two terminal transitions gated at `p` and
+`1 - p` then both fire (resolved by whichever candidate time comes first) on
+about `p(1 - p)` of cases, and neither fires — leaving `:outcome` unset — on
+another `p(1 - p)`.
+
+This function closes over a single shared uniform draw per case instead: the
+first sibling to resolve draws it and caches it on the individual, and every
+sibling reads the same value. The case's draw lands in exactly one of the
+`ps`-sized buckets, so the outcomes partition the population in the given
+proportions, with no case counted twice and none dropped except by design
+(see below).
+
+`ps` must be non-negative and sum to at most `1`; a shortfall between
+`sum(ps)` and `1` is the (intentional) probability that none of the siblings
+fires — pair it with an unconditional terminal transition, or expect some
+cases to reach no terminal state.
+
+# Examples
+
+```julia
+death_p, recovered_p = exclusive_probabilities([0.64, 0.36])
+progression = [
+    Death(delay = LogNormal(2.5, 0.4), probability = death_p),
+    Transition(:recovered, from = :onset, delay = LogNormal(2.0, 0.4),
+        probability = recovered_p, terminal = true),
+]
+```
+"""
+function exclusive_probabilities(ps::AbstractVector{<:Real})
+    all(>=(0), ps) || throw(ArgumentError(
+        "exclusive_probabilities needs non-negative probabilities, got $ps"))
+    total = sum(ps)
+    total <= 1 + sqrt(eps(float(total))) || throw(ArgumentError(
+        "exclusive_probabilities needs probabilities summing to at most 1, got $total"))
+    key = gensym(:exclusive_draw)
+    bounds = cumsum(ps)
+    return [_exclusive_gate(key, i == 1 ? zero(total) : bounds[i - 1], bounds[i])
+            for i in eachindex(ps)]
+end
+
+# One bucket of a shared draw: `lo <= u < hi` fires, everything else doesn't.
+# Returning 0.0/1.0 (rather than deciding directly) keeps this a `probability`
+# callable like any other, so it composes with `_transition_selected`'s own
+# `rand(rng) < p` unchanged — that draw is now deterministic, since `u` alone
+# decided the outcome.
+function _exclusive_gate(key::Symbol, lo::Real, hi::Real)
+    return (rng, ind) -> begin
+        u = get!(() -> rand(rng), ind.state, key)
+        return (lo <= u < hi) ? 1.0 : 0.0
+    end
+end
+
+"""
     transition_time(rng, individual, start_time, delay; probability = nothing)
 
 Sample a clinical event time from a finite `start_time`, returning `nothing`

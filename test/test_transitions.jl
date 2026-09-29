@@ -385,3 +385,76 @@ end
         @test only(state.individuals).state[key] == 2.0
     end
 end
+
+@testset "exclusive_probabilities" begin
+    @testset "validates its input" begin
+        @test_throws ArgumentError exclusive_probabilities([0.6, 0.6])
+        @test_throws ArgumentError exclusive_probabilities([-0.1, 1.1])
+    end
+
+    @testset "exactly one sibling fires, whichever order they resolve in" begin
+        ps = [0.2, 0.3, 0.5]
+        # Calling the gates in a different order each time checks the shared
+        # draw is cached on first use, not on a fixed position in the group.
+        orders = [[1, 2, 3], [3, 1, 2], [2, 3, 1]]
+        for seed in 1:100
+            gates = exclusive_probabilities(ps)
+            ind = Individual(id = 1, infection_time = 0.0)
+            order = orders[mod1(seed, length(orders))]
+            fired = [gates[i](StableRNG(seed + i), ind) for i in order]
+            @test count(==(1.0), fired) == 1
+            @test count(==(0.0), fired) == length(ps) - 1
+        end
+    end
+
+    @testset "partitions the population in the given proportions" begin
+        ps = [0.36, 0.64]
+        n_low = 0
+        n_high = 0
+        N = 20_000
+        for seed in 1:N
+            gates = exclusive_probabilities(ps)
+            ind = Individual(id = 1, infection_time = 0.0)
+            low, high = gates[1](StableRNG(seed), ind), gates[2](nothing, ind)
+            @test low + high == 1.0  # never both, never neither
+            n_low += low == 1.0
+            n_high += high == 1.0
+        end
+        @test isapprox(n_low / N, ps[1]; atol = 0.02)
+        @test isapprox(n_high / N, ps[2]; atol = 0.02)
+    end
+
+    @testset "a shortfall below 1 is the probability neither fires" begin
+        ps = [0.3, 0.3]
+        n_neither = 0
+        N = 20_000
+        for seed in 1:N
+            gates = exclusive_probabilities(ps)
+            ind = Individual(id = 1, infection_time = 0.0)
+            low, high = gates[1](StableRNG(seed), ind), gates[2](nothing, ind)
+            @test low + high in (0.0, 1.0)
+            n_neither += (low + high == 0.0)
+        end
+        @test isapprox(n_neither / N, 1 - sum(ps); atol = 0.02)
+    end
+
+    @testset "an exact case-fatality ratio, end to end" begin
+        # The reproducer from the issue: two terminal transitions gated
+        # independently at p and 1 - p leave some cases with neither outcome
+        # (about p(1 - p) of them). `exclusive_probabilities` fixes that: no
+        # case has both, or neither.
+        clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        rng = StableRNG(21)
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        died_p, recovered_p = exclusive_probabilities([0.36, 0.64])
+        died = Transition(:died; from = :onset, delay = LogNormal(2.5, 0.4),
+            probability = died_p, terminal = true)
+        recovered = Transition(:recovered; from = :onset, delay = LogNormal(2.0, 0.4),
+            probability = recovered_p, terminal = true)
+        state = tsim(model; attributes = clinical, transitions = [died, recovered],
+            condition = 500:1000, max_cases = 1000, rng = rng)
+        @test all(ind -> haskey(ind.state, :outcome), state.individuals)
+        n_died = count(ind -> ind.state[:outcome] == :died, state.individuals)
+        @test isapprox(n_died / length(state.individuals), 0.36; atol = 0.05)
+    end
+end

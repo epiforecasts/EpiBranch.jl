@@ -50,11 +50,14 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
     add_individuals!(state, length(model.household_of), interventions;
         setup = (ind, i) -> (ind.state[:household] = model.household_of[i]))
 
-    # Reuse the population lookup across household races.
+    # Reuse the population lookup across household races. The population is
+    # extinct only when every household's race ran to its own extinction,
+    # rather than being cut off at `max_time` with candidates still pending.
     initial_cases = sim_opts.initial_cases === nothing ? nothing :
                     Set(sim_opts.initial_cases)
+    extinct = true
     for mem in model.members
-        EpiBranch._sellke_race!(state, mem, rng;
+        extinct &= EpiBranch._sellke_race!(state, mem, rng;
             from = from, until = model.until, interventions = interventions,
             max_time = EpiBranch._max_time(sim_opts),
             risks = EpiBranch.transmission_risks(model),
@@ -70,7 +73,7 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
             contacts = (inf, st) -> (oid for oid in mem if oid != inf))
     end
 
-    _reconcile_sellke_bookkeeping!(state)
+    _reconcile_sellke_bookkeeping!(state, extinct)
     # Apply the observation model (under-reporting, report delays), as core
     # `simulate` does. A no-op for the default `NoObservation`.
     apply_observation!(observation, state, rng)
