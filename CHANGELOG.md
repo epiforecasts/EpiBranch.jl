@@ -340,6 +340,14 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
+- `AllOrNothingMode` now draws a vaccinated individual's responder status once,
+  when the dose is recorded, rather than resolving it per-exposure, so a
+  responder is protected against infection at every exposure and a
+  non-responder at none; a dose an `attributes` function records before the
+  run gets the same draw. Previously the stored efficacy was checked against each exposure
+  independently, giving leaky results regardless of `mode`. A `VaccineEffect`
+  combining `AllOrNothingMode` with `waning` now raises an `ArgumentError`,
+  since waning an outcome that is already all-or-nothing has no meaning yet.
 - `HomogeneousProcess`, `HouseholdProcess`, `NetworkProcess` and `RoutedNetwork`
   now set `state.extinct` at the end of their Sellke run. `is_extinct` and
   `containment_probability` report real values instead of always `false`/`0`

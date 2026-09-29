@@ -564,11 +564,12 @@ raises containment and the same efficacy a week later does not.
     The two runs are then different samples, not the same outbreak with
     and without a dose. Here containment is 0.255 with the boost and
     0.295 without, and that difference is Monte Carlo noise, not harm
-    from the boost. A dose with `coverage = 1.0`, scalar efficacy and no
-    eligibility window draws from the rng only when it meets an exposure
-    it could block. Such a dose with nothing to block leaves the stream
-    untouched, which is why the `RingVaccination(efficacy = 0.8)` case
-    above reproduces its baseline exactly. For any other dose, compare
+    from the boost. A `LeakyMode` dose with `coverage = 1.0`, scalar
+    efficacy and no eligibility window draws from the rng only when it
+    meets an exposure it could block. Such a dose with nothing to block
+    leaves the stream untouched, which is why the `RingVaccination(efficacy = 0.8)` case
+    above reproduces its baseline exactly. An `AllOrNothingMode` dose draws
+    its responder status whenever it is given. For any other dose, compare
     across many seeds, or reason from the timing as here.
 
 ### Protecting a contact who has already been exposed

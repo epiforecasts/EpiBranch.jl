@@ -76,7 +76,7 @@ downstream packages should pick names that do not collide.
 | `:trace_level` | `Int` | — | `compute_trace_level!` | Post-simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
-| `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
+| `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | Init / `apply_post_transmission!` |
 | `:post_exposure_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `post_exposure_efficacy`) | `apply_post_transmission!` |
 | `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | `apply_post_transmission!` |
 | `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
@@ -103,8 +103,12 @@ writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy` /
 `:immunity_time` (and, on `RingVaccination`, `:post_exposure_efficacy` /
 `:onward_efficacy`), and any other label suffixes the key (so
 `dose_label = :boost` writes `:vaccinated_boost`, etc.). This lets multi-dose
-schedules compose without colliding. `:immunity_time` (the vaccination time
-plus a draw from `delay_to_immunity`), `:post_exposure_efficacy`, and
+schedules compose without colliding. Under `AllOrNothingMode`,
+`:vaccine_efficacy` holds the individual's responder status, `1.0` or `0.0`,
+drawn once from the dose's efficacy; a dose an `attributes` function records
+before the run has its efficacy turned into that status at initialisation.
+`:immunity_time` (the vaccination time plus a draw from `delay_to_immunity`),
+`:post_exposure_efficacy`, and
 `:onward_efficacy` each hold one draw taken at vaccination time from a field
 that may be a `Real`, a `Distribution`, or a function, so every exposure of an
 individual is judged against the same value. `:post_exposure_efficacy` and
