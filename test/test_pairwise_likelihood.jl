@@ -209,6 +209,10 @@ end
 
         @test_throws ArgumentError compile_contact_pairs([1, 1], [true], [true, false])
         @test length(compile_contact_pairs(Int[], Bool[], Bool[])) == 0
+
+        # each household is its own connected component, numbered in label order
+        @test L.component == [1, 1, 1, 2, 2]
+        @test L.ncomponents == 2
     end
 
     @testset "layout on a directed graph" begin
@@ -246,6 +250,10 @@ end
             [[3], Int[]], [true, false],
             [true, false]
         )
+
+        # host 4 has no edges at all, so it is its own component
+        @test L.component == [1, 1, 1, 2]
+        @test L.ncomponents == 2
     end
 
     @testset "evaluation matches hand-built counting-process rows" begin
@@ -631,5 +639,71 @@ end
             ] for (i, nbrs) in enumerate(adjacency)
         ]
         @test ForwardDiff.derivative(s -> pairwise_surv_loglik(pm(s), data, L), 2.5) ≈ dc
+    end
+
+    @testset "per-component contributions" begin
+        # a sampler updating one household at a time needs that household's
+        # share of the log-likelihood, not the total
+        membership, adjacency = _cliques([3, 4, 2, 4])
+        inf = [0.0, 1.2, NaN, 0.0, 2.1, 3.5, NaN, 0.0, NaN, 0.0, 0.7, NaN, 4.2]
+        infectious = inf .+ 0.5
+        removal = infectious .+ 4.0
+        is_index = [
+            true, false, false, true, false, false, false, true, false,
+            true, false, false, false,
+        ]
+        hh = _TestInfections(
+            membership, inf, infectious, removal, is_index;
+            obs_end = 10.0
+        )
+        net = _TestInfections(
+            adjacency, inf, infectious, removal, is_index;
+            obs_end = 10.0
+        )
+        for external in (false, true)
+            Lh = compile_contact_pairs(hh; external)
+            Ln = compile_contact_pairs(net; external)
+            @test Lh.component == membership
+            @test Lh.component == Ln.component
+            @test Lh.ncomponents == Ln.ncomponents == 4
+            α = external ? 0.05 : 0.0
+            for k in (Exponential(2.5), Weibull(1.5, 3.0))
+                total = pairwise_surv_loglik(k, hh, Lh; external_hazard = α)
+                by_component = pairwise_surv_loglik_by_component(k, hh, Lh; external_hazard = α)
+                @test length(by_component) == 4
+                @test sum(by_component) ≈ total
+                # a household on a network layout gives the same breakdown
+                @test by_component ≈
+                    pairwise_surv_loglik_by_component(k, net, Ln; external_hazard = α)
+                # the two-argument form compiles its own layout
+                @test pairwise_surv_loglik_by_component(k, hh; external_hazard = α) ≈
+                    by_component
+            end
+        end
+
+        # an infection no possible infector can explain only zeroes out its own
+        # household's density; the other household stays finite
+        structure = [1, 1, 2, 2]
+        inf2 = [0.0, 1.0, 10.0, 8.0]
+        removal2 = [5.0, 6.0, 12.0, 13.0]
+        index2 = [true, false, true, false]
+        data = _TestInfections(structure, inf2, inf2, removal2, index2; obs_end = 5.0)
+        L = compile_contact_pairs(data; external = true)
+        k = Exponential(3.0)
+        α = 0.1
+        by_component = pairwise_surv_loglik_by_component(k, data, L; external_hazard = α)
+        @test pairwise_surv_loglik(k, data, L; external_hazard = α) == -Inf
+        broken_household = L.component[3]
+        ok_household = L.component[1]
+        @test by_component[broken_household] == -Inf
+        @test isfinite(by_component[ok_household])
+
+        # the finite household's contribution matches scoring it on its own
+        solo = _TestInfections(
+            [1, 1], [0.0, 1.0], [0.0, 1.0], [5.0, 6.0], [true, false];
+            obs_end = 5.0
+        )
+        @test by_component[ok_household] ≈
+            pairwise_surv_loglik(k, solo; external_hazard = α)
     end
 end
