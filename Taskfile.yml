@@ -24,8 +24,6 @@ tasks:
   format:
     desc: Format code with Runic
     cmds:
-      # Runic takes the repository root and recurses, so the directory list the
-      # JuliaFormatter version carried is no longer needed.
       - >-
         julia --project=. --quiet -e '
         using Pkg;

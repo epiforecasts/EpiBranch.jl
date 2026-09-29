@@ -31,9 +31,9 @@ end
     unformatted = String[]
     checked = 0
     for (dir, _, files) in walkdir(root)
-        # The rendered site is generated, and `.git` holds no source. Matching a
-        # path component rather than a substring keeps a checkout whose own path
-        # contains `.git` from skipping every directory under it.
+        # The rendered site is generated, and `.git` holds no source. The match
+        # is on a path component, since a checkout's own path can contain
+        # `.git`.
         parts = splitpath(relpath(dir, root))
         (occursin(joinpath("docs", "build"), dir) || ".git" in parts) && continue
         for file in files
@@ -47,7 +47,6 @@ end
                 push!(unformatted, relpath(path, root))
         end
     end
-    # Naming the files beats a bare `false` when this fails on CI.
     @test unformatted == String[]
     # A walk that matched nothing would otherwise pass silently.
     @test checked > 100
