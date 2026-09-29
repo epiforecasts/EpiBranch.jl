@@ -201,8 +201,8 @@ println("Iso + tracing + ring vaccination: $(round(containment_probability(resul
     already has; see
     [Protecting a contact who has already been exposed](#Protecting-a-contact-who-has-already-been-exposed).
     The examples that follow keep the default tracing and set only
-    `efficacy`, so they show how the machinery works but no vaccine effect;
-    [What clustering does to containment](#What-clustering-does-to-containment)
+    `efficacy`: they show how the machinery works, but no vaccine effect.
+    [Clustered refusal and containment](#Clustered-refusal-and-containment)
     and
     [Protecting a contact who has already been exposed](#Protecting-a-contact-who-has-already-been-exposed)
     use stacks where vaccination acts.
@@ -345,15 +345,15 @@ closure to cluster refusal inside the unit it vaccinates;
 [`MassVaccination`](@ref)'s `eligibility_time` reads the propensity the same
 way.
 
-#### What clustering does to containment
+#### Clustered refusal and containment
 
-The comparison above measures coverage, and it runs under `ct`, where ring
-vaccination cannot change whether an outbreak is contained: as the warning
-above explains, `efficacy` has nothing left to prevent under that tracing.
-To see what clustering does to containment, vaccination first has to be able
-to act. Here tracing no longer quarantines, and `onward_efficacy` reduces a
-vaccinated contact's own onward transmission. Every arm draws the same
-attributes, so only the vaccination differs between them:
+The comparison above measures coverage under `ct`. Under that tracing, ring
+vaccination cannot change whether an outbreak is contained, because `efficacy`
+has nothing left to prevent (see the warning above). The effect of clustering
+on containment can only be measured on a stack where vaccination acts. Here
+tracing no longer quarantines, and `onward_efficacy` reduces a vaccinated
+contact's own onward transmission. Every arm draws the same attributes, which
+leaves the vaccination as the only difference between them:
 
 ```@example interventions
 ct_noquarantine = ContactTracing(probability = 0.7,
@@ -376,18 +376,18 @@ end
 ```
 
 Vaccinating about half the traced contacts raises containment by one to two
-percentage points. Whether refusal is clustered makes no difference these runs
-can detect. Each estimate has a binomial standard error of about 0.004, so the
-gap between the two arms has one of about 0.006, and the gap is smaller than
-that. At 5,000 replicates the order of the two arms reverses.
+percentage points. These runs cannot distinguish clustered from independent
+refusal. Each estimate has a binomial standard error of about 0.004, which puts
+the standard error of the gap between the two arms at about 0.006, larger than
+the gap itself. At 5,000 replicates the two arms swap order.
 
-Clustering has so little effect here because `groups(20)` assigns each person
-to a community independently of who infected them. A case's contacts are spread
-across communities, so the shared propensity rarely lines up with who that case
-goes on to infect. Clustering matters more when communities follow transmission,
-as households or a contact network do: a low-acceptance community then keeps
-transmitting within itself. That can lower containment even when average
-coverage is unchanged, so measure it in the model you are running.
+Clustering has little effect here because `groups(20)` assigns each person to a
+community independently of who infected them. A case's contacts are spread
+across communities, and the shared propensity rarely lines up with the people
+that case goes on to infect. Clustering matters more when communities follow
+transmission, as households or a contact network do. A low-acceptance community
+then keeps transmitting within itself, which can lower containment at unchanged
+average coverage. Measure the effect in the model you are running.
 
 ### Mass vaccination
 
