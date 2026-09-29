@@ -7,7 +7,7 @@ using LinearAlgebra: LinearAlgebra, eigvals
 using QuadGK
 using Random
 using SpecialFunctions
-using SurvivalDistributions: cumhazard, loghazard
+using SurvivalDistributions: cumhazard, loghazard, hazard
 
 # Docstring templates (must come before any docstrings)
 include("docstrings.jl")

@@ -27,4 +27,32 @@
     @test EpiBranch._validate_infection_likelihood(model) === nothing
     bad = ModelSpec(BranchingProcess(Poisson(0.0)); attributes = (rng, ind) -> nothing)
     @test_throws ArgumentError EpiBranch._validate_infection_likelihood(bad)
+
+    @testset "vaccination" begin
+        # the basic susceptibility risk is fully represented by
+        # `pairwise_surv_loglik`'s `vaccine` argument
+        @test compatible(MassVaccination(efficacy = 0.6, eligibility_time = 10.0))
+        @test compatible(GroupVaccination(efficacy = 0.6))
+        @test compatible(RingVaccination(efficacy = 0.6))
+        # a non-default dose label has no immunity time to read
+        @test !compatible(MassVaccination(
+            efficacy = 0.6, eligibility_time = 10.0, dose_label = :boost))
+        @test !compatible(GroupVaccination(efficacy = 0.6, dose_label = :boost))
+        # `onward_efficacy`/`post_exposure_efficacy` act on hazards the
+        # likelihood's kernel never sees
+        @test !compatible(RingVaccination(efficacy = 0.6, onward_efficacy = 0.3))
+        @test !compatible(RingVaccination(efficacy = 0.6, post_exposure_efficacy = 0.3))
+        @test compatible(Scheduled(
+            MassVaccination(efficacy = 0.6, eligibility_time = 10.0); start_time = 0.0))
+    end
+
+    @testset "_model_vaccine" begin
+        mv = MassVaccination(efficacy = 0.7, eligibility_time = 10.0)
+        @test EpiBranch._model_vaccine([iso]) === nothing
+        @test EpiBranch._model_vaccine([iso, mv]) === EpiBranch.vaccine_effect(mv)
+        @test EpiBranch._model_vaccine([Scheduled(mv; start_time = 0.0)]) ===
+              EpiBranch.vaccine_effect(mv)
+        @test_throws ArgumentError EpiBranch._model_vaccine([mv,
+            GroupVaccination(efficacy = 0.5)])
+    end
 end

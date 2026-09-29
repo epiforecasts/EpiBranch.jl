@@ -167,20 +167,45 @@ function followup_end(data::InfectionLayer)
     data.followup_end : Inf
 end
 
+"""
+    immunity_time(data::InfectionLayer)
+
+Per-host vaccine-induced immunity times of `data`: the time each host's
+immunity develops, `Inf` for a host with none (never vaccinated, or a dose
+whose immunity has not yet developed by any time the likelihood reaches). Read
+by [`pairwise_surv_loglik`](@ref) alongside its `vaccine` argument to discount
+a susceptible's escape probability and event hazard from that time on. The
+default reads an `immunity_time` field when the [`InfectionLayer`](@ref)
+subtype has one — [`household_infections`](@ref EpiBranch.household_infections)
+and [`network_infections`](@ref EpiBranch.network_infections) fill it in from
+[`immunity_time(ind)`](@ref) — and is `Inf` for every host otherwise, matching
+a subtype written before this field existed.
+"""
+function immunity_time(data::InfectionLayer)
+    hasproperty(data, :immunity_time) ? data.immunity_time :
+    fill(Inf, length(data.infection_time))
+end
+
 # The per-host fields of an `InfectionLayer` subtype over `n` hosts, in field
 # order after the contact structure: the three time vectors, `is_index`,
-# `obs_end` and `followup_end`. Every time shares one number type, at least
-# `Float64`, which lets a constructor take integers or AD values.
+# `obs_end`, `followup_end` and `immunity_time`. Every time shares one number
+# type, at least `Float64`, which lets a constructor take integers or AD
+# values. `immunity_time` defaults to `Inf` for every host (nobody vaccinated),
+# so a subtype that never supplies it scores exactly as before this field
+# existed.
 function _infection_layer_fields(n, infection_time, infectious_time, removal_time,
-        is_index; obs_end, followup_end)
+        is_index; obs_end, followup_end, immunity_time = nothing)
+    imm = immunity_time === nothing ? fill(Inf, n) : immunity_time
     all(length(v) == n
-    for v in (infection_time, infectious_time, removal_time, is_index)) ||
+    for v in (infection_time, infectious_time, removal_time, is_index, imm)) ||
         throw(ArgumentError("the contact structure and the per-host vectors must " *
                             "cover the same hosts"))
     T = promote_type(eltype(infection_time), eltype(infectious_time),
-        eltype(removal_time), typeof(obs_end), typeof(followup_end), Float64)
+        eltype(removal_time), eltype(imm), typeof(obs_end),
+        typeof(followup_end), Float64)
     return (Vector{T}(infection_time), Vector{T}(infectious_time),
-        Vector{T}(removal_time), Vector{Bool}(is_index), T(obs_end), T(followup_end))
+        Vector{T}(removal_time), Vector{Bool}(is_index), T(obs_end), T(followup_end),
+        Vector{T}(imm))
 end
 
 # The per-host columns of an infection layer, read out of a `state` simulated
@@ -204,7 +229,12 @@ function _infection_layer_columns(state::SimulationState, model::ModelSpec)
         removal_time[k] = window_close(ind, window, model.interventions)
         is_index[k] = get(ind.state, :index, false)
     end
-    return (; infection_time, infectious_time, removal_time, is_index)
+    # Every host is at risk of vaccination whether or not it is ever infected,
+    # so this column is read for the whole population, not just `infected`
+    # ones as above.
+    imm_time = [immunity_time(ind) for ind in state.individuals]
+    return (; infection_time, infectious_time, removal_time, is_index,
+        immunity_time = imm_time)
 end
 
 """
@@ -235,8 +265,46 @@ function infection_likelihood_compatible(ct::ContactTracing)
     infection_likelihood_compatible(ct.action)
 end
 infection_likelihood_compatible(::Union{Quarantine, FlagOnly}) = true
+# A vaccination's basic susceptibility risk (`efficacy`) is represented by
+# `pairwise_surv_loglik`'s `vaccine` argument, whose per-host immunity time
+# `household_infections`/`network_infections` fill in from `immunity_time`,
+# read for the default dose label only. Any other hazard effect the
+# vaccination has is not: `RingVaccination`'s `onward_efficacy` acts on the
+# parent's own transmission and `post_exposure_efficacy` can abort an
+# existing infection, neither of which the likelihood's kernel sees.
+function infection_likelihood_compatible(v::Union{MassVaccination, GroupVaccination})
+    dose_label(v) === :default
+end
+function infection_likelihood_compatible(rv::RingVaccination)
+    dose_label(rv) === :default && !_maybe_positive(rv.onward_efficacy) &&
+        !_maybe_positive(rv.post_exposure_efficacy)
+end
 function infection_likelihood_compatible(w::Union{Scheduled, CapacityConstrained})
     infection_likelihood_compatible(w.intervention)
+end
+
+"""
+    _model_vaccine(interventions) -> Union{Nothing, VaccineEffect}
+
+The [`VaccineEffect`](@ref) of the single [`AbstractVaccination`](@ref) in
+`interventions`, if any (unwrapping [`Scheduled`](@ref)/[`CapacityConstrained`](@ref)),
+for the structured `loglikelihood(data, spec)` entry points to pass on to
+[`pairwise_surv_loglik`](@ref) as `vaccine`. `nothing` when none is present.
+More than one is not yet supported here: call `pairwise_surv_loglik` directly
+with an explicit `vaccine` for a compound effect.
+"""
+function _model_vaccine(interventions)
+    found = nothing
+    for iv in interventions
+        v = _unwrap_scheduled(iv)
+        v isa AbstractVaccination || continue
+        found === nothing || throw(ArgumentError(
+            "more than one vaccination in `interventions`; the structured " *
+            "likelihood does not yet compose several doses. Call " *
+            "`pairwise_surv_loglik` directly with an explicit `vaccine`."))
+        found = v
+    end
+    return found === nothing ? nothing : vaccine_effect(found)
 end
 
 function _validate_infection_likelihood(model::ModelSpec)
@@ -564,8 +632,9 @@ end
 
 """
     pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairsLayout;
-                         external_hazard = 0.0) -> Real
-    pairwise_surv_loglik(kernel, data::InfectionLayer; external_hazard = 0.0) -> Real
+                         external_hazard = 0.0, vaccine = nothing) -> Real
+    pairwise_surv_loglik(kernel, data::InfectionLayer; external_hazard = 0.0,
+                         vaccine = nothing) -> Real
 
 The contact-process log-density of the infection layer `data` under a
 contact-interval `kernel`, marginal over who infected whom. Each susceptible
@@ -588,6 +657,35 @@ infection and `data.obs_end`. A host infected after `obs_end` can only have
 been infected by a possible infector. Spread along the contact structure
 continues after `obs_end`: a host that is never infected accrues hazard over
 each possible infector's whole infectious window.
+
+`vaccine` is the candidate [`VaccineEffect`](@ref) of a dose given to some
+susceptibles, or `nothing` (the default) to score the layer as if nobody were
+vaccinated. Its `efficacy` must be a `Real`: a per-individual `Distribution` or
+`Function` describes a simulation draw, not a value the likelihood can score.
+Per-host immunity times come from [`immunity_time(data)`](@ref
+EpiBranch.immunity_time), `Inf` for a host never vaccinated;
+[`household_infections`](@ref EpiBranch.household_infections) and
+[`network_infections`](@ref EpiBranch.network_infections) fill this in
+automatically. Under [`LeakyMode`](@ref), a vaccinated susceptible's escape
+probability from each exposure after its immunity time gains a factor of
+`1 - efficacy * retained`, `retained` the fraction `vaccine.waning` leaves at
+that exposure (`1` with no waning); the same factor multiplies the hazard at
+an event past immunity. Under [`AllOrNothingMode`](@ref) (which cannot combine
+with `waning`, as [`VaccineEffect`](@ref) already enforces), a vaccinated
+susceptible's contribution is instead the two-component mixture `efficacy *
+Lᵖ + (1 - efficacy) * Lᵘ`: `Lᵖ` the likelihood of escaping every infector
+while fully protected from the immunity time on (`0` if the susceptible is in
+fact infected at or after that time, since a responder cannot be), and `Lᵘ`
+the ordinary, unprotected likelihood. The escape from all infectors sits
+inside the mixture, not a per-pair product of mixtures, because responder
+status is a single draw that governs every exposure the susceptible faces;
+the mixture is otherwise smooth in `efficacy`, so gradients are exact. Only the
+basic susceptibility risk is represented; an effect a vaccination has beyond
+it (an `onward_efficacy` or `post_exposure_efficacy` on
+[`RingVaccination`](@ref), say) needs an explicit effective kernel instead.
+`household_infections`/`network_infections` and the structured
+`loglikelihood(data, spec)` methods read `immunity_time` for the default
+`dose_label` only; supply it yourself on `data` for any other dose.
 
 Everything is cut at [`followup_end(data)`](@ref EpiBranch.followup_end): a host
 infected after it is scored as escaped until then, and no exposure accrues past
@@ -620,7 +718,7 @@ and `Exponential` differentiate under either mode.
     it. In `log α` this is a straight line of slope `k`.
 """
 function pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairsLayout;
-        external_hazard = 0.0)
+        external_hazard = 0.0, vaccine = nothing)
     external = _ext_active(external_hazard)
     external == layout.external ||
         throw(ArgumentError("layout.external = $(layout.external) but external_hazard = $external_hazard"))
@@ -631,27 +729,52 @@ function pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairs
         throw(DimensionMismatch("data covers fewer individuals than the layout " *
                                 "was compiled for ($(layout.nhosts))"))
     extdist = external ? _ext_survival(external_hazard) : kernel
+    _check_vaccine(vaccine)
 
     tfollow = followup_end(data)
     (!isnan(tfollow) && tfollow >= 0) || throw(ArgumentError(
         "followup_end must be a non-negative number (Inf allowed), got $tfollow"))
+    imm_time = immunity_time(data)
+    length(imm_time) >= layout.nhosts || throw(DimensionMismatch(
+        "immunity_time(data) covers fewer individuals than the layout was " *
+        "compiled for ($(layout.nhosts))"))
     Tdata = promote_type(eltype(data.infection_time),
         eltype(data.infectious_time),
         eltype(data.removal_time),
+        eltype(imm_time),
         typeof(tfollow),
         Float64)
     # Promote against the kernel's parameter type so AD values in the fitted
     # kernel survive the reduction.
     Text = external ? Distributions.partype(extdist) : Union{}
-    T = promote_type(Tdata, _kernel_partype(kernel, layout, data, Tdata), Text)
+    Tvax = vaccine === nothing ? Union{} : typeof(vaccine.efficacy)
+    T = promote_type(Tdata, _kernel_partype(kernel, layout, data, Tdata), Text, Tvax)
     # A per-edge or covariate kernel's parameter type is only known at run time;
     # the function barrier keeps the passes type-stable.
     return _pairwise_surv_loglik(kernel, extdist, data, layout,
-        convert(Tdata, tfollow), T)
+        convert(Tdata, tfollow), T, vaccine, imm_time)
+end
+
+# `vaccine`'s efficacy must be a fixed candidate value, not a per-individual
+# draw rule: the likelihood scores one population-level parameter, and the
+# per-host state that rule would consult (`Distribution`/`Function` forms
+# draw once per vaccinated individual in simulation) has no counterpart here.
+# `AllOrNothingMode` cannot combine with `waning` either, but every
+# `VaccineEffect` already enforces that at construction.
+function _check_vaccine(::Nothing)
+    nothing
+end
+function _check_vaccine(vaccine)
+    vaccine.efficacy isa Real || throw(ArgumentError(
+        "vaccine.efficacy must be a Real for the likelihood; a Distribution or " *
+        "Function describes a simulation draw, not a fitted value"))
+    vaccine.mode isa Union{LeakyMode, AllOrNothingMode} || throw(ArgumentError(
+        "vaccine.mode must be a LeakyMode or an AllOrNothingMode"))
+    return nothing
 end
 
 function _pairwise_surv_loglik(kernel, extdist, data, layout, tfollow,
-        ::Type{T}) where {T}
+        ::Type{T}, vaccine, imm_time) where {T}
     # An infected host that is not conditioned on and has no possible infector
     # cannot have been infected, unless that infection falls after the end of
     # follow-up.
@@ -660,17 +783,55 @@ function _pairwise_surv_loglik(kernel, extdist, data, layout, tfollow,
         (isnan(tj) || tj > tfollow) || return T(-Inf)
     end
 
+    aon = vaccine !== nothing && vaccine.mode isa AllOrNothingMode
+    e = vaccine === nothing ? 0.0 : vaccine.efficacy
+    w = vaccine === nothing ? nothing : vaccine.waning
+
     # A covariate or per-edge kernel may hold the fitted parameters on only some
     # pairs, and the probe behind `T` can miss them. Every row pass 2 scores has a
     # positive at-risk time in pass 1. Pass 1's sum has therefore seen every
     # kernel pass 2 will use, and its type sets pass 2's accumulator.
-    ll = _pairwise_cumhazard(kernel, extdist, data, layout, tfollow, T)
-    return _pairwise_events(kernel, extdist, data, layout, tfollow, ll,
-        promote_type(T, typeof(ll)))
+    ll = _pairwise_cumhazard(kernel, extdist, data, layout, tfollow, T, imm_time, e, w, aon)
+    ll = _pairwise_events(kernel, extdist, data, layout, tfollow, ll,
+        promote_type(T, typeof(ll)), imm_time, e, w, aon)
+    # `AllOrNothingMode` susceptibles were skipped by both passes above (their
+    # discount is not a per-row multiplier, see `_pairwise_aon_mixture`) and are
+    # scored here instead.
+    aon || return ll
+    return _pairwise_aon_mixture(kernel, extdist, data, layout, tfollow, ll, imm_time,
+        e, promote_type(T, typeof(ll)))
+end
+
+# Cumulative hazard of `kernel` over row-relative time `s ∈ [0, stop]`
+# (absolute time `oi + s`), discounted by a `LeakyMode` dose whose immunity
+# develops at absolute time `τ` with efficacy `e`. Without waning (`w =
+# nothing`) the discount is the constant `1 - e` from `τ` on, and the split is
+# exact since `cumhazard` is itself an integral of the hazard. With waning the
+# discount varies continuously over the protected segment, integrated
+# numerically against the kernel's own hazard.
+function _leaky_cumhazard(kernel, oi, stop, τ, e, ::Nothing)
+    boundary = clamp(τ - oi, zero(stop), stop)
+    unprotected = cumhazard(kernel, boundary)
+    return unprotected + (1 - e) * (cumhazard(kernel, stop) - cumhazard(kernel, boundary))
+end
+function _leaky_cumhazard(kernel, oi, stop, τ, e, w)
+    boundary = clamp(τ - oi, zero(stop), stop)
+    unprotected = cumhazard(kernel, boundary)
+    discounted, _ = quadgk(s -> hazard(kernel, s) * (1 - e * w(oi + s - τ)), boundary, stop)
+    return unprotected + discounted
+end
+
+# The log-hazard `lh` at absolute time `t`, discounted by a `LeakyMode` dose
+# whose immunity develops at `τ` with efficacy `e`, or `lh` unchanged if `t`
+# falls before `τ`.
+function _leaky_loghazard(lh, t, τ, e, w)
+    t < τ && return lh
+    retained = w === nothing ? 1.0 : w(t - τ)
+    return lh + log1p(-e * retained)
 end
 
 function _pairwise_cumhazard(kernel, extdist, data, layout, tfollow,
-        ::Type{T}) where {T}
+        ::Type{T}, imm_time, e, w, aon) where {T}
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
@@ -681,15 +842,20 @@ function _pairwise_cumhazard(kernel, extdist, data, layout, tfollow,
     # to the community hazard until the earlier of that and `obs_end`, after
     # which there are no more introductions. Nothing is at risk after the end of
     # follow-up, and a host infected after it has escaped until then as far as
-    # the data show.
+    # the data show. A vaccinated susceptible's exposure past its immunity time
+    # is discounted under `LeakyMode`; under `AllOrNothingMode` its rows are
+    # skipped here and scored by `_pairwise_aon_mixture` instead.
     @inbounds for r in eachindex(sus)
         j = sus[r]
+        (aon && isfinite(imm_time[j])) && continue
         tj = data.infection_time[j]
         tend = (isnan(tj) || tj > tfollow) ? tfollow : convert(typeof(tfollow), tj)
+        vaccinated = isfinite(imm_time[j]) && e > 0
         if is_ext[r]
             stop = min(tend, data.obs_end)
             stop > 0 || continue
-            ll -= cumhazard(extdist, stop)
+            ll -= vaccinated ? _leaky_cumhazard(extdist, 0.0, stop, imm_time[j], e, w) :
+                  cumhazard(extdist, stop)
         else
             i = infector[r]
             oi = data.infectious_time[i]
@@ -697,14 +863,16 @@ function _pairwise_cumhazard(kernel, extdist, data, layout, tfollow,
             oi < tend || continue
             stop = min(data.removal_time[i], tend) - oi
             stop > 0 || continue
-            ll -= cumhazard(_pair_kernel(kernel, layout, r, data), stop)
+            kr = _pair_kernel(kernel, layout, r, data)
+            ll -= vaccinated ? _leaky_cumhazard(kr, oi, stop, imm_time[j], e, w) :
+                  cumhazard(kr, stop)
         end
     end
     return ll
 end
 
 function _pairwise_events(kernel, extdist, data, layout, tfollow, ll0,
-        ::Type{T}) where {T}
+        ::Type{T}, imm_time, e, w, aon) where {T}
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
@@ -722,8 +890,11 @@ function _pairwise_events(kernel, extdist, data, layout, tfollow, ll0,
     # times.
     acc = _LogSumExpAcc{T}()
     @inbounds for g in eachindex(layout.sus_unique)
-        tj = data.infection_time[layout.sus_unique[g]]
+        j = layout.sus_unique[g]
+        (aon && isfinite(imm_time[j])) && continue
+        tj = data.infection_time[j]
         (isnan(tj) || tj > tfollow) && continue
+        vaccinated = isfinite(imm_time[j]) && e > 0
         acc.m = T(-Inf)
         acc.s = zero(T)
         acc.nseen = 0
@@ -733,13 +904,17 @@ function _pairwise_events(kernel, extdist, data, layout, tfollow, ll0,
                 # a host infected after `obs_end` was infected along a contact;
                 # one infected at 0 is a community case like any other
                 (tj >= 0 && tj <= data.obs_end) || continue
-                _push!(acc, loghazard(extdist, tj))
+                lh = loghazard(extdist, tj)
+                vaccinated && (lh = _leaky_loghazard(lh, tj, imm_time[j], e, w))
+                _push!(acc, lh)
             else
                 i = infector[r]
                 oi = data.infectious_time[i]
                 isfinite(oi) || continue
                 if oi < tj && tj <= data.removal_time[i]
-                    _push!(acc, loghazard(_pair_kernel(kernel, layout, r, data), tj - oi))
+                    lh = loghazard(_pair_kernel(kernel, layout, r, data), tj - oi)
+                    vaccinated && (lh = _leaky_loghazard(lh, tj, imm_time[j], e, w))
+                    _push!(acc, lh)
                 end
             end
         end
@@ -751,7 +926,89 @@ function _pairwise_events(kernel, extdist, data, layout, tfollow, ll0,
     return ll
 end
 
-function pairwise_surv_loglik(kernel, data::InfectionLayer; external_hazard = 0.0)
+# Escape and event log-likelihood of susceptible `j`'s own rows (the row
+# range `rg` into `layout.sus_row_order`), each row's at-risk window
+# additionally capped at `cap`. `Inf` gives the ordinary, unprotected
+# contribution; a finite `cap` gives the contribution as if every exposure
+# were fully blocked from `cap` on, `-Inf` when the susceptible's actual
+# infection (if any) falls at or after `cap` and so cannot occur under that
+# protection. Shared by `_pairwise_aon_mixture`'s two branches of the mixture;
+# kept apart from `_pairwise_cumhazard`/`_pairwise_events` above because those
+# sum every susceptible in one flat pass, while this one needs a single
+# susceptible's total twice, under two different caps.
+function _capped_susceptible_loglik(kernel, extdist, data, layout, rg, tj, tfollow,
+        cap, ::Type{T}) where {T}
+    infector = layout.infector
+    is_ext = layout.is_ext
+    tend0 = (isnan(tj) || tj > tfollow) ? tfollow : convert(typeof(tfollow), tj)
+    tend = min(tend0, cap)
+    ll = zero(T)
+    @inbounds for k in rg
+        r = layout.sus_row_order[k]
+        if is_ext[r]
+            stop = min(tend, data.obs_end)
+            stop > 0 && (ll -= cumhazard(extdist, stop))
+        else
+            i = infector[r]
+            oi = data.infectious_time[i]
+            if isfinite(oi) && oi < tend
+                stop = min(data.removal_time[i], tend) - oi
+                stop > 0 && (ll -= cumhazard(_pair_kernel(kernel, layout, r, data), stop))
+            end
+        end
+    end
+    (isnan(tj) || tj > tfollow) && return ll
+    # Infected, but only after every exposure was fully blocked under this
+    # cap: impossible under this branch, not merely unobserved.
+    tj >= cap && return T(-Inf)
+    acc = _LogSumExpAcc{T}()
+    @inbounds for k in rg
+        r = layout.sus_row_order[k]
+        if is_ext[r]
+            (tj >= 0 && tj <= data.obs_end) && _push!(acc, loghazard(extdist, tj))
+        else
+            i = infector[r]
+            oi = data.infectious_time[i]
+            if isfinite(oi) && oi < tj && tj <= data.removal_time[i]
+                _push!(acc, loghazard(_pair_kernel(kernel, layout, r, data), tj - oi))
+            end
+        end
+    end
+    v = _value(acc)
+    v == -Inf && return T(-Inf)
+    return ll + v
+end
+
+# `AllOrNothingMode` susceptibles: a two-component mixture over responder
+# status, `e * Lᵖ + (1 - e) * Lᵘ`, added to the running total `ll0`. `Lᵘ` is
+# the ordinary contribution (`cap = Inf`); `Lᵖ` caps every one of the
+# susceptible's rows at its own immunity time, so a responder is fully
+# protected from then on. The mixture sits at the susceptible level, not the
+# pair level, because one draw of responder status governs every exposure the
+# susceptible faces.
+function _pairwise_aon_mixture(kernel, extdist, data, layout, tfollow, ll0, imm_time,
+        e, ::Type{T}) where {T}
+    ll = T(ll0)
+    loge = log(e)
+    log1me = log1p(-e)
+    @inbounds for g in eachindex(layout.sus_unique)
+        j = layout.sus_unique[g]
+        isfinite(imm_time[j]) || continue
+        tj = data.infection_time[j]
+        rg = layout.sus_row_ranges[g]
+        unprotected = _capped_susceptible_loglik(
+            kernel, extdist, data, layout, rg, tj, tfollow, T(Inf), T)
+        protected = _capped_susceptible_loglik(
+            kernel, extdist, data, layout, rg, tj, tfollow, T(imm_time[j]), T)
+        v = logsumexp([loge + protected, log1me + unprotected])
+        v == -Inf && return T(-Inf)
+        ll += v
+    end
+    return ll
+end
+
+function pairwise_surv_loglik(kernel, data::InfectionLayer; external_hazard = 0.0,
+        vaccine = nothing)
     layout = compile_contact_pairs(data; external = _ext_active(external_hazard))
-    return pairwise_surv_loglik(kernel, data, layout; external_hazard)
+    return pairwise_surv_loglik(kernel, data, layout; external_hazard, vaccine)
 end

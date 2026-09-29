@@ -106,7 +106,8 @@ end
     @testset "infection-layer fields share one number type" begin
         fields = EpiBranch._infection_layer_fields(2, [0, 1], [0.0f0, 1.0f0],
             [2.0, Inf], [1, 0]; obs_end = 3, followup_end = Inf)
-        @test fields == ([0.0, 1.0], [0.0, 1.0], [2.0, Inf], [true, false], 3.0, Inf)
+        @test fields ==
+              ([0.0, 1.0], [0.0, 1.0], [2.0, Inf], [true, false], 3.0, Inf, [Inf, Inf])
         @test all(v -> eltype(v) == Float64, fields[1:3])
         @test fields[4] isa Vector{Bool}
         dual = ForwardDiff.Dual(1.0, 1.0)
@@ -114,6 +115,13 @@ end
             [true]; obs_end = Inf, followup_end = Inf))) == typeof(dual)
         @test_throws ArgumentError EpiBranch._infection_layer_fields(2, [0.0], [0.0],
             [1.0], [true]; obs_end = Inf, followup_end = Inf)
+        # a mismatched immunity_time is rejected like the other per-host vectors
+        @test_throws ArgumentError EpiBranch._infection_layer_fields(2, [0.0, 1.0],
+            [0.0, 1.0], [2.0, Inf], [true, false]; obs_end = Inf, followup_end = Inf,
+            immunity_time = [Inf])
+        # unvaccinated by default
+        @test EpiBranch._infection_layer_fields(2, [0.0, 1.0], [0.0, 1.0], [2.0, Inf],
+            [true, false]; obs_end = Inf, followup_end = Inf)[7] == [Inf, Inf]
     end
 
     @testset "community hazard helpers" begin
