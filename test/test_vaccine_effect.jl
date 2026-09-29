@@ -148,4 +148,102 @@ end
         results = simulate(model, 20; max_cases = 100, rng = StableRNG(3))
         @test all(s -> s.cumulative_cases == 1, results)
     end
+
+    @testset "AllOrNothingMode draws a responder once, at dose time" begin
+        # At efficacy 1.0 every dose makes a responder: certain block from
+        # immunity time on, exactly as LeakyMode would give at that efficacy.
+        full = RingVaccination(efficacy = 1.0, mode = AllOrNothingMode())
+        responder = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+        EpiBranch._record_vaccination!(full, responder, 0.0, StableRNG(1))
+        @test EpiBranch._vaccine_efficacy(full, responder) == 1.0
+        risk = EpiBranch.competing_risk(full, Individual(id = 1), responder, nothing)
+        @test risk.block_probability == 1.0
+
+        # At efficacy 0.0 nobody responds: no risk is built at all, so a
+        # non-responder is exposed exactly as an unvaccinated contact.
+        none = RingVaccination(efficacy = 0.0, mode = AllOrNothingMode())
+        non_responder = Individual(id = 3, parent_id = 1, infection_time = 10.0)
+        EpiBranch._record_vaccination!(none, non_responder, 0.0, StableRNG(1))
+        @test EpiBranch._vaccine_efficacy(none, non_responder) == 0.0
+        @test EpiBranch.competing_risk(none, Individual(id = 1), non_responder, nothing) ===
+              nothing
+
+        # At an intermediate efficacy the stored value is always 0 or 1 — a
+        # Bernoulli(efficacy) draw — never the raw efficacy LeakyMode would
+        # keep, and responders occur with roughly that probability.
+        half = RingVaccination(efficacy = 0.5, mode = AllOrNothingMode())
+        draws = map(1:1000) do i
+            contact = Individual(id = i, parent_id = 0, infection_time = 10.0)
+            EpiBranch._record_vaccination!(half, contact, 0.0, StableRNG(i))
+            EpiBranch._vaccine_efficacy(half, contact)
+        end
+        @test all(x -> x == 0.0 || x == 1.0, draws)
+        @test 0.4 < count(==(1.0), draws) / length(draws) < 0.6
+
+        # LeakyMode is unaffected: the stored value is the sampled efficacy
+        # itself, whatever it is.
+        leaky = RingVaccination(efficacy = 0.5, mode = LeakyMode())
+        contact = Individual(id = 1, parent_id = 0, infection_time = 10.0)
+        EpiBranch._record_vaccination!(leaky, contact, 0.0, StableRNG(1))
+        @test EpiBranch._vaccine_efficacy(leaky, contact) == 0.5
+    end
+
+    @testset "AllOrNothingMode draws a responder for a dose recorded beforehand" begin
+        # A campaign before the run records its dose through `attributes`.
+        # Under AllOrNothingMode its efficacy becomes a responder status once,
+        # when the individual is set up; a recorded 0 or 1 is kept as it is.
+        prior(eff) = Individual(id = 1,
+            state = Dict{Symbol, Any}(:vaccinated => true, :vaccination_time => -10.0,
+                :vaccine_efficacy => eff))
+        all_or_nothing = RingVaccination(efficacy = 0.5, mode = AllOrNothingMode())
+        draws = map(1:1000) do i
+            ind = prior(0.5)
+            EpiBranch.initialise_individual!(all_or_nothing, ind, (; rng = StableRNG(i)))
+            EpiBranch._vaccine_efficacy(all_or_nothing, ind)
+        end
+        @test all(x -> x == 0.0 || x == 1.0, draws)
+        @test 0.4 < count(==(1.0), draws) / length(draws) < 0.6
+        for status in (0.0, 1.0)
+            ind = prior(status)
+            EpiBranch.initialise_individual!(all_or_nothing, ind, (; rng = StableRNG(1)))
+            @test EpiBranch._vaccine_efficacy(all_or_nothing, ind) == status
+        end
+        leaky = RingVaccination(efficacy = 0.5, mode = LeakyMode())
+        ind = prior(0.5)
+        EpiBranch.initialise_individual!(leaky, ind, (; rng = StableRNG(1)))
+        @test EpiBranch._vaccine_efficacy(leaky, ind) == 0.5
+    end
+
+    @testset "waning has no AllOrNothingMode meaning yet" begin
+        decay = dt -> exp(-dt / 30)
+        @test_throws ArgumentError VaccineEffect(
+            efficacy = 0.5, waning = decay, mode = AllOrNothingMode())
+        @test_throws ArgumentError RingVaccination(
+            efficacy = 0.5, waning = decay, mode = AllOrNothingMode())
+        # Either on its own is fine.
+        @test VaccineEffect(efficacy = 0.5, waning = decay, mode = LeakyMode()) isa
+              VaccineEffect
+        @test VaccineEffect(efficacy = 0.5, mode = AllOrNothingMode()) isa VaccineEffect
+    end
+
+    @testset "Branching process: the two modes agree in distribution" begin
+        # Every contact on a branching process is exposed exactly once, so the
+        # marginal probability a vaccinated contact escapes infection is
+        # `efficacy` under both modes (see the AbstractVaccination docstring).
+        # Vaccinating everyone before the outbreak lets the dose act on every
+        # exposure, so both modes must change containment by the same amount.
+        function containment(efficacy, mode, seed)
+            mv = MassVaccination(efficacy = efficacy, eligibility_time = 0.0, mode = mode)
+            results = simulate(
+                ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+                    interventions = [mv]),
+                2000; max_cases = 200, rng = StableRNG(seed))
+            return containment_probability(results)
+        end
+        unvaccinated = containment(0.0, LeakyMode(), 101)
+        leaky = containment(0.4, LeakyMode(), 102)
+        all_or_nothing = containment(0.4, AllOrNothingMode(), 103)
+        @test leaky > unvaccinated + 0.3
+        @test isapprox(leaky, all_or_nothing; atol = 0.05)
+    end
 end
