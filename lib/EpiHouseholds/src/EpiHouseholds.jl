@@ -28,6 +28,10 @@ import EpiBranch: _infection_layer_columns, _infection_layer_fields
 # and agree on when that term applies and what it is.
 import EpiBranch: pairwise_surv_loglik, _ext_active, _ext_draw, _valid_external,
                   _normalise_external
+# A vaccination's candidate effect for the likelihood, read off
+# `ModelSpec.interventions` by the structured `loglikelihood(data, spec)`
+# entry point.
+import EpiBranch: _model_vaccine
 
 export HouseholdProcess, household_sizes
 export HouseholdInfections, household_infections
