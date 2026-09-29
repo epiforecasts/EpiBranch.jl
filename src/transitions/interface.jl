@@ -88,6 +88,58 @@ _resolve_delay(d::Distribution, rng, ind) = float(rand(rng, d))
 _resolve_delay(x::Real, rng, ind) = float(x)         # a fixed, deterministic delay
 _resolve_delay(f, rng, ind) = float(f(rng, ind))
 
+# ── Scoring ─────────────────────────────────────────────────────────
+#
+# The reverse of `_resolve_delay`/`_resolve_probability`: given a resolved
+# outcome, the log-density of having drawn it. A `Function` delay has no
+# family to score against, so it is rejected rather than silently ignored.
+_delay_loglik(d::Distribution, dt) = logpdf(d, dt)
+_delay_loglik(x::Real, dt) = isapprox(dt, x) ? 0.0 : -Inf
+function _delay_loglik(f, dt)
+    throw(
+        ArgumentError(
+            "a `Function` delay has no density to score; `progression_loglik` " *
+                "needs a `Distribution` (or a fixed `Real`) for every delay it scores"
+        )
+    )
+end
+
+# The log-likelihood contribution of a probability gate, given whether it
+# fired. `probability` resolves with `Random.default_rng()`: a callable gate
+# is expected to be a deterministic function of the individual (as every
+# built-in and documented example is), not of the RNG draw that also
+# consumes it during simulation.
+function _probability_loglik(probability, fired, ind)
+    p = _resolve_probability(probability, Random.default_rng(), ind)
+    return fired ? log(p) : log1p(-p)
+end
+
+"""
+    transition_loglik(t::AbstractClinicalTransition, individual) -> Float64
+
+The log-likelihood contribution of `individual`'s outcome under transition
+`t`: the probability of the gate it passed or failed, plus the delay density
+at the time it fired. Called by [`progression_loglik`](@ref) once per
+transition per individual; `0.0` when the transition's anchor was never
+reached (it took no part in the individual's history).
+
+Implemented for the built-in transitions ([`Transition`](@ref),
+[`Reporting`](@ref), [`Hospitalisation`](@ref), [`Death`](@ref),
+[`Recovery`](@ref)). A custom `<: AbstractClinicalTransition` used with
+[`progression_loglik`](@ref) needs its own method, reading back the state
+keys its `resolve_individual!` writes; `delay` must be a `Distribution` or a
+fixed `Real` — a raw `Function` delay has no density.
+"""
+function transition_loglik(t::AbstractClinicalTransition, individual)
+    throw(
+        ArgumentError(
+            "$(nameof(typeof(t))) needs a method for `EpiBranch.transition_loglik` " *
+                "scoring the outcome its `resolve_individual!` writes to " *
+                "`individual.state`; see `progression_loglik`"
+        )
+    )
+end
+
 """
     exclusive_probabilities(ps::AbstractVector{<:Real}) -> Vector{Function}
 

@@ -51,3 +51,12 @@ function resolve_individual!(h::Hospitalisation, individual, state)
     individual.state[:admission_time] = time
     return nothing
 end
+
+function transition_loglik(h::Hospitalisation, individual::Individual)
+    anchor = _resolve_anchor(h.from, individual)
+    _anchor_ok(anchor) || return 0.0
+    fired = individual.state[:admitted]::Bool
+    ll = _probability_loglik(h.probability, fired, individual)
+    fired || return ll
+    return ll + _delay_loglik(h.delay, individual.state[:admission_time] - anchor)
+end
