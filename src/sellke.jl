@@ -362,14 +362,20 @@ EpiBranch.risk_applies).
 """
 const INTERVENTION_REMOVAL = :intervention_removal
 
-# Close a window: the earliest of its `until` states' times, plus the
-# intervention removal when the window opted into it.
+# Close a window: the earliest of its `until` states' times, the intervention
+# removal when the window opted into it, and a post-exposure abort, which ends
+# the infection outright and so closes every route, opted in or not — the same
+# reach as the `AbortedInfection` risk that blocks each route's transmission
+# from that time on. Without this, a route whose only removal state is one an
+# abort undoes (see `resolve_transitions!`) never closes, and the rejection
+# sampler that redraws a blocked pair's next contact has no bound to redraw
+# within.
 function _route_close(ind, w::RouteWindow, interventions)
     t = _window_close(ind, w.until)
     if INTERVENTION_REMOVAL in w.until
         t = min(t, _intervention_removal_time(ind, interventions))
     end
-    return t
+    return min(t, get(ind.state, :infection_aborted_time, Inf))
 end
 
 # The one window of `_sellke_race!`'s `from`/`until`/`targets` shorthand. Reading
@@ -752,6 +758,12 @@ function _sellke_race!(
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
         end
+        # A dose given while `ind` was still a pending, uninfected member (see
+        # `continuous_actions(::RingVaccination)`) is already on its state; now
+        # that its own infection has settled, reconsider that dose against the
+        # exposure the race has just fixed, before onset or a transition reads
+        # it.
+        _resolve_pending_dose_abort!(interventions, ind, rng)
         # A pre-created node has no infection time, and so no onset, until now.
         # Derive the onset from the infection time before transitions and
         # interventions, such as onset-triggered isolation, read it.

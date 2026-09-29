@@ -117,7 +117,7 @@ EpiBranch.continuous_actions(::AppointmentAction) = true
     @test EpiBranch.continuous_actions(GroupVaccination(efficacy = 0.8))
     @test EpiBranch.continuous_actions(RingVaccination(efficacy = 0.8))
     @test !EpiBranch.continuous_actions(RingVaccination(efficacy = 0.8, eligibility_window = 2.0))
-    @test !EpiBranch.continuous_actions(RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8))
+    @test EpiBranch.continuous_actions(RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8))
     @test EpiBranch.continuous_actions(Scheduled(RingVaccination(efficacy = 0.8); start_time = 1.0))
     broken = Scheduled(AppointmentAction(), state -> error("predicate failed"))
     @test_throws ErrorException EpiBranch.apply_actions!(broken, state, [state.individuals[3]])
