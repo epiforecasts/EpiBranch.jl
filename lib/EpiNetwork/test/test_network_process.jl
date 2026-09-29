@@ -726,6 +726,37 @@ end
         @test sum(count(is_traced, run(routed, s).individuals) for s in 1:10) > 0
     end
 
+    @testset "RoutedNetwork: route kernel resolves per pair, matching NetworkProcess" begin
+        # A route's kernel must be resolved for the pair exactly as
+        # `NetworkProcess` resolves its edge kernel, so a covariate callable, a
+        # `ContextualKernel` and a per-edge vector all behave the same on a
+        # route as on a plain network over the same graph.
+        adj = ring_adjacency(30)
+        covariates = 0.5 .+ rand(StableRNG(7), 30)
+        callable(i, j) = Exponential(0.3 * covariates[j])
+        contextual = ContextualKernel(c -> Exponential(0.3 * covariates[c.susceptible]))
+        per_edge = [
+            [Exponential(0.2 + 0.1 * mod1(i + k, 5)) for k in eachindex(adj[i])]
+                for i in eachindex(adj)
+        ]
+
+        run(proc, s) = simulate(
+            ModelSpec(proc; progression = _sir(6.0)); n_initial = 2, rng = StableRNG(s)
+        )
+        for k in (callable, contextual, per_edge)
+            routed = RoutedNetwork(
+                [RouteWindow(:all; until = (:recovered,), kernel = k, reach = adj)]
+            )
+            plain = NetworkProcess(adj, k; until = (:recovered,))
+            for s in 1:5
+                a, b = run(routed, s), run(plain, s)
+                @test a.cumulative_cases == b.cumulative_cases
+                @test [i.infection_time for i in a.individuals] ==
+                    [i.infection_time for i in b.individuals]
+            end
+        end
+    end
+
     @testset "RoutedNetwork: a route's infectiousness start does not delay tracing" begin
         # Setting `from = :onset` on each route or on the model describes the
         # same outbreak, and both trace household and community contacts from
