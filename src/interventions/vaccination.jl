@@ -1,7 +1,8 @@
 """
 Base type for vaccination interventions. A vaccination has an
-`efficacy` (per-exposure block probability once immunity is in place)
-and a `delay_to_immunity` (time between vaccination and protection).
+`efficacy` (the probability of blocking an exposure once immunity is in
+place, or under `AllOrNothingMode` of responding at all) and a
+`delay_to_immunity` (time between vaccination and protection).
 
 Concrete subtypes differ only in eligibility — who gets vaccinated
 when. The parameters describing what a dose does (`efficacy`,
@@ -13,7 +14,8 @@ such as `RingVaccination`'s `post_exposure_efficacy`, stays on the type that
 has it and records its per-dose draw through the `_record_effect_draws!` hook.
 Subtypes share the [`competing_risk`](@ref) machinery: a vaccinated
 contact whose immunity has developed by their transmission time has
-their infection blocked with probability `efficacy`.
+their infection blocked with probability `efficacy` under `LeakyMode`, and
+with certainty if they responded under `AllOrNothingMode`.
 
 `severity_efficacy` is a fourth effect, alongside `efficacy` (contact
 susceptibility) and `onward_efficacy`/`post_exposure_efficacy` on
@@ -140,8 +142,9 @@ when. Shared code reads these parameters through
 [`vaccine_effect`](@ref EpiBranch.vaccine_effect) and the accessors built on
 it, whatever the concrete type.
 
-- `efficacy`: per-exposure probability of blocking infection once immunity has
-  developed.
+- `efficacy`: under `LeakyMode`, the probability of blocking each exposure once
+  immunity has developed; under `AllOrNothingMode`, the probability of
+  responding, a responder being protected against every exposure from then on.
 - `severity_efficacy`: probability that the vaccinated individual's own
   disease course is milder once immunity has developed.
 - `delay_to_immunity`: time from vaccination to protection.
@@ -192,8 +195,9 @@ dose label only through it.
 """
 function vaccine_effect end
 
-"""Per-exposure efficacy of the vaccination's dose, in any of the forms
-[`VaccineEffect`](@ref) accepts."""
+"""Efficacy of the vaccination's dose, in any of the forms
+[`VaccineEffect`](@ref) accepts: a per-exposure block under `LeakyMode`, a
+probability of responding under `AllOrNothingMode`."""
 efficacy(v::AbstractVaccination) = vaccine_effect(v).efficacy
 
 """Severity efficacy of the vaccination's dose, in any of the forms
