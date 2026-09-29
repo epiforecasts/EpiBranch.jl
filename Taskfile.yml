@@ -120,11 +120,12 @@ tasks:
   info:
     desc: Show project and environment information
     cmds:
-      - julia --project=. --quiet -e '
-          using Pkg;
-          pkg = Pkg.project();
-          println("Package: ", pkg.name, " v", pkg.version);
-          println("Julia:   ", VERSION)'
+      - >-
+        julia --project=. --quiet -e '
+        using Pkg;
+        pkg = Pkg.project();
+        println("Package: ", pkg.name, " v", pkg.version);
+        println("Julia:   ", VERSION)'
       - echo ""
       - julia --project=. --quiet -e 'using Pkg; Pkg.status()'
 

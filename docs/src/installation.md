@@ -43,4 +43,3 @@ packages in a temporary project. CI checks matching source revisions and rejects
 the incompatible registry version. Maintainers can run the release installation
 workflow after registration; it resolves EpiBranch from General without using a
 local checkout.
-
