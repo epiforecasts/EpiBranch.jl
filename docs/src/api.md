@@ -31,6 +31,7 @@ CalendarKernel
 StatefulKernel
 record_kernel
 PairContext
+LayerHost
 EpiBranch.pair_kernel
 pairwise_surv_loglik
 PairwiseSurvivalData

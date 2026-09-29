@@ -186,8 +186,41 @@ For observed data, build `StatefulKernel(records, contact_law)` directly from
 measured covariates. When attributes are latent or contain fitted parameters,
 build that kernel from the current records on each likelihood evaluation. The
 compiled layout can be reused. Records retain their numeric types, including AD
-values. An unrecorded projection raises an error on the likelihood path because
-there is no simulation state to read.
+values. An unrecorded projection raises an error on the likelihood path unless
+the infection layer holds the times it reads, as in the next section.
+
+## Infectiousness timed from symptom onset
+
+An infector often becomes infectious around its symptom onset, so its contact
+interval depends on its own incubation period. The projection reads the onset
+from the host, and the callback shifts the contact law by the time from
+infection to onset:
+
+```@example stateful
+onset_state(ind) = (onset = get(ind.state, :onset_time, NaN),)
+after_onset(context, source, target) =
+    (source.onset - context.infector_infection_time) + Exponential(1.0)
+onset_kernel = StatefulKernel(onset_state, after_onset)
+onset_model = ModelSpec(NetworkProcess(adjacency, onset_kernel);
+    attributes = clinical_presentation(incubation_period = Gamma(2.0, 1.0)),
+    progression)
+onset_run = simulate(onset_model; initial_cases = [1], rng = Xoshiro(237))
+```
+
+Simulation sets each case's onset before it draws that case's contacts, so the
+projection reads the onset directly. In the likelihood, the onsets belong in the
+infection layer: `host_times` records them alongside the infection times, and
+the likelihood applies the same projection to each host as a
+[`LayerHost`](@ref):
+
+```@example stateful
+onset_data = network_infections(onset_run, onset_model; host_times = (:onset_time,))
+loglikelihood(onset_data, onset_model.process)
+```
+
+In inference the onsets are augmented with the infection times. Build the layer
+with the current onsets as `host_times` on each evaluation, and the kernel stays
+unchanged.
 
 ## A policy triggered during an outbreak
 

@@ -177,6 +177,30 @@ function test_stateful_simulation(make_process, extract)
         state = simulate(model; initial_cases = [1], rng = StableRNG(1))
         @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0]
     end
+    @testset "A live kernel timed from onset serves simulation and likelihood" begin
+        # Infectiousness starts at the infector's symptom onset. The same
+        # projection reads the onset from an individual in simulation and from
+        # the infection layer's host times in the likelihood.
+        project(ind) = (onset = get(ind.state, :onset_time, NaN),)
+        callback(c, a, b) = (a.onset - c.infector_infection_time) + Exponential(1.0)
+        live = StatefulKernel(project, callback)
+        model = ModelSpec(make_process(live);
+            attributes = clinical_presentation(incubation_period = Gamma(2.0, 1.0)),
+            progression = [Transition(:recovered; delay = 6.0, terminal = true)])
+        state = simulate(model; initial_cases = [1], rng = StableRNG(7))
+        infected = filter(is_infected, state.individuals)
+        @test length(infected) > 1
+        @test all(infected) do ind
+            ind.parent_id == 0 ||
+                ind.infection_time >= state.individuals[ind.parent_id].state[:onset_time]
+        end
+        data = extract(state, model; host_times = (:onset_time,))
+        onsets = data.host_times.onset_time
+        expected(i, j) = (onsets[i] - data.infection_time[i]) + Exponential(1.0)
+        @test loglikelihood(data, make_process(live)) ≈ pairwise_surv_loglik(expected, data)
+        # Without the host times the likelihood cannot read the onsets.
+        @test_throws ArgumentError loglikelihood(extract(state, model), make_process(live))
+    end
     @testset "Sampled attributes in pair kernels" begin
         project(ind) = (scale = ind.state[:sampled_scale]::Float64,)
         callback(c, a, b) = Exponential(a.scale + b.scale)

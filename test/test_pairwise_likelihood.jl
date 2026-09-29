@@ -106,7 +106,15 @@ end
     @testset "infection-layer fields share one number type" begin
         fields = EpiBranch._infection_layer_fields(2, [0, 1], [0.0f0, 1.0f0],
             [2.0, Inf], [1, 0]; obs_end = 3, followup_end = Inf)
-        @test fields == ([0.0, 1.0], [0.0, 1.0], [2.0, Inf], [true, false], 3.0, Inf)
+        @test fields == ([0.0, 1.0], [0.0, 1.0], [2.0, Inf], [true, false], 3.0, Inf, (;))
+        onsets = EpiBranch._infection_layer_fields(2, [0.0, 1.0], [0.0, 1.0],
+            [2.0, Inf], [true, false]; obs_end = Inf, followup_end = Inf,
+            host_times = (onset_time = [1, NaN],))[end]
+        @test onsets.onset_time isa Vector{Float64}
+        @test isequal(onsets.onset_time, [1.0, NaN])
+        @test_throws ArgumentError EpiBranch._infection_layer_fields(2, [0.0, 1.0],
+            [0.0, 1.0], [2.0, Inf], [true, false]; obs_end = Inf, followup_end = Inf,
+            host_times = (onset_time = [1.0],))
         @test all(v -> eltype(v) == Float64, fields[1:3])
         @test fields[4] isa Vector{Bool}
         dual = ForwardDiff.Dual(1.0, 1.0)

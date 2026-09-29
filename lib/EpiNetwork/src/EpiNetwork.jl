@@ -19,7 +19,8 @@ import EpiBranch: population_size, new_state, add_individuals!, apply_observatio
 # helpers, which close each node's window where the simulator's race does. The
 # simulator and the likelihood share EpiBranch's community-hazard helpers as
 # well, and agree on when that term applies and what it is.
-import EpiBranch: _infection_layer_columns, _infection_layer_fields, _ext_active,
+import EpiBranch: _infection_layer_columns, _infection_layer_fields,
+                  _host_time_columns, _ext_active,
                   _ext_draw, _valid_external, _normalise_external
 
 export NetworkProcess, RoutedNetwork

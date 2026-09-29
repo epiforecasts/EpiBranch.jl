@@ -103,7 +103,16 @@ law from those records. Wrap in [`CalendarKernel`](@ref) for calendar-time laws.
 For likelihood evaluation, supply a vector of records indexed by population ID
 as `state`, or use [`record_kernel`](@ref) to extract them after simulation.
 The callback is identical in both paths. Records may contain typed covariates
-and dated histories; the likelihood does not construct individuals.
+and dated histories.
+
+A projection can also serve the likelihood directly when the infection layer
+holds the per-host times it reads, such as an onset time an infector's
+infectiousness is timed from. The likelihood then applies the projection to
+each host as a [`LayerHost`](@ref), which has the `id` and `infection_time` of
+an individual and a `state` holding the layer's `host_times` under their keys.
+A projection that reads `ind.id`, `ind.infection_time` and
+`get(ind.state, key, default)` works in both paths, so the same kernel scores
+an augmented infection layer, whose onsets change during inference.
 
 Callbacks must describe a predictable hazard: adding an event at time `t` must
 not change the hazard before `t`. A final vaccinated flag alone is insufficient;
@@ -121,6 +130,24 @@ same outbreak from a different random stream.
 struct StatefulKernel{S, F}
     state::S
     callback::F
+end
+
+"""
+    LayerHost
+
+One host of an [`InfectionLayer`](@ref) as a live [`StatefulKernel`](@ref)
+projection sees it in a likelihood: its population `id`, its `infection_time`
+(`NaN` if never infected), and a `state` holding the layer's per-host times
+under their keys, for example `state.onset_time`.
+"""
+struct LayerHost{T, S <: NamedTuple}
+    id::Int
+    infection_time::T
+    state::S
+end
+
+function _layer_host(data, i)
+    LayerHost(i, data.infection_time[i], map(v -> v[i], _host_times(data)))
 end
 
 _pair_state(project, individual) = project(individual)
