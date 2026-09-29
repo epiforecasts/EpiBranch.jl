@@ -557,7 +557,8 @@ end
 # Streaming logsumexp, so the per-susceptible reduction allocates no
 # intermediate vector for reverse-mode AD to track. A -Inf term (a zero hazard)
 # adds nothing to the sum and is skipped. An accumulator that saw only zero
-# hazards then gives -Inf without taking -Inf - (-Inf).
+# hazards then gives -Inf without taking -Inf - (-Inf). The test reads the value
+# alone, since an AD dual at -Inf can hold NaN partials and so compare unequal.
 mutable struct _LogSumExpAcc{T}
     m::T
     s::T
@@ -565,7 +566,7 @@ mutable struct _LogSumExpAcc{T}
 end
 _LogSumExpAcc{T}() where {T} = _LogSumExpAcc{T}(T(-Inf), zero(T), 0)
 function _push!(acc::_LogSumExpAcc{T}, x) where {T}
-    x == -Inf && return acc
+    _is_minus_inf(x) && return acc
     if acc.nseen == 0
         acc.m = T(x)
         acc.s = one(T)
@@ -578,6 +579,7 @@ function _push!(acc::_LogSumExpAcc{T}, x) where {T}
     acc.nseen += 1
     return acc
 end
+_is_minus_inf(x) = isinf(x) && x < 0
 _value(acc::_LogSumExpAcc{T}) where {T} = acc.nseen == 0 ? T(-Inf) : acc.m + log(acc.s)
 
 # The parameter float type the kernel adds to the accumulator. In inference the
@@ -783,7 +785,7 @@ function _pairwise_events(kernel, extdist, data, layout, tfollow, ll0,
             end
         end
         v = _value(acc)
-        v == -Inf && return T(-Inf)
+        _is_minus_inf(v) && return T(-Inf)
         ll += v
     end
 

@@ -76,6 +76,17 @@ end
         @test ForwardDiff.derivative(f, log(3.0)) ≈ fd rtol = 1e-4
     end
 
+    @testset "a zero hazard adds no NaN to a gradient" begin
+        # A pair before a shifted kernel's support has log-hazard -Inf, whose
+        # partials can be NaN; the reduction must skip it.
+        D = ForwardDiff.Dual{Nothing, Float64, 1}
+        acc = EpiBranch._LogSumExpAcc{D}()
+        EpiBranch._push!(acc, D(-Inf, ForwardDiff.Partials((NaN,))))
+        EpiBranch._push!(acc, D(0.5, ForwardDiff.Partials((1.0,))))
+        @test ForwardDiff.value(EpiBranch._value(acc)) == 0.5
+        @test ForwardDiff.partials(EpiBranch._value(acc))[1] == 1.0
+    end
+
     @testset "infection-layer columns read out of a simulation" begin
         # the homogeneous pool runs the same one-window race as a household or a
         # network, so its state reads back the same way: the window opens at
