@@ -46,10 +46,15 @@ model = BranchingProcess(
 )
 ```
 """
-function incubation_linked_generation_time(; presymptomatic_fraction::Real = 0.3,
-        omega::Real = 2.0)
-    0.0 < presymptomatic_fraction < 1.0 || throw(ArgumentError(
-        "presymptomatic_fraction must be in (0, 1), got $presymptomatic_fraction"))
+function incubation_linked_generation_time(;
+        presymptomatic_fraction::Real = 0.3,
+        omega::Real = 2.0
+    )
+    0.0 < presymptomatic_fraction < 1.0 || throw(
+        ArgumentError(
+            "presymptomatic_fraction must be in (0, 1), got $presymptomatic_fraction"
+        )
+    )
     omega > 0.0 || throw(ArgumentError("omega must be positive, got $omega"))
 
     # Compute skew-normal alpha from presymptomatic fraction
@@ -61,10 +66,10 @@ function incubation_linked_generation_time(; presymptomatic_fraction::Real = 0.3
     return function (individual)
         inc_period = incubation_period(individual)
         if isnan(inc_period) || inc_period <= 0.0
-            @debug "Missing or non-positive incubation period (e.g. asymptomatic individual); using 5.0 days" maxlog=1
+            @debug "Missing or non-positive incubation period (e.g. asymptomatic individual); using 5.0 days" maxlog = 1
             inc_period = 5.0
         end
-        _TruncatedSkewNormal(inc_period, om, alpha)
+        return _TruncatedSkewNormal(inc_period, om, alpha)
     end
 end
 
@@ -81,7 +86,7 @@ struct _TruncatedSkewNormal{T <: AbstractFloat} <: ContinuousUnivariateDistribut
     function _TruncatedSkewNormal(ξ::Real, ω::Real, α::Real)
         T = float(promote_type(typeof(ξ), typeof(ω), typeof(α)))
         inner = SkewNormal(T(ξ), T(ω), T(α))
-        new{T}(T(ξ), T(ω), T(α), inner, Ref(T(NaN)))
+        return new{T}(T(ξ), T(ω), T(α), inner, Ref(T(NaN)))
     end
 end
 
@@ -106,7 +111,7 @@ end
 # Normalised over [0, ∞): subtract the retained-mass constant so the density
 # integrates to 1 (the bare inner density does not on the truncated support).
 function Distributions.logpdf(d::_TruncatedSkewNormal, x::Real)
-    x < 0.0 ? oftype(float(x), -Inf) : logpdf(d.inner, x) - _trunc_logZ(d)
+    return x < 0.0 ? oftype(float(x), -Inf) : logpdf(d.inner, x) - _trunc_logZ(d)
 end
 
 """

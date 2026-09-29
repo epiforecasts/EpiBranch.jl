@@ -6,8 +6,10 @@ Fraction of simulations that went extinct (i.e. the outbreak was contained).
 If `max_cases` is provided, simulations that hit the case cap are not
 considered extinct (they are assumed to have continued growing).
 """
-function containment_probability(states::Vector{<:SimulationState};
-        max_cases::Union{Int, NoCases} = NoCases())
+function containment_probability(
+        states::Vector{<:SimulationState};
+        max_cases::Union{Int, NoCases} = NoCases()
+    )
     n_extinct = count(s -> _is_contained(s, max_cases), states)
     return n_extinct / length(states)
 end
@@ -33,9 +35,11 @@ Weeks are 7-day blocks numbered from `t = 0` (week 1 is days 0–6), binned on
 onset time with a fall-back to infection time for any case without a recorded
 onset — the same timing field as [`weekly_incidence`](@ref).
 """
-function is_extinct(state::SimulationState;
+function is_extinct(
+        state::SimulationState;
         by_week::Union{Int, UnitRange{Int}, Nothing} = nothing,
-        max_cases::Union{Int, NoCases} = NoCases())
+        max_cases::Union{Int, NoCases} = NoCases()
+    )
     _check_max_cases(state, max_cases) && return false
 
     by_week === nothing && return state.extinct
@@ -78,7 +82,8 @@ function generation_R(state::SimulationState)
     end
 
     isempty(gen_counts) && return DataFrame(
-        generation = Int[], offspring_ratio = Float64[])
+        generation = Int[], offspring_ratio = Float64[]
+    )
     max_gen = maximum(keys(gen_counts))
 
     generations = Int[]
@@ -91,7 +96,7 @@ function generation_R(state::SimulationState)
         push!(ratios, n_children / n_parents)
     end
 
-    DataFrame(generation = generations, offspring_ratio = ratios)
+    return DataFrame(generation = generations, offspring_ratio = ratios)
 end
 
 """
@@ -118,9 +123,11 @@ A DataFrame with columns `week` (Date) and `cases` (Int) is returned.
 Pass a `Symbol` from `ind.state` to bin on any other field
 (e.g. `:admission_time`).
 """
-function weekly_incidence(state::SimulationState;
+function weekly_incidence(
+        state::SimulationState;
         by::Symbol = :onset,
-        reference_date::Date = Date(2020, 1, 1))
+        reference_date::Date = Date(2020, 1, 1)
+    )
     infected = filter(is_infected, state.individuals)
     isempty(infected) && return DataFrame(week = Date[], cases = Int[])
 
@@ -188,18 +195,25 @@ results = scenario_sweep(Dict(
 ))
 ```
 """
-function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
+function scenario_sweep(
+        params::Dict{Symbol, <:AbstractVector};
         n_sim::Int = 500,
         rng::AbstractRNG = Random.default_rng(),
-        sim_kwargs...)
+        sim_kwargs...
+    )
     haskey(params, :offspring) || throw(ArgumentError("params must include :offspring"))
-    recognised = (:offspring, :generation_time, :interventions, :attributes,
-        :population_size)
+    recognised = (
+        :offspring, :generation_time, :interventions, :attributes,
+        :population_size,
+    )
     unknown = setdiff(keys(params), recognised)
-    isempty(unknown) || throw(ArgumentError(
-        "scenario_sweep: unrecognised parameter key(s) $(collect(unknown)). " *
-        "Recognised sweep axes are $(collect(recognised)); a simulation control " *
-        "(e.g. max_cases) is not swept — pass it once through the keyword arguments."))
+    isempty(unknown) || throw(
+        ArgumentError(
+            "scenario_sweep: unrecognised parameter key(s) $(collect(unknown)). " *
+                "Recognised sweep axes are $(collect(recognised)); a simulation control " *
+                "(e.g. max_cases) is not swept — pass it once through the keyword arguments."
+        )
+    )
 
     keys_ordered = collect(keys(params))
     value_lists = [params[k] for k in keys_ordered]
@@ -217,8 +231,10 @@ function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
         attributes = get(vals, :attributes, NoAttributes())
         pop_size = get(vals, :population_size, NoPopulation())
 
-        model = ModelSpec(BranchingProcess(offspring, gt; population_size = pop_size);
-            interventions, attributes)
+        model = ModelSpec(
+            BranchingProcess(offspring, gt; population_size = pop_size);
+            interventions, attributes
+        )
 
         results = simulate(model, n_sim; rng = rng, sim_kwargs...)
 
@@ -228,5 +244,5 @@ function scenario_sweep(params::Dict{Symbol, <:AbstractVector};
         push!(rows[:containment_probability], containment_probability(results))
     end
 
-    DataFrame(rows)
+    return DataFrame(rows)
 end

@@ -25,5 +25,5 @@ _progression(::TransmissionModel) = AbstractClinicalTransition[]
 # Normalise an interventions keyword (a single intervention or a vector)
 # to a `Vector{AbstractIntervention}`, for constructors to use.
 function _intervention_vector(ivs)
-    convert(Vector{AbstractIntervention}, ivs isa AbstractVector ? ivs : [ivs])
+    return convert(Vector{AbstractIntervention}, ivs isa AbstractVector ? ivs : [ivs])
 end

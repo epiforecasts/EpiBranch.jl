@@ -2,7 +2,7 @@
 # uninfected contact active so it grows contacts of its own next generation.
 struct KeepUninfectedActive <: EpiBranch.AbstractIntervention end
 function EpiBranch.keep_active(::KeepUninfectedActive, state, targets, is_new)
-    [t.id for t in targets if !is_infected(t)]
+    return [t.id for t in targets if !is_infected(t)]
 end
 
 @testset "Competing risks" begin
@@ -15,8 +15,10 @@ end
         # resolution step.
         for seed in 1:5
             m = BranchingProcess(Poisson(3.0), Exponential(5.0); population_size = 50)
-            state = simulate(m; max_cases = 500,
-                rng = StableRNG(seed))
+            state = simulate(
+                m; max_cases = 500,
+                rng = StableRNG(seed)
+            )
             @test state.cumulative_cases <= 50
         end
     end
@@ -32,7 +34,8 @@ end
         rng = StableRNG(42)
         state = simulate(
             ModelSpec(BranchingProcess(cap_after_20, Exponential(5.0)); attributes = clinical);
-            max_cases = 200, rng = rng)
+            max_cases = 200, rng = rng
+        )
         # After the cap kicks in (cumulative_cases >= 20), every parent
         # should emit at most 2 contacts.
         for ind in state.individuals
@@ -44,14 +47,19 @@ end
     @testset "MassVaccination at t=0 with full efficacy stops the outbreak at the index" begin
         # Every contact's immunity is in place by their transmission
         # time, so the engine blocks every secondary transmission.
-        mv = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
-            delay_to_immunity = 0.0)
+        mv = MassVaccination(
+            efficacy = 1.0, eligibility_time = 0.0,
+            delay_to_immunity = 0.0
+        )
         for seed in 1:5
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [mv], attributes = clinical);
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [mv], attributes = clinical
+                );
                 max_cases = 500,
-                rng = StableRNG(seed))
+                rng = StableRNG(seed)
+            )
             @test state.cumulative_cases == 1
         end
     end
@@ -61,10 +69,13 @@ end
         # (e.g. a campaign that ran before the simulation starts) must not be
         # discarded when the engine initialises the vaccination's own state.
         mv = MassVaccination(efficacy = 0.0, eligibility_time = Inf)
-        ind = Individual(id = 1,
+        ind = Individual(
+            id = 1,
             state = Dict{Symbol, Any}(
                 :vaccinated => true, :vaccination_time => -500.0,
-                :vaccine_efficacy => 0.6))
+                :vaccine_efficacy => 0.6
+            )
+        )
         EpiBranch.initialise_individual!(mv, ind, nothing)
         @test is_vaccinated(ind)
         @test ind.state[:vaccination_time] == -500.0
@@ -84,10 +95,13 @@ end
         mv = MassVaccination(efficacy = 0.0, eligibility_time = Inf)
         for seed in 1:5
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [mv], attributes = [clinical, prior_dose]);
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [mv], attributes = [clinical, prior_dose]
+                );
                 max_cases = 500,
-                rng = StableRNG(seed))
+                rng = StableRNG(seed)
+            )
             @test state.cumulative_cases == 1
         end
     end
@@ -97,15 +111,23 @@ end
         # starts should already have waned by the time any contact is
         # exposed, so `waning` must see that true elapsed time rather than
         # whatever `initialise_individual!` would otherwise reset it to.
-        mv = MassVaccination(efficacy = 0.0, eligibility_time = Inf,
-            waning = dt -> dt >= 500.0 ? 0.4 : 1.0)
+        mv = MassVaccination(
+            efficacy = 0.0, eligibility_time = Inf,
+            waning = dt -> dt >= 500.0 ? 0.4 : 1.0
+        )
         parent = Individual(id = 1)
-        contact = Individual(id = 2, infection_time = 0.0,
-            state = Dict{Symbol, Any}(:vaccinated => true,
-                :vaccination_time => -500.0, :vaccine_efficacy => 1.0))
+        contact = Individual(
+            id = 2, infection_time = 0.0,
+            state = Dict{Symbol, Any}(
+                :vaccinated => true,
+                :vaccination_time => -500.0, :vaccine_efficacy => 1.0
+            )
+        )
         EpiBranch.initialise_individual!(mv, contact, nothing)
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
 
         risk = EpiBranch.competing_risk(mv, parent, contact, state)
         @test risk.block_probability(state.rng, parent, contact, state) ≈ 0.4
@@ -115,17 +137,25 @@ end
         # `waning` decayed to zero by every transmission time contributes a
         # block probability of zero throughout, so the run should be
         # indistinguishable from having no vaccination at all.
-        mv = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
-            delay_to_immunity = 0.0, waning = dt -> 0.0)
+        mv = MassVaccination(
+            efficacy = 1.0, eligibility_time = 0.0,
+            delay_to_immunity = 0.0, waning = dt -> 0.0
+        )
         for seed in 1:5
             with_vacc = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [mv], attributes = clinical);
-                max_cases = 200, rng = StableRNG(seed))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [mv], attributes = clinical
+                );
+                max_cases = 200, rng = StableRNG(seed)
+            )
             without_vacc = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    attributes = clinical);
-                max_cases = 200, rng = StableRNG(seed))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    attributes = clinical
+                );
+                max_cases = 200, rng = StableRNG(seed)
+            )
             @test with_vacc.cumulative_cases == without_vacc.cumulative_cases
         end
     end
@@ -133,13 +163,18 @@ end
     @testset "MassVaccination with waning at full strength matches constant efficacy" begin
         # `waning = _ -> 1.0` should reproduce the un-waned, constant-efficacy
         # behaviour: immunity in place at every transmission blocks it outright.
-        mv = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
-            delay_to_immunity = 0.0, waning = dt -> 1.0)
+        mv = MassVaccination(
+            efficacy = 1.0, eligibility_time = 0.0,
+            delay_to_immunity = 0.0, waning = dt -> 1.0
+        )
         for seed in 1:5
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [mv], attributes = clinical);
-                max_cases = 500, rng = StableRNG(seed))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [mv], attributes = clinical
+                );
+                max_cases = 500, rng = StableRNG(seed)
+            )
             @test state.cumulative_cases == 1
         end
     end
@@ -148,19 +183,26 @@ end
         # Vaccination eligible far in the future — no contact's
         # transmission should land after eligibility + delay, so the
         # outbreak should proceed unaffected.
-        mv = MassVaccination(efficacy = 1.0, eligibility_time = 1.0e6,
-            delay_to_immunity = 0.0)
+        mv = MassVaccination(
+            efficacy = 1.0, eligibility_time = 1.0e6,
+            delay_to_immunity = 0.0
+        )
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                interventions = [mv], attributes = clinical);
+            ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [mv], attributes = clinical
+            );
             condition = 50:500,
             max_cases = 500,
-            rng = StableRNG(1))
+            rng = StableRNG(1)
+        )
         @test state.cumulative_cases >= 50
         # Every contact was marked vaccinated (eligibility was finite)
         # but none had immunity in time, so the risk never fires.
-        @test all(ind.state[:vaccination_time] ≈ 1.0e6
-        for ind in state.individuals if ind.parent_id != 0)
+        @test all(
+            ind.state[:vaccination_time] ≈ 1.0e6
+                for ind in state.individuals if ind.parent_id != 0
+        )
     end
 
     @testset "MassVaccination per-individual eligibility function" begin
@@ -176,9 +218,12 @@ end
 
         rng = StableRNG(42)
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                interventions = [mv], attributes = attrs);
-            max_cases = 200, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [mv], attributes = attrs
+            );
+            max_cases = 200, rng = rng
+        )
         # No infected case should have age >= 65 (those got blocked).
         for ind in state.individuals
             ind.parent_id == 0 && continue
@@ -191,16 +236,23 @@ end
         # Efficacy drawn from Beta(8,2) per individual. Use a far-future
         # eligibility so vaccination doesn't actually block any contacts
         # — we just want to check the per-contact sampling mechanism.
-        mv = MassVaccination(efficacy = Beta(8, 2),
-            eligibility_time = 1.0e6, delay_to_immunity = 0.0)
+        mv = MassVaccination(
+            efficacy = Beta(8, 2),
+            eligibility_time = 1.0e6, delay_to_immunity = 0.0
+        )
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                interventions = [mv], attributes = clinical);
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [mv], attributes = clinical
+            );
             condition = 50:500,
             max_cases = 500,
-            rng = StableRNG(1))
-        effs = [ind.state[:vaccine_efficacy]
-                for ind in state.individuals if ind.parent_id != 0]
+            rng = StableRNG(1)
+        )
+        effs = [
+            ind.state[:vaccine_efficacy]
+                for ind in state.individuals if ind.parent_id != 0
+        ]
         @test !isempty(effs)
         @test all(0 .<= effs .<= 1)
         # Variation confirms per-individual sampling rather than a
@@ -211,16 +263,23 @@ end
     @testset "MassVaccination with distributional delay_to_immunity" begin
         # Immunity delay drawn from Uniform(7, 21) per individual, a
         # vaccine that takes one to three weeks to protect.
-        mv = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
-            delay_to_immunity = Uniform(7.0, 21.0))
+        mv = MassVaccination(
+            efficacy = 1.0, eligibility_time = 0.0,
+            delay_to_immunity = Uniform(7.0, 21.0)
+        )
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                interventions = [mv], attributes = clinical);
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [mv], attributes = clinical
+            );
             condition = 50:500,
             max_cases = 500,
-            rng = StableRNG(1))
-        delays = [immunity_time(ind) - ind.state[:vaccination_time]
-                  for ind in state.individuals if ind.parent_id != 0]
+            rng = StableRNG(1)
+        )
+        delays = [
+            immunity_time(ind) - ind.state[:vaccination_time]
+                for ind in state.individuals if ind.parent_id != 0
+        ]
         @test !isempty(delays)
         @test all(7.0 .<= delays .<= 21.0)
         # Variation confirms per-individual sampling rather than a
@@ -236,10 +295,13 @@ end
             eligibility_time = 0.0, delay_to_immunity = 0.0
         )
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                interventions = [mv], attributes = attrs);
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [mv], attributes = attrs
+            );
             max_cases = 100,
-            rng = StableRNG(2))
+            rng = StableRNG(2)
+        )
         for ind in state.individuals
             ind.parent_id == 0 && continue
             expected = ind.state[:age] >= 65 ? 0.3 : 0.95
@@ -250,15 +312,22 @@ end
     @testset "Multi-dose MassVaccination composes via dose_label" begin
         # Two doses with different state namespaces. State keys are
         # suffixed; both doses contribute independent competing risks.
-        prime = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
-            delay_to_immunity = 0.0, dose_label = :prime)
-        boost = MassVaccination(efficacy = 1.0, eligibility_time = 0.0,
-            delay_to_immunity = 0.0, dose_label = :boost)
+        prime = MassVaccination(
+            efficacy = 1.0, eligibility_time = 0.0,
+            delay_to_immunity = 0.0, dose_label = :prime
+        )
+        boost = MassVaccination(
+            efficacy = 1.0, eligibility_time = 0.0,
+            delay_to_immunity = 0.0, dose_label = :boost
+        )
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                interventions = [prime, boost], attributes = clinical);
+            ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [prime, boost], attributes = clinical
+            );
             max_cases = 200,
-            rng = StableRNG(3))
+            rng = StableRNG(3)
+        )
         # The default :vaccinated key is untouched; dose-labelled
         # keys carry the state.
         for ind in state.individuals
@@ -279,17 +348,24 @@ end
             threshold::Int
         end
         function EpiBranch.competing_risk(b::AgeConditionalBlock, parent, contact, state)
-            Risk(event_time = -Inf,
-                block_probability = (rng, parent, contact,
-                    state) -> contact.state[:age] >= b.threshold ? 1.0 : 0.0)
+            Risk(
+                event_time = -Inf,
+                block_probability = (
+                    rng, parent, contact,
+                    state
+                ) -> contact.state[:age] >= b.threshold ? 1.0 : 0.0
+            )
         end
 
         attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         rng = StableRNG(42)
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                interventions = [AgeConditionalBlock(50)], attributes = attrs);
-            max_cases = 200, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [AgeConditionalBlock(50)], attributes = attrs
+            );
+            max_cases = 200, rng = rng
+        )
         for ind in state.individuals
             ind.parent_id == 0 && continue
             is_infected(ind) || continue
@@ -303,19 +379,27 @@ end
         # block probability `1 - trait`; trait == 1 contributes no risk.
         parent = Individual(id = 1, infectiousness = 0.6)
         contact = Individual(id = 2, parent_id = 1, susceptibility = 0.25)
-        rs = EpiBranch.competing_risk(EpiBranch.HostSusceptibility(),
-            parent, contact, nothing)
+        rs = EpiBranch.competing_risk(
+            EpiBranch.HostSusceptibility(),
+            parent, contact, nothing
+        )
         @test rs isa Risk
         @test rs.block_probability ≈ 0.75
-        ri = EpiBranch.competing_risk(EpiBranch.InfectorInfectiousness(),
-            parent, contact, nothing)
+        ri = EpiBranch.competing_risk(
+            EpiBranch.InfectorInfectiousness(),
+            parent, contact, nothing
+        )
         @test ri.block_probability ≈ 0.4
         # Default trait (1.0) ⇒ no risk contributed.
         plain = Individual(id = 3, parent_id = 1)
-        @test EpiBranch.competing_risk(EpiBranch.HostSusceptibility(),
-            parent, plain, nothing) === nothing
-        @test EpiBranch.competing_risk(EpiBranch.InfectorInfectiousness(),
-            Individual(id = 4), plain, nothing) === nothing
+        @test EpiBranch.competing_risk(
+            EpiBranch.HostSusceptibility(),
+            parent, plain, nothing
+        ) === nothing
+        @test EpiBranch.competing_risk(
+            EpiBranch.InfectorInfectiousness(),
+            Individual(id = 4), plain, nothing
+        ) === nothing
 
         # And they actually thin transmission: susceptibility 0.3 ⇒ ~30%
         # of contacts infected, end to end.
@@ -324,7 +408,8 @@ end
         for seed in 1:8
             s = simulate(
                 ModelSpec(BranchingProcess((rng, ind) -> 6, Exponential(5.0)); attributes = attrs);
-                n_initial = 50, max_generations = 1, rng = StableRNG(seed))
+                n_initial = 50, max_generations = 1, rng = StableRNG(seed)
+            )
             kids = filter(i -> i.parent_id != 0, s.individuals)
             push!(frac, count(is_infected, kids) / length(kids))
         end
@@ -337,11 +422,15 @@ end
         opts = (; n_initial = 5, max_generations = 4)
         base = simulate(
             ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0)); attributes = attrs);
-            opts..., rng = StableRNG(1))
+            opts..., rng = StableRNG(1)
+        )
         grown = simulate(
-            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
-                interventions = [KeepUninfectedActive()], attributes = attrs);
-            opts..., rng = StableRNG(1))
+            ModelSpec(
+                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                interventions = [KeepUninfectedActive()], attributes = attrs
+            );
+            opts..., rng = StableRNG(1)
+        )
 
         # The uninfected fringe now spawns its own contacts: far more nodes.
         @test length(grown.individuals) > length(base.individuals)
@@ -359,9 +448,13 @@ end
         sick = Individual(id = 2)
         sick.state[:infected] = true
         c = Individual(id = 3, parent_id = 1)
-        @test EpiBranch.competing_risk(EpiBranch.InfectiousSource(),
-            well, c, nothing).block_probability == 1.0
-        @test EpiBranch.competing_risk(EpiBranch.InfectiousSource(),
-            sick, c, nothing) === nothing
+        @test EpiBranch.competing_risk(
+            EpiBranch.InfectiousSource(),
+            well, c, nothing
+        ).block_probability == 1.0
+        @test EpiBranch.competing_risk(
+            EpiBranch.InfectiousSource(),
+            sick, c, nothing
+        ) === nothing
     end
 end

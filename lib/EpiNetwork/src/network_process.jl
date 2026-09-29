@@ -64,22 +64,29 @@ struct NetworkProcess{K, E} <: TransmissionModel
     obs_end::Float64                 # end of the community-importation window
 end
 
-function NetworkProcess(adjacency::AbstractVector{<:AbstractVector{<:Integer}},
+function NetworkProcess(
+        adjacency::AbstractVector{<:AbstractVector{<:Integer}},
         kernel;
         from = nothing,
         until = (:recovered, :died, :isolated),
         external_hazard = 0.0,
-        obs_end = Inf)
+        obs_end = Inf
+    )
     adj = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
     edge_kernel = _validate_kernel(kernel, adj)
     _valid_external(external_hazard) ||
         throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
     obs_end_value = Float64(obs_end)
-    (!isnan(obs_end_value) && obs_end_value >= 0) || throw(ArgumentError(
-        "obs_end must be a non-negative number (Inf allowed), got $obs_end"))
+    (!isnan(obs_end_value) && obs_end_value >= 0) || throw(
+        ArgumentError(
+            "obs_end must be a non-negative number (Inf allowed), got $obs_end"
+        )
+    )
 
-    return NetworkProcess(adj, edge_kernel, from, Tuple(until),
-        _normalise_external(external_hazard), obs_end_value)
+    return NetworkProcess(
+        adj, edge_kernel, from, Tuple(until),
+        _normalise_external(external_hazard), obs_end_value
+    )
 end
 
 """
@@ -91,8 +98,11 @@ means an (undirected) edge between `i` and `j`. Every edge shares `kernel`
 """
 function NetworkProcess(A::AbstractMatrix, kernel; kwargs...)
     n = size(A, 1)
-    size(A, 2) == n || throw(ArgumentError(
-        "adjacency matrix must be square, got $(size(A))"))
+    size(A, 2) == n || throw(
+        ArgumentError(
+            "adjacency matrix must be square, got $(size(A))"
+        )
+    )
     adjacency = [Int[] for _ in 1:n]
     for i in 1:n, j in (i + 1):n
 
@@ -117,17 +127,19 @@ _honours_termination_controls(::NetworkProcess) = false
 
 # See `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl.
 function _validate_process_windows(m::NetworkProcess, progression)
-    _warn_uncovered_terminal_states(m.until, progression; from = m.from)
+    return _warn_uncovered_terminal_states(m.until, progression; from = m.from)
 end
 
 function Base.show(io::IO, m::NetworkProcess)
     n = length(m.adjacency)
     n_edges = sum(length, m.adjacency; init = 0) ÷ 2
     kstr = m.edge_kernel isa Distribution ? nameof(typeof(m.edge_kernel)) :
-           m.edge_kernel isa AbstractVector ? "per-edge" : "Function"
+        m.edge_kernel isa AbstractVector ? "per-edge" : "Function"
     from = m.from === nothing ? "" : ", from=:$(m.from)"
-    print(io, "NetworkProcess(nodes=$n, edges=$n_edges, kernel=$kstr", from,
-        _ext_active(m.external_hazard) ? ", external_hazard=$(m.external_hazard))" : ")")
+    return print(
+        io, "NetworkProcess(nodes=$n, edges=$n_edges, kernel=$kstr", from,
+        _ext_active(m.external_hazard) ? ", external_hazard=$(m.external_hazard))" : ")"
+    )
 end
 
 # ── Kernel handling ──────────────────────────────────────────────────
@@ -142,11 +154,17 @@ end
 # up with the adjacency list; anything else is taken to be a callable.
 _validate_kernel(k::ContinuousUnivariateDistribution, adj) = k
 function _validate_kernel(k::AbstractVector{<:AbstractVector}, adj)
-    length(k) == length(adj) || throw(ArgumentError(
-        "per-edge kernel and adjacency must have the same number of nodes"))
+    length(k) == length(adj) || throw(
+        ArgumentError(
+            "per-edge kernel and adjacency must have the same number of nodes"
+        )
+    )
     for i in eachindex(adj)
-        length(k[i]) == length(adj[i]) || throw(ArgumentError(
-            "node $i: per-edge kernel and adjacency have different lengths"))
+        length(k[i]) == length(adj[i]) || throw(
+            ArgumentError(
+                "node $i: per-edge kernel and adjacency have different lengths"
+            )
+        )
     end
     return [collect(row) for row in k]
 end
@@ -155,16 +173,20 @@ _validate_kernel(k, adj) = k   # callable (infector, susceptible) -> Distributio
 
 # The contact-interval distribution for the `pos`-th neighbour of node `i`.
 function _edge_kernel(m::NetworkProcess, i::Int, pos::Int, state, from)
-    _resolve_kernel(m.edge_kernel, m, i, pos, state, from)
+    return _resolve_kernel(m.edge_kernel, m, i, pos, state, from)
 end
 _resolve_kernel(k::ContinuousUnivariateDistribution, m, i, pos, state, from) = k
 _resolve_kernel(k::AbstractVector, m, i, pos, state, from) = k[i][pos]
 function _resolve_kernel(k, m, i, pos, state, from)
-    EpiBranch.pair_kernel(k, i, m.adjacency[i][pos], state.individuals[i].infection_time,
-        EpiBranch._window_open(state.individuals[i], from), state)
+    return EpiBranch.pair_kernel(
+        k, i, m.adjacency[i][pos], state.individuals[i].infection_time,
+        EpiBranch._window_open(state.individuals[i], from), state
+    )
 end
 
 function _resolve_kernel(k::CalendarKernel, m, i, pos, state, from)
-    EpiBranch._calendar_interval(_resolve_kernel(k.kernel, m, i, pos, state, from),
-        EpiBranch._window_open(state.individuals[i], from))
+    return EpiBranch._calendar_interval(
+        _resolve_kernel(k.kernel, m, i, pos, state, from),
+        EpiBranch._window_open(state.individuals[i], from)
+    )
 end

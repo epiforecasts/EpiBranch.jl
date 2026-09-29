@@ -29,13 +29,17 @@ struct NetworkInfections{T <: Real, H <: NamedTuple} <: InfectionLayer
     host_times::H
 end
 
-function NetworkInfections(contacts::AbstractVector{<:AbstractVector{<:Integer}},
+function NetworkInfections(
+        contacts::AbstractVector{<:AbstractVector{<:Integer}},
         infection_time, infectious_time, removal_time, is_index; obs_end = Inf,
-        followup_end = Inf, host_times = (;))
+        followup_end = Inf, host_times = (;)
+    )
     adj = contacts isa Vector{Vector{Int}} ? contacts :
-          Vector{Int}[Int.(nbrs) for nbrs in contacts]
-    fields = _infection_layer_fields(length(adj), infection_time, infectious_time,
-        removal_time, is_index; obs_end, followup_end, host_times)
+        Vector{Int}[Int.(nbrs) for nbrs in contacts]
+    fields = _infection_layer_fields(
+        length(adj), infection_time, infectious_time,
+        removal_time, is_index; obs_end, followup_end, host_times
+    )
     return NetworkInfections(adj, fields...)
 end
 
@@ -58,17 +62,24 @@ effective kernel when scoring; extraction records the windows only. A bare `Netw
 times to record, such as `(:onset_time,)`, read from each node's state (`missing`
 where a node has none) for a live [`StatefulKernel`](@ref) to read.
 """
-function network_infections(state::SimulationState,
+function network_infections(
+        state::SimulationState,
         model::ModelSpec{<:NetworkProcess}; obs_end = model.process.obs_end,
-        followup_end = Inf, host_times = ())
+        followup_end = Inf, host_times = ()
+    )
     adjacency = model.process.adjacency
     n = length(adjacency)
-    length(state.individuals) == n || throw(ArgumentError(
-        "the state has $(length(state.individuals)) individuals but the network " *
-        "has $n nodes"))
+    length(state.individuals) == n || throw(
+        ArgumentError(
+            "the state has $(length(state.individuals)) individuals but the network " *
+                "has $n nodes"
+        )
+    )
     columns = _infection_layer_columns(state, model)
-    return NetworkInfections(adjacency, columns...; obs_end, followup_end,
-        host_times = _host_time_columns(state, host_times))
+    return NetworkInfections(
+        adjacency, columns...; obs_end, followup_end,
+        host_times = _host_time_columns(state, host_times)
+    )
 end
 
 function network_infections(state::SimulationState, process::NetworkProcess; kwargs...)
@@ -83,12 +94,16 @@ The contact-process log-density of `model`'s kernel given the infection layer
 model.external_hazard)`. A per-edge kernel must be parallel to `data.contacts`.
 """
 function Distributions.loglikelihood(data::NetworkInfections, model::NetworkProcess)
-    return pairwise_surv_loglik(model.edge_kernel, data;
-        external_hazard = model.external_hazard)
+    return pairwise_surv_loglik(
+        model.edge_kernel, data;
+        external_hazard = model.external_hazard
+    )
 end
 
-function Distributions.loglikelihood(data::NetworkInfections,
-        model::ModelSpec{<:NetworkProcess})
+function Distributions.loglikelihood(
+        data::NetworkInfections,
+        model::ModelSpec{<:NetworkProcess}
+    )
     EpiBranch._validate_infection_likelihood(model)
     return loglikelihood(data, model.process)
 end

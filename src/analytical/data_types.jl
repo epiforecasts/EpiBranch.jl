@@ -16,7 +16,7 @@ struct OffspringCounts
     function OffspringCounts(data::AbstractVector{<:Integer})
         isempty(data) && throw(ArgumentError("data must be non-empty"))
         all(x -> x >= 0, data) || throw(ArgumentError("counts must be non-negative"))
-        new(convert(Vector{Int}, data))
+        return new(convert(Vector{Int}, data))
     end
 end
 
@@ -49,8 +49,10 @@ data = ChainSizes([3, 5, 10, 2]; seeds = [1, 2, 1, 1])
 struct ChainSizes
     data::Vector{Int}
     seeds::Vector{Int}
-    function ChainSizes(data::AbstractVector{<:Integer};
-            seeds::AbstractVector{<:Integer} = ones(Int, length(data)))
+    function ChainSizes(
+            data::AbstractVector{<:Integer};
+            seeds::AbstractVector{<:Integer} = ones(Int, length(data))
+        )
         isempty(data) && throw(ArgumentError("data must be non-empty"))
         length(seeds) == length(data) ||
             throw(ArgumentError("seeds must have the same length as data"))
@@ -58,7 +60,7 @@ struct ChainSizes
         all(s -> s >= 1, seeds) || throw(ArgumentError("seeds must be ≥ 1"))
         all(i -> data[i] >= seeds[i], eachindex(data)) ||
             throw(ArgumentError("chain size must be ≥ number of seeds"))
-        new(convert(Vector{Int}, data), convert(Vector{Int}, seeds))
+        return new(convert(Vector{Int}, data), convert(Vector{Int}, seeds))
     end
 end
 
@@ -78,6 +80,6 @@ struct ChainLengths
     function ChainLengths(data::AbstractVector{<:Integer})
         isempty(data) && throw(ArgumentError("data must be non-empty"))
         all(x -> x >= 0, data) || throw(ArgumentError("chain lengths must be ≥ 0"))
-        new(convert(Vector{Int}, data))
+        return new(convert(Vector{Int}, data))
     end
 end

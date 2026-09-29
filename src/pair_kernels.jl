@@ -56,7 +56,7 @@ kernel returns what the five-argument form does.
 pair_kernel(k::ContinuousUnivariateDistribution, i, j, infection_time) = k
 pair_kernel(k, i, j, infection_time) = k(i, j)
 function pair_kernel(k::ContextualKernel, i, j, infection_time)
-    k.callback(PairContext(i, j, infection_time))
+    return k.callback(PairContext(i, j, infection_time))
 end
 
 """
@@ -83,13 +83,13 @@ end
 # The five-argument interface also supplies the origin of the contact interval.
 pair_kernel(k, i, j, infection_time, infectious_time) = pair_kernel(k, i, j, infection_time)
 function pair_kernel(k::CalendarKernel, i, j, infection_time, infectious_time)
-    _calendar_interval(pair_kernel(k.kernel, i, j, infection_time), infectious_time)
+    return _calendar_interval(pair_kernel(k.kernel, i, j, infection_time), infectious_time)
 end
 function pair_kernel(::CalendarKernel, i, j, infection_time)
     throw(ArgumentError("CalendarKernel also requires the infectious opening time"))
 end
 function _calendar_interval(distribution, opening)
-    truncated(distribution; lower = opening) - opening
+    return truncated(distribution; lower = opening) - opening
 end
 
 """
@@ -162,8 +162,11 @@ struct _LayerHostState{S <: NamedTuple}
     index::Int
 end
 @inline function _layer_time(s::_LayerHostState, key::Symbol)
-    haskey(s.columns, key) || throw(ArgumentError(
-        "the infection layer holds no host time `$key`; add it to `host_times`"))
+    haskey(s.columns, key) || throw(
+        ArgumentError(
+            "the infection layer holds no host time `$key`; add it to `host_times`"
+        )
+    )
     return s.columns[key][s.index]
 end
 @inline function Base.get(s::_LayerHostState, key::Symbol, default)
@@ -178,7 +181,7 @@ end
 Base.haskey(s::_LayerHostState, key::Symbol) = !ismissing(_layer_time(s, key))
 
 function _layer_host(data, i)
-    LayerHost(i, data.infection_time[i], _LayerHostState(_host_times(data), i))
+    return LayerHost(i, data.infection_time[i], _LayerHostState(_host_times(data), i))
 end
 
 _pair_state(project, individual) = project(individual)
@@ -200,28 +203,34 @@ _live_kernel(k) = _kernel_projection(k) !== nothing
 # pending contacts depend on can move only through an intervention, and without
 # one a live kernel races exactly as an ordinary kernel does.
 function _watched_projection(kernel, interventions)
-    isempty(interventions) ? nothing : _kernel_projection(kernel)
+    return isempty(interventions) ? nothing : _kernel_projection(kernel)
 end
 
 # The extra argument is supplied only by simulation; ordinary kernels retain
 # their existing extension methods and compiled likelihood fast paths.
 function pair_kernel(k, i, j, infection_time, opening, state)
-    pair_kernel(k, i, j, infection_time, opening)
+    return pair_kernel(k, i, j, infection_time, opening)
 end
 function pair_kernel(k::StatefulKernel, i, j, infection_time, opening, state)
-    k.callback(PairContext(i, j, infection_time),
+    return k.callback(
+        PairContext(i, j, infection_time),
         _pair_state(k.state, state.individuals[i]),
-        _pair_state(k.state, state.individuals[j]))
+        _pair_state(k.state, state.individuals[j])
+    )
 end
 function pair_kernel(k::StatefulKernel{<:AbstractVector}, i, j, infection_time)
-    k.callback(PairContext(i, j, infection_time), k.state[i], k.state[j])
+    return k.callback(PairContext(i, j, infection_time), k.state[i], k.state[j])
 end
 function pair_kernel(::StatefulKernel, i, j, infection_time)
-    throw(ArgumentError("a live StatefulKernel needs simulation state; " *
-                        "supply recorded host states for likelihood evaluation with record_kernel"))
+    throw(
+        ArgumentError(
+            "a live StatefulKernel needs simulation state; " *
+                "supply recorded host states for likelihood evaluation with record_kernel"
+        )
+    )
 end
 function pair_kernel(k::CalendarKernel, i, j, infection_time, opening, state)
-    _calendar_interval(pair_kernel(k.kernel, i, j, infection_time, opening, state), opening)
+    return _calendar_interval(pair_kernel(k.kernel, i, j, infection_time, opening, state), opening)
 end
 
 """
@@ -242,9 +251,11 @@ also belong in the joint likelihood. During inference, construct
 """
 record_kernel(k, state::SimulationState) = k
 function record_kernel(k::StatefulKernel, state::SimulationState)
-    StatefulKernel([deepcopy(_pair_state(k.state, ind)) for ind in state.individuals],
-        k.callback)
+    return StatefulKernel(
+        [deepcopy(_pair_state(k.state, ind)) for ind in state.individuals],
+        k.callback
+    )
 end
 function record_kernel(k::CalendarKernel, state::SimulationState)
-    CalendarKernel(record_kernel(k.kernel, state))
+    return CalendarKernel(record_kernel(k.kernel, state))
 end

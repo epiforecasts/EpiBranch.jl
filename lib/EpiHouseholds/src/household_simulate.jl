@@ -27,13 +27,18 @@ spreads only within the household. With an `external_hazard` — a positive scal
 or a calendar-time distribution — community introductions emerge over
 `[0, model.obs_end]`; give the process a finite `obs_end` in that case.
 """
-function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
+function _simulate(
+        model::HouseholdProcess, sim_opts::SimOpts;
         interventions, attributes, progression, observation, rng, condition,
-        max_attempts)
+        max_attempts
+    )
     condition !== nothing && return _retry_for_condition(
-        () -> _simulate(model, sim_opts; interventions, attributes, progression,
-            observation, rng, condition = nothing, max_attempts),
-        condition, max_attempts)
+        () -> _simulate(
+            model, sim_opts; interventions, attributes, progression,
+            observation, rng, condition = nothing, max_attempts
+        ),
+        condition, max_attempts
+    )
 
     length(model.members) > 1 && foreach(_validate_household_capacity, interventions)
     from = _resolve_infectious_from(model.from, progression)
@@ -42,19 +47,24 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
     # A community hazard over an unbounded window would introduce every member;
     # require a finite observation window instead (as the network simulator does).
     _ext_active(model.external_hazard) && !isfinite(Tobs) &&
-        throw(ArgumentError(
+        throw(
+        ArgumentError(
             "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
-            "every household member); build the process with e.g. `obs_end = 30.0`"))
+                "every household member); build the process with e.g. `obs_end = 30.0`"
+        )
+    )
 
     state = new_state(model, progression, attributes, rng)
-    add_individuals!(state, length(model.household_of), interventions;
-        setup = (ind, i) -> (ind.state[:household] = model.household_of[i]))
+    add_individuals!(
+        state, length(model.household_of), interventions;
+        setup = (ind, i) -> (ind.state[:household] = model.household_of[i])
+    )
 
     # Reuse the population lookup across household races. The population is
     # extinct only when every household's race ran to its own extinction,
     # rather than being cut off at `max_time` with candidates still pending.
     initial_cases = sim_opts.initial_cases === nothing ? nothing :
-                    Set(sim_opts.initial_cases)
+        Set(sim_opts.initial_cases)
     # Only a policy that can read cases in other households needs every household
     # on one clock, and only an intervention can write such a policy.
     watched = EpiBranch._watched_projection(model.kernel, interventions)
@@ -62,21 +72,28 @@ function _simulate(model::HouseholdProcess, sim_opts::SimOpts;
     races = live ? (collect(eachindex(model.household_of)),) : model.members
     extinct = true
     for mem in races
-        extinct &= EpiBranch._sellke_race!(state, mem, rng;
+        extinct &= EpiBranch._sellke_race!(
+            state, mem, rng;
             from = from, until = model.until, interventions = interventions,
             max_time = EpiBranch._max_time(sim_opts),
             risks = EpiBranch.transmission_risks(model),
             refresh_projection = watched,
             seed! = (best, members, r) -> _seed_household_race!(
-                best, members, model, state, Tobs, r, initial_cases, live),
+                best, members, model, state, Tobs, r, initial_cases, live
+            ),
             introduction = _ext_active(model.external_hazard) ?
-                           (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
-            targets = (inf, st) -> ((oid, _pairkernel(model.kernel, inf, oid, st, from))
-            for oid in model.members[model.household_of[inf]] if oid != inf),
+                (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
+            targets = (inf, st) -> (
+                (oid, _pairkernel(model.kernel, inf, oid, st, from))
+                    for oid in model.members[model.household_of[inf]] if oid != inf
+            ),
             # A case's contacts are its household-mates, traced whether or not
             # transmission reached them.
-            contacts = (inf, st) -> (oid
-            for oid in model.members[model.household_of[inf]] if oid != inf))
+            contacts = (inf, st) -> (
+                oid
+                    for oid in model.members[model.household_of[inf]] if oid != inf
+            )
+        )
     end
 
     _reconcile_sellke_bookkeeping!(state, extinct)
@@ -89,8 +106,10 @@ end
 # Seed one household's candidate table: community introductions under the
 # external hazard (each member drawn, kept if it lands within `[0, Tobs]`), or a
 # single seeded index at time 0 when there is no external source.
-function _seed_clique!(best, members, state, extsrc, Tobs, rng;
-        initial_cases = nothing)
+function _seed_clique!(
+        best, members, state, extsrc, Tobs, rng;
+        initial_cases = nothing
+    )
     initial_cases === nothing ||
         return EpiBranch._seed_initial_cases!(best, members, initial_cases)
     m = length(members)
@@ -108,32 +127,39 @@ end
 # Resolve the contact-interval distribution for an ordered (infector,
 # susceptible) pair: a shared distribution, or a callable for covariate models.
 function _pairkernel(k, i, j, state, from)
-    EpiBranch.pair_kernel(k, i, j, state.individuals[i].infection_time,
-        EpiBranch._window_open(state.individuals[i], from), state)
+    return EpiBranch.pair_kernel(
+        k, i, j, state.individuals[i].infection_time,
+        EpiBranch._window_open(state.individuals[i], from), state
+    )
 end
 
 function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpts)
-    EpiBranch._validate_initial_case_ids(opts, length(model.household_of), model.external_hazard)
+    return EpiBranch._validate_initial_case_ids(opts, length(model.household_of), model.external_hazard)
 end
 
 # Separate household races revisit earlier times. Periodic shared budgets need
 # a single chronological race; lifetime budgets remain valid across races.
 _validate_household_capacity(::EpiBranch.AbstractIntervention) = nothing
 function _validate_household_capacity(iv::EpiBranch.InterventionWrapper)
-    _validate_household_capacity(iv.intervention)
+    return _validate_household_capacity(iv.intervention)
 end
 function _validate_household_capacity(iv::CapacityConstrained)
-    isfinite(iv.period) && throw(ArgumentError(
-        "finite-period capacity budgets require chronological admission across households; " *
-        "use period = Inf for a shared lifetime budget, or simulate one household"))
-    _validate_household_capacity(iv.intervention)
+    isfinite(iv.period) && throw(
+        ArgumentError(
+            "finite-period capacity budgets require chronological admission across households; " *
+                "use period = Inf for a shared lifetime budget, or simulate one household"
+        )
+    )
+    return _validate_household_capacity(iv.intervention)
 end
 
 function _seed_household_race!(best, members, model, state, Tobs, rng, initial_cases, live)
     if live
         for mem in model.members
-            _seed_clique!(view(best, mem), mem, state, model.external_hazard, Tobs, rng;
-                initial_cases)
+            _seed_clique!(
+                view(best, mem), mem, state, model.external_hazard, Tobs, rng;
+                initial_cases
+            )
         end
     else
         _seed_clique!(best, members, state, model.external_hazard, Tobs, rng; initial_cases)

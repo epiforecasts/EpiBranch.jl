@@ -6,13 +6,20 @@ struct _CaseAnchor end
 (::_CaseAnchor)(ind) = ind.infection_time + 5.0
 
 @testset "Callable observation parameters" begin
-    for obs in (PerCaseObservation(_CaseDetection(), _CaseDelay()),
-        PerCaseObservation(detection_prob = _CaseDetection(),
-        delay = _CaseDelay(), from = _CaseAnchor()))
+    for obs in (
+            PerCaseObservation(_CaseDetection(), _CaseDelay()),
+            PerCaseObservation(
+                detection_prob = _CaseDetection(),
+                delay = _CaseDelay(), from = _CaseAnchor()
+            ),
+        )
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(0.0), Exponential(1.0));
-                observation = obs);
-            n_initial = 4, rng = StableRNG(7))
+            ModelSpec(
+                BranchingProcess(Poisson(0.0), Exponential(1.0));
+                observation = obs
+            );
+            n_initial = 4, rng = StableRNG(7)
+        )
         for ind in state.individuals
             @test ind.state[:reported] == isodd(ind.id)
             offset = obs.from isa _CaseAnchor ? 5.0 : 0.0
@@ -39,15 +46,21 @@ end
         # Age-conditional detection: 50+ always reported, under-50 never.
         attrs = [
             clinical_presentation(
-                incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0),
-            demographics(age_distribution = Uniform(0, 90))]
+                incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+            ),
+            demographics(age_distribution = Uniform(0, 90)),
+        ]
         obs = PerCaseObservation(
-            detection_prob = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0)
+            detection_prob = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0
+        )
         rng = StableRNG(11)
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                observation = obs, attributes = attrs);
-            max_cases = 100, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                observation = obs, attributes = attrs
+            );
+            max_cases = 100, rng = rng
+        )
         for ind in state.individuals
             expected = ind.state[:age] >= 50
             @test ind.state[:reported] == expected
@@ -59,15 +72,21 @@ end
         # Default anchor is :onset_time.
         attrs = [
             clinical_presentation(
-                incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0),
-            demographics(age_distribution = Uniform(0, 90))]
+                incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+            ),
+            demographics(age_distribution = Uniform(0, 90)),
+        ]
         obs = PerCaseObservation(
-            delay = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 7.0)
+            delay = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 7.0
+        )
         rng = StableRNG(23)
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                observation = obs, attributes = attrs);
-            max_cases = 100, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                observation = obs, attributes = attrs
+            );
+            max_cases = 100, rng = rng
+        )
         for ind in state.individuals
             expected_lag = ind.state[:age] >= 50 ? 1.0 : 7.0
             @test ind.state[:report_time] ≈ ind.state[:onset_time] + expected_lag
@@ -79,13 +98,18 @@ end
         # back to infection_time rather than NaN.
         attrs = [
             clinical_presentation(
-            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 1.0)]
+                incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 1.0
+            ),
+        ]
         obs = PerCaseObservation(delay = 2.0)
         rng = StableRNG(99)
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0));
-                observation = obs, attributes = attrs);
-            max_cases = 50, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(1.5), Exponential(5.0));
+                observation = obs, attributes = attrs
+            );
+            max_cases = 50, rng = rng
+        )
         for ind in state.individuals
             @test !isnan(ind.state[:report_time])
             @test ind.state[:report_time] ≈ ind.infection_time + 2.0
@@ -95,14 +119,21 @@ end
     @testset "from = infection_time anchors on infection" begin
         attrs = [
             clinical_presentation(
-            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)]
-        obs = PerCaseObservation(delay = 3.0,
-            from = ind -> ind.infection_time)
+                incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+            ),
+        ]
+        obs = PerCaseObservation(
+            delay = 3.0,
+            from = ind -> ind.infection_time
+        )
         rng = StableRNG(7)
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0));
-                observation = obs, attributes = attrs);
-            max_cases = 50, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(1.5), Exponential(5.0));
+                observation = obs, attributes = attrs
+            );
+            max_cases = 50, rng = rng
+        )
         for ind in state.individuals
             @test ind.state[:report_time] ≈ ind.infection_time + 3.0
         end
@@ -113,10 +144,14 @@ end
         obs = PerCaseObservation(detection_prob = Beta(2.0, 2.0))
         m = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); observation = obs)
         rng = StableRNG(31)
-        states = simulate(m, 50; max_cases = 50,
-            rng = rng)
-        reported = [ind.state[:reported]
-                    for s in states for ind in s.individuals]
+        states = simulate(
+            m, 50; max_cases = 50,
+            rng = rng
+        )
+        reported = [
+            ind.state[:reported]
+                for s in states for ind in s.individuals
+        ]
         @test !isempty(reported)
         frac = count(reported) / length(reported)
         # Beta(2,2) has mean 0.5; with hundreds of draws we should be in (0.3, 0.7).
@@ -128,18 +163,26 @@ end
         # kept in the state. Observation is a case property: those nodes must not
         # receive a :reported flag.
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-        m = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.5),
-                post_isolation_transmission = 0.0)],
+        m = ModelSpec(
+            BranchingProcess(Poisson(3.0), Exponential(5.0));
+            interventions = [
+                Isolation(
+                    onset_to_isolation_delay = Exponential(0.5),
+                    post_isolation_transmission = 0.0
+                ),
+            ],
             attributes = clinical,
-            observation = PerCaseObservation(detection_prob = 0.7))
+            observation = PerCaseObservation(detection_prob = 0.7)
+        )
         state = simulate(m; max_cases = 200, rng = StableRNG(7))
 
         uninfected = filter(ind -> !is_infected(ind), state.individuals)
         @test !isempty(uninfected)                     # the scenario produced some
         @test all(!haskey(ind.state, :reported) for ind in uninfected)
-        @test all(is_infected(ind)
-        for ind in state.individuals if get(ind.state, :reported, false))
+        @test all(
+            is_infected(ind)
+                for ind in state.individuals if get(ind.state, :reported, false)
+        )
     end
 
     @testset "scalar_detection_prob rejects non-scalar fields" begin
@@ -147,7 +190,8 @@ end
         @test EpiBranch.scalar_detection_prob(scalar) == 0.7
 
         fn = PerCaseObservation(
-            detection_prob = (rng, ind) -> 0.5)
+            detection_prob = (rng, ind) -> 0.5
+        )
         @test_throws ArgumentError EpiBranch.scalar_detection_prob(fn)
 
         dist = PerCaseObservation(detection_prob = Beta(2.0, 2.0))
@@ -155,9 +199,12 @@ end
     end
 
     @testset "Closed-form chain_size_distribution refuses non-scalar" begin
-        m = ModelSpec(BranchingProcess(Poisson(0.5), Exponential(5.0));
+        m = ModelSpec(
+            BranchingProcess(Poisson(0.5), Exponential(5.0));
             observation = PerCaseObservation(
-                detection_prob = (rng, ind) -> 0.5))
+                detection_prob = (rng, ind) -> 0.5
+            )
+        )
         @test_throws ArgumentError chain_size_distribution(m)
     end
 end

@@ -53,7 +53,7 @@ race whether an intervention needs this hook at all.
 """
 trace_contacts!(::AbstractIntervention, state, infector, contacts) = nothing
 function trace_contacts!(iv::AbstractIntervention, state, infector, contacts, not_before)
-    trace_contacts!(iv, state, infector, contacts)
+    return trace_contacts!(iv, state, infector, contacts)
 end
 
 """

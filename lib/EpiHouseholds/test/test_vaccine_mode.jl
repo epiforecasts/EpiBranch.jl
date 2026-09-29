@@ -16,12 +16,16 @@
         # every exposure after its immunity time, however many there are.
         rv = RingVaccination(efficacy = 0.5, mode = AllOrNothingMode())
         process = HouseholdProcess(fill(6, 100), Exponential(0.05))
-        model = ModelSpec(process; progression, attributes = clinical,
-            interventions = [ct, rv])
+        model = ModelSpec(
+            process; progression, attributes = clinical,
+            interventions = [ct, rv]
+        )
         state = simulate(model; rng = StableRNG(11))
-        responders = [ind
-                      for ind in state.individuals
-                      if is_vaccinated(ind) && ind.state[:vaccine_efficacy] == 1.0]
+        responders = [
+            ind
+                for ind in state.individuals
+                if is_vaccinated(ind) && ind.state[:vaccine_efficacy] == 1.0
+        ]
         @test length(responders) > 50
         @test !any(responders) do ind
             is_infected(ind) && ind.infection_time >= ind.state[:immunity_time]
@@ -32,8 +36,10 @@
         function vaccinated_attack_rate(mode, seed)
             rv = RingVaccination(efficacy = 0.5, mode = mode)
             process = HouseholdProcess(fill(6, 100), Exponential(0.05))
-            model = ModelSpec(process; progression, attributes = clinical,
-                interventions = [ct, rv])
+            model = ModelSpec(
+                process; progression, attributes = clinical,
+                interventions = [ct, rv]
+            )
             state = simulate(model; rng = StableRNG(seed))
             vaccinated = [ind for ind in state.individuals if is_vaccinated(ind)]
             return count(is_infected, vaccinated), length(vaccinated)

@@ -98,11 +98,13 @@ struct HouseholdProcess{K, E} <: TransmissionModel
     obs_end::Float64                 # end of the community-importation window
 end
 
-function HouseholdProcess(sizes::AbstractVector{<:Integer}, kernel;
+function HouseholdProcess(
+        sizes::AbstractVector{<:Integer}, kernel;
         from = nothing,
         until = (:recovered, :died, :isolated),
         external_hazard = 0.0,
-        obs_end = Inf)
+        obs_end = Inf
+    )
     all(s -> s >= 1, sizes) || throw(ArgumentError("household sizes must be ≥ 1"))
     _valid_external(external_hazard) ||
         throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
@@ -120,8 +122,10 @@ function HouseholdProcess(sizes::AbstractVector{<:Integer}, kernel;
         push!(members, mem)
     end
 
-    return HouseholdProcess(household_of, members, kernel, from, Tuple(until),
-        _normalise_external(external_hazard), Float64(obs_end))
+    return HouseholdProcess(
+        household_of, members, kernel, from, Tuple(until),
+        _normalise_external(external_hazard), Float64(obs_end)
+    )
 end
 
 """
@@ -138,7 +142,7 @@ _honours_termination_controls(::HouseholdProcess) = false
 
 # See `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl.
 function _validate_process_windows(m::HouseholdProcess, progression)
-    _warn_uncovered_terminal_states(m.until, progression; from = m.from)
+    return _warn_uncovered_terminal_states(m.until, progression; from = m.from)
 end
 
 # A case's contacts are its household-mates, so contact tracing has a set to act
@@ -149,8 +153,10 @@ function Base.show(io::IO, m::HouseholdProcess)
     n = length(m.household_of)
     nh = length(m.members)
     from = m.from === nothing ? "" : ", from=:$(m.from)"
-    print(io, "HouseholdProcess($nh households, $n individuals, ",
+    return print(
+        io, "HouseholdProcess($nh households, $n individuals, ",
         "kernel=$(m.kernel isa Distribution ? nameof(typeof(m.kernel)) : "Function")",
         from,
-        _ext_active(m.external_hazard) ? ", external_hazard=$(m.external_hazard))" : ")")
+        _ext_active(m.external_hazard) ? ", external_hazard=$(m.external_hazard))" : ")"
+    )
 end

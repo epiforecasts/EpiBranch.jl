@@ -40,14 +40,22 @@ using StableRNGs
     end
 
     scenarios = [
-        scenario((R, d) -> loglikelihood(ChainSizes(d), Poisson(R[1])),
-            [0.5], sizes_data),
-        scenario((θ, d) -> loglikelihood(ChainSizes(d), NegBin(θ[1], θ[2])),
-            [0.5, 0.5], sizes_data),
-        scenario((R, d) -> loglikelihood(ChainLengths(d), Poisson(R[1])),
-            [0.5], lengths_data),
-        scenario((R, d) -> loglikelihood(OffspringCounts(d), Poisson(R[1])),
-            [0.5], counts_data)
+        scenario(
+            (R, d) -> loglikelihood(ChainSizes(d), Poisson(R[1])),
+            [0.5], sizes_data
+        ),
+        scenario(
+            (θ, d) -> loglikelihood(ChainSizes(d), NegBin(θ[1], θ[2])),
+            [0.5, 0.5], sizes_data
+        ),
+        scenario(
+            (R, d) -> loglikelihood(ChainLengths(d), Poisson(R[1])),
+            [0.5], lengths_data
+        ),
+        scenario(
+            (R, d) -> loglikelihood(OffspringCounts(d), Poisson(R[1])),
+            [0.5], counts_data
+        ),
     ]
 
     DIT.test_differentiation(
@@ -55,8 +63,9 @@ using StableRNGs
         correctness = true,
         type_stability = :none,
         logging = false,
-        rtol = 1e-5,
-        atol = 1e-8)
+        rtol = 1.0e-5,
+        atol = 1.0e-8
+    )
 end
 
 # Reverse-mode (Mooncake) coverage of the same analytical likelihoods. Each
@@ -73,13 +82,13 @@ end
         (R -> loglikelihood(ChainSizes(sizes_data), Poisson(R[1])), [0.5]),
         (θ -> loglikelihood(ChainSizes(sizes_data), NegBin(θ[1], θ[2])), [0.5, 0.5]),
         (R -> loglikelihood(ChainLengths(lengths_data), Poisson(R[1])), [0.5]),
-        (R -> loglikelihood(OffspringCounts(counts_data), Poisson(R[1])), [0.5])
+        (R -> loglikelihood(OffspringCounts(counts_data), Poisson(R[1])), [0.5]),
     ]
 
     for (f, x) in cases
         g_reverse = DifferentiationInterface.gradient(f, mooncake, x)
         g_forward = DifferentiationInterface.gradient(f, AutoForwardDiff(), x)
-        @test g_reverse≈g_forward rtol=1e-6
+        @test g_reverse ≈ g_forward rtol = 1.0e-6
     end
 end
 
@@ -92,8 +101,10 @@ end
 @testset "AD through the forward simulator (timing gradient)" begin
     function total_infection_time(μ)
         model = BranchingProcess(NegBin(3.0, 0.5), LogNormal(μ, 0.5))
-        state = simulate(model; n_initial = 5, rng = StableRNG(20260701),
-            stopping_rules = [Extinction(), MaxGenerations(6)])
+        state = simulate(
+            model; n_initial = 5, rng = StableRNG(20260701),
+            stopping_rules = [Extinction(), MaxGenerations(6)]
+        )
         return sum(ind.infection_time for ind in state.individuals)
     end
 
@@ -103,14 +114,16 @@ end
 
     @test isfinite(grad)
     @test grad > 0
-    @test isapprox(grad, value; rtol = 1e-8)        # ∂/∂μ equals the total itself
+    @test isapprox(grad, value; rtol = 1.0e-8)        # ∂/∂μ equals the total itself
     fd = central_fdm(5, 1)(total_infection_time, μ0)
-    @test isapprox(grad, fd; rtol = 1e-4)           # finite-difference cross-check
+    @test isapprox(grad, fd; rtol = 1.0e-4)           # finite-difference cross-check
 
     # The default (non-AD) run is unchanged: the state carries Float64.
-    plain = simulate(BranchingProcess(NegBin(3.0, 0.5), LogNormal(1.6, 0.5));
+    plain = simulate(
+        BranchingProcess(NegBin(3.0, 0.5), LogNormal(1.6, 0.5));
         n_initial = 1, rng = StableRNG(1),
-        stopping_rules = [Extinction(), MaxGenerations(3)])
+        stopping_rules = [Extinction(), MaxGenerations(3)]
+    )
     @test EpiBranch._timetype(plain) === Float64
 end
 
@@ -125,13 +138,20 @@ end
     seed = 20260701
     build(β) = ModelSpec(
         HomogeneousProcess(; transmission_rate = β, population_size = 500);
-        progression = [Transition(:recovered; from = :infection,
-            delay = Exponential(1.0), terminal = true)])
+        progression = [
+            Transition(
+                :recovered; from = :infection,
+                delay = Exponential(1.0), terminal = true
+            ),
+        ]
+    )
     function total_infection_time(β)
         state = simulate(build(β); n_initial = 5, rng = StableRNG(seed))
-        return sum(ind.infection_time
-        for ind in state.individuals
-        if get(ind.state, :infected, false))
+        return sum(
+            ind.infection_time
+                for ind in state.individuals
+                if get(ind.state, :infected, false)
+        )
     end
 
     β0 = 2.0
@@ -144,16 +164,18 @@ end
     @test dual.cumulative_cases == plain.cumulative_cases
     # `isequal`, not `==`, since a never-infected individual's `infection_time`
     # is `NaN` on both sides.
-    @test all(isequal(ForwardDiff.value(d.infection_time), p.infection_time)
-    for (d, p) in zip(dual.individuals, plain.individuals))
+    @test all(
+        isequal(ForwardDiff.value(d.infection_time), p.infection_time)
+            for (d, p) in zip(dual.individuals, plain.individuals)
+    )
 
     grad = ForwardDiff.derivative(total_infection_time, β0)
     @test isfinite(grad)
     @test grad < 0        # faster spread pulls the same infections earlier
 
-    h = 1e-6              # a step small enough to keep the infected set fixed
+    h = 1.0e-6              # a step small enough to keep the infected set fixed
     fd = (total_infection_time(β0 + h) - total_infection_time(β0 - h)) / (2h)
-    @test isapprox(grad, fd; rtol = 1e-4)
+    @test isapprox(grad, fd; rtol = 1.0e-4)
 end
 
 # Interventions act on the timing layer, so a run carrying an `Isolation`
@@ -163,13 +185,16 @@ end
 # MethodError at `set_isolated!(::Individual, ::Dual)`.
 @testset "AD through the forward simulator (isolation timing)" begin
     clinical = clinical_presentation(
-        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+    )
     iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
     function total_infection_time(μ)
         model = BranchingProcess(NegBin(2.0, 0.5), LogNormal(μ, 0.5))
-        state = simulate(ModelSpec(model; interventions = [iso], attributes = clinical);
+        state = simulate(
+            ModelSpec(model; interventions = [iso], attributes = clinical);
             n_initial = 20, rng = StableRNG(20260701),
-            stopping_rules = [Extinction(), MaxGenerations(5)])
+            stopping_rules = [Extinction(), MaxGenerations(5)]
+        )
         return sum(ind.infection_time for ind in state.individuals if is_infected(ind))
     end
 
@@ -187,16 +212,22 @@ end
     history = [
         Transition(:infectious, from = :infection, delay = LogNormal(1.0, 0.3)),
         Transition(:onset, from = :infection, delay = LogNormal(1.6, 0.4)),
-        Transition(:died, from = :onset, delay = Gamma(2.0, 3.0),
-            probability = 0.6, terminal = true),
-        Transition(:recovered, from = :onset, delay = Gamma(2.0, 5.0), terminal = true)
+        Transition(
+            :died, from = :onset, delay = Gamma(2.0, 3.0),
+            probability = 0.6, terminal = true
+        ),
+        Transition(:recovered, from = :onset, delay = Gamma(2.0, 5.0), terminal = true),
     ]
     function total_infection_time(θ)
-        community = Infectiousness(NegBin(1.5, 0.5);
-            from = :infectious, until = (:recovered, :died), kernel = Gamma(2.0, θ))
-        state = simulate(ModelSpec(BranchingProcess(community); progression = history);
+        community = Infectiousness(
+            NegBin(1.5, 0.5);
+            from = :infectious, until = (:recovered, :died), kernel = Gamma(2.0, θ)
+        )
+        state = simulate(
+            ModelSpec(BranchingProcess(community); progression = history);
             n_initial = 20, rng = StableRNG(20260701),
-            stopping_rules = [Extinction(), MaxGenerations(5)])
+            stopping_rules = [Extinction(), MaxGenerations(5)]
+        )
         return sum(ind.infection_time for ind in state.individuals if is_infected(ind))
     end
 
@@ -212,16 +243,20 @@ end
 # isolation.jl and contact_tracing.jl that the isolation-only test above misses.
 @testset "AD through the forward simulator (contact tracing + isolation)" begin
     clinical = clinical_presentation(
-        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+    )
     iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-    ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
-        quarantine_on_trace = false, depth = 2)
+    ct = ContactTracing(
+        probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+        quarantine_on_trace = false, depth = 2
+    )
     function total_infection_time(μ)
         model = BranchingProcess(NegBin(2.0, 0.5), LogNormal(μ, 0.5))
         state = simulate(
             ModelSpec(model; interventions = [iso, ct], attributes = clinical);
             n_initial = 20, rng = StableRNG(20260701),
-            stopping_rules = [Extinction(), MaxGenerations(5)])
+            stopping_rules = [Extinction(), MaxGenerations(5)]
+        )
         return sum(ind.infection_time for ind in state.individuals if is_infected(ind))
     end
 
@@ -236,7 +271,8 @@ end
 # sides — the `:vaccination_time` reads that were still pinned to Float64.
 @testset "AD through the forward simulator (ring vaccination)" begin
     clinical = clinical_presentation(
-        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+    )
     iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
     ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
     rv = RingVaccination(efficacy = 0.8, onward_efficacy = 0.5)
@@ -245,7 +281,8 @@ end
         state = simulate(
             ModelSpec(model; interventions = [iso, ct, rv], attributes = clinical);
             n_initial = 20, rng = StableRNG(20260701),
-            stopping_rules = [Extinction(), MaxGenerations(5)])
+            stopping_rules = [Extinction(), MaxGenerations(5)]
+        )
         return sum(ind.infection_time for ind in state.individuals if is_infected(ind))
     end
 
@@ -268,19 +305,24 @@ end
     parent.state[:vaccination_time] = 2.0
 
     immunity(delay) = EpiBranch._contact_risk(
-        RingVaccination(efficacy = 0.6, delay_to_immunity = delay), contact).event_time
+        RingVaccination(efficacy = 0.6, delay_to_immunity = delay), contact
+    ).event_time
     @test ForwardDiff.derivative(immunity, 3.0) == 1.0
 
     # The contact-side block composes the stored efficacy with the
     # post-exposure one, so the derivative is 1 - efficacy.
     block(post) = EpiBranch._contact_risk(
-        RingVaccination(efficacy = 0.6, delay_to_immunity = 3.0,
-            post_exposure_efficacy = post), contact).block_probability
+        RingVaccination(
+            efficacy = 0.6, delay_to_immunity = 3.0,
+            post_exposure_efficacy = post
+        ), contact
+    ).block_probability
     @test ForwardDiff.derivative(block, 0.5) ≈ 0.4
 
     onward(efficacy) = EpiBranch._onward_risk(
         RingVaccination(efficacy = 0.6, onward_efficacy = efficacy),
-        parent).block_probability
+        parent
+    ).block_probability
     @test ForwardDiff.derivative(onward, 0.5) == 1.0
 end
 
@@ -288,35 +330,48 @@ end
 # `ModelSpec` runs, which a derivative has to survive.
 @testset "AD through a scalar dose_delay" begin
     clinical = clinical_presentation(
-        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+    )
     iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
     ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
     process = BranchingProcess(Poisson(2.0), Exponential(5.0))
     run_with(interventions) = simulate(
         ModelSpec(process; interventions = interventions, attributes = clinical);
-        condition = 50:200, max_cases = 200, rng = StableRNG(31))
+        condition = 50:200, max_cases = 200, rng = StableRNG(31)
+    )
     dosed(state, flag = :vaccinated_boost) = filter(
-        ind -> get(ind.state, flag, false), state.individuals)
+        ind -> get(ind.state, flag, false), state.individuals
+    )
 
     # A dose with no prerequisite reaches the schedule validation by a different
     # path from a boost, so cover it on its own as well.
-    single(delay) = sum(ind.state[:vaccination_time]
-    for ind in dosed(
-        run_with([iso, ct, RingVaccination(efficacy = 0.5, dose_delay = delay)]),
-        :vaccinated))
-    n_single = length(dosed(
-        run_with([iso, ct, RingVaccination(efficacy = 0.5, dose_delay = 7.0)]),
-        :vaccinated))
+    single(delay) = sum(
+        ind.state[:vaccination_time]
+            for ind in dosed(
+                run_with([iso, ct, RingVaccination(efficacy = 0.5, dose_delay = delay)]),
+                :vaccinated
+            )
+    )
+    n_single = length(
+        dosed(
+            run_with([iso, ct, RingVaccination(efficacy = 0.5, dose_delay = 7.0)]),
+            :vaccinated
+        )
+    )
     @test n_single > 0  # otherwise the test is vacuous
     @test ForwardDiff.derivative(single, 7.0) == n_single
 
     # Each boost lands `dose_delay` days after its trace, so the derivative of
     # the boosts' total timing is the number of boosts given.
     prime = RingVaccination(efficacy = 0.6, dose_label = :prime)
-    boost(delay) = RingVaccination(efficacy = 0.5, dose_delay = delay,
-        requires_dose = :prime, dose_label = :boost)
-    boost_time(delay) = sum(ind.state[:vaccination_time_boost]
-    for ind in dosed(run_with([iso, ct, prime, boost(delay)])))
+    boost(delay) = RingVaccination(
+        efficacy = 0.5, dose_delay = delay,
+        requires_dose = :prime, dose_label = :boost
+    )
+    boost_time(delay) = sum(
+        ind.state[:vaccination_time_boost]
+            for ind in dosed(run_with([iso, ct, prime, boost(delay)]))
+    )
     n_boosted = length(dosed(run_with([iso, ct, prime, boost(28.0)])))
     @test n_boosted > 0  # otherwise the test is vacuous
     @test ForwardDiff.derivative(boost_time, 28.0) == n_boosted
@@ -327,35 +382,50 @@ end
 # for one with the delay, so its derivative is the number of doses given.
 @testset "AD through vaccination efficacy and delay to immunity" begin
     clinical = clinical_presentation(
-        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
-        post_isolation_transmission = 0.3)
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+    )
+    iso = Isolation(
+        onset_to_isolation_delay = Exponential(1.0),
+        post_isolation_transmission = 0.3
+    )
     ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
     function recorded_effect(make_vaccination, key)
         return function (x)
-            spec = ModelSpec(BranchingProcess(NegBin(2.0, 0.5), LogNormal(1.6, 0.5));
+            spec = ModelSpec(
+                BranchingProcess(NegBin(2.0, 0.5), LogNormal(1.6, 0.5));
                 interventions = [iso, ct, make_vaccination(x)],
-                attributes = [clinical, groups(4)])
-            state = simulate(spec; n_initial = 20, rng = StableRNG(20260701),
-                stopping_rules = [Extinction(), MaxGenerations(5)])
+                attributes = [clinical, groups(4)]
+            )
+            state = simulate(
+                spec; n_initial = 20, rng = StableRNG(20260701),
+                stopping_rules = [Extinction(), MaxGenerations(5)]
+            )
             doses = [ind.state[key] for ind in state.individuals if is_vaccinated(ind)]
             return (sum(doses), length(doses))
         end
     end
-    delays = (x -> RingVaccination(efficacy = 0.8, delay_to_immunity = x),
-        x -> MassVaccination(efficacy = 0.8, eligibility_time = 2.0,
-            delay_to_immunity = x),
-        x -> GroupVaccination(efficacy = 0.8, delay_to_immunity = x,
-            eligibility = OnSymptomOnset()))
+    delays = (
+        x -> RingVaccination(efficacy = 0.8, delay_to_immunity = x),
+        x -> MassVaccination(
+            efficacy = 0.8, eligibility_time = 2.0,
+            delay_to_immunity = x
+        ),
+        x -> GroupVaccination(
+            efficacy = 0.8, delay_to_immunity = x,
+            eligibility = OnSymptomOnset()
+        ),
+    )
     for make in delays
         f = recorded_effect(make, :immunity_time)
         _, n_doses = f(2.0)
         @test n_doses > 0  # otherwise the test is vacuous
         @test ForwardDiff.derivative(x -> f(x)[1], 2.0) == n_doses
     end
-    efficacies = (x -> RingVaccination(efficacy = x),
+    efficacies = (
+        x -> RingVaccination(efficacy = x),
         x -> MassVaccination(efficacy = x, eligibility_time = 2.0),
-        x -> GroupVaccination(efficacy = x, eligibility = OnSymptomOnset()))
+        x -> GroupVaccination(efficacy = x, eligibility = OnSymptomOnset()),
+    )
     for make in efficacies
         f = recorded_effect(make, :vaccine_efficacy)
         _, n_doses = f(0.5)
@@ -368,17 +438,21 @@ end
 # through `dist_fn`. A dual scale on the offspring mean gives a dual mean matrix,
 # so the spectral radius uses power iteration.
 @testset "AD through multi-type analytics" begin
-    M = [1.5 0.6;
-         0.5 0.9]
+    M = [
+        1.5 0.6;
+        0.5 0.9
+    ]
     fdm = central_fdm(5, 1)
 
     q1(k) = extinction_probability(
-        BranchingProcess(M, R -> NegBin(R, k), Exponential(5.0)))[1]
-    @test ForwardDiff.derivative(q1, 0.5) ≈ fdm(q1, 0.5) rtol = 1e-5
+        BranchingProcess(M, R -> NegBin(R, k), Exponential(5.0))
+    )[1]
+    @test ForwardDiff.derivative(q1, 0.5) ≈ fdm(q1, 0.5) rtol = 1.0e-5
 
     rstar(θ) = reproduction_number(
-        BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0)))
-    @test ForwardDiff.derivative(rstar, 1.2) ≈ rstar(1.0) rtol = 1e-6
+        BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0))
+    )
+    @test ForwardDiff.derivative(rstar, 1.2) ≈ rstar(1.0) rtol = 1.0e-6
 
     # When the eigenvectors depend on the parameter, the power iteration must
     # still give the right derivative. Equal row sums make `ones` the right
@@ -386,24 +460,28 @@ end
     # settle before their derivative parts.
     for M0 in ([1.4 0.1; 0.2 1.3], [1.0 0.5; 0.8 0.7])
         rpow(θ) = reproduction_number(
-            BranchingProcess(M0, R -> Poisson(R^θ), Exponential(5.0)))
-        @test ForwardDiff.derivative(rpow, 1.0) ≈ fdm(rpow, 1.0) rtol = 1e-8
+            BranchingProcess(M0, R -> Poisson(R^θ), Exponential(5.0))
+        )
+        @test ForwardDiff.derivative(rpow, 1.0) ≈ fdm(rpow, 1.0) rtol = 1.0e-8
     end
     # Dual entries of the matrix. The spectral radii are 1.2 + 0.3√θ and
     # 0.1 + 2√θ, with derivatives 0.15 and 1 at θ = 1.
     rentry(θ) = reproduction_number(
-        EpiBranch.MultiTypeOffspring([1.2 0.3θ; 0.3 1.2], R -> Poisson(R)))
-    @test ForwardDiff.derivative(rentry, 1.0) ≈ 0.15 rtol = 1e-10
+        EpiBranch.MultiTypeOffspring([1.2 0.3θ; 0.3 1.2], R -> Poisson(R))
+    )
+    @test ForwardDiff.derivative(rentry, 1.0) ≈ 0.15 rtol = 1.0e-10
     rcross(θ) = EpiBranch._spectral_radius([0.1 2.0θ; 2.0 0.1])
-    @test ForwardDiff.derivative(rcross, 1.0) ≈ 1.0 rtol = 1e-10
+    @test ForwardDiff.derivative(rcross, 1.0) ≈ 1.0 rtol = 1.0e-10
 
     q2(θ) = extinction_probability(
-        BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0)))[2]
-    @test ForwardDiff.derivative(q2, 1.2) ≈ fdm(q2, 1.2) rtol = 1e-5
+        BranchingProcess(M, R -> Poisson(θ * R), Exponential(5.0))
+    )[2]
+    @test ForwardDiff.derivative(q2, 1.2) ≈ fdm(q2, 1.2) rtol = 1.0e-5
 
     # A reducible matrix whose second type reaches no class with R > 1.
     qred(θ) = extinction_probability(
-        BranchingProcess([2.0 0.0; 1.0 1.0], R -> Poisson(θ * R), Exponential(5.0)))
-    @test ForwardDiff.derivative(θ -> qred(θ)[1], 0.9) ≈ fdm(θ -> qred(θ)[1], 0.9) rtol = 1e-5
+        BranchingProcess([2.0 0.0; 1.0 1.0], R -> Poisson(θ * R), Exponential(5.0))
+    )
+    @test ForwardDiff.derivative(θ -> qred(θ)[1], 0.9) ≈ fdm(θ -> qred(θ)[1], 0.9) rtol = 1.0e-5
     @test ForwardDiff.derivative(θ -> qred(θ)[2], 0.9) == 0
 end

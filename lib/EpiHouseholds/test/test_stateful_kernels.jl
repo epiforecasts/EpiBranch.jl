@@ -10,9 +10,11 @@ end
 
 @testset "Live kernels share one household clock" begin
     kernel = StatefulKernel(_ -> nothing, (c, a, b) -> Exponential(1.0))
-    model = ModelSpec(HouseholdProcess([2, 2], kernel);
+    model = ModelSpec(
+        HouseholdProcess([2, 2], kernel);
         progression = [Transition(:recovered; delay = 10.0, terminal = true)],
-        interventions = [RecordKernelClock()])
+        interventions = [RecordKernelClock()]
+    )
     state = simulate(model; initial_cases = [1, 3], rng = StableRNG(233))
     @test issorted(state.individuals[1].state[:kernel_clock])
     @test [i.id for i in state.individuals if get(i.state, :index, false)] == [1, 3]
@@ -33,8 +35,10 @@ end
     kernels = (Exponential(2.0), StatefulKernel(project, (c, a, b) -> Exponential(2.0)))
     for seed in 1:25
         runs = map(kernels) do kernel
-            process = HouseholdProcess([2, 3, 2], kernel; external_hazard = 0.1,
-                obs_end = 10.0)
+            process = HouseholdProcess(
+                [2, 3, 2], kernel; external_hazard = 0.1,
+                obs_end = 10.0
+            )
             state = simulate(ModelSpec(process; progression); rng = StableRNG(seed))
             [i.infection_time for i in state.individuals]
         end

@@ -17,30 +17,32 @@ println("=== Julia Benchmarks ===\n")
 println("1. Simulate 1000 chains (Poisson, R=0.9)")
 model_pois = BranchingProcess(Poisson(0.9))
 b = @benchmark simulate($model_pois, 1000, rng = StableRNG(42))
-println("   Median: $(round(median(b.times) / 1e6, digits=1)) ms\n")
+println("   Median: $(round(median(b.times) / 1.0e6, digits = 1)) ms\n")
 
 # ── 2. Chain simulation (NegBin offspring, overdispersed) ────────────
 
 println("2. Simulate 1000 chains (NegBin, R=0.8, k=0.5)")
 model_nb = BranchingProcess(NegBin(0.8, 0.5))
 b = @benchmark simulate($model_nb, 1000; rng = StableRNG(42))
-println("   Median: $(round(median(b.times) / 1e6, digits=1)) ms\n")
+println("   Median: $(round(median(b.times) / 1.0e6, digits = 1)) ms\n")
 
 # ── 3. Chain simulation with generation time ─────────────────────────
 
 println("3. Simulate 1000 chains with generation time")
 model_gt = BranchingProcess(Poisson(0.9), Exponential(5.0))
 b = @benchmark simulate($model_gt, 1000; rng = StableRNG(42))
-println("   Median: $(round(median(b.times) / 1e6, digits=1)) ms\n")
+println("   Median: $(round(median(b.times) / 1.0e6, digits = 1)) ms\n")
 
 # ── 4. Chain statistics ──────────────────────────────────────────────
 
 println("4. Chain statistics (from pre-simulated chains)")
-state = simulate(model_gt;
-    n_initial = 1000, max_cases = 50_000, rng = StableRNG(42))
+state = simulate(
+    model_gt;
+    n_initial = 1000, max_cases = 50_000, rng = StableRNG(42)
+)
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 50
 b = @benchmark chain_statistics($state)
-println("   Median: $(round(median(b.times) / 1e6, digits=3)) ms\n")
+println("   Median: $(round(median(b.times) / 1.0e6, digits = 3)) ms\n")
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 
 # ── 5. Likelihood evaluation ─────────────────────────────────────────
@@ -49,7 +51,7 @@ println("5. Chain size log-likelihood (analytical, Poisson)")
 observed = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 100
 b = @benchmark loglikelihood($observed, $(Poisson(0.9)))
-println("   Median: $(round(median(b.times) / 1000, digits=2)) μs\n")
+println("   Median: $(round(median(b.times) / 1000, digits = 2)) μs\n")
 
 # ── 5b. Cluster-mixed likelihood (closed form via dispatch) ─────────
 
@@ -58,7 +60,7 @@ println("5b. Chain size log-likelihood (Poisson offspring, Gamma-mixed rate)")
 # PoissonGammaChainSize, matching epichains' gborel likelihood.
 cm = ClusterMixed(Poisson, Gamma(0.5, 0.9 / 0.5))
 b = @benchmark loglikelihood($observed, $cm)
-println("   Median: $(round(median(b.times) / 1000, digits=2)) μs\n")
+println("   Median: $(round(median(b.times) / 1000, digits = 2)) μs\n")
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 
 # ── 6. Line list simulation ─────────────────────────────────────────
@@ -66,13 +68,15 @@ BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 println("6. Line list generation (from 200-case state)")
 model_ll = BranchingProcess(Poisson(2.0), LogNormal(1.6, 0.5))
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-ll_state = simulate(model_ll;
+ll_state = simulate(
+    model_ll;
     attributes = clinical,
     max_cases = 200,
-    rng = StableRNG(42))
+    rng = StableRNG(42)
+)
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 50
 b = @benchmark linelist($ll_state; reference_date = Date(2024, 1, 1), rng = StableRNG(99))
-println("   Median: $(round(median(b.times) / 1e6, digits=3)) ms\n")
+println("   Median: $(round(median(b.times) / 1.0e6, digits = 3)) ms\n")
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 
 # ── 7. Intervention scenario (batch, isolation + contact tracing) ────
@@ -81,11 +85,13 @@ println("7. Intervention scenario (500 sims, isolation + CT)")
 model_int = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
 iso = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5))
 ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(2.0))
-b = @benchmark simulate($model_int, 500;
+b = @benchmark simulate(
+    $model_int, 500;
     interventions = [$iso, $ct], attributes = $clinical,
     max_cases = 5000, max_generations = 50,
-    rng = StableRNG(42))
-println("   Median: $(round(median(b.times) / 1e6, digits=1)) ms\n")
+    rng = StableRNG(42)
+)
+println("   Median: $(round(median(b.times) / 1.0e6, digits = 1)) ms\n")
 
 # ── 8. Chain-size fitting ────────────────────────────────────────────
 
@@ -101,6 +107,6 @@ end
 fit_data = ChainSizes(fit_sizes)
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 100
 b = @benchmark fit(NegativeBinomial, $fit_data)
-println("   Median: $(round(median(b.times) / 1e6, digits=3)) ms\n")
+println("   Median: $(round(median(b.times) / 1.0e6, digits = 3)) ms\n")
 
 println("=== Done ===")

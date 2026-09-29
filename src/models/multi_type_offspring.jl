@@ -28,8 +28,10 @@ specification. The offspring draw and the multi-type analytics
 ([`reproduction_number`](@ref), [`extinction_probability`](@ref)) use the same
 matrix and distribution family.
 """
-struct MultiTypeOffspring{M <: AbstractMatrix{<:Real}, F, R <: AbstractVector{<:Real},
-    A <: AbstractMatrix{<:Real}}
+struct MultiTypeOffspring{
+        M <: AbstractMatrix{<:Real}, F, R <: AbstractVector{<:Real},
+        A <: AbstractMatrix{<:Real},
+    }
     offspring_matrix::M
     dist_fn::F
     R_by_type::R
@@ -38,8 +40,11 @@ end
 
 function MultiTypeOffspring(offspring_matrix::AbstractMatrix{<:Real}, dist_fn)
     n = size(offspring_matrix, 1)
-    size(offspring_matrix, 2) == n || throw(ArgumentError(
-        "offspring_matrix must be square, got $(size(offspring_matrix))"))
+    size(offspring_matrix, 2) == n || throw(
+        ArgumentError(
+            "offspring_matrix must be square, got $(size(offspring_matrix))"
+        )
+    )
 
     R_by_type = vec(sum(offspring_matrix, dims = 1))
     alloc_probs = similar(offspring_matrix, float(eltype(offspring_matrix)))
@@ -65,9 +70,12 @@ _analytic_offspring(m::BranchingProcess, ::Any) = single_type_offspring(m)
 _analytic_offspring(::BranchingProcess, o::MultiTypeOffspring) = o
 
 function _single_type(::MultiTypeOffspring)
-    throw(ArgumentError(
-        "This function only works with single-type models; for a multi-type model " *
-        "use reproduction_number or extinction_probability"))
+    throw(
+        ArgumentError(
+            "This function only works with single-type models; for a multi-type model " *
+                "use reproduction_number or extinction_probability"
+        )
+    )
 end
 
 """
@@ -77,14 +85,18 @@ Construct a multi-type branching process from an offspring matrix.
 `offspring_matrix[i, j]` is the expected number of type-`i` offspring from a
 type-`j` parent. `dist_fn` maps each type's R to an offspring distribution.
 """
-function BranchingProcess(offspring_matrix::Matrix{Float64},
+function BranchingProcess(
+        offspring_matrix::Matrix{Float64},
         dist_fn,
         gt;
         population_size::Union{Int, NoPopulation} = NoPopulation(),
-        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
+    )
     offspring = MultiTypeOffspring(offspring_matrix, dist_fn)
-    BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size,
-        _n_types(offspring), type_labels)
+    return BranchingProcess(
+        (Infectiousness(offspring; kernel = gt),), population_size,
+        _n_types(offspring), type_labels
+    )
 end
 
 """
@@ -93,8 +105,10 @@ end
 Draw offspring counts per type for a parent of type `j` under an offspring
 matrix: a total from `dist_fn(R_j)`, split multinomially across types.
 """
-function draw_offspring(rng::AbstractRNG, offspring::MultiTypeOffspring,
-        individual, state::SimulationState)
+function draw_offspring(
+        rng::AbstractRNG, offspring::MultiTypeOffspring,
+        individual, state::SimulationState
+    )
     n = _n_types(offspring)
     pt = individual_type(individual)
     R = offspring.R_by_type[pt]

@@ -1,10 +1,14 @@
 @testset "Generic Transition" begin
     clinical = clinical_presentation(
-        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
-    bp(progression;
-        attributes = NoAttributes()) = ModelSpec(
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+    )
+    bp(
+        progression;
+        attributes = NoAttributes()
+    ) = ModelSpec(
         BranchingProcess(Poisson(1.5), Exponential(5.0));
-        progression = progression, attributes = attributes)
+        progression = progression, attributes = attributes
+    )
 
     @testset "writes :state and :state_time, anchored on :infection" begin
         latent = Transition(:infectious, from = :infection, delay = (rng, ind) -> 2.0)
@@ -37,10 +41,14 @@
     @testset "skips when the from-state was never reached" begin
         # Nobody becomes severe (probability 0), so death measured from
         # :severe never happens for anyone.
-        severe = Transition(:severe, from = :onset, delay = (rng, ind) -> 1.0,
-            probability = 0.0)
-        died = Transition(:died, from = :severe, delay = (rng, ind) -> 1.0,
-            terminal = true)
+        severe = Transition(
+            :severe, from = :onset, delay = (rng, ind) -> 1.0,
+            probability = 0.0
+        )
+        died = Transition(
+            :died, from = :severe, delay = (rng, ind) -> 1.0,
+            terminal = true
+        )
         state = simulate(bp([severe, died]; attributes = clinical); max_cases = 30, rng = StableRNG(4))
         for ind in state.individuals
             @test ind.state[:died] == false
@@ -50,10 +58,14 @@
     end
 
     @testset "terminal arbitration picks the earliest" begin
-        died = Transition(:died, from = :onset, delay = (rng, ind) -> 2.0,
-            probability = 1.0, terminal = true)
-        recovered = Transition(:recovered, from = :onset, delay = (rng, ind) -> 5.0,
-            terminal = true)
+        died = Transition(
+            :died, from = :onset, delay = (rng, ind) -> 2.0,
+            probability = 1.0, terminal = true
+        )
+        recovered = Transition(
+            :recovered, from = :onset, delay = (rng, ind) -> 5.0,
+            terminal = true
+        )
         state = simulate(bp([died, recovered]; attributes = clinical); max_cases = 30, rng = StableRNG(5))
         for ind in state.individuals
             @test ind.state[:outcome] == :died
@@ -63,7 +75,8 @@
 
     @testset "asymptomatic case skips an onset-anchored transition" begin
         all_asymp = clinical_presentation(
-            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 1.0)
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 1.0
+        )
         sev = Transition(:severe, from = :onset, delay = (rng, ind) -> 1.0)
         state = simulate(bp([sev]; attributes = all_asymp); max_cases = 30, rng = StableRNG(6))
         for ind in state.individuals
@@ -74,7 +87,7 @@
     @testset "rate is an exponential alternative to delay" begin
         # A rate r is an exponential (Markovian) transition with mean 1/r.
         @test Transition(:recovered; from = :infectious, rate = 1 / 6).delay ==
-              Exponential(6.0)
+            Exponential(6.0)
         # A fixed scalar delay is deterministic.
         rec = Transition(:recovered; from = :infection, delay = 4.0, terminal = true)
         state = simulate(bp([rec]); max_cases = 30, rng = StableRNG(8))
@@ -83,7 +96,9 @@
         end
         # Exactly one of delay/rate.
         @test_throws ArgumentError Transition(:recovered; from = :infectious)
-        @test_throws ArgumentError Transition(:recovered; from = :infectious,
-            delay = 6.0, rate = 1 / 6)
+        @test_throws ArgumentError Transition(
+            :recovered; from = :infectious,
+            delay = 6.0, rate = 1 / 6
+        )
     end
 end

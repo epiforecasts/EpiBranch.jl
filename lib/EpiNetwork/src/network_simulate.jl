@@ -25,13 +25,18 @@ positive scalar or a calendar-time distribution — community introductions emer
 over `[0, model.obs_end]`, so a finite `obs_end` is required (an unbounded window
 would seed every node).
 """
-function _simulate(model::NetworkProcess, sim_opts::SimOpts;
+function _simulate(
+        model::NetworkProcess, sim_opts::SimOpts;
         interventions, attributes, progression, observation, rng, condition,
-        max_attempts)
+        max_attempts
+    )
     condition !== nothing && return _retry_for_condition(
-        () -> _simulate(model, sim_opts; interventions, attributes, progression,
-            observation, rng, condition = nothing, max_attempts),
-        condition, max_attempts)
+        () -> _simulate(
+            model, sim_opts; interventions, attributes, progression,
+            observation, rng, condition = nothing, max_attempts
+        ),
+        condition, max_attempts
+    )
 
     from = _resolve_infectious_from(model.from, progression)
     Tobs = model.obs_end
@@ -44,25 +49,33 @@ function _simulate(model::NetworkProcess, sim_opts::SimOpts;
     # A community hazard over an unbounded window would introduce every node,
     # swamping the graph. Require a finite observation window instead.
     _ext_active(model.external_hazard) && !isfinite(Tobs) &&
-        throw(ArgumentError(
+        throw(
+        ArgumentError(
             "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
-            "the whole network); build the process with e.g. `obs_end = 30.0`"))
-    extinct = EpiBranch._sellke_race!(state, collect(1:n), rng;
+                "the whole network); build the process with e.g. `obs_end = 30.0`"
+        )
+    )
+    extinct = EpiBranch._sellke_race!(
+        state, collect(1:n), rng;
         from = from, until = model.until, interventions = interventions,
         max_time = EpiBranch._max_time(sim_opts),
         risks = EpiBranch.transmission_risks(model),
         refresh_projection = EpiBranch._watched_projection(model.edge_kernel, interventions),
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, n_initial, Tobs, r;
-            initial_cases = sim_opts.initial_cases),
+            initial_cases = sim_opts.initial_cases
+        ),
         introduction = _ext_active(model.external_hazard) ?
-                       (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
-        targets = (inf, st) -> ((nb, _edge_kernel(model, inf, k, st, from))
-        for (k, nb) in enumerate(model.adjacency[inf])
-        if !is_infected(st.individuals[nb])),
+            (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
+        targets = (inf, st) -> (
+            (nb, _edge_kernel(model, inf, k, st, from))
+                for (k, nb) in enumerate(model.adjacency[inf])
+                if !is_infected(st.individuals[nb])
+        ),
         # Tracing reaches every neighbour, infected or not, so it reads the
         # adjacency directly rather than the susceptible-only `targets`.
-        contacts = (inf, st) -> model.adjacency[inf])
+        contacts = (inf, st) -> model.adjacency[inf]
+    )
 
     _reconcile_sellke_bookkeeping!(state, extinct)
     # Apply the observation model (under-reporting, report delays), as core
@@ -74,8 +87,10 @@ end
 # Seed the candidate table over all nodes: community introductions under the
 # external hazard (each node drawn, kept if it lands within `[0, Tobs]`), or
 # `n_initial` distinct random nodes at time 0 when there is no external source.
-function _seed_network!(best, members, state, extsrc, n_initial, Tobs, rng;
-        initial_cases = nothing)
+function _seed_network!(
+        best, members, state, extsrc, n_initial, Tobs, rng;
+        initial_cases = nothing
+    )
     initial_cases === nothing ||
         return EpiBranch._seed_initial_cases!(best, members, initial_cases)
     m = length(members)
@@ -93,5 +108,5 @@ function _seed_network!(best, members, state, extsrc, n_initial, Tobs, rng;
 end
 
 function EpiBranch._validate_initial_cases(model::NetworkProcess, opts::SimOpts)
-    EpiBranch._validate_initial_case_ids(opts, length(model.adjacency), model.external_hazard)
+    return EpiBranch._validate_initial_case_ids(opts, length(model.adjacency), model.external_hazard)
 end

@@ -43,7 +43,8 @@ from a `Distributions` offspring object. The Poisson form uses the
 """
 function end_of_outbreak_probability(
         offspring::NegativeBinomial, generation_time::Distribution,
-        τ::Real)
+        τ::Real
+    )
     return end_of_outbreak_probability(mean(offspring), offspring.r, generation_time, τ)
 end
 
@@ -70,17 +71,21 @@ function end_of_outbreak_probability(model::Union{BranchingProcess, ModelSpec}, 
     # the bare offspring: makes the missing `ρ < 1` case discoverable.
     _eoo_assert_full_reporting(observation(model))
     return end_of_outbreak_probability(
-        single_type_offspring(model), _single_kernel(model), τ)
+        single_type_offspring(model), _single_kernel(model), τ
+    )
 end
 
 _eoo_assert_full_reporting(::NoObservation) = nothing
 function _eoo_assert_full_reporting(::PerCaseObservation)
-    throw(ArgumentError(
-        "end_of_outbreak_probability under per-case under-reporting (ρ < 1) " *
-        "is not implemented. The closed form here assumes full reporting; " *
-        "the ρ < 1 case needs the Volterra recursion of Thompson, Morgan & " *
-        "Jansen (2019). Evaluate on a model with no observation to compute " *
-        "the ρ = 1 value."))
+    throw(
+        ArgumentError(
+            "end_of_outbreak_probability under per-case under-reporting (ρ < 1) " *
+                "is not implemented. The closed form here assumes full reporting; " *
+                "the ρ < 1 case needs the Volterra recursion of Thompson, Morgan & " *
+                "Jansen (2019). Evaluate on a model with no observation to compute " *
+                "the ρ = 1 value."
+        )
+    )
 end
 
 """
@@ -90,7 +95,9 @@ Element-wise broadcast for a vector of τ values, returning a `Vector`
 of the same length. Useful as the per-cluster `prob_concluded` argument
 to `loglikelihood(::ChainSizes, …)`.
 """
-function end_of_outbreak_probability(R::Real, k::Real, generation_time::Distribution,
-        τs::AbstractVector{<:Real})
+function end_of_outbreak_probability(
+        R::Real, k::Real, generation_time::Distribution,
+        τs::AbstractVector{<:Real}
+    )
     return [end_of_outbreak_probability(R, k, generation_time, τ) for τ in τs]
 end
