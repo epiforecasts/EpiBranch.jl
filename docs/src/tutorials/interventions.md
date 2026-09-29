@@ -343,48 +343,47 @@ way.
 
 #### What clustering does to containment
 
-Coverage is not the outcome that matters; containment is. Under the `ct`
-used above, nothing changes it: `quarantine_on_trace` is left at its
-default `true`, so every traced contact is quarantined whether or not it
-was vaccinated, and `efficacy` has nothing left to block (see the warning
-above). A run of `rv_clustered` against `rv_independent` under that tracing
-would not be measuring a vaccination effect at all — it would come out the
-same even with `efficacy = 0.0`.
-
-For that effect to show up, vaccination has to actually be
-able to prevent an infection, so this comparison drops quarantine on trace:
+The comparison above measures coverage, and it runs under `ct`, where ring
+vaccination cannot change whether an outbreak is contained: as the warning
+above explains, `efficacy` has nothing left to prevent under that tracing.
+To see what clustering does to containment, vaccination first has to be able
+to act. Here tracing no longer quarantines, and `onward_efficacy` reduces a
+vaccinated contact's own onward transmission. Every arm draws the same
+attributes, so only the vaccination differs between them:
 
 ```@example interventions
 ct_noquarantine = ContactTracing(probability = 0.7,
     isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = false)
+rv_clustered_onward = RingVaccination(efficacy = 0.8, onward_efficacy = 0.8,
+    coverage = (rng, ind) -> ind.state[:vaccine_acceptance])
+rv_independent_onward = RingVaccination(efficacy = 0.8, onward_efficacy = 0.8,
+    coverage = 0.5)
 
-rng = StableRNG(42)
-containment_clustered = containment_probability(simulate(
-    scenario([iso, ct_noquarantine, rv_clustered], [clinical, community, acceptance]), 3000;
-    max_cases = 200, rng = rng))
+containment(interventions) = containment_probability(simulate(
+    scenario(interventions, [clinical, community, acceptance]), 10000;
+    max_cases = 200, rng = StableRNG(42)))
 
-rng = StableRNG(42)
-containment_independent = containment_probability(simulate(
-    scenario([iso, ct_noquarantine, rv_independent], [clinical, community]), 3000;
-    max_cases = 200, rng = rng))
-
-println("Containment: clustered $(round(containment_clustered, digits=3)), ",
-    "independent $(round(containment_independent, digits=3))")
+for (label, interventions) in (
+        ("no vaccination", [iso, ct_noquarantine]),
+        ("clustered refusal", [iso, ct_noquarantine, rv_clustered_onward]),
+        ("independent refusal", [iso, ct_noquarantine, rv_independent_onward]))
+    println(rpad(label, 20), round(containment(interventions), digits = 3))
+end
 ```
 
-The shared per-group propensity adds variance to each case's offspring
-count while leaving the mean unchanged, and on a convex offspring
-generating function extra variance can only push the extinction
-probability up (Jensen's inequality): clustered refusal should raise
-containment slightly, or leave it unchanged, and never lower it. Measured
-here, it does not clearly rise: 0.203 against 0.192 is a difference of
-about the same size as the Monte Carlo noise at 3,000 replicates (a
-binomial standard error of roughly 0.01 on each side). Repeating the
-comparison at other replicate counts, the sign of the difference is not
-stable — negative as often as positive — so this scenario cannot put a
-number on the effect beyond what the theory already gives: whatever shift
-clustering produces at this level of refusal is too small to separate from
-sampling noise here.
+Vaccinating about half the traced contacts raises containment by one to two
+percentage points. Whether refusal is clustered makes no difference these runs
+can detect. Each estimate has a binomial standard error of about 0.004, so the
+gap between the two arms has one of about 0.006, and the gap is smaller than
+that. At 5,000 replicates the order of the two arms reverses.
+
+Clustering has so little effect here because `groups(20)` assigns each person
+to a community independently of who infected them. A case's contacts are spread
+across communities, so the shared propensity rarely lines up with who that case
+goes on to infect. Clustering matters more when communities follow transmission,
+as households or a contact network do: a low-acceptance community then keeps
+transmitting within itself. That can lower containment even when average
+coverage is unchanged, so measure it in the model you are running.
 
 ### Mass vaccination
 
