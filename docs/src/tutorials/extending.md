@@ -375,7 +375,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     is_isolated(individual) && return nothing
     is_test_positive(individual) || return nothing
 
-    iso_delay = rand(state.rng, iso.onset_to_isolation_delay)
+    iso_delay = _sample_value(iso.onset_to_isolation_delay, state.rng, individual)
     iso_time = onset_time(individual) + iso_delay
 
     # A contact traced before its onset was known has only the bare trace
