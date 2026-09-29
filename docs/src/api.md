@@ -335,8 +335,8 @@ loglikelihood(ChainLengths(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), model)   # interventions/observation read from model
 ```
 
-For a `Poisson(R)` or `NegBin(R, k)` fit specifically, [`fit`](@ref) gives
-the MLE with a profile-likelihood confidence interval directly:
+For a `Poisson(R)` or `NegBin(R, k)` offspring law specifically, [`fit`](@ref)
+gives the MLE with a profile-likelihood confidence interval directly:
 
 ```@docs
 fit
