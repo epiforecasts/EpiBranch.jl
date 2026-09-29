@@ -367,6 +367,14 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   community infection at time 0, as the form without a layout does. An index
   case at time 0 contributes the community hazard at 0. When every hazard at an
   infection time is zero, both forms return `-Inf`.
+- On a continuous-time network or household race, `RingVaccination` and
+  `GroupVaccination` no longer discover their candidate actions by scanning
+  every still-pending individual on every settled case: `RingVaccination` now
+  looks only at the settling case's own traced contacts, and `GroupVaccination`
+  only at its own group's members, found through a group-to-members index
+  rather than a scan of the whole population. Cost no longer grows with
+  population size on every case, which dominated at city scale or on a
+  `HouseholdProcess` with many households.
 - The pairwise survival likelihood returns `-Inf` for an infected host that is
   not conditioned on and that no possible infector or community hazard could
   have infected at its infection time, including a host with no possible
