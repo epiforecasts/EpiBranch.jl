@@ -72,7 +72,7 @@ println("Posterior k: $(round(mean(chain[:k]), digits=2)) " *
 The number of secondary cases a case causes often depends on its own
 characteristics — setting of exposure, age, time of infection. Passing a
 vector of distributions, one per observation, scores each count against its
-own offspring law instead of a single shared one:
+own offspring distribution instead of a single shared one:
 
 ```@example inference
 rng_cov = StableRNG(7)
@@ -85,8 +85,9 @@ loglikelihood(OffspringCounts(y), NegBin.(μ_true, k_true))
 ```
 
 `product_distribution` (from Distributions.jl) turns the same vector of
-per-case distributions into something usable with Turing's `~`, so the
-covariate coefficients can be fitted directly:
+per-case distributions into a single `Distribution` you can put on the
+right-hand side of Turing's `~`, so the covariate coefficients can be
+fitted directly:
 
 ```@example inference
 @model function offspring_covariate_model(x, y)
