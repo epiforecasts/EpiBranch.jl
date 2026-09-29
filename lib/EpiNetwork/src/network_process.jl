@@ -149,6 +149,8 @@ end
 # Distribution`, or a per-edge vector parallel to the adjacency list — and
 # resolved per contact by `_edge_kernel(model, infector, position, state, from)`, where
 # `position` is the index of the neighbour within `adjacency[infector]`.
+# `_validate_kernel` and `_resolve_kernel` take the adjacency list rather than
+# the model itself, so `RoutedNetwork` reuses them for a route's own `reach`.
 
 # A shared distribution is used as-is; a per-edge vector is validated to line
 # up with the adjacency list; anything else is taken to be a callable.
@@ -172,21 +174,23 @@ _validate_kernel(k::CalendarKernel, adj) = CalendarKernel(_validate_kernel(k.ker
 _validate_kernel(k, adj) = k   # callable (infector, susceptible) -> Distribution
 
 # The contact-interval distribution for the `pos`-th neighbour of node `i`.
+# Takes the adjacency list rather than the model so `RoutedNetwork` can resolve
+# a route's own kernel against its own `reach` the same way.
 function _edge_kernel(m::NetworkProcess, i::Int, pos::Int, state, from)
-    return _resolve_kernel(m.edge_kernel, m, i, pos, state, from)
+    return _resolve_kernel(m.edge_kernel, m.adjacency, i, pos, state, from)
 end
-_resolve_kernel(k::ContinuousUnivariateDistribution, m, i, pos, state, from) = k
-_resolve_kernel(k::AbstractVector, m, i, pos, state, from) = k[i][pos]
-function _resolve_kernel(k, m, i, pos, state, from)
+_resolve_kernel(k::ContinuousUnivariateDistribution, adjacency, i, pos, state, from) = k
+_resolve_kernel(k::AbstractVector, adjacency, i, pos, state, from) = k[i][pos]
+function _resolve_kernel(k, adjacency, i, pos, state, from)
     return EpiBranch.pair_kernel(
-        k, i, m.adjacency[i][pos], state.individuals[i].infection_time,
+        k, i, adjacency[i][pos], state.individuals[i].infection_time,
         EpiBranch._window_open(state.individuals[i], from), state
     )
 end
 
-function _resolve_kernel(k::CalendarKernel, m, i, pos, state, from)
+function _resolve_kernel(k::CalendarKernel, adjacency, i, pos, state, from)
     return EpiBranch._calendar_interval(
-        _resolve_kernel(k.kernel, m, i, pos, state, from),
+        _resolve_kernel(k.kernel, adjacency, i, pos, state, from),
         EpiBranch._window_open(state.individuals[i], from)
     )
 end

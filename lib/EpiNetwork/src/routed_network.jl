@@ -20,7 +20,12 @@ Network transmission over several routes at once.
 
 - `reach`: an adjacency list giving that route's edges, so different routes can
   connect different pairs of the same nodes;
-- `kernel`: the contact-interval distribution along those edges;
+- `kernel`: the contact-interval distribution along those edges — a shared
+  `Distributions.jl` distribution, a callable `(infector, susceptible) ->
+  Distribution` for covariate models, a [`ContextualKernel`](@ref) that also
+  reads the infector's infection time, a [`StatefulKernel`](@ref), or a
+  per-edge vector parallel to `reach`, resolved per pair exactly as on
+  [`NetworkProcess`](@ref);
 - `until`: the states that end this route, which is what lets one route be cut
   and another left alone. Include `EpiBranch.INTERVENTION_REMOVAL` for a route
   that a composed `Isolation` should end;
@@ -113,6 +118,10 @@ function RoutedNetwork(
                 "$(join([length(w.reach) for w in windows], ", ")))"
         )
     )
+    # A route's kernel accepts the same forms as `NetworkProcess`'s edge
+    # kernel; a per-edge vector is validated and normalised against this
+    # route's own adjacency.
+    windows = [_validate_route_kernel(w) for w in windows]
     _valid_external(external_hazard) ||
         throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
     obs_end_value = Float64(obs_end)
@@ -139,6 +148,15 @@ function _start_unset(w::RouteWindow, from)
     return RouteWindow(
         w.name, from, w.until, w.kernel, w.reach, w.contacts_from,
         w.traceable
+    )
+end
+
+# Validate and normalise a route's kernel against its own adjacency, exactly
+# as `NetworkProcess` does for its edge kernel.
+function _validate_route_kernel(w::RouteWindow)
+    return RouteWindow(
+        w.name, w.from, w.until, _validate_kernel(w.kernel, w.reach), w.reach,
+        w.contacts_from, w.traceable
     )
 end
 
@@ -281,11 +299,15 @@ function _simulate(
     return state
 end
 
-# One route's susceptible targets, each with that route's kernel.
+# One route's susceptible targets, each with that route's kernel resolved for
+# the pair — a shared distribution, a per-edge vector, a covariate callable, a
+# `ContextualKernel` or a `StatefulKernel`, exactly as `NetworkProcess`
+# resolves its edge kernel (see `_resolve_kernel`).
 function _route_targets(w::RouteWindow)
     adjacency, kernel = w.reach, w.kernel
     return (inf, st) -> (
-        (nb, kernel) for nb in adjacency[inf]
+        (nb, _resolve_kernel(kernel, adjacency, inf, pos, st, w.from))
+            for (pos, nb) in enumerate(adjacency[inf])
             if !is_infected(st.individuals[nb])
     )
 end
