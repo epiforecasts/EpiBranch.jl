@@ -892,3 +892,5 @@ include("test_actions.jl")
 include("test_vaccine_mode.jl")
 
 include("test_calendar_kernels.jl")
+
+include("test_stateful_kernels.jl")

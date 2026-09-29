@@ -49,8 +49,8 @@ Base.length(d::PairwiseSurvivalData) = length(d.sus)
 # callable `r -> Distribution` through which covariates enter.
 _rowkernel(k::ContinuousUnivariateDistribution, r) = k
 _rowkernel(k, r) = k(r)
-function _rowkernel(::Union{ContextualKernel, CalendarKernel}, r)
-    throw(ArgumentError("ContextualKernel and CalendarKernel require an InfectionLayer with source times; " *
+function _rowkernel(::Union{ContextualKernel, CalendarKernel, StatefulKernel}, r)
+    throw(ArgumentError("ContextualKernel, CalendarKernel and StatefulKernel require an InfectionLayer with source times; " *
                         "for counting-process rows, supply a row-indexed kernel with those data"))
 end
 
@@ -105,7 +105,11 @@ holds, per host `i` (numbered `1:n`):
 
 and a scalar `obs_end`, the time community introductions stop (only read when
 there is a community hazard). Spread along the contact structure continues after
-it.
+it. A subtype may also hold `host_times`, a named tuple of further per-host time
+vectors such as `onset_time`, which a live [`StatefulKernel`](@ref) reads in the
+likelihood as it reads host state in simulation. `missing` marks a host without
+that time; a `NaN` entry is a recorded value, as simulation stores the onset of
+an asymptomatic case.
 
 Observed data stop at the end of follow-up, which
 [`followup_end`](@ref EpiBranch.followup_end) gives: a `followup_end` field when
@@ -167,20 +171,41 @@ function followup_end(data::InfectionLayer)
     data.followup_end : Inf
 end
 
+# The per-host times of an infection layer beyond its infectious windows, as a
+# named tuple of vectors; empty when the subtype holds none.
+_host_times(data) = hasproperty(data, :host_times) ? data.host_times : (;)
+
 # The per-host fields of an `InfectionLayer` subtype over `n` hosts, in field
 # order after the contact structure: the three time vectors, `is_index`,
-# `obs_end` and `followup_end`. Every time shares one number type, at least
-# `Float64`, which lets a constructor take integers or AD values.
+# `obs_end`, `followup_end` and `host_times`. Every time shares one number type,
+# at least `Float64`, which lets a constructor take integers or AD values.
 function _infection_layer_fields(n, infection_time, infectious_time, removal_time,
-        is_index; obs_end, followup_end)
+        is_index; obs_end, followup_end, host_times = (;))
+    host_times isa NamedTuple ||
+        throw(ArgumentError("host_times must be a named tuple of per-host vectors"))
     all(length(v) == n
-    for v in (infection_time, infectious_time, removal_time, is_index)) ||
+    for v in (infection_time, infectious_time, removal_time, is_index,
+        values(host_times)...)) ||
         throw(ArgumentError("the contact structure and the per-host vectors must " *
                             "cover the same hosts"))
     T = promote_type(eltype(infection_time), eltype(infectious_time),
-        eltype(removal_time), typeof(obs_end), typeof(followup_end), Float64)
+        eltype(removal_time), typeof(obs_end), typeof(followup_end),
+        map(v -> nonmissingtype(eltype(v)), values(host_times))..., Float64)
     return (Vector{T}(infection_time), Vector{T}(infectious_time),
-        Vector{T}(removal_time), Vector{Bool}(is_index), T(obs_end), T(followup_end))
+        Vector{T}(removal_time), Vector{Bool}(is_index), T(obs_end), T(followup_end),
+        map(v -> Vector{Missing <: eltype(v) ? Union{Missing, T} : T}(v), host_times))
+end
+
+# The named per-host times of a simulated `state`, read from each individual's
+# state under the given keys, `missing` where a host has none. A key no
+# individual holds gives an all-`missing` column, since a run in which a policy
+# never triggered still has to be scored.
+function _host_time_columns(state::SimulationState, keys)
+    names = Tuple(Symbol(key) for key in keys)
+    columns = map(names) do key
+        [get(ind.state, key, missing) for ind in state.individuals]
+    end
+    return NamedTuple{names}(columns)
 end
 
 # The per-host columns of an infection layer, read out of a `state` simulated
@@ -510,6 +535,20 @@ function _pair_kernel(k, layout::ContactPairsLayout, r, data)
     pair_kernel(k, i, layout.sus[r], data.infection_time[i], data.infectious_time[i])
 end
 
+# A live stateful kernel reads each host through its projection, applied here to
+# the host as the infection layer records it.
+function _pair_kernel(k::StatefulKernel, layout::ContactPairsLayout, r, data)
+    i = layout.infector[r]
+    j = layout.sus[r]
+    return k.callback(PairContext(i, j, data.infection_time[i]),
+        k.state(_layer_host(data, i)), k.state(_layer_host(data, j)))
+end
+function _pair_kernel(k::StatefulKernel{<:AbstractVector}, layout::ContactPairsLayout,
+        r, data)
+    i = layout.infector[r]
+    pair_kernel(k, i, layout.sus[r], data.infection_time[i], data.infectious_time[i])
+end
+
 function _pair_kernel(k::CalendarKernel, layout::ContactPairsLayout, r, data)
     _calendar_interval(_pair_kernel(k.kernel, layout, r, data),
         data.infectious_time[layout.infector[r]])
@@ -518,7 +557,8 @@ end
 # Streaming logsumexp, so the per-susceptible reduction allocates no
 # intermediate vector for reverse-mode AD to track. A -Inf term (a zero hazard)
 # adds nothing to the sum and is skipped. An accumulator that saw only zero
-# hazards then gives -Inf without taking -Inf - (-Inf).
+# hazards then gives -Inf without taking -Inf - (-Inf). The test reads the value
+# alone, since an AD dual at -Inf can hold NaN partials and so compare unequal.
 mutable struct _LogSumExpAcc{T}
     m::T
     s::T
@@ -526,7 +566,7 @@ mutable struct _LogSumExpAcc{T}
 end
 _LogSumExpAcc{T}() where {T} = _LogSumExpAcc{T}(T(-Inf), zero(T), 0)
 function _push!(acc::_LogSumExpAcc{T}, x) where {T}
-    x == -Inf && return acc
+    _is_minus_inf(x) && return acc
     if acc.nseen == 0
         acc.m = T(x)
         acc.s = one(T)
@@ -539,6 +579,7 @@ function _push!(acc::_LogSumExpAcc{T}, x) where {T}
     acc.nseen += 1
     return acc
 end
+_is_minus_inf(x) = isinf(x) && x < 0
 _value(acc::_LogSumExpAcc{T}) where {T} = acc.nseen == 0 ? T(-Inf) : acc.m + log(acc.s)
 
 # The parameter float type the kernel adds to the accumulator. In inference the
@@ -744,7 +785,7 @@ function _pairwise_events(kernel, extdist, data, layout, tfollow, ll0,
             end
         end
         v = _value(acc)
-        v == -Inf && return T(-Inf)
+        _is_minus_inf(v) && return T(-Inf)
         ll += v
     end
 

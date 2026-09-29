@@ -9,16 +9,16 @@
 
 """
     NetworkInfections(contacts, infection_time, infectious_time, removal_time, is_index;
-                      obs_end = Inf, followup_end = Inf)
+                      obs_end = Inf, followup_end = Inf, host_times = (;))
 
 The [`InfectionLayer`](@ref) of a network outbreak. Its contact structure is the
 adjacency the outbreak spread over: `contacts[i]` lists the nodes `i` can
 infect, as for [`NetworkProcess`](@ref), and a node's possible infectors are its
-in-neighbours. The per-node vectors, `obs_end` and `followup_end` are as
-described for `InfectionLayer`. Read one out of a simulation with
+in-neighbours. The per-node vectors, `obs_end`, `followup_end` and `host_times`
+are as described for `InfectionLayer`. Read one out of a simulation with
 [`network_infections`](@ref), or augment it in inference.
 """
-struct NetworkInfections{T <: Real} <: InfectionLayer
+struct NetworkInfections{T <: Real, H <: NamedTuple} <: InfectionLayer
     contacts::Vector{Vector{Int}}
     infection_time::Vector{T}
     infectious_time::Vector{T}
@@ -26,15 +26,16 @@ struct NetworkInfections{T <: Real} <: InfectionLayer
     is_index::Vector{Bool}
     obs_end::T
     followup_end::T
+    host_times::H
 end
 
 function NetworkInfections(contacts::AbstractVector{<:AbstractVector{<:Integer}},
         infection_time, infectious_time, removal_time, is_index; obs_end = Inf,
-        followup_end = Inf)
+        followup_end = Inf, host_times = (;))
     adj = contacts isa Vector{Vector{Int}} ? contacts :
           Vector{Int}[Int.(nbrs) for nbrs in contacts]
     fields = _infection_layer_fields(length(adj), infection_time, infectious_time,
-        removal_time, is_index; obs_end, followup_end)
+        removal_time, is_index; obs_end, followup_end, host_times)
     return NetworkInfections(adj, fields...)
 end
 
@@ -45,25 +46,29 @@ EpiBranch.contact_structure(d::NetworkInfections) = d.contacts
 
 """
     network_infections(state, model::ModelSpec{<:NetworkProcess};
-                       obs_end = model.process.obs_end, followup_end = Inf) -> NetworkInfections
+                       obs_end = model.process.obs_end, followup_end = Inf,
+                       host_times = ()) -> NetworkInfections
     network_infections(state, process::NetworkProcess) -> NetworkInfections
 
 Read the [`InfectionLayer`](@ref) out of a `state` simulated from `model`, with
 the model's adjacency as the contact structure. The infectious windows are read
 as described for `InfectionLayer`. Additional hazard modifications require an
 effective kernel when scoring; extraction records the windows only. A bare `NetworkProcess` is accepted too (its window opens at
-`:infection`, and it has no interventions).
+`:infection`, and it has no interventions). `host_times` names further per-node
+times to record, such as `(:onset_time,)`, read from each node's state (`missing`
+where a node has none) for a live [`StatefulKernel`](@ref) to read.
 """
 function network_infections(state::SimulationState,
         model::ModelSpec{<:NetworkProcess}; obs_end = model.process.obs_end,
-        followup_end = Inf)
+        followup_end = Inf, host_times = ())
     adjacency = model.process.adjacency
     n = length(adjacency)
     length(state.individuals) == n || throw(ArgumentError(
         "the state has $(length(state.individuals)) individuals but the network " *
         "has $n nodes"))
     columns = _infection_layer_columns(state, model)
-    return NetworkInfections(adjacency, columns...; obs_end, followup_end)
+    return NetworkInfections(adjacency, columns...; obs_end, followup_end,
+        host_times = _host_time_columns(state, host_times))
 end
 
 function network_infections(state::SimulationState, process::NetworkProcess; kwargs...)

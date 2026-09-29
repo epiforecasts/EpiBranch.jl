@@ -49,3 +49,5 @@ include("testutils/progression.jl")
     include("test_r_targets.jl")
     include("test_ad.jl")
 end
+
+include("test_stateful_kernels.jl")
