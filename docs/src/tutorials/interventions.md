@@ -200,8 +200,10 @@ println("Iso + tracing + ring vaccination: $(round(containment_probability(resul
     `post_exposure_efficacy`, which acts on the infection the contact
     already has; see
     [Protecting a contact who has already been exposed](#Protecting-a-contact-who-has-already-been-exposed).
-    Until that section the examples keep the default tracing and set only
-    `efficacy`, so they show how the machinery works but no vaccine effect.
+    The examples that follow keep the default tracing and set only
+    `efficacy`, so they show how the machinery works but no vaccine effect;
+    [What clustering does to containment](#What-clustering-does-to-containment)
+    and that section use stacks where vaccination acts.
 
 A delay between vaccination and protective immunity can be specified.
 If transmission occurs before immunity develops, there is no protection:
