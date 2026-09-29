@@ -335,7 +335,15 @@ loglikelihood(ChainLengths(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), model)   # interventions/observation read from model
 ```
 
-For maximum-likelihood estimation, pair the `loglikelihood` interface
+For a `Poisson(R)` or `NegBin(R, k)` fit specifically, [`fit`](@ref) gives
+the MLE with a profile-likelihood confidence interval directly:
+
+```@docs
+fit
+MLEFit
+```
+
+For other maximum-likelihood estimation, pair the `loglikelihood` interface
 with Optim.jl, or use Turing's `maximum_likelihood` — the same model that
 feeds `data ~ chain_size_distribution(model)` works for both.
 

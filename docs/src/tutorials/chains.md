@@ -150,6 +150,16 @@ R̂ = Rgrid[argmax([loglikelihood(data, Poisson(R)) for R in Rgrid])]
 println("Poisson MLE from chain sizes: R = $(round(R̂, digits=2))")
 ```
 
+For a `Poisson(R)` or `NegBin(R, k)` offspring law specifically,
+[`fit`](@ref) gives the same MLE together with a profile-likelihood
+confidence interval, without the grid:
+
+```@example chains
+f = fit(data, Poisson)
+println("R = $(round(f.estimate.R, digits=2)), " *
+        "95% CI $(round.(f.ci.R, digits=2))")
+```
+
 ### Bayesian inference with Turing.jl
 
 Call [`chain_size_distribution`](@ref) (or

@@ -113,6 +113,7 @@ include("analytical/data_types.jl")
 include("analytical/likelihood.jl")
 include("analytical/superspreading.jl")
 include("analytical/fitting.jl")
+include("analytical/mle.jl")
 include("analytical/cluster_mixed.jl")
 include("analytical/end_of_outbreak_probability.jl")
 
@@ -195,6 +196,9 @@ export chain_length_distribution, offspring_distribution
 export ClusterMixed, ChainSizeMixture
 # Real-time mixture: per-cluster "is finished?" weight
 export end_of_outbreak_probability
+# Maximum-likelihood fitting with profile-likelihood intervals; `fit` extends
+# `Distributions.fit`.
+export fit, MLEFit
 # Pairwise survival likelihood over a contact structure
 export ContextualKernel, PairContext, CalendarKernel, StatefulKernel, record_kernel,
     LayerHost

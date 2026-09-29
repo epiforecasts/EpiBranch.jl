@@ -37,11 +37,23 @@ data = rand(rng, NegativeBinomial(d_true.r, d_true.p), 50)
 println("Observed offspring counts: mean=$(round(mean(data), digits=2)), var=$(round(var(data), digits=2))")
 ```
 
+### Maximum likelihood via fit
+
+[`fit`](@ref) gives the MLE directly for `Poisson(R)` or `NegBin(R, k)`
+offspring, together with a profile-likelihood confidence interval per
+parameter:
+
+```@example inference
+f = fit(OffspringCounts(data), NegativeBinomial)
+println("MLE: R=$(round(f.estimate.R, digits=2)), k=$(round(f.estimate.k, digits=2))")
+println("95% CI: R=$(round.(f.ci.R, digits=2)), k=$(round.(f.ci.k, digits=2))")
+```
+
 ### Maximum likelihood via Turing
 
-For raw offspring counts EpiBranch does not provide a `fit` wrapper —
-the same Turing model used for the posterior also gives the MLE via
-`maximum_likelihood`:
+The same Turing model used for the posterior below also gives the MLE
+via `maximum_likelihood` — useful when the offspring law isn't one of
+`fit`'s two families, or the model composes interventions:
 
 ```@example inference
 @model function offspring_model(data)
@@ -248,8 +260,10 @@ println("k: $(round(mean(k_post), digits=2)) (95% CI: " *
 
 Two largely independent questions:
 
-1. **Point estimate or full posterior?** For a maximum-likelihood point
-   estimate, maximise `loglikelihood` over the parameter — with Turing's
+1. **Point estimate or full posterior?** For `Poisson(R)` or `NegBin(R, k)`
+   offspring with no interventions, [`fit`](@ref) gives the MLE and a
+   profile-likelihood confidence interval directly. For other models,
+   maximise `loglikelihood` over the parameter yourself — with Turing's
    `maximum_likelihood`, with Optim.jl, or, for a single parameter, over a
    grid (as in the [chains tutorial](chains.md)). For a full posterior with
    quantified uncertainty, put the data on the right-hand side of `~` through
