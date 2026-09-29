@@ -205,8 +205,18 @@ function test_stateful_simulation(make_process, extract)
             traced = get(ind.state, :trace_time, Inf))
         wider_kernel = StatefulKernel(wider, callback)
         @test_throws ArgumentError loglikelihood(data, make_process(wider_kernel))
-        # A misspelt key records nothing, so extraction refuses it.
-        @test_throws ArgumentError extract(state, model; host_times = (:onset,))
+        # A time no host holds, as when a policy never triggered, is recorded as
+        # absent everywhere, and a projection reading it falls back to its default.
+        unset = extract(state, model; host_times = (:onset_time, :policy_time))
+        @test all(ismissing, unset.host_times.policy_time)
+        policy(ind) = (onset = get(ind.state, :onset_time, NaN),
+            date = get(ind.state, :policy_time, Inf))
+        policy_kernel = StatefulKernel(policy, callback)
+        @test loglikelihood(unset, make_process(policy_kernel)) ≈
+              loglikelihood(data, make_process(live))
+        # A misspelt key leaves the key the projection reads unrecorded.
+        misspelt = extract(state, model; host_times = (:onset,))
+        @test_throws ArgumentError loglikelihood(misspelt, make_process(live))
         # An asymptomatic case stores a NaN onset, which the layer holds as a value.
         # A projection reading it as such scores the same as recorded records.
         stored(ind) = (onset = ind.state[:onset_time]::Float64,)

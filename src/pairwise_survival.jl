@@ -198,12 +198,11 @@ end
 
 # The named per-host times of a simulated `state`, read from each individual's
 # state under the given keys, `missing` where a host has none. A key no
-# individual holds is an error, since it would record nothing.
+# individual holds gives an all-`missing` column, since a run in which a policy
+# never triggered still has to be scored.
 function _host_time_columns(state::SimulationState, keys)
     names = Tuple(Symbol(key) for key in keys)
     columns = map(names) do key
-        any(ind -> haskey(ind.state, key), state.individuals) ||
-            throw(ArgumentError("no individual holds a host time `$key`"))
         [get(ind.state, key, missing) for ind in state.individuals]
     end
     return NamedTuple{names}(columns)
