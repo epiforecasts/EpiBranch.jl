@@ -35,10 +35,6 @@ _certain_probability(p) = missing
 function _warn_incomplete_terminal_coverage(progression)
     terminals = filter(is_terminal, progression)
     isempty(terminals) && return nothing
-    # Spelling out the element type keeps `any` inferring `Bool`. A broadcast
-    # over an abstractly typed `progression` gives a vector inference cannot
-    # pin down, and `any` over it widens to a union that reads as a non-boolean
-    # in a boolean context.
     certainties = Union{Bool, Missing}[_terminal_certain(t) for t in terminals]
     any(isequal(true), certainties) && return nothing
     any(ismissing, certainties) && return nothing
