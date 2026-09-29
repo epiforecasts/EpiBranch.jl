@@ -80,15 +80,15 @@ between them.
     Every contact in a branching process is a unique exposure, so
     per-exposure and per-individual semantics give the **same**
     per-contact infection probability there, and `LeakyMode` and
-    `AllOrNothingMode` agree in distribution. Switching between them on
-    a `BranchingProcess` will not change simulation results. The two
-    modes diverge once a susceptible can be exposed more than once by
-    the same infector, which happens on the structure-driven models —
-    the household, network and routed-network processes: there, a
-    responder under `AllOrNothingMode` is protected against every such
-    exposure and a non-responder against none, whereas `LeakyMode`
-    blocks each exposure independently and so is worn down by repeated
-    exposure.
+    `AllOrNothingMode` agree in distribution, though not draw for draw:
+    `AllOrNothingMode` takes one extra random draw per dose. The two
+    modes diverge once a susceptible can be exposed more than once, by
+    the same infector or by several, which happens on the
+    structure-driven models — the household, network and routed-network
+    processes: there, a responder under `AllOrNothingMode` is protected
+    against every such exposure and a non-responder against none, whereas
+    `LeakyMode` blocks each exposure independently and so is worn down by
+    repeated exposure.
 
 # Multi-dose vaccination
 
