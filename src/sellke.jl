@@ -427,26 +427,47 @@ supplies_contacts(::TransmissionModel) = false
 # shorten. The generation engine behaves the same way, tracing a case's contacts
 # and never an earlier generation, so the two paths agree; tracing *backwards*
 # to an already-final infector is a separate capability neither engine has.
+#
+# A ring (`ContactTracing(depth = 2)` and beyond) grows through uninfected
+# contacts too. On the generation engine `keep_active` keeps such a contact
+# exposing for one more generation so `apply_post_transmission!` reaches its
+# own contacts in turn. The race never revisits an uninfected node that way —
+# it is settled once, here, when its infector is processed, and nothing calls
+# `_trace_from!` for it again — so the same growth is done directly below,
+# breadth-first over the model's own contact structure: a traced contact left
+# with ring budget (`:ring_remaining`, written by `ContactTracing`) becomes the
+# next hop's infector. `visited` stops a node being traced twice from two
+# branches of the ring reaching it at once.
 function _trace_from!(state, infector, interventions, contacts, pos, processed)
     contacts === nothing && return nothing
     any(traces_contacts, interventions) || return nothing
-    pending = Individual[]
-    not_before = typeof(infector.infection_time)[]
-    timed = false
-    for c in contacts(infector.id, state)
-        cid, t0 = c isa Tuple ? (c[1], c[2]) : (c, -Inf)
-        timed |= c isa Tuple
-        k = get(pos, cid, 0)
-        (k == 0 || processed[k]) && continue
-        push!(pending, state.individuals[cid])
-        push!(not_before, t0)
-    end
-    isempty(pending) && return nothing
-    for iv in interventions
-        if timed
-            trace_contacts!(iv, state, infector, pending, not_before)
-        else
-            trace_contacts!(iv, state, infector, pending)
+    visited = Set{Int}((infector.id,))
+    frontier = Individual[infector]
+    while !isempty(frontier)
+        src = popfirst!(frontier)
+        pending = Individual[]
+        not_before = typeof(infector.infection_time)[]
+        timed = false
+        for c in contacts(src.id, state)
+            cid, t0 = c isa Tuple ? (c[1], c[2]) : (c, -Inf)
+            timed |= c isa Tuple
+            k = get(pos, cid, 0)
+            (k == 0 || processed[k] || cid in visited) && continue
+            push!(pending, state.individuals[cid])
+            push!(not_before, t0)
+        end
+        isempty(pending) && continue
+        for iv in interventions
+            if timed
+                trace_contacts!(iv, state, src, pending, not_before)
+            else
+                trace_contacts!(iv, state, src, pending)
+            end
+        end
+        for ind in pending
+            push!(visited, ind.id)
+            is_traced(ind) && get(ind.state, :ring_remaining, 0)::Int > 0 &&
+                push!(frontier, ind)
         end
     end
     return nothing

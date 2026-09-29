@@ -340,6 +340,14 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
+- `ContactTracing(depth = 2)` and beyond now reaches contacts-of-contacts on
+  `HouseholdProcess`, `NetworkProcess` and `RoutedNetwork`. The ring previously
+  grew past an uninfected contact only on the generation engine, whose
+  `keep_active` hook has no continuous-time counterpart: the race traces a
+  case's contacts once, when that case itself is settled, and an uninfected
+  ring member is never settled. The ring now grows breadth-first over the
+  model's own contact structure whenever a traced contact is left with ring
+  budget, matching the generation engine's reach.
 - `HomogeneousProcess`, `HouseholdProcess`, `NetworkProcess` and `RoutedNetwork`
   now set `state.extinct` at the end of their Sellke run. `is_extinct` and
   `containment_probability` report real values instead of always `false`/`0`
