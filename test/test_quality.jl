@@ -41,7 +41,9 @@ end
             path = joinpath(dir, file)
             source = read(path, String)
             checked += 1
-            Runic.format_string(source) == source ||
+            # `filemode = true` is what `Runic.main` uses, so the hook and this
+            # gate agree about a file's leading and trailing newlines.
+            Runic.format_string(source; filemode = true) == source ||
                 push!(unformatted, relpath(path, root))
         end
     end
