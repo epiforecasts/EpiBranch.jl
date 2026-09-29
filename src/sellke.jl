@@ -760,7 +760,9 @@ function _sellke_race!(
         _resolve_interventions!(state, ind, interventions)
         _trace_from!(state, ind, interventions, contacts, pos, processed)
         contacts === nothing ||
-            _apply_continuous_actions!(state, ind, interventions, members, processed)
+            _apply_continuous_actions!(
+            state, ind, interventions, members, processed, contacts, pos
+        )
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1
 
         # Only a live kernel whose host records actually moved needs its pending

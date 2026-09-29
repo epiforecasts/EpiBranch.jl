@@ -1151,16 +1151,35 @@ function required_fields(gv::GroupVaccination)
     return union([gv.group_key], required_fields(gv.eligibility))
 end
 
-# The group's trigger time: the earliest time any of its members (found by
-# scanning every individual created so far, not just this generation's
+# A group's members under `key`, from a cache on `state` grown incrementally
+# as `state.individuals` grows: only the tail added since the last query is
+# scanned, rather than every individual on every call. Correct because
+# membership is set once, at creation, and never changes afterwards (see
+# `groups`/`group_attribute`), so an id already indexed never needs revisiting.
+function _group_members(state::SimulationState, key::Symbol, group)
+    seen, index = get!(state.group_index, key) do
+        (Ref(0), Dict{Any, Vector{Int}}())
+    end
+    n = length(state.individuals)
+    for id in (seen[] + 1):n
+        g = get(state.individuals[id].state, key, nothing)
+        g === nothing && continue
+        push!(get!(index, g, Int[]), id)
+    end
+    seen[] = n
+    return get(index, group, Int[])
+end
+
+# The group's trigger time: the earliest time any of its members (found
+# through the group-to-members index, not just this generation's
 # `new_contacts`) meets `eligibility`, tested against the member itself in
 # both the infector and contact slots since the policy describes a property
 # of a case, not a pair. `Inf` if no member has triggered yet.
 function _group_trigger_time(gv::GroupVaccination, state, group)
     key = gv.group_key
     t = Inf
-    for m in state.individuals
-        get(m.state, key, nothing) == group || continue
+    for id in _group_members(state, key, group)
+        m = state.individuals[id]
         is_eligible(gv.eligibility, m, m, state) || continue
         tt = trigger_time(gv.eligibility, m, state)
         isnan(tt) && continue
@@ -1173,10 +1192,10 @@ end
 # earlier newly meets `eligibility` (the group's first trigger), or a member
 # is created into a group that already triggered in an earlier generation.
 # Recomputing the trigger time for every group touched by `new_contacts` and
-# sweeping the whole population against it handles both in one pass: a fresh
-# trigger reaches members already present, and a standing one reaches a
-# member only now created. Groups untouched this generation are left alone,
-# so nobody outside a triggered group is ever visited.
+# visiting that group's members (via the index) against it handles both in
+# one pass: a fresh trigger reaches members already present, and a standing
+# one reaches a member only now created. Groups untouched this generation are
+# left alone, so nobody outside a triggered group is ever visited.
 function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
     return apply_actions!(gv, state, new_contacts)
 end
