@@ -834,6 +834,37 @@ end
         @test_logs min_level=Base.CoreLogging.Warn simulate(build(honoured);
             n_initial = 1, rng = StableRNG(4))
     end
+
+    @testset "ContactTracing(depth = 2) reaches an uninfected contact's own contacts" begin
+        # A path graph 1-2-3 with a kernel too slow to transmit: node 2 is
+        # traced from node 1 but never becomes infected itself, so the race
+        # never revisits it. A depth-2 ring must still grow through it to
+        # reach node 3.
+        proc = NetworkProcess([[2], [1, 3], [2]], Exponential(1e9))
+        model = ModelSpec(proc;
+            attributes = clinical_presentation(incubation_period = Dirac(2.0)),
+            progression = [Transition(:recovered; from = :infection, delay = 10.0,
+                terminal = true)],
+            interventions = [Isolation(onset_to_isolation_delay = Dirac(1.0)),
+                ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 2),
+                RingVaccination(efficacy = 0.9)])
+        st = simulate(model; initial_cases = [1], rng = StableRNG(1))
+        @test !is_infected(st.individuals[2])
+        @test !is_infected(st.individuals[3])
+        @test is_traced(st.individuals[2])
+        @test is_traced(st.individuals[3])
+        @test is_vaccinated(st.individuals[3])
+
+        # depth 1 stops at the direct contact: node 3 is never reached.
+        depth1 = ModelSpec(proc;
+            attributes = model.attributes, progression = model.progression,
+            interventions = [Isolation(onset_to_isolation_delay = Dirac(1.0)),
+                ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 1),
+                RingVaccination(efficacy = 0.9)])
+        st1 = simulate(depth1; initial_cases = [1], rng = StableRNG(1))
+        @test is_traced(st1.individuals[2])
+        @test !is_traced(st1.individuals[3])
+    end
 end
 
 @testset "Uncovered terminal state warns" begin
