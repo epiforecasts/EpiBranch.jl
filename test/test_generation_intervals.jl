@@ -16,7 +16,7 @@
             if is_infected(ind) && ind.parent_id != 0
                 parent = state.individuals[ind.parent_id]
                 @test realised_generation_interval(ind, state) ≈
-                      ind.infection_time - parent.infection_time
+                    ind.infection_time - parent.infection_time
                 @test realised_generation_interval(ind, state) >= 0
             end
         end
@@ -28,17 +28,23 @@
         state = simulate(model; max_cases = 200, rng = rng)
 
         gts = realised_generation_intervals(state)
-        expected = count(ind -> is_infected(ind) && ind.parent_id != 0,
-            state.individuals)
+        expected = count(
+            ind -> is_infected(ind) && ind.parent_id != 0,
+            state.individuals
+        )
         @test length(gts) == expected
         @test all(>=(0), gts)
 
         # Vector-of-states method flattens.
-        states = simulate(model, 5; max_cases = 200,
-            rng = StableRNG(3))
+        states = simulate(
+            model, 5; max_cases = 200,
+            rng = StableRNG(3)
+        )
         all_gts = realised_generation_intervals(states)
-        @test length(all_gts) == sum(length(realised_generation_intervals(s))
-        for s in states)
+        @test length(all_gts) == sum(
+            length(realised_generation_intervals(s))
+                for s in states
+        )
     end
 
     @testset "Intervention-free run recovers the intrinsic mean (no depletion)" begin
@@ -47,8 +53,10 @@
         rng = StableRNG(4)
         gt_mean = 5.0
         model = BranchingProcess(Poisson(1.5), Exponential(gt_mean))
-        states = simulate(model, 50; max_cases = 500,
-            rng = rng)
+        states = simulate(
+            model, 50; max_cases = 500,
+            rng = rng
+        )
         gts = realised_generation_intervals(states)
         @test length(gts) > 5000
         @test isapprox(sum(gts) / length(gts), gt_mean; rtol = 0.05)
@@ -64,16 +72,22 @@
 
         free = realised_generation_intervals(
             simulate(
-            ModelSpec(BranchingProcess(Poisson(2.5), Exponential(6.0)); attributes = attrs),
-            30; opts..., rng = rng_a))
+                ModelSpec(BranchingProcess(Poisson(2.5), Exponential(6.0)); attributes = attrs),
+                30; opts..., rng = rng_a
+            )
+        )
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         isolated = realised_generation_intervals(
             simulate(
-            ModelSpec(BranchingProcess(Poisson(2.5), Exponential(6.0));
-                interventions = [iso], attributes = attrs),
-            30;
-            opts...,
-            rng = rng_b))
+                ModelSpec(
+                    BranchingProcess(Poisson(2.5), Exponential(6.0));
+                    interventions = [iso], attributes = attrs
+                ),
+                30;
+                opts...,
+                rng = rng_b
+            )
+        )
 
         @test !isempty(free)
         @test !isempty(isolated)

@@ -23,7 +23,7 @@ implement this method and call `apply_actions!` from its batch hook.
 """
 intervention_actions(::AbstractIntervention, state, candidates) = nothing
 function intervention_actions(w::Union{Scheduled, CapacityConstrained}, state, candidates)
-    intervention_actions(w.intervention, state, candidates)
+    return intervention_actions(w.intervention, state, candidates)
 end
 
 """
@@ -77,7 +77,7 @@ function _action_in_schedule(s::Scheduled, action, state)
 end
 function _admit_actions!(s::Scheduled, state, actions)
     selected = filter(a -> isfinite(a.time) && _action_in_schedule(s, a, state), actions)
-    _admit_actions!(s.intervention, state, selected)
+    return _admit_actions!(s.intervention, state, selected)
 end
 
 function _admit_actions!(cc::CapacityConstrained, state, actions)
@@ -127,13 +127,14 @@ function intervention_actions(rv::RingVaccination, state, candidates)
             if _maybe_positive(rv.post_exposure_efficacy)
                 # Reconsider protection at this exposure without recording a new dose.
                 effect! = (person, at, st) -> _abort_infection!(
-                    rv, person, person.state[_vaccination_time_key(label)], st.rng)
+                    rv, person, person.state[_vaccination_time_key(label)], st.rng
+                )
                 push!(actions, InterventionAction(ind, state.max_infection_time, effect!))
             end
             continue
         end
         trace_t = haskey(ind.state, :trace_time) ? ind.state[:trace_time] :
-                  min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
+            min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
         isfinite(trace_t) || continue
         delay = action_draw!(ind, (rv, :delay)) do
             _sample_value(rv.dose_delay, state.rng, ind)
@@ -155,9 +156,11 @@ end
 
 function intervention_actions(gv::GroupVaccination, state, candidates)
     actions = InterventionAction[]
-    groups_here = Set(get(ind.state, gv.group_key, nothing)
-    for ind in candidates
-    if haskey(ind.state, gv.group_key))
+    groups_here = Set(
+        get(ind.state, gv.group_key, nothing)
+            for ind in candidates
+            if haskey(ind.state, gv.group_key)
+    )
     for group in groups_here
         trigger = _group_trigger_time(gv, state, group)
         isfinite(trigger) || continue
@@ -203,11 +206,11 @@ finalised case. The default is `false`.
 """
 continuous_actions(::AbstractIntervention) = false
 function continuous_actions(w::Union{Scheduled, CapacityConstrained})
-    continuous_actions(w.intervention)
+    return continuous_actions(w.intervention)
 end
 continuous_actions(::GroupVaccination) = true
 function continuous_actions(rv::RingVaccination)
-    rv.eligibility_window isa Real &&
+    return rv.eligibility_window isa Real &&
         rv.eligibility_window == Inf && rv.post_exposure_efficacy isa Real &&
         rv.post_exposure_efficacy == 0
 end
@@ -216,9 +219,11 @@ function _apply_continuous_actions!(state, current, interventions, members, proc
     any(continuous_actions, interventions) || return nothing
     # Finalised cases have already generated proposals. A new action may affect
     # the current case and pending people, but must not revise earlier cases.
-    candidates = [state.individuals[id]
-                  for (k, id) in enumerate(members)
-                  if !processed[k] || id == current.id]
+    candidates = [
+        state.individuals[id]
+            for (k, id) in enumerate(members)
+            if !processed[k] || id == current.id
+    ]
     allowed = Set(ind.id for ind in candidates)
     for iv in interventions
         continuous_actions(iv) || continue
@@ -226,7 +231,8 @@ function _apply_continuous_actions!(state, current, interventions, members, proc
         actions === nothing && continue
         selected = filter(
             a -> a.individual.id in allowed &&
-                 a.time >= state.max_infection_time, actions)
+                a.time >= state.max_infection_time, actions
+        )
         _admit_actions!(iv, state, selected)
     end
     return nothing

@@ -60,19 +60,21 @@ Proportion of transmission from the most infectious fraction of cases,
 extracted from the model's offspring distribution (must be NegativeBinomial).
 """
 function proportion_transmission(d::NegativeBinomial; prop_cases::Real = 0.2)
-    proportion_transmission(mean(d), d.r; prop_cases)
+    return proportion_transmission(mean(d), d.r; prop_cases)
 end
 
 function proportion_transmission(d::Poisson; prop_cases::Real = 0.2)
-    proportion_transmission(mean(d), 1e6; prop_cases)
+    return proportion_transmission(mean(d), 1.0e6; prop_cases)
 end
 
 function proportion_transmission(d::Distribution; prop_cases::Real = 0.2)
     throw(ArgumentError("proportion_transmission not defined for $(typeof(d)). Use NegativeBinomial or Poisson."))
 end
 
-function proportion_transmission(model::Union{TransmissionModel, ModelSpec};
-        prop_cases::Real = 0.2)
+function proportion_transmission(
+        model::Union{TransmissionModel, ModelSpec};
+        prop_cases::Real = 0.2
+    )
     return proportion_transmission(single_type_offspring(model); prop_cases)
 end
 
@@ -113,7 +115,7 @@ end
 Proportion of cases from large clusters for a NegBin offspring distribution.
 """
 function proportion_cluster_size(d::NegativeBinomial; cluster_size::Int = 10)
-    proportion_cluster_size(mean(d), d.r; cluster_size)
+    return proportion_cluster_size(mean(d), d.r; cluster_size)
 end
 
 """
@@ -121,11 +123,16 @@ end
 
 Proportion of cases from large clusters for a branching process model.
 """
-function proportion_cluster_size(model::Union{TransmissionModel, ModelSpec};
-        cluster_size::Int = 10)
+function proportion_cluster_size(
+        model::Union{TransmissionModel, ModelSpec};
+        cluster_size::Int = 10
+    )
     d = single_type_offspring(model)
-    d isa NegativeBinomial || throw(ArgumentError(
-        "proportion_cluster_size requires NegativeBinomial offspring"))
+    d isa NegativeBinomial || throw(
+        ArgumentError(
+            "proportion_cluster_size requires NegativeBinomial offspring"
+        )
+    )
     return proportion_cluster_size(d; cluster_size)
 end
 
@@ -153,8 +160,10 @@ clustering this formula assumes away. It is a direct port of
 `calc_network_R` in superspreading (Lambert et al.,
 https://github.com/epiverse-trace/superspreading, MIT).
 """
-function heterogeneous_contact_R(mean_contacts::Real, sd_contacts::Real,
-        duration::Real, prob_transmission::Real)
+function heterogeneous_contact_R(
+        mean_contacts::Real, sd_contacts::Real,
+        duration::Real, prob_transmission::Real
+    )
     mean_contacts >= 0 || throw(ArgumentError("mean_contacts must be ≥ 0"))
     sd_contacts >= 0 || throw(ArgumentError("sd_contacts must be ≥ 0"))
     duration > 0 || throw(ArgumentError("duration must be positive"))

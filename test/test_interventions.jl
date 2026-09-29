@@ -7,14 +7,20 @@ end
 
 @testset "Callable isolation and scheduling parameters" begin
     for enabled in (false, true)
-        iso = Isolation(onset_to_isolation_delay = Dirac(1.0),
-            test_sensitivity = _CaseSensitivity())
-        model = ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0));
+        iso = Isolation(
+            onset_to_isolation_delay = Dirac(1.0),
+            test_sensitivity = _CaseSensitivity()
+        )
+        model = ModelSpec(
+            BranchingProcess(Poisson(0.0), Exponential(5.0));
             attributes = clinical_presentation(incubation_period = Dirac(2.0)),
-            interventions = [Scheduled(iso, _PolicyEnabled(enabled))])
+            interventions = [Scheduled(iso, _PolicyEnabled(enabled))]
+        )
         state = simulate(model; n_initial = 4, rng = StableRNG(7))
-        @test all(is_isolated(ind) == (enabled && isodd(ind.id))
-        for ind in state.individuals)
+        @test all(
+            is_isolated(ind) == (enabled && isodd(ind.id))
+                for ind in state.individuals
+        )
     end
 end
 
@@ -38,14 +44,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         rng1 = StableRNG(42)
         results_no_iso = simulate(
             ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0)); attributes = clinical),
-            100; max_cases = 200, rng = rng1)
+            100; max_cases = 200, rng = rng1
+        )
 
         rng2 = StableRNG(42)
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
         results_iso = simulate(
-            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                interventions = [iso], attributes = clinical),
-            100; max_cases = 200, rng = rng2)
+            ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [iso], attributes = clinical
+            ),
+            100; max_cases = 200, rng = rng2
+        )
 
         ext_no_iso = count(s -> s.extinct, results_no_iso)
         ext_iso = count(s -> s.extinct, results_iso)
@@ -58,9 +68,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0))
 
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                interventions = [iso, ct], attributes = clinical);
-            max_cases = 50, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [iso, ct], attributes = clinical
+            );
+            max_cases = 50, rng = rng
+        )
 
         n_traced = count(is_traced, state.individuals)
         n_with_isolated_parent = count(state.individuals) do ind
@@ -80,9 +93,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0)); start_time = 1000.0)
 
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                interventions = [iso], attributes = clinical);
-            max_cases = 50, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [iso], attributes = clinical
+            );
+            max_cases = 50, rng = rng
+        )
 
         @test all(ind -> ind.infection_time < 1000.0, state.individuals)
     end
@@ -147,8 +163,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # Models declare whether they can name a case's contacts at all.
         @test !EpiBranch.supplies_contacts(BranchingProcess(Poisson(1.0)))
 
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
         function pair()
             infector = Individual(id = 1)
             infector.state[:infected] = true
@@ -173,14 +191,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         # Scheduled delegates when active and stays out of the way when not.
         infector, contact = pair()
-        EpiBranch.trace_contacts!(Scheduled(ct; start_time = 0.0), state, infector,
-            [contact])
+        EpiBranch.trace_contacts!(
+            Scheduled(ct; start_time = 0.0), state, infector,
+            [contact]
+        )
         @test is_traced(contact)
 
         infector, contact = pair()
         state.max_infection_time = 0.0
-        EpiBranch.trace_contacts!(Scheduled(ct; start_time = 100.0), state, infector,
-            [contact])
+        EpiBranch.trace_contacts!(
+            Scheduled(ct; start_time = 100.0), state, infector,
+            [contact]
+        )
         @test !is_traced(contact)
 
         # A quarantined contact reports its quarantine as the time it leaves
@@ -200,8 +222,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # the trace delay runs from when the contact could first be reached
         @test isolation_time(contact) > 50.0
         infector, contact = pair()
-        EpiBranch.trace_contacts!(Scheduled(ct; start_time = 0.0), state, infector,
-            [contact], [50.0])
+        EpiBranch.trace_contacts!(
+            Scheduled(ct; start_time = 0.0), state, infector,
+            [contact], [50.0]
+        )
         @test isolation_time(contact) >= 50.0
         infector, early = pair()
         EpiBranch.trace_contacts!(ct, state, infector, [early], [-Inf])
@@ -211,10 +235,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # nothing on the continuous-time path, with or without trace bounds.
         @test !EpiBranch.traces_contacts(_NoTraceIntervention())
         @test EpiBranch.trace_contacts!(
-            _NoTraceIntervention(), state, Individual(id = 5), Individual[]) === nothing
+            _NoTraceIntervention(), state, Individual(id = 5), Individual[]
+        ) === nothing
         @test EpiBranch.trace_contacts!(
             _NoTraceIntervention(), state, Individual(id = 5), Individual[],
-            Float64[]) === nothing
+            Float64[]
+        ) === nothing
     end
 
     @testset "Isolation keeps the earliest pathway when already isolated" begin
@@ -225,9 +251,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # treat the standing quarantine as a competing pathway: if the
         # individual would have self-reported earlier, the earlier time wins.
         # Otherwise tracing *delays* isolation instead of advancing it.
-        iso = Isolation(onset_to_isolation_delay = Exponential(1e-9))
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0e-9))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
 
         # Quarantined late, but onset was early: the self-reported time wins.
         late = Individual(id = 1)
@@ -235,7 +263,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         late.state[:test_positive] = true
         set_isolated!(late, 50.0)
         EpiBranch.resolve_individual!(iso, late, state)
-        @test isolation_time(late) ≈ 2.0 atol=1e-6
+        @test isolation_time(late) ≈ 2.0 atol = 1.0e-6
         @test get(late.state, :isolated_by_isolation, false)
 
         # Quarantined early: the quarantine stands and is left untouched.
@@ -266,9 +294,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         )
 
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                interventions = [iso], attributes = clinical_asymp);
-            max_cases = 500, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [iso], attributes = clinical_asymp
+            );
+            max_cases = 500, rng = rng
+        )
 
         for ind in state.individuals
             if is_asymptomatic(ind)
@@ -282,9 +313,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.0)
 
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                interventions = [iso], attributes = clinical);
-            max_cases = 100, rng = StableRNG(42))
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [iso], attributes = clinical
+            );
+            max_cases = 100, rng = StableRNG(42)
+        )
 
         n_isolated = count(is_isolated, state.individuals)
         @test n_isolated == 0
@@ -294,16 +328,22 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         rng1 = StableRNG(42)
         iso_fast = Isolation(onset_to_isolation_delay = Exponential(0.5))
         results_fast = simulate(
-            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                interventions = [iso_fast], attributes = clinical),
-            200; max_cases = 200, rng = rng1)
+            ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [iso_fast], attributes = clinical
+            ),
+            200; max_cases = 200, rng = rng1
+        )
 
         rng2 = StableRNG(42)
         iso_slow = Isolation(onset_to_isolation_delay = Exponential(10.0))
         results_slow = simulate(
-            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                interventions = [iso_slow], attributes = clinical),
-            200; max_cases = 200, rng = rng2)
+            ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [iso_slow], attributes = clinical
+            ),
+            200; max_cases = 200, rng = rng2
+        )
 
         @test containment_probability(results_fast) >= containment_probability(results_slow)
     end
@@ -314,9 +354,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.0))
 
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                interventions = [iso, ct], attributes = clinical);
-            max_cases = 20, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [iso, ct], attributes = clinical
+            );
+            max_cases = 20, rng = rng
+        )
 
         for ind in state.individuals
             @test haskey(ind.state, :isolated)
@@ -329,19 +372,21 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         @test_throws ErrorException simulate(
             ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); interventions = [iso]);
-            max_cases = 10, rng = StableRNG(42))
+            max_cases = 10, rng = StableRNG(42)
+        )
     end
 
     @testset "attribute list works" begin
         rng = StableRNG(42)
         init_fn = [
             clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-            demographics(age_distribution = Normal(40, 15))
+            demographics(age_distribution = Normal(40, 15)),
         ]
 
         state = simulate(
             ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); attributes = init_fn);
-            max_cases = 50, rng = rng)
+            max_cases = 50, rng = rng
+        )
 
         ind = state.individuals[1]
         @test haskey(ind.state, :onset_time)
@@ -357,18 +402,24 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             rng1 = StableRNG(42)
             rv = RingVaccination(efficacy = 0.9, mode = LeakyMode())
             results_vacc = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv], attributes = clinical),
-                100; max_cases = 200, rng = rng1)
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical
+                ),
+                100; max_cases = 200, rng = rng1
+            )
 
             rng2 = StableRNG(42)
             results_no_vacc = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct], attributes = clinical),
-                100; max_cases = 200, rng = rng2)
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct], attributes = clinical
+                ),
+                100; max_cases = 200, rng = rng2
+            )
 
             @test containment_probability(results_vacc) >=
-                  containment_probability(results_no_vacc)
+                containment_probability(results_no_vacc)
         end
 
         @testset "All-or-nothing mode" begin
@@ -377,9 +428,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             rv = RingVaccination(efficacy = 0.8, mode = AllOrNothingMode())
 
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv], attributes = clinical);
-                max_cases = 100, rng = StableRNG(42))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical
+                );
+                max_cases = 100, rng = StableRNG(42)
+            )
 
             n_vaccinated = count(is_vaccinated, state.individuals)
             @test n_vaccinated > 0
@@ -397,20 +451,26 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             rng1 = StableRNG(42)
             rv_instant = RingVaccination(efficacy = 0.9, delay_to_immunity = 0.0)
             results_instant = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv_instant], attributes = clinical),
-                200; max_cases = 200, rng = rng1)
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv_instant], attributes = clinical
+                ),
+                200; max_cases = 200, rng = rng1
+            )
 
             rng2 = StableRNG(42)
             rv_delayed = RingVaccination(efficacy = 0.9, delay_to_immunity = 14.0)
             results_delayed = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv_delayed], attributes = clinical),
-                200; max_cases = 200, rng = rng2)
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv_delayed], attributes = clinical
+                ),
+                200; max_cases = 200, rng = rng2
+            )
 
             # Instant immunity should contain at least as well as delayed
             @test containment_probability(results_instant) >=
-                  containment_probability(results_delayed) - 0.05
+                containment_probability(results_delayed) - 0.05
         end
 
         @testset "Waning immunity" begin
@@ -418,25 +478,39 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # later draw in the run.
             @testset "A fully waned post-exposure dose leaves the stream untouched" begin
                 clinical = clinical_presentation(
-                    incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
-                iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
-                    post_isolation_transmission = 0.4)
-                ct = ContactTracing(probability = 0.8,
+                    incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+                )
+                iso = Isolation(
+                    onset_to_isolation_delay = Exponential(1.0),
+                    post_isolation_transmission = 0.4
+                )
+                ct = ContactTracing(
+                    probability = 0.8,
                     isolation_to_trace_delay = Exponential(0.5),
-                    quarantine_on_trace = false)
+                    quarantine_on_trace = false
+                )
                 process = BranchingProcess(Poisson(2.2), Exponential(5.0))
                 cases(interventions) = sum(1:40) do seed
                     state = simulate(
-                        ModelSpec(process; interventions = interventions,
-                            attributes = clinical);
-                        max_cases = 400, rng = StableRNG(seed))
+                        ModelSpec(
+                            process; interventions = interventions,
+                            attributes = clinical
+                        );
+                        max_cases = 400, rng = StableRNG(seed)
+                    )
                     count(is_infected, state.individuals)
                 end
 
                 none = cases([iso, ct])
-                waned = cases([iso, ct,
-                    RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8,
-                        waning = dt -> 0.0)])
+                waned = cases(
+                    [
+                        iso, ct,
+                        RingVaccination(
+                            efficacy = 0.0, post_exposure_efficacy = 0.8,
+                            waning = dt -> 0.0
+                        ),
+                    ]
+                )
                 @test waned == none
             end
 
@@ -453,7 +527,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 contact.infection_time = dt
                 risk = EpiBranch._susceptibility_risk(rv, contact)
                 EpiBranch._sample_value(
-                    risk.block_probability, StableRNG(1), nothing, contact, nothing)
+                    risk.block_probability, StableRNG(1), nothing, contact, nothing
+                )
             end
 
             @test probs ≈ 0.9 .* decay.(dts)
@@ -467,7 +542,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 contact0.infection_time = 50.0
                 risk = EpiBranch._susceptibility_risk(rv0, contact0)
                 @test EpiBranch._sample_value(
-                    risk.block_probability, StableRNG(1), nothing, contact0, nothing) == 0.0
+                    risk.block_probability, StableRNG(1), nothing, contact0, nothing
+                ) == 0.0
             end
 
             @testset "Waning at full strength matches the constant-efficacy risk" begin
@@ -477,7 +553,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 contact1.infection_time = 30.0
                 risk = EpiBranch._susceptibility_risk(rv1, contact1)
                 @test EpiBranch._sample_value(
-                    risk.block_probability, StableRNG(1), nothing, contact1, nothing) == 0.9
+                    risk.block_probability, StableRNG(1), nothing, contact1, nothing
+                ) == 0.9
             end
 
             @testset "Onward-infectiousness risk also wanes" begin
@@ -491,10 +568,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
                 contact2.infection_time = 0.0
                 prob_now = EpiBranch._sample_value(
-                    risk.block_probability, StableRNG(1), parent, contact2, nothing)
+                    risk.block_probability, StableRNG(1), parent, contact2, nothing
+                )
                 contact2.infection_time = 40.0
                 prob_later = EpiBranch._sample_value(
-                    risk.block_probability, StableRNG(1), parent, contact2, nothing)
+                    risk.block_probability, StableRNG(1), parent, contact2, nothing
+                )
 
                 @test prob_now ≈ 0.8
                 @test prob_later ≈ 0.8 * decay(40.0)
@@ -509,25 +588,32 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 c.infection_time = exposure
                 risk = EpiBranch._contact_risk(rv, c)
                 return EpiBranch._sample_value(
-                    risk.block_probability, StableRNG(1), nothing, c, nothing)
+                    risk.block_probability, StableRNG(1), nothing, c, nothing
+                )
             end
 
             @testset "A fully waned post-exposure dose blocks nothing" begin
-                rv3 = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8,
-                    waning = dt -> 0.0)
+                rv3 = RingVaccination(
+                    efficacy = 0.0, post_exposure_efficacy = 0.8,
+                    waning = dt -> 0.0
+                )
                 @test contact_block(rv3; exposure = 100.0) == 0.0
             end
 
             @testset "A partially waned post-exposure dose blocks less" begin
-                rv4 = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8,
-                    waning = decay)
+                rv4 = RingVaccination(
+                    efficacy = 0.0, post_exposure_efficacy = 0.8,
+                    waning = decay
+                )
                 @test contact_block(rv4; exposure = 0.0) ≈ 0.8
                 @test contact_block(rv4; exposure = 20.0) ≈ 0.8 * decay(20.0)
             end
 
             @testset "Waning takes the combined block below post-exposure efficacy" begin
-                rv5 = RingVaccination(efficacy = 0.5, post_exposure_efficacy = 0.8,
-                    waning = decay)
+                rv5 = RingVaccination(
+                    efficacy = 0.5, post_exposure_efficacy = 0.8,
+                    waning = decay
+                )
                 @test contact_block(rv5; exposure = 0.0) ≈ 1 - 0.5 * 0.2
                 retained = decay(20.0)
                 waned = contact_block(rv5; exposure = 20.0)
@@ -539,13 +625,17 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 c = Individual(id = 8, infection_time = 10.0)
                 c.state[:incubation_period] = 6.0
                 c.state[:onset_time] = 16.0
-                rv6 = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0,
-                    waning = dt -> dt == 0.0 ? 0.0 : 1.0)
+                rv6 = RingVaccination(
+                    efficacy = 0.0, post_exposure_efficacy = 1.0,
+                    waning = dt -> dt == 0.0 ? 0.0 : 1.0
+                )
                 EpiBranch._abort_infection!(rv6, c, 12.0, StableRNG(1))
                 @test !haskey(c.state, :infection_aborted_time)
 
-                rv7 = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0,
-                    waning = dt -> 1.0)
+                rv7 = RingVaccination(
+                    efficacy = 0.0, post_exposure_efficacy = 1.0,
+                    waning = dt -> 1.0
+                )
                 EpiBranch._abort_infection!(rv7, c, 12.0, StableRNG(1))
                 @test c.state[:infection_aborted_time] == 12.0
 
@@ -554,10 +644,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     # drawn per individual, and an immunity time drawn with them:
                     # waning scales each contact's own draw, on the clock that
                     # starts at that contact's own immunity onset.
-                    rv8 = RingVaccination(efficacy = Uniform(0.3, 0.9),
+                    rv8 = RingVaccination(
+                        efficacy = Uniform(0.3, 0.9),
                         post_exposure_efficacy = (rng, ind) -> 0.6,
                         onward_efficacy = Uniform(0.2, 0.8),
-                        delay_to_immunity = Uniform(7.0, 21.0), waning = decay)
+                        delay_to_immunity = Uniform(7.0, 21.0), waning = decay
+                    )
                     c = Individual(id = 9)
                     EpiBranch._record_vaccination!(rv8, c, 3.0, StableRNG(7))
                     eff = c.state[:vaccine_efficacy]
@@ -571,18 +663,20 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     retained = decay(20.0)
                     @test EpiBranch._sample_value(
                         EpiBranch._contact_risk(rv8, c).block_probability,
-                        StableRNG(1), nothing, c, nothing) ≈
-                          1 - (1 - eff * retained) * (1 - 0.6 * retained)
+                        StableRNG(1), nothing, c, nothing
+                    ) ≈
+                        1 - (1 - eff * retained) * (1 - 0.6 * retained)
 
                     other = Individual(id = 10, infection_time = imm_t + 20.0)
                     @test EpiBranch._sample_value(
                         EpiBranch._onward_risk(rv8, c).block_probability,
-                        StableRNG(1), c, other, nothing) ≈ onward * retained
+                        StableRNG(1), c, other, nothing
+                    ) ≈ onward * retained
 
                     # The abort takes the contact's own post-exposure draw at
                     # `waning(0)`, which `decay` leaves at full strength.
                     @test EpiBranch._post_exposure_efficacy(rv8, c) *
-                          EpiBranch._retained(decay, 0.0) ≈ 0.6
+                        EpiBranch._retained(decay, 0.0) ≈ 0.6
                 end
             end
         end
@@ -596,11 +690,16 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
             rv = RingVaccination(efficacy = 0.9, delay_to_immunity = Uniform(7.0, 21.0))
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv], attributes = clinical);
-                condition = 50:300, max_cases = 300, rng = StableRNG(12))
-            delays = [immunity_time(ind) - ind.state[:vaccination_time]
-                      for ind in state.individuals if is_vaccinated(ind)]
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical
+                );
+                condition = 50:300, max_cases = 300, rng = StableRNG(12)
+            )
+            delays = [
+                immunity_time(ind) - ind.state[:vaccination_time]
+                    for ind in state.individuals if is_vaccinated(ind)
+            ]
             @test !isempty(delays)
             @test all(7.0 .<= delays .<= 21.0)
             # Variation confirms a fresh draw per contact, not one sample
@@ -621,17 +720,22 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
             attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
-            rv = RingVaccination(efficacy = 0.9,
-                delay_to_immunity = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 30.0)
+            rv = RingVaccination(
+                efficacy = 0.9,
+                delay_to_immunity = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 30.0
+            )
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv], attributes = attrs);
-                condition = 50:300, max_cases = 300, rng = StableRNG(2))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = attrs
+                );
+                condition = 50:300, max_cases = 300, rng = StableRNG(2)
+            )
             vaccinated = filter(is_vaccinated, state.individuals)
             @test !isempty(vaccinated)  # otherwise the test is vacuous
             for ind in vaccinated
                 @test immunity_time(ind) ==
-                      ind.state[:vaccination_time] + (ind.state[:age] >= 50 ? 1.0 : 30.0)
+                    ind.state[:vaccination_time] + (ind.state[:age] >= 50 ? 1.0 : 30.0)
             end
         end
 
@@ -642,9 +746,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # Coverage = 0 means nobody gets vaccinated, even though traced.
             rv_zero = RingVaccination(efficacy = 0.9, coverage = 0.0)
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv_zero], attributes = clinical);
-                max_cases = 100, rng = StableRNG(42))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv_zero], attributes = clinical
+                );
+                max_cases = 100, rng = StableRNG(42)
+            )
             @test count(is_vaccinated, state.individuals) == 0
             @test count(is_traced, state.individuals) > 0
 
@@ -652,9 +759,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # traced contact is vaccinated.
             rv_full = RingVaccination(efficacy = 0.9, coverage = 1.0)
             state_full = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv_full], attributes = clinical);
-                max_cases = 100, rng = StableRNG(42))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv_full], attributes = clinical
+                );
+                max_cases = 100, rng = StableRNG(42)
+            )
             n_vacc_full = count(is_vaccinated, state_full.individuals)
             @test n_vacc_full > 0
 
@@ -663,31 +773,46 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             rv_partial = RingVaccination(efficacy = 0.9, coverage = 0.3)
             n_vacc_partial = sum(
                 count(is_vaccinated, s.individuals)
-            for s in simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv_partial], attributes = clinical),
-                30; max_cases = 100, rng = StableRNG(7)))
+                    for s in simulate(
+                        ModelSpec(
+                            BranchingProcess(Poisson(3.0), Exponential(5.0));
+                            interventions = [iso, ct, rv_partial], attributes = clinical
+                        ),
+                        30; max_cases = 100, rng = StableRNG(7)
+                    )
+            )
             n_vacc_full_batch = sum(
                 count(is_vaccinated, s.individuals)
-            for s in simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv_full], attributes = clinical),
-                30; max_cases = 100, rng = StableRNG(7)))
+                    for s in simulate(
+                        ModelSpec(
+                            BranchingProcess(Poisson(3.0), Exponential(5.0));
+                            interventions = [iso, ct, rv_full], attributes = clinical
+                        ),
+                        30; max_cases = 100, rng = StableRNG(7)
+                    )
+            )
             @test n_vacc_partial < n_vacc_full_batch
         end
 
         @testset "Coverage accepts a function" begin
             # Age-conditional coverage: 50+ always vaccinated, under-50 never.
-            attrs = [clinical,
-                demographics(age_distribution = Uniform(0, 90))]
+            attrs = [
+                clinical,
+                demographics(age_distribution = Uniform(0, 90)),
+            ]
             iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
             ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
-            rv = RingVaccination(efficacy = 0.9,
-                coverage = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0)
+            rv = RingVaccination(
+                efficacy = 0.9,
+                coverage = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0
+            )
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv], attributes = attrs);
-                max_cases = 200, rng = StableRNG(101))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = attrs
+                );
+                max_cases = 200, rng = StableRNG(101)
+            )
             for ind in state.individuals
                 is_vaccinated(ind) && @test ind.state[:age] >= 50
             end
@@ -703,18 +828,26 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             rv_inf = RingVaccination(efficacy = 0.9, eligibility_window = Inf)
             n_inf = sum(
                 count(is_vaccinated, s.individuals)
-            for s in simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv_inf], attributes = clinical),
-                50; max_cases = 100, rng = StableRNG(3)))
+                    for s in simulate(
+                        ModelSpec(
+                            BranchingProcess(Poisson(3.0), Exponential(5.0));
+                            interventions = [iso, ct, rv_inf], attributes = clinical
+                        ),
+                        50; max_cases = 100, rng = StableRNG(3)
+                    )
+            )
 
             rv_narrow = RingVaccination(efficacy = 0.9, eligibility_window = 1.0)
             states_narrow = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv_narrow], attributes = clinical),
-                50; max_cases = 100, rng = StableRNG(3))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv_narrow], attributes = clinical
+                ),
+                50; max_cases = 100, rng = StableRNG(3)
+            )
             n_narrow = sum(
-                count(is_vaccinated, s.individuals) for s in states_narrow)
+                count(is_vaccinated, s.individuals) for s in states_narrow
+            )
             @test n_narrow < n_inf
 
             # Every vaccinated contact must satisfy the window.
@@ -734,7 +867,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             rng = StableRNG(1)
             @test EpiBranch._within_eligibility_window(Inf, unexposed, 3.0, rng)
             @test EpiBranch._within_eligibility_window(
-                (rng, ind) -> Inf, unexposed, 3.0, rng)
+                (rng, ind) -> Inf, unexposed, 3.0, rng
+            )
             @test EpiBranch._within_eligibility_window(21.0, unexposed, 3.0, rng)
             exposed = Individual(id = 2, infection_time = 1.0)
             @test !EpiBranch._within_eligibility_window(1.0, exposed, 3.0, rng)
@@ -745,14 +879,19 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # them, so `:vaccination_time` is the trace time.
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
             for quarantine in (true, false)
-                ct = ContactTracing(probability = 1.0,
+                ct = ContactTracing(
+                    probability = 1.0,
                     isolation_to_trace_delay = Exponential(1.0),
-                    quarantine_on_trace = quarantine)
+                    quarantine_on_trace = quarantine
+                )
                 rv = RingVaccination(efficacy = 0.9)
                 state = simulate(
-                    ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                        interventions = [iso, ct, rv], attributes = clinical);
-                    condition = 50:200, max_cases = 200, rng = StableRNG(11))
+                    ModelSpec(
+                        BranchingProcess(Poisson(2.0), Exponential(5.0));
+                        interventions = [iso, ct, rv], attributes = clinical
+                    );
+                    condition = 50:200, max_cases = 200, rng = StableRNG(11)
+                )
                 n_checked = 0
                 for ind in state.individuals
                     is_vaccinated(ind) || continue
@@ -769,69 +908,103 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # member still gets a dose.
             clinical_asymp = clinical_presentation(
                 incubation_period = LogNormal(1.5, 0.5),
-                prob_asymptomatic = 0.3)
+                prob_asymptomatic = 0.3
+            )
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
-            ct = ContactTracing(probability = 1.0,
+            ct = ContactTracing(
+                probability = 1.0,
                 isolation_to_trace_delay = Exponential(1.0),
-                quarantine_on_trace = false)
+                quarantine_on_trace = false
+            )
             rv = RingVaccination(efficacy = 0.9)
 
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                    interventions = [iso, ct, rv], attributes = clinical_asymp);
-                condition = 50:200, max_cases = 200, rng = StableRNG(1))
+                ModelSpec(
+                    BranchingProcess(Poisson(2.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical_asymp
+                );
+                condition = 50:200, max_cases = 200, rng = StableRNG(1)
+            )
             traced_asymp = filter(
                 ind -> is_traced(ind) && get(ind.state, :asymptomatic, false),
-                state.individuals)
+                state.individuals
+            )
             @test !isempty(traced_asymp)  # otherwise the test is vacuous
             @test all(is_vaccinated, traced_asymp)
         end
 
         @testset "Second dose" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
-            ct = ContactTracing(probability = 1.0,
-                isolation_to_trace_delay = Exponential(1.0))
-            prime = RingVaccination(efficacy = 0.6, delay_to_immunity = 21.0,
-                dose_label = :prime)
+            ct = ContactTracing(
+                probability = 1.0,
+                isolation_to_trace_delay = Exponential(1.0)
+            )
+            prime = RingVaccination(
+                efficacy = 0.6, delay_to_immunity = 21.0,
+                dose_label = :prime
+            )
             process = BranchingProcess(Poisson(2.0), Exponential(5.0))
 
             @testset "Given dose_delay days after the prime" begin
-                boost = RingVaccination(efficacy = 0.5, dose_delay = 28.0,
+                boost = RingVaccination(
+                    efficacy = 0.5, dose_delay = 28.0,
                     delay_to_immunity = 14.0, requires_dose = :prime,
-                    dose_label = :boost)
+                    dose_label = :boost
+                )
                 state = simulate(
-                    ModelSpec(process; interventions = [iso, ct, prime, boost],
-                        attributes = clinical);
-                    condition = 50:200, max_cases = 200, rng = StableRNG(5))
+                    ModelSpec(
+                        process; interventions = [iso, ct, prime, boost],
+                        attributes = clinical
+                    );
+                    condition = 50:200, max_cases = 200, rng = StableRNG(5)
+                )
                 n_boosted = 0
                 for ind in state.individuals
                     get(ind.state, :vaccinated_boost, false) || continue
                     n_boosted += 1
                     @test ind.state[:vaccination_time_boost] ==
-                          ind.state[:vaccination_time_prime] + 28.0
+                        ind.state[:vaccination_time_prime] + 28.0
                 end
                 @test n_boosted > 0  # otherwise the test is vacuous
             end
 
             @testset "A distributional dose_delay is judged on its support" begin
                 spec(ivs) = ModelSpec(process; interventions = ivs, attributes = clinical)
-                prime_delayed = RingVaccination(efficacy = 0.6,
-                    delay_to_immunity = 21.0, dose_delay = 30.0, dose_label = :prime)
-                boost(delay) = RingVaccination(efficacy = 0.5, dose_delay = delay,
-                    delay_to_immunity = 14.0, requires_dose = :prime, dose_label = :boost)
+                prime_delayed = RingVaccination(
+                    efficacy = 0.6,
+                    delay_to_immunity = 21.0, dose_delay = 30.0, dose_label = :prime
+                )
+                boost(delay) = RingVaccination(
+                    efficacy = 0.5, dose_delay = delay,
+                    delay_to_immunity = 14.0, requires_dose = :prime, dose_label = :boost
+                )
 
                 # Every draw falls before the prime, so the boost could never be
                 # given.
-                @test_throws ArgumentError spec([iso, ct, prime_delayed,
-                    boost(Uniform(0.0, 7.0))])
+                @test_throws ArgumentError spec(
+                    [
+                        iso, ct, prime_delayed,
+                        boost(Uniform(0.0, 7.0)),
+                    ]
+                )
                 # Supports that cannot cross are accepted in silence.
-                @test (@test_logs spec([
-                    iso, ct, prime_delayed, boost(Uniform(30.0, 42.0))])) isa
-                      ModelSpec
+                @test (
+                    @test_logs spec(
+                        [
+                            iso, ct, prime_delayed, boost(Uniform(30.0, 42.0)),
+                        ]
+                    )
+                ) isa
+                    ModelSpec
                 # A function cannot be read statically and goes unchecked.
-                @test (@test_logs spec([
-                    iso, ct, prime_delayed, boost((rng, ind) -> 0.0)])) isa
-                      ModelSpec
+                @test (
+                    @test_logs spec(
+                        [
+                            iso, ct, prime_delayed, boost((rng, ind) -> 0.0),
+                        ]
+                    )
+                ) isa
+                    ModelSpec
                 # An unbounded support names no number worth quoting.
                 logs, unbounded = Test.collect_test_logs() do
                     spec([iso, ct, prime_delayed, boost(Normal(35.0, 3.0))])
@@ -844,45 +1017,59 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # Overlapping supports warn, and at run time the contacts whose
                 # boost draw falls before their prime go without it.
                 overlapping = [iso, ct, prime_delayed, boost(Uniform(10.0, 50.0))]
-                @test_logs (:warn, r"can fall before dose :prime") match_mode=:any spec(overlapping)
-                state = simulate(spec(overlapping);
-                    condition = 50:300, max_cases = 300, rng = StableRNG(6))
+                @test_logs (:warn, r"can fall before dose :prime") match_mode = :any spec(overlapping)
+                state = simulate(
+                    spec(overlapping);
+                    condition = 50:300, max_cases = 300, rng = StableRNG(6)
+                )
                 primed = count(
-                    ind -> get(ind.state, :vaccinated_prime, false), state.individuals)
-                boosted = [ind
-                           for ind in state.individuals
-                           if get(ind.state, :vaccinated_boost, false)]
+                    ind -> get(ind.state, :vaccinated_prime, false), state.individuals
+                )
+                boosted = [
+                    ind
+                        for ind in state.individuals
+                        if get(ind.state, :vaccinated_boost, false)
+                ]
                 @test primed > 0
                 @test length(boosted) < primed
                 for ind in boosted
                     @test ind.state[:vaccination_time_boost] >=
-                          ind.state[:vaccination_time_prime]
+                        ind.state[:vaccination_time_prime]
                 end
             end
 
             @testset "dose_delay accepts a function" begin
-                boost = RingVaccination(efficacy = 0.5,
+                boost = RingVaccination(
+                    efficacy = 0.5,
                     dose_delay = (rng, ind) -> iseven(ind.id) ? 10.0 : 20.0,
-                    requires_dose = :prime, dose_label = :boost)
+                    requires_dose = :prime, dose_label = :boost
+                )
                 state = simulate(
-                    ModelSpec(process; interventions = [iso, ct, prime, boost],
-                        attributes = clinical);
-                    condition = 50:200, max_cases = 200, rng = StableRNG(6))
-                boosted = filter(ind -> get(ind.state, :vaccinated_boost, false),
-                    state.individuals)
+                    ModelSpec(
+                        process; interventions = [iso, ct, prime, boost],
+                        attributes = clinical
+                    );
+                    condition = 50:200, max_cases = 200, rng = StableRNG(6)
+                )
+                boosted = filter(
+                    ind -> get(ind.state, :vaccinated_boost, false),
+                    state.individuals
+                )
                 @test !isempty(boosted)  # otherwise the test is vacuous
                 for ind in boosted
                     # Compared against the trace the dose is timed from, since
                     # subtracting the two dose times loses the last bit.
                     @test ind.state[:vaccination_time_boost] ==
-                          ind.state[:trace_time] + (iseven(ind.id) ? 10.0 : 20.0)
+                        ind.state[:trace_time] + (iseven(ind.id) ? 10.0 : 20.0)
                 end
             end
 
             @testset "An unreachable contact draws no dose_delay" begin
                 rv = RingVaccination(efficacy = 0.5, dose_delay = Uniform(1.0, 2.0))
-                state = EpiBranch.new_state(process,
-                    EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(7))
+                state = EpiBranch.new_state(
+                    process,
+                    EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(7)
+                )
                 contact = Individual(id = 2, parent_id = 1, infection_time = 0.0)
                 contact.state[:traced] = true
                 contact.state[:trace_time] = Inf
@@ -895,13 +1082,17 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 spec(ivs) = ModelSpec(process; interventions = ivs, attributes = clinical)
                 lone = RingVaccination(efficacy = 0.5, dose_delay = _UnboundedDelay())
                 @test (@test_logs spec([iso, ct, lone])) isa ModelSpec
-                boost = RingVaccination(efficacy = 0.5, dose_delay = _UnboundedDelay(),
-                    requires_dose = :prime, dose_label = :boost)
+                boost = RingVaccination(
+                    efficacy = 0.5, dose_delay = _UnboundedDelay(),
+                    requires_dose = :prime, dose_label = :boost
+                )
                 @test (@test_logs spec([iso, ct, prime, boost])) isa ModelSpec
                 # An unreadable support leaves an efficacy possibly positive, so
                 # the fields it needs are still required.
-                unreadable = RingVaccination(efficacy = 0.0,
-                    post_exposure_efficacy = _UnboundedDelay())
+                unreadable = RingVaccination(
+                    efficacy = 0.0,
+                    post_exposure_efficacy = _UnboundedDelay()
+                )
                 @test :incubation_period in EpiBranch.required_fields(unreadable)
                 # A distribution that can only be zero aborts nothing.
                 never = RingVaccination(efficacy = 0.0, post_exposure_efficacy = Dirac(0.0))
@@ -910,44 +1101,64 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
             @testset "requires_dose gates the boost on the prime" begin
                 # Nobody is primed, so nobody can be boosted.
-                prime_none = RingVaccination(efficacy = 0.6, coverage = 0.0,
-                    dose_label = :prime)
-                boost = RingVaccination(efficacy = 0.5, requires_dose = :prime,
-                    dose_label = :boost)
+                prime_none = RingVaccination(
+                    efficacy = 0.6, coverage = 0.0,
+                    dose_label = :prime
+                )
+                boost = RingVaccination(
+                    efficacy = 0.5, requires_dose = :prime,
+                    dose_label = :boost
+                )
                 state = simulate(
-                    ModelSpec(process;
+                    ModelSpec(
+                        process;
                         interventions = [iso, ct, prime_none, boost],
-                        attributes = clinical);
-                    condition = 50:200, max_cases = 200, rng = StableRNG(5))
+                        attributes = clinical
+                    );
+                    condition = 50:200, max_cases = 200, rng = StableRNG(5)
+                )
                 @test count(is_traced, state.individuals) > 0
-                @test !any(i -> get(i.state, :vaccinated_boost, false),
-                    state.individuals)
+                @test !any(
+                    i -> get(i.state, :vaccinated_boost, false),
+                    state.individuals
+                )
             end
 
             @testset "Boost coverage thins the boosted among the primed" begin
                 # Full coverage boosts everyone primed; partial coverage
                 # boosts a strict subset. Each run is checked on its own,
                 # because the coverage draws shift the rng stream between runs.
-                full = RingVaccination(efficacy = 0.5, requires_dose = :prime,
-                    dose_label = :boost)
-                partial = RingVaccination(efficacy = 0.5, coverage = 0.5,
-                    requires_dose = :prime, dose_label = :boost)
+                full = RingVaccination(
+                    efficacy = 0.5, requires_dose = :prime,
+                    dose_label = :boost
+                )
+                partial = RingVaccination(
+                    efficacy = 0.5, coverage = 0.5,
+                    requires_dose = :prime, dose_label = :boost
+                )
                 for (boost, boosts_everyone) in ((full, true), (partial, false))
                     states = simulate(
-                        ModelSpec(process; interventions = [iso, ct, prime, boost],
-                            attributes = clinical),
-                        30; max_cases = 100, rng = StableRNG(9))
-                    primed = sum(count(i -> i.state[:vaccinated_prime], s.individuals)
-                    for s in states)
-                    boosted = sum(count(i -> i.state[:vaccinated_boost], s.individuals)
-                    for s in states)
+                        ModelSpec(
+                            process; interventions = [iso, ct, prime, boost],
+                            attributes = clinical
+                        ),
+                        30; max_cases = 100, rng = StableRNG(9)
+                    )
+                    primed = sum(
+                        count(i -> i.state[:vaccinated_prime], s.individuals)
+                            for s in states
+                    )
+                    boosted = sum(
+                        count(i -> i.state[:vaccinated_boost], s.individuals)
+                            for s in states
+                    )
                     @test primed > 0  # otherwise the test is vacuous
                     for s in states, ind in s.individuals
 
                         ind.state[:vaccinated_boost] && @test ind.state[:vaccinated_prime]
                     end
                     boosts_everyone ? (@test boosted == primed) :
-                    (@test 0 < boosted < primed)
+                        (@test 0 < boosted < primed)
                 end
             end
 
@@ -958,20 +1169,27 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 n_boosted = 0
                 n_early = 0
                 for eligibility_time in (60.0, 20.0)
-                    mass_prime = MassVaccination(efficacy = 0.6,
-                        eligibility_time = eligibility_time, dose_label = :prime)
-                    boost = RingVaccination(efficacy = 0.5, dose_delay = 7.0,
-                        requires_dose = :prime, dose_label = :boost)
+                    mass_prime = MassVaccination(
+                        efficacy = 0.6,
+                        eligibility_time = eligibility_time, dose_label = :prime
+                    )
+                    boost = RingVaccination(
+                        efficacy = 0.5, dose_delay = 7.0,
+                        requires_dose = :prime, dose_label = :boost
+                    )
                     states = simulate(
-                        ModelSpec(process; interventions = [iso, ct, mass_prime, boost],
-                            attributes = clinical),
-                        20; max_cases = 300, rng = StableRNG(3))
+                        ModelSpec(
+                            process; interventions = [iso, ct, mass_prime, boost],
+                            attributes = clinical
+                        ),
+                        20; max_cases = 300, rng = StableRNG(3)
+                    )
                     for s in states, ind in s.individuals
 
                         get(ind.state, :vaccinated_boost, false) || continue
                         n_boosted += 1
                         n_early += ind.state[:vaccination_time_boost] <
-                                   ind.state[:vaccination_time_prime]
+                            ind.state[:vaccination_time_prime]
                     end
                 end
                 @test n_boosted > 0  # otherwise the test is vacuous
@@ -981,59 +1199,93 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @testset "A dose scheduled before the one it requires is rejected" begin
                 # List order is right, but the boost arrives at the trace while
                 # the prime does not arrive until 28 days later.
-                late_prime = RingVaccination(efficacy = 0.6, dose_delay = 28.0,
-                    dose_label = :prime)
-                early_boost = RingVaccination(efficacy = 0.5, dose_delay = 0.0,
-                    requires_dose = :prime, dose_label = :boost)
-                @test_throws ArgumentError ModelSpec(process;
+                late_prime = RingVaccination(
+                    efficacy = 0.6, dose_delay = 28.0,
+                    dose_label = :prime
+                )
+                early_boost = RingVaccination(
+                    efficacy = 0.5, dose_delay = 0.0,
+                    requires_dose = :prime, dose_label = :boost
+                )
+                @test_throws ArgumentError ModelSpec(
+                    process;
                     interventions = [iso, ct, late_prime, early_boost],
-                    attributes = clinical)
+                    attributes = clinical
+                )
                 # Same instant is allowed: both doses are given at the trace.
-                same_instant = RingVaccination(efficacy = 0.5,
-                    requires_dose = :prime, dose_label = :boost)
-                @test ModelSpec(process;
+                same_instant = RingVaccination(
+                    efficacy = 0.5,
+                    requires_dose = :prime, dose_label = :boost
+                )
+                @test ModelSpec(
+                    process;
                     interventions = [iso, ct, prime, same_instant],
-                    attributes = clinical) isa ModelSpec
+                    attributes = clinical
+                ) isa ModelSpec
             end
 
             @testset "A dose listed before the one it requires is rejected" begin
-                boost = RingVaccination(efficacy = 0.5, requires_dose = :prime,
-                    dose_label = :boost)
-                @test_throws ArgumentError ModelSpec(process;
-                    interventions = [iso, ct, boost, prime], attributes = clinical)
+                boost = RingVaccination(
+                    efficacy = 0.5, requires_dose = :prime,
+                    dose_label = :boost
+                )
+                @test_throws ArgumentError ModelSpec(
+                    process;
+                    interventions = [iso, ct, boost, prime], attributes = clinical
+                )
                 # Wrapping in `Scheduled` must not hide the requirement.
-                @test_throws ArgumentError ModelSpec(process;
-                    interventions = [iso, ct, Scheduled(boost; start_time = 10.0),
-                        prime], attributes = clinical)
-                @test ModelSpec(process;
+                @test_throws ArgumentError ModelSpec(
+                    process;
+                    interventions = [
+                        iso, ct, Scheduled(boost; start_time = 10.0),
+                        prime,
+                    ], attributes = clinical
+                )
+                @test ModelSpec(
+                    process;
                     interventions = [iso, ct, prime, boost],
-                    attributes = clinical) isa ModelSpec
+                    attributes = clinical
+                ) isa ModelSpec
             end
         end
 
         @testset "Post-exposure efficacy" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
-            ct = ContactTracing(probability = 0.7,
+            ct = ContactTracing(
+                probability = 0.7,
                 isolation_to_trace_delay = Exponential(1.0),
-                quarantine_on_trace = false)
+                quarantine_on_trace = false
+            )
             process = BranchingProcess(Poisson(3.0), Exponential(5.0))
-            scen(iv, attrs = clinical) = ModelSpec(process;
-                interventions = iv, attributes = attrs)
-            post_only(; kwargs...) = RingVaccination(efficacy = 0.0,
-                post_exposure_efficacy = 0.9; kwargs...)
+            scen(iv, attrs = clinical) = ModelSpec(
+                process;
+                interventions = iv, attributes = attrs
+            )
+            post_only(; kwargs...) = RingVaccination(
+                efficacy = 0.0,
+                post_exposure_efficacy = 0.9; kwargs...
+            )
 
             @testset "Distributional post_exposure_efficacy and onward_efficacy sample per contact" begin
                 # Each dose draws once at vaccination time and stores the
                 # result (see `_record_vaccination!`), rather than
                 # resampling on every exposure or onward transmission.
-                rv = RingVaccination(efficacy = 0.0,
-                    post_exposure_efficacy = Beta(8, 2), onward_efficacy = Beta(8, 2))
-                state = simulate(scen([iso, ct, rv]); condition = 50:300,
-                    max_cases = 300, rng = StableRNG(11))
-                posts = [ind.state[:post_exposure_efficacy]
-                         for ind in state.individuals if is_vaccinated(ind)]
-                onwards = [ind.state[:onward_efficacy]
-                           for ind in state.individuals if is_vaccinated(ind)]
+                rv = RingVaccination(
+                    efficacy = 0.0,
+                    post_exposure_efficacy = Beta(8, 2), onward_efficacy = Beta(8, 2)
+                )
+                state = simulate(
+                    scen([iso, ct, rv]); condition = 50:300,
+                    max_cases = 300, rng = StableRNG(11)
+                )
+                posts = [
+                    ind.state[:post_exposure_efficacy]
+                        for ind in state.individuals if is_vaccinated(ind)
+                ]
+                onwards = [
+                    ind.state[:onward_efficacy]
+                        for ind in state.individuals if is_vaccinated(ind)
+                ]
                 @test !isempty(posts)
                 @test all(0 .<= posts .<= 1)
                 @test all(0 .<= onwards .<= 1)
@@ -1046,8 +1298,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @testset "post_exposure_efficacy is drawn once per dose" begin
                 # Even ids always abort, odd ids never, so the draw each contact
                 # kept shows in whether its infection ended.
-                rv = RingVaccination(efficacy = 0.0, delay_to_immunity = 2.0,
-                    post_exposure_efficacy = (rng, ind) -> iseven(ind.id) ? 1.0 : 0.0)
+                rv = RingVaccination(
+                    efficacy = 0.0, delay_to_immunity = 2.0,
+                    post_exposure_efficacy = (rng, ind) -> iseven(ind.id) ? 1.0 : 0.0
+                )
                 rng = StableRNG(11)
                 for id in 2:3
                     contact = Individual(id = id, infection_time = 10.0)
@@ -1060,8 +1314,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             end
 
             @testset "onward_efficacy is drawn once per dose" begin
-                rv = RingVaccination(efficacy = 0.0,
-                    onward_efficacy = (rng, ind) -> ind.id == 1 ? 0.0 : rand(rng))
+                rv = RingVaccination(
+                    efficacy = 0.0,
+                    onward_efficacy = (rng, ind) -> ind.id == 1 ? 0.0 : rand(rng)
+                )
                 contact = Individual(id = 3, parent_id = 2, infection_time = 6.0)
                 # A parent that drew zero gets no onward risk built.
                 parent = Individual(id = 1, infection_time = 0.0)
@@ -1080,10 +1336,14 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @testset "Scalar post_exposure_efficacy and onward_efficacy write no state" begin
                 # A scalar is read off the intervention, so the line list gains
                 # no column for it.
-                rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5,
-                    onward_efficacy = 0.5)
-                state = simulate(scen([iso, ct, rv]); condition = 50:300,
-                    max_cases = 300, rng = StableRNG(11))
+                rv = RingVaccination(
+                    efficacy = 0.0, post_exposure_efficacy = 0.5,
+                    onward_efficacy = 0.5
+                )
+                state = simulate(
+                    scen([iso, ct, rv]); condition = 50:300,
+                    max_cases = 300, rng = StableRNG(11)
+                )
                 vaccinated = filter(is_vaccinated, state.individuals)
                 @test !isempty(vaccinated)  # otherwise the test is vacuous
                 for key in (:post_exposure_efficacy, :onward_efficacy)
@@ -1100,23 +1360,33 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # contact could be isolated only through its trace.
             function aborted_outbreak(eligibility = SymptomaticParent())
                 model = ModelSpec(
-                    BranchingProcess(Dirac(2),
-                        DiscreteNonParametric([1.0, 5.0], [0.5, 0.5]));
+                    BranchingProcess(
+                        Dirac(2),
+                        DiscreteNonParametric([1.0, 5.0], [0.5, 0.5])
+                    );
                     interventions = [
-                        Isolation(onset_to_isolation_delay = Dirac(0.5),
-                            test_sensitivity = (rng, ind) -> ind.parent_id == 0 ? 1.0 : 0.0),
-                        ContactTracing(eligibility, ConstantRate(1.0),
-                            ConstantDelay(Dirac(0.0)), FlagOnly()),
-                        RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0)],
+                        Isolation(
+                            onset_to_isolation_delay = Dirac(0.5),
+                            test_sensitivity = (rng, ind) -> ind.parent_id == 0 ? 1.0 : 0.0
+                        ),
+                        ContactTracing(
+                            eligibility, ConstantRate(1.0),
+                            ConstantDelay(Dirac(0.0)), FlagOnly()
+                        ),
+                        RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0),
+                    ],
                     attributes = clinical_presentation(incubation_period = Dirac(5.0)),
-                    progression = [Recovery(delay = Dirac(3.0))])
+                    progression = [Recovery(delay = Dirac(3.0))]
+                )
                 # This seed gives the index one contact at each time, and the
                 # contact infected at 1 one contact at each of 2 and 6.
-                state = simulate(model; max_generations = 2, max_cases = nothing,
-                    rng = StableRNG(4))
+                state = simulate(
+                    model; max_generations = 2, max_cases = nothing,
+                    rng = StableRNG(4)
+                )
                 cases = filter(is_infected, state.individuals)
                 return state, filter(i -> i.generation == 1, cases),
-                filter(i -> i.generation == 2, cases)
+                    filter(i -> i.generation == 2, cases)
             end
 
             @testset "An aborted infection keeps its earlier transmissions" begin
@@ -1162,15 +1432,22 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     Transition(:early, from = :infection, delay = 1.0),
                     Transition(:worse, from = :early, delay = 1.0),
                     Transition(:hospitalised, from = :infection, delay = 6.0),
-                    Transition(:died, from = :hospitalised, delay = 1.0,
-                        terminal = true),
+                    Transition(
+                        :died, from = :hospitalised, delay = 1.0,
+                        terminal = true
+                    ),
                     Reporting(delay = 0.5, from = :early_time),
-                    Death(delay = 5.0, probability = 1.0,
-                        from = ind -> ind.infection_time),
-                    Recovery(delay = 10.0, from = ind -> ind.infection_time)]
+                    Death(
+                        delay = 5.0, probability = 1.0,
+                        from = ind -> ind.infection_time
+                    ),
+                    Recovery(delay = 10.0, from = ind -> ind.infection_time),
+                ]
                 function course(aborted)
-                    state = EpiBranch.new_state(process, progression,
-                        EpiBranch.NoAttributes(), StableRNG(1))
+                    state = EpiBranch.new_state(
+                        process, progression,
+                        EpiBranch.NoAttributes(), StableRNG(1)
+                    )
                     ind = Individual(id = 1, infection_time = 1.0)
                     aborted && (ind.state[:infection_aborted_time] = 4.0)
                     EpiBranch.resolve_transitions!(state, ind)
@@ -1194,13 +1471,20 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
             @testset "No transition takes effect after an abort in simulation" begin
                 progression = [
-                    Transition(:hospitalised, from = :infection, delay = Gamma(4, 2),
-                        probability = 0.2),
-                    Transition(:died, from = :hospitalised, delay = Gamma(2, 3),
-                        probability = 0.5, terminal = true),
-                    Death(delay = LogNormal(2.0, 0.4), probability = 0.1)]
-                spec = ModelSpec(process; progression,
-                    interventions = [iso, ct, post_only()], attributes = clinical)
+                    Transition(
+                        :hospitalised, from = :infection, delay = Gamma(4, 2),
+                        probability = 0.2
+                    ),
+                    Transition(
+                        :died, from = :hospitalised, delay = Gamma(2, 3),
+                        probability = 0.5, terminal = true
+                    ),
+                    Death(delay = LogNormal(2.0, 0.4), probability = 0.1),
+                ]
+                spec = ModelSpec(
+                    process; progression,
+                    interventions = [iso, ct, post_only()], attributes = clinical
+                )
                 results = simulate(spec, 30; max_cases = 300, rng = StableRNG(2))
                 aborted = 0
                 late = 0
@@ -1210,8 +1494,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                         t = get(ind.state, :infection_aborted_time, nothing)
                         t === nothing && continue
                         aborted += 1
-                        for key in (:hospitalised_time, :died_time,
-                            :death_candidate_time, :outcome_time)
+                        for key in (
+                                :hospitalised_time, :died_time,
+                                :death_candidate_time, :outcome_time,
+                            )
                             get(ind.state, key, Inf) < Inf &&
                                 ind.state[key] >= t && (late += 1)
                         end
@@ -1219,7 +1505,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     # Aborted cases stay in the line list and the chain sizes.
                     n_cases = count(is_infected, s.individuals)
                     size(linelist(s), 1) == n_cases &&
-                    sum(chain_statistics(s).size) == n_cases || (miscounted += 1)
+                        sum(chain_statistics(s).size) == n_cases || (miscounted += 1)
                 end
                 @test aborted > 0
                 @test late == 0
@@ -1237,12 +1523,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # `efficacy` needs immunity before the exposure, which a dose
                 # given at the trace never achieves here; `post_exposure_efficacy`
                 # needs immunity before onset, which it often achieves.
-                base = simulate(scen([iso, ct]), 400; max_cases = 200,
-                    rng = StableRNG(42))
-                pre = simulate(scen([iso, ct, RingVaccination(efficacy = 0.9)]),
-                    400; max_cases = 200, rng = StableRNG(42))
-                post = simulate(scen([iso, ct, post_only()]),
-                    400; max_cases = 200, rng = StableRNG(42))
+                base = simulate(
+                    scen([iso, ct]), 400; max_cases = 200,
+                    rng = StableRNG(42)
+                )
+                pre = simulate(
+                    scen([iso, ct, RingVaccination(efficacy = 0.9)]),
+                    400; max_cases = 200, rng = StableRNG(42)
+                )
+                post = simulate(
+                    scen([iso, ct, post_only()]),
+                    400; max_cases = 200, rng = StableRNG(42)
+                )
 
                 @test containment_probability(pre) == containment_probability(base)
                 @test containment_probability(post) > containment_probability(base)
@@ -1253,12 +1545,21 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # immunity, and only for contacts whose immunity arrives before
                 # their onset, so it cannot do much more than blocking all of a
                 # vaccinated contact's later transmission.
-                containment(rv) = mean(containment_probability(
-                                           simulate(scen([iso, ct, rv]), 200;
-                                           max_cases = 200, rng = StableRNG(seed)))
-                for seed in 1:5)
-                onward = containment(RingVaccination(efficacy = 0.0,
-                    onward_efficacy = 0.9))
+                containment(rv) = mean(
+                    containment_probability(
+                        simulate(
+                            scen([iso, ct, rv]), 200;
+                            max_cases = 200, rng = StableRNG(seed)
+                        )
+                    )
+                        for seed in 1:5
+                )
+                onward = containment(
+                    RingVaccination(
+                        efficacy = 0.0,
+                        onward_efficacy = 0.9
+                    )
+                )
                 @test containment(post_only()) < onward + 0.05
             end
 
@@ -1266,25 +1567,40 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # Incubation periods here average about 5 days, so immunity 100
                 # days after the trace never arrives before an onset, and the
                 # run should match one without the parameter draw for draw.
-                slow(post) = RingVaccination(efficacy = 0.0,
-                    post_exposure_efficacy = post, delay_to_immunity = 100.0)
-                fingerprint(states) = [(ind.id, ind.infection_time,
-                                           sort!(
-                                               [kv
-                                                for kv in ind.state
-                                                if first(kv) != :_intervention_actions];
-                                               by = first))
-                                       for s in states for ind in s.individuals]
-                base = simulate(scen([iso, ct, slow(0.0)]), 100; max_cases = 200,
-                    rng = StableRNG(3))
-                results = simulate(scen([iso, ct, slow(1.0)]), 100; max_cases = 200,
-                    rng = StableRNG(3))
+                slow(post) = RingVaccination(
+                    efficacy = 0.0,
+                    post_exposure_efficacy = post, delay_to_immunity = 100.0
+                )
+                fingerprint(states) = [
+                    (
+                        ind.id, ind.infection_time,
+                        sort!(
+                            [
+                                kv
+                                    for kv in ind.state
+                                    if first(kv) != :_intervention_actions
+                            ];
+                            by = first
+                        ),
+                    )
+                        for s in states for ind in s.individuals
+                ]
+                base = simulate(
+                    scen([iso, ct, slow(0.0)]), 100; max_cases = 200,
+                    rng = StableRNG(3)
+                )
+                results = simulate(
+                    scen([iso, ct, slow(1.0)]), 100; max_cases = 200,
+                    rng = StableRNG(3)
+                )
                 @test isequal(fingerprint(results), fingerprint(base))
             end
 
             @testset "The abort races immunity against onset" begin
-                rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0,
-                    delay_to_immunity = 2.0)
+                rv = RingVaccination(
+                    efficacy = 0.0, post_exposure_efficacy = 1.0,
+                    delay_to_immunity = 2.0
+                )
                 function contact_with(incubation)
                     c = Individual(id = 1, infection_time = 10.0)
                     c.state[:incubation_period] = incubation
@@ -1322,8 +1638,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 @test !haskey(c.state, :infection_aborted_time)
 
                 # Only a dose that can matter draws from the rng.
-                partial = RingVaccination(efficacy = 0.0,
-                    post_exposure_efficacy = 0.5, delay_to_immunity = 2.0)
+                partial = RingVaccination(
+                    efficacy = 0.0,
+                    post_exposure_efficacy = 0.5, delay_to_immunity = 2.0
+                )
                 r1, r2 = StableRNG(9), StableRNG(9)
                 EpiBranch._abort_infection!(partial, contact_with(3.0), 12.0, r1)
                 @test rand(r1) == rand(r2)
@@ -1332,13 +1650,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @testset "Setting both efficacies warns" begin
                 both = RingVaccination(efficacy = 0.9, post_exposure_efficacy = 0.9)
                 @test_logs (:warn, r"both `efficacy` and `post_exposure_efficacy`") ModelSpec(
-                    process; interventions = [iso, ct, both], attributes = clinical)
+                    process; interventions = [iso, ct, both], attributes = clinical
+                )
                 # Either alone is silent.
-                @test_logs ModelSpec(process;
-                    interventions = [iso, ct, post_only()], attributes = clinical)
-                @test_logs ModelSpec(process;
+                @test_logs ModelSpec(
+                    process;
+                    interventions = [iso, ct, post_only()], attributes = clinical
+                )
+                @test_logs ModelSpec(
+                    process;
                     interventions = [iso, ct, RingVaccination(efficacy = 0.9)],
-                    attributes = clinical)
+                    attributes = clinical
+                )
             end
 
             @testset "Every combination of risks is returned" begin
@@ -1357,8 +1680,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 susceptibility_only = RingVaccination(efficacy = 0.5)
                 post = post_only()
                 onward_only = RingVaccination(efficacy = 0.0, onward_efficacy = 0.5)
-                post_onward = RingVaccination(efficacy = 0.0,
-                    post_exposure_efficacy = 0.5, onward_efficacy = 0.5)
+                post_onward = RingVaccination(
+                    efficacy = 0.0,
+                    post_exposure_efficacy = 0.5, onward_efficacy = 0.5
+                )
 
                 @test risks(susceptibility_only) == 1
                 @test risks(post) == 1
@@ -1377,11 +1702,15 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @testset "The engine ends an aborted infection" begin
                 parent = Individual(id = 1, infection_time = 0.0)
                 contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
-                @test EpiBranch.competing_risk(EpiBranch.AbortedInfection(),
-                    parent, contact, nothing) === nothing
+                @test EpiBranch.competing_risk(
+                    EpiBranch.AbortedInfection(),
+                    parent, contact, nothing
+                ) === nothing
                 parent.state[:infection_aborted_time] = 4.0
-                risk = EpiBranch.competing_risk(EpiBranch.AbortedInfection(),
-                    parent, contact, nothing)
+                risk = EpiBranch.competing_risk(
+                    EpiBranch.AbortedInfection(),
+                    parent, contact, nothing
+                )
                 @test risk.event_time == 4.0
                 @test risk.block_probability == 1.0
             end
@@ -1391,8 +1720,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # transmission does not depend on whether the ring vaccination
                 # that recorded it is still active.
                 scheduled = Scheduled(post_only(); end_time = 15.0)
-                results = simulate(scen([iso, ct, scheduled]), 100;
-                    max_cases = 300, rng = StableRNG(1))
+                results = simulate(
+                    scen([iso, ct, scheduled]), 100;
+                    max_cases = 300, rng = StableRNG(1)
+                )
                 aborted = 0
                 after_abort = 0
                 for s in results
@@ -1413,7 +1744,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @testset "Requires an incubation period" begin
                 @test :incubation_period in EpiBranch.required_fields(post_only())
                 @test :incubation_period ∉
-                      EpiBranch.required_fields(RingVaccination(efficacy = 0.9))
+                    EpiBranch.required_fields(RingVaccination(efficacy = 0.9))
             end
         end
 
@@ -1426,15 +1757,20 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # certain to block.
             iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
             ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
-            rv = RingVaccination(efficacy = 0.0, onward_efficacy = 1.0,
-                delay_to_immunity = 0.0)
+            rv = RingVaccination(
+                efficacy = 0.0, onward_efficacy = 1.0,
+                delay_to_immunity = 0.0
+            )
 
             saw_blocked_chain = false
             for seed in 1:5
                 state = simulate(
-                    ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                        interventions = [iso, ct, rv], attributes = clinical);
-                    max_cases = 500, rng = StableRNG(seed))
+                    ModelSpec(
+                        BranchingProcess(Poisson(3.0), Exponential(5.0));
+                        interventions = [iso, ct, rv], attributes = clinical
+                    );
+                    max_cases = 500, rng = StableRNG(seed)
+                )
                 by_id = Dict(ind.id => ind for ind in state.individuals)
                 for child in state.individuals
                     child.parent_id == 0 && continue
@@ -1462,29 +1798,37 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
             rng1 = StableRNG(42)
             results_default = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv], attributes = clinical),
-                100; max_cases = 200, rng = rng1)
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical
+                ),
+                100; max_cases = 200, rng = rng1
+            )
 
             # Explicit onward_efficacy = 0.0 should reproduce the same
             # outcome with the same seed (no extra rng draws).
             rv_explicit = RingVaccination(efficacy = 0.9, onward_efficacy = 0.0)
             rng2 = StableRNG(42)
             results_explicit = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv_explicit], attributes = clinical),
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv_explicit], attributes = clinical
+                ),
                 100;
                 max_cases = 200,
-                rng = rng2)
+                rng = rng2
+            )
 
             @test [s.cumulative_cases for s in results_default] ==
-                  [s.cumulative_cases for s in results_explicit]
+                [s.cumulative_cases for s in results_explicit]
         end
 
         @testset "Severity efficacy" begin
             @testset "Recorded alongside the other per-dose state" begin
-                rv = RingVaccination(efficacy = 0.0, severity_efficacy = 0.4,
-                    delay_to_immunity = 5.0)
+                rv = RingVaccination(
+                    efficacy = 0.0, severity_efficacy = 0.4,
+                    delay_to_immunity = 5.0
+                )
                 contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
                 EpiBranch._record_vaccination!(rv, contact, 3.0, StableRNG(1))
                 @test contact.state[:severity_efficacy] == 0.4
@@ -1504,37 +1848,59 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # has developed by their own onset from the (otherwise
                 # certain) death drawn below.
                 iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-                ct = ContactTracing(probability = 1.0,
-                    isolation_to_trace_delay = Exponential(0.5))
-                progression = [Death(delay = 0.0,
-                    probability = (rng, ind) -> immunity_time(ind) <= onset_time(ind) ?
-                                                1.0 - severity_efficacy(ind) : 1.0)]
-                scen(rv) = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                ct = ContactTracing(
+                    probability = 1.0,
+                    isolation_to_trace_delay = Exponential(0.5)
+                )
+                progression = [
+                    Death(
+                        delay = 0.0,
+                        probability = (rng, ind) -> immunity_time(ind) <= onset_time(ind) ?
+                            1.0 - severity_efficacy(ind) : 1.0
+                    ),
+                ]
+                scen(rv) = ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv], attributes = clinical,
-                    progression = progression)
+                    progression = progression
+                )
                 died(ind) = get(ind.state, :outcome, nothing) === :died
 
-                rv_protected = RingVaccination(efficacy = 0.0, severity_efficacy = 1.0,
-                    delay_to_immunity = 0.0)
-                results_protected = simulate(scen(rv_protected), 50;
-                    max_cases = 200, rng = StableRNG(42))
+                rv_protected = RingVaccination(
+                    efficacy = 0.0, severity_efficacy = 1.0,
+                    delay_to_immunity = 0.0
+                )
+                results_protected = simulate(
+                    scen(rv_protected), 50;
+                    max_cases = 200, rng = StableRNG(42)
+                )
 
-                rv_unprotected = RingVaccination(efficacy = 0.0, severity_efficacy = 0.0,
-                    delay_to_immunity = 0.0)
-                results_unprotected = simulate(scen(rv_unprotected), 50;
-                    max_cases = 200, rng = StableRNG(42))
+                rv_unprotected = RingVaccination(
+                    efficacy = 0.0, severity_efficacy = 0.0,
+                    delay_to_immunity = 0.0
+                )
+                results_unprotected = simulate(
+                    scen(rv_unprotected), 50;
+                    max_cases = 200, rng = StableRNG(42)
+                )
 
                 # Case counts are bit-identical: severity_efficacy does not
                 # touch transmission.
                 @test [s.cumulative_cases for s in results_protected] ==
-                      [s.cumulative_cases for s in results_unprotected]
+                    [s.cumulative_cases for s in results_unprotected]
 
-                n_vaccinated = sum(count(is_vaccinated, s.individuals)
-                for s in results_protected)
-                n_died_protected = sum(count(died, s.individuals)
-                for s in results_protected)
-                n_died_unprotected = sum(count(died, s.individuals)
-                for s in results_unprotected)
+                n_vaccinated = sum(
+                    count(is_vaccinated, s.individuals)
+                        for s in results_protected
+                )
+                n_died_protected = sum(
+                    count(died, s.individuals)
+                        for s in results_protected
+                )
+                n_died_unprotected = sum(
+                    count(died, s.individuals)
+                        for s in results_unprotected
+                )
 
                 @test n_vaccinated > 0  # otherwise the test is vacuous
                 @test n_died_protected < n_died_unprotected
@@ -1552,28 +1918,46 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # develops before onset, so severity_efficacy must leave
                 # every death exactly as if the dose were never given.
                 iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-                ct = ContactTracing(probability = 1.0,
-                    isolation_to_trace_delay = Exponential(0.5))
-                progression = [Death(delay = 0.0,
-                    probability = (rng, ind) -> immunity_time(ind) <= onset_time(ind) ?
-                                                1.0 - severity_efficacy(ind) : 1.0)]
-                scen(rv) = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+                ct = ContactTracing(
+                    probability = 1.0,
+                    isolation_to_trace_delay = Exponential(0.5)
+                )
+                progression = [
+                    Death(
+                        delay = 0.0,
+                        probability = (rng, ind) -> immunity_time(ind) <= onset_time(ind) ?
+                            1.0 - severity_efficacy(ind) : 1.0
+                    ),
+                ]
+                scen(rv) = ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
                     interventions = [iso, ct, rv], attributes = clinical,
-                    progression = progression)
+                    progression = progression
+                )
                 died(ind) = get(ind.state, :outcome, nothing) === :died
 
-                rv_late = RingVaccination(efficacy = 0.0, severity_efficacy = 1.0,
-                    delay_to_immunity = 1e6)
-                results_late = simulate(scen(rv_late), 50;
-                    max_cases = 200, rng = StableRNG(42))
+                rv_late = RingVaccination(
+                    efficacy = 0.0, severity_efficacy = 1.0,
+                    delay_to_immunity = 1.0e6
+                )
+                results_late = simulate(
+                    scen(rv_late), 50;
+                    max_cases = 200, rng = StableRNG(42)
+                )
 
-                rv_none = RingVaccination(efficacy = 0.0, severity_efficacy = 0.0,
-                    delay_to_immunity = 1e6)
-                results_none = simulate(scen(rv_none), 50;
-                    max_cases = 200, rng = StableRNG(42))
+                rv_none = RingVaccination(
+                    efficacy = 0.0, severity_efficacy = 0.0,
+                    delay_to_immunity = 1.0e6
+                )
+                results_none = simulate(
+                    scen(rv_none), 50;
+                    max_cases = 200, rng = StableRNG(42)
+                )
 
-                n_vaccinated = sum(count(is_vaccinated, s.individuals)
-                for s in results_late)
+                n_vaccinated = sum(
+                    count(is_vaccinated, s.individuals)
+                        for s in results_late
+                )
                 n_died_late = sum(count(died, s.individuals) for s in results_late)
                 n_died_none = sum(count(died, s.individuals) for s in results_none)
 
@@ -1586,18 +1970,24 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # Death transition's `probability` computes, so it composes
                 # with age-conditional CFR the same way `efficacy` composes
                 # with any other per-individual heterogeneity.
-                ind_high = Individual(id = 1, infection_time = 0.0,
-                    state = Dict{Symbol, Any}(:onset_time => 5.0, :age => 85))
-                ind_low = Individual(id = 2, infection_time = 0.0,
-                    state = Dict{Symbol, Any}(:onset_time => 5.0, :age => 20))
-                rv = RingVaccination(efficacy = 0.0, severity_efficacy = 0.5,
-                    delay_to_immunity = 0.0)
+                ind_high = Individual(
+                    id = 1, infection_time = 0.0,
+                    state = Dict{Symbol, Any}(:onset_time => 5.0, :age => 85)
+                )
+                ind_low = Individual(
+                    id = 2, infection_time = 0.0,
+                    state = Dict{Symbol, Any}(:onset_time => 5.0, :age => 20)
+                )
+                rv = RingVaccination(
+                    efficacy = 0.0, severity_efficacy = 0.5,
+                    delay_to_immunity = 0.0
+                )
                 for ind in (ind_high, ind_low)
                     EpiBranch._record_vaccination!(rv, ind, 0.0, StableRNG(1))
                 end
                 base(ind) = ind.state[:age] >= 80 ? 0.3 : 0.02
                 cfr(ind) = immunity_time(ind) <= onset_time(ind) ?
-                           base(ind) * (1 - severity_efficacy(ind)) : base(ind)
+                    base(ind) * (1 - severity_efficacy(ind)) : base(ind)
                 @test cfr(ind_high) ≈ 0.15
                 @test cfr(ind_low) ≈ 0.01
             end
@@ -1607,13 +1997,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     @testset "Contact tracing without quarantine" begin
         rng = StableRNG(42)
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
-            quarantine_on_trace = false)
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
+            quarantine_on_trace = false
+        )
 
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                interventions = [iso, ct], attributes = clinical);
-            max_cases = 50, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [iso, ct], attributes = clinical
+            );
+            max_cases = 50, rng = rng
+        )
 
         n_traced = count(is_traced, state.individuals)
         if n_traced > 0
@@ -1635,13 +2030,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # vaccination keys on the trace-driven isolation time, so it must still
         # fire (previously it silently no-op'd when tracing only flagged).
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-        ct = ContactTracing(probability = 1.0,
-            isolation_to_trace_delay = Exponential(0.5), quarantine_on_trace = false)
+        ct = ContactTracing(
+            probability = 1.0,
+            isolation_to_trace_delay = Exponential(0.5), quarantine_on_trace = false
+        )
         rv = RingVaccination(efficacy = 0.8)
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                interventions = [iso, ct, rv], attributes = clinical);
-            max_cases = 300, rng = StableRNG(3))
+            ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [iso, ct, rv], attributes = clinical
+            );
+            max_cases = 300, rng = StableRNG(3)
+        )
         # Contacts were flagged (not quarantined) and then ring-vaccinated.
         @test any(ind -> is_traced(ind) && !is_quarantined(ind), state.individuals)
         @test count(is_vaccinated, state.individuals) > 0
@@ -1662,17 +2062,22 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # because the engine stops before they would be active.
         rng = StableRNG(20260601)
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.4)
-        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
-            quarantine_on_trace = false)
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
+            quarantine_on_trace = false
+        )
 
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                interventions = [iso, ct], attributes = clinical);
-            max_cases = 500, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [iso, ct], attributes = clinical
+            );
+            max_cases = 500, rng = rng
+        )
 
         resolved = filter(
             ind -> !isempty(ind.secondary_case_ids) ||
-                   ind.parent_id == 0,
+                ind.parent_id == 0,
             state.individuals
         )
         traced_symptomatic = filter(
@@ -1695,25 +2100,34 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             rng1 = StableRNG(42)
             iso_late = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0)); start_time = 20.0)
             results_late = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso_late], attributes = clinical),
-                100; max_cases = 200, rng = rng1)
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso_late], attributes = clinical
+                ),
+                100; max_cases = 200, rng = rng1
+            )
 
             rng2 = StableRNG(42)
             iso_always = Isolation(onset_to_isolation_delay = Exponential(1.0))
             results_always = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso_always], attributes = clinical),
-                100; max_cases = 200, rng = rng2)
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso_always], attributes = clinical
+                ),
+                100; max_cases = 200, rng = rng2
+            )
 
             @test containment_probability(results_always) >=
-                  containment_probability(results_late)
+                containment_probability(results_late)
 
             # Fields should still be initialised on all individuals
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso_late], attributes = clinical);
-                max_cases = 50, rng = StableRNG(99))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso_late], attributes = clinical
+                );
+                max_cases = 50, rng = StableRNG(99)
+            )
             for ind in state.individuals
                 @test haskey(ind.state, :isolated)
             end
@@ -1724,30 +2138,41 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
             rng1 = StableRNG(42)
             results_scheduled = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso], attributes = clinical),
-                100; max_cases = 200, rng = rng1)
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso], attributes = clinical
+                ),
+                100; max_cases = 200, rng = rng1
+            )
 
             # Compare with always-on isolation — scheduled should contain less
             rng2 = StableRNG(42)
             iso_always = Isolation(onset_to_isolation_delay = Exponential(0.5))
             results_always = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso_always], attributes = clinical),
-                100; max_cases = 200, rng = rng2)
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso_always], attributes = clinical
+                ),
+                100; max_cases = 200, rng = rng2
+            )
 
             @test containment_probability(results_always) >=
-                  containment_probability(results_scheduled)
+                containment_probability(results_scheduled)
         end
 
         @testset "custom predicate" begin
-            iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0)),
-                state -> state.current_generation >= 3)
+            iso = Scheduled(
+                Isolation(onset_to_isolation_delay = Exponential(1.0)),
+                state -> state.current_generation >= 3
+            )
 
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso], attributes = clinical);
-                max_cases = 100, rng = StableRNG(42))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso], attributes = clinical
+                );
+                max_cases = 100, rng = StableRNG(42)
+            )
 
             # Verify the intervention ran without errors and fields exist
             for ind in state.individuals
@@ -1757,13 +2182,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         @testset "end_time deactivates" begin
             # Active only in a short window
-            iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(0.5));
-                start_time = 5.0, end_time = 10.0)
+            iso = Scheduled(
+                Isolation(onset_to_isolation_delay = Exponential(0.5));
+                start_time = 5.0, end_time = 10.0
+            )
 
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso], attributes = clinical);
-                max_cases = 100, rng = StableRNG(42))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso], attributes = clinical
+                );
+                max_cases = 100, rng = StableRNG(42)
+            )
 
             # Late individuals should not be isolated
             late = filter(i -> is_infected(i) && i.infection_time > 15.0, state.individuals)
@@ -1776,12 +2206,16 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             ct = Scheduled(
                 ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.0));
-                start_after_cases = 10)
+                start_after_cases = 10
+            )
 
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct], attributes = clinical);
-                max_cases = 50, rng = StableRNG(42))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct], attributes = clinical
+                );
+                max_cases = 50, rng = StableRNG(42)
+            )
 
             # All individuals should have both isolation and tracing fields
             for ind in state.individuals
@@ -1794,9 +2228,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(0.1)); start_time = 15.0)
 
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso], attributes = clinical);
-                max_cases = 200, rng = StableRNG(42))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso], attributes = clinical
+                );
+                max_cases = 200, rng = StableRNG(42)
+            )
 
             # No individual should be isolated with isolation_time < 15.0
             for ind in state.individuals

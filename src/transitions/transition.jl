@@ -51,8 +51,10 @@ struct Transition{D, P, F} <: AbstractClinicalTransition
     terminal::Bool
 end
 
-function Transition(state::Symbol; delay = nothing, rate = nothing,
-        from = :infection, probability = 1.0, terminal::Bool = false)
+function Transition(
+        state::Symbol; delay = nothing, rate = nothing,
+        from = :infection, probability = 1.0, terminal::Bool = false
+    )
     d = _transition_delay(delay, rate)
     return Transition(state, Symbol(state, :_time), d, probability, from, terminal)
 end
@@ -61,8 +63,11 @@ end
 # `r` is an exponential (Markovian) transition with hazard `r`, so the delay is
 # `Exponential(1 / r)` with mean `1 / r`.
 function _transition_delay(delay, rate)
-    (delay === nothing) == (rate === nothing) && throw(ArgumentError(
-        "Transition needs exactly one of `delay` or `rate`"))
+    (delay === nothing) == (rate === nothing) && throw(
+        ArgumentError(
+            "Transition needs exactly one of `delay` or `rate`"
+        )
+    )
     rate === nothing && return delay
     rate > 0 || throw(ArgumentError("rate must be positive, got $rate"))
     return Exponential(1 / rate)

@@ -19,7 +19,7 @@
 # `1`; a `Function` depends on the individual and cannot be judged here, so
 # `missing`.
 function _terminal_certain(t)
-    hasproperty(t, :probability) ? _certain_probability(t.probability) : true
+    return hasproperty(t, :probability) ? _certain_probability(t.probability) : true
 end
 _certain_probability(p::Real) = isone(p)
 _certain_probability(p) = missing
@@ -39,14 +39,14 @@ function _warn_incomplete_terminal_coverage(progression)
     any(isequal(true), certainties) && return nothing
     any(ismissing, certainties) && return nothing
     @warn "Every terminal transition in `progression` is gated below " *
-          "probability 1, and independent gates do not give an exclusive " *
-          "outcome: a case can clear every gate and reach no terminal state, " *
-          "leaving `:outcome` unset and, on a structure-driven model, its " *
-          "infectious window never closed. If the outcomes are meant to " *
-          "partition the population exactly (an exact case-fatality ratio, " *
-          "say), build their probabilities with `exclusive_probabilities`; " *
-          "otherwise add an unconditional terminal transition to guarantee " *
-          "every case ends somewhere."
+        "probability 1, and independent gates do not give an exclusive " *
+        "outcome: a case can clear every gate and reach no terminal state, " *
+        "leaving `:outcome` unset and, on a structure-driven model, its " *
+        "infectious window never closed. If the outcomes are meant to " *
+        "partition the population exactly (an exact case-fatality ratio, " *
+        "say), build their probabilities with `exclusive_probabilities`; " *
+        "otherwise add an unconditional terminal transition to guarantee " *
+        "every case ends somewhere."
     return nothing
 end
 
@@ -71,11 +71,13 @@ faithfully and the keywords override layer by layer.
 against it. The observations themselves stay outside the spec, as the
 likelihood argument.
 """
-function ModelSpec(process::TransmissionModel;
+function ModelSpec(
+        process::TransmissionModel;
         progression = _progression(process),
         interventions = interventions(process),
         attributes = attributes(process),
-        observation = observation(process))
+        observation = observation(process)
+    )
     prog = _progvec(progression)
     _validate_process_windows(process, prog)
     _warn_incomplete_terminal_coverage(prog)
@@ -101,7 +103,8 @@ _single_kernel(s::ModelSpec) = _single_kernel(s.process)
 
 # `simulate` unwraps the spec: the process is the model, the spec's layers are
 # the forcing inputs.
-function simulate(spec::ModelSpec;
+function simulate(
+        spec::ModelSpec;
         n_initial::Union{Int, Nothing} = nothing,
         initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
@@ -110,19 +113,26 @@ function simulate(spec::ModelSpec;
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
         condition::Union{UnitRange{Int}, Nothing} = nothing,
-        max_attempts::Int = 10_000)
+        max_attempts::Int = 10_000
+    )
     _warn_ignored_termination(
-        spec.process, max_cases, max_generations, max_time, stopping_rules)
+        spec.process, max_cases, max_generations, max_time, stopping_rules
+    )
     _warn_unhonoured_interventions(spec.process, spec.interventions)
-    sim_opts = SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time,
-        stopping_rules)
+    sim_opts = SimOpts(;
+        n_initial, initial_cases, max_cases, max_generations, max_time,
+        stopping_rules
+    )
     _validate_initial_cases(spec.process, sim_opts)
-    return _simulate(spec.process, sim_opts; interventions = spec.interventions,
+    return _simulate(
+        spec.process, sim_opts; interventions = spec.interventions,
         attributes = spec.attributes, progression = spec.progression,
-        observation = spec.observation, rng, condition, max_attempts)
+        observation = spec.observation, rng, condition, max_attempts
+    )
 end
 
-function simulate(spec::ModelSpec, n::Int;
+function simulate(
+        spec::ModelSpec, n::Int;
         n_initial::Union{Int, Nothing} = nothing,
         initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
@@ -130,20 +140,28 @@ function simulate(spec::ModelSpec, n::Int;
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
-        parallel::Bool = false)
+        parallel::Bool = false
+    )
     _warn_ignored_termination(
-        spec.process, max_cases, max_generations, max_time, stopping_rules)
+        spec.process, max_cases, max_generations, max_time, stopping_rules
+    )
     _warn_unhonoured_interventions(spec.process, spec.interventions)
-    sim_opts = SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time,
-        stopping_rules)
+    sim_opts = SimOpts(;
+        n_initial, initial_cases, max_cases, max_generations, max_time,
+        stopping_rules
+    )
     _validate_initial_cases(spec.process, sim_opts)
-    return _simulate_n(spec.process, n, sim_opts;
+    return _simulate_n(
+        spec.process, n, sim_opts;
         interventions = spec.interventions, attributes = spec.attributes,
         progression = spec.progression, observation = spec.observation, rng,
-        parallel)
+        parallel
+    )
 end
 
 function Base.show(io::IO, s::ModelSpec)
-    print(io, "ModelSpec(", s.process, "; ", length(s.interventions),
-        " interventions, ", length(s.progression), " transitions)")
+    return print(
+        io, "ModelSpec(", s.process, "; ", length(s.interventions),
+        " interventions, ", length(s.progression), " transitions)"
+    )
 end

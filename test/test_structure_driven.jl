@@ -17,8 +17,10 @@ end
 # from a population-level susceptible pool — so, like a network, no population.
 EpiBranch.population_size(::RingModel) = EpiBranch.NoPopulation()
 
-function EpiBranch.initialise_state(m::RingModel, sim_opts::EpiBranch.SimOpts,
-        interventions, transitions, attributes, rng::AbstractRNG)
+function EpiBranch.initialise_state(
+        m::RingModel, sim_opts::EpiBranch.SimOpts,
+        interventions, transitions, attributes, rng::AbstractRNG
+    )
     state = EpiBranch.new_state(m, transitions, attributes, rng)
     EpiBranch.add_individuals!(state, m.n, interventions)
     EpiBranch.seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
@@ -49,22 +51,26 @@ struct RingRisk
 end
 EpiBranch.transmission_risks(m::RingModel) = (RingRisk(m.p),)
 function EpiBranch.competing_risk(r::RingRisk, parent, contact, state)
-    r.p < 1.0 ? EpiBranch.Risk(block_probability = 1.0 - r.p) : nothing
+    return r.p < 1.0 ? EpiBranch.Risk(block_probability = 1.0 - r.p) : nothing
 end
 
 @testset "Structure-driven model (core extension path)" begin
     # p < 1 so some exposures fail — exercises the exposed-but-not-infected
     # resolve branch; the ring guarantees a node is reached from both sides.
-    state = simulate(RingModel(50, 0.5); n_initial = 1, rng = StableRNG(11),
-        stopping_rules = [Extinction(), MaxGenerations(50)])
+    state = simulate(
+        RingModel(50, 0.5); n_initial = 1, rng = StableRNG(11),
+        stopping_rules = [Extinction(), MaxGenerations(50)]
+    )
     infected = count(ind -> get(ind.state, :infected, false), state.individuals)
     @test length(state.individuals) == 50            # fixed, pre-instantiated pool
     @test 1 <= infected <= 50
     @test EpiBranch._timetype(state) === Float64     # generic (non-BranchingProcess)
 
     # a fully-transmitting ring (p = 1) infects the whole ring
-    full = simulate(RingModel(20, 1.0); n_initial = 1, rng = StableRNG(3),
-        stopping_rules = [Extinction(), MaxGenerations(50)])
+    full = simulate(
+        RingModel(20, 1.0); n_initial = 1, rng = StableRNG(3),
+        stopping_rules = [Extinction(), MaxGenerations(50)]
+    )
     @test count(ind -> get(ind.state, :infected, false), full.individuals) == 20
 end
 
@@ -88,8 +94,10 @@ function EpiBranch.contacts_of(m::MintModel, parent, state::EpiBranch.Simulation
 end
 
 @testset "Structure-driven model minting fresh contacts" begin
-    state = simulate(MintModel(2); n_initial = 1, rng = StableRNG(7),
-        stopping_rules = [Extinction(), MaxGenerations(4)])
+    state = simulate(
+        MintModel(2); n_initial = 1, rng = StableRNG(7),
+        stopping_rules = [Extinction(), MaxGenerations(4)]
+    )
     @test length(state.individuals) > 1            # fresh contacts were minted
     @test EpiBranch._timetype(state) === Float64
 end
@@ -104,8 +112,10 @@ struct AbortPoolModel <: EpiBranch.TransmissionModel
     p::Float64
 end
 EpiBranch.population_size(::AbortPoolModel) = EpiBranch.NoPopulation()
-function EpiBranch.initialise_state(m::AbortPoolModel, sim_opts::EpiBranch.SimOpts,
-        interventions, transitions, attributes, rng::AbstractRNG)
+function EpiBranch.initialise_state(
+        m::AbortPoolModel, sim_opts::EpiBranch.SimOpts,
+        interventions, transitions, attributes, rng::AbstractRNG
+    )
     state = EpiBranch.new_state(m, transitions, attributes, rng)
     EpiBranch.add_individuals!(state, m.n, interventions)
     EpiBranch.seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
@@ -126,22 +136,29 @@ end
 EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
 
 @testset "A post-exposure abort belongs to the exposure it was drawn for" begin
-    spec = ModelSpec(AbortPoolModel(300, 4, 0.4);
+    spec = ModelSpec(
+        AbortPoolModel(300, 4, 0.4);
         interventions = [
             Isolation(onset_to_isolation_delay = Exponential(1.0)),
-            ContactTracing(probability = 1.0,
+            ContactTracing(
+                probability = 1.0,
                 isolation_to_trace_delay = Exponential(0.5),
-                quarantine_on_trace = false),
-            RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5)],
-        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
+                quarantine_on_trace = false
+            ),
+            RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
+        ],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    )
     aborted = 0
     escaped = 0
     escaped_with_abort = 0
     escaped_with_onset = 0
     abort_before_infection = 0
     for seed in 1:100
-        state = simulate(spec; n_initial = 3, rng = StableRNG(seed),
-            stopping_rules = [Extinction(), MaxGenerations(30)])
+        state = simulate(
+            spec; n_initial = 3, rng = StableRNG(seed),
+            stopping_rules = [Extinction(), MaxGenerations(30)]
+        )
         for ind in state.individuals
             t = get(ind.state, :infection_aborted_time, nothing)
             if !EpiBranch.is_infected(ind)
@@ -171,19 +188,24 @@ end
     # onset is not yet known. With no test-positive cases only the traced
     # pathway can isolate, and it must still do so once the onset is known,
     # while a member whose infection was aborted before onset never isolates.
-    spec = ModelSpec(AbortPoolModel(300, 4, 0.4);
+    spec = ModelSpec(
+        AbortPoolModel(300, 4, 0.4);
         interventions = [
             Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.0),
             ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), FlagOnly()),
-            RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5)],
-        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
+            RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
+        ],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    )
     isolated = 0
     isolated_before_onset = 0
     aborted = 0
     aborted_isolated = 0
     for seed in 1:50
-        state = simulate(spec; n_initial = 3, rng = StableRNG(seed),
-            stopping_rules = [Extinction(), MaxGenerations(30)])
+        state = simulate(
+            spec; n_initial = 3, rng = StableRNG(seed),
+            stopping_rules = [Extinction(), MaxGenerations(30)]
+        )
         for ind in state.individuals
             EpiBranch.is_infected(ind) || continue
             if haskey(ind.state, :infection_aborted_time)
@@ -218,20 +240,27 @@ end
     # A node dosed at an exposure it escapes, then infected in a later
     # generation before its immunity arrives, with immunity arriving before its
     # onset, is aborted with the post-exposure efficacy like any other.
-    spec = ModelSpec(AbortPoolModel(300, 4, 0.4);
+    spec = ModelSpec(
+        AbortPoolModel(300, 4, 0.4);
         interventions = [
             Isolation(onset_to_isolation_delay = Exponential(1.0)),
-            ContactTracing(probability = 1.0,
+            ContactTracing(
+                probability = 1.0,
                 isolation_to_trace_delay = Exponential(0.5),
-                quarantine_on_trace = false),
+                quarantine_on_trace = false
+            ),
             RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
-            ExposureGenerations()],
-        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
+            ExposureGenerations(),
+        ],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    )
     aborted = 0
     not_aborted = 0
     for seed in 1:300
-        state = simulate(spec; n_initial = 3, rng = StableRNG(seed),
-            stopping_rules = [Extinction(), MaxGenerations(30)])
+        state = simulate(
+            spec; n_initial = 3, rng = StableRNG(seed),
+            stopping_rules = [Extinction(), MaxGenerations(30)]
+        )
         for ind in state.individuals
             EpiBranch.is_infected(ind) || continue
             dosed = get(ind.state, :vaccination_generation, nothing)

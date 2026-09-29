@@ -42,13 +42,13 @@ function apply_observation!(o::PerCaseObservation, state, rng)
 end
 
 _percase_anchor(s::Symbol, ind) =
-    let v = get(ind.state, s, NaN)
-        isnan(v) ? ind.infection_time : v
-    end
+let v = get(ind.state, s, NaN)
+    isnan(v) ? ind.infection_time : v
+end
 _percase_anchor(f, ind) =
-    let v = float(f(ind))
-        isnan(v) ? ind.infection_time : v
-    end
+let v = float(f(ind))
+    isnan(v) ? ind.infection_time : v
+end
 
 """
     ThinnedChainSize(base, detection_prob)
@@ -62,7 +62,7 @@ needs `logpdf` on the base, so this composes without specialised
 methods.
 """
 struct ThinnedChainSize{D <: DiscreteUnivariateDistribution} <:
-       DiscreteUnivariateDistribution
+    DiscreteUnivariateDistribution
     base::D
     detection_prob::Float64
 end
@@ -78,7 +78,7 @@ function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
     # Stop when the accumulated value stops changing (within `tol`) and at
     # least 20 further terms have been added, to avoid false early
     # convergence on heavy-tailed bases (e.g. GammaBorel with low k).
-    tol = 1e-12
+    tol = 1.0e-12
     max_n = 100_000
     first = logpdf(d.base, obs) + logpdf(Binomial(obs, p), obs)
     m = first
@@ -95,7 +95,7 @@ function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
         end
         cur = m + log(S)
         if isfinite(cur) && isfinite(prev) && abs(cur - prev) < tol &&
-           n - obs >= 20
+                n - obs >= 20
             return cur
         end
         prev = cur

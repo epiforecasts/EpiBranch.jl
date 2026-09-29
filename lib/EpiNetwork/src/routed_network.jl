@@ -94,37 +94,52 @@ struct RoutedNetwork{W <: AbstractVector, E} <: TransmissionModel
     n::Int                           # node count, shared by every route
 end
 
-function RoutedNetwork(windows::AbstractVector{<:RouteWindow};
-        from = nothing, external_hazard = 0.0, obs_end = Inf)
+function RoutedNetwork(
+        windows::AbstractVector{<:RouteWindow};
+        from = nothing, external_hazard = 0.0, obs_end = Inf
+    )
     isempty(windows) && throw(ArgumentError("RoutedNetwork needs at least one route"))
     for w in windows
-        w.reach isa AbstractVector{<:AbstractVector{<:Integer}} || throw(ArgumentError(
-            "route :$(w.name) must carry an adjacency list as its `reach`"))
+        w.reach isa AbstractVector{<:AbstractVector{<:Integer}} || throw(
+            ArgumentError(
+                "route :$(w.name) must carry an adjacency list as its `reach`"
+            )
+        )
     end
     n = length(first(windows).reach)
-    all(length(w.reach) == n for w in windows) || throw(ArgumentError(
-        "every route's adjacency must cover the same nodes (got lengths " *
-        "$(join([length(w.reach) for w in windows], ", ")))"))
+    all(length(w.reach) == n for w in windows) || throw(
+        ArgumentError(
+            "every route's adjacency must cover the same nodes (got lengths " *
+                "$(join([length(w.reach) for w in windows], ", ")))"
+        )
+    )
     _valid_external(external_hazard) ||
         throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
     obs_end_value = Float64(obs_end)
-    (!isnan(obs_end_value) && obs_end_value >= 0) || throw(ArgumentError(
-        "obs_end must be a non-negative number (Inf allowed), got $obs_end"))
+    (!isnan(obs_end_value) && obs_end_value >= 0) || throw(
+        ArgumentError(
+            "obs_end must be a non-negative number (Inf allowed), got $obs_end"
+        )
+    )
     # A model-level start applies to every route that leaves its own unset, so
     # the stored routes are the ones the simulation runs and `window_open` on
     # them agrees with it.
     if from !== nothing
         windows = [_start_unset(w, from) for w in windows]
     end
-    return RoutedNetwork(windows, from, _normalise_external(external_hazard),
-        obs_end_value, n)
+    return RoutedNetwork(
+        windows, from, _normalise_external(external_hazard),
+        obs_end_value, n
+    )
 end
 
 # A route that leaves its start unset takes `from`.
 function _start_unset(w::RouteWindow, from)
     w.from === nothing || return w
-    return RouteWindow(w.name, from, w.until, w.kernel, w.reach, w.contacts_from,
-        w.traceable)
+    return RouteWindow(
+        w.name, from, w.until, w.kernel, w.reach, w.contacts_from,
+        w.traceable
+    )
 end
 
 population_size(::RoutedNetwork) = NoPopulation()
@@ -160,8 +175,10 @@ EpiBranch.supplies_contacts(::RoutedNetwork) = true
 # named on. Routes at exactly 0 or 1 decide without a draw, as does a neighbour
 # that a route at 1 already names from its earliest time, so a fully traceable
 # model uses no random numbers here.
-function _route_contacts(windows, interventions, ind::Individual, i::Integer,
-        rng::AbstractRNG)
+function _route_contacts(
+        windows, interventions, ind::Individual, i::Integer,
+        rng::AbstractRNG
+    )
     T = typeof(ind.infection_time)
     ids = Int[]
     certain = T[]                      # earliest time on a route at traceable 1
@@ -206,16 +223,23 @@ end
 
 function Base.show(io::IO, m::RoutedNetwork)
     routes = join([":$(w.name)" for w in m.windows], ", ")
-    print(io, "RoutedNetwork(nodes=$(m.n), routes=[$routes]",
-        _ext_active(m.external_hazard) ? ", external_hazard=$(m.external_hazard))" : ")")
+    return print(
+        io, "RoutedNetwork(nodes=$(m.n), routes=[$routes]",
+        _ext_active(m.external_hazard) ? ", external_hazard=$(m.external_hazard))" : ")"
+    )
 end
 
-function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attributes,
-        progression, observation, rng, condition, max_attempts)
+function _simulate(
+        model::RoutedNetwork, sim_opts::SimOpts; interventions, attributes,
+        progression, observation, rng, condition, max_attempts
+    )
     condition !== nothing && return _retry_for_condition(
-        () -> _simulate(model, sim_opts; interventions, attributes, progression,
-            observation, rng, condition = nothing, max_attempts),
-        condition, max_attempts)
+        () -> _simulate(
+            model, sim_opts; interventions, attributes, progression,
+            observation, rng, condition = nothing, max_attempts
+        ),
+        condition, max_attempts
+    )
 
     # Every route that did not name its own start takes the model's, or the one
     # the progression implies, so a latent period delays all of them together.
@@ -226,24 +250,31 @@ function _simulate(model::RoutedNetwork, sim_opts::SimOpts; interventions, attri
     add_individuals!(state, model.n, interventions; setup = (ind, i) -> nothing)
 
     _ext_active(model.external_hazard) && !isfinite(Tobs) &&
-        throw(ArgumentError(
+        throw(
+        ArgumentError(
             "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
-            "the whole network); build the process with e.g. `obs_end = 30.0`"))
+                "the whole network); build the process with e.g. `obs_end = 30.0`"
+        )
+    )
 
     windows = [_start_unset(w, derived) for w in model.windows]
     routes = Tuple((w, _route_targets(w)) for w in windows)
 
-    extinct = EpiBranch._sellke_race!(state, collect(1:model.n), rng;
+    extinct = EpiBranch._sellke_race!(
+        state, collect(1:model.n), rng;
         routes = routes, interventions = interventions,
         max_time = EpiBranch._max_time(sim_opts),
         risks = EpiBranch.transmission_risks(model),
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, sim_opts.n_initial, Tobs, r;
-            initial_cases = sim_opts.initial_cases),
+            initial_cases = sim_opts.initial_cases
+        ),
         introduction = _ext_active(model.external_hazard) ?
-                       (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
+            (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
         contacts = (inf, st) -> _route_contacts(
-            windows, interventions, st.individuals[inf], inf, st.rng))
+            windows, interventions, st.individuals[inf], inf, st.rng
+        )
+    )
 
     _reconcile_sellke_bookkeeping!(state, extinct)
     apply_observation!(observation, state, rng)
@@ -253,10 +284,12 @@ end
 # One route's susceptible targets, each with that route's kernel.
 function _route_targets(w::RouteWindow)
     adjacency, kernel = w.reach, w.kernel
-    return (inf, st) -> ((nb, kernel) for nb in adjacency[inf]
-    if !is_infected(st.individuals[nb]))
+    return (inf, st) -> (
+        (nb, kernel) for nb in adjacency[inf]
+            if !is_infected(st.individuals[nb])
+    )
 end
 
 function EpiBranch._validate_initial_cases(model::RoutedNetwork, opts::SimOpts)
-    EpiBranch._validate_initial_case_ids(opts, model.n, model.external_hazard)
+    return EpiBranch._validate_initial_case_ids(opts, model.n, model.external_hazard)
 end

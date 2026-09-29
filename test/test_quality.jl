@@ -1,10 +1,11 @@
 using Aqua
 using Documenter
-using JuliaFormatter
 using Pkg
+using Runic
 
 @testset "Code quality (Aqua.jl)" begin
-    Aqua.test_all(EpiBranch;
+    Aqua.test_all(
+        EpiBranch;
         ambiguities = false,
         piracies = false,
         deps_compat = (ignore = [:Dates, :Random],)
@@ -26,7 +27,21 @@ end
 end
 
 @testset "Code formatting" begin
-    @test format(joinpath(@__DIR__, ".."); overwrite = false) == true
+    root = joinpath(@__DIR__, "..")
+    unformatted = String[]
+    for (dir, _, files) in walkdir(root)
+        # The rendered site is generated, and `.git` holds no source.
+        (occursin(joinpath("docs", "build"), dir) || occursin(".git", dir)) && continue
+        for file in files
+            endswith(file, ".jl") || continue
+            path = joinpath(dir, file)
+            source = read(path, String)
+            Runic.format_string(source) == source ||
+                push!(unformatted, relpath(path, root))
+        end
+    end
+    # Naming the files beats a bare `false` when this fails on CI.
+    @test unformatted == String[]
 end
 
 @testset "Code linting (JET)" begin

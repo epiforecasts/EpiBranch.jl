@@ -81,9 +81,12 @@ function Isolation(;
         onset_to_isolation_delay::Distribution,
         eligibility::IsolationEligibility = SymptomaticOnly(),
         test_sensitivity = 1.0,
-        post_isolation_transmission::Real = 0.0)
-    return Isolation(eligibility, onset_to_isolation_delay, test_sensitivity,
-        Float64(post_isolation_transmission))
+        post_isolation_transmission::Real = 0.0
+    )
+    return Isolation(
+        eligibility, onset_to_isolation_delay, test_sensitivity,
+        Float64(post_isolation_transmission)
+    )
 end
 
 required_fields(iso::Isolation) = _required_for_eligibility(iso.eligibility)
@@ -94,7 +97,7 @@ intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 # isolation (`post_isolation_transmission > 0`) only reduces transmission, which
 # the window cannot express, so it contributes no removal in that setting.
 function infectious_removal_time(iso::Isolation, ind::Individual)
-    iso.post_isolation_transmission == 0 ? isolation_time(ind) : Inf
+    return iso.post_isolation_transmission == 0 ? isolation_time(ind) : Inf
 end
 
 """Isolation blocks the parent → contact transmission when the parent's
@@ -104,8 +107,10 @@ Residual transmission is governed by `post_isolation_transmission`:
 function competing_risk(iso::Isolation, parent, contact, state)
     iso_t = isolation_time(parent)
     isfinite(iso_t) || return nothing
-    return Risk(event_time = iso_t,
-        block_probability = 1.0 - iso.post_isolation_transmission)
+    return Risk(
+        event_time = iso_t,
+        block_probability = 1.0 - iso.post_isolation_transmission
+    )
 end
 
 # Leaky isolation's residual block stands in for the removal perfect isolation
@@ -183,7 +188,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     # the recorded time is held back to the onset.
     onset = onset_time(individual)
     traced_time = isnan(onset) ? Inf :
-                  max(get(individual.state, :traced_isolation_time, Inf), onset)
+        max(get(individual.state, :traced_isolation_time, Inf), onset)
     test_time = if is_test_positive(individual)
         onset + rand(state.rng, iso.onset_to_isolation_delay)
     else

@@ -29,6 +29,16 @@ repos:
         language: pygrep
         types: [text]
 
+  # Julia formatting. The hook builds its own environment from this spec, so the
+  # floor here and the `Runic` bound in `test/Project.toml` are the two places a
+  # version enters; they stay in step, or the hook and `test/test_quality.jl`
+  # disagree about whether a file is formatted.
+  - repo: https://github.com/fredrikekre/runic-pre-commit
+    rev: v2.2.0
+    hooks:
+      - id: runic
+        additional_dependencies: ['Runic@1']
+
   # Secrets. A manifest pins resolved package hashes that read as high-entropy
   # strings, so it is excluded rather than listed in the baseline.
   - repo: https://github.com/Yelp/detect-secrets
@@ -37,7 +47,3 @@ repos:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
         exclude: '.*/Manifest\.toml$'
-
-# Julia formatting stays in `test/test_quality.jl`, which runs JuliaFormatter
-# from the test environment over the whole repository. A second copy pinned
-# here would disagree with that one as soon as either moved.

@@ -17,7 +17,7 @@ struct Borel{T <: Real} <: DiscreteUnivariateDistribution
 
     function Borel(μ::Real)
         0.0 < μ || throw(ArgumentError("μ must be positive, got $μ"))
-        new{typeof(μ)}(μ)
+        return new{typeof(μ)}(μ)
     end
 end
 
@@ -51,9 +51,12 @@ function Distributions.mean(d::Borel)
 end
 
 function Base.rand(rng::AbstractRNG, d::Borel)
-    d.μ >= 1.0 && throw(ArgumentError(
-        "rand is not defined for supercritical Borel (μ ≥ 1): total mass is < 1 and the chain is infinite with positive probability"))
-    _inverse_cdf_rand(rng, d, "Borel")
+    d.μ >= 1.0 && throw(
+        ArgumentError(
+            "rand is not defined for supercritical Borel (μ ≥ 1): total mass is < 1 and the chain is infinite with positive probability"
+        )
+    )
+    return _inverse_cdf_rand(rng, d, "Borel")
 end
 
 """
@@ -91,7 +94,7 @@ struct GammaBorel{T <: Real} <: DiscreteUnivariateDistribution
         k > 0 || throw(ArgumentError("k must be positive, got $k"))
         R > 0 || throw(ArgumentError("R must be positive, got $R"))
         T = promote_type(typeof(k), typeof(R))
-        new{T}(T(k), T(R))
+        return new{T}(T(k), T(R))
     end
 end
 
@@ -110,13 +113,15 @@ https://github.com/epiverse-trace/epichains, MIT).
 """
 function _gammaborel_logpdf(k, R, x::Integer, s::Integer = 1)
     (s < 1 || x < s) && return oftype(float(k), -Inf)
-    return (log(s) - log(x)
+    return (
+        log(s) - log(x)
             + logabsgamma(k * x + x - s)[1]
             - logabsgamma(k * x)[1]
             -
             logabsgamma(x - s + 1)[1]
             + k * x * log(k / (k + R))
-            + (x - s) * log(R / (k + R)))
+            + (x - s) * log(R / (k + R))
+    )
 end
 
 Distributions.logpdf(d::GammaBorel, n::Integer) = _gammaborel_logpdf(d.k, d.R, n)
@@ -134,9 +139,12 @@ function Distributions.mean(d::GammaBorel)
 end
 
 function Base.rand(rng::AbstractRNG, d::GammaBorel)
-    d.R >= 1.0 && throw(ArgumentError(
-        "rand is not defined for supercritical GammaBorel (R ≥ 1): total mass is < 1 and the chain is infinite with positive probability"))
-    _inverse_cdf_rand(rng, d, "GammaBorel")
+    d.R >= 1.0 && throw(
+        ArgumentError(
+            "rand is not defined for supercritical GammaBorel (R ≥ 1): total mass is < 1 and the chain is infinite with positive probability"
+        )
+    )
+    return _inverse_cdf_rand(rng, d, "GammaBorel")
 end
 
 # Alias documenting that `GammaBorel` is the chain size law of NegativeBinomial
@@ -164,7 +172,7 @@ struct PoissonGammaChainSize{T <: Real} <: DiscreteUnivariateDistribution
         k > 0 || throw(ArgumentError("k must be positive, got $k"))
         R > 0 || throw(ArgumentError("R must be positive, got $R"))
         T = promote_type(typeof(k), typeof(R))
-        new{T}(T(k), T(R))
+        return new{T}(T(k), T(R))
     end
 end
 
@@ -182,7 +190,8 @@ https://github.com/epiverse-trace/epichains, MIT).
 """
 function _poisson_gamma_logpdf(k, R, x::Integer, s::Integer = 1)
     (s < 1 || x < s) && return oftype(float(k), -Inf)
-    return (log(s) - log(x)
+    return (
+        log(s) - log(x)
             + (x - s) * log(x)
             - logabsgamma(x - s + 1)[1]
             +
@@ -192,11 +201,12 @@ function _poisson_gamma_logpdf(k, R, x::Integer, s::Integer = 1)
             -
             k * log(R / k)
             -
-            (k + x - s) * log(x + k / R))
+            (k + x - s) * log(x + k / R)
+    )
 end
 
 function Distributions.logpdf(d::PoissonGammaChainSize, n::Integer)
-    _poisson_gamma_logpdf(d.k, d.R, n)
+    return _poisson_gamma_logpdf(d.k, d.R, n)
 end
 Distributions.pdf(d::PoissonGammaChainSize, n::Integer) = exp(logpdf(d, n))
 Distributions.minimum(::PoissonGammaChainSize) = 1
@@ -209,8 +219,11 @@ Distributions.insupport(::PoissonGammaChainSize, n::Integer) = n >= 1
 Distributions.mean(::PoissonGammaChainSize) = Inf
 
 function Base.rand(::AbstractRNG, ::PoissonGammaChainSize)
-    throw(ArgumentError(
-        "rand is not defined for PoissonGammaChainSize: the chain-size law has positive infinite-chain mass for all parameter values (the Gamma rate always places mass above 1), so finite-chain sampling is ill-defined"))
+    throw(
+        ArgumentError(
+            "rand is not defined for PoissonGammaChainSize: the chain-size law has positive infinite-chain mass for all parameter values (the Gamma rate always places mass above 1), so finite-chain sampling is ill-defined"
+        )
+    )
 end
 
 """
@@ -224,16 +237,19 @@ carry non-default seed counts.
 """
 function _chain_size_logpdf(d, x::Integer, s::Integer)
     s == 1 && return logpdf(d, x)
-    throw(ArgumentError(
-        "multi-seed chain size likelihood not defined for $(typeof(d))"))
+    throw(
+        ArgumentError(
+            "multi-seed chain size likelihood not defined for $(typeof(d))"
+        )
+    )
 end
 
 _chain_size_logpdf(d::Borel, x::Integer, s::Integer) = _borel_logpdf(d.μ, x, s)
 function _chain_size_logpdf(d::GammaBorel, x::Integer, s::Integer)
-    _gammaborel_logpdf(d.k, d.R, x, s)
+    return _gammaborel_logpdf(d.k, d.R, x, s)
 end
 function _chain_size_logpdf(d::PoissonGammaChainSize, x::Integer, s::Integer)
-    _poisson_gamma_logpdf(d.k, d.R, x, s)
+    return _poisson_gamma_logpdf(d.k, d.R, x, s)
 end
 
 """

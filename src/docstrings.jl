@@ -1,18 +1,18 @@
 using DocStringExtensions
 
 @template (FUNCTIONS, METHODS, MACROS) = """
-                                             $(TYPEDSIGNATURES)
-                                         $(DOCSTRING)
-                                         """
+    $(TYPEDSIGNATURES)
+$(DOCSTRING)
+"""
 
 @template (TYPES) = """
-                        $(TYPEDEF)
-                    $(DOCSTRING)
+    $(TYPEDEF)
+$(DOCSTRING)
 
-                    ---
-                    ## Fields
-                    $(TYPEDFIELDS)
-                    """
+---
+## Fields
+$(TYPEDFIELDS)
+"""
 
 @template MODULES = """
 $(DOCSTRING)

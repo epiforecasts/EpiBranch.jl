@@ -40,8 +40,10 @@ end
 # terms can exceed the tolerance and exhaust the iteration limit. `quantile` on
 # a truncated law clamps to its bounds and throws for an integer law with an
 # infinite bound.
-function _series_range(d::DiscreteUnivariateDistribution, tail::Real = 1e-14,
-        cap::Int = 1_000_000)
+function _series_range(
+        d::DiscreteUnivariateDistribution, tail::Real = 1.0e-14,
+        cap::Int = 1_000_000
+    )
     lo = round(Int, minimum(d))
     hi = maximum(d)
     isfinite(hi) && return lo, round(Int, hi)
@@ -50,8 +52,8 @@ function _series_range(d::DiscreteUnivariateDistribution, tail::Real = 1e-14,
         x += 1
         if x - lo >= cap
             @warn "The offspring law has more than $tail of its mass above " *
-                  "$cap counts, so the series stops there and the reproduction " *
-                  "number and extinction probability are understated." maxlog=1
+                "$cap counts, so the series stops there and the reproduction " *
+                "number and extinction probability are understated." maxlog = 1
             break
         end
     end
@@ -89,8 +91,10 @@ _spectral_radius(A::AbstractMatrix{<:LinearAlgebra.BlasReal}) = maximum(abs, eig
 # When `u` and `v` are nearly orthogonal, as for a defective dominant
 # eigenvalue, the quotient is unstable and the method returns the growth of the
 # largest entry of `v` instead.
-function _spectral_radius(A::AbstractMatrix{<:Real}; tol::Real = 1e-12,
-        max_iter::Int = 100_000)
+function _spectral_radius(
+        A::AbstractMatrix{<:Real}; tol::Real = 1.0e-12,
+        max_iter::Int = 100_000
+    )
     n = size(A, 1)
     B = [A[i, j] + (i == j) for i in 1:n, j in 1:n]
     Bt = permutedims(B)
@@ -105,15 +109,15 @@ function _spectral_radius(A::AbstractMatrix{<:Real}; tol::Real = 1e-12,
         z = Bt * u
         u_new = z ./ maximum(z)
         converged = maximum(abs, v_new .- v) <= tol &&
-                    maximum(abs, u_new .- u) <= tol
+            maximum(abs, u_new .- u) <= tol
         v, u = v_new, u_new
         converged && break
     end
     converged ||
         @warn "Power iteration for the spectral radius stopped after $max_iter " *
-              "iterations without converging, which happens when the two largest " *
-              "eigenvalues are nearly equal. Its value and derivative may be " *
-              "inaccurate." maxlog=1
+        "iterations without converging, which happens when the two largest " *
+        "eigenvalues are nearly equal. Its value and derivative may be " *
+        "inaccurate." maxlog = 1
     uv = sum(u .* v)
     uv > sqrt(tol * sum(abs2, u) * sum(abs2, v)) || return λ - 1
     return sum(u .* (A * v)) / uv
@@ -202,8 +206,10 @@ To use it on a model built with
 `BranchingProcess(offspring_matrix, dist_fn, generation_time)`, call
 `extinction_probability(model)`.
 """
-function extinction_probability(o::MultiTypeOffspring; tol::Real = 1e-10,
-        max_iter::Int = 1000)
+function extinction_probability(
+        o::MultiTypeOffspring; tol::Real = 1.0e-10,
+        max_iter::Int = 1000
+    )
     n = _n_types(o)
     laws = _total_count_laws(o)
     M = _mean_matrix(o, laws)
@@ -213,9 +219,11 @@ function extinction_probability(o::MultiTypeOffspring; tol::Real = 1e-10,
 
     q = T[can_grow[j] ? 0 : 1 for j in 1:n]
     for _ in 1:max_iter
-        q_new = T[can_grow[j] ?
-                  _pgf(laws[j], sum(o.alloc_probs[i, j] * q[i] for i in 1:n)) : 1
-                  for j in 1:n]
+        q_new = T[
+            can_grow[j] ?
+                _pgf(laws[j], sum(o.alloc_probs[i, j] * q[i] for i in 1:n)) : 1
+                for j in 1:n
+        ]
         maximum(abs.(q_new .- q)) < tol && return q_new
         q = q_new
     end
@@ -241,8 +249,8 @@ function _reaches_supercritical_class(M::AbstractMatrix)
     for i in 1:n
         class = [j for j in 1:n if reach[i, j] && reach[j, i]]
         supercritical[i] = i == first(class) ?
-                           _spectral_radius(M[class, class]) > 1 + sqrt(eps()) :
-                           supercritical[first(class)]
+            _spectral_radius(M[class, class]) > 1 + sqrt(eps()) :
+            supercritical[first(class)]
     end
     return [any(supercritical[i] && reach[i, j] for i in 1:n) for j in 1:n]
 end

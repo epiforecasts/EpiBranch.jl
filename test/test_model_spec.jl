@@ -49,18 +49,18 @@
         # end-of-outbreak needs a single-window, no-observation model
         bpg = BranchingProcess(NegativeBinomial(2.5, 0.5), LogNormal(1.6, 0.5))
         @test end_of_outbreak_probability(ModelSpec(bpg), 10.0) ==
-              end_of_outbreak_probability(bpg, 10.0)
+            end_of_outbreak_probability(bpg, 10.0)
         # distribution entry points
         @test offspring_distribution(spec) == offspring_distribution(bp)
         @test pdf(chain_size_distribution(spec), 2) ≈ pdf(chain_size_distribution(bp), 2)
         subc = BranchingProcess(Poisson(0.6))
         @test logpdf(chain_length_distribution(ModelSpec(subc)), [0, 1, 0]) ≈
-              logpdf(chain_length_distribution(subc), [0, 1, 0])
+            logpdf(chain_length_distribution(subc), [0, 1, 0])
         # loglikelihood through a spec: analytical chain sizes and chain lengths
         @test loglikelihood(ChainSizes([1, 2, 1, 3]), spec) ≈
-              loglikelihood(ChainSizes([1, 2, 1, 3]), bp)
+            loglikelihood(ChainSizes([1, 2, 1, 3]), bp)
         @test loglikelihood(ChainLengths([0, 1, 0]), ModelSpec(subc)) ≈
-              loglikelihood(ChainLengths([0, 1, 0]), subc)
+            loglikelihood(ChainLengths([0, 1, 0]), subc)
         # batch simulation through a spec
         @test length(simulate(spec, 20; max_cases = 100, rng = StableRNG(3))) == 20
     end
@@ -72,19 +72,25 @@
         # thin transmission, route the score through simulation instead.
         bp = BranchingProcess(Poisson(0.8))
         data = ChainSizes([1, 1, 2, 1, 3, 1, 2, 1, 1, 5])
-        composed = ModelSpec(bp;
+        composed = ModelSpec(
+            bp;
             progression = [
                 Transition(:onset; from = :infection, delay = Exponential(3.0)),
-                Transition(:recovered; from = :infection, delay = Exponential(5.0),
-                    terminal = true)],
-            attributes = (age = (rng, ind) -> rand(rng) < 0.5 ? :young : :old,))
+                Transition(
+                    :recovered; from = :infection, delay = Exponential(5.0),
+                    terminal = true
+                ),
+            ],
+            attributes = (age = (rng, ind) -> rand(rng) < 0.5 ? :young : :old,)
+        )
         @test loglikelihood(data, composed) == loglikelihood(data, ModelSpec(bp))
 
         # A structured (depleting) model has no single-type offspring, so the
         # analytical path can't be taken — `single_type_offspring` throws and the
         # score falls through to simulation.
         @test_throws ArgumentError single_type_offspring(
-            HomogeneousProcess(; transmission_rate = 1.0, population_size = 100))
+            HomogeneousProcess(; transmission_rate = 1.0, population_size = 100)
+        )
     end
 
     @testset "incomplete terminal coverage warns" begin
@@ -93,52 +99,80 @@
         # is unconditional, so about p(1 - p) of cases clear both gates'
         # failure and reach no terminal state.
         non_exclusive = [
-            Transition(:recovered; from = :infection, delay = Exponential(1.0),
-                probability = 0.36, terminal = true),
-            Transition(:died; from = :infection, delay = Exponential(1.0),
-                probability = 0.64, terminal = true)
+            Transition(
+                :recovered; from = :infection, delay = Exponential(1.0),
+                probability = 0.36, terminal = true
+            ),
+            Transition(
+                :died; from = :infection, delay = Exponential(1.0),
+                probability = 0.64, terminal = true
+            ),
         ]
-        @test_logs (:warn, r"gated below.*probability 1") match_mode=:any ModelSpec(
-            bp; progression = non_exclusive)
+        @test_logs (:warn, r"gated below.*probability 1") match_mode = :any ModelSpec(
+            bp; progression = non_exclusive
+        )
 
         # `exclusive_probabilities` shares one draw, so each gate's own
         # probability is a `Function` — unknowable without an individual, so
         # the check is silently skipped rather than risk a false warning.
         died_p, recovered_p = exclusive_probabilities([0.64, 0.36])
         exclusive = [
-            Transition(:recovered; from = :infection, delay = Exponential(1.0),
-                probability = recovered_p, terminal = true),
-            Transition(:died; from = :infection, delay = Exponential(1.0),
-                probability = died_p, terminal = true)
+            Transition(
+                :recovered; from = :infection, delay = Exponential(1.0),
+                probability = recovered_p, terminal = true
+            ),
+            Transition(
+                :died; from = :infection, delay = Exponential(1.0),
+                probability = died_p, terminal = true
+            ),
         ]
         @test_logs ModelSpec(bp; progression = exclusive)
 
         # `Recovery` has no `probability` field at all — always fires once its
         # anchor is reached — so pairing it with a gated `Death` guarantees
         # coverage and stays silent.
-        @test_logs ModelSpec(bp;
-            progression = [Recovery(delay = Exponential(1.0)),
-                Death(delay = Exponential(1.0), probability = 0.3)])
+        @test_logs ModelSpec(
+            bp;
+            progression = [
+                Recovery(delay = Exponential(1.0)),
+                Death(delay = Exponential(1.0), probability = 0.3),
+            ]
+        )
 
         # A single terminal transition at the default probability (1.0) is
         # unconditional on its own.
-        @test_logs ModelSpec(bp;
-            progression = [Transition(:recovered; from = :infection,
-                delay = Exponential(1.0), terminal = true)])
+        @test_logs ModelSpec(
+            bp;
+            progression = [
+                Transition(
+                    :recovered; from = :infection,
+                    delay = Exponential(1.0), terminal = true
+                ),
+            ]
+        )
 
         # A single terminal transition gated below 1, with nothing else to
         # cover the shortfall, warns even alone.
-        @test_logs (:warn, r"gated below.*probability 1") match_mode=:any ModelSpec(
-            bp; progression = [Death(delay = Exponential(1.0), probability = 0.3)])
+        @test_logs (:warn, r"gated below.*probability 1") match_mode = :any ModelSpec(
+            bp; progression = [Death(delay = Exponential(1.0), probability = 0.3)]
+        )
 
         # A `Function`-valued probability cannot be judged statically, so it
         # is not flagged even though it might leave some cases uncovered.
-        @test_logs ModelSpec(bp;
-            progression = [Death(delay = Exponential(1.0),
-                probability = (rng, ind) -> 0.3)])
+        @test_logs ModelSpec(
+            bp;
+            progression = [
+                Death(
+                    delay = Exponential(1.0),
+                    probability = (rng, ind) -> 0.3
+                ),
+            ]
+        )
 
         # No terminal transitions at all is not the gap this check catches.
-        @test_logs ModelSpec(bp;
-            progression = [Transition(:onset; from = :infection, delay = 1.0)])
+        @test_logs ModelSpec(
+            bp;
+            progression = [Transition(:onset; from = :infection, delay = 1.0)]
+        )
     end
 end

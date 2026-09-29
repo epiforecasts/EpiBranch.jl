@@ -7,8 +7,10 @@ using Dates
     @testset "linelist basic output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = tsim(model; attributes = clinical,
-            max_cases = 50, rng = rng)
+        state = tsim(
+            model; attributes = clinical,
+            max_cases = 50, rng = rng
+        )
 
         df = linelist(state)
 
@@ -38,10 +40,12 @@ using Dates
             Reporting(delay = Exponential(3.0)),
             Hospitalisation(delay = Exponential(5.0), probability = 0.3),
             Death(delay = Exponential(10.0), probability = 0.05),
-            Recovery(delay = Exponential(10.0))
+            Recovery(delay = Exponential(10.0)),
         ]
-        state = tsim(model; attributes = clinical, transitions = transitions,
-            max_cases = 100, rng = rng)
+        state = tsim(
+            model; attributes = clinical, transitions = transitions,
+            max_cases = 100, rng = rng
+        )
 
         df = linelist(state)
         @test "date_reporting" in names(df)
@@ -67,10 +71,12 @@ using Dates
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         attrs = [
             clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-            demographics(age_distribution = Normal(40, 15))
+            demographics(age_distribution = Normal(40, 15)),
         ]
-        state = tsim(model; attributes = attrs,
-            max_cases = 50, rng = rng)
+        state = tsim(
+            model; attributes = attrs,
+            max_cases = 50, rng = rng
+        )
 
         df = linelist(state)
         @test "age" in names(df)
@@ -83,16 +89,20 @@ using Dates
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         attrs = [
             clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-            demographics(age_distribution = Uniform(0, 90))
+            demographics(age_distribution = Uniform(0, 90)),
         ]
         # CFR depends on age via a Death probability closure.
-        death = Death(delay = Exponential(10.0),
-            probability = (rng, ind) -> ind.state[:age] >= 65 ? 0.5 : 0.01)
+        death = Death(
+            delay = Exponential(10.0),
+            probability = (rng, ind) -> ind.state[:age] >= 65 ? 0.5 : 0.01
+        )
         recovery = Recovery(delay = Exponential(10.0))
-        state = tsim(model;
+        state = tsim(
+            model;
             condition = 50:500, attributes = attrs,
             transitions = [death, recovery],
-            max_cases = 500, rng = rng)
+            max_cases = 500, rng = rng
+        )
 
         df = linelist(state)
         @test any(df.outcome .== "died")
@@ -100,18 +110,22 @@ using Dates
         # Deaths are concentrated in the older band by construction.
         old_deaths = count(
             row -> !ismissing(row.outcome) && row.outcome == "died" &&
-                   !ismissing(row.age) && row.age >= 65,
-            eachrow(df))
+                !ismissing(row.age) && row.age >= 65,
+            eachrow(df)
+        )
         young_deaths = count(
             row -> !ismissing(row.outcome) && row.outcome == "died" &&
-                   !ismissing(row.age) && row.age < 65,
-            eachrow(df))
+                !ismissing(row.age) && row.age < 65,
+            eachrow(df)
+        )
         @test old_deaths > young_deaths
     end
 
     @testset "linelist empty state" begin
-        empty_state = SimulationState(Individual{Float64}[], Int[], 0, StableRNG(1),
-            0, true, nothing, 0.0, nothing, AbstractClinicalTransition[])
+        empty_state = SimulationState(
+            Individual{Float64}[], Int[], 0, StableRNG(1),
+            0, true, nothing, 0.0, nothing, AbstractClinicalTransition[]
+        )
         df = linelist(empty_state)
         @test nrow(df) == 0
     end
@@ -120,9 +134,11 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-        state = tsim(model;
+        state = tsim(
+            model;
             interventions = [iso], attributes = clinical,
-            max_cases = 50, rng = rng)
+            max_cases = 50, rng = rng
+        )
 
         df = linelist(state)
         @test "isolated" in names(df)
@@ -143,8 +159,10 @@ using Dates
     @testset "index cases identifiable via parent_id" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = tsim(model; attributes = clinical,
-            max_cases = 20, n_initial = 3, rng = rng)
+        state = tsim(
+            model; attributes = clinical,
+            max_cases = 20, n_initial = 3, rng = rng
+        )
 
         df = linelist(state)
         n_index = count(df.parent_id .== 0)
@@ -155,8 +173,13 @@ using Dates
         N = 200
         m = ModelSpec(
             HomogeneousProcess(; transmission_rate = 0.5, population_size = N);
-            progression = [Transition(:recovered; from = :infection, delay = 1.0,
-                terminal = true)])
+            progression = [
+                Transition(
+                    :recovered; from = :infection, delay = 1.0,
+                    terminal = true
+                ),
+            ]
+        )
         state = simulate(m; rng = StableRNG(1), n_initial = 1)
         @test state.cumulative_cases < N   # a sub-critical outbreak leaves survivors
 
@@ -182,10 +205,15 @@ using Dates
         spec = ModelSpec(
             BranchingProcess(Poisson(2.5), Exponential(5.0); population_size = 400);
             attributes = clinical,
-            interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0)),
-                ContactTracing(probability = 0.8,
-                    isolation_to_trace_delay = Exponential(1.0)),
-                RingVaccination(efficacy = 0.9)])
+            interventions = [
+                Isolation(onset_to_isolation_delay = Exponential(1.0)),
+                ContactTracing(
+                    probability = 0.8,
+                    isolation_to_trace_delay = Exponential(1.0)
+                ),
+                RingVaccination(efficacy = 0.9),
+            ]
+        )
         state = simulate(spec; n_initial = 3, rng = StableRNG(1), max_cases = 200)
         df = linelist(state; infected_only = false)
         @test nrow(df) == length(state.individuals)
@@ -213,10 +241,13 @@ using Dates
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         risk_group = (rng, ind) -> (ind.state[:risk_group] = rand(rng) < 0.3 ? :high : :low)
         custom_time = (
-            rng, ind) -> (ind.state[:vaccination_time] = ind.infection_time + 7.0)
+            rng, ind
+        ) -> (ind.state[:vaccination_time] = ind.infection_time + 7.0)
         attrs = [clinical, risk_group, custom_time]
-        state = tsim(model; attributes = attrs,
-            max_cases = 30, rng = rng)
+        state = tsim(
+            model; attributes = attrs,
+            max_cases = 30, rng = rng
+        )
 
         df = linelist(state)
         @test "risk_group" in names(df)             # pass-through, symbol → string
@@ -232,7 +263,7 @@ using Dates
 end
 
 function EpiBranch.event_time_metadata(::Val{:appointment_time})
-    (column = :date_appointment, requires_infection = false)
+    return (column = :date_appointment, requires_infection = false)
 end
 
 @testset "External event dates" begin
@@ -249,16 +280,23 @@ end
         ind.state[:trace_time] = 1.0
     end
     df = linelist(state; infected_only = false, reference_date = reference)
-    @test isequal(df.date_appointment, [
-        reference + Day(2), reference + Day(3), missing, missing])
+    @test isequal(
+        df.date_appointment, [
+            reference + Day(2), reference + Day(3), missing, missing,
+        ]
+    )
     for key in (:date_onset, :date_admission, :date_custom_disease)
         @test all(ismissing, df[2:4, key])
         @test !ismissing(df[1, key])
     end
-    @test isequal(df.date_vaccination_booster,
-        [reference + Day(7), reference + Day(7), missing, reference + Day(7)])
-    @test isequal(df.date_immunity_booster,
-        [reference + Day(8), reference + Day(8), reference + Day(8), missing])
+    @test isequal(
+        df.date_vaccination_booster,
+        [reference + Day(7), reference + Day(7), missing, reference + Day(7)]
+    )
+    @test isequal(
+        df.date_immunity_booster,
+        [reference + Day(8), reference + Day(8), reference + Day(8), missing]
+    )
     @test all(==(reference + Day(1)), df.date_trace)
     @test nrow(linelist(state)) == 1
     @test event_time_metadata(Val(:ordinary_value)) === nothing

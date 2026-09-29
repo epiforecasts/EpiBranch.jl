@@ -9,12 +9,13 @@ end
 @testset "Attributes builders" begin
     @testset "Callable structs compose with attribute builders" begin
         for attributes in (
-            (groups(2), _AttributeTagger()),
-            [groups(2), _AttributeTagger()]
-        )
+                (groups(2), _AttributeTagger()),
+                [groups(2), _AttributeTagger()],
+            )
             state = simulate(
                 ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0)); attributes);
-                n_initial = 3, rng = StableRNG(1))
+                n_initial = 3, rng = StableRNG(1)
+            )
             @test length(state.individuals) == 3
             @test all(ind.state[:tag] == ind.id for ind in state.individuals)
             @test all(haskey(ind.state, :group) for ind in state.individuals)
@@ -23,20 +24,30 @@ end
 
     @testset "Callable parameter objects" begin
         attrs = [
-            clinical_presentation(incubation_period = Dirac(2.0),
-                prob_asymptomatic = _AttributeValue(0.0)),
-            transmission_traits(susceptibility = _AttributeValue(0.4),
-                infectiousness = _AttributeValue(0.7)),
-            groups(1), vaccine_acceptance(propensity = _AttributeValue(0.6))]
+            clinical_presentation(
+                incubation_period = Dirac(2.0),
+                prob_asymptomatic = _AttributeValue(0.0)
+            ),
+            transmission_traits(
+                susceptibility = _AttributeValue(0.4),
+                infectiousness = _AttributeValue(0.7)
+            ),
+            groups(1), vaccine_acceptance(propensity = _AttributeValue(0.6)),
+        ]
         run = simulate(
-            ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0));
-                attributes = attrs);
-            n_initial = 3, rng = StableRNG(1))
+            ModelSpec(
+                BranchingProcess(Poisson(0.0), Exponential(5.0));
+                attributes = attrs
+            );
+            n_initial = 3, rng = StableRNG(1)
+        )
         @test all(ind.susceptibility == 0.4 for ind in run.individuals)
         @test all(ind.infectiousness == 0.7 for ind in run.individuals)
         @test all(ind.state[:vaccine_acceptance] == 0.6 for ind in run.individuals)
-        @test all(ind.state[:onset_time] == ind.infection_time + 2.0
-        for ind in run.individuals)
+        @test all(
+            ind.state[:onset_time] == ind.infection_time + 2.0
+                for ind in run.individuals
+        )
     end
 
     @testset "transmission_traits" begin
@@ -57,7 +68,7 @@ end
         end
 
         @testset "Real argument coerced to Float64" begin
-            attrs = transmission_traits(susceptibility = 1//2)
+            attrs = transmission_traits(susceptibility = 1 // 2)
             ind = Individual(id = 1)
             attrs(StableRNG(1), ind)
             @test ind.susceptibility === 0.5
@@ -80,7 +91,7 @@ end
                 demographics(age_distribution = Uniform(0, 90)),
                 transmission_traits(
                     susceptibility = (rng, ind) -> ind.state[:age] >= 65 ? 0.8 : 0.2,
-                )
+                ),
             ]
             rng = StableRNG(7)
             for _ in 1:200
@@ -104,7 +115,8 @@ end
             attrs = transmission_traits(susceptibility = 0.5, infectiousness = 0.8)
             state = simulate(
                 ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0)); attributes = attrs);
-                max_cases = 30, rng = StableRNG(1))
+                max_cases = 30, rng = StableRNG(1)
+            )
             @test all(ind.susceptibility == 0.5 for ind in state.individuals)
             @test all(ind.infectiousness == 0.8 for ind in state.individuals)
         end
@@ -114,7 +126,8 @@ end
         @testset "scalar (default behaviour)" begin
             attrs = clinical_presentation(
                 incubation_period = LogNormal(1.5, 0.5),
-                prob_asymptomatic = 0.0)
+                prob_asymptomatic = 0.0
+            )
             ind = Individual(id = 1)
             attrs(StableRNG(1), ind)
             @test ind.state[:asymptomatic] == false
@@ -127,7 +140,7 @@ end
                 clinical_presentation(
                     incubation_period = LogNormal(1.5, 0.5),
                     prob_asymptomatic = (rng, ind) -> ind.state[:age] < 18 ? 1.0 : 0.0
-                )
+                ),
             ]
             rng = StableRNG(7)
             for _ in 1:200
@@ -158,42 +171,71 @@ end
     end
 
     @testset "group_attribute shares reporting probabilities per run" begin
-        attrs = [groups(2; key = :household),
-            group_attribute(:reporting_probability; value = Beta(6, 4),
-                group_key = :household)]
-        model = ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0));
+        attrs = [
+            groups(2; key = :household),
+            group_attribute(
+                :reporting_probability; value = Beta(6, 4),
+                group_key = :household
+            ),
+        ]
+        model = ModelSpec(
+            BranchingProcess(Poisson(0.0), Exponential(5.0));
             attributes = attrs,
             observation = PerCaseObservation(
                 detection_prob = (rng, ind) -> ind.state[:reporting_probability],
-                from = :infection_time))
+                from = :infection_time
+            )
+        )
         serial = simulate(model, 10; n_initial = 30, rng = StableRNG(42))
-        parallel = simulate(model, 10; n_initial = 30, rng = StableRNG(42),
-            parallel = true)
-        probabilities(states) = [[ind.state[:reporting_probability]
-                                  for ind in run.individuals] for run in states]
-        @test probabilities(parallel) == probabilities(simulate(model, 10;
-            n_initial = 30, rng = StableRNG(42), parallel = true))
+        parallel = simulate(
+            model, 10; n_initial = 30, rng = StableRNG(42),
+            parallel = true
+        )
+        probabilities(states) = [
+            [
+                ind.state[:reporting_probability]
+                    for ind in run.individuals
+            ] for run in states
+        ]
+        @test probabilities(parallel) == probabilities(
+            simulate(
+                model, 10;
+                n_initial = 30, rng = StableRNG(42), parallel = true
+            )
+        )
         @test length(unique(first.(probabilities(serial)))) == 10
         @test length(unique(first.(probabilities(parallel)))) == 10
         for run in vcat(serial, parallel)
-            per_household = [unique([ind.state[:reporting_probability]
-                                     for ind in run.individuals
-                                     if ind.state[:household] == h]) for h in 1:2]
+            per_household = [
+                unique(
+                    [
+                        ind.state[:reporting_probability]
+                            for ind in run.individuals
+                            if ind.state[:household] == h
+                    ]
+                ) for h in 1:2
+            ]
             @test all(length(v) == 1 for v in per_household)
             @test only(per_household[1]) != only(per_household[2])
         end
         @test isempty(attrs[2].cache)
 
         # The callback reads the first member, not each subsequent member.
-        callback_attrs = [groups(1),
-            group_attribute(:first_member; value = (rng, ind) -> ind.id)]
+        callback_attrs = [
+            groups(1),
+            group_attribute(:first_member; value = (rng, ind) -> ind.id),
+        ]
         callback_state = simulate(
             ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0)); attributes = callback_attrs);
-            n_initial = 3, rng = StableRNG(1))
+            n_initial = 3, rng = StableRNG(1)
+        )
         @test all(ind.state[:first_member] == 1 for ind in callback_state.individuals)
-        @test_throws ArgumentError simulate(ModelSpec(
-            BranchingProcess(Poisson(0.0), Exponential(5.0));
-            attributes = group_attribute(:shared; value = 0.5)))
+        @test_throws ArgumentError simulate(
+            ModelSpec(
+                BranchingProcess(Poisson(0.0), Exponential(5.0));
+                attributes = group_attribute(:shared; value = 0.5)
+            )
+        )
     end
 
     @testset "vaccine_acceptance draws once per group" begin
@@ -204,12 +246,15 @@ end
         @testset "members of one group share a value; other groups differ" begin
             attrs = [groups(2), vaccine_acceptance(propensity = Beta(2, 2))]
             state = EpiBranch.new_state(
-                process, EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1))
+                process, EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1)
+            )
             people = EpiBranch.add_individuals!(state, 60, [])
             by_group = Dict{Int, Set{Float64}}()
             for ind in people
-                push!(get!(by_group, ind.state[:group], Set{Float64}()),
-                    ind.state[:vaccine_acceptance])
+                push!(
+                    get!(by_group, ind.state[:group], Set{Float64}()),
+                    ind.state[:vaccine_acceptance]
+                )
             end
             @test length(by_group) == 2
             @test all(length(v) == 1 for v in values(by_group))
@@ -219,7 +264,8 @@ end
         @testset "the shared value outlives the generation it was drawn in" begin
             attrs = [groups(1), vaccine_acceptance(propensity = Beta(2, 2))]
             state = EpiBranch.new_state(
-                process, EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1))
+                process, EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1)
+            )
             case = only(EpiBranch.add_individuals!(state, 1, []))
             child = make_contact!(state, case, 1.0)
             grandchild = make_contact!(state, child, 2.0)
@@ -230,19 +276,26 @@ end
         @testset "separate runs draw their own values" begin
             attrs = [groups(1), vaccine_acceptance(propensity = Beta(2, 2))]
             drawn = map(1:20) do seed
-                state = EpiBranch.new_state(process,
-                    EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(seed))
+                state = EpiBranch.new_state(
+                    process,
+                    EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(seed)
+                )
                 only(EpiBranch.add_individuals!(state, 1, [])).state[:vaccine_acceptance]
             end
             @test length(unique(drawn)) == 20
         end
 
         @testset "keys are customisable" begin
-            attrs = [groups(2; key = :community),
-                vaccine_acceptance(propensity = Beta(2, 2),
-                    group_key = :community, key = :acceptance)]
+            attrs = [
+                groups(2; key = :community),
+                vaccine_acceptance(
+                    propensity = Beta(2, 2),
+                    group_key = :community, key = :acceptance
+                ),
+            ]
             state = EpiBranch.new_state(
-                process, EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1))
+                process, EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1)
+            )
             ind = only(EpiBranch.add_individuals!(state, 1, []))
             @test haskey(ind.state, :acceptance)
             @test !haskey(ind.state, :vaccine_acceptance)
@@ -265,11 +318,16 @@ end
             # Communities 1 and 2 accept and decline as blocks; which is which
             # follows from the group label, so the test does not depend on
             # the order the propensities are drawn in.
-            attrs = [groups(2),
+            attrs = [
+                groups(2),
                 vaccine_acceptance(
-                    propensity = (rng, ind) -> ind.state[:group] == 1 ? 1.0 : 0.0)]
-            state = EpiBranch.new_state(process,
-                EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1))
+                    propensity = (rng, ind) -> ind.state[:group] == 1 ? 1.0 : 0.0
+                ),
+            ]
+            state = EpiBranch.new_state(
+                process,
+                EpiBranch.AbstractClinicalTransition[], attrs, StableRNG(1)
+            )
             people = EpiBranch.add_individuals!(state, 40, [])
             for ind in people
                 ind.state[:test_positive] = true
@@ -288,20 +346,29 @@ end
         @testset "0/1 propensity gives all-or-nothing groups at the independent mean" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             ct = ContactTracing(
-                probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5)
+            )
             p = 0.4
-            attrs = [clinical, groups(10),
+            attrs = [
+                clinical, groups(10),
                 vaccine_acceptance(
-                    propensity = (rng, ind) -> Float64(rand(rng, Bernoulli(p))))]
+                    propensity = (rng, ind) -> Float64(rand(rng, Bernoulli(p)))
+                ),
+            ]
             rv = RingVaccination(efficacy = 0.9, coverage = read_acceptance)
             states = simulate(
-                ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    interventions = [iso, ct, rv], attributes = attrs), 20;
-                max_cases = 300, rng = StableRNG(3))
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = attrs
+                ), 20;
+                max_cases = 300, rng = StableRNG(3)
+            )
 
-            traced = [ind for state in states
-                      for ind in state.individuals
-                      if is_traced(ind)]
+            traced = [
+                ind for state in states
+                    for ind in state.individuals
+                    if is_traced(ind)
+            ]
             @test !isempty(traced)
             for state in states
                 by_group = Dict{Int, Vector{Bool}}()
@@ -324,19 +391,27 @@ end
             attrs = [groups(n_communities), vaccine_acceptance(propensity = propensity)]
             rng = StableRNG(4)
             state = EpiBranch.new_state(
-                process, EpiBranch.AbstractClinicalTransition[], attrs, rng)
+                process, EpiBranch.AbstractClinicalTransition[], attrs, rng
+            )
             people = EpiBranch.add_individuals!(
-                state, n_communities * per_community, [])
+                state, n_communities * per_community, []
+            )
 
             covered = Dict{Int, Vector{Bool}}()
             for ind in people
-                push!(get!(covered, ind.state[:group], Bool[]),
-                    EpiBranch._covers(read_acceptance, ind, rng))
+                push!(
+                    get!(covered, ind.state[:group], Bool[]),
+                    EpiBranch._covers(read_acceptance, ind, rng)
+                )
             end
             clustered_means = [mean(v) for v in values(covered) if length(v) >= 5]
-            independent_means = [mean(EpiBranch._covers(mean(propensity), nothing, rng)
-                                 for _ in 1:per_community)
-                                 for _ in 1:n_communities]
+            independent_means = [
+                mean(
+                    EpiBranch._covers(mean(propensity), nothing, rng)
+                        for _ in 1:per_community
+                )
+                    for _ in 1:n_communities
+            ]
 
             @test isapprox(mean(clustered_means), mean(independent_means); atol = 0.05)
             @test var(clustered_means) > 2 * var(independent_means)

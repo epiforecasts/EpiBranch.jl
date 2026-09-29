@@ -18,10 +18,10 @@ println("=== EpiBranch.jl vs R epichains validation ===\n")
 println("1. Borel density at mu=1")
 d = Borel(1.0)
 for n in 1:5
-    println("   P(X=$n) = $(round(pdf(d, n), digits=6))")
+    println("   P(X=$n) = $(round(pdf(d, n), digits = 6))")
 end
 # R gives: 0.3678794 0.2706706 0.1804470 0.1128544 0.0676126
-@test pdf(d, 1) ≈ exp(-1) atol=1e-6
+@test pdf(d, 1) ≈ exp(-1) atol = 1.0e-6
 println()
 
 # ── 2. Chain size simulation (Poisson, subcritical) ──────────────────
@@ -37,7 +37,7 @@ for s in states
     append!(sizes, cs.size)
 end
 println("   Sizes: $sizes")
-println("   Mean: $(round(mean(sizes), digits=2)), Max: $(maximum(sizes))")
+println("   Mean: $(round(mean(sizes), digits = 2)), Max: $(maximum(sizes))")
 # Analytical mean chain size for Poisson(0.9) = 1/(1-0.9) = 10
 @test mean(sizes) < 15  # subcritical, should be finite
 println()
@@ -56,7 +56,7 @@ for s in states
     append!(sizes, cs.size)
 end
 println("   Sizes: $sizes")
-println("   Mean: $(round(mean(sizes), digits=2))")
+println("   Mean: $(round(mean(sizes), digits = 2))")
 @test mean(sizes) < 20  # subcritical with finite pop
 println()
 
@@ -68,7 +68,7 @@ println("4. Chain size log-likelihood, Poisson(0.5)")
 # Use fixed data (R's set.seed(121) + sample(1:10, 20, replace=TRUE))
 chain_sizes = [4, 7, 1, 2, 7, 2, 3, 1, 5, 6, 1, 10, 5, 10, 6, 8, 8, 6, 7, 10]
 ll = loglikelihood(ChainSizes(chain_sizes), Poisson(0.5))
-println("   LL = $(round(ll, digits=4))")
+println("   LL = $(round(ll, digits = 4))")
 # R uses simulation-based likelihood by default; our analytical should be comparable
 @test isfinite(ll)
 @test ll < 0.0
@@ -96,8 +96,8 @@ model = BranchingProcess(NegBin(1.5, 0.5))
 rng = StableRNG(42)
 results = simulate(model, 2000; max_cases = 5000, rng = rng)
 q_simulated = containment_probability(results)
-println("   Analytical: $(round(q_analytical, digits=4))")
-println("   Simulated:  $(round(q_simulated, digits=4))")
+println("   Analytical: $(round(q_analytical, digits = 4))")
+println("   Simulated:  $(round(q_simulated, digits = 4))")
 @test abs(q_analytical - q_simulated) < 0.05
 println()
 
@@ -110,7 +110,7 @@ model_controlled = BranchingProcess(NegBin(0.9, 0.5))
 rng = StableRNG(42)
 results = simulate(model_controlled, 200; max_cases = 99, rng = rng)
 cp = containment_probability(results)
-println("   Containment probability: $(round(cp, digits=3))")
+println("   Containment probability: $(round(cp, digits = 3))")
 # With R=0.9 (subcritical), most chains should die out
 @test cp > 0.5
 println()
@@ -119,7 +119,7 @@ println()
 # This extends the epichains approach using our analytical function
 println("8. probability_contain(R=1.2, k=0.5, pop_control=0.25)")
 pc = probability_contain(1.2, 0.5; pop_control = 0.25)
-println("   P(contain) = $(round(pc, digits=4))")
+println("   P(contain) = $(round(pc, digits = 4))")
 # R_eff = 1.2 * 0.75 = 0.9, which is subcritical → containment = 1.0
 @test pc == 1.0
 println()
@@ -136,14 +136,14 @@ for s in states
     append!(sizes, cs.size)
 end
 d_fit = fit(Poisson, ChainSizes(sizes))
-println("   True R=0.7, Fitted R=$(round(mean(d_fit), digits=3))")
-@test mean(d_fit) ≈ 0.7 atol=0.15
+println("   True R=0.7, Fitted R=$(round(mean(d_fit), digits = 3))")
+@test mean(d_fit) ≈ 0.7 atol = 0.15
 println()
 
 # ── 10. Superspreading: proportion of transmission ───────────────────
 println("10. Proportion of transmission from top 20% (R=2.5, k=0.16)")
 prop = proportion_transmission(2.5, 0.16; prop_cases = 0.2)
-println("    Top 20% cause $(round(prop * 100, digits=1))% of transmission")
+println("    Top 20% cause $(round(prop * 100, digits = 1))% of transmission")
 # Known: with high overdispersion, top 20% cause ~80% of transmission
 @test prop > 0.7
 println()
@@ -153,7 +153,7 @@ println()
 println("11. Chain length log-likelihood, Poisson(0.5)")
 lengths = ChainLengths([0, 1, 0, 2, 1, 0, 0, 3, 0, 1])
 ll = loglikelihood(lengths, Poisson(0.5))
-println("    LL = $(round(ll, digits=4))")
+println("    LL = $(round(ll, digits = 4))")
 @test isfinite(ll)
 println()
 
@@ -170,8 +170,8 @@ for s in states_nb
 end
 d_fit = fit(NegativeBinomial, ChainSizes(nb_sizes))
 println("    True R=$true_R, k=$true_k")
-println("    Fitted R=$(round(mean(d_fit), digits=2)), k=$(round(d_fit.r, digits=2))")
-@test mean(d_fit) ≈ true_R atol=0.3
+println("    Fitted R=$(round(mean(d_fit), digits = 2)), k=$(round(d_fit.r, digits = 2))")
+@test mean(d_fit) ≈ true_R atol = 0.3
 println()
 
 println("=== All validations passed ===")
