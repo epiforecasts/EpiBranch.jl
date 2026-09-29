@@ -911,4 +911,34 @@
         @test_throws ArgumentError ChainLengths(Int[])
         @test_throws ArgumentError ChainLengths([-1, 0])
     end
+
+    @testset "Building data wrappers from contact-tracing records" begin
+        @testset "OffspringCounts from infector-infectee pairs" begin
+            # 1 infects 2; 2 infects 3 and 4; 3 and 4 are leaves.
+            data = OffspringCounts([1, 2, 2], [2, 3, 4])
+            @test sort(data.data) == [0, 0, 1, 2]
+
+            # Unlinked cases are recorded with zero offspring.
+            data = OffspringCounts([1, 2, 2], [2, 3, 4]; unlinked = 2)
+            @test sort(data.data) == [0, 0, 0, 0, 1, 2]
+
+            @test_throws ArgumentError OffspringCounts([1, 2], [1, 3])  # self-loop
+            @test_throws ArgumentError OffspringCounts([1, 1], [2, 2])  # duplicated pair
+            @test_throws ArgumentError OffspringCounts([1, 3], [2, 2])  # two infectors for case 2
+            @test_throws ArgumentError OffspringCounts([1, 1], [2, 3, 4])  # length mismatch
+            @test_throws ArgumentError OffspringCounts([1], [2]; unlinked = -1)
+        end
+
+        @testset "ChainSizes from cluster membership" begin
+            # Chain 1 has 2 cases, chain 2 has 1, chain 3 has 3.
+            data = ChainSizes(; membership = [1, 1, 2, 3, 3, 3])
+            @test sort(data.data) == [1, 2, 3]
+
+            # Singletons are recorded as extra chains of size 1.
+            data = ChainSizes(; membership = [1, 1, 2, 3, 3, 3], singletons = 2)
+            @test sort(data.data) == [1, 1, 1, 2, 3]
+
+            @test_throws ArgumentError ChainSizes(; membership = [1, 1, 2], singletons = -1)
+        end
+    end
 end
