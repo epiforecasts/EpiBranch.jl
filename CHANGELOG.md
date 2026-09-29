@@ -12,17 +12,17 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- The households tutorial casts the classical households model as a branching
+  process over households: the households-of-one limit, the offspring matrix as
+  a multi-type `BranchingProcess`, and the scope of the approximation.
 - `max_time` now ends homogeneous, household and network simulations at that
   time: people whose infection would fall later stay uninfected, matching the
   full run restricted to infections up to `max_time`. The other termination
   controls still do not apply to these models.
-
 - `CalendarKernel` aligns calendar-time contact hazards with infectious openings
   in network and household simulation and likelihoods.
-
 - `ContextualKernel` shares fixed and infector-infection-time covariates between
   network or household simulation and the compiled pairwise likelihood.
-
 - Clean-project installation checks for matching source revisions and published
   companion-package installations.
 - Callable objects can supply branching-process offspring rules, generation-time
@@ -228,6 +228,12 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   competing risks.
   `severity_efficacy` does not wane. Defaults to `nothing`, which keeps the
   existing constant-protection behaviour.
+- `exclusive_probabilities` builds matched `probability` callables for sibling
+  terminal transitions that should partition a population exactly (for
+  example, an exact case-fatality ratio split between `Death` and a competing
+  `recovered` `Transition`): the siblings share one uniform draw per case
+  instead of each drawing its own, so each case lands in exactly one of the
+  given proportions.
 
 ### Changed
 
@@ -334,6 +340,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
+- `HomogeneousProcess`, `HouseholdProcess`, `NetworkProcess` and `RoutedNetwork`
+  now set `state.extinct` at the end of their Sellke run. `is_extinct` and
+  `containment_probability` report real values instead of always `false`/`0`
+  for these models. A household population counts as extinct only when every
+  household's race ran to its own extinction.
 - `household_infections` (in `EpiHouseholds`) ends each case's infectious window
   when the model's interventions remove it from transmission, such as by
   isolation or quarantine after tracing, as the simulation does. Fitting an
@@ -394,6 +405,22 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   at symptom onset and traced contacts who were asymptomatic got no dose. With
   `:trace_time` recorded at every tracing depth, `linelist` now has a
   `date_trace` column at the default `depth = 1` as well.
+- Two terminal transitions gated independently at `p` and `1 - p` (the pattern
+  the `Death` docstring used to recommend for an exact case-fatality ratio) do
+  not give an exclusive outcome: each is its own Bernoulli draw, so about
+  `p(1 - p)` of cases pass both gates, resolved by whichever candidate time is
+  earlier, and another `p(1 - p)` pass neither gate, leaving `:outcome` unset.
+  On a structure-driven model, that case's infectious window then never
+  closes. The `Death` docstring no longer recommends the broken pattern and
+  instead points to the new `exclusive_probabilities`. `ModelSpec` now warns
+  when every terminal transition in `progression` is gated below certainty
+  and none is unconditional, so the gap is caught at composition instead of
+  surfacing as an implausible outbreak or an unrelated rejection-sampling
+  error; that error's message now names the likely cause.
+- `AbstractVaccination`'s `initialise_individual!` no longer overwrites
+  `:vaccinated` and `:vaccination_time` that an `attributes` function already
+  set, such as a dose recorded from an earlier campaign. It now only fills in
+  the unvaccinated defaults when those keys are absent.
 
 ## [0.1.0] - 2026-06-16
 

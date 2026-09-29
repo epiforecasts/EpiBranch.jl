@@ -34,6 +34,11 @@ end
         @test is_infected.(cut.individuals[1:6]) == by(full, 1.5)[1:6]
         @test all(i.infection_time <= 1.5 for i in cut.individuals if is_infected(i))
         @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+        # Every household race in the full run reached its own extinction, but
+        # at least one was cut off mid-race in `cut`, so only the full run
+        # counts as extinct overall.
+        @test is_extinct(full)
+        @test !is_extinct(cut)
     end
 
     @testset "construction" begin

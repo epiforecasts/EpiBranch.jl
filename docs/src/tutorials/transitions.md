@@ -364,6 +364,39 @@ No engine changes were needed. The same pattern works for ICU
 admission as a sub-state of hospitalisation, treatment-conditional
 outcomes, or whatever else your disease timeline needs.
 
+### Exclusive outcomes: an exact case-fatality ratio
+
+Each terminal transition's `probability` is its own Bernoulli draw, so gating
+two of them independently at `p` and `1 - p` does not partition cases
+exactly: about `p(1 - p)` of cases pass both gates (resolved by whichever
+candidate time is earlier) and another `p(1 - p)` pass neither gate, leaving
+`:outcome` unset. [`exclusive_probabilities`](@ref) fixes this by sharing one
+uniform draw between the siblings, so exactly one of them triggers:
+
+```@example transitions
+death_p, recovered_p = exclusive_probabilities([0.05, 0.95])
+exact_cfr = [
+    Death(delay = LogNormal(2.5, 0.4), probability = death_p),
+    Transition(:recovered, from = :onset, delay = LogNormal(2.0, 0.4),
+        probability = recovered_p, terminal = true),
+]
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+    progression = exact_cfr, attributes = clinical)
+
+rng = StableRNG(42)
+state = simulate(model; max_cases = 300, rng = rng)
+symptomatic = [ind for ind in state.individuals if !isnan(onset_time(ind))]
+n_missing = count(ind -> !haskey(ind.state, :outcome), symptomatic)
+n_died = count(ind -> get(ind.state, :outcome, nothing) == :died, symptomatic)
+println("Symptomatic cases: ", length(symptomatic), ", missing an outcome: ", n_missing)
+println("Died: ", n_died, " of ", length(symptomatic))
+```
+
+`ModelSpec` warns at composition when every terminal transition is gated
+below certainty and none is unconditional, the same gap this section
+describes, so the mistake surfaces before a run rather than as an implausible
+outbreak or a rejection-sampling error on a structure-driven model.
+
 ## Writing a non-terminal custom transition
 
 Non-terminal transitions follow the same pattern minus `is_terminal`
