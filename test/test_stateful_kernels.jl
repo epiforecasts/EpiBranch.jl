@@ -79,8 +79,10 @@ end
 include("testutils/stateful_kernels.jl")
 
 # Exercise the shared primitive without depending on a companion package.
-function stateful_test_race(kernel, initial_times; interventions = (), introduction = nothing)
-    rng = StableRNG(233)
+function stateful_test_race(
+        kernel, initial_times; interventions = (), introduction = nothing,
+        seed = 233)
+    rng = StableRNG(seed)
     progression = [Transition(:recovered; delay = 5.0, terminal = true)]
     state = EpiBranch.new_state(BranchingProcess(Poisson(0.0)), progression,
         NoAttributes(), rng)
@@ -241,4 +243,47 @@ end
     cases = filter(is_infected, introduced.individuals)
     @test length(cases) == 3
     @test all(i -> 1.0 <= i.infection_time <= 3.0, cases)
+end
+
+@testset "Moved records redraw pending contacts in a shared race" begin
+    # Host 2 comes before host 3, so when host 3 settles at t = 1 every contact
+    # to host 2 at t = 1 has been resolved; the redraw must not offer it again.
+    two_atoms = DiscreteNonParametric([1.0, 2.0], [0.5, 0.5])
+    atoms = StatefulKernel(tick_state,
+        (c, a, b) -> c.susceptible == 2 ? two_atoms : Dirac(1.0))
+    at_one = count(1:2000) do seed
+        state = stateful_test_race(atoms, [0.0, Inf, Inf];
+            interventions = [TickEveryCase()], seed)
+        state.individuals[2].infection_time == 1.0
+    end / 2000
+    @test isapprox(at_one, 0.5; atol = 0.04)
+
+    # Every case moves every record, so a large race redraws, and compacts its
+    # proposals, many times over; the hazards never change, so it spreads as an
+    # ordinary kernel does.
+    seeds = [0.0; fill(Inf, 29)]
+    law = Exponential(4.0)
+    live = StatefulKernel(tick_state, (c, a, b) -> law)
+    early(state) = count(ind -> ind.infection_time < 1.0, state.individuals)
+    redrawn = mean(early(stateful_test_race(live, seeds;
+                       interventions = [TickEveryCase()], seed)) for seed in 1:1000)
+    ordinary = mean(early(stateful_test_race(law, seeds; seed)) for seed in 1:1000)
+    @test isapprox(redrawn, ordinary; atol = 0.6)
+end
+
+@testset "Live kernels outside a race" begin
+    live = StatefulKernel(tick_state, (c, a, b) -> Exponential(1.0))
+    @test EpiBranch._watched_projection(live, ()) === nothing
+    @test EpiBranch._watched_projection(live, [TickEveryCase()]) === tick_state
+    @test EpiBranch._watched_projection(Exponential(1.0), [TickEveryCase()]) === nothing
+    @test_throws ArgumentError EpiBranch.pair_kernel(live, 1, 2, 0.0)
+
+    state = EpiBranch.new_state(BranchingProcess(Poisson(0.0)), [], NoAttributes(),
+        StableRNG(1))
+    EpiBranch.add_individuals!(state, 3, [])
+    state.individuals[1].state[:onset_time] = 2.0
+    state.individuals[2].state[:onset_time] = NaN
+    columns = EpiBranch._host_time_columns(state, (:onset_time, :policy_time))
+    @test isequal(columns.onset_time, [2.0, NaN, missing])
+    @test all(ismissing, columns.policy_time)
 end
