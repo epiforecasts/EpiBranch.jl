@@ -200,8 +200,12 @@ println("Iso + tracing + ring vaccination: $(round(containment_probability(resul
     `post_exposure_efficacy`, which acts on the infection the contact
     already has; see
     [Protecting a contact who has already been exposed](#Protecting-a-contact-who-has-already-been-exposed).
-    Until that section the examples keep the default tracing and set only
-    `efficacy`, so they show how the machinery works but no vaccine effect.
+    The examples that follow keep the default tracing and set only
+    `efficacy`: they show how the machinery works, but no vaccine effect.
+    [Clustered refusal and containment](#Clustered-refusal-and-containment)
+    and
+    [Protecting a contact who has already been exposed](#Protecting-a-contact-who-has-already-been-exposed)
+    use stacks where vaccination acts.
 
 A delay between vaccination and protective immunity can be specified.
 If transmission occurs before immunity develops, there is no protection:
@@ -340,6 +344,50 @@ in later generations. Give [`GroupVaccination`](@ref) the same `coverage`
 closure to cluster refusal inside the unit it vaccinates;
 [`MassVaccination`](@ref)'s `eligibility_time` reads the propensity the same
 way.
+
+#### Clustered refusal and containment
+
+The comparison above measures coverage under `ct`. Under that tracing, ring
+vaccination cannot change whether an outbreak is contained, because `efficacy`
+has nothing left to prevent (see the warning above). The effect of clustering
+on containment can only be measured on a stack where vaccination acts. Here
+tracing no longer quarantines, and `onward_efficacy` reduces a vaccinated
+contact's own onward transmission. Every arm draws the same attributes, which
+leaves the vaccination as the only difference between them:
+
+```@example interventions
+ct_noquarantine = ContactTracing(probability = 0.7,
+    isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = false)
+rv_clustered_onward = RingVaccination(efficacy = 0.8, onward_efficacy = 0.8,
+    coverage = (rng, ind) -> ind.state[:vaccine_acceptance])
+rv_independent_onward = RingVaccination(efficacy = 0.8, onward_efficacy = 0.8,
+    coverage = 0.5)
+
+containment(interventions) = containment_probability(simulate(
+    scenario(interventions, [clinical, community, acceptance]), 10000;
+    max_cases = 200, rng = StableRNG(42)))
+
+for (label, interventions) in (
+        ("no vaccination", [iso, ct_noquarantine]),
+        ("clustered refusal", [iso, ct_noquarantine, rv_clustered_onward]),
+        ("independent refusal", [iso, ct_noquarantine, rv_independent_onward]))
+    println(rpad(label, 20), round(containment(interventions), digits = 3))
+end
+```
+
+Vaccinating about half the traced contacts raises containment by one to two
+percentage points. These runs cannot distinguish clustered from independent
+refusal. Each estimate has a binomial standard error of about 0.004, which puts
+the standard error of the gap between the two arms at about 0.006, larger than
+the gap itself. At 5,000 replicates the two arms swap order.
+
+Clustering has little effect here because `groups(20)` assigns each person to a
+community independently of who infected them. A case's contacts are spread
+across communities, and the shared propensity rarely lines up with the people
+that case goes on to infect. Clustering matters more when communities follow
+transmission, as households or a contact network do. A low-acceptance community
+then keeps transmitting within itself, which can lower containment at unchanged
+average coverage. Measure the effect in the model you are running.
 
 ### Mass vaccination
 
