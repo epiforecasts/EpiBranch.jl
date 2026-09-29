@@ -12,6 +12,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- `OffspringCounts(infector, infectee; unlinked = 0)` builds offspring counts
+  from a table of infector-infectee pairs, and `ChainSizes(; membership,
+  singletons = 0)` builds chain sizes from a vector of cluster memberships —
+  the analytical-data counterparts of `linelist` and `contacts` for
+  real-world contact-tracing records.
 - `StatefulKernel` shares sampled attributes and dated intervention histories
   between structured simulation and likelihoods. `record_kernel` extracts typed
   host records for inference. An infection layer can hold per-host times such

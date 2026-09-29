@@ -98,6 +98,23 @@ ll = loglikelihood(length_data, Poisson(0.5))
 println("Chain length LL: $(round(ll, digits=2))")
 ```
 
+### Building from contact-tracing records
+
+Contact-tracing data usually arrives as a table of infector-infectee pairs,
+or a table of cluster memberships, rather than as already-tallied counts.
+[`OffspringCounts`](@ref) and [`ChainSizes`](@ref) build directly from
+those records:
+
+```@example chains
+# 1 infected 2; 2 infected 3 and 4; two further cases have no known links.
+offspring_from_pairs = OffspringCounts([1, 2, 2], [2, 3, 4]; unlinked = 2)
+
+# Chain 1 has 2 cases, chain 2 has 1, chain 3 has 3.
+sizes_from_membership = ChainSizes(; membership = [1, 1, 2, 3, 3, 3])
+println(sort(offspring_from_pairs.data))
+println(sort(sizes_from_membership.data))
+```
+
 ## Simulation-based likelihood
 
 For models with interventions, use the simulation-based likelihood by
