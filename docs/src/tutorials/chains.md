@@ -100,8 +100,8 @@ println("Chain length LL: $(round(ll, digits=2))")
 
 ### Building from contact-tracing records
 
-Contact-tracing data usually arrives as a table of infector-infectee pairs,
-or a table of cluster memberships, rather than as already-tallied counts.
+Contact-tracing data usually comes as a table of infector-infectee pairs or
+a table of cluster memberships, not as counts already tallied.
 [`OffspringCounts`](@ref) and [`ChainSizes`](@ref) build directly from
 those records:
 
