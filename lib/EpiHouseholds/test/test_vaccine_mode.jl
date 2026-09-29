@@ -10,18 +10,22 @@
     ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), FlagOnly())
     progression = [Transition(:recovered; delay = 15.0, terminal = true)]
 
-    @testset "A fully-effective dose leaves no vaccinated member infected" begin
-        rv = RingVaccination(efficacy = 1.0, mode = AllOrNothingMode())
+    @testset "No responder is infected once its immunity is in force" begin
+        # At an intermediate efficacy LeakyMode would let repeated exposure
+        # through; a responder under AllOrNothingMode is protected against
+        # every exposure after its immunity time, however many there are.
+        rv = RingVaccination(efficacy = 0.5, mode = AllOrNothingMode())
         process = HouseholdProcess(fill(6, 100), Exponential(0.05))
         model = ModelSpec(process; progression, attributes = clinical,
             interventions = [ct, rv])
         state = simulate(model; rng = StableRNG(11))
-        vaccinated = [ind for ind in state.individuals if is_vaccinated(ind)]
-        @test length(vaccinated) > 100
-        # Every responder's immunity is in force before it can be reached
-        # again, so none of them is ever infected after it — here, at
-        # efficacy 1.0, not at all.
-        @test !any(is_infected, vaccinated)
+        responders = [ind
+                      for ind in state.individuals
+                      if is_vaccinated(ind) && ind.state[:vaccine_efficacy] == 1.0]
+        @test length(responders) > 50
+        @test !any(responders) do ind
+            is_infected(ind) && ind.infection_time >= ind.state[:immunity_time]
+        end
     end
 
     @testset "Repeated exposure erodes leaky protection but not all-or-nothing" begin
