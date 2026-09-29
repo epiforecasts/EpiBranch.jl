@@ -397,6 +397,38 @@ below certainty and none is unconditional, the same gap this section
 describes, so the mistake surfaces before a run rather than as an implausible
 outbreak or a rejection-sampling error on a structure-driven model.
 
+## Scoring the progression's likelihood
+
+[`progression_loglik`](@ref) scores a case's clinical timeline against the
+`progression` that produced it: the log-density of each transition's delay
+where it fired, and the log-probability of its gate either way. It reads the
+state each transition wrote in `resolve_individual!`, so it takes the same
+individuals (or the [`SimulationState`](@ref) holding them) that `simulate`
+returned:
+
+```@example transitions
+progression = [
+    Reporting(delay = LogNormal(1.0, 0.3), probability = 0.7),
+    Recovery(delay = LogNormal(2.0, 0.4)),
+]
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = clinical)
+
+rng = StableRNG(42)
+state = simulate(model; max_cases = 200, rng = rng)
+progression_loglik(model, state)
+```
+
+This is the natural-history counterpart to [`pairwise_surv_loglik`](@ref),
+which scores the infection layer instead. Added together, the two give the
+full log-likelihood of an outbreak's augmented data — infection times, order
+and clinical timelines — under `model`.
+
+Only the individuals `resolve_transitions!` actually ran on contribute: a host
+never infected, or one whose onset (or other anchor) was never reached,
+adds `0.0`. A transition's `delay` must be a `Distribution` or a fixed `Real`
+to be scored this way — a raw `Function (rng, ind) -> Real` delay has no
+density, and scoring one throws.
+
 ## Writing a non-terminal custom transition
 
 Non-terminal transitions follow the same pattern minus `is_terminal`
@@ -437,6 +469,22 @@ Death(
     delay = LogNormal(2.5, 0.4),
     probability = (rng, ind) -> ind.state[:treated] ? 0.02 : 0.08,
 )
+```
+
+`AntiviralTreatment` has no [`EpiBranch.transition_loglik`](@ref) method of
+its own, so [`progression_loglik`](@ref) throws on a progression that includes
+it. Give it one, reading back the same `:treated`/`:treatment_time` keys
+`resolve_individual!` writes:
+
+```julia
+function EpiBranch.transition_loglik(t::AntiviralTreatment, ind)
+    ot = onset_time(ind)
+    isnan(ot) && return 0.0
+    fired = ind.state[:treated]
+    ll = fired ? log(t.probability) : log1p(-t.probability)
+    fired || return ll
+    return ll + logpdf(t.delay, ind.state[:treatment_time] - ot)
+end
 ```
 
 That's the whole extension surface. Three ingredients (the shared

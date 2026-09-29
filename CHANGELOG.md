@@ -12,6 +12,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- `progression_loglik` scores a `ModelSpec`'s `progression` against a case's
+  clinical timeline, the natural-history counterpart to
+  `pairwise_surv_loglik`. It works out of the box for the built-in
+  transitions; a custom `AbstractClinicalTransition` needs its own
+  `EpiBranch.transition_loglik` method to be scored this way.
 - `StatefulKernel` shares sampled attributes and dated intervention histories
   between structured simulation and likelihoods. `record_kernel` extracts typed
   host records for inference. An infection layer can hold per-host times such
