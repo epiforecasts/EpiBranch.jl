@@ -21,6 +21,10 @@ import EpiBranch: population_size, new_state, add_individuals!, apply_observatio
 # well, and agree on when that term applies and what it is.
 import EpiBranch: _infection_layer_columns, _infection_layer_fields, _ext_active,
                   _ext_draw, _valid_external, _normalise_external
+# A vaccination's candidate effect for the likelihood, read off
+# `ModelSpec.interventions` by the structured `loglikelihood(data, spec)`
+# entry point.
+import EpiBranch: _model_vaccine
 
 export NetworkProcess, RoutedNetwork
 export NetworkInfections, network_infections
