@@ -588,6 +588,50 @@
             @test isfinite(ll)
         end
 
+        @testset "min_size truncation" begin
+            off = NegBin(0.8, 0.5)
+            dist = chain_size_distribution(off)
+
+            # Conditioning formula: L_i = log P(X = x_i) - log P(X ≥ min_size).
+            data = ChainSizes([2, 3, 5]; min_size = 2)
+            ll = loglikelihood(data, off)
+            manual = sum(
+                EpiBranch._chain_size_logpdf(dist, x, 1) -
+                    EpiBranch._chain_size_right_tail_logprob(dist, 2, 1)
+                    for x in data.data
+            )
+            @test ll ≈ manual atol = 1.0e-10
+
+            # min_size = 1 (the default) is the unconditioned likelihood.
+            @test loglikelihood(ChainSizes([2, 3, 5]; min_size = 1), off) ≈
+                loglikelihood(ChainSizes([2, 3, 5]), off)
+
+            # Conditioning on N ≥ min_size raises the log-likelihood relative
+            # to the unconditioned one (dividing by P(X ≥ min_size) < 1).
+            unconditioned = sum(EpiBranch._chain_size_logpdf(dist, x, 1) for x in data.data)
+            @test ll > unconditioned
+
+            # The Poisson AD fast path agrees with the generic path.
+            data_p = ChainSizes([2, 3, 4]; min_size = 2)
+            ll_fast = loglikelihood(data_p, Poisson(0.5))
+            d_borel = Borel(0.5)
+            manual_p = sum(
+                EpiBranch._borel_logpdf(0.5, x) -
+                    EpiBranch._chain_size_right_tail_logprob(d_borel, 2, 1)
+                    for x in data_p.data
+            )
+            @test ll_fast ≈ manual_p atol = 1.0e-10
+
+            # Composes with prob_concluded.
+            data_pc = ChainSizes([2, 3]; min_size = 2)
+            ll_pc = loglikelihood(data_pc, off; prob_concluded = [0.5, 0.5])
+            @test isfinite(ll_pc)
+
+            # Constructor validation.
+            @test_throws ArgumentError ChainSizes([1]; min_size = 2)
+            @test_throws ArgumentError ChainSizes([2]; min_size = 0)
+        end
+
         @testset "Per-case observation: simulation decoration" begin
             R, k = 0.6, 0.3
             gt = Gamma(2.0, 2.5)
@@ -841,6 +885,26 @@
                 );
                 max_cases = 500,
                 n_sim = 500,
+                rng = StableRNG(42)
+            )
+            @test isfinite(ll)
+        end
+
+        @testset "min_size truncation falls through to the simulation path" begin
+            # With interventions present, min_size must also apply on the
+            # simulation-based branch, not just the analytical one.
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+            ll = loglikelihood(
+                ChainSizes([2, 3, 2]; min_size = 2),
+                ModelSpec(
+                    BranchingProcess(Poisson(1.5), Exponential(5.0));
+                    interventions = [iso],
+                    attributes = clinical_presentation(
+                        incubation_period = LogNormal(1.5, 0.5)
+                    )
+                );
+                max_cases = 500,
+                n_sim = 2000,
                 rng = StableRNG(42)
             )
             @test isfinite(ll)

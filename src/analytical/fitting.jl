@@ -31,6 +31,11 @@ With `prob_concluded::AbstractVector` (length `length(data.data)`, values in
 where `π_i = prob_concluded[i]` is the probability that cluster `i` is
 finished (observed size = final size). See `end_of_outbreak_probability` for a
 principled `prob_concluded` based on the generation-time distribution.
+
+With `data.min_size > 1` (see [`ChainSizes`](@ref)), every cluster's
+contribution above is additionally normalised by `P(X ≥ min_size |
+seeds_i)`, conditioning the likelihood on the data only being recorded
+once a chain reaches that size.
 """
 function loglikelihood(
         data::ChainSizes, offspring::Distribution;
@@ -47,7 +52,7 @@ function loglikelihood(
         prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
     ) where {T}
     μ = mean(offspring)
-    if prob_concluded === nothing && all(==(1), data.seeds)
+    if prob_concluded === nothing && data.min_size == 1 && all(==(1), data.seeds)
         return sum(n -> _borel_logpdf(μ, n), data.data)
     end
     return _chain_size_loglik(Borel(μ), data; prob_concluded)
@@ -57,7 +62,7 @@ function loglikelihood(
         data::ChainSizes, offspring::NegativeBinomial{T};
         prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
     ) where {T}
-    if prob_concluded === nothing && all(==(1), data.seeds)
+    if prob_concluded === nothing && data.min_size == 1 && all(==(1), data.seeds)
         return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
     end
     return _chain_size_loglik(GammaBorel(offspring.r, mean(offspring)), data; prob_concluded)
@@ -102,21 +107,25 @@ function _chain_size_loglik(
     total = zero(first_val)
     for i in eachindex(data.data)
         lc = _chain_size_logpdf(dist, data.data[i], data.seeds[i])
-        if prob_concluded === nothing
-            total += lc
-            continue
-        end
-        π_i = prob_concluded[i]
-        (0 <= π_i <= 1) ||
-            throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
-        if π_i >= one(π_i)
-            total += lc
-        elseif π_i <= zero(π_i)
-            total += _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+        term = if prob_concluded === nothing
+            lc
         else
-            lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
-            total += _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
+            π_i = prob_concluded[i]
+            (0 <= π_i <= 1) ||
+                throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
+            if π_i >= one(π_i)
+                lc
+            elseif π_i <= zero(π_i)
+                _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+            else
+                lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+                _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
+            end
         end
+        if data.min_size > 1
+            term -= _chain_size_right_tail_logprob(dist, data.min_size, data.seeds[i])
+        end
+        total += term
     end
     return total
 end
@@ -256,12 +265,15 @@ function _chain_size_model_loglik(
     for state in states
         hit_cap = !state.extinct && state.cumulative_cases >= cap
         for v in _sim_chain_sizes(state, obs)
-            v >= 1 || continue
+            # `data.min_size` conditions the data on N ≥ min_size; dropping
+            # smaller simulated chains here scores against that same
+            # conditional distribution empirically.
+            v >= data.min_size || continue
             push!(sim_values, v)
             push!(censored, hit_cap)
         end
     end
-    return _empirical_ll(data.data, sim_values; min_val = 1, censored, cap)
+    return _empirical_ll(data.data, sim_values; min_val = data.min_size, censored, cap)
 end
 
 """
