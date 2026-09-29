@@ -75,6 +75,17 @@ end
 # Rejection continuations require finite remaining integrated hazard; otherwise
 # an opaque risk could reject contacts forever and the model is refused.
 #
+# A risk whose block is certain and does not fade — an `AllOrNothingMode`
+# responder blocked from its immunity time, an aborted infection's infector —
+# answers every later proposal on the pair the same way it just answered this
+# one, so nothing is left to gain from asking again: the pair is dropped from
+# the race instead of drawing towards a foregone conclusion, which is also
+# what spares an unbounded window from the rejection-continuation guard above.
+# The pair still stands in each other's contacts; tracing and ring
+# construction read that, not the proposals the race no longer makes. An
+# output that logs every contact event needs the draws the race now skips,
+# and cannot be built on top of it.
+#
 # It is not what a block means on the generation engine, where a parent draws a
 # fixed set of contacts and a blocked one is a transmission lost with nothing to
 # follow it: an efficacy of 0.5 halves that pair's transmissions there, and here
@@ -299,10 +310,56 @@ function _intervention_removal_time(ind, interventions)
     return t
 end
 
+# Whether a fired risk stands for every later proposal on the same edge too:
+# its `event_time`, given as a plain number rather than resampled on each ask,
+# does not move and has already passed; its `block_probability`, also a plain
+# number rather than a waning closure that could give a smaller value to a
+# later exposure, is 1. A `Distribution` or function for either field could
+# read differently next time, so only the fixed-number case counts.
+function _standing_risk(risk::Risk, transmission_time)
+    risk.event_time isa Real && risk.event_time <= transmission_time &&
+        risk.block_probability isa Real && risk.block_probability >= 1.0
+end
+
+# Whether `source` contributes a standing risk (see `_standing_risk`) against
+# this pair. Building its `Risk`(s) again reads only stored state and draws
+# nothing from the rng, so asking costs nothing beyond the one already-blocked
+# proposal it is asked for.
+function _any_standing_risk(source, parent, contact, state, transmission_time)
+    for risk in _iter_risks(competing_risk(source, parent, contact, state))
+        _standing_risk(risk, transmission_time) && return true
+    end
+    return false
+end
+
+# Whether the block just resolved for `parent` → `contact` at `transmission_time`
+# will stand for every later proposal on the same edge, so the race can stop
+# proposing for the pair instead of redrawing towards a block it already knows
+# is certain: true when any risk composed for it — the continuous-time
+# built-ins, the model's own, or the interventions' — is a standing risk.
+function _permanently_blocked(state, parent, contact, transmission_time,
+        model_risks, interventions)
+    _any_standing_risk(AbortedInfection(), parent, contact, state, transmission_time) &&
+        return true
+    for source in model_risks
+        _any_standing_risk(source, parent, contact, state, transmission_time) && return true
+    end
+    for iv in interventions
+        # A `Scheduled` wrapper can still turn its block off later unless the
+        # wrapped intervention's protection persists outside the active
+        # window (`_may_lapse`), so such a risk is never read as standing here,
+        # however certain it looks at this one proposal.
+        _may_lapse(iv) && continue
+        _any_standing_risk(iv, parent, contact, state, transmission_time) && return true
+    end
+    return false
+end
+
 # Whether the composed risks block `parent` infecting `contact` at the proposed
-# `transmission_time` on a continuous-time model. On the generation engine a
-# contact's `infection_time` already holds its transmission time when the risks
-# are resolved, and a risk may read the exposure from there. A contact these
+# `transmission_time` on a continuous-time model, and whether that block is
+# permanent (see `_permanently_blocked`). On the generation engine a contact's
+# `infection_time` already holds its transmission time when the risks are
+# resolved, and a risk may read the exposure from there. A contact these
 # models propose is still susceptible, so its `infection_time` holds nothing
 # yet: set it to the proposed time for the resolution, and put it back if the
 # contact is blocked, leaving it as it was.
@@ -318,7 +375,9 @@ function _proposal_blocked(state::SimulationState, parent, contact, transmission
     try
         blocked = _composed_risks_block(state, parent, contact, transmission_time,
             model_risks, interventions, _sellke_builtin_risk_blocks)
-        return blocked
+        permanent = blocked && _permanently_blocked(state, parent, contact,
+            transmission_time, model_risks, interventions)
+        return blocked, permanent
     finally
         state.max_infection_time = previous_clock
         blocked && (contact.infection_time = previous)
@@ -492,7 +551,13 @@ a declined contact is followed by a further draw on the same edge, so blocking a
 fraction of a pair's contacts thins that pair's hazard by the same fraction.
 Per-individual susceptibility and infectiousness reach the same thinning through
 the contact-interval draw, which turns a pair's survival `S(t)` into `S(t)^m`,
-so they are not resolved here.
+so they are not resolved here. A block that is certain and does not fade —
+a constant `block_probability` of 1 past its `event_time`, neither given as
+a `Distribution` or function that could read differently later — answers every
+later proposal on the pair the same way, so the race stops proposing for it
+instead of redrawing towards a foregone block; the pair remains in each
+other's contacts for tracing and ring construction, which read that
+relationship rather than the proposals.
 
 A model with several transmission routes passes `routes`, a collection of
 `(RouteWindow, targets)` pairs, in place of `from`/`until`/`targets`. Each route
@@ -646,32 +711,44 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         # two are the same individual. An index case is where an outbreak is
         # defined to start, and is put to no risk at all.
         source = infector_id == 0 ? ind : state.individuals[infector_id]
-        if may_block && (infector_id != 0 || introduction !== nothing) &&
-           _proposal_blocked(state, source, ind, bt, risks,
-               opening.route == 0 ? introduction_interventions :
-               route_interventions[opening.route])
-            # The contact did not transmit, and the source goes on meeting the
-            # person: the next contact is a draw from the same hazard conditioned
-            # on falling later, kept while the window is still open for it.
-            if opening.route == 0
-                kernel, close_t = introduction
-                open_t = zero(T)
-                mult = ind.susceptibility
-            else
-                # Which route's targets to ask is known only at run time, so the
-                # routes are walked rather than indexed: indexing a tuple of
-                # routes with a running value would put the whole tuple on the
-                # heap, once per race.
-                kernel = _route_pair_kernel(rts, opening.route, infector_id,
-                    members[j], state)
-                open_t = opening.open_t
-                close_t = opening.close_t
-                mult = source.infectiousness * ind.susceptibility
+        if may_block && (infector_id != 0 || introduction !== nothing)
+            blocked, permanent = _proposal_blocked(state, source, ind, bt, risks,
+                opening.route == 0 ? introduction_interventions :
+                route_interventions[opening.route])
+            if blocked
+                # The contact did not transmit. Unless the block is certain to
+                # recur (`permanent`), the source goes on meeting the person: the
+                # next contact is a draw from the same hazard conditioned on
+                # falling later, kept while the window is still open for it. A
+                # permanent block already answers every later proposal the same
+                # way, so the pair is dropped without asking the model or the
+                # kernel again — tracing and ring construction read the standing
+                # contacts, not these proposals, so the pair itself is unaffected.
+                if permanent
+                    proposals[p] = _at(proposals[p], T(Inf))
+                else
+                    if opening.route == 0
+                        kernel, close_t = introduction
+                        open_t = zero(T)
+                        mult = ind.susceptibility
+                    else
+                        # Which route's targets to ask is known only at run
+                        # time, so the routes are walked rather than indexed:
+                        # indexing a tuple of routes with a running value would
+                        # put the whole tuple on the heap, once per race.
+                        kernel = _route_pair_kernel(rts, opening.route, infector_id,
+                            members[j], state)
+                        open_t = opening.open_t
+                        close_t = opening.close_t
+                        mult = source.infectiousness * ind.susceptibility
+                    end
+                    nxt = open_t +
+                          _next_contact(rng, kernel, mult, bt - open_t, close_t - open_t)
+                    proposals[p] = _at(proposals[p], nxt <= close_t ? nxt : T(Inf))
+                end
+                _requeue!(pending, proposals, head, best, represents, j)
+                continue
             end
-            nxt = open_t + _next_contact(rng, kernel, mult, bt - open_t, close_t - open_t)
-            proposals[p] = _at(proposals[p], nxt <= close_t ? nxt : T(Inf))
-            _requeue!(pending, proposals, head, best, represents, j)
-            continue
         end
         processed[j] = true
 

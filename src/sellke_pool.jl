@@ -437,9 +437,14 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             src = _draw_infector(rng, state, infectious_ids, equal_infectiousness)
             ind = state.individuals[id]
             # An introduction with no infector has no pair to resolve risks over,
-            # as an index case on the generation engine has none either.
-            blocked = src != 0 && _proposal_blocked(
-                state, state.individuals[src], ind, t, risks, risk_interventions)
+            # as an index case on the generation engine has none either. The pool
+            # draws a fresh infector on every contact rather than meeting the same
+            # one again, so there is no standing pair for a certain block to end;
+            # only `blocked` is read, and a permanently-blocking risk simply keeps
+            # rejecting this susceptible's contacts until one draws an unblocked
+            # infector or its window closes.
+            blocked = src != 0 && first(_proposal_blocked(
+                state, state.individuals[src], ind, t, risks, risk_interventions))
             if blocked
                 # With an opaque risk, an immortal infectious source can keep
                 # generating rejected contacts forever. Require every active
