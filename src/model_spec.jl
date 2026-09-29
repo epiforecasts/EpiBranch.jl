@@ -35,7 +35,7 @@ _certain_probability(p) = missing
 function _warn_incomplete_terminal_coverage(progression)
     terminals = filter(is_terminal, progression)
     isempty(terminals) && return nothing
-    certainties = _terminal_certain.(terminals)
+    certainties = Union{Bool, Missing}[_terminal_certain(t) for t in terminals]
     any(isequal(true), certainties) && return nothing
     any(ismissing, certainties) && return nothing
     @warn "Every terminal transition in `progression` is gated below " *

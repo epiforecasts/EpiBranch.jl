@@ -117,8 +117,6 @@ tasks:
   info:
     desc: Show project and environment information
     cmds:
-      # A folded scalar: an unquoted command carrying `": "` inside its Julia
-      # source reads as a mapping key, which no YAML parser accepts.
       - >-
         julia --project=. --quiet -e '
         using Pkg;
