@@ -110,9 +110,10 @@ holds the per-host times it reads, such as an onset time an infector's
 infectiousness is timed from. The likelihood then applies the projection to
 each host as a [`LayerHost`](@ref), which has the `id` and `infection_time` of
 an individual and a `state` holding the layer's `host_times` under their keys.
-A projection that reads `ind.id`, `ind.infection_time` and
-`get(ind.state, key, default)` works in both paths, so the same kernel scores
-an augmented infection layer, whose onsets change during inference.
+A projection that reads `ind.id`, `ind.infection_time` and the recorded times
+through `ind.state` works in both paths, so the same kernel scores an augmented
+infection layer, whose onsets change during inference. Reading a key the layer
+did not record raises an error; record every time the projection reads.
 
 Callbacks must describe a predictable hazard: adding an event at time `t` must
 not change the hazard before `t`. A final vaccinated flag alone is insufficient;
@@ -138,16 +139,43 @@ end
 One host of an [`InfectionLayer`](@ref) as a live [`StatefulKernel`](@ref)
 projection sees it in a likelihood: its population `id`, its `infection_time`
 (`NaN` if never infected), and a `state` holding the layer's per-host times
-under their keys, for example `state.onset_time`.
+under their keys. `state` reads like an individual's: `state[key]` and
+`get(state, key, default)` give the recorded time, and a host whose recorded
+time is `NaN` has none, so `get` returns the default and `state[key]` throws.
+Reading a key the layer did not record throws an `ArgumentError`, so a
+projection cannot silently fall back to a default for a time the likelihood
+was never given.
 """
-struct LayerHost{T, S <: NamedTuple}
+struct LayerHost{T, S}
     id::Int
     infection_time::T
     state::S
 end
 
+# The recorded times of one host of an infection layer. `NaN` marks a time the
+# host does not have, as an absent key does on an individual.
+struct _LayerHostState{S <: NamedTuple}
+    times::S
+end
+function _layer_time(s::_LayerHostState, key::Symbol)
+    haskey(s.times, key) || throw(ArgumentError(
+        "the infection layer holds no host time `$key`; add it to `host_times`"))
+    return s.times[key]
+end
+function Base.get(s::_LayerHostState, key::Symbol, default)
+    value = _layer_time(s, key)
+    return isnan(value) ? default : value
+end
+function Base.getindex(s::_LayerHostState, key::Symbol)
+    value = _layer_time(s, key)
+    isnan(value) && throw(KeyError(key))
+    return value
+end
+Base.haskey(s::_LayerHostState, key::Symbol) = !isnan(_layer_time(s, key))
+
 function _layer_host(data, i)
-    LayerHost(i, data.infection_time[i], map(v -> v[i], _host_times(data)))
+    LayerHost(i, data.infection_time[i],
+        _LayerHostState(map(v -> v[i], _host_times(data))))
 end
 
 _pair_state(project, individual) = project(individual)

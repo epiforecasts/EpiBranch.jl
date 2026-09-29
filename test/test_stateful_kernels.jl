@@ -153,6 +153,18 @@ end
     @test !changed!(1, 9.0)
 end
 
+@testset "A layer host reads recorded times like an individual" begin
+    host = EpiBranch._LayerHostState((onset_time = 2.0, trace_time = NaN))
+    @test host[:onset_time] == 2.0
+    @test get(host, :onset_time, Inf) == 2.0
+    # A NaN entry is a time this host does not have.
+    @test get(host, :trace_time, Inf) == Inf
+    @test_throws KeyError host[:trace_time]
+    @test haskey(host, :onset_time) && !haskey(host, :trace_time)
+    # A key the layer never recorded is an error, whatever the default.
+    @test_throws ArgumentError get(host, :vaccination_time, Inf)
+end
+
 @testset "Compaction keeps each member's live proposals" begin
     P = EpiBranch._Pending{Float64}
     # Member 1 has settled; member 2 lists proposals 3 then 1, with 2 unlinked by
