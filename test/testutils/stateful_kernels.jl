@@ -217,6 +217,12 @@ function test_stateful_simulation(make_process, extract)
         # A misspelt key leaves the key the projection reads unrecorded.
         misspelt = extract(state, model; host_times = (:onset,))
         @test_throws ArgumentError loglikelihood(misspelt, make_process(live))
+        # A projection reading only the host's id needs no host times.
+        scales = [1.0, 2.0, 0.5]
+        by_id = StatefulKernel(ind -> (s = scales[ind.id],), (c, a, b) -> Exponential(a.s))
+        plain = extract(state, model)
+        @test loglikelihood(plain, make_process(by_id)) ≈
+              pairwise_surv_loglik((i, j) -> Exponential(scales[i]), plain)
         # An asymptomatic case stores a NaN onset, which the layer holds as a value.
         # A projection reading it as such scores the same as recorded records.
         stored(ind) = (onset = ind.state[:onset_time]::Float64,)

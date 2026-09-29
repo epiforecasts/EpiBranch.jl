@@ -538,9 +538,6 @@ end
 # A live stateful kernel reads each host through its projection, applied here to
 # the host as the infection layer records it.
 function _pair_kernel(k::StatefulKernel, layout::ContactPairsLayout, r, data)
-    isempty(_host_times(data)) && throw(ArgumentError(
-        "a live StatefulKernel needs per-host times in the infection layer " *
-        "(host_times), or recorded host states from record_kernel"))
     i = layout.infector[r]
     j = layout.sus[r]
     return k.callback(PairContext(i, j, data.infection_time[i]),
