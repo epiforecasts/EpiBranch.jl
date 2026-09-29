@@ -198,8 +198,15 @@ function test_stateful_simulation(make_process, extract)
         onsets = data.host_times.onset_time
         expected(i, j) = (onsets[i] - data.infection_time[i]) + Exponential(1.0)
         @test loglikelihood(data, make_process(live)) ≈ pairwise_surv_loglik(expected, data)
-        # Without the host times the likelihood cannot read the onsets.
+        # Without the host times the likelihood cannot read the onsets, and it
+        # refuses a projection reading a time the layer did not record.
         @test_throws ArgumentError loglikelihood(extract(state, model), make_process(live))
+        wider(ind) = (onset = get(ind.state, :onset_time, NaN),
+            traced = get(ind.state, :trace_time, Inf))
+        wider_kernel = StatefulKernel(wider, callback)
+        @test_throws ArgumentError loglikelihood(data, make_process(wider_kernel))
+        # A misspelt key records nothing, so extraction refuses it.
+        @test_throws ArgumentError extract(state, model; host_times = (:onset,))
     end
     @testset "Sampled attributes in pair kernels" begin
         project(ind) = (scale = ind.state[:sampled_scale]::Float64,)
