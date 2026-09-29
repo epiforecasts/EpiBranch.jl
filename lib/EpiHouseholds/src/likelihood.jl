@@ -50,7 +50,7 @@ read as described for `InfectionLayer`. Additional hazard modifications require
 an effective kernel when scoring; extraction records the windows only. A bare `HouseholdProcess` is
 accepted too (its window opens at `:infection`, and it has no interventions).
 `host_times` names further per-member times to record, such as `(:onset_time,)`,
-read from each member's state (`NaN` where a member has none) for a live
+read from each member's state (`missing` where a member has none) for a live
 [`StatefulKernel`](@ref) to read.
 """
 function household_infections(state::SimulationState,

@@ -107,8 +107,9 @@ and a scalar `obs_end`, the time community introductions stop (only read when
 there is a community hazard). Spread along the contact structure continues after
 it. A subtype may also hold `host_times`, a named tuple of further per-host time
 vectors such as `onset_time`, which a live [`StatefulKernel`](@ref) reads in the
-likelihood as it reads host state in simulation. `NaN` marks a host without
-that time.
+likelihood as it reads host state in simulation. `missing` marks a host without
+that time; a `NaN` entry is a recorded value, as simulation stores the onset of
+an asymptomatic case.
 
 Observed data stop at the end of follow-up, which
 [`followup_end`](@ref EpiBranch.followup_end) gives: a `followup_end` field when
@@ -189,21 +190,21 @@ function _infection_layer_fields(n, infection_time, infectious_time, removal_tim
                             "cover the same hosts"))
     T = promote_type(eltype(infection_time), eltype(infectious_time),
         eltype(removal_time), typeof(obs_end), typeof(followup_end),
-        map(eltype, values(host_times))..., Float64)
+        map(v -> nonmissingtype(eltype(v)), values(host_times))..., Float64)
     return (Vector{T}(infection_time), Vector{T}(infectious_time),
         Vector{T}(removal_time), Vector{Bool}(is_index), T(obs_end), T(followup_end),
-        map(v -> Vector{T}(v), host_times))
+        map(v -> Vector{Missing <: eltype(v) ? Union{Missing, T} : T}(v), host_times))
 end
 
 # The named per-host times of a simulated `state`, read from each individual's
-# state under the given keys, `NaN` where a host has none. A key no individual
-# holds is an error, since it would record nothing.
+# state under the given keys, `missing` where a host has none. A key no
+# individual holds is an error, since it would record nothing.
 function _host_time_columns(state::SimulationState, keys)
     names = Tuple(Symbol(key) for key in keys)
     columns = map(names) do key
         any(ind -> haskey(ind.state, key), state.individuals) ||
             throw(ArgumentError("no individual holds a host time `$key`"))
-        map(ind -> get(ind.state, key, NaN), state.individuals)
+        [get(ind.state, key, missing) for ind in state.individuals]
     end
     return NamedTuple{names}(columns)
 end

@@ -207,6 +207,21 @@ function test_stateful_simulation(make_process, extract)
         @test_throws ArgumentError loglikelihood(data, make_process(wider_kernel))
         # A misspelt key records nothing, so extraction refuses it.
         @test_throws ArgumentError extract(state, model; host_times = (:onset,))
+        # An asymptomatic case stores a NaN onset, which the layer holds as a value.
+        # A projection reading it as such scores the same as recorded records.
+        stored(ind) = (onset = ind.state[:onset_time]::Float64,)
+        branch(c, a, b) = isnan(a.onset) ? Exponential(2.0) : callback(c, a, b)
+        asym_kernel = StatefulKernel(stored, branch)
+        asym_model = ModelSpec(make_process(asym_kernel);
+            attributes = clinical_presentation(incubation_period = Gamma(2.0, 1.0),
+                prob_asymptomatic = 1.0),
+            progression = [Transition(:recovered; delay = 6.0, terminal = true)])
+        asym_state = simulate(asym_model; initial_cases = [1], rng = StableRNG(7))
+        @test any(ind -> is_infected(ind) && isnan(ind.state[:onset_time]),
+            asym_state.individuals)
+        asym_data = extract(asym_state, asym_model; host_times = (:onset_time,))
+        @test loglikelihood(asym_data, make_process(asym_kernel)) ≈
+              pairwise_surv_loglik(record_kernel(asym_kernel, asym_state), asym_data)
     end
     @testset "Sampled attributes in pair kernels" begin
         project(ind) = (scale = ind.state[:sampled_scale]::Float64,)

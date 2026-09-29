@@ -109,9 +109,11 @@ end
         @test fields == ([0.0, 1.0], [0.0, 1.0], [2.0, Inf], [true, false], 3.0, Inf, (;))
         onsets = EpiBranch._infection_layer_fields(2, [0.0, 1.0], [0.0, 1.0],
             [2.0, Inf], [true, false]; obs_end = Inf, followup_end = Inf,
-            host_times = (onset_time = [1, NaN],))[end]
+            host_times = (onset_time = [1, NaN], trace_time = [missing, 2]))[end]
         @test onsets.onset_time isa Vector{Float64}
         @test isequal(onsets.onset_time, [1.0, NaN])
+        @test onsets.trace_time isa Vector{Union{Missing, Float64}}
+        @test isequal(onsets.trace_time, [missing, 2.0])
         @test_throws ArgumentError EpiBranch._infection_layer_fields(2, [0.0, 1.0],
             [0.0, 1.0], [2.0, Inf], [true, false]; obs_end = Inf, followup_end = Inf,
             host_times = (onset_time = [1.0],))

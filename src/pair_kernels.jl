@@ -140,8 +140,9 @@ One host of an [`InfectionLayer`](@ref) as a live [`StatefulKernel`](@ref)
 projection sees it in a likelihood: its population `id`, its `infection_time`
 (`NaN` if never infected), and a `state` holding the layer's per-host times
 under their keys. `state` reads like an individual's: `state[key]` and
-`get(state, key, default)` give the recorded time, and a host whose recorded
-time is `NaN` has none, so `get` returns the default and `state[key]` throws.
+`get(state, key, default)` give the recorded time, including a recorded `NaN`,
+and a host whose entry is `missing` has none, so `get` returns the default and
+`state[key]` throws.
 Reading a key the layer did not record throws an `ArgumentError`, so a
 projection cannot silently fall back to a default for a time the likelihood
 was never given.
@@ -152,8 +153,8 @@ struct LayerHost{T, S}
     state::S
 end
 
-# The recorded times of one host of an infection layer. `NaN` marks a time the
-# host does not have, as an absent key does on an individual.
+# The recorded times of one host of an infection layer. `missing` marks a time
+# the host does not have, as an absent key does on an individual.
 struct _LayerHostState{S <: NamedTuple}
     times::S
 end
@@ -164,14 +165,14 @@ function _layer_time(s::_LayerHostState, key::Symbol)
 end
 function Base.get(s::_LayerHostState, key::Symbol, default)
     value = _layer_time(s, key)
-    return isnan(value) ? default : value
+    return ismissing(value) ? default : value
 end
 function Base.getindex(s::_LayerHostState, key::Symbol)
     value = _layer_time(s, key)
-    isnan(value) && throw(KeyError(key))
+    ismissing(value) && throw(KeyError(key))
     return value
 end
-Base.haskey(s::_LayerHostState, key::Symbol) = !isnan(_layer_time(s, key))
+Base.haskey(s::_LayerHostState, key::Symbol) = !ismissing(_layer_time(s, key))
 
 function _layer_host(data, i)
     LayerHost(i, data.infection_time[i],
