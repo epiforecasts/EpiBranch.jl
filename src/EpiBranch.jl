@@ -165,6 +165,8 @@ export NegBin, scale_distribution, incubation_linked_generation_time
 # Reach `GammaBorel`/`PoissonGammaChainSize` via `chain_size_distribution`;
 # only the standalone `Borel` and the dispatch entry point are exported.
 export Borel, chain_size_distribution
+# Chain-size law with a separate offspring distribution for the index case.
+export IndexChainSize
 # Observation-side chain-size distribution (binomial thinning of any base)
 export ThinnedChainSize
 

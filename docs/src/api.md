@@ -277,6 +277,15 @@ EpiBranch.GammaBorel
 EpiBranch.PoissonGammaChainSize
 ```
 
+### Index-case heterogeneity
+
+A chain whose index case has its own offspring distribution — for example a
+chain seeded by an introduced case — uses [`IndexChainSize`](@ref).
+
+```@docs
+IndexChainSize
+```
+
 ## Inference
 
 ### Data types

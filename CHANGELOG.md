@@ -12,6 +12,9 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- `IndexChainSize` gives a chain-size law where the index case has its own
+  offspring distribution, for chains started by an introduced case whose
+  opportunity to transmit locally differs from a locally infected case's.
 - `StatefulKernel` shares sampled attributes and dated intervention histories
   between structured simulation and likelihoods. `record_kernel` extracts typed
   host records for inference. An infection layer can hold per-host times such

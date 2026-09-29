@@ -64,6 +64,21 @@ function loglikelihood(
 end
 
 """
+    loglikelihood(data::ChainSizes, d::IndexChainSize; prob_concluded = nothing)
+
+Log-likelihood of observed chain sizes under an [`IndexChainSize`](@ref)
+law, i.e. an index case with its own offspring distribution. `d` is already
+the chain-size law, so this routes directly to [`_chain_size_loglik`](@ref)
+rather than through `chain_size_distribution`.
+"""
+function loglikelihood(
+        data::ChainSizes, d::IndexChainSize;
+        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
+    )
+    return _chain_size_loglik(d, data; prob_concluded)
+end
+
+"""
     _chain_size_loglik(dist, data::ChainSizes; prob_concluded = nothing)
 
 Per-cluster chain-size log-likelihood. With `prob_concluded === nothing` every

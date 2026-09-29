@@ -170,6 +170,84 @@
         end
     end
 
+    @testset "IndexChainSize" begin
+        @testset "PMF matches the mixture formula" begin
+            index = Poisson(0.4)
+            off = NegBin(0.6, 0.5)
+            d = IndexChainSize(index, off)
+            dist = chain_size_distribution(off)
+
+            for n in 1:8
+                manual = n == 1 ? pdf(index, 0) : 0.0
+                for j in 1:(n - 1)
+                    manual += pdf(index, j) *
+                        exp(EpiBranch._chain_size_logpdf(dist, n - 1, j))
+                end
+                @test pdf(d, n) ≈ manual atol = 1.0e-12
+            end
+
+            # n = 1 is exactly "the index case has no secondary cases".
+            @test pdf(d, 1) ≈ pdf(index, 0)
+            @test pdf(d, 0) == 0.0
+        end
+
+        @testset "Normalises to 1 for subcritical later-generation offspring" begin
+            d = IndexChainSize(Poisson(2.5), NegBin(0.6, 0.5))
+            @test sum(pdf(d, n) for n in 1:300) ≈ 1.0 atol = 1.0e-6
+        end
+
+        @testset "Mean" begin
+            index = Poisson(0.4)
+            off = NegBin(0.6, 0.5)
+            d = IndexChainSize(index, off)
+            @test mean(d) ≈ 1 + mean(index) * mean(chain_size_distribution(off))
+        end
+
+        @testset "Same offspring for index and later cases matches the base law" begin
+            # The mixture formula with index == offspring is the branching
+            # process's own total-progeny recursion, so it must reproduce the
+            # base chain-size law exactly.
+            off = NegBin(0.6, 0.5)
+            d = IndexChainSize(off, off)
+            base = chain_size_distribution(off)
+            for n in 1:8
+                @test pdf(d, n) ≈ pdf(base, n) atol = 1.0e-10
+            end
+        end
+
+        @testset "rand matches the analytical mean" begin
+            d = IndexChainSize(Poisson(0.4), NegBin(0.6, 0.5))
+            rng = StableRNG(1)
+            draws = [rand(rng, d) for _ in 1:20_000]
+            @test mean(draws) ≈ mean(d) atol = 0.05
+        end
+
+        @testset "Bounds" begin
+            d = IndexChainSize(Poisson(0.4), Poisson(0.5))
+            @test minimum(d) == 1
+            @test maximum(d) == Inf
+            @test insupport(d, 1)
+            @test !insupport(d, 0)
+        end
+
+        @testset "loglikelihood on ChainSizes" begin
+            index = Poisson(0.4)
+            off = NegBin(0.6, 0.5)
+            d = IndexChainSize(index, off)
+            data = ChainSizes([1, 2, 5, 1, 3])
+
+            ll = loglikelihood(data, d)
+            @test ll ≈ sum(logpdf(d, n) for n in data.data)
+
+            # A separate index-case offspring gives a different likelihood
+            # than assuming one shared offspring law throughout.
+            @test ll != loglikelihood(data, off)
+
+            # Multi-seed clusters are not defined for a mixed index offspring.
+            @test_throws ArgumentError loglikelihood(ChainSizes([5]; seeds = [2]), d)
+        end
+    end
+
     @testset "Chain size likelihood" begin
         @testset "Basic evaluation" begin
             ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3]), Poisson(0.5))

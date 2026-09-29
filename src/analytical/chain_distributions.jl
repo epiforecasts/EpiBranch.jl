@@ -294,3 +294,85 @@ chain_size_distribution(d::NegativeBinomial) = GammaBorel(d.r, mean(d))
 # `chain_size_distribution(model::TransmissionModel; ...)` lives in
 # `src/likelihood_dists.jl` so the kwargs-bearing wrapper path and the
 # analytical fallback share a single definition.
+
+"""
+    IndexChainSize(index_offspring, offspring)
+
+Chain-size distribution for a chain whose index case draws its number of
+secondary cases from `index_offspring`, while every later case draws from
+`offspring`. Useful when the index case's opportunity to transmit differs
+from that of a locally infected case — for example a chain seeded by an
+introduced case who arrives part-way through their infectious period or is
+quarantined on arrival.
+
+    P(N = n) = P(J = 0) 1{n = 1} + Σ_{j ≥ 1} P(J = j) P(chains from j seeds have n - 1 cases)
+
+where `J ~ index_offspring` is the index case's secondary case count and the
+`j`-seed term is the multi-seed chain-size law built from `offspring` via
+[`chain_size_distribution`](@ref) (the same closed form used for
+multi-seed [`ChainSizes`](@ref)). `offspring` is anything
+`chain_size_distribution` accepts (`Poisson`, `NegativeBinomial`,
+[`ClusterMixed`](@ref), …).
+
+Only single-index-case chains are supported (`seeds == 1` in
+[`ChainSizes`](@ref)): the multi-seed formula for a cluster with several
+independently introduced cases is not defined here.
+
+# Examples
+
+```julia
+d = IndexChainSize(Poisson(0.3), NegBin(0.8, 0.5))
+pdf(d, 5)
+loglikelihood(ChainSizes([1, 2, 5, 1]), d)
+```
+"""
+struct IndexChainSize{J <: DiscreteUnivariateDistribution, S <: DiscreteUnivariateDistribution} <:
+    DiscreteUnivariateDistribution
+    index_offspring::J
+    dist::S
+
+    function IndexChainSize(index_offspring::DiscreteUnivariateDistribution, offspring)
+        dist = chain_size_distribution(offspring)
+        return new{typeof(index_offspring), typeof(dist)}(index_offspring, dist)
+    end
+end
+
+Distributions.minimum(::IndexChainSize) = 1
+Distributions.maximum(::IndexChainSize) = Inf
+Distributions.insupport(::IndexChainSize, n::Integer) = n >= 1
+
+"""
+Log-PDF of [`IndexChainSize`](@ref). The sum over the index case's
+secondary-case count `j` only needs `j` up to `n - 1` (a chain of `j`
+non-index seeds has at least `j` cases), so it is a finite loop rather
+than a truncated infinite series.
+"""
+function Distributions.logpdf(d::IndexChainSize, n::Integer)
+    n < 1 && return -Inf
+    p0 = pdf(d.index_offspring, 0)
+    total = n == 1 ? float(p0) : zero(float(p0))
+    for j in 1:(n - 1)
+        pj = pdf(d.index_offspring, j)
+        pj == 0 && continue
+        total += pj * exp(_chain_size_logpdf(d.dist, n - 1, j))
+    end
+    return total > zero(total) ? log(total) : oftype(total, -Inf)
+end
+
+Distributions.pdf(d::IndexChainSize, n::Integer) = exp(logpdf(d, n))
+
+# E[N] = P(J=0)·1 + Σ_{j≥1} P(J=j)·E[1 + size(j seeds)]
+#      = 1 + E[J]·E[dist], since a j-seed chain's expected size is j·E[dist].
+Distributions.mean(d::IndexChainSize) = 1 + mean(d.index_offspring) * mean(d.dist)
+
+"""
+Sample a chain size: draw the index case's secondary-case count `j`, then
+sum `j` independent draws from the non-index chain-size law (the total size
+of `j` independent chains is the sum of `j` iid single-seed chain sizes).
+Throws if `dist` is supercritical, as for `rand` on the underlying laws.
+"""
+function Base.rand(rng::AbstractRNG, d::IndexChainSize)
+    j = rand(rng, d.index_offspring)
+    j == 0 && return 1
+    return 1 + sum(rand(rng, d.dist) for _ in 1:j)
+end
