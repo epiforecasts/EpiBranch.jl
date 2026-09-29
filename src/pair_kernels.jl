@@ -153,21 +153,24 @@ struct LayerHost{T, S}
     state::S
 end
 
-# The recorded times of one host of an infection layer. `missing` marks a time
-# the host does not have, as an absent key does on an individual.
+# The recorded times of one host of an infection layer, read from the layer's
+# columns on demand so that a column holding `missing` stays type-stable to
+# read. `missing` marks a time the host does not have, as an absent key does on
+# an individual.
 struct _LayerHostState{S <: NamedTuple}
-    times::S
+    columns::S
+    index::Int
 end
-function _layer_time(s::_LayerHostState, key::Symbol)
-    haskey(s.times, key) || throw(ArgumentError(
+@inline function _layer_time(s::_LayerHostState, key::Symbol)
+    haskey(s.columns, key) || throw(ArgumentError(
         "the infection layer holds no host time `$key`; add it to `host_times`"))
-    return s.times[key]
+    return s.columns[key][s.index]
 end
-function Base.get(s::_LayerHostState, key::Symbol, default)
+@inline function Base.get(s::_LayerHostState, key::Symbol, default)
     value = _layer_time(s, key)
     return ismissing(value) ? default : value
 end
-function Base.getindex(s::_LayerHostState, key::Symbol)
+@inline function Base.getindex(s::_LayerHostState, key::Symbol)
     value = _layer_time(s, key)
     ismissing(value) && throw(KeyError(key))
     return value
@@ -175,8 +178,7 @@ end
 Base.haskey(s::_LayerHostState, key::Symbol) = !ismissing(_layer_time(s, key))
 
 function _layer_host(data, i)
-    LayerHost(i, data.infection_time[i],
-        _LayerHostState(map(v -> v[i], _host_times(data))))
+    LayerHost(i, data.infection_time[i], _LayerHostState(_host_times(data), i))
 end
 
 _pair_state(project, individual) = project(individual)
