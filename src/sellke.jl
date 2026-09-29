@@ -624,11 +624,12 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
     # Proposals a redraw has unlinked, which stay in `proposals` and the heap
     # until they are compacted away.
     orphans = 0
-    # The clock of the last pop, and the largest member position popped at it.
-    # The heap orders ties by position, so every position up to `passed` has had
-    # its contacts at `clock` resolved, even after a zero-length contact at
-    # `clock` sends the race back to a lower position.
+    # The clock of the last pop, each pop at it as how many openings existed
+    # then and the member position popped, and the largest such position. The
+    # heap orders ties by position, so a pop at `clock` resolves every contact
+    # at `clock` to that position or below from the openings existing then.
     clock = T(-Inf)
+    pops = Tuple{Int, Int}[]
     passed = 0
     # For a live kernel, which hosts' records a pending or future draw reads.
     # Empty and unused otherwise.
@@ -648,8 +649,10 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         bt > max_time && return false
         if bt != clock
             clock = bt
+            empty!(pops)
             passed = 0
         end
+        push!(pops, (length(openings), j))
         passed = max(passed, j)
         may_block && (proposals[p] = _dequeue(proposals[p]))
         (processed[j] || represents[j] != p) && continue
@@ -728,7 +731,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         if live && _records_changed!(records, refresh_projection, state, members,
             j, bt, watch, openings, processed)
             orphans += _redraw_moved!(pending, proposals, head, best, represents,
-                watch, openings, processed, pos, rts, state, bt, passed, rng)
+                watch, openings, processed, pos, rts, state, bt, pops, passed, rng)
             if orphans > max(m, length(proposals) ÷ 2)
                 _compact_proposals!(pending, proposals, head, best, represents, processed)
                 orphans = 0
@@ -885,6 +888,21 @@ end
 
 _link(p::_Pending, chain) = _Pending(p.opening, chain, p.time, p.queued)
 
+# The largest member position popped at the current clock since opening `oi`
+# was made. The number of openings only grows, so the pops since then are the
+# last ones in `pops`.
+function _passed_since(pops, passed, oi)
+    isempty(pops) && return 0
+    first(pops[1]) >= oi && return passed
+    since = 0
+    for k in length(pops):-1:1
+        made, position = pops[k]
+        made < oi && break
+        since = max(since, position)
+    end
+    return since
+end
+
 # A pair's contact interval under its kernel scaled by the multiplier `m`, given
 # that it exceeds `after`; infinite when no mass lies beyond.
 function _draw_beyond(rng::AbstractRNG, kernel, m::Real, after)
@@ -902,7 +920,7 @@ end
 # change. Fixed kernels never take this path. Returns how many proposals it
 # unlinked.
 function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatch,
-        openings, processed, pos, rts, state, now, passed, rng)
+        openings, processed, pos, rts, state, now, pops, passed, rng)
     # Opening => the members whose pairs with it are drawn again, or `nothing`
     # for all of them.
     redo = Dict{Int, Union{Nothing, Set{Int}}}()
@@ -948,17 +966,17 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
     # A record change at this clock governs contacts at this clock too, so a
     # pair is drawn again given no contact strictly before `now`, and a contact
     # due at `now` under the new hazard, an atom there, stays due. That holds
-    # only for members the race has not yet reached at this clock: every
-    # contact at `now` to a member at a position up to `passed` has already
-    # been resolved, and its pair is drawn given no contact up to and including
-    # `now`. Contact times
-    # are stored as `open_t + dt`, and the exposure recomputed as `now - open_t`
+    # only for pairs the race has not yet resolved at this clock: a pair whose
+    # member sits at or below a position popped at `now` since its opening was
+    # made has had its contact at `now` resolved, and is drawn given no contact
+    # up to and including `now`. Contact times are stored as `open_t + dt`, and the exposure recomputed as `now - open_t`
     # can be off by the clock's resolution, so the draw starts `slack` early and
     # is then carried past any contact whose stored time falls before `now`.
     slack = 2 * eps(float(now))
     for (oi, members_hit) in redo
         opening = openings[oi]
         source = state.individuals[opening.infector]
+        passed_since = _passed_since(pops, passed, oi)
         for (ri, (_, targets)) in enumerate(rts)
             ri == opening.route || continue
             for (id, kernel) in targets(opening.infector, state)
@@ -973,7 +991,7 @@ function _redraw_moved!(pending, proposals, head, best, represents, w::_LiveWatc
                 # The next contact after one in the past is the same hazard
                 # conditioned on falling later, so this draws exactly given no
                 # contact before `now`, or none up to it once `now` is resolved.
-                resolved = j <= passed
+                resolved = j <= passed_since
                 while opening.open_t + dt < now || (resolved && opening.open_t + dt == now)
                     dt = _draw_beyond(rng, kernel, m, dt)
                 end

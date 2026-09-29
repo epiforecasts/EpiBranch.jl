@@ -56,3 +56,16 @@ end
     end
     @test isapprox(at_one / n, 0.5; atol = 0.04)
 end
+
+@testset "A zero-length contact made after the race passes a member stays due" begin
+    # At t = 1 the race passes hosts 4 and 5; host 5 then makes zero-length
+    # contacts to hosts 2 and 3. When host 2 settles and records move, the
+    # contact to host 3 has not been resolved yet and must still happen.
+    kernel = StatefulKernel(tick_state, (c, a, b) -> c.infector == 5 ? Dirac(0.0) :
+                                                     Dirac(1.0))
+    model = ModelSpec(NetworkProcess([[4, 5], [5], [5], [1], [1, 2, 3]], kernel);
+        progression = [Transition(:recovered; delay = 5.0, terminal = true)],
+        interventions = [TickEveryCase()])
+    state = simulate(model; initial_cases = [1], rng = StableRNG(1))
+    @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0, 1.0, 1.0]
+end
