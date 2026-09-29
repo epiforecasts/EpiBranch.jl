@@ -42,8 +42,11 @@ efficacy against every exposure it faces.
 default) reduces each exposure's success probability by `efficacy`,
 while [`AllOrNothingMode`](@ref) draws, once per vaccinated individual
 when the dose is recorded, whether that individual is a full responder
-(fully protected against every exposure from their immunity time on) or
-gains no protection at all, with responder probability `efficacy`. The
+(fully protected against infection at every exposure from their immunity
+time on) or gains no protection against infection, with responder
+probability `efficacy`. The mode acts on `efficacy` alone: the same dose's
+`severity_efficacy`, and `RingVaccination`'s `post_exposure_efficacy` and
+`onward_efficacy`, apply to responders and non-responders alike. The
 draw is stored alongside the other per-dose state, so it is made once
 and read back at every exposure the individual faces, however many
 there are. `AllOrNothingMode` cannot yet be combined with `waning` (see
@@ -116,8 +119,8 @@ Concrete subtypes:
 - [`LeakyMode`](@ref): every exposure of a vaccinated individual is
   reduced by `efficacy` (per-exposure semantics).
 - [`AllOrNothingMode`](@ref): a fraction `efficacy` of vaccinated
-  individuals are fully protected for all exposures; the rest gain
-  no protection (per-individual semantics).
+  individuals are fully protected against infection for all exposures; the
+  rest gain no protection against infection (per-individual semantics).
 """
 abstract type AbstractEffectMode end
 
@@ -127,8 +130,9 @@ struct LeakyMode <: AbstractEffectMode end
 
 """Per-individual efficacy: a Bernoulli draw made once per individual when
 the dose is recorded decides, with probability `efficacy`, whether they
-are a full responder (fully protected against every exposure from their
-immunity time on) or gain no protection at all."""
+are a full responder (fully protected against infection at every exposure
+from their immunity time on) or gain no protection against infection. The
+dose's other effects, such as `severity_efficacy`, do not depend on it."""
 struct AllOrNothingMode <: AbstractEffectMode end
 
 """

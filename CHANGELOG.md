@@ -342,8 +342,9 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 - `AllOrNothingMode` now draws a vaccinated individual's responder status once,
   when the dose is recorded, rather than resolving it per-exposure, so a
-  responder is protected against every exposure and a non-responder against
-  none. Previously the stored efficacy was checked against each exposure
+  responder is protected against infection at every exposure and a
+  non-responder at none; a dose an `attributes` function records before the
+  run gets the same draw. Previously the stored efficacy was checked against each exposure
   independently, giving leaky results regardless of `mode`. A `VaccineEffect`
   combining `AllOrNothingMode` with `waning` now raises an `ArgumentError`,
   since waning an outcome that is already all-or-nothing has no meaning yet.
