@@ -12,6 +12,12 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- `proportion_cases_individual` and `proportion_cases_offspring` give the
+  proportion of cases responsible for a given share of transmission, the
+  inverse of `proportion_transmission`. The two use different rankings —
+  continuous individual reproduction numbers versus realised, integer
+  offspring counts — and can differ substantially for the same offspring
+  distribution, so they are kept as separate, clearly named functions.
 - `StatefulKernel` shares sampled attributes and dated intervention histories
   between structured simulation and likelihoods. `record_kernel` extracts typed
   host records for inference. An infection layer can hold per-host times such

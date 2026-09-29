@@ -247,6 +247,8 @@ extinction_probability
 epidemic_probability
 probability_contain
 proportion_transmission
+proportion_cases_individual
+proportion_cases_offspring
 proportion_cluster_size
 heterogeneous_contact_R
 ```
