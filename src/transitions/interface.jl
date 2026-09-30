@@ -104,13 +104,39 @@ function _delay_loglik(f, dt)
     )
 end
 
+# Used only to score a `probability` gate: it deliberately implements no
+# generation methods, so a callable that actually draws from its `rng`
+# argument (rather than merely accepting it, as every deterministic
+# per-individual gate does) fails loudly here instead of drawing a fresh,
+# uncontrolled value and silently caching it on the individual — which is
+# what `exclusive_probabilities`' shared-draw gate does when scored against
+# an individual that lacks the cached draw from a prior `resolve_individual!`
+# call.
+struct _NoRandRNG <: Random.AbstractRNG end
+
 # The log-likelihood contribution of a probability gate, given whether it
-# fired. `probability` resolves with `Random.default_rng()`: a callable gate
-# is expected to be a deterministic function of the individual (as every
+# fired. `probability` resolves with `_NoRandRNG()`: a callable gate is
+# expected to be a deterministic function of the individual (as every
 # built-in and documented example is), not of the RNG draw that also
-# consumes it during simulation.
+# consumes it during simulation; one that does draw is rejected rather than
+# scored with an arbitrary, non-reproducible value.
 function _probability_loglik(probability, fired, ind)
-    p = _resolve_probability(probability, Random.default_rng(), ind)
+    p = try
+        _resolve_probability(probability, _NoRandRNG(), ind)
+    catch e
+        e isa MethodError && parentmodule(e.f) === Random || rethrow()
+        throw(
+            ArgumentError(
+                "a `probability` callable drew from its `rng` argument while being " *
+                    "scored; `progression_loglik` needs `probability` to be a " *
+                    "deterministic function of the individual alone. A shared-draw " *
+                    "gate built by `exclusive_probabilities` only replays " *
+                    "deterministically for an individual already resolved by " *
+                    "`resolve_individual!`, which caches the draw it reads; score " *
+                    "simulated individuals, not hand-built ones, with such a gate"
+            )
+        )
+    end
     return fired ? log(p) : log1p(-p)
 end
 

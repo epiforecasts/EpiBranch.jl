@@ -82,6 +82,24 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test_throws ArgumentError progression_loglik(spec, state)
     end
 
+    @testset "a shared-draw probability gate cannot be scored on a hand-built individual" begin
+        death_p, _ = exclusive_probabilities([0.64, 0.36])
+        death = Death(delay = Exponential(2.0), probability = death_p)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.0));
+            progression = [death], attributes = clinical
+        )
+        ind = Individual(id = 1, infection_time = 0.0)
+        ind.state[:infected] = true
+        ind.state[:onset_time] = 1.0
+        ind.state[:death_candidate_time] = Inf
+        n_keys = length(ind.state)
+        @test_throws ArgumentError progression_loglik(spec, [ind])
+        # deterministic, and does not cache a spurious draw on the individual
+        @test_throws ArgumentError progression_loglik(spec, [ind])
+        @test length(ind.state) == n_keys
+    end
+
     @testset "a transition without its own method needs one to be scored" begin
         spec = ModelSpec(
             BranchingProcess(Poisson(0.0));
