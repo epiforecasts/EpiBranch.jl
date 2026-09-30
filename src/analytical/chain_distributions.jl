@@ -366,7 +366,13 @@ Distributions.pdf(d::IndexChainSize, n::Integer) = exp(logpdf(d, n))
 
 # E[N] = P(J=0)·1 + Σ_{j≥1} P(J=j)·E[1 + size(j seeds)]
 #      = 1 + E[J]·E[dist], since a j-seed chain's expected size is j·E[dist].
-Distributions.mean(d::IndexChainSize) = 1 + mean(d.index_offspring) * mean(d.dist)
+# An index case with E[J] = 0 never seeds later cases, so N ≡ 1 regardless
+# of E[dist]; guard this so 0 * Inf does not turn into NaN.
+function Distributions.mean(d::IndexChainSize)
+    m = mean(d.index_offspring)
+    m == 0 && return oftype(float(m), 1)
+    return 1 + m * mean(d.dist)
+end
 
 """
 Sample a chain size: draw the index case's secondary-case count `j`, then
