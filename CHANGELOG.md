@@ -346,6 +346,12 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
+- `Isolation` no longer records a case as isolated when its self-report or
+  traced isolation time falls at or after the case's own outcome (recovery,
+  death, or any other terminal `Transition`). Previously it recorded
+  `:isolated`/`:isolation_time` regardless, so a case could be flagged as
+  isolated days after recovering, which `OnIsolation`, line lists and
+  detection-based endpoints then read as a genuine detection.
 - `AllOrNothingMode` now draws a vaccinated individual's responder status once,
   when the dose is recorded, rather than resolving it per-exposure, so a
   responder is protected against infection at every exposure and a

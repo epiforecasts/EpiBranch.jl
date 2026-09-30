@@ -68,6 +68,13 @@ from symptom onset to self-reported isolation is drawn per individual.
 probability after isolation. The competing risk's `block_probability`
 is `1 - post_isolation_transmission`.
 
+A case whose only isolation pathways (self-report or tracing) would fire at
+or after its own outcome (recovery, death, or any other terminal
+[`Transition`](@ref)) is left unisolated: isolation after the infectious
+period has already ended has no effect on transmission, and recording it
+would misreport detection to `OnIsolation`, line lists and containment
+counts.
+
 Initialises: `:isolated`, `:isolation_time`, `:test_positive`.
 """
 struct Isolation{E <: IsolationEligibility, D <: Distribution, S} <: AbstractIntervention
@@ -162,7 +169,12 @@ function resolve_individual!(iso::Isolation, individual, state)
     if is_isolated(individual)
         is_test_positive(individual) || return nothing
         self_t = onset_time(individual) + rand(state.rng, iso.onset_to_isolation_delay)
-        self_t < isolation_time(individual) || return nothing
+        # A self-report reaching past the case's own outcome (recovery, death,
+        # ...) would isolate it after it has already left the infectious
+        # period, which has no effect on transmission and would misreport
+        # detection downstream (tracing, line lists, containment counts).
+        self_t < isolation_time(individual) && self_t < outcome_time(individual) ||
+            return nothing
         # Remember what we are overwriting. Claiming provenance below tells a
         # `Scheduled` reset that this isolation is Isolation's to undo, but the
         # standing quarantine underneath it belongs to ContactTracing and must
@@ -195,7 +207,11 @@ function resolve_individual!(iso::Isolation, individual, state)
         Inf
     end
     final = min(test_time, traced_time)
-    isfinite(final) || return nothing
+    # A case whose only isolation pathways fire at or after its own outcome
+    # (recovery, death, ...) has already left the infectious period by then,
+    # so it is left unisolated rather than recorded as isolated too late to
+    # have mattered.
+    final < outcome_time(individual) || return nothing
     set_isolated!(individual, final)
     # Mark provenance so a Scheduled reset undoes only Isolation's own effect.
     individual.state[:isolated_by_isolation] = true
