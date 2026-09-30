@@ -296,7 +296,11 @@ function fit(
     # bad score instead of letting the domain check inside `ll` throw.
     function neg_ll(θ)
         R, k = exp(θ[1]), exp(θ[2])
-        (R >= r_bound || k >= _K_SEARCH_BOUND) && return Inf
+        # The lower bound matches the one used for the golden-section passes
+        # below: below it, `NegBin`'s `p = k / (k + R)` rounds to `1.0` and
+        # its `mean` collapses to exactly `0.0`, which fails `GammaBorel`'s
+        # domain check just as surely as `R`/`k` underflowing to `0.0` would.
+        (R <= 1.0e-8 || k <= 1.0e-8 || R >= r_bound || k >= _K_SEARCH_BOUND) && return Inf
         return -ll(R, k)
     end
     θ̂, _ = _nelder_mead(neg_ll, [log(R0), 0.0])
@@ -311,8 +315,10 @@ function fit(
     profile_over_k(R) = _golden_max(_fix_R(ll, R), 1.0e-8, _K_SEARCH_BOUND)[2]
     profile_over_r(k) = _golden_max(_fix_k(ll, k), 1.0e-8, r_bound)[2]
     ci = (
-        R = _profile_interval(profile_over_k, R̂, target; hi_bound = r_bound),
-        k = _profile_interval(profile_over_r, k̂, target; hi_bound = _K_SEARCH_BOUND),
+        R = _profile_interval(profile_over_k, R̂, target; lo_bound = 1.0e-8, hi_bound = r_bound),
+        k = _profile_interval(
+            profile_over_r, k̂, target; lo_bound = 1.0e-8, hi_bound = _K_SEARCH_BOUND
+        ),
     )
     boot = bootstrap > 0 ?
         _bootstrap_ci(data, NegativeBinomial, (R = R̂, k = k̂), bootstrap, level, rng) :
