@@ -124,7 +124,7 @@ Both likelihoods condition on the observed infectious openings. A compiled layou
 reads those openings again at every evaluation, allowing them to change during
 inference.
 
-A pair whose schedule differs from the shared one returns it instead from the
+A pair whose schedule differs from the shared one instead returns it from the
 callback, as `(profile = ..., calendar = ...)`, overriding the kernel's own
 `calendar` for that pair. For example, this calendar hazard depends on a fixed
 recipient covariate and the source's infection date, with the policy day itself
@@ -144,7 +144,7 @@ profile against its analytical likelihood.
 
 The multiplier only rescales the hazard over calendar time, so a calendar law
 whose shape changes continuously over time cannot be written this way; a smooth
-change needs a step approximation, breaking it into enough `Steps` breakpoints.
+change needs approximating with enough `Steps` breakpoints.
 
 ## Attributes sampled during simulation
 
