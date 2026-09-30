@@ -1675,7 +1675,7 @@ To let [`progression_loglik`](@ref) score `FollowupVisit`, add a
 [`EpiBranch.transition_loglik`](@ref) method reading back the same keys:
 the delay's log-density where the event fired, the gate's log-probability
 either way, and `0.0` when the starting event was never reached — see the
-[`AntiviralTreatment` example](@ref "Scoring the progression's likelihood")
+[`AntiviralTreatment` example](@ref "Writing a non-terminal custom transition")
 in the transitions tutorial.
 
 ### Event dates for uninfected people
