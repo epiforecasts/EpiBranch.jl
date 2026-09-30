@@ -28,9 +28,9 @@ bullet when assembled, so write it flush left.
     task changelog          # what the next release's section will say
     task changelog-release -- 0.2.0
 
-`changelog-release` folds every fragment into `CHANGELOG.md` under a new version
-heading and deletes the fragments. Entries already sitting under
-`## [Unreleased]` are merged in by category, so each heading appears once. The
-prose above those headings describes the unreleased state, so it stays where it
-is; edit it yourself if the release makes it wrong. Run this on the release
-branch and read the result before committing.
+`changelog-release` writes a new version section at the
+`<!-- releases go below this line -->` marker in `CHANGELOG.md` and deletes the
+fragments. It reads nothing else in the file, so it cannot misplace existing
+content, and equally cannot tidy it: anything written by hand under
+`## [Unreleased]` stays there, and the script warns when it finds some. Run this
+on the release branch and read the result before committing.

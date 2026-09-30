@@ -453,6 +453,8 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   member's dose, and a dose another vaccination already gave, still keep
   their date.
 
+<!-- releases go below this line -->
+
 ## [0.1.0] - 2026-06-16
 
 Initial release. EpiBranch brings together the branching-process cores of
