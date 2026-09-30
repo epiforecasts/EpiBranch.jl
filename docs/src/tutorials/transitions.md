@@ -480,6 +480,7 @@ it. Give it one, reading back the same `:treated`/`:treatment_time` keys
 function EpiBranch.transition_loglik(t::AntiviralTreatment, ind)
     ot = onset_time(ind)
     isnan(ot) && return 0.0
+    get(ind.state, :reported, false) || return 0.0
     fired = ind.state[:treated]
     ll = fired ? log(t.probability) : log1p(-t.probability)
     fired || return ll
