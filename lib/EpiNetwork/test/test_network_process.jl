@@ -1221,8 +1221,6 @@ end
         @test_throws ArgumentError simulate(model; initial_cases = [6])
         @test_throws ArgumentError simulate(model; initial_cases = [2], n_initial = 1)
     end
-    external = NetworkProcess(adjacency, Exponential(1.0); external_hazard = 0.1, obs_end = 5.0)
-    @test_throws ArgumentError simulate(external; initial_cases = [2])
     @test_throws ArgumentError simulate(BranchingProcess(Poisson(0.0)); initial_cases = [2])
     @test infected_ids(simulate(process; rng = StableRNG(42))) ==
         infected_ids(simulate(process; n_initial = 1, rng = StableRNG(42)))
@@ -1230,6 +1228,16 @@ end
     opts = EpiBranch.SimOpts(; initial_cases = opts_ids)
     push!(opts_ids, 5)
     @test opts.initial_cases == [2, 4]
+end
+
+@testset "Chosen initial cases with an external hazard" begin
+    adjacency = [Int[] for _ in 1:5]
+    external = NetworkProcess(adjacency, Exponential(1.0); external_hazard = 0.5, obs_end = 5.0)
+    state = simulate(external; initial_cases = [2], rng = StableRNG(7))
+    @test is_infected(state.individuals[2]) && state.individuals[2].infection_time == 0
+    # With the external hazard active on the rest of the network, some other
+    # node is seeded too, which the disallowed combination could never produce.
+    @test any(i -> is_infected(i) && i.id != 2, state.individuals)
 end
 
 @testset "max_time ends the network race at that time" begin
