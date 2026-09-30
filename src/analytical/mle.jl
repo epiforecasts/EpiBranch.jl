@@ -290,7 +290,15 @@ function fit(
     # guess, then polish with a couple of coordinate-wise golden-section
     # passes — the simplex alone is not tuned for high precision.
     R0 = _golden_max(R -> ll(R, 1.0), 1.0e-8, r_bound)[1]
-    neg_ll(θ) = -ll(exp(θ[1]), exp(θ[2]))
+    # The simplex's reflection/expansion steps routinely propose points outside
+    # the domain `loglikelihood` is defined on (e.g. R >= 1 for `ChainLengths`,
+    # which is only defined for a subcritical process); reject those with a
+    # bad score instead of letting the domain check inside `ll` throw.
+    function neg_ll(θ)
+        R, k = exp(θ[1]), exp(θ[2])
+        (R >= r_bound || k >= _K_SEARCH_BOUND) && return Inf
+        return -ll(R, k)
+    end
     θ̂, _ = _nelder_mead(neg_ll, [log(R0), 0.0])
     R̂, k̂ = exp(θ̂[1]), exp(θ̂[2])
     for _ in 1:3
