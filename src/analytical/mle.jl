@@ -218,11 +218,40 @@ end
 _fix_k(ll, k) = R -> ll(R, k)
 _fix_R(ll, R) = k -> ll(R, k)
 
+"""Point estimate only, skipping the profile-likelihood interval — for
+[`_bootstrap_ci`](@ref), which discards everything but `.estimate` from a
+full [`fit`](@ref) and so would otherwise pay for the profile search on
+every replicate."""
+function _point_estimate(data, ::Type{Poisson})
+    r_bound = _r_search_bound(data)
+    ll(R) = loglikelihood(data, Poisson(R))
+    return _golden_max(ll, 1.0e-8, r_bound)
+end
+
+function _point_estimate(data, ::Type{NegativeBinomial})
+    r_bound = _r_search_bound(data)
+    ll(R, k) = loglikelihood(data, NegBin(R, k))
+
+    R0 = _golden_max(R -> ll(R, 1.0), 1.0e-8, r_bound)[1]
+    function neg_ll(θ)
+        R, k = exp(θ[1]), exp(θ[2])
+        (R <= 1.0e-8 || k <= 1.0e-8 || R >= r_bound || k >= _K_SEARCH_BOUND) && return Inf
+        return -ll(R, k)
+    end
+    θ̂, _ = _nelder_mead(neg_ll, [log(R0), 0.0])
+    R̂, k̂ = exp(θ̂[1]), exp(θ̂[2])
+    for _ in 1:3
+        R̂ = _golden_max(_fix_k(ll, k̂), 1.0e-8, r_bound)[1]
+        k̂ = _golden_max(_fix_R(ll, R̂), 1.0e-8, _K_SEARCH_BOUND)[1]
+    end
+    return R̂, k̂, ll(R̂, k̂)
+end
+
 function _bootstrap_ci(
         data, family::Type{Poisson}, θ̂::NamedTuple,
         n_boot::Int, level::Real, rng::AbstractRNG
     )
-    Rs = [fit(_resample(data, rng, Poisson(θ̂.R)), family).estimate.R for _ in 1:n_boot]
+    Rs = [_point_estimate(_resample(data, rng, Poisson(θ̂.R)), family)[1] for _ in 1:n_boot]
     return (R = _percentile_interval(Rs, level),)
 end
 
@@ -230,9 +259,9 @@ function _bootstrap_ci(
         data, family::Type{NegativeBinomial}, θ̂::NamedTuple,
         n_boot::Int, level::Real, rng::AbstractRNG
     )
-    fits = [fit(_resample(data, rng, NegBin(θ̂.R, θ̂.k)), family) for _ in 1:n_boot]
-    Rs = [f.estimate.R for f in fits]
-    ks = [f.estimate.k for f in fits]
+    ests = [_point_estimate(_resample(data, rng, NegBin(θ̂.R, θ̂.k)), family) for _ in 1:n_boot]
+    Rs = [e[1] for e in ests]
+    ks = [e[2] for e in ests]
     return (R = _percentile_interval(Rs, level), k = _percentile_interval(ks, level))
 end
 
@@ -270,7 +299,7 @@ function fit(
     )
     r_bound = _r_search_bound(data)
     ll(R) = loglikelihood(data, Poisson(R))
-    R̂, ll_max = _golden_max(ll, 1.0e-8, r_bound)
+    R̂, ll_max = _point_estimate(data, Poisson)
     target = ll_max - quantile(Chisq(1), level) / 2
     ci = (R = _profile_interval(ll, R̂, target; hi_bound = r_bound),)
     boot = bootstrap > 0 ?
@@ -285,31 +314,7 @@ function fit(
     )
     r_bound = _r_search_bound(data)
     ll(R, k) = loglikelihood(data, NegBin(R, k))
-
-    # Seed the simplex from the Poisson fit (k large) rather than an arbitrary
-    # guess, then polish with a couple of coordinate-wise golden-section
-    # passes — the simplex alone is not tuned for high precision.
-    R0 = _golden_max(R -> ll(R, 1.0), 1.0e-8, r_bound)[1]
-    # The simplex's reflection/expansion steps routinely propose points outside
-    # the domain `loglikelihood` is defined on (e.g. R >= 1 for `ChainLengths`,
-    # which is only defined for a subcritical process); reject those with a
-    # bad score instead of letting the domain check inside `ll` throw.
-    function neg_ll(θ)
-        R, k = exp(θ[1]), exp(θ[2])
-        # The lower bound matches the golden-section passes below: below it,
-        # `NegBin`'s `p = k / (k + R)` rounds to `1.0` and its `mean`
-        # collapses to exactly `0.0`, failing `GammaBorel`'s domain check the
-        # same way `R`/`k` underflowing to `0.0` would.
-        (R <= 1.0e-8 || k <= 1.0e-8 || R >= r_bound || k >= _K_SEARCH_BOUND) && return Inf
-        return -ll(R, k)
-    end
-    θ̂, _ = _nelder_mead(neg_ll, [log(R0), 0.0])
-    R̂, k̂ = exp(θ̂[1]), exp(θ̂[2])
-    for _ in 1:3
-        R̂ = _golden_max(_fix_k(ll, k̂), 1.0e-8, r_bound)[1]
-        k̂ = _golden_max(_fix_R(ll, R̂), 1.0e-8, _K_SEARCH_BOUND)[1]
-    end
-    ll_max = ll(R̂, k̂)
+    R̂, k̂, ll_max = _point_estimate(data, NegativeBinomial)
 
     target = ll_max - quantile(Chisq(1), level) / 2
     profile_over_k(R) = _golden_max(_fix_R(ll, R), 1.0e-8, _K_SEARCH_BOUND)[2]
