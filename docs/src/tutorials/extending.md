@@ -1745,11 +1745,12 @@ with no infections. The simulator copies the vector and checks for duplicates an
 IDs outside the population.
 
 Omitting `initial_cases` preserves default seeding and its random draws. A chosen
-vector replaces that rule and cannot be combined with `n_initial`. It can be
+vector replaces that rule and cannot be combined with `n_initial`, but it can be
 combined with an active `external_hazard`: the chosen cases are seeded at time
-zero and the hazard still acts on everyone else from time zero, so an outbreak
-with known index cases can be fed by a background rate of introductions. Select
-IDs with an explicit RNG in caller code when selection itself is random.
+zero and the hazard still acts on everyone else from the same moment, so an
+outbreak with known index cases can be fed by a background rate of
+introductions. Select IDs with an explicit RNG in caller code when selection
+itself is random.
 
 ## Intervention actions
 

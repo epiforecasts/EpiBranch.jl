@@ -348,8 +348,8 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 - `initial_cases` can now be combined with an active `external_hazard` on
   `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess`: the chosen cases are
-  seeded at time zero, and the hazard still acts on everyone else from time
-  zero, rather than the combination being rejected.
+  seeded at time zero, and the hazard still acts on everyone else from the
+  same time, rather than the combination being rejected.
 - `AllOrNothingMode` now draws a vaccinated individual's responder status once,
   when the dose is recorded, rather than resolving it per-exposure, so a
   responder is protected against infection at every exposure and a
