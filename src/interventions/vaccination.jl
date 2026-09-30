@@ -1131,7 +1131,12 @@ e.g. `:test_positive` for the default `OnLabConfirmation()`.
 
 On network and household races, group actions are discovered after each case is
 finalised, including seed cases. They can reach the current case and pending
-members, subject to scheduling and capacity admission.
+members, subject to scheduling and capacity admission. Cases settle in order
+of infection there, not in order of eligibility, so a member can be found
+eligible earlier than one that infected it. A member the race has not yet
+settled has its dose moved to a trigger discovered later that turns out to be
+earlier than the one it was first given; a settled member's dose keeps its
+date, as does a dose another vaccination already gave.
 
 For a campaign with repeat visits, `coverage` is the final probability of being
 reached, and `dose_delay` can describe the first successful visit. A failed

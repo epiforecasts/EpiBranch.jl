@@ -113,10 +113,9 @@ end
     @test_throws ArgumentError SimOpts(; initial_cases = [0])
     @test_throws ArgumentError SimOpts(; initial_cases = [-1])
     @test_throws ArgumentError SimOpts(; initial_cases = [3], n_initial = 1)
-    @test EpiBranch._validate_initial_case_ids(opts, 9, 0.0) === nothing
-    @test_throws ArgumentError EpiBranch._validate_initial_case_ids(opts, 8, 0.0)
-    @test_throws ArgumentError EpiBranch._validate_initial_case_ids(opts, 9, 0.1)
-    @test EpiBranch._validate_initial_case_ids(SimOpts(), 9, 0.1) === nothing
+    @test EpiBranch._validate_initial_case_ids(opts, 9) === nothing
+    @test_throws ArgumentError EpiBranch._validate_initial_case_ids(opts, 8)
+    @test EpiBranch._validate_initial_case_ids(SimOpts(), 9) === nothing
     @test_throws ArgumentError simulate(BranchingProcess(Poisson(0.0)); initial_cases = [3])
     # Race positions differ from population IDs, as they do within households.
     best = fill(Inf, 3)
