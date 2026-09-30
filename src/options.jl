@@ -151,18 +151,12 @@ function _validate_initial_cases(model::TransmissionModel, opts::SimOpts)
     return nothing
 end
 
-function _validate_initial_case_ids(opts::SimOpts, n, external_hazard)
+function _validate_initial_case_ids(opts::SimOpts, n)
     ids = opts.initial_cases
     ids === nothing && return nothing
     all(id -> id <= n, ids) || throw(
         ArgumentError(
             "initial_cases IDs must be in 1:$n"
-        )
-    )
-    _ext_active(external_hazard) && throw(
-        ArgumentError(
-            "initial_cases cannot yet be combined with external_hazard; use " *
-                "chosen initial cases with external_hazard = 0"
         )
     )
     return nothing
