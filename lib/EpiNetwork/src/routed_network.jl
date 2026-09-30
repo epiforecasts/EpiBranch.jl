@@ -54,6 +54,11 @@ left at the default use no random numbers for naming.
 All routes run over the same node set, so every adjacency must have the same
 length.
 
+A case infected on one of these routes carries the route's `name` in its
+`:infection_route`, and a community introduction carries `:external`; both
+appear in [`linelist`](@ref), so a run's cases can be broken down by setting
+directly, without reconstructing it from the population structure and timing.
+
 # Example
 
 Households as cliques, community contact as a sparser graph over the same
