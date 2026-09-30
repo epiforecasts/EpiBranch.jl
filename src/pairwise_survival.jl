@@ -973,20 +973,39 @@ function _pairwise_surv_loglik_by_component(
     ) where {T}
     component = layout.component
     infeasible = falses(layout.ncomponents)
-    ll = zeros(T, layout.ncomponents)
     # As in the total, a conditioned-on host with no possible infector makes its
     # whole component impossible; mark it before either pass runs.
     @inbounds for j in layout.no_rows
         tj = data.infection_time[j]
-        if !(isnan(tj) || tj > tfollow)
-            c = component[j]
-            ll[c] = T(-Inf)
-            infeasible[c] = true
-        end
+        !(isnan(tj) || tj > tfollow) && (infeasible[component[j]] = true)
     end
-    _pairwise_cumhazard_by_component!(ll, infeasible, kernel, extdist, data, layout, tfollow)
-    _pairwise_events_by_component!(ll, infeasible, kernel, extdist, data, layout, tfollow, T)
+    ll = _pairwise_cumhazard_by_component(infeasible, kernel, extdist, data, layout, tfollow, T)
+    _pairwise_events_by_component!(ll, infeasible, kernel, extdist, data, layout, tfollow, eltype(ll))
     return ll
+end
+
+# A per-edge or covariate kernel may hold the fitted parameters on only some
+# rows, and the probe behind `T` can miss them, as for the total. There the
+# accumulator is an untyped local that Julia silently widens if a row
+# disagrees; here it is a concretely-typed vector, which would throw instead.
+# Attempt it at `T` first, since that holds on every row but the rare one
+# the probe missed. If a row does disagree, `_pairwise_cumhazard` (which
+# visits the same rows, unsplit by component) has by then seen every kernel
+# this pass will use, so its result's type is wide enough to retry with.
+function _pairwise_cumhazard_by_component(
+        infeasible, kernel, extdist, data, layout, tfollow, ::Type{T}
+    ) where {T}
+    ll = [c ? T(-Inf) : zero(T) for c in infeasible]
+    try
+        return _pairwise_cumhazard_by_component!(ll, infeasible, kernel, extdist, data, layout, tfollow)
+    catch e
+        e isa MethodError || rethrow()
+        T2 = promote_type(
+            T, typeof(_pairwise_cumhazard(kernel, extdist, data, layout, tfollow, T))
+        )
+        ll2 = [c ? T2(-Inf) : zero(T2) for c in infeasible]
+        return _pairwise_cumhazard_by_component!(ll2, infeasible, kernel, extdist, data, layout, tfollow)
+    end
 end
 
 function _pairwise_cumhazard_by_component!(

@@ -706,4 +706,31 @@ end
         @test by_component[ok_household] ≈
             pairwise_surv_loglik(k, solo; external_hazard = α)
     end
+
+    @testset "per-component contributions differentiable in the kernel parameters" begin
+        # as for the total's "a kernel whose first internal pair holds no
+        # fitted parameter", but summed by component rather than into one
+        # scalar: the accumulator is a vector here, so a row the `T` probe
+        # missed throws on the fast path instead of silently widening, and
+        # must fall back to one that does not
+        _, adjacency = _cliques([3, 4, 2, 4])
+        inf = [0.0, 1.2, NaN, 0.0, 2.1, 3.5, NaN, 0.0, NaN, 0.0, 0.7, NaN, 4.2]
+        data = _TestInfections(
+            adjacency, inf, inf, inf .+ 4.0,
+            .!isnan.(inf) .& (inf .== 0.0); obs_end = 10.0
+        )
+        L = compile_contact_pairs(data)
+        first_inf = L.infector[findfirst(!, L.is_ext)]
+        fc(s) = pairwise_surv_loglik_by_component(
+            (i, j) -> i == first_inf ? Exponential(3.0) : Exponential(s), data, L
+        )
+        dc = ForwardDiff.derivative(fc, 2.5)
+        fd = (fc(2.5 + 1.0e-6) .- fc(2.5 - 1.0e-6)) ./ 2.0e-6
+        @test dc ≈ fd rtol = 1.0e-5
+        @test sum(dc) ≈ ForwardDiff.derivative(
+            s -> pairwise_surv_loglik(
+                (i, j) -> i == first_inf ? Exponential(3.0) : Exponential(s), data, L
+            ), 2.5
+        )
+    end
 end
