@@ -437,14 +437,21 @@ supplies_contacts(::TransmissionModel) = false
 # breadth-first over the model's own contact structure: a traced contact left
 # with ring budget (`:ring_remaining`, written by `ContactTracing`) becomes the
 # next hop's infector. `visited` stops a node being traced twice from two
-# branches of the ring reaching it at once.
-function _trace_from!(state, infector, interventions, contacts, pos, processed)
+# branches of the ring reaching it at once, and `traced_from` (indexed as
+# `processed` is, one entry per race member) stops a node's contacts being
+# traced twice more broadly: once here, prematurely, while it is still an
+# uninfected ring member, and again when the race later processes it and calls
+# `_trace_from!` with it as the (now infected) top-level infector.
+function _trace_from!(state, infector, interventions, contacts, pos, processed, traced_from)
     contacts === nothing && return nothing
     any(traces_contacts, interventions) || return nothing
     visited = Set{Int}((infector.id,))
     frontier = Individual[infector]
     while !isempty(frontier)
         src = popfirst!(frontier)
+        sk = pos[src.id]
+        traced_from[sk] && continue
+        traced_from[sk] = true
         pending = Individual[]
         not_before = typeof(infector.infection_time)[]
         timed = false
@@ -579,6 +586,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
     m = length(members)
     best = fill(Inf, m)
     processed = falses(m)
+    traced_from = falses(m)
     pos = Dict{Int, Int}(id => k for (k, id) in enumerate(members))
     # A route the interventions cannot cut is not cut by the per-contact risks
     # that stand in for a removal either: a household route runs on through an
@@ -711,7 +719,7 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         _set_onset_from_incubation!(ind)
         resolve_transitions!(state, ind)
         _resolve_interventions!(state, ind, interventions)
-        _trace_from!(state, ind, interventions, contacts, pos, processed)
+        _trace_from!(state, ind, interventions, contacts, pos, processed, traced_from)
         contacts === nothing ||
             _apply_continuous_actions!(state, ind, interventions, members, processed)
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1

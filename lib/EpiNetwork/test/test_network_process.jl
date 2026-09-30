@@ -28,6 +28,19 @@ function EpiBranch.competing_risk(::BlockEverything, parent, contact, state)
     Risk(block_probability = 1.0)
 end
 
+# A trace action that counts how many times each contact is traced, so a test
+# can catch a contact being traced more than once.
+mutable struct _CountingAction <: EpiBranch.TraceAction
+    counts::Dict{Int, Int}
+end
+_CountingAction() = _CountingAction(Dict{Int, Int}())
+function EpiBranch.apply_trace!(a::_CountingAction, contact, state, trace_time, rng)
+    a.counts[contact.id] = get(a.counts, contact.id, 0) + 1
+    contact.state[:traced] = true
+    contact.state[:quarantined] = true
+    return nothing
+end
+
 @testset "NetworkProcess" begin
     @testset "construction" begin
         ring = ring_adjacency(5)
@@ -864,6 +877,27 @@ end
         st1 = simulate(depth1; initial_cases = [1], rng = StableRNG(1))
         @test is_traced(st1.individuals[2])
         @test !is_traced(st1.individuals[3])
+    end
+
+    @testset "A ring member is not re-traced once it is itself infected" begin
+        # Same path graph, but with a kernel fast enough that node 2
+        # sometimes becomes infected itself. Node 2's contact (node 3) is
+        # then reached twice by the naive walk: once through ring
+        # propagation, while node 2 is still an uninfected ring member, and
+        # again when the race later processes node 2 as an infected,
+        # eligible case and calls `_trace_from!` for it directly.
+        proc = NetworkProcess([[2], [1, 3], [2]], Exponential(1.0))
+        for seed in 1:200
+            action = _CountingAction()
+            model = ModelSpec(proc;
+                attributes = clinical_presentation(incubation_period = Dirac(2.0)),
+                progression = [Transition(:recovered; from = :infection, delay = 10.0,
+                    terminal = true)],
+                interventions = [Isolation(onset_to_isolation_delay = Dirac(1.0)),
+                    ContactTracing(OnIsolation(), 1.0, Dirac(0.0), action; depth = 2)])
+            simulate(model; initial_cases = [1], rng = StableRNG(seed))
+            @test all(<=(1), values(action.counts))
+        end
     end
 end
 
