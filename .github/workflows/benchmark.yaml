@@ -58,13 +58,13 @@ jobs:
           - name: main
             ref: ${{ github.event.pull_request.base.sha }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ matrix.ref }}
-      - uses: julia-actions/setup-julia@v3
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
           version: '1'
-      - uses: julia-actions/cache@v3
+      - uses: julia-actions/cache@a7bed9df697e5d7309d68afe7542a87621a8b6c8 # v3.3.0
       # The benchmark environment installs the package as a dependency
       # (`Pkg.develop` + `Pkg.instantiate` below), and Pkg honours only the
       # *active* project's `[sources]`. A dependency pinned there by git
@@ -107,7 +107,7 @@ jobs:
             include("benchmark/benchmarks.jl")
             results = run(SUITE; verbose = true, seconds = 1)
             BenchmarkTools.save("results-${{ matrix.name }}.json", results)'
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bench-${{ matrix.name }}
           path: results-${{ matrix.name }}.json
@@ -120,11 +120,11 @@ jobs:
       # commit): unlike the per-revision `benchmark` job above, this never
       # runs against an old baseline, so it can safely depend on the
       # kit-shipped `benchmark/compare.jl`.
-      - uses: actions/checkout@v7
-      - uses: julia-actions/setup-julia@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
           version: '1'
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
       - name: Build comparison comment
@@ -152,7 +152,7 @@ jobs:
         # commenting returns 403 and fails the job. Skipping keeps the
         # comparison itself useful on a fork.
         if: github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const fs = require('fs');
