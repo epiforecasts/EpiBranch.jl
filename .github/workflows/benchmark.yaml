@@ -1,0 +1,170 @@
+# Taken from EpiAwarePackageTools' templates. No sync manages it yet, so edit
+# it here and carry the change over if this repository adopts the kit.
+name: Benchmark
+
+# Benchmarks the evaluation AND AD gradient suites against `main` and posts a
+# single PR comparison comment (bucketed summary plus collapsed detail
+# tables, split into Evaluation and AD gradients — see
+# `EpiAwarePackageTools.Benchmarks.compare_comment`, called from the
+# scaffolded `benchmark/compare.jl` below).
+#
+# Each revision is benchmarked in its own job (a fresh runner checked out at
+# that revision), so `main` runs `main`'s sources and AD fixtures while the
+# PR runs its own. This lets the AD gradient benchmarks compare across an
+# API change, where staging one set of fixtures against both revisions could
+# not. It also keeps a single runner from loading two heavy AD stacks (e.g.
+# Enzyme + Mooncake) at once, which can exhaust it.
+#
+# Uses `pull_request` (not `pull_request_target`), so the comparison runs
+# the PR's own code and the comment-posting token stays scoped to same-repo
+# PRs; fork PRs get a read-only token and will not post a comment.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'ext/**'
+      - 'benchmark/**'
+      - 'test/ADFixtures/**'
+      - 'lib/**'
+      - '.github/workflows/benchmark.yaml'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # One revision per job. `ref` selects the checkout; `name` labels the
+  # uploaded results artifact. Inlines a tiny runner script (a bare
+  # `BenchmarkTools` call) rather than calling the scaffolded
+  # `benchmark/run.jl`, so it still works checking out an older revision
+  # that predates that script.
+  benchmark:
+    name: Benchmark (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: pr
+            ref: ${{ github.event.pull_request.head.sha }}
+          - name: main
+            ref: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.ref }}
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      # The benchmark environment installs the package as a dependency
+      # (`Pkg.develop` + `Pkg.instantiate` below), and Pkg honours only the
+      # *active* project's `[sources]`. A dependency pinned there by git
+      # url/rev (not yet registered) cannot resolve, failing with "has no
+      # known versions!" (#216). Register each such pin into a throwaway
+      # registry in this runner's depot instead: registries are depot-level,
+      # so the dependency resolves by name in every environment on the
+      # runner. A package with no unregistered pins is a no-op.
+      #
+      # The scratch registry from an earlier run is stale (cached depot), so
+      # drop it first, before the guard: otherwise a package that has since
+      # dropped its pin is left with a registry still carrying the name,
+      # which fails the depot with a hash mismatch.
+      - name: Bootstrap registry for unregistered [sources] deps
+        run: |
+          rm -rf "${JULIA_DEPOT_PATH:-$HOME/.julia}/registries/EpiAwareScratch"
+          if ! grep -qE '^\[sources(\.|\])' Project.toml; then
+            echo "no [sources] section: nothing to register"
+            exit 0
+          fi
+          julia -e '
+            using Pkg
+            Pkg.activate(; temp = true)
+            Pkg.add([
+                Pkg.PackageSpec(name = "LocalRegistry"),
+                Pkg.PackageSpec(
+                    url = "https://github.com/EpiAware/EpiAwarePackageTools.jl",
+                    rev = "main")])
+            using EpiAwarePackageTools.Benchmarks: bootstrap_sources_registry
+            done = bootstrap_sources_registry(pwd())
+            println(isempty(done) ? "no unregistered [sources] deps" :
+                    "registered: " * join(done, ", "))'
+      - name: Run benchmark suite
+        run: |
+          julia --project=benchmark -e '
+            using Pkg
+            Pkg.develop(path = pwd())
+            Pkg.instantiate()
+            using BenchmarkTools
+            include("benchmark/benchmarks.jl")
+            results = run(SUITE; verbose = true, seconds = 1)
+            BenchmarkTools.save("results-${{ matrix.name }}.json", results)'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bench-${{ matrix.name }}
+          path: results-${{ matrix.name }}.json
+
+  compare:
+    needs: benchmark
+    runs-on: ubuntu-latest
+    steps:
+      # PR checkout (no ref override, so this always runs the workflow's own
+      # commit): unlike the per-revision `benchmark` job above, this never
+      # runs against an old baseline, so it can safely depend on the
+      # kit-shipped `benchmark/compare.jl`.
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Build comparison comment
+        # `compare.jl` only needs the kit (`compare_comment`) and
+        # `BenchmarkTools` (lazily `Base.require`d to load result files), not
+        # the package's own benchmark deps, so it runs in a scratch env that
+        # always installs both rather than relying on `benchmark/Project.toml`
+        # having them pinned — that file is package-owned and scaffold never
+        # overwrites an adopter's pre-existing `benchmark/` dir, so either
+        # dependency could otherwise be silently missing (#821).
+        run: |
+          julia -e '
+            using Pkg
+            Pkg.activate(; temp = true)
+            Pkg.add([
+                Pkg.PackageSpec(
+                    url = "https://github.com/EpiAware/EpiAwarePackageTools.jl",
+                    rev = "main"),
+                Pkg.PackageSpec(name = "BenchmarkTools")])
+            include("benchmark/compare.jl")' \
+            artifacts/bench-pr/results-pr.json \
+            artifacts/bench-main/results-main.json comment.md
+      - name: Post comparison comment
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('comment.md', 'utf8');
+            const marker = '<!-- benchmark-comparison -->';
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number });
+            const existing = comments.find(
+              (c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment(
+                { owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment(
+                { owner, repo, issue_number, body });
+            }
