@@ -147,10 +147,12 @@ jobs:
             include("benchmark/compare.jl")' \
             artifacts/bench-pr/results-pr.json \
             artifacts/bench-main/results-main.json comment.md
+          # The job summary carries the comparison whether or not the next step
+          # can post it, so a fork PR's three benchmark jobs still show a result.
+          cat comment.md >> "$GITHUB_STEP_SUMMARY"
       - name: Post comparison comment
         # A fork PR's token is read-only whatever `permissions:` says, so
-        # commenting returns 403 and fails the job. Skipping keeps the
-        # comparison itself useful on a fork.
+        # commenting returns 403 and fails the job.
         if: github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
