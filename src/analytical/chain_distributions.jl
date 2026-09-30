@@ -310,9 +310,12 @@ quarantined on arrival.
 where `J ~ index_offspring` is the index case's secondary case count and the
 `j`-seed term is the multi-seed chain-size law built from `offspring` via
 [`chain_size_distribution`](@ref) (the same closed form used for
-multi-seed [`ChainSizes`](@ref)). `offspring` is anything
-`chain_size_distribution` accepts (`Poisson`, `NegativeBinomial`,
-[`ClusterMixed`](@ref), …).
+multi-seed [`ChainSizes`](@ref)). This requires `chain_size_distribution(offspring)`
+to have a multi-seed closed form: `Poisson`, `NegativeBinomial`, and
+`ClusterMixed(Poisson, ::Gamma)` all resolve to one, but a general
+[`ClusterMixed`](@ref) without a closed form resolves to
+[`ChainSizeMixture`](@ref), which has none, and `logpdf`/`pdf` throw once
+`n` is large enough that the sum reaches a `j ≥ 2` term.
 
 Only single-index-case chains are supported (`seeds == 1` in
 [`ChainSizes`](@ref)): the multi-seed formula for a cluster with several
