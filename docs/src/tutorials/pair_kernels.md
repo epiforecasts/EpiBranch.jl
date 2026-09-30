@@ -1,12 +1,14 @@
-# Contextual pair kernels
+# Contextual and calendar-time pair kernels
 
-[`ContextualKernel`](@ref) gives a pair-kernel callback information that both a
-simulator and an infection-layer likelihood can supply: the two population IDs
-and the infector's infection time. The callback returns the distribution of time
-from infectious opening to an infectious contact.
+[`PairKernel`](@ref) gives a pair-kernel callback information that both a
+simulator and an infection-layer likelihood can supply: the two population IDs,
+the infector's infection time and, optionally, each host's own record. The
+callback returns the contact-interval profile, measured from the infector's
+infectious opening, and optionally a step schedule that multiplies the rate on
+the calendar.
 
-Use an ordinary `(infector, susceptible)` callable when IDs are sufficient. An
-explicit wrapper selects the context form without changing existing callbacks.
+Use an ordinary `(infector, susceptible)` callable when IDs are sufficient. A
+`PairKernel` selects the richer forms without changing existing callbacks.
 Shared distributions and per-edge distribution vectors keep their existing use.
 
 ## Fixed covariates and infection time
@@ -19,7 +21,7 @@ stays fixed throughout simulation and likelihood evaluation.
 using EpiBranch, EpiNetwork, EpiHouseholds, Distributions, Random
 
 covariates = [0.5, 1.0, 1.5]
-kernel = ContextualKernel(context -> Exponential(exp(
+kernel = PairKernel(context -> Exponential(exp(
     0.1 * context.infector_infection_time +
     0.2 * covariates[context.susceptible])))
 
@@ -44,7 +46,8 @@ loglikelihood(household_data, household_model)
 `context.infector_infection_time` is the infection date, even when a latent period
 opens the infectious window later. The returned distribution still measures time
 from that window's opening. `context.infector` and `context.susceptible` are IDs;
-`PairContext` contains no live individual or state dictionary.
+`PairContext` contains no live individual or state dictionary. With no `state`
+given to `PairKernel`, the callback takes only this context.
 
 ## Inference
 
@@ -64,20 +67,19 @@ construction uses a small immutable value and leaves the compiled layout unchang
 
 The lower-level `PairwiseSurvivalData` representation contains counting-process
 rows but lacks infector IDs and their infection dates. Its callable kernels still
-receive a row index. Use an `InfectionLayer` with `ContextualKernel`, or supply the
+receive a row index. Use an `InfectionLayer` with a `PairKernel`, or supply the
 needed information through a row-indexed callback yourself.
 
 ## A policy starting on a calendar day
 
-`CalendarKernel` interprets a distribution's hazard on the calendar-time axis.
-It conditions that distribution on each infector's infectious opening, then
-converts calendar dates to elapsed contact intervals. This allows a policy to
+`calendar`, a [`Steps`](@ref) schedule, multiplies a `PairKernel`'s returned
+profile by a step function of the calendar date — the infector's infectious
+opening plus time elapsed — rather than time since opening. This lets a policy
 change transmission partway through someone's infectious period, including when
 their latent period was sampled during simulation.
 
-Suppose the contact rate is 0.4 per day before day 3 and 0.1 afterwards. Standard
-distributions can express this in two parts: a contact before day 3, or survival
-to day 3 followed by an exponential waiting time at the lower rate.
+Suppose the contact rate is 0.4 per day before day 3 and 0.1 afterwards. A flat,
+unit-hazard profile multiplied by a single step at day 3 is exactly this policy:
 
 ```@example calendar
 using EpiBranch, EpiNetwork, EpiHouseholds, Distributions, Random
@@ -85,17 +87,13 @@ using EpiBranch, EpiNetwork, EpiHouseholds, Distributions, Random
 policy_day = 3.0
 before_rate = 0.4
 after_rate = 0.1
-survive_to_policy = exp(-before_rate * policy_day)
-calendar_law = MixtureModel(
-    [truncated(Exponential(1 / before_rate); upper = policy_day),
-     policy_day + Exponential(1 / after_rate)],
-    [1 - survive_to_policy, survive_to_policy])
-kernel = CalendarKernel(calendar_law)
+kernel = PairKernel(context -> Exponential(1.0);
+    calendar = Steps([policy_day], [before_rate, after_rate]))
 ```
 
-The mixture weights are the probabilities of making the first contact before or
-after the policy date. They ensure the rate is 0.4 before day 3 and 0.1 after it.
-The policy date and rates are fixed inputs, shared by simulation and inference.
+The cumulative hazard splits into a segment before the policy day and a segment
+after it, each a scaled difference of the profile's own cumulative hazard, so it
+stays exact whatever the profile.
 
 Consider a person who becomes infectious on day 2. By day 4, the cumulative
 hazard is `0.4 × 1 + 0.1 × 1 = 0.5`. The contact interval returned by the adapter
@@ -103,7 +101,7 @@ has exactly that cumulative hazard after two elapsed days:
 
 ```@example calendar
 interval = EpiBranch.pair_kernel(kernel, 1, 2, 0.0, 2.0)
--logccdf(interval, 2.0)
+EpiBranch.cumhazard(interval, 2.0)
 ```
 
 The last two arguments are the infector's infection date and infectious opening.
@@ -126,36 +124,34 @@ Both likelihoods condition on the observed infectious openings. A compiled layou
 reads those openings again at every evaluation, allowing them to change during
 inference.
 
-`CalendarKernel` also wraps ID callbacks, `ContextualKernel` and network per-edge
-distribution vectors. For example, this calendar hazard depends on a fixed
-recipient covariate and the source's infection date:
+A pair whose schedule differs from the shared one returns it instead from the
+callback, as `(profile = ..., calendar = ...)`, overriding the kernel's own
+`calendar` for that pair. For example, this calendar hazard depends on a fixed
+recipient covariate and the source's infection date, with the policy day itself
+read from the recipient's covariate:
 
 ```@example calendar
-covariates = [0.5, 1.0, 1.5]
-covariate_kernel = CalendarKernel(ContextualKernel(context ->
-    Weibull(2.0, exp(1.0 + 0.1 * covariates[context.susceptible] +
-                     0.05 * context.infector_infection_time))))
+covariates = [1.0, 2.0, 4.0]
+covariate_kernel = PairKernel(context ->
+    (profile = Weibull(2.0, exp(1.0 + 0.05 * context.infector_infection_time)),
+     calendar = Steps([covariates[context.susceptible]], [1.0, 0.25])))
 ```
 
-Automatic differentiation through calendar-law parameters and infectious openings
-uses the chosen distribution's differentiation support. The tests check forward
-and reverse derivatives for a Weibull calendar law against its analytical
-likelihood. Derivatives at a sharp policy boundary need particular care because
-the hazard itself jumps there. At day 3 the example mixture includes both
-component endpoint densities; likelihoods evaluated exactly at a policy date
-need a distribution with the endpoint convention required by the model.
+Automatic differentiation through a schedule's rates and breakpoints, and
+through infectious openings, uses the profile's own differentiation support.
+The tests check forward and reverse derivatives for a step-scaled Weibull
+profile against its analytical likelihood.
 
-Conditioning requires positive survival at the infectious opening. Choose a
-calendar law whose tail probabilities can be represented numerically over the
-simulation period; truncating after its survival has underflowed to zero cannot
-produce a valid conditional distribution.
+The multiplier only rescales the hazard over calendar time, so a calendar law
+whose shape changes continuously over time cannot be written this way; a smooth
+change needs a step approximation, breaking it into enough `Steps` breakpoints.
 
 ## Attributes sampled during simulation
 
-`StatefulKernel` lets you choose which parts of an individual a kernel reads.
-Its first argument selects a host record. The second constructs the pair's
-contact distribution from the usual `PairContext` and the two host records.
-Here, each person receives a sampled contact-scale attribute:
+`state` lets a `PairKernel` choose which parts of an individual it reads. Given
+`state`, the callback also takes the pair's two host records, built from the
+usual `PairContext`. Here, each person receives a sampled contact-scale
+attribute:
 
 ```@example stateful
 using EpiBranch, EpiNetwork, Distributions, Random
@@ -163,7 +159,7 @@ using EpiBranch, EpiNetwork, Distributions, Random
 attributes = (rng, ind) -> (ind.state[:contact_scale] = rand(rng, Uniform(0.5, 1.5)))
 project(ind) = (scale = ind.state[:contact_scale]::Float64,)
 contact_law(context, source, target) = Exponential(source.scale + target.scale)
-kernel = StatefulKernel(project, contact_law)
+kernel = PairKernel(contact_law; state = project)
 adjacency = [[2, 3], [1, 3], [1, 2]]
 progression = [Transition(:recovered; delay = 5.0, terminal = true)]
 model = ModelSpec(NetworkProcess(adjacency, kernel); attributes, progression)
@@ -182,12 +178,13 @@ layout = compile_contact_pairs(data)
 pairwise_surv_loglik(recorded, data, layout)
 ```
 
-For observed data, build `StatefulKernel(records, contact_law)` directly from
-measured covariates. When attributes are latent or contain fitted parameters,
-build that kernel from the current records on each likelihood evaluation. The
-compiled layout can be reused. Records retain their numeric types, including AD
-values. An unrecorded projection raises an error on the likelihood path unless
-the infection layer holds the times it reads, as in the next section.
+For observed data, build `PairKernel(contact_law; state = records)` directly
+from measured covariates. When attributes are latent or contain fitted
+parameters, build that kernel from the current records on each likelihood
+evaluation. The compiled layout can be reused. Records retain their numeric
+types, including AD values. An unrecorded projection raises an error on the
+likelihood path unless the infection layer holds the times it reads, as in the
+next section.
 
 ## Infectiousness timed from symptom onset
 
@@ -200,7 +197,7 @@ infection to onset:
 onset_state(ind) = (onset = get(ind.state, :onset_time, NaN),)
 after_onset(context, source, target) =
     (source.onset - context.infector_infection_time) + Exponential(1.0)
-onset_kernel = StatefulKernel(onset_state, after_onset)
+onset_kernel = PairKernel(after_onset; state = onset_state)
 onset_model = ModelSpec(NetworkProcess(adjacency, onset_kernel);
     attributes = clinical_presentation(incubation_period = Gamma(2.0, 1.0)),
     progression)
@@ -225,8 +222,9 @@ unchanged.
 ## A policy triggered during an outbreak
 
 Suppose the second case triggers a policy half a day later. The intervention
-records that date on each host. Its kernel specifies the hazard before and after
-the date, so an earlier exposure keeps its original hazard.
+records that date on each host, and the kernel's per-pair calendar reads it back
+to switch the rate at that date, so an earlier exposure keeps its original
+hazard:
 
 ```@example stateful
 struct TwoCasePolicy <: AbstractIntervention end
@@ -238,17 +236,12 @@ function EpiBranch.resolve_individual!(::TwoCasePolicy, ind, state)
     return nothing
 end
 
-function policy_law(before, after, date)
-    isfinite(date) || return Exponential(1 / before)
-    survival = exp(-before * date)
-    MixtureModel([truncated(Exponential(1 / before); upper = date),
-                  date + Exponential(1 / after)],
-                 [1 - survival, survival])
-end
-
 policy_state(ind) = (date = get(ind.state, :policy_time, Inf)::Float64,)
-policy_contact(context, source, target) = policy_law(0.4, 0.1, target.date)
-policy_kernel = CalendarKernel(StatefulKernel(policy_state, policy_contact))
+function policy_contact(context, source, target)
+    isfinite(target.date) || return Exponential(1 / 0.4)
+    return (profile = Exponential(1.0), calendar = Steps([target.date], [0.4, 0.1]))
+end
+policy_kernel = PairKernel(policy_contact; state = policy_state)
 policy_model = ModelSpec(NetworkProcess(adjacency, policy_kernel);
     progression, interventions = [TwoCasePolicy()])
 policy_run = simulate(policy_model; initial_cases = [1], rng = Xoshiro(236))
@@ -256,10 +249,6 @@ policy_data = network_infections(policy_run, policy_model)
 policy_records = record_kernel(policy_kernel, policy_run)
 pairwise_surv_loglik(policy_records, policy_data)
 ```
-
-As in the earlier mixture example, the density at the exact policy date follows
-the component endpoint conventions. Use an appropriate convention when observed
-contact dates coincide exactly with a policy change.
 
 A contact scheduled before a policy took effect still follows the hazard in
 force once it has: simulation keeps pending contacts consistent with the records

@@ -26,9 +26,8 @@ household_final_size
 ## Pairwise survival likelihood
 
 ```@docs
-ContextualKernel
-CalendarKernel
-StatefulKernel
+PairKernel
+Steps
 record_kernel
 PairContext
 LayerHost
