@@ -59,23 +59,29 @@ end
 function PerCaseObservation(;
         detection_prob = 1.0,
         delay = Dirac(0.0),
-        from = :onset_time)
+        from = :onset_time
+    )
     if detection_prob isa Real
-        0.0 < detection_prob <= 1.0 || throw(ArgumentError(
-            "detection_prob must be in (0, 1], got $detection_prob"))
+        0.0 < detection_prob <= 1.0 || throw(
+            ArgumentError(
+                "detection_prob must be in (0, 1], got $detection_prob"
+            )
+        )
     end
-    PerCaseObservation(detection_prob, delay, from)
+    return PerCaseObservation(detection_prob, delay, from)
 end
 
 # Two-argument positional form preserved for terse callers — uses the
 # default :onset_time anchor.
 function PerCaseObservation(detection_prob, delay)
-    PerCaseObservation(; detection_prob, delay)
+    return PerCaseObservation(; detection_prob, delay)
 end
 
 function Base.show(io::IO, o::PerCaseObservation)
-    print(io, "PerCaseObservation(detection_prob=$(o.detection_prob), ",
-        "delay=$(o.delay), from=$(o.from))")
+    return print(
+        io, "PerCaseObservation(detection_prob=$(o.detection_prob), ",
+        "delay=$(o.delay), from=$(o.from))"
+    )
 end
 
 """Extract a scalar `detection_prob` for analytical paths that need it
@@ -83,8 +89,11 @@ end
 per-individual variation (a `Distribution` or callable)."""
 scalar_detection_prob(o::PerCaseObservation{<:Real}) = float(o.detection_prob)
 function scalar_detection_prob(o::PerCaseObservation)
-    throw(ArgumentError(
-        "Closed-form analytics require a scalar detection_prob; " *
-        "got $(typeof(o.detection_prob)). Use the simulation-based " *
-        "likelihood instead, or pass a Real value."))
+    throw(
+        ArgumentError(
+            "Closed-form analytics require a scalar detection_prob; " *
+                "got $(typeof(o.detection_prob)). Use the simulation-based " *
+                "likelihood instead, or pass a Real value."
+        )
+    )
 end

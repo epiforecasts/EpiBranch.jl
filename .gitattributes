@@ -1,0 +1,13 @@
+# Normalise line endings so checkouts are byte-identical across platforms. A
+# Windows runner with core.autocrlf checks out CRLF sources, and the formatter
+# check in `test/test_quality.jl` then reports differences that exist only on
+# that runner.
+* text=auto eol=lf
+
+# Binary files: never normalise.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary

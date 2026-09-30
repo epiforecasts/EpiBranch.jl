@@ -138,7 +138,7 @@ export TraceRate, ConstantRate
 export TraceDelay, ConstantDelay
 export TraceAction, Quarantine, FlagOnly
 export AbstractVaccination, VaccineEffect, RingVaccination, MassVaccination,
-       GroupVaccination
+    GroupVaccination
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
 export CapacityConstrained, capacity_usage, default_capacity_priority
@@ -156,7 +156,7 @@ export NoAgeDistribution, NoCases
 # Exports — accessors
 export onset_time, incubation_period, is_isolated, isolation_time, is_traced, is_quarantined
 export is_vaccinated, immunity_time, severity_efficacy, is_asymptomatic, is_test_positive,
-       is_infected
+    is_infected
 export individual_type, set_isolated!, clear_isolated!
 
 # Exports — distributions
@@ -170,7 +170,7 @@ export ThinnedChainSize
 
 # Exports — attributes functions
 export clinical_presentation, demographics, transmission_traits, groups,
-       group_attribute, vaccine_acceptance
+    group_attribute, vaccine_acceptance
 
 # Exports — simulation
 export simulate, make_contact!, susceptible_fraction
@@ -196,7 +196,8 @@ export ClusterMixed, ChainSizeMixture
 # Real-time mixture: per-cluster "is finished?" weight
 export end_of_outbreak_probability
 # Pairwise survival likelihood over a contact structure
-export ContextualKernel, PairContext, CalendarKernel
+export ContextualKernel, PairContext, CalendarKernel, StatefulKernel, record_kernel,
+    LayerHost
 export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout
 export compile_contact_pairs, pairwise_surv_loglik
 

@@ -19,9 +19,10 @@ extinction. For finer control pass a `stopping_rules` vector of
 `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess` accept `initial_cases`
 as a vector of distinct population IDs to infect at time zero, including an empty
 vector. It replaces each process's default seeding rule. Supply either
-`initial_cases` or `n_initial`; out-of-range IDs raise an error. Chosen initial
-cases currently require `external_hazard = 0`. Other processes reject this
-keyword when a vector is supplied. Random seeding is unchanged when it is omitted.
+`initial_cases` or `n_initial`; out-of-range IDs raise an error. With an active
+`external_hazard`, everyone outside `initial_cases` remains open to community
+introduction from time zero, as usual. Other processes reject this keyword when
+a vector is supplied. Random seeding is unchanged when it is omitted.
 
 The case's clinical timeline — the [`AbstractClinicalTransition`](@ref)s a
 case moves through (latent, onset, severity, death/recovery, burial) — is the
@@ -34,7 +35,8 @@ If `condition` is provided (a `UnitRange{Int}`), simulations are repeated
 until one produces an outbreak whose cumulative cases fall within the range,
 up to `max_attempts`.
 """
-function simulate(model::TransmissionModel;
+function simulate(
+        model::TransmissionModel;
         n_initial::Union{Int, Nothing} = nothing,
         initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
@@ -43,20 +45,26 @@ function simulate(model::TransmissionModel;
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
         condition::Union{UnitRange{Int}, Nothing} = nothing,
-        max_attempts::Int = 10_000)
+        max_attempts::Int = 10_000
+    )
     # A bare process is composed with no ModelSpec, so run the checks the spec
     # constructor would otherwise do (a ModelSpec routes here via its own
     # `simulate`, already validated at composition, so it never double-warns).
     _validate_process_windows(model, _progression(model))
     _warn_incomplete_terminal_coverage(_progression(model))
     _warn_ignored_termination(
-        model, max_cases, max_generations, max_time, stopping_rules)
-    sim_opts = SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time,
-        stopping_rules)
+        model, max_cases, max_generations, max_time, stopping_rules
+    )
+    sim_opts = SimOpts(;
+        n_initial, initial_cases, max_cases, max_generations, max_time,
+        stopping_rules
+    )
     _validate_initial_cases(model, sim_opts)
-    return _simulate(model, sim_opts; interventions = interventions(model),
+    return _simulate(
+        model, sim_opts; interventions = interventions(model),
         attributes = attributes(model), progression = _progression(model),
-        observation = observation(model), rng, condition, max_attempts)
+        observation = observation(model), rng, condition, max_attempts
+    )
 end
 
 # Internal single run against a built `SimOpts`. The forcing layers
@@ -64,22 +72,29 @@ end
 # explicitly, so a `ModelSpec` can supply its own while the process stays the
 # dispatched model. The public methods read them off a bare process, or off
 # the spec.
-function _simulate(model::TransmissionModel, sim_opts::SimOpts;
+function _simulate(
+        model::TransmissionModel, sim_opts::SimOpts;
         interventions, attributes, progression, observation, rng, condition,
-        max_attempts)
+        max_attempts
+    )
     if condition !== nothing
         for _ in 1:max_attempts
-            state = _simulate(model, sim_opts; interventions, attributes,
-                progression, observation, rng, condition = nothing, max_attempts)
+            state = _simulate(
+                model, sim_opts; interventions, attributes,
+                progression, observation, rng, condition = nothing, max_attempts
+            )
             state.cumulative_cases in condition && return state
         end
-        throw(ErrorException(
-            "No simulation produced an outbreak of size $condition within $max_attempts attempts"
-        ))
+        throw(
+            ErrorException(
+                "No simulation produced an outbreak of size $condition within $max_attempts attempts"
+            )
+        )
     end
 
     state = initialise_state(
-        model, sim_opts, interventions, progression, attributes, rng)
+        model, sim_opts, interventions, progression, attributes, rng
+    )
     _resolve_new_transitions!(state, 0)
 
     while !should_terminate(state, sim_opts)
@@ -101,7 +116,8 @@ When `parallel=true`, simulations are distributed across available threads
 using independent RNG streams derived from the provided `rng`. Use
 `julia --threads N` to enable multi-threading.
 """
-function simulate(model::TransmissionModel, n::Int;
+function simulate(
+        model::TransmissionModel, n::Int;
         n_initial::Union{Int, Nothing} = nothing,
         initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
@@ -109,36 +125,50 @@ function simulate(model::TransmissionModel, n::Int;
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
-        parallel::Bool = false)
+        parallel::Bool = false
+    )
     _validate_process_windows(model, _progression(model))
     _warn_incomplete_terminal_coverage(_progression(model))
     _warn_ignored_termination(
-        model, max_cases, max_generations, max_time, stopping_rules)
-    sim_opts = SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time,
-        stopping_rules)
+        model, max_cases, max_generations, max_time, stopping_rules
+    )
+    sim_opts = SimOpts(;
+        n_initial, initial_cases, max_cases, max_generations, max_time,
+        stopping_rules
+    )
     _validate_initial_cases(model, sim_opts)
-    return _simulate_n(model, n, sim_opts; interventions = interventions(model),
+    return _simulate_n(
+        model, n, sim_opts; interventions = interventions(model),
         attributes = attributes(model), progression = _progression(model),
-        observation = observation(model), rng, parallel)
+        observation = observation(model), rng, parallel
+    )
 end
 
-function _simulate_n(model::TransmissionModel, n::Int, sim_opts::SimOpts;
+function _simulate_n(
+        model::TransmissionModel, n::Int, sim_opts::SimOpts;
         interventions, attributes, progression, observation, rng,
-        parallel::Bool = false)
+        parallel::Bool = false
+    )
     if parallel && Threads.nthreads() > 1
         seeds = [rand(rng, UInt64) for _ in 1:n]
         results = Vector{SimulationState}(undef, n)
         Threads.@threads for i in 1:n
             local_rng = Random.Xoshiro(seeds[i])
-            results[i] = _simulate(model, sim_opts; interventions, attributes,
+            results[i] = _simulate(
+                model, sim_opts; interventions, attributes,
                 progression, observation, rng = local_rng, condition = nothing,
-                max_attempts = 10_000)
+                max_attempts = 10_000
+            )
         end
         return results
     else
-        return [_simulate(model, sim_opts; interventions, attributes, progression,
-                    observation, rng, condition = nothing, max_attempts = 10_000)
-                for _ in 1:n]
+        return [
+            _simulate(
+                model, sim_opts; interventions, attributes, progression,
+                observation, rng, condition = nothing, max_attempts = 10_000
+            )
+                for _ in 1:n
+        ]
     end
 end
 
@@ -158,8 +188,10 @@ _honours_termination_controls(::TransmissionModel) = true
 # The time at which a structure-driven run ends: the earliest `MaxTime` among
 # the stopping rules, or `Inf`.
 function _max_time(sim_opts)
-    minimum((r.t for r in sim_opts.stopping_rules if r isa MaxTime);
-        init = Inf)
+    return minimum(
+        (r.t for r in sim_opts.stopping_rules if r isa MaxTime);
+        init = Inf
+    )
 end
 
 # Warn when a termination control is set on a model that ignores it, so the
@@ -167,7 +199,8 @@ end
 # an explicitly-set control triggers the warning; `simulate` on a pool with no
 # termination keywords stays quiet.
 function _warn_ignored_termination(
-        model, max_cases, max_generations, max_time, stopping_rules)
+        model, max_cases, max_generations, max_time, stopping_rules
+    )
     _honours_termination_controls(model) && return nothing
     ignored = String[]
     max_cases != _DEFAULT_MAX_CASES && push!(ignored, "max_cases")
@@ -178,9 +211,9 @@ function _warn_ignored_termination(
         push!(ignored, "stopping_rules other than MaxTime and Extinction")
     isempty(ignored) && return nothing
     @warn "$(nameof(typeof(model))) runs to extinction or `max_time` over its " *
-          "fixed population and ignores the other termination controls; " *
-          "$(join(ignored, ", ")) had no effect (only n_initial, max_time and " *
-          "condition apply)."
+        "fixed population and ignores the other termination controls; " *
+        "$(join(ignored, ", ")) had no effect (only n_initial, max_time and " *
+        "condition apply)."
     return nothing
 end
 
@@ -195,8 +228,11 @@ function _retry_for_condition(run, condition, max_attempts)
         state = run()
         state.cumulative_cases in condition && return state
     end
-    throw(ErrorException(
-        "No simulation produced an outbreak of size $condition within $max_attempts attempts"))
+    throw(
+        ErrorException(
+            "No simulation produced an outbreak of size $condition within $max_attempts attempts"
+        )
+    )
 end
 
 """
@@ -211,11 +247,15 @@ until no candidate infection remained, rather than being cut off at
 """
 function _reconcile_sellke_bookkeeping!(state::SimulationState, extinct::Bool)
     state.cumulative_cases = count(
-        ind -> get(ind.state, :infected, false), state.individuals)
+        ind -> get(ind.state, :infected, false), state.individuals
+    )
     state.max_infection_time = maximum(
-        (ind.infection_time
-        for ind in state.individuals if get(ind.state, :infected, false));
-        init = 0.0)
+        (
+            ind.infection_time
+                for ind in state.individuals if get(ind.state, :infected, false)
+        );
+        init = 0.0
+    )
     state.extinct = extinct
     return state
 end
@@ -268,11 +308,14 @@ driven extension (see the `EpiNetwork` subpackage) defines a method on its
 own model type.
 """
 function contacts_of(model::TransmissionModel, parent, state::SimulationState)
-    throw(ArgumentError(
-        "$(typeof(model)) defines no contacts_of method. A structure-driven " *
-        "model must implement contacts_of(model, parent, state) returning " *
-        "(contact, infection_time) pairs; see the EpiNetwork subpackage for a " *
-        "worked example."))
+    throw(
+        ArgumentError(
+            "$(typeof(model)) defines no contacts_of method. A structure-driven " *
+                "model must implement contacts_of(model, parent, state) returning " *
+                "(contact, infection_time) pairs; see the EpiNetwork subpackage for a " *
+                "worked example."
+        )
+    )
 end
 
 """
@@ -326,9 +369,11 @@ end
 # `make_contact!` and assigns it a generation time. Each fresh contact is
 # its own target reached by a single edge (the tree case). Single-type
 # offspring is a count; multi-type is a count per type.
-function _materialise_offspring!(targets, edges, n_contacts::Int,
+function _materialise_offspring!(
+        targets, edges, n_contacts::Int,
         parent::Individual, state::SimulationState,
-        gt_dist::Union{Distribution, NoGenerationTime})
+        gt_dist::Union{Distribution, NoGenerationTime}
+    )
     T = _timetype(state)
     for _ in 1:n_contacts
         t = transmission_time(gt_dist, parent, state)
@@ -338,9 +383,11 @@ function _materialise_offspring!(targets, edges, n_contacts::Int,
     return nothing
 end
 
-function _materialise_offspring!(targets, edges, counts::Vector{Int},
+function _materialise_offspring!(
+        targets, edges, counts::Vector{Int},
         parent::Individual, state::SimulationState,
-        gt_dist::Union{Distribution, NoGenerationTime})
+        gt_dist::Union{Distribution, NoGenerationTime}
+    )
     T = _timetype(state)
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
@@ -370,7 +417,8 @@ function collect_exposures(model::BranchingProcess, state::SimulationState)
             kernel = get_generation_time(window.kernel, parent)
             counts = draw_offspring(state.rng, window.offspring, parent, state)
             _materialise_window!(
-                targets, edges, counts, parent, state, from_t, kernel, window.until)
+                targets, edges, counts, parent, state, from_t, kernel, window.until
+            )
         end
     end
     minted = view(state.individuals, (pre + 1):length(state.individuals))
@@ -391,9 +439,11 @@ _tag_window!(contact, until::Tuple{}) = nothing
 _tag_window!(contact, until) = (contact.state[:censor_until] = until; nothing)
 
 # Single-type: one count. Multi-type: a count per type.
-function _materialise_window!(targets, edges, n_contacts::Int,
+function _materialise_window!(
+        targets, edges, n_contacts::Int,
         parent::Individual, state::SimulationState, from_t::Real,
-        kernel::Union{Distribution, NoGenerationTime}, until)
+        kernel::Union{Distribution, NoGenerationTime}, until
+    )
     T = _timetype(state)
     for _ in 1:n_contacts
         t = _window_infection_time(kernel, from_t, state)
@@ -405,9 +455,11 @@ function _materialise_window!(targets, edges, n_contacts::Int,
     return nothing
 end
 
-function _materialise_window!(targets, edges, counts::Vector{Int},
+function _materialise_window!(
+        targets, edges, counts::Vector{Int},
         parent::Individual, state::SimulationState, from_t::Real,
-        kernel::Union{Distribution, NoGenerationTime}, until)
+        kernel::Union{Distribution, NoGenerationTime}, until
+    )
     T = _timetype(state)
     for (type_idx, n) in enumerate(counts)
         for _ in 1:n
@@ -473,8 +525,10 @@ infection under competing risks and updates bookkeeping and clinical
 transitions. In the growing tree the build and time steps are fused in
 `collect_exposures` (a contact is minted with its infection time); they
 separate only in the fixed-population path, where contacts pre-exist."""
-function _advance_generation!(model::TransmissionModel,
-        state::SimulationState, interventions::Vector{<:AbstractIntervention})
+function _advance_generation!(
+        model::TransmissionModel,
+        state::SimulationState, interventions::Vector{<:AbstractIntervention}
+    )
     _prepare_parents!(state, interventions)
     targets, edges, minted, is_new = collect_exposures(model, state)
     _intervene!(state, interventions, targets, edges, minted)
@@ -483,8 +537,10 @@ function _advance_generation!(model::TransmissionModel,
 end
 
 """Phase 1 — interventions act on the active infectives before they transmit."""
-function _prepare_parents!(state::SimulationState,
-        interventions::Vector{<:AbstractIntervention})
+function _prepare_parents!(
+        state::SimulationState,
+        interventions::Vector{<:AbstractIntervention}
+    )
     for idx in state.active_ids
         individual = state.individuals[idx]
         for intervention in interventions
@@ -499,10 +555,12 @@ Newly minted contacts get their intervention state initialised; each target is
 given a provisional parent (its earliest exposing edge) so contact-level
 interventions (tracing, ring vaccination) act on the exposed target before
 infection is resolved; then the interventions act."""
-function _intervene!(state::SimulationState,
+function _intervene!(
+        state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
         targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
-        minted)
+        minted
+    )
     # Newly created contacts (already appended to state by make_contact!)
     # get their intervention state initialised.
     for contact in minted
@@ -531,10 +589,12 @@ infected-or-not: the infector's infectiousness, the contact's susceptibility,
 any risks the model contributes and any interventions all act as competing
 risks on the same footing. A contact is infected if any of its exposing edges
 transmits; the earliest successful edge fixes the infection time."""
-function _resolve!(model::TransmissionModel, state::SimulationState,
+function _resolve!(
+        model::TransmissionModel, state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
         targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
-        is_new)
+        is_new
+    )
     model_risks = transmission_risks(model)
     infected_so_far = 0
     newly_infected = eltype(targets)[]
@@ -639,8 +699,10 @@ _kernel_time_type(::NoGenerationTime) = Float64
 _kernel_time_type(k::Distribution) = float(Distributions.partype(k))
 _kernel_time_type(::Any) = Float64
 function _time_type(m::BranchingProcess)
-    mapreduce(w -> _kernel_time_type(w.kernel), promote_type, m.infectiousness;
-        init = Float64)
+    return mapreduce(
+        w -> _kernel_time_type(w.kernel), promote_type, m.infectiousness;
+        init = Float64
+    )
 end
 
 """
@@ -652,12 +714,16 @@ and the clinical `transitions`. The starting point a model's
 `initialise_state` builds on with [`add_individuals!`](@ref) and
 [`seed!`](@ref).
 """
-function new_state(model::TransmissionModel, transitions, attributes,
-        rng::AbstractRNG)
+function new_state(
+        model::TransmissionModel, transitions, attributes,
+        rng::AbstractRNG
+    )
     T = _time_type(model)
-    SimulationState(Individual{T}[], Int[], 0, rng, 0, false,
+    return SimulationState(
+        Individual{T}[], Int[], 0, rng, 0, false,
         population_size(model), zero(T), _fresh_attributes(attributes),
-        convert(Vector{AbstractClinicalTransition}, transitions))
+        convert(Vector{AbstractClinicalTransition}, transitions)
+    )
 end
 
 """
@@ -676,8 +742,10 @@ assigned for multi-type models, then each intervention's
 `initialise_individual!` runs. Used by a model's `initialise_state` to build
 its population.
 """
-function add_individuals!(state::SimulationState, n::Integer, interventions;
-        n_types::Integer = 1, setup = (ind, i) -> nothing, infection_time::Real = NaN)
+function add_individuals!(
+        state::SimulationState, n::Integer, interventions;
+        n_types::Integer = 1, setup = (ind, i) -> nothing, infection_time::Real = NaN
+    )
     base = length(state.individuals)
     added = eltype(state.individuals)[]
     for i in 1:n
@@ -738,13 +806,17 @@ households) defines its own method, typically by building the population with
 [`new_state`](@ref) and [`add_individuals!`](@ref) and infecting the index
 cases with [`seed!`](@ref).
 """
-function initialise_state(model::TransmissionModel, sim_opts::SimOpts,
-        interventions, transitions, attributes, rng::AbstractRNG)
+function initialise_state(
+        model::TransmissionModel, sim_opts::SimOpts,
+        interventions, transitions, attributes, rng::AbstractRNG
+    )
     state = new_state(model, transitions, attributes, rng)
     # Every individual created here is an index case, so attributes that read
     # the infection time at creation must see the time of 0 they are seeded at.
-    add_individuals!(state, sim_opts.n_initial, interventions;
-        n_types = n_types(model), infection_time = 0)
+    add_individuals!(
+        state, sim_opts.n_initial, interventions;
+        n_types = n_types(model), infection_time = 0
+    )
     seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
     return state
 end
@@ -774,13 +846,17 @@ Built-in methods:
 - `NoPopulation` — unbounded, always `1.0`.
 - `Int` — single global pool of that size; depletion is global.
 """
-function susceptible_fraction(state::SimulationState{<:Any, <:Any, NoPopulation},
-        extra_infected::Int = 0)
-    1.0
+function susceptible_fraction(
+        state::SimulationState{<:Any, <:Any, NoPopulation},
+        extra_infected::Int = 0
+    )
+    return 1.0
 end
 
-function susceptible_fraction(state::SimulationState{<:Any, <:Any, Int},
-        extra_infected::Int = 0)
+function susceptible_fraction(
+        state::SimulationState{<:Any, <:Any, Int},
+        extra_infected::Int = 0
+    )
     n_susceptible = state.population_size - state.cumulative_cases - extra_infected
     n_susceptible <= 0 && return 0.0
     return n_susceptible / state.population_size
@@ -794,8 +870,10 @@ engine after exposures are collected, not here; this keeps contact
 creation (`make_contact!`, and any model's [`contacts_of`](@ref))
 intervention-free.
 """
-function _create_individual(state::SimulationState, parent_id::Int,
-        chain_id::Int, next_id::Int, inf_time::Real)
+function _create_individual(
+        state::SimulationState, parent_id::Int,
+        chain_id::Int, next_id::Int, inf_time::Real
+    )
     T = _timetype(state)
     s = Dict{Symbol, Any}(:infected => false)
 
@@ -805,7 +883,8 @@ function _create_individual(state::SimulationState, parent_id::Int,
     ind = Individual{T}(
         next_id, parent_id,
         state.current_generation + (parent_id == 0 ? 0 : 1),
-        chain_id, convert(T, inf_time), one(T), one(T), Int[], s)
+        chain_id, convert(T, inf_time), one(T), one(T), Int[], s
+    )
 
     _apply_attributes!(state.attributes, state.rng, ind)
 
@@ -846,12 +925,16 @@ resolution that sets `:infected`, clinical transitions, and per-step
 bookkeeping (`cumulative_cases`, `active_ids`, `max_infection_time`,
 …).
 """
-function make_contact!(state::SimulationState, parent::Individual,
+function make_contact!(
+        state::SimulationState, parent::Individual,
         infection_time::Real;
-        type_idx::Union{Int, NoTypeLabels} = NoTypeLabels())
+        type_idx::Union{Int, NoTypeLabels} = NoTypeLabels()
+    )
     next_id = length(state.individuals) + 1
-    contact = _create_individual(state, parent.id, parent.chain_id,
-        next_id, infection_time)
+    contact = _create_individual(
+        state, parent.id, parent.chain_id,
+        next_id, infection_time
+    )
     _set_type!(contact, type_idx)
     push!(parent.secondary_case_ids, next_id)
     push!(state.individuals, contact)
@@ -892,8 +975,10 @@ function resolve_transitions!(state::SimulationState, individual)
     # Branch once per case: a check inside the loop measurably slows every
     # progression model, although almost no case is aborted.
     if haskey(individual.state, :infection_aborted_time)
-        _resolve_before_abort!(transitions, individual, state,
-            individual.state[:infection_aborted_time])
+        _resolve_before_abort!(
+            transitions, individual, state,
+            individual.state[:infection_aborted_time]
+        )
     else
         for transition in transitions
             resolve_individual!(transition, individual, state)
@@ -986,16 +1071,16 @@ block probability `1 - susceptibility` on the [`competing_risk`](@ref)
 surface."""
 struct HostSusceptibility end
 function competing_risk(::HostSusceptibility, parent, contact, state)
-    contact.susceptibility < 1.0 ?
-    Risk(block_probability = 1.0 - contact.susceptibility) : nothing
+    return contact.susceptibility < 1.0 ?
+        Risk(block_probability = 1.0 - contact.susceptibility) : nothing
 end
 
 """Default risk source: the infector's infectiousness, as a block
 probability `1 - infectiousness` on the [`competing_risk`](@ref) surface."""
 struct InfectorInfectiousness end
 function competing_risk(::InfectorInfectiousness, parent, contact, state)
-    parent.infectiousness < 1.0 ?
-    Risk(block_probability = 1.0 - parent.infectiousness) : nothing
+    return parent.infectiousness < 1.0 ?
+        Risk(block_probability = 1.0 - parent.infectiousness) : nothing
 end
 
 """Default risk source: only an infected source transmits. An uninfected
@@ -1005,7 +1090,7 @@ to grow their contacts without those contacts becoming infected. A no-op
 in the usual case where every active node is infected."""
 struct InfectiousSource end
 function competing_risk(::InfectiousSource, parent, contact, state)
-    is_infected(parent) ? nothing : Risk(block_probability = 1.0)
+    return is_infected(parent) ? nothing : Risk(block_probability = 1.0)
 end
 
 """Default risk source: an infectiousness window's censoring. A contact
@@ -1109,8 +1194,10 @@ built-in host susceptibility and infector infectiousness, then any from the
 model's [`transmission_risks`](@ref), then the interventions. Returns `true` when
 the contact is infected.
 """
-function _decide_infected(state::SimulationState, contact::Individual,
-        model_risks, interventions, infected_so_far::Int)
+function _decide_infected(
+        state::SimulationState, contact::Individual,
+        model_risks, interventions, infected_so_far::Int
+    )
     contact.parent_id == 0 && return true
     rng = state.rng
     parent = state.individuals[contact.parent_id]
@@ -1122,7 +1209,8 @@ function _decide_infected(state::SimulationState, contact::Individual,
     pop_suscept < 1.0 && rand(rng) > pop_suscept && return false
 
     return !_composed_risks_block(
-        state, parent, contact, transmission_time, model_risks, interventions)
+        state, parent, contact, transmission_time, model_risks, interventions
+    )
 end
 
 """Whether any risk blocks the `parent` → `contact` transmission at
@@ -1145,9 +1233,11 @@ fire there, and the per-individual susceptibility and infectiousness, which
 those models already carry in the contact-interval draw and in the pool's
 threshold and force.
 Nothing is drawn from the rng unless a risk actually applies."""
-function _composed_risks_block(state::SimulationState, parent, contact,
+function _composed_risks_block(
+        state::SimulationState, parent, contact,
         transmission_time, model_risks, interventions,
-        builtin_blocks = _builtin_risk_blocks)
+        builtin_blocks = _builtin_risk_blocks
+    )
     builtin_blocks(parent, contact, state, transmission_time) && return true
     for source in model_risks
         _risk_blocks(source, parent, contact, state, transmission_time) && return true
@@ -1203,10 +1293,13 @@ struct GroupAttribute{D}
 end
 
 function _apply_attributes!(attribute::GroupAttribute, rng, ind)
-    haskey(ind.state, attribute.group_key) || throw(ArgumentError(
-        "group_attribute(:$(attribute.key)) needs :$(attribute.group_key) set on an individual " *
-        "before it runs; list `groups(n; key = :$(attribute.group_key))`, or " *
-        "another attributes function setting that key, ahead of it."))
+    haskey(ind.state, attribute.group_key) || throw(
+        ArgumentError(
+            "group_attribute(:$(attribute.key)) needs :$(attribute.group_key) set on an individual " *
+                "before it runs; list `groups(n; key = :$(attribute.group_key))`, or " *
+                "another attributes function setting that key, ahead of it."
+        )
+    )
     ind.state[attribute.key] = get!(attribute.cache, ind.state[attribute.group_key]) do
         _sample_value(attribute.propensity, rng, ind)
     end
@@ -1219,7 +1312,7 @@ so one attributes object can be reused across runs and across threads, each
 run drawing its own values. Everything else passes through."""
 _fresh_attributes(x) = x
 function _fresh_attributes(a::GroupAttribute)
-    GroupAttribute(a.key, a.group_key, a.propensity, Dict{Any, Any}())
+    return GroupAttribute(a.key, a.group_key, a.propensity, Dict{Any, Any}())
 end
 _fresh_attributes(xs::Union{Tuple, AbstractVector}) = map(_fresh_attributes, xs)
 
@@ -1282,8 +1375,10 @@ attributes = [
 
 See also [`demographics`](@ref).
 """
-function clinical_presentation(; incubation_period::Distribution,
-        prob_asymptomatic = 0.0)
+function clinical_presentation(;
+        incubation_period::Distribution,
+        prob_asymptomatic = 0.0
+    )
     return ClinicalPresentation(incubation_period, prob_asymptomatic)
 end
 
@@ -1297,7 +1392,7 @@ function (clinical::ClinicalPresentation)(rng, ind)
     is_asymp = rand(rng) < pa
     ind.state[:asymptomatic] = is_asymp
     ind.state[:incubation_period] = is_asymp ? NaN : rand(rng, clinical.incubation_period)
-    _set_onset_from_incubation!(ind)
+    return _set_onset_from_incubation!(ind)
 end
 
 """
@@ -1313,7 +1408,7 @@ function _set_onset_from_incubation!(ind::Individual)
     haskey(ind.state, :incubation_period) || return nothing
     inc = ind.state[:incubation_period]
     ind.state[:onset_time] = isnan(inc) || _infection_aborted(ind) ? NaN :
-                             ind.infection_time + inc
+        ind.infection_time + inc
     return nothing
 end
 
@@ -1325,17 +1420,18 @@ Return an attributes function. `:age` and `:sex` are set on each individual.
 function demographics(;
         age_distribution::Union{Distribution, NoAgeDistribution} = NoAgeDistribution(),
         age_range::Tuple{Int, Int} = (0, 90),
-        prob_female::Real = 0.5)
+        prob_female::Real = 0.5
+    )
     pf = float(prob_female)
     return function (rng, ind)
         ind.state[:age] = _sample_age(rng, age_distribution, age_range)
-        ind.state[:sex] = rand(rng) < pf ? :female : :male
+        return ind.state[:sex] = rand(rng) < pf ? :female : :male
     end
 end
 
 _sample_age(rng, ::NoAgeDistribution, age_range) = rand(rng, age_range[1]:age_range[2])
 function _sample_age(rng, dist::Distribution, age_range)
-    clamp(floor(Int, rand(rng, dist)), age_range...)
+    return clamp(floor(Int, rand(rng, dist)), age_range...)
 end
 
 """
@@ -1376,7 +1472,7 @@ See also [`GroupVaccination`](@ref), [`vaccine_acceptance`](@ref).
 function groups(n_groups::Integer; key::Symbol = :group)
     n_groups >= 1 || throw(ArgumentError("n_groups must be at least 1, got $n_groups"))
     return function (rng, ind)
-        ind.state[key] = rand(rng, 1:n_groups)
+        return ind.state[key] = rand(rng, 1:n_groups)
     end
 end
 
@@ -1437,19 +1533,20 @@ See also [`clinical_presentation`](@ref), [`demographics`](@ref).
 """
 function transmission_traits(;
         susceptibility = 1.0,
-        infectiousness = 1.0)
+        infectiousness = 1.0
+    )
     sus = _trait_sampler(susceptibility)
     inf = _trait_sampler(infectiousness)
     return function (rng, ind)
         ind.susceptibility = sus(rng, ind)
-        ind.infectiousness = inf(rng, ind)
+        return ind.infectiousness = inf(rng, ind)
     end
 end
 
 _trait_sampler(x::Real) =
-    let v = float(x)
-        (rng, ind) -> v
-    end
+let v = float(x)
+    (rng, ind) -> v
+end
 _trait_sampler(d::Distribution) = (rng, ind) -> float(rand(rng, d))
 _trait_sampler(f) = (rng, ind) -> float(f(rng, ind))
 
@@ -1542,7 +1639,8 @@ See also [`groups`](@ref), [`clinical_presentation`](@ref),
 function vaccine_acceptance(;
         propensity,
         group_key::Symbol = :group,
-        key::Symbol = :vaccine_acceptance)
+        key::Symbol = :vaccine_acceptance
+    )
     return group_attribute(key; value = propensity, group_key)
 end
 
@@ -1564,6 +1662,7 @@ function _validate_required_fields(individual, items)
             end
         end
     end
+    return
 end
 
 function _field_hint(field::Symbol)

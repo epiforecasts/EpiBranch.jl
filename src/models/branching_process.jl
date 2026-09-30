@@ -32,8 +32,10 @@ struct Infectiousness{O, F, U, K}
     until::U
     kernel::K
 end
-function Infectiousness(offspring; from = :infection, until = (),
-        kernel = NoGenerationTime())
+function Infectiousness(
+        offspring; from = :infection, until = (),
+        kernel = NoGenerationTime()
+    )
     return Infectiousness(offspring, from, until, kernel)
 end
 
@@ -86,7 +88,7 @@ end
 # A no-op for models without infectiousness windows.
 _validate_process_windows(::TransmissionModel, progression) = nothing
 function _validate_process_windows(m::BranchingProcess, progression)
-    _validate_windows(m.infectiousness, progression)
+    return _validate_windows(m.infectiousness, progression)
 end
 function _validate_windows(windows, progression)
     produced = Set{Symbol}((:infection,))
@@ -97,8 +99,8 @@ function _validate_windows(windows, progression)
         w.from isa Symbol || continue
         (w.from === :infection || w.from in produced) && continue
         @warn "Infectiousness window has from = :$(w.from), which no progression " *
-              "transition produces; the window only opens if something sets " *
-              ":$(Symbol(w.from, :_time)) (an attribute, intervention, or transition)."
+            "transition produces; the window only opens if something sets " *
+            ":$(Symbol(w.from, :_time)) (an attribute, intervention, or transition)."
     end
     return nothing
 end
@@ -137,17 +139,19 @@ end
 # only showing up as an implausibly large outbreak. `route` labels the warning
 # when `until` belongs to one window among several (a `RouteWindow`); `from`
 # is that window's own opening state, excluded from the check (see above).
-function _warn_uncovered_terminal_states(until::Tuple, progression;
-        route = nothing, from = nothing)
+function _warn_uncovered_terminal_states(
+        until::Tuple, progression;
+        route = nothing, from = nothing
+    )
     states = _uncovered_terminal_states(until, progression; from)
     isempty(states) && return nothing
     on_route = route === nothing ? "" : " on route :$route"
     @warn "Progression has a terminal transition to " *
-          "$(join((":" * String(s) for s in states), ", ")), which `until`" *
-          "$on_route $until does not list. A case reaching it never has its " *
-          "infectious/exposure window closed, and keeps generating exposure " *
-          "proposals indefinitely. Add it to `until` if it should end " *
-          "transmission."
+        "$(join((":" * String(s) for s in states), ", ")), which `until`" *
+        "$on_route $until does not list. A case reaching it never has its " *
+        "infectious/exposure window closed, and keeps generating exposure " *
+        "proposals indefinitely. Add it to `until` if it should end " *
+        "transmission."
     return nothing
 end
 
@@ -161,10 +165,13 @@ population_size(m::BranchingProcess) = m.population_size
 n_types(m::BranchingProcess) = m.n_types
 
 function single_type_offspring(m::BranchingProcess)
-    length(m.infectiousness) == 1 || throw(ArgumentError(
-        "Analytical helpers need a single infectiousness window (this model has " *
-        "$(length(m.infectiousness))). The offspring law across several windows is a " *
-        "fate-mixture with no closed form, so use simulation for multi-window models."))
+    length(m.infectiousness) == 1 || throw(
+        ArgumentError(
+            "Analytical helpers need a single infectiousness window (this model has " *
+                "$(length(m.infectiousness))). The offspring law across several windows is a " *
+                "fate-mixture with no closed form, so use simulation for multi-window models."
+        )
+    )
     return _single_type(m.infectiousness[1].offspring)
 end
 
@@ -173,15 +180,21 @@ end
 # multi_type_offspring.jl.
 _single_type(off) = off
 function _single_type(::Function)
-    throw(ArgumentError(
-        "This function only works with single-type models (not multi-type function offspring)"))
+    throw(
+        ArgumentError(
+            "This function only works with single-type models (not multi-type function offspring)"
+        )
+    )
 end
 
 # The contact interval of a single-window model (used by analytical
 # helpers that assume one generation-time distribution).
 function _single_kernel(m::BranchingProcess)
-    length(m.infectiousness) == 1 || throw(ArgumentError(
-        "this analytical helper needs a single infectiousness window; this model has $(length(m.infectiousness))"))
+    length(m.infectiousness) == 1 || throw(
+        ArgumentError(
+            "this analytical helper needs a single infectiousness window; this model has $(length(m.infectiousness))"
+        )
+    )
     return m.infectiousness[1].kernel
 end
 
@@ -190,48 +203,64 @@ _offspring_label(off) = "Function"
 
 function Base.show(io::IO, m::BranchingProcess)
     pop_str = m.population_size isa NoPopulation ? "unlimited" : string(m.population_size)
-    if length(m.infectiousness) == 1
+    return if length(m.infectiousness) == 1
         w = m.infectiousness[1]
         off_str = _offspring_label(w.offspring)
         gt_str = w.kernel isa NoGenerationTime ? "none" :
-                 w.kernel isa Distribution ? string(typeof(w.kernel)) : "Function"
-        print(io,
-            "BranchingProcess(offspring=$(off_str), generation_time=$(gt_str), population_size=$(pop_str))")
+            w.kernel isa Distribution ? string(typeof(w.kernel)) : "Function"
+        print(
+            io,
+            "BranchingProcess(offspring=$(off_str), generation_time=$(gt_str), population_size=$(pop_str))"
+        )
     else
-        print(io,
-            "BranchingProcess($(length(m.infectiousness)) infectiousness windows, population_size=$(pop_str))")
+        print(
+            io,
+            "BranchingProcess($(length(m.infectiousness)) infectiousness windows, population_size=$(pop_str))"
+        )
     end
 end
 
 # Single-type with a contact interval (one default window).
-function BranchingProcess(offspring::Distribution, gt;
-        population_size::Union{Int, NoPopulation} = NoPopulation())
-    BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, 1,
-        NoTypeLabels())
+function BranchingProcess(
+        offspring::Distribution, gt;
+        population_size::Union{Int, NoPopulation} = NoPopulation()
+    )
+    return BranchingProcess(
+        (Infectiousness(offspring; kernel = gt),), population_size, 1,
+        NoTypeLabels()
+    )
 end
 
 # Single-type without a contact interval (pure chain statistics).
-function BranchingProcess(offspring::Distribution;
-        population_size::Union{Int, NoPopulation} = NoPopulation())
-    BranchingProcess((Infectiousness(offspring),), population_size, 1, NoTypeLabels())
+function BranchingProcess(
+        offspring::Distribution;
+        population_size::Union{Int, NoPopulation} = NoPopulation()
+    )
+    return BranchingProcess((Infectiousness(offspring),), population_size, 1, NoTypeLabels())
 end
 
 # Multi-type with an explicit offspring function.
-function BranchingProcess(offspring, gt;
+function BranchingProcess(
+        offspring, gt;
         n_types::Int = 1, population_size::Union{Int, NoPopulation} = NoPopulation(),
-        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
-    BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, n_types,
-        type_labels)
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
+    )
+    return BranchingProcess(
+        (Infectiousness(offspring; kernel = gt),), population_size, n_types,
+        type_labels
+    )
 end
 
 # Explicit windows: pass `Infectiousness` windows directly.
-function BranchingProcess(windows::Tuple{Infectiousness, Vararg{Infectiousness}};
+function BranchingProcess(
+        windows::Tuple{Infectiousness, Vararg{Infectiousness}};
         n_types::Int = 1, population_size::Union{Int, NoPopulation} = NoPopulation(),
-        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels())
-    BranchingProcess(windows, population_size, n_types, type_labels)
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
+    )
+    return BranchingProcess(windows, population_size, n_types, type_labels)
 end
 function BranchingProcess(window::Infectiousness, windows::Infectiousness...; kwargs...)
-    BranchingProcess((window, windows...); kwargs...)
+    return BranchingProcess((window, windows...); kwargs...)
 end
 
 # ── Offspring generation ─────────────────────────────────────────────
@@ -246,17 +275,22 @@ per type (multi-type). The engine's window-aware
 this is the single-window seam kept for external callers.
 """
 function generate_offspring(model::BranchingProcess, parent, state)
-    length(model.infectiousness) == 1 || throw(ArgumentError(
-        "generate_offspring is defined for a single infectiousness window; use collect_exposures for multi-window models"))
-    draw_offspring(state.rng, model.infectiousness[1].offspring, parent, state)
+    length(model.infectiousness) == 1 || throw(
+        ArgumentError(
+            "generate_offspring is defined for a single infectiousness window; use collect_exposures for multi-window models"
+        )
+    )
+    return draw_offspring(state.rng, model.infectiousness[1].offspring, parent, state)
 end
 
 # ── Offspring drawing ────────────────────────────────────────────────
 
 """Single-type offspring draw."""
-function draw_offspring(rng::AbstractRNG, offspring::Distribution,
-        individual, state::SimulationState)
-    rand(rng, offspring)
+function draw_offspring(
+        rng::AbstractRNG, offspring::Distribution,
+        individual, state::SimulationState
+    )
+    return rand(rng, offspring)
 end
 
 """Callable offspring draw. The rule may be called as

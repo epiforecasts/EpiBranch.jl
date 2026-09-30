@@ -42,8 +42,10 @@ end
 
 function resolve_individual!(h::Hospitalisation, individual, state)
     anchor = _resolve_anchor(h.from, individual)
-    time = transition_time(state.rng, individual, anchor, h.delay;
-        probability = h.probability)
+    time = transition_time(
+        state.rng, individual, anchor, h.delay;
+        probability = h.probability
+    )
     time === nothing && return nothing
     individual.state[:admitted] = true
     individual.state[:admission_time] = time

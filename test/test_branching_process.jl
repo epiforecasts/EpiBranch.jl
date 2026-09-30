@@ -49,7 +49,8 @@
         init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         state = simulate(
             ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0)); attributes = init_fn);
-            max_cases = 50, rng = rng)
+            max_cases = 50, rng = rng
+        )
 
         for ind in filter(is_infected, state.individuals)
             @test !isnan(onset_time(ind))
@@ -78,12 +79,15 @@
         gt_fn = ind -> Exponential(ind.state[:gt_scale])
         state = simulate(
             ModelSpec(BranchingProcess(Poisson(1.2), gt_fn); attributes = init_fn);
-            max_cases = 50, rng = rng)
+            max_cases = 50, rng = rng
+        )
 
         # Require secondary transmission so the generation_time function
         # is actually exercised, not just the index case.
-        secondary = filter(ind -> is_infected(ind) && ind.parent_id > 0,
-            state.individuals)
+        secondary = filter(
+            ind -> is_infected(ind) && ind.parent_id > 0,
+            state.individuals
+        )
         @test !isempty(secondary)
         for ind in secondary
             @test incubation_period(ind) ≈ ind.state[:gt_scale]
@@ -93,14 +97,16 @@
     @testset "Truncated generation time enforces minimum" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), truncated(Exponential(5.0), 3.0, Inf))
-        state = simulate(model;
-            condition = 20:500, max_cases = 500, rng = rng)
+        state = simulate(
+            model;
+            condition = 20:500, max_cases = 500, rng = rng
+        )
 
         for ind in filter(is_infected, state.individuals)
             if ind.parent_id > 0
                 parent_idx = findfirst(i -> i.id == ind.parent_id, state.individuals)
                 parent = state.individuals[parent_idx]
-                @test ind.infection_time - parent.infection_time >= 3.0 - 1e-10
+                @test ind.infection_time - parent.infection_time >= 3.0 - 1.0e-10
             end
         end
     end
@@ -117,28 +123,50 @@ struct CallableOffspringFamily end
 (::CallableOffspringFamily)(R) = Poisson(R)
 
 @testset "Callable model inputs" begin
-    signature(state) = [(i.parent_id, i.infection_time, i.generation)
-                        for i in state.individuals]
+    signature(state) = [
+        (i.parent_id, i.infection_time, i.generation)
+            for i in state.individuals
+    ]
     compare(a, b) = @test signature(simulate(a; rng = StableRNG(718))) ==
-                          signature(simulate(b; rng = StableRNG(718)))
-    compare(BranchingProcess(CallableOffspring(), CallableContactInterval()),
-        BranchingProcess((rng, ind) -> rand(rng, Poisson(0.6)),
-            ind -> Exponential(2.0)))
-    compare(BranchingProcess(Poisson(0.6), CallableContactInterval()),
-        BranchingProcess(Poisson(0.6), Exponential(2.0)))
-    compare(BranchingProcess(CallableStateOffspring(), CallableContactInterval()),
-        BranchingProcess((rng, ind, state) -> state.cumulative_cases < 8 ? 1 : 0,
-            Exponential(2.0)))
+        signature(simulate(b; rng = StableRNG(718)))
+    compare(
+        BranchingProcess(CallableOffspring(), CallableContactInterval()),
+        BranchingProcess(
+            (rng, ind) -> rand(rng, Poisson(0.6)),
+            ind -> Exponential(2.0)
+        )
+    )
+    compare(
+        BranchingProcess(Poisson(0.6), CallableContactInterval()),
+        BranchingProcess(Poisson(0.6), Exponential(2.0))
+    )
+    compare(
+        BranchingProcess(CallableStateOffspring(), CallableContactInterval()),
+        BranchingProcess(
+            (rng, ind, state) -> state.cumulative_cases < 8 ? 1 : 0,
+            Exponential(2.0)
+        )
+    )
     M = [0.3 0.1; 0.2 0.4]
-    compare(BranchingProcess(M, CallableOffspringFamily(), CallableContactInterval()),
-        BranchingProcess(M, R -> Poisson(R), Exponential(2.0)))
+    compare(
+        BranchingProcess(M, CallableOffspringFamily(), CallableContactInterval()),
+        BranchingProcess(M, R -> Poisson(R), Exponential(2.0))
+    )
     mixed = ClusterMixed(Poisson, Gamma(2.0, 0.1))
-    compare(BranchingProcess(mixed, CallableContactInterval()),
-        BranchingProcess(mixed, Exponential(2.0)))
-    @test EpiBranch.single_type_offspring(BranchingProcess(mixed,
-        CallableContactInterval())) === mixed
-    windows = (Infectiousness(Poisson(0.2); kernel = CallableContactInterval()),
-        Infectiousness(Poisson(0.3); kernel = CallableContactInterval()))
+    compare(
+        BranchingProcess(mixed, CallableContactInterval()),
+        BranchingProcess(mixed, Exponential(2.0))
+    )
+    @test EpiBranch.single_type_offspring(
+        BranchingProcess(
+            mixed,
+            CallableContactInterval()
+        )
+    ) === mixed
+    windows = (
+        Infectiousness(Poisson(0.2); kernel = CallableContactInterval()),
+        Infectiousness(Poisson(0.3); kernel = CallableContactInterval()),
+    )
     @test BranchingProcess(windows...).infectiousness == windows
 end
 

@@ -49,9 +49,13 @@ Base.length(d::PairwiseSurvivalData) = length(d.sus)
 # callable `r -> Distribution` through which covariates enter.
 _rowkernel(k::ContinuousUnivariateDistribution, r) = k
 _rowkernel(k, r) = k(r)
-function _rowkernel(::Union{ContextualKernel, CalendarKernel}, r)
-    throw(ArgumentError("ContextualKernel and CalendarKernel require an InfectionLayer with source times; " *
-                        "for counting-process rows, supply a row-indexed kernel with those data"))
+function _rowkernel(::Union{ContextualKernel, CalendarKernel, StatefulKernel}, r)
+    throw(
+        ArgumentError(
+            "ContextualKernel, CalendarKernel and StatefulKernel require an InfectionLayer with source times; " *
+                "for counting-process rows, supply a row-indexed kernel with those data"
+        )
+    )
 end
 
 """
@@ -105,7 +109,11 @@ holds, per host `i` (numbered `1:n`):
 
 and a scalar `obs_end`, the time community introductions stop (only read when
 there is a community hazard). Spread along the contact structure continues after
-it.
+it. A subtype may also hold `host_times`, a named tuple of further per-host time
+vectors such as `onset_time`, which a live [`StatefulKernel`](@ref) reads in the
+likelihood as it reads host state in simulation. `missing` marks a host without
+that time; a `NaN` entry is a recorded value, as simulation stores the onset of
+an asymptomatic case.
 
 Observed data stop at the end of follow-up, which
 [`followup_end`](@ref EpiBranch.followup_end) gives: a `followup_end` field when
@@ -149,8 +157,12 @@ list (`contacts[i]` lists the hosts `i` can infect, as in a directed contact
 network). An [`InfectionLayer`](@ref) subtype defines this.
 """
 function contact_structure(data::InfectionLayer)
-    throw(ArgumentError("$(nameof(typeof(data))) needs a method for " *
-                        "`EpiBranch.contact_structure` naming who could have infected whom"))
+    throw(
+        ArgumentError(
+            "$(nameof(typeof(data))) needs a method for " *
+                "`EpiBranch.contact_structure` naming who could have infected whom"
+        )
+    )
 end
 
 """
@@ -163,24 +175,59 @@ exposure after it. The default reads a `followup_end` field when the
 stores it elsewhere defines a method.
 """
 function followup_end(data::InfectionLayer)
-    hasproperty(data, :followup_end) ?
-    data.followup_end : Inf
+    return hasproperty(data, :followup_end) ?
+        data.followup_end : Inf
 end
+
+# The per-host times of an infection layer beyond its infectious windows, as a
+# named tuple of vectors; empty when the subtype holds none.
+_host_times(data) = hasproperty(data, :host_times) ? data.host_times : (;)
 
 # The per-host fields of an `InfectionLayer` subtype over `n` hosts, in field
 # order after the contact structure: the three time vectors, `is_index`,
-# `obs_end` and `followup_end`. Every time shares one number type, at least
-# `Float64`, which lets a constructor take integers or AD values.
-function _infection_layer_fields(n, infection_time, infectious_time, removal_time,
-        is_index; obs_end, followup_end)
-    all(length(v) == n
-    for v in (infection_time, infectious_time, removal_time, is_index)) ||
-        throw(ArgumentError("the contact structure and the per-host vectors must " *
-                            "cover the same hosts"))
-    T = promote_type(eltype(infection_time), eltype(infectious_time),
-        eltype(removal_time), typeof(obs_end), typeof(followup_end), Float64)
-    return (Vector{T}(infection_time), Vector{T}(infectious_time),
-        Vector{T}(removal_time), Vector{Bool}(is_index), T(obs_end), T(followup_end))
+# `obs_end`, `followup_end` and `host_times`. Every time shares one number type,
+# at least `Float64`, which lets a constructor take integers or AD values.
+function _infection_layer_fields(
+        n, infection_time, infectious_time, removal_time,
+        is_index; obs_end, followup_end, host_times = (;)
+    )
+    host_times isa NamedTuple ||
+        throw(ArgumentError("host_times must be a named tuple of per-host vectors"))
+    all(
+        length(v) == n
+            for v in (
+                infection_time, infectious_time, removal_time, is_index,
+                values(host_times)...,
+            )
+    ) ||
+        throw(
+        ArgumentError(
+            "the contact structure and the per-host vectors must " *
+                "cover the same hosts"
+        )
+    )
+    T = promote_type(
+        eltype(infection_time), eltype(infectious_time),
+        eltype(removal_time), typeof(obs_end), typeof(followup_end),
+        map(v -> nonmissingtype(eltype(v)), values(host_times))..., Float64
+    )
+    return (
+        Vector{T}(infection_time), Vector{T}(infectious_time),
+        Vector{T}(removal_time), Vector{Bool}(is_index), T(obs_end), T(followup_end),
+        map(v -> Vector{Missing <: eltype(v) ? Union{Missing, T} : T}(v), host_times),
+    )
+end
+
+# The named per-host times of a simulated `state`, read from each individual's
+# state under the given keys, `missing` where a host has none. A key no
+# individual holds gives an all-`missing` column, since a run in which a policy
+# never triggered still has to be scored.
+function _host_time_columns(state::SimulationState, keys)
+    names = Tuple(Symbol(key) for key in keys)
+    columns = map(names) do key
+        [get(ind.state, key, missing) for ind in state.individuals]
+    end
+    return NamedTuple{names}(columns)
 end
 
 # The per-host columns of an infection layer, read out of a `state` simulated
@@ -226,28 +273,31 @@ infection_likelihood_compatible(component) = false
 infection_likelihood_compatible(::NoAttributes) = true
 infection_likelihood_compatible(::ClinicalPresentation) = true
 function infection_likelihood_compatible(components::Union{Tuple, AbstractVector})
-    all(infection_likelihood_compatible, components)
+    return all(infection_likelihood_compatible, components)
 end
 infection_likelihood_compatible(::Transition) = true
 infection_likelihood_compatible(::Union{Reporting, Hospitalisation, Recovery, Death}) = true
 infection_likelihood_compatible(iso::Isolation) = iso.post_isolation_transmission == 0
 function infection_likelihood_compatible(ct::ContactTracing)
-    infection_likelihood_compatible(ct.action)
+    return infection_likelihood_compatible(ct.action)
 end
 infection_likelihood_compatible(::Union{Quarantine, FlagOnly}) = true
 function infection_likelihood_compatible(w::Union{Scheduled, CapacityConstrained})
-    infection_likelihood_compatible(w.intervention)
+    return infection_likelihood_compatible(w.intervention)
 end
 
 function _validate_infection_likelihood(model::ModelSpec)
     for component in (model.attributes, model.progression, model.interventions)
         infection_likelihood_compatible(component) && continue
-        throw(ArgumentError(
-            "infection-layer likelihood cannot represent all effects of " *
-            "$(typeof(component)). Use pairwise_surv_loglik with an explicit " *
-            "effective kernel (and external_hazard where needed), or define " *
-            "infection_likelihood_compatible for an external component whose " *
-            "effects are fully represented by the layer's infectious windows."))
+        throw(
+            ArgumentError(
+                "infection-layer likelihood cannot represent all effects of " *
+                    "$(typeof(component)). Use pairwise_surv_loglik with an explicit " *
+                    "effective kernel (and external_hazard where needed), or define " *
+                    "infection_likelihood_compatible for an external component whose " *
+                    "effects are fully represented by the layer's infectious windows."
+            )
+        )
     end
     return nothing
 end
@@ -289,8 +339,11 @@ end
 Base.length(L::ContactPairsLayout) = length(L.sus)
 
 function _check_host_masks(n, is_index, infected)
-    (length(is_index) == n && length(infected) == n) || throw(ArgumentError(
-        "the contact structure, is_index and infected must cover the same hosts"))
+    (length(is_index) == n && length(infected) == n) || throw(
+        ArgumentError(
+            "the contact structure, is_index and infected must cover the same hosts"
+        )
+    )
     return nothing
 end
 
@@ -298,8 +351,10 @@ end
 # Hosts that are explained (all of them with a community hazard, all but the
 # index cases without one) and have no possible infector are listed apart, since
 # an infection of one has zero density.
-function _contact_pairs_layout(sus, infector, contact_index, is_ext, external,
-        is_index, n)
+function _contact_pairs_layout(
+        sus, infector, contact_index, is_ext, external,
+        is_index, n
+    )
     n_rows = length(sus)
     sus_row_order = sortperm(sus)
     sus_unique = Int[]
@@ -322,8 +377,10 @@ function _contact_pairs_layout(sus, infector, contact_index, is_ext, external,
     has_rows = falses(n)
     has_rows[sus_unique] .= true
     no_rows = [j for j in 1:n if !has_rows[j] && (external || !is_index[j])]
-    return ContactPairsLayout(sus, infector, contact_index, is_ext, sus_unique,
-        sus_row_ranges, sus_row_order, no_rows, external, n)
+    return ContactPairsLayout(
+        sus, infector, contact_index, is_ext, sus_unique,
+        sus_row_ranges, sus_row_order, no_rows, external, n
+    )
 end
 
 """
@@ -350,13 +407,16 @@ extra row for the community hazard. The single-argument form reads the structure
 off `data` with [`contact_structure`](@ref EpiBranch.contact_structure) and the
 mask as `.!isnan.(data.infection_time)`.
 """
-function compile_contact_pairs(membership::AbstractVector{<:Integer},
+function compile_contact_pairs(
+        membership::AbstractVector{<:Integer},
         is_index::AbstractVector{Bool}, infected::AbstractVector{Bool};
-        external::Bool = false)
+        external::Bool = false
+    )
     n = length(membership)
     _check_host_masks(n, is_index, infected)
     isempty(membership) && return _contact_pairs_layout(
-        Int[], Int[], Int[], Bool[], external, is_index, 0)
+        Int[], Int[], Int[], Bool[], external, is_index, 0
+    )
 
     # Bucket hosts by label into a `Vector{Vector{Int}}` indexed by label offset,
     # which avoids hashing; offsetting by `lo` allows any integer labels.
@@ -391,13 +451,17 @@ function compile_contact_pairs(membership::AbstractVector{<:Integer},
     end
     # A group has no per-edge list for a kernel to index into.
     contact_index = zeros(Int, length(sus))
-    return _contact_pairs_layout(sus, infector, contact_index, is_ext, external,
-        is_index, n)
+    return _contact_pairs_layout(
+        sus, infector, contact_index, is_ext, external,
+        is_index, n
+    )
 end
 
-function compile_contact_pairs(contacts::AbstractVector{<:AbstractVector{<:Integer}},
+function compile_contact_pairs(
+        contacts::AbstractVector{<:AbstractVector{<:Integer}},
         is_index::AbstractVector{Bool}, infected::AbstractVector{Bool};
-        external::Bool = false)
+        external::Bool = false
+    )
     n = length(contacts)
     _check_host_masks(n, is_index, infected)
 
@@ -407,8 +471,11 @@ function compile_contact_pairs(contacts::AbstractVector{<:AbstractVector{<:Integ
     for i in 1:n
         infected[i] || continue
         for j in contacts[i]
-            1 <= j <= n || throw(ArgumentError(
-                "host $i lists contact $j, outside the $n hosts in the structure"))
+            1 <= j <= n || throw(
+                ArgumentError(
+                    "host $i lists contact $j, outside the $n hosts in the structure"
+                )
+            )
             j == i || (indeg[j + 1] += 1)
         end
     end
@@ -453,14 +520,18 @@ function compile_contact_pairs(contacts::AbstractVector{<:AbstractVector{<:Integ
             is_ext[r] = false
         end
     end
-    return _contact_pairs_layout(sus, infector, contact_index, is_ext, external,
-        is_index, n)
+    return _contact_pairs_layout(
+        sus, infector, contact_index, is_ext, external,
+        is_index, n
+    )
 end
 
 function compile_contact_pairs(data::InfectionLayer; external::Bool = false)
     infected = .!isnan.(data.infection_time)
-    return compile_contact_pairs(contact_structure(data), data.is_index, infected;
-        external)
+    return compile_contact_pairs(
+        contact_structure(data), data.is_index, infected;
+        external
+    )
 end
 
 # ── The community hazard ─────────────────────────────────────────────
@@ -490,7 +561,7 @@ _ext_survival(d::ContinuousUnivariateDistribution) = d
 # A community introduction time drawn under the hazard.
 _ext_draw(rng::AbstractRNG, source) = rand(rng, _ext_survival(source))
 function _ext_draw(rng::AbstractRNG, source, susceptibility)
-    _traits_scaled_draw(rng, _ext_survival(source), susceptibility)
+    return _traits_scaled_draw(rng, _ext_survival(source), susceptibility)
 end
 
 # ── Evaluation ───────────────────────────────────────────────────────
@@ -501,24 +572,48 @@ end
 _pair_kernel(k::ContinuousUnivariateDistribution, layout::ContactPairsLayout, r, data) = k
 function _pair_kernel(k::AbstractVector{<:AbstractVector}, layout::ContactPairsLayout, r, data)
     c = layout.contact_index[r]
-    c > 0 || throw(ArgumentError(
-        "a per-edge kernel needs a layout compiled from an adjacency list"))
+    c > 0 || throw(
+        ArgumentError(
+            "a per-edge kernel needs a layout compiled from an adjacency list"
+        )
+    )
     return k[layout.infector[r]][c]
 end
 function _pair_kernel(k, layout::ContactPairsLayout, r, data)
     i = layout.infector[r]
-    pair_kernel(k, i, layout.sus[r], data.infection_time[i], data.infectious_time[i])
+    return pair_kernel(k, i, layout.sus[r], data.infection_time[i], data.infectious_time[i])
+end
+
+# A live stateful kernel reads each host through its projection, applied here to
+# the host as the infection layer records it.
+function _pair_kernel(k::StatefulKernel, layout::ContactPairsLayout, r, data)
+    i = layout.infector[r]
+    j = layout.sus[r]
+    return k.callback(
+        PairContext(i, j, data.infection_time[i]),
+        k.state(_layer_host(data, i)), k.state(_layer_host(data, j))
+    )
+end
+function _pair_kernel(
+        k::StatefulKernel{<:AbstractVector}, layout::ContactPairsLayout,
+        r, data
+    )
+    i = layout.infector[r]
+    return pair_kernel(k, i, layout.sus[r], data.infection_time[i], data.infectious_time[i])
 end
 
 function _pair_kernel(k::CalendarKernel, layout::ContactPairsLayout, r, data)
-    _calendar_interval(_pair_kernel(k.kernel, layout, r, data),
-        data.infectious_time[layout.infector[r]])
+    return _calendar_interval(
+        _pair_kernel(k.kernel, layout, r, data),
+        data.infectious_time[layout.infector[r]]
+    )
 end
 
 # Streaming logsumexp, so the per-susceptible reduction allocates no
 # intermediate vector for reverse-mode AD to track. A -Inf term (a zero hazard)
 # adds nothing to the sum and is skipped. An accumulator that saw only zero
-# hazards then gives -Inf without taking -Inf - (-Inf).
+# hazards then gives -Inf without taking -Inf - (-Inf). The test reads the value
+# alone, since an AD dual at -Inf can hold NaN partials and so compare unequal.
 mutable struct _LogSumExpAcc{T}
     m::T
     s::T
@@ -526,7 +621,7 @@ mutable struct _LogSumExpAcc{T}
 end
 _LogSumExpAcc{T}() where {T} = _LogSumExpAcc{T}(T(-Inf), zero(T), 0)
 function _push!(acc::_LogSumExpAcc{T}, x) where {T}
-    x == -Inf && return acc
+    _is_minus_inf(x) && return acc
     if acc.nseen == 0
         acc.m = T(x)
         acc.s = one(T)
@@ -539,6 +634,7 @@ function _push!(acc::_LogSumExpAcc{T}, x) where {T}
     acc.nseen += 1
     return acc
 end
+_is_minus_inf(x) = isinf(x) && x < 0
 _value(acc::_LogSumExpAcc{T}) where {T} = acc.nseen == 0 ? T(-Inf) : acc.m + log(acc.s)
 
 # The parameter float type the kernel adds to the accumulator. In inference the
@@ -548,11 +644,12 @@ _value(acc::_LogSumExpAcc{T}) where {T} = acc.nseen == 0 ? T(-Inf) : acc.m + log
 # covariate kernel is probed on the first internal pair. With no internal pair
 # the type falls back to `T`.
 function _kernel_partype(
-        kernel::ContinuousUnivariateDistribution, layout, data, ::Type{T}) where {T}
-    Distributions.partype(kernel)
+        kernel::ContinuousUnivariateDistribution, layout, data, ::Type{T}
+    ) where {T}
+    return Distributions.partype(kernel)
 end
 function _kernel_partype(kernel::CalendarKernel, layout, data, ::Type{T}) where {T}
-    _kernel_partype(kernel.kernel, layout, data, T)
+    return _kernel_partype(kernel.kernel, layout, data, T)
 end
 function _kernel_partype(kernel, layout, data, ::Type{T}) where {T}
     for r in eachindex(layout.is_ext)
@@ -619,39 +716,56 @@ and `Exponential` differentiate under either mode.
     community alone can explain and `T` is the total time hosts are exposed to
     it. In `log α` this is a straight line of slope `k`.
 """
-function pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairsLayout;
-        external_hazard = 0.0)
+function pairwise_surv_loglik(
+        kernel, data::InfectionLayer, layout::ContactPairsLayout;
+        external_hazard = 0.0
+    )
     external = _ext_active(external_hazard)
     external == layout.external ||
         throw(ArgumentError("layout.external = $(layout.external) but external_hazard = $external_hazard"))
     # The @inbounds passes index the time vectors by host id up to the population
     # the layout was compiled for; guard against a `data` with fewer individuals.
-    min(length(data.infection_time), length(data.infectious_time),
-        length(data.removal_time)) >= layout.nhosts ||
-        throw(DimensionMismatch("data covers fewer individuals than the layout " *
-                                "was compiled for ($(layout.nhosts))"))
+    min(
+        length(data.infection_time), length(data.infectious_time),
+        length(data.removal_time)
+    ) >= layout.nhosts ||
+        throw(
+        DimensionMismatch(
+            "data covers fewer individuals than the layout " *
+                "was compiled for ($(layout.nhosts))"
+        )
+    )
     extdist = external ? _ext_survival(external_hazard) : kernel
 
     tfollow = followup_end(data)
-    (!isnan(tfollow) && tfollow >= 0) || throw(ArgumentError(
-        "followup_end must be a non-negative number (Inf allowed), got $tfollow"))
-    Tdata = promote_type(eltype(data.infection_time),
+    (!isnan(tfollow) && tfollow >= 0) || throw(
+        ArgumentError(
+            "followup_end must be a non-negative number (Inf allowed), got $tfollow"
+        )
+    )
+    Tdata = promote_type(
+        eltype(data.infection_time),
         eltype(data.infectious_time),
         eltype(data.removal_time),
         typeof(tfollow),
-        Float64)
+        Float64
+    )
     # Promote against the kernel's parameter type so AD values in the fitted
     # kernel survive the reduction.
     Text = external ? Distributions.partype(extdist) : Union{}
     T = promote_type(Tdata, _kernel_partype(kernel, layout, data, Tdata), Text)
     # A per-edge or covariate kernel's parameter type is only known at run time;
     # the function barrier keeps the passes type-stable.
-    return _pairwise_surv_loglik(kernel, extdist, data, layout,
-        convert(Tdata, tfollow), T)
+    return _pairwise_surv_loglik(
+        kernel, extdist, data, layout,
+        convert(Tdata, tfollow), T
+    )
 end
 
-function _pairwise_surv_loglik(kernel, extdist, data, layout, tfollow,
-        ::Type{T}) where {T}
+function _pairwise_surv_loglik(
+        kernel, extdist, data, layout, tfollow,
+        ::Type{T}
+    ) where {T}
     # An infected host that is not conditioned on and has no possible infector
     # cannot have been infected, unless that infection falls after the end of
     # follow-up.
@@ -665,12 +779,16 @@ function _pairwise_surv_loglik(kernel, extdist, data, layout, tfollow,
     # positive at-risk time in pass 1. Pass 1's sum has therefore seen every
     # kernel pass 2 will use, and its type sets pass 2's accumulator.
     ll = _pairwise_cumhazard(kernel, extdist, data, layout, tfollow, T)
-    return _pairwise_events(kernel, extdist, data, layout, tfollow, ll,
-        promote_type(T, typeof(ll)))
+    return _pairwise_events(
+        kernel, extdist, data, layout, tfollow, ll,
+        promote_type(T, typeof(ll))
+    )
 end
 
-function _pairwise_cumhazard(kernel, extdist, data, layout, tfollow,
-        ::Type{T}) where {T}
+function _pairwise_cumhazard(
+        kernel, extdist, data, layout, tfollow,
+        ::Type{T}
+    ) where {T}
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
@@ -703,8 +821,10 @@ function _pairwise_cumhazard(kernel, extdist, data, layout, tfollow,
     return ll
 end
 
-function _pairwise_events(kernel, extdist, data, layout, tfollow, ll0,
-        ::Type{T}) where {T}
+function _pairwise_events(
+        kernel, extdist, data, layout, tfollow, ll0,
+        ::Type{T}
+    ) where {T}
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
@@ -744,7 +864,7 @@ function _pairwise_events(kernel, extdist, data, layout, tfollow, ll0,
             end
         end
         v = _value(acc)
-        v == -Inf && return T(-Inf)
+        _is_minus_inf(v) && return T(-Inf)
         ll += v
     end
 

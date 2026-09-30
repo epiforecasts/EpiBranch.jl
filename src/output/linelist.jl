@@ -24,18 +24,23 @@ function event_time_metadata(::Val{key}) where {key}
         prefix = string(event, "_time_")
         if startswith(name, prefix)
             label = name[(length(prefix) + 1):end]
-            return (column = Symbol("date_", event, "_", label),
-                requires_infection = false)
+            return (
+                column = Symbol("date_", event, "_", label),
+                requires_infection = false,
+            )
         end
     end
     endswith(name, "_time") || return nothing
-    return (column = Symbol("date_", name[1:(end - length("_time"))]),
-        requires_infection = true)
+    return (
+        column = Symbol("date_", name[1:(end - length("_time"))]),
+        requires_infection = true,
+    )
 end
 for key in (:trace_time, :vaccination_time, :immunity_time)
     column = Symbol("date_", String(key)[1:(end - length("_time"))])
     @eval event_time_metadata(::Val{$(QuoteNode(key))}) = (
-        column = $(QuoteNode(column)), requires_infection = false)
+        column = $(QuoteNode(column)), requires_infection = false,
+    )
 end
 
 """
@@ -66,8 +71,10 @@ Columns that are not dates are reported as stored.
 To add a column, write the field during the simulation. `linelist`
 reads whatever is on `state`.
 """
-function linelist(state::SimulationState;
-        reference_date::Date = Date(2020, 1, 1), infected_only::Bool = true)
+function linelist(
+        state::SimulationState;
+        reference_date::Date = Date(2020, 1, 1), infected_only::Bool = true
+    )
     cases = infected_only ? filter(is_infected, state.individuals) : state.individuals
     isempty(cases) && return DataFrame()
 
@@ -102,24 +109,30 @@ Return a DataFrame with one row per contact event (infected and
 non-infected), with columns `from`, `to`, `infected`, `generation`,
 `infection_time`, `date_infection`.
 """
-function contacts(state::SimulationState;
-        reference_date::Date = Date(2020, 1, 1))
-    df = DataFrame(from = Int[], to = Int[], infected = Bool[],
+function contacts(
+        state::SimulationState;
+        reference_date::Date = Date(2020, 1, 1)
+    )
+    df = DataFrame(
+        from = Int[], to = Int[], infected = Bool[],
         generation = Int[], infection_time = Float64[],
-        date_infection = Date[])
+        date_infection = Date[]
+    )
     for ind in state.individuals
         for child_id in ind.secondary_case_ids
             child_id > length(state.individuals) && continue
             child = state.individuals[child_id]
-            push!(df,
+            push!(
+                df,
                 (
                     from = ind.id,
                     to = child.id,
                     infected = is_infected(child),
                     generation = child.generation,
                     infection_time = child.infection_time,
-                    date_infection = _to_date(reference_date, child.infection_time)
-                ))
+                    date_infection = _to_date(reference_date, child.infection_time),
+                )
+            )
         end
     end
     return df
@@ -130,7 +143,7 @@ end
 """Convert a simulation time (real number) to a `Date` offset from
 `reference_date`. Non-finite or non-numeric inputs return `missing`."""
 function _to_date(reference_date::Date, t::Real)
-    isfinite(t) ? reference_date + Day(floor(Int, t)) : missing
+    return isfinite(t) ? reference_date + Day(floor(Int, t)) : missing
 end
 _to_date(::Date, _) = missing
 
@@ -167,7 +180,7 @@ end
 # An exposed contact who escaped infection keeps its exposure time in state,
 # which is not an infection date.
 function _infection_date(reference_date::Date, ind)
-    is_infected(ind) ? _to_date(reference_date, ind.infection_time) : missing
+    return is_infected(ind) ? _to_date(reference_date, ind.infection_time) : missing
 end
 
 """The time stored under `key` on an individual who was never infected, or

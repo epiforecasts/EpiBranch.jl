@@ -13,7 +13,7 @@ function person_time_by_household(state, n_households)
     for ind in state.individuals
         is_infected(ind) || continue
         person_time[ind.state[:household]] += ind.state[:recovered_time] -
-                                              ind.infection_time
+            ind.infection_time
     end
     return person_time
 end
@@ -69,7 +69,8 @@ end
         @test support(d) == [3]
         @test_throws ArgumentError household_final_size(0, Exponential(2.0), 1.0)
         @test_throws ArgumentError household_final_size(
-            3, Exponential(2.0), 1.0; initial_infectives = 4)
+            3, Exponential(2.0), 1.0; initial_infectives = 4
+        )
     end
 
     @testset "a large household does not overflow" begin
@@ -112,14 +113,20 @@ end
             end
             total
         end
-        @test mean(d)≈simulated rtol=0.02
+        @test mean(d) ≈ simulated rtol = 0.02
     end
 
     @testset "the recursion matches simulated households" begin
         n = 5
-        model = ModelSpec(HouseholdProcess(fill(n, 20_000), Exponential(1 / β));
-            progression = [Transition(:recovered; from = :infection, rate = γ,
-                terminal = true)])
+        model = ModelSpec(
+            HouseholdProcess(fill(n, 20_000), Exponential(1 / β));
+            progression = [
+                Transition(
+                    :recovered; from = :infection, rate = γ,
+                    terminal = true
+                ),
+            ]
+        )
         state = simulate(model; rng = StableRNG(1))
         sizes = zeros(Int, 20_000)
         for ind in state.individuals
@@ -135,8 +142,13 @@ end
     β, γ, λG = 0.5, 1 / 4, 0.15
     _markov(sizes::AbstractVector) = ModelSpec(
         HouseholdProcess(sizes, Exponential(1 / β));
-        progression = [Transition(:recovered; from = :infection, rate = γ,
-            terminal = true)])
+        progression = [
+            Transition(
+                :recovered; from = :infection, rate = γ,
+                terminal = true
+            ),
+        ]
+    )
     _markov(n::Integer) = _markov(fill(n, 10))
 
     @testset "a household of one is the lone case's own offspring law" begin
@@ -159,7 +171,7 @@ end
         @test reproduction_number(o) ≈ λG * mean(final_size) / γ
         # The offspring law is built from the same household epidemic, so its
         # mean agrees with R* up to the tail left outside the support.
-        @test mean(household_offspring_law(o))≈reproduction_number(o) rtol=1e-6
+        @test mean(household_offspring_law(o)) ≈ reproduction_number(o) rtol = 1.0e-6
     end
 
     @testset "the simulated route matches the exact one" begin
@@ -168,17 +180,24 @@ end
         n = 5
         exact = household_offspring(_markov(n); global_rate = λG)
         simulated = household_offspring(
-            ModelSpec(HouseholdProcess(fill(n, 10), Exponential(1 / β));
-                progression = [Transition(:recovered; from = :infection,
-                    delay = Gamma(1, 1 / γ), terminal = true)]);
-            global_rate = λG, n_samples = 20_000, rng = StableRNG(7))
+            ModelSpec(
+                HouseholdProcess(fill(n, 10), Exponential(1 / β));
+                progression = [
+                    Transition(
+                        :recovered; from = :infection,
+                        delay = Gamma(1, 1 / γ), terminal = true
+                    ),
+                ]
+            );
+            global_rate = λG, n_samples = 20_000, rng = StableRNG(7)
+        )
         pe = probs(household_offspring_law(exact))
         ps = probs(household_offspring_law(simulated))
         @test maximum(abs, pe[1:20] .- ps[1:20]) < 0.01
         # The mean comes from the same closed form on both routes, because the
         # window law is still one delay of the progression.
         @test reproduction_number(simulated) ≈ reproduction_number(exact)
-        @test extinction_probability(simulated)≈extinction_probability(exact) atol=0.01
+        @test extinction_probability(simulated) ≈ extinction_probability(exact) atol = 0.01
     end
 
     @testset "contacts reach households in proportion to their size" begin
@@ -204,7 +223,7 @@ end
         q = extinction_probability(o)
         s = sum(o.mixing .* q)
         pgf = EpiHouseholds._pgf
-        @test s≈sum(o.mixing[i] * pgf(o.laws[i], s) for i in eachindex(o.laws)) atol=1e-8
+        @test s ≈ sum(o.mixing[i] * pgf(o.laws[i], s) for i in eachindex(o.laws)) atol = 1.0e-8
         @test all(q[i] ≈ pgf(o.laws[i], s) for i in eachindex(q))
         @test epidemic_probability(o) ≈ 1 .- q
     end
@@ -216,17 +235,29 @@ end
     end
 
     @testset "isolation shortens the window and lowers R*" begin
-        prog = [Transition(:onset; from = :infection, delay = 0.5),
-            Transition(:recovered; from = :infection, rate = γ, terminal = true)]
+        prog = [
+            Transition(:onset; from = :infection, delay = 0.5),
+            Transition(:recovered; from = :infection, rate = γ, terminal = true),
+        ]
         process() = HouseholdProcess(fill(5, 10), Exponential(1 / β))
         plain = ModelSpec(process(); progression = prog)
-        isolated = ModelSpec(process(); progression = prog,
-            interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0),
-                eligibility = AllCases())])
-        base = household_offspring(plain; global_rate = λG, n_samples = 5_000,
-            rng = StableRNG(3))
-        with_isolation = household_offspring(isolated; global_rate = λG,
-            n_samples = 5_000, rng = StableRNG(3))
+        isolated = ModelSpec(
+            process(); progression = prog,
+            interventions = [
+                Isolation(
+                    onset_to_isolation_delay = Exponential(1.0),
+                    eligibility = AllCases()
+                ),
+            ]
+        )
+        base = household_offspring(
+            plain; global_rate = λG, n_samples = 5_000,
+            rng = StableRNG(3)
+        )
+        with_isolation = household_offspring(
+            isolated; global_rate = λG,
+            n_samples = 5_000, rng = StableRNG(3)
+        )
         # Isolation removes a case from the household, so it cuts both the
         # community contacts it makes and the household members it infects.
         @test reproduction_number(with_isolation) < reproduction_number(base) / 2
@@ -238,32 +269,50 @@ end
         # the lone case's mean infectious time, zero for a case that recovers
         # before its latent period ends or never becomes infectious.
         latent, recovery = Gamma(2, 2.0), Gamma(3, 2.0)
-        seir = ModelSpec(HouseholdProcess(fill(1, 10), Exponential(1 / β));
-            progression = [Transition(:infectious; from = :infection, delay = latent),
-                Transition(:recovered; from = :infection, delay = recovery,
-                    terminal = true)])
-        o = household_offspring(seir; global_rate = λG, n_samples = 50_000,
-            rng = StableRNG(11))
+        seir = ModelSpec(
+            HouseholdProcess(fill(1, 10), Exponential(1 / β));
+            progression = [
+                Transition(:infectious; from = :infection, delay = latent),
+                Transition(
+                    :recovered; from = :infection, delay = recovery,
+                    terminal = true
+                ),
+            ]
+        )
+        o = household_offspring(
+            seir; global_rate = λG, n_samples = 50_000,
+            rng = StableRNG(11)
+        )
         rng = StableRNG(12)
-        expected = mean(max(rand(rng, recovery) - rand(rng, latent), 0.0)
-        for _ in 1:200_000)
-        @test reproduction_number(o)≈λG * expected rtol=0.03
+        expected = mean(
+            max(rand(rng, recovery) - rand(rng, latent), 0.0)
+                for _ in 1:200_000
+        )
+        @test reproduction_number(o) ≈ λG * expected rtol = 0.03
 
         p = 0.7
-        gated(n) = ModelSpec(HouseholdProcess(fill(n, 10), Exponential(1 / β));
+        gated(n) = ModelSpec(
+            HouseholdProcess(fill(n, 10), Exponential(1 / β));
             progression = [
                 Transition(:infectious; from = :infection, delay = 1.0, probability = p),
-                Transition(:recovered; from = :infectious, rate = γ, terminal = true)])
-        o = household_offspring(gated(1); global_rate = λG, n_samples = 50_000,
-            rng = StableRNG(13))
-        @test reproduction_number(o)≈p * λG / γ rtol=0.03
+                Transition(:recovered; from = :infectious, rate = γ, terminal = true),
+            ]
+        )
+        o = household_offspring(
+            gated(1); global_rate = λG, n_samples = 50_000,
+            rng = StableRNG(13)
+        )
+        @test reproduction_number(o) ≈ p * λG / γ rtol = 0.03
         # A gate leaves some cases without the window, so the mean cannot be read
         # off the final size and the window law.
         @test EpiHouseholds._window_length_law(gated(4)) === nothing
-        gated_four = household_offspring(gated(4); global_rate = λG, n_samples = 20_000,
-            rng = StableRNG(14))
+        gated_four = household_offspring(
+            gated(4); global_rate = λG, n_samples = 20_000,
+            rng = StableRNG(14)
+        )
         @test reproduction_number(gated_four) < reproduction_number(
-            household_offspring(_markov(4); global_rate = λG))
+            household_offspring(_markov(4); global_rate = λG)
+        )
     end
 
     @testset "a custom transition that closes the window is simulated" begin
@@ -271,39 +320,62 @@ end
         # derivation must simulate and let the window close where the model does.
         progression = EpiBranch.AbstractClinicalTransition[
             Transition(:recovered; from = :infection, rate = γ, terminal = true),
-            DeathAfterOneDay()]
+            DeathAfterOneDay(),
+        ]
         model(n_households) = ModelSpec(
-            HouseholdProcess(fill(4, n_households), Exponential(2.0)); progression)
+            HouseholdProcess(fill(4, n_households), Exponential(2.0)); progression
+        )
         @test EpiHouseholds._window_length_law(model(10)) === nothing
-        o = household_offspring(model(10); global_rate = λG, n_samples = 20_000,
-            rng = StableRNG(51))
+        o = household_offspring(
+            model(10); global_rate = λG, n_samples = 20_000,
+            rng = StableRNG(51)
+        )
         state = simulate(model(20_000); rng = StableRNG(52))
         person_time = sum(
             min(ind.state[:recovered_time], ind.state[:died_time]) - ind.infection_time
-        for ind in state.individuals if is_infected(ind))
-        @test reproduction_number(o)≈λG * person_time / 20_000 rtol=0.03
+                for ind in state.individuals if is_infected(ind)
+        )
+        @test reproduction_number(o) ≈ λG * person_time / 20_000 rtol = 0.03
     end
 
     @testset "invalid arguments" begin
         @test_throws ArgumentError household_offspring(_markov(4); global_rate = 0.0)
-        @test_throws ArgumentError household_offspring(_markov(4); global_rate = λG,
-            n_samples = 0)
+        @test_throws ArgumentError household_offspring(
+            _markov(4); global_rate = λG,
+            n_samples = 0
+        )
         # Community introductions would seed a household with more than the one
         # index case a newly infected household has.
         external = ModelSpec(
-            HouseholdProcess(fill(4, 10), Exponential(1 / β);
-                external_hazard = 0.01, obs_end = 30.0);
-            progression = [Transition(:recovered; from = :infection, rate = γ,
-                terminal = true)])
+            HouseholdProcess(
+                fill(4, 10), Exponential(1 / β);
+                external_hazard = 0.01, obs_end = 30.0
+            );
+            progression = [
+                Transition(
+                    :recovered; from = :infection, rate = γ,
+                    terminal = true
+                ),
+            ]
+        )
         @test_throws ArgumentError household_offspring(external; global_rate = λG)
         # A gate on the population's clock or case count has no counterpart when
         # every household starts its own epidemic.
-        scheduled = ModelSpec(HouseholdProcess(fill(4, 10), Exponential(1 / β));
-            progression = [Transition(:onset; from = :infection, delay = 0.5),
-                Transition(:recovered; from = :infection, rate = γ, terminal = true)],
-            interventions = [Scheduled(
-                Isolation(onset_to_isolation_delay = Exponential(1.0),
-                    eligibility = AllCases()); start_after_cases = 10)])
+        scheduled = ModelSpec(
+            HouseholdProcess(fill(4, 10), Exponential(1 / β));
+            progression = [
+                Transition(:onset; from = :infection, delay = 0.5),
+                Transition(:recovered; from = :infection, rate = γ, terminal = true),
+            ],
+            interventions = [
+                Scheduled(
+                    Isolation(
+                        onset_to_isolation_delay = Exponential(1.0),
+                        eligibility = AllCases()
+                    ); start_after_cases = 10
+                ),
+            ]
+        )
         @test_throws ArgumentError household_offspring(scheduled; global_rate = λG)
         o = household_offspring(_markov(4); global_rate = λG)
         @test_throws ArgumentError household_offspring_law(o, 5)
@@ -314,9 +386,12 @@ end
         sizes = [fill(2, 30); fill(4, 50); fill(6, 20)]
         shared = household_offspring(_markov(sizes); global_rate = λG)
         covariate = household_offspring(
-            ModelSpec(HouseholdProcess(sizes, (i, j) -> Exponential(1 / β));
-                progression = _markov(sizes).progression);
-            global_rate = λG, n_samples = 60_000, rng = StableRNG(21))
+            ModelSpec(
+                HouseholdProcess(sizes, (i, j) -> Exponential(1 / β));
+                progression = _markov(sizes).progression
+            );
+            global_rate = λG, n_samples = 60_000, rng = StableRNG(21)
+        )
         # Every household of a size has the same kernels, so size is the type.
         @test covariate.sizes == shared.sizes
         @test covariate.households == shared.households
@@ -327,8 +402,8 @@ end
             k = min(length(pc), length(ps), 15)
             @test maximum(abs, pc[1:k] .- ps[1:k]) < 0.015
         end
-        @test reproduction_number(covariate)≈reproduction_number(shared) rtol=0.03
-        @test extinction_probability(covariate)≈extinction_probability(shared) atol=0.02
+        @test reproduction_number(covariate) ≈ reproduction_number(shared) rtol = 0.03
+        @test extinction_probability(covariate) ≈ extinction_probability(shared) atol = 0.02
     end
 
     @testset "a covariate kernel follows each household's own members" begin
@@ -342,11 +417,19 @@ end
         household_of = reduce(vcat, [fill(h, n) for (h, n) in enumerate(sizes)])
         fast(i) = isodd(household_of[i])
         kernel = (i, j) -> Exponential(fast(i) ? 1.0 : 10.0)
-        model = ModelSpec(HouseholdProcess(sizes, kernel);
-            progression = [Transition(:recovered; from = :infection, rate = γ,
-                terminal = true)])
-        o = household_offspring(model; global_rate = λG, n_samples = 40_000,
-            rng = StableRNG(22))
+        model = ModelSpec(
+            HouseholdProcess(sizes, kernel);
+            progression = [
+                Transition(
+                    :recovered; from = :infection, rate = γ,
+                    terminal = true
+                ),
+            ]
+        )
+        o = household_offspring(
+            model; global_rate = λG, n_samples = 40_000,
+            rng = StableRNG(22)
+        )
         @test o.sizes == [3, 3, 5, 5]
         @test sort(reduce(vcat, o.households)) == 1:100
         @test all(allequal(isodd.(h)) && allequal(sizes[h]) for h in o.households)
@@ -363,15 +446,19 @@ end
         direct = [sum(weights[counts .== k]) for k in 0:9] ./ sum(weights)
         law = probs(household_offspring_law(o))
         @test maximum(abs, law[1:10] .- direct) < 0.01
-        @test reproduction_number(o)≈sum(weights .* counts) / sum(weights) rtol=0.03
+        @test reproduction_number(o) ≈ sum(weights .* counts) / sum(weights) rtol = 0.03
         # Of two households the same size, the fast one has the bigger outbreak,
         # so it is the less likely to start a chain that dies out.
         q = extinction_probability(o)
         for n in (3, 5)
-            fast_type = findfirst(t -> o.sizes[t] == n && isodd(first(o.households[t])),
-                eachindex(o.sizes))
-            slow_type = findfirst(t -> o.sizes[t] == n && iseven(first(o.households[t])),
-                eachindex(o.sizes))
+            fast_type = findfirst(
+                t -> o.sizes[t] == n && isodd(first(o.households[t])),
+                eachindex(o.sizes)
+            )
+            slow_type = findfirst(
+                t -> o.sizes[t] == n && iseven(first(o.households[t])),
+                eachindex(o.sizes)
+            )
             @test o.means[fast_type] > o.means[slow_type]
             @test q[fast_type] < q[slow_type]
         end
@@ -387,12 +474,21 @@ end
         household(i) = (i - 1) ÷ 4 + 1
         fast(i) = position(i) == 1 || (iseven(household(i)) && position(i) == 2)
         model = ModelSpec(
-            HouseholdProcess(fill(4, n_households),
-                (i, j) -> Exponential(fast(i) ? 1.0 : 10.0));
-            progression = [Transition(:recovered; from = :infection, rate = γ,
-                terminal = true)])
-        o = household_offspring(model; global_rate = λG, n_samples = 40_000,
-            rng = StableRNG(24))
+            HouseholdProcess(
+                fill(4, n_households),
+                (i, j) -> Exponential(fast(i) ? 1.0 : 10.0)
+            );
+            progression = [
+                Transition(
+                    :recovered; from = :infection, rate = γ,
+                    terminal = true
+                ),
+            ]
+        )
+        o = household_offspring(
+            model; global_rate = λG, n_samples = 40_000,
+            rng = StableRNG(24)
+        )
         @test o.households == [collect(1:2:n_households), collect(2:2:n_households)]
         @test o.mixing ≈ [0.5, 0.5]
         @test o.means[2] > o.means[1]
@@ -404,7 +500,7 @@ end
             person_time .+= [sum(by_household[1:2:end]), sum(by_household[2:2:end])]
         end
         direct = λG .* person_time ./ (200 * n_households / 2)
-        @test o.means≈direct rtol=0.03
+        @test o.means ≈ direct rtol = 0.03
     end
 
     @testset "a covariate model's other layers see its own individuals" begin
@@ -414,12 +510,21 @@ end
         n_households = 400
         fast = [h % 4 == 1 for h in 1:n_households for _ in 1:3]
         model = ModelSpec(
-            HouseholdProcess(fill(3, n_households),
-                (i, j) -> Exponential(fast[i] ? 1.0 : 10.0));
-            progression = [Transition(:recovered; from = :infection,
-                delay = (rng, ind) -> fast[ind.id] ? 8.0 : 1.0, terminal = true)])
-        o = household_offspring(model; global_rate = λG, n_samples = 20_000,
-            rng = StableRNG(26))
+            HouseholdProcess(
+                fill(3, n_households),
+                (i, j) -> Exponential(fast[i] ? 1.0 : 10.0)
+            );
+            progression = [
+                Transition(
+                    :recovered; from = :infection,
+                    delay = (rng, ind) -> fast[ind.id] ? 8.0 : 1.0, terminal = true
+                ),
+            ]
+        )
+        o = household_offspring(
+            model; global_rate = λG, n_samples = 20_000,
+            rng = StableRNG(26)
+        )
         @test length(o.sizes) == 2
 
         rng = StableRNG(27)
@@ -427,12 +532,14 @@ end
         fast_household = [h % 4 == 1 for h in 1:n_households]
         for _ in 1:50
             by_household = person_time_by_household(simulate(model; rng), n_households)
-            person_time .+= [sum(by_household[fast_household]),
-                sum(by_household[.!fast_household])]
+            person_time .+= [
+                sum(by_household[fast_household]),
+                sum(by_household[.!fast_household]),
+            ]
         end
         direct = λG .* person_time ./ (50 .* [n_households ÷ 4, 3n_households ÷ 4])
         @test o.households[1] == collect(1:4:n_households)
-        @test o.means≈direct rtol=0.03
+        @test o.means ≈ direct rtol = 0.03
     end
 
     @testset "a mean the recursion cannot give comes from the simulated households" begin
@@ -442,11 +549,19 @@ end
         kernel, window = Exponential(50.0), Gamma(4, 0.25)
         @test_throws ErrorException household_final_size(40, kernel, window)
         sizes = [fill(3, 50); fill(40, 5)]
-        model = ModelSpec(HouseholdProcess(sizes, kernel);
-            progression = [Transition(:recovered; from = :infection, delay = window,
-                terminal = true)])
-        o = household_offspring(model; global_rate = 0.5, n_samples = 20_000,
-            rng = StableRNG(41))
+        model = ModelSpec(
+            HouseholdProcess(sizes, kernel);
+            progression = [
+                Transition(
+                    :recovered; from = :infection, delay = window,
+                    terminal = true
+                ),
+            ]
+        )
+        o = household_offspring(
+            model; global_rate = 0.5, n_samples = 20_000,
+            rng = StableRNG(41)
+        )
         rng = StableRNG(42)
         # Households 51 to 55 are the ones of forty.
         large = Float64[]
@@ -454,7 +569,7 @@ end
             by_household = person_time_by_household(simulate(model; rng), length(sizes))
             append!(large, by_household[51:55])
         end
-        @test o.means[2]≈0.5 * mean(large) rtol=0.05
+        @test o.means[2] ≈ 0.5 * mean(large) rtol = 0.05
     end
 
     @testset "a bare process takes its own progression" begin
@@ -462,7 +577,8 @@ end
         # household would infect unboundedly many others.
         @test_throws ArgumentError household_offspring(
             HouseholdProcess(fill(3, 10), Exponential(1 / β)); global_rate = λG,
-            n_samples = 10, rng = StableRNG(1))
+            n_samples = 10, rng = StableRNG(1)
+        )
     end
 
     @testset "show" begin
@@ -478,16 +594,23 @@ end
         # infected besides the index case, and the global rate at which R*
         # reaches 1 (Ann. Appl. Probab. 7(1): 46-89, Figure 2 and eq. 3.14).
         for (λ_local, infected_besides_index, critical_rate) in [
-            (0.125, 0.578283, 0.6336), (0.1875, 0.879315, 0.5321),
-            (0.5, 2.033827, 0.3296), (1.25, 3.117259, 0.2429)]
+                (0.125, 0.578283, 0.6336), (0.1875, 0.879315, 0.5321),
+                (0.5, 2.033827, 0.3296), (1.25, 3.117259, 0.2429),
+            ]
             d = household_final_size(5, Exponential(1 / λ_local), Exponential(1.0))
-            @test mean(d)≈1 + infected_besides_index atol=1e-6
+            @test mean(d) ≈ 1 + infected_besides_index atol = 1.0e-6
 
-            model = ModelSpec(HouseholdProcess(fill(5, 10), Exponential(1 / λ_local));
-                progression = [Transition(:recovered; from = :infection, rate = 1.0,
-                    terminal = true)])
+            model = ModelSpec(
+                HouseholdProcess(fill(5, 10), Exponential(1 / λ_local));
+                progression = [
+                    Transition(
+                        :recovered; from = :infection, rate = 1.0,
+                        terminal = true
+                    ),
+                ]
+            )
             o = household_offspring(model; global_rate = critical_rate)
-            @test reproduction_number(o)≈1.0 atol=2e-4
+            @test reproduction_number(o) ≈ 1.0 atol = 2.0e-4
         end
     end
 
@@ -498,13 +621,21 @@ end
         # a size-biased mean household outbreak of 1.4145 and R* of 1.1309.
         counts = [133, 189, 108, 106, 31]
         sizes = vcat([fill(n, counts[n]) for n in 1:5]...)
-        model = ModelSpec(HouseholdProcess(sizes, Exponential(1 / 0.0423));
-            progression = [Transition(:recovered; from = :infection, delay = 4.1,
-                terminal = true)])
-        o = household_offspring(model; global_rate = 0.1950, n_samples = 200,
-            rng = StableRNG(1))
-        @test sum(o.mixing .* o.means) / (0.1950 * 4.1)≈1.4145 atol=1e-4
-        @test reproduction_number(o)≈1.1309 atol=1e-4
+        model = ModelSpec(
+            HouseholdProcess(sizes, Exponential(1 / 0.0423));
+            progression = [
+                Transition(
+                    :recovered; from = :infection, delay = 4.1,
+                    terminal = true
+                ),
+            ]
+        )
+        o = household_offspring(
+            model; global_rate = 0.195, n_samples = 200,
+            rng = StableRNG(1)
+        )
+        @test sum(o.mixing .* o.means) / (0.195 * 4.1) ≈ 1.4145 atol = 1.0e-4
+        @test reproduction_number(o) ≈ 1.1309 atol = 1.0e-4
     end
 
     @testset "House and Keeling (2008) mean household outbreak" begin
@@ -514,6 +645,6 @@ end
         kernel, window = Exponential(1 / τ), Exponential(1 / γ)
         @test mean(household_final_size(2, kernel, window)) ≈ (2τ + γ) / (τ + γ)
         @test mean(household_final_size(3, kernel, window)) ≈
-              (6τ^3 + 13τ^2 * γ + 6τ * γ^2 + γ^3) / ((τ + γ)^2 * (2τ + γ))
+            (6τ^3 + 13τ^2 * γ + 6τ * γ^2 + γ^3) / ((τ + γ)^2 * (2τ + γ))
     end
 end

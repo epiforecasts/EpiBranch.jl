@@ -73,17 +73,23 @@ struct HomogeneousProcess{T <: Real} <: TransmissionModel
     until::Tuple                   # removal states that close the infectious window
 end
 
-function HomogeneousProcess(; transmission_rate,
+function HomogeneousProcess(;
+        transmission_rate,
         population_size::Integer,
         from = nothing,
-        until = (:recovered, :died, :isolated))
+        until = (:recovered, :died, :isolated)
+    )
     population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
-    (isfinite(transmission_rate) && transmission_rate >= 0) || throw(ArgumentError(
-        "transmission_rate must be a finite, non-negative number (β ≥ 0)"))
+    (isfinite(transmission_rate) && transmission_rate >= 0) || throw(
+        ArgumentError(
+            "transmission_rate must be a finite, non-negative number (β ≥ 0)"
+        )
+    )
     # Keep β at whatever real type it comes in as — a dual under automatic
     # differentiation — so a gradient with respect to β flows into the pool.
     return HomogeneousProcess(
-        Int(population_size), float(transmission_rate), from, Tuple(until))
+        Int(population_size), float(transmission_rate), from, Tuple(until)
+    )
 end
 
 population_size(m::HomogeneousProcess) = m.population_size
@@ -94,7 +100,7 @@ _honours_termination_controls(::HomogeneousProcess) = false
 
 # See `_warn_uncovered_terminal_states` in branching_process.jl.
 function _validate_process_windows(m::HomogeneousProcess, progression)
-    _warn_uncovered_terminal_states(m.until, progression; from = m.from)
+    return _warn_uncovered_terminal_states(m.until, progression; from = m.from)
 end
 
 # The state's timing type follows β's type, so a dual β makes an
@@ -105,7 +111,7 @@ function Base.show(io::IO, m::HomogeneousProcess)
     β = m.transmission_rate isa AbstractFloat ?
         round(m.transmission_rate; digits = 4) : m.transmission_rate
     from = m.from === nothing ? "" : ", from=:$(m.from)"
-    print(io, "HomogeneousProcess(population_size=$(m.population_size), β=$β", from, ")")
+    return print(io, "HomogeneousProcess(population_size=$(m.population_size), β=$β", from, ")")
 end
 
 """
@@ -117,13 +123,18 @@ modelling layers supplied by the caller (a bare process, or a `ModelSpec`). The
 infectious window's `from` state is resolved here from the composed
 `progression`.
 """
-function _simulate(model::HomogeneousProcess, sim_opts::SimOpts;
+function _simulate(
+        model::HomogeneousProcess, sim_opts::SimOpts;
         interventions, attributes, progression, observation, rng, condition,
-        max_attempts)
+        max_attempts
+    )
     condition !== nothing && return _retry_for_condition(
-        () -> _simulate(model, sim_opts; interventions, attributes, progression,
-            observation, rng, condition = nothing, max_attempts),
-        condition, max_attempts)
+        () -> _simulate(
+            model, sim_opts; interventions, attributes, progression,
+            observation, rng, condition = nothing, max_attempts
+        ),
+        condition, max_attempts
+    )
 
     n_initial = sim_opts.n_initial
     n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
@@ -134,17 +145,21 @@ function _simulate(model::HomogeneousProcess, sim_opts::SimOpts;
     β = model.transmission_rate
 
     state = new_state(model, progression, attributes, rng)
-    add_individuals!(state, model.population_size, interventions;
-        setup = (ind, i) -> nothing)
+    add_individuals!(
+        state, model.population_size, interventions;
+        setup = (ind, i) -> nothing
+    )
 
     # The homogeneous pool is the one-type case of the structured Sellke pool:
     # no attributes name the mixing, so every individual feels the same force
     # β/N per unit of infectiousness (`sum(values(counts))` = the
     # infectiousness-weighted number currently infectious).
-    extinct = _sellke_pool!(state, collect(1:model.population_size), rng;
+    extinct = _sellke_pool!(
+        state, collect(1:model.population_size), rng;
         force = (type, counts) -> β / model.population_size * sum(values(counts)),
         n_initial = n_initial, from = from, until = model.until, interventions,
-        risks = transmission_risks(model), max_time = _max_time(sim_opts))
+        risks = transmission_risks(model), max_time = _max_time(sim_opts)
+    )
 
     _reconcile_sellke_bookkeeping!(state, extinct)
     apply_observation!(observation, state, rng)
@@ -161,6 +176,8 @@ end
 _resolve_infectious_from(from::Symbol, progression) = from
 _resolve_infectious_from(::Nothing, progression) = _infectious_from(progression)
 function _infectious_from(progression)
-    any(t -> hasproperty(t, :state) && getfield(t, :state) === :infectious,
-        progression) ? :infectious : :infection
+    return any(
+            t -> hasproperty(t, :state) && getfield(t, :state) === :infectious,
+            progression
+        ) ? :infectious : :infection
 end

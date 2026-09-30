@@ -13,7 +13,7 @@
         @test d isa Borel
         data = [1, 2, 1, 3, 1, 5, 2]
         @test sum(logpdf(d, n) for n in data) ≈
-              loglikelihood(ChainSizes(data), Poisson(0.5))
+            loglikelihood(ChainSizes(data), Poisson(0.5))
 
         bp_nb = BranchingProcess(NegBin(0.5, 0.5))
         d_nb = chain_size_distribution(bp_nb)
@@ -27,13 +27,15 @@
 
         d = chain_size_distribution(bp; seeds = seeds)
         @test logpdf(d, data) ≈
-              loglikelihood(ChainSizes(data; seeds = seeds), Poisson(0.5))
+            loglikelihood(ChainSizes(data; seeds = seeds), Poisson(0.5))
 
         pc = [1.0, 0.5, 0.0, 0.7]
         d_pc = chain_size_distribution(bp; seeds = seeds, prob_concluded = pc)
         @test logpdf(d_pc, data) ≈
-              loglikelihood(ChainSizes(data; seeds = seeds), Poisson(0.5);
-            prob_concluded = pc)
+            loglikelihood(
+            ChainSizes(data; seeds = seeds), Poisson(0.5);
+            prob_concluded = pc
+        )
 
         # prob_concluded has no closed form under interventions: refuse rather
         # than silently drop them.
@@ -41,7 +43,8 @@
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         d_iv = chain_size_distribution(
             ModelSpec(bp; interventions = [iso], attributes = clinical);
-            seeds = seeds, prob_concluded = pc)
+            seeds = seeds, prob_concluded = pc
+        )
         @test_throws ArgumentError logpdf(d_iv, data)
     end
 
@@ -56,7 +59,9 @@
         data = [1, 2, 1, 3, 1]
         obs = ModelSpec(
             BranchingProcess(Poisson(0.5)); observation = PerCaseObservation(;
-                detection_prob = 0.7))
+                detection_prob = 0.7
+            )
+        )
         d = chain_size_distribution(obs; n_sim = 0)
         # n_sim=0 forces the wrapper path; logpdf should still match the
         # analytical loglikelihood with no kwargs since there are no
@@ -95,11 +100,15 @@
         # Turing's `~` (a `Distribution`) or refuses with a user-facing
         # `ArgumentError`. No bare `MethodError`s, no developer-only hints.
         bp = BranchingProcess(Poisson(0.5))
-        bp_obs = ModelSpec(BranchingProcess(Poisson(0.5));
-            observation = PerCaseObservation(detection_prob = 0.6))
+        bp_obs = ModelSpec(
+            BranchingProcess(Poisson(0.5));
+            observation = PerCaseObservation(detection_prob = 0.6)
+        )
         bp_cm = BranchingProcess(ClusterMixed(Poisson, Gamma(2.0, 0.4)))
-        bp_mt = BranchingProcess([1.0 0.5; 0.5 1.0],
-            R -> NegBin(R, 0.16), LogNormal(1.6, 0.5))
+        bp_mt = BranchingProcess(
+            [1.0 0.5; 0.5 1.0],
+            R -> NegBin(R, 0.16), LogNormal(1.6, 0.5)
+        )
 
         @testset "chain_size_distribution" begin
             @test chain_size_distribution(bp) isa Distribution

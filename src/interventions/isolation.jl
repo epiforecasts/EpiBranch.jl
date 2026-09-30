@@ -61,8 +61,12 @@ tests positive and so reaches isolation; it accepts a `Real`, a
 `Distribution`, or a function `(rng, ind) -> Real` (sampled once per
 individual at init time, stored as `:test_positive`).
 
-`onset_to_isolation_delay` is a `Distribution` from which the time
-from symptom onset to self-reported isolation is drawn per individual.
+`onset_to_isolation_delay` is the time from symptom onset to
+self-reported isolation; it accepts a `Real`, a `Distribution`, or a
+function `(rng, ind) -> Real` (drawn per individual, per resolution). The
+function form can read state recorded on the individual by another
+intervention earlier in the stack — for example a group's own event time,
+switching the delay once a household's first case has been detected.
 
 `post_isolation_transmission` ∈ [0, 1] sets the residual transmission
 probability after isolation. The competing risk's `block_probability`
@@ -70,7 +74,7 @@ is `1 - post_isolation_transmission`.
 
 Initialises: `:isolated`, `:isolation_time`, `:test_positive`.
 """
-struct Isolation{E <: IsolationEligibility, D <: Distribution, S} <: AbstractIntervention
+struct Isolation{E <: IsolationEligibility, D, S} <: AbstractIntervention
     eligibility::E
     onset_to_isolation_delay::D
     test_sensitivity::S
@@ -78,12 +82,15 @@ struct Isolation{E <: IsolationEligibility, D <: Distribution, S} <: AbstractInt
 end
 
 function Isolation(;
-        onset_to_isolation_delay::Distribution,
+        onset_to_isolation_delay,
         eligibility::IsolationEligibility = SymptomaticOnly(),
         test_sensitivity = 1.0,
-        post_isolation_transmission::Real = 0.0)
-    return Isolation(eligibility, onset_to_isolation_delay, test_sensitivity,
-        Float64(post_isolation_transmission))
+        post_isolation_transmission::Real = 0.0
+    )
+    return Isolation(
+        eligibility, onset_to_isolation_delay, test_sensitivity,
+        Float64(post_isolation_transmission)
+    )
 end
 
 required_fields(iso::Isolation) = _required_for_eligibility(iso.eligibility)
@@ -94,7 +101,7 @@ intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 # isolation (`post_isolation_transmission > 0`) only reduces transmission, which
 # the window cannot express, so it contributes no removal in that setting.
 function infectious_removal_time(iso::Isolation, ind::Individual)
-    iso.post_isolation_transmission == 0 ? isolation_time(ind) : Inf
+    return iso.post_isolation_transmission == 0 ? isolation_time(ind) : Inf
 end
 
 """Isolation blocks the parent → contact transmission when the parent's
@@ -104,8 +111,10 @@ Residual transmission is governed by `post_isolation_transmission`:
 function competing_risk(iso::Isolation, parent, contact, state)
     iso_t = isolation_time(parent)
     isfinite(iso_t) || return nothing
-    return Risk(event_time = iso_t,
-        block_probability = 1.0 - iso.post_isolation_transmission)
+    return Risk(
+        event_time = iso_t,
+        block_probability = 1.0 - iso.post_isolation_transmission
+    )
 end
 
 # Leaky isolation's residual block stands in for the removal perfect isolation
@@ -156,7 +165,8 @@ function resolve_individual!(iso::Isolation, individual, state)
     # advancing it.
     if is_isolated(individual)
         is_test_positive(individual) || return nothing
-        self_t = onset_time(individual) + rand(state.rng, iso.onset_to_isolation_delay)
+        self_t = onset_time(individual) +
+            _sample_value(iso.onset_to_isolation_delay, state.rng, individual)
         self_t < isolation_time(individual) || return nothing
         # Remember what we are overwriting. Claiming provenance below tells a
         # `Scheduled` reset that this isolation is Isolation's to undo, but the
@@ -183,9 +193,9 @@ function resolve_individual!(iso::Isolation, individual, state)
     # the recorded time is held back to the onset.
     onset = onset_time(individual)
     traced_time = isnan(onset) ? Inf :
-                  max(get(individual.state, :traced_isolation_time, Inf), onset)
+        max(get(individual.state, :traced_isolation_time, Inf), onset)
     test_time = if is_test_positive(individual)
-        onset + rand(state.rng, iso.onset_to_isolation_delay)
+        onset + _sample_value(iso.onset_to_isolation_delay, state.rng, individual)
     else
         Inf
     end

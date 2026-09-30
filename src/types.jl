@@ -60,11 +60,17 @@ Throws for multi-type (function-based) offspring, which the single-type
 accessor cannot sensibly return.
 """
 function single_type_offspring(model::TransmissionModel)
-    hasproperty(model, :offspring) || throw(ArgumentError(
-        "$(typeof(model)) has no `offspring` field — did you forget to specialise single_type_offspring for it?"))
+    hasproperty(model, :offspring) || throw(
+        ArgumentError(
+            "$(typeof(model)) has no `offspring` field — did you forget to specialise single_type_offspring for it?"
+        )
+    )
     off = model.offspring
-    off isa Function && throw(ArgumentError(
-        "This function only works with single-type models (not multi-type function offspring)"))
+    off isa Function && throw(
+        ArgumentError(
+            "This function only works with single-type models (not multi-type function offspring)"
+        )
+    )
     return off
 end
 n_types(::TransmissionModel) = 1
@@ -148,14 +154,20 @@ mutable struct Individual{T <: Real}
     state::Dict{Symbol, Any}
 end
 
-function Individual(; id::Int, parent_id::Int = 0, generation::Int = 0,
+function Individual(;
+        id::Int, parent_id::Int = 0, generation::Int = 0,
         chain_id::Int = 1, infection_time::Real = 0.0,
         susceptibility::Real = 1.0, infectiousness::Real = 1.0,
-        state::Dict{Symbol, Any} = Dict{Symbol, Any}())
-    T = promote_type(typeof(infection_time), typeof(susceptibility),
-        typeof(infectiousness))
-    Individual{T}(id, parent_id, generation, chain_id, convert(T, infection_time),
-        convert(T, susceptibility), convert(T, infectiousness), Int[], state)
+        state::Dict{Symbol, Any} = Dict{Symbol, Any}()
+    )
+    T = promote_type(
+        typeof(infection_time), typeof(susceptibility),
+        typeof(infectiousness)
+    )
+    return Individual{T}(
+        id, parent_id, generation, chain_id, convert(T, infection_time),
+        convert(T, susceptibility), convert(T, infectiousness), Int[], state
+    )
 end
 
 # ── Simulation state ───────────────────────────────────────────────
@@ -186,6 +198,8 @@ _timetype(::SimulationState{T}) where {T} = T
 
 function Base.show(io::IO, s::SimulationState)
     status = s.extinct ? "extinct" : "active"
-    print(io,
-        "SimulationState(cases=$(s.cumulative_cases), individuals=$(length(s.individuals)), gen=$(s.current_generation), $(status))")
+    return print(
+        io,
+        "SimulationState(cases=$(s.cumulative_cases), individuals=$(length(s.individuals)), gen=$(s.current_generation), $(status))"
+    )
 end

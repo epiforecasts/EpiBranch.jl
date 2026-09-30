@@ -27,7 +27,7 @@ function chain_statistics(state::SimulationState)
     end
 
     cids = sort!(collect(keys(chain_size)))
-    DataFrame(
+    return DataFrame(
         chain_id = cids,
         size = [chain_size[c] for c in cids],
         length = [chain_maxgen[c] for c in cids]
@@ -56,5 +56,5 @@ function chain_statistics(states::Vector{<:SimulationState})
         append!(lengths, cs.length)
     end
 
-    DataFrame(sim_id = sim_ids, chain_id = chain_ids, size = sizes, length = lengths)
+    return DataFrame(sim_id = sim_ids, chain_id = chain_ids, size = sizes, length = lengths)
 end
