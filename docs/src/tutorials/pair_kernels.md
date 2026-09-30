@@ -10,6 +10,11 @@ the calendar.
 Use an ordinary `(infector, susceptible)` callable when IDs are sufficient. A
 `PairKernel` selects the richer forms without changing existing callbacks.
 Shared distributions and per-edge distribution vectors keep their existing use.
+That per-edge fast path is not itself calendar-aware: to scale a per-edge
+distribution by a `calendar` schedule, look the pair's distribution up inside a
+`PairKernel` callback instead of passing the vector directly, for example
+`PairKernel(context -> edges[context.infector][findfirst(==(context.susceptible),
+adjacency[context.infector])]; calendar = Steps(...))`.
 
 ## Fixed covariates and infection time
 

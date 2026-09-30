@@ -24,12 +24,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   form can read state that another intervention recorded on the individual,
   such as a group's own event time, so detection can speed up once a
   household's first case is found.
-- `StatefulKernel` shares sampled attributes and dated intervention histories
-  between structured simulation and likelihoods. `record_kernel` extracts typed
-  host records for inference. An infection layer can hold per-host times such
-  as onsets (`host_times`), which a live `StatefulKernel` reads in the
-  likelihood, so one kernel timed from symptom onset serves both simulation and
-  inference.
 - The households tutorial casts the classical households model as a branching
   process over households: the households-of-one limit, the offspring matrix as
   a multi-type `BranchingProcess`, and the scope of the approximation.
