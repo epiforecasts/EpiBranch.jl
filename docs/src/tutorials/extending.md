@@ -161,8 +161,8 @@ end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
 history. Set and undo isolation with `set_isolated!` and `clear_isolated!`.
 `Isolation` itself never records a case as isolated at or after
 [`outcome_time`](@ref): a self-report or trace that only fires that late
-would land after the case has already left the infectious period, so it is
-left unisolated rather than recorded too late to have mattered.
+arrives after the case has already left the infectious period, so the case
+is left unisolated instead of recorded after the fact.
 
 The tracing keys name two hooks because the two engines reach them
 differently: `apply_post_transmission!` on the generation-based engine, and
