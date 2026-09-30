@@ -49,10 +49,10 @@ Base.length(d::PairwiseSurvivalData) = length(d.sus)
 # callable `r -> Distribution` through which covariates enter.
 _rowkernel(k::ContinuousUnivariateDistribution, r) = k
 _rowkernel(k, r) = k(r)
-function _rowkernel(::Union{ContextualKernel, CalendarKernel, StatefulKernel}, r)
+function _rowkernel(::PairKernel, r)
     throw(
         ArgumentError(
-            "ContextualKernel, CalendarKernel and StatefulKernel require an InfectionLayer with source times; " *
+            "PairKernel requires an InfectionLayer with source times; " *
                 "for counting-process rows, supply a row-indexed kernel with those data"
         )
     )
@@ -110,7 +110,7 @@ holds, per host `i` (numbered `1:n`):
 and a scalar `obs_end`, the time community introductions stop (only read when
 there is a community hazard). Spread along the contact structure continues after
 it. A subtype may also hold `host_times`, a named tuple of further per-host time
-vectors such as `onset_time`, which a live [`StatefulKernel`](@ref) reads in the
+vectors such as `onset_time`, which a live [`PairKernel`](@ref) reads in the
 likelihood as it reads host state in simulation. `missing` marks a host without
 that time; a `NaN` entry is a recorded value, as simulation stores the onset of
 an asymptomatic case.
@@ -584,29 +584,27 @@ function _pair_kernel(k, layout::ContactPairsLayout, r, data)
     return pair_kernel(k, i, layout.sus[r], data.infection_time[i], data.infectious_time[i])
 end
 
-# A live stateful kernel reads each host through its projection, applied here to
-# the host as the infection layer records it.
-function _pair_kernel(k::StatefulKernel, layout::ContactPairsLayout, r, data)
+# A live PairKernel reads each host through its projection, applied here to the
+# host as the infection layer records it.
+function _pair_kernel(k::PairKernel, layout::ContactPairsLayout, r, data)
     i = layout.infector[r]
     j = layout.sus[r]
-    return k.callback(
+    result = k.callback(
         PairContext(i, j, data.infection_time[i]),
         k.state(_layer_host(data, i)), k.state(_layer_host(data, j))
     )
+    return _finish_kernel(k, result, data.infectious_time[i])
 end
-function _pair_kernel(
-        k::StatefulKernel{<:AbstractVector}, layout::ContactPairsLayout,
-        r, data
-    )
+function _pair_kernel(k::PairKernel{F, Nothing}, layout::ContactPairsLayout, r, data) where {F}
     i = layout.infector[r]
     return pair_kernel(k, i, layout.sus[r], data.infection_time[i], data.infectious_time[i])
 end
-
-function _pair_kernel(k::CalendarKernel, layout::ContactPairsLayout, r, data)
-    return _calendar_interval(
-        _pair_kernel(k.kernel, layout, r, data),
-        data.infectious_time[layout.infector[r]]
-    )
+function _pair_kernel(
+        k::PairKernel{F, <:AbstractVector}, layout::ContactPairsLayout,
+        r, data
+    ) where {F}
+    i = layout.infector[r]
+    return pair_kernel(k, i, layout.sus[r], data.infection_time[i], data.infectious_time[i])
 end
 
 # Streaming logsumexp, so the per-susceptible reduction allocates no
@@ -648,9 +646,6 @@ function _kernel_partype(
     ) where {T}
     return Distributions.partype(kernel)
 end
-function _kernel_partype(kernel::CalendarKernel, layout, data, ::Type{T}) where {T}
-    return _kernel_partype(kernel.kernel, layout, data, T)
-end
 function _kernel_partype(kernel, layout, data, ::Type{T}) where {T}
     for r in eachindex(layout.is_ext)
         layout.is_ext[r] && continue
@@ -674,10 +669,10 @@ one infected when none of its possible infectors is infectious, makes the whole
 configuration impossible, and the density is `-Inf` with a zero gradient.
 
 `kernel` is a `Distributions.jl` distribution shared by every pair, a callable
-`(infector, susceptible) -> Distribution` for covariates, a [`ContextualKernel`](@ref)
-that also receives the infector's infection time, or a per-edge vector
-parallel to an adjacency list (`kernel[i][k]` for host `i`'s `k`-th listed
-contact). `external_hazard` is a community hazard (a positive rate or a
+`(infector, susceptible) -> Distribution` for covariates, a [`PairKernel`](@ref)
+that also receives the infector's infection time (and, with host state, each
+host's record), or a per-edge vector parallel to an adjacency list
+(`kernel[i][k]` for host `i`'s `k`-th listed contact). `external_hazard` is a community hazard (a positive rate or a
 calendar-time distribution) that introduces cases over `[0, data.obs_end]`. With
 one, index cases are explained like any other case; without one they are
 conditioned on. Each host accrues the community hazard until the earlier of its

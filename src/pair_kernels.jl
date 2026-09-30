@@ -16,104 +16,89 @@ struct PairContext{T <: Real}
 end
 
 """
-    ContextualKernel(callback)
+    Steps(breaks, values)
 
-A pair kernel whose `callback(context::PairContext)` returns a contact-interval
-distribution. Supported by `NetworkProcess`, `HouseholdProcess`, and the
-`InfectionLayer` forms of [`pairwise_surv_loglik`](@ref).
+A piecewise-constant multiplier on calendar time: `values[1]` before
+`breaks[1]`, `values[k+1]` from `breaks[k]` (inclusive) to `breaks[k+1]`, and
+`values[end]` from `breaks[end]` onwards. `breaks` must be finite and strictly
+increasing, and every value non-negative; a value of zero switches transmission
+off from that point on.
+
+Used as the `calendar` a [`PairKernel`](@ref) multiplies its contact-interval
+hazard by, on the calendar-time axis rather than time since infectious opening.
+"""
+struct Steps{T <: Real}
+    breaks::Vector{T}
+    values::Vector{T}
+    function Steps{T}(breaks, values) where {T <: Real}
+        length(values) == length(breaks) + 1 || throw(
+            ArgumentError("Steps needs one more value than breaks")
+        )
+        issorted(breaks; lt = <=) || throw(
+            ArgumentError("Steps breaks must be strictly increasing")
+        )
+        all(isfinite, breaks) || throw(ArgumentError("Steps breaks must be finite"))
+        all(v -> v >= 0, values) || throw(
+            ArgumentError("Steps values must be non-negative")
+        )
+        return new{T}(Vector{T}(breaks), Vector{T}(values))
+    end
+end
+function Steps(breaks, values)
+    T = promote_type(eltype(breaks), eltype(values), Float64)
+    return Steps{T}(breaks, values)
+end
+
+# The multiplier in force at calendar time `t`.
+function (s::Steps)(t::Real)
+    return s.values[searchsortedlast(s.breaks, t) + 1]
+end
+
+"""
+    PairKernel(callback; state = nothing, calendar = nothing)
+
+A pair kernel: `callback` returns the contact-interval profile, measured from
+the infector's infectious opening, and optionally a step schedule that
+multiplies the rate on the calendar. Supported by `NetworkProcess`,
+`HouseholdProcess`, and the `InfectionLayer` forms of
+[`pairwise_surv_loglik`](@ref).
+
+With `state = nothing`, `callback(context::PairContext)` returns a
+contact-interval distribution, or a `(profile, calendar)` named tuple. This is
+the case where a kernel reads only fixed covariates and the infector's
+infection time:
 
 ```julia
-kernel = ContextualKernel(context ->
-    Exponential(exp(0.1 * context.infector_infection_time)))
+kernel = PairKernel(context -> Exponential(exp(0.1 * context.infector_infection_time)))
 ```
 
-The callback must be deterministic and describe the same distribution for a pair
-throughout the infector's infectious window. It can use fixed covariates and the
-infector's infection time. It does not receive live intervention state or the
-current clock. Wrap it in `CalendarKernel` when the returned distribution
-describes a calendar-time hazard. Unwrapped callables retain their `(infector_id, susceptible_id)` signature.
-"""
-struct ContextualKernel{F}
-    callback::F
-end
+With `state` given, `callback(context, source, target)` also receives each
+host's record: `state(individual)` selects it in simulation, from an
+`EpiBranch.Individual`. For likelihood evaluation, supply a vector of records
+indexed by population ID as `state`, or use [`record_kernel`](@ref) to extract
+them after simulation; the callback is identical in both paths.
 
-"""
-    pair_kernel(kernel, infector, susceptible, infector_infection_time)
-    pair_kernel(kernel, infector, susceptible, infector_infection_time, infectious_time)
-    pair_kernel(kernel, infector, susceptible, infector_infection_time, infectious_time,
-        state)
+`calendar`, a [`Steps`](@ref) schedule, multiplies the returned profile's
+hazard by the schedule's value at the calendar date (the infector's infectious
+opening plus time elapsed). A pair whose schedule differs from the shared one —
+because it depends on a host's record — returns it instead from the callback,
+as `(profile = ..., calendar = ...)`; that overrides the kernel's own
+`calendar` for that pair.
 
-Resolve a contact-interval distribution for an ordered pair. A shared continuous
-distribution is returned unchanged; an ordinary callable receives the two IDs;
-a [`ContextualKernel`](@ref) receives a [`PairContext`](@ref). Structured-process
-extensions can use this method to share kernel semantics with the likelihood.
-The five-argument form supplies the infectious opening required by `CalendarKernel`.
-The six-argument form also passes the `SimulationState`, from which a live
-[`StatefulKernel`](@ref) reads both hosts' records; simulation must use it, since
-the shorter forms are for likelihoods and throw for a live kernel. Every other
-kernel returns what the five-argument form does.
-"""
-pair_kernel(k::ContinuousUnivariateDistribution, i, j, infection_time) = k
-pair_kernel(k, i, j, infection_time) = k(i, j)
-function pair_kernel(k::ContextualKernel, i, j, infection_time)
-    return k.callback(PairContext(i, j, infection_time))
-end
+```julia
+PairKernel((ctx, source, target) -> Gamma(2.0, 1.5);
+           calendar = Steps([30.0], [1.0, 0.25]),   # shared policy: rate falls to a quarter on day 30
+           state = ind -> (age = ind.state[:age],))  # optional per-person record
 
-"""
-    CalendarKernel(kernel)
+PairKernel((ctx, source, target) ->
+               (profile = Exponential(2.5), calendar = Steps([target.date], [1.0, 0.25]));
+           state = ind -> (date = get(ind.state, :policy_time, Inf)::Float64,))
+```
 
-Interpret a shared distribution, pair callback, `ContextualKernel` or
-`StatefulKernel` on the
-simulation's calendar-time axis. In network and household models, condition the
-returned distribution on surviving to the infector's infectious opening, then
-subtract that opening to obtain a contact interval. Network per-edge distribution
-vectors are supported too.
-
-The distribution's hazard at calendar date `t` is the pair's contact rate at `t`.
-The same conditioning is used by infection-layer likelihoods, including when
-infectious opening times change during inference. The calendar law must have
-positive survival at each opening. Supply parameters and covariates consistently to simulation and inference.
-A live `StatefulKernel` may update its hazard through dated histories; other
-kernels remain fixed throughout a simulation.
-"""
-struct CalendarKernel{K}
-    kernel::K
-end
-
-# The five-argument interface also supplies the origin of the contact interval.
-pair_kernel(k, i, j, infection_time, infectious_time) = pair_kernel(k, i, j, infection_time)
-function pair_kernel(k::CalendarKernel, i, j, infection_time, infectious_time)
-    return _calendar_interval(pair_kernel(k.kernel, i, j, infection_time), infectious_time)
-end
-function pair_kernel(::CalendarKernel, i, j, infection_time)
-    throw(ArgumentError("CalendarKernel also requires the infectious opening time"))
-end
-function _calendar_interval(distribution, opening)
-    return truncated(distribution; lower = opening) - opening
-end
-
-"""
-    StatefulKernel(state, callback)
-
-A pair kernel with explicit host state. In simulation, `state(individual)` selects
-an immutable record (for example a named tuple of attributes and event dates).
-`callback(context::PairContext, source, target)` returns the contact-interval
-law from those records. Wrap in [`CalendarKernel`](@ref) for calendar-time laws.
-
-For likelihood evaluation, supply a vector of records indexed by population ID
-as `state`, or use [`record_kernel`](@ref) to extract them after simulation.
-The callback is identical in both paths. Records may contain typed covariates
-and dated histories.
-
-A projection can also serve the likelihood directly when the infection layer
-holds the per-host times it reads, such as an onset time an infector's
-infectiousness is timed from. The likelihood then applies the projection to
-each host as a [`LayerHost`](@ref), which has the `id` and `infection_time` of
-an individual and a `state` holding the layer's `host_times` under their keys.
-A projection that reads `ind.id`, `ind.infection_time` and the recorded times
-through `ind.state` works in both paths, so the same kernel scores an augmented
-infection layer, whose onsets change during inference. Reading a key the layer
-did not record raises an error; record every time the projection reads.
+The pair's hazard is the profile's hazard at time since opening, multiplied by
+the schedule's value on the calendar day. Simulation and the likelihood both
+score this exactly, splitting the cumulative hazard into segments at the
+schedule's breakpoints.
 
 Callbacks must describe a predictable hazard: adding an event at time `t` must
 not change the hazard before `t`. A final vaccinated flag alone is insufficient;
@@ -127,16 +112,21 @@ change, and a run whose records never change follows the same distribution as
 an ordinary kernel. With interventions, a household model races every household
 together so that a policy can read cases in other households, which draws the
 same outbreak from a different random stream.
+
+A plain distribution remains the simplest kernel and needs no `PairKernel`
+wrapper.
 """
-struct StatefulKernel{S, F}
-    state::S
+struct PairKernel{F, S, C}
     callback::F
+    state::S
+    calendar::C
 end
+PairKernel(callback; state = nothing, calendar = nothing) = PairKernel(callback, state, calendar)
 
 """
     LayerHost
 
-One host of an [`InfectionLayer`](@ref) as a live [`StatefulKernel`](@ref)
+One host of an [`InfectionLayer`](@ref) as a live [`PairKernel`](@ref)
 projection sees it in a likelihood: its population `id`, its `infection_time`
 (`NaN` if never infected), and a `state` holding the layer's per-host times
 under their keys. `state` reads like an individual's: `state[key]` and
@@ -192,9 +182,8 @@ _pair_state(records::AbstractVector, individual) = records[individual.id]
 # depend on host state only through this record — the restriction `record_kernel`
 # already relies on to reproduce a run's hazards from recorded records alone.
 _kernel_projection(k) = nothing
-_kernel_projection(k::StatefulKernel) = k.state
-_kernel_projection(k::StatefulKernel{<:AbstractVector}) = nothing
-_kernel_projection(k::CalendarKernel) = _kernel_projection(k.kernel)
+_kernel_projection(k::PairKernel) = k.state
+_kernel_projection(k::PairKernel{F, <:AbstractVector}) where {F} = nothing
 _live_kernel(k) = _kernel_projection(k) !== nothing
 
 # The projection a race has to watch for changes. Resolving a case writes only to
@@ -206,56 +195,189 @@ function _watched_projection(kernel, interventions)
     return isempty(interventions) ? nothing : _kernel_projection(kernel)
 end
 
+# Evaluate a PairKernel's callback for an ordered pair, given whatever host
+# records `state` selects. `Nothing` state is the contextual case (the callback
+# takes only the context); an `AbstractVector` state is already recorded and
+# indexed directly by population id; anything else is a live projection that
+# needs the running `SimulationState` to apply to each `Individual`.
+_pair_result(k::PairKernel{F, Nothing}, ctx, i, j) where {F} = k.callback(ctx)
+_pair_result(k::PairKernel{F, Nothing}, ctx, i, j, ::SimulationState) where {F} = k.callback(ctx)
+function _pair_result(k::PairKernel{F, <:AbstractVector}, ctx, i, j) where {F}
+    return k.callback(ctx, k.state[i], k.state[j])
+end
+function _pair_result(k::PairKernel{F, <:AbstractVector}, ctx, i, j, ::SimulationState) where {F}
+    return k.callback(ctx, k.state[i], k.state[j])
+end
+function _pair_result(k::PairKernel, ctx, i, j, state::SimulationState)
+    return k.callback(
+        ctx, _pair_state(k.state, state.individuals[i]),
+        _pair_state(k.state, state.individuals[j])
+    )
+end
+function _pair_result(::PairKernel, ctx, i, j)
+    throw(
+        ArgumentError(
+            "a live PairKernel needs simulation state; " *
+                "supply recorded host states for likelihood evaluation with record_kernel"
+        )
+    )
+end
+
+# Turn a callback's result — a profile, or a `(profile, calendar)` named tuple —
+# into the usable contact-interval kernel: the profile unchanged with no
+# calendar in force, or a hazard scaled by the calendar schedule from `opening`.
+function _finish_kernel(k::PairKernel, result, opening)
+    profile, sched = result isa NamedTuple ?
+        (result.profile, get(result, :calendar, k.calendar)) : (result, k.calendar)
+    sched === nothing && return profile
+    opening === nothing && throw(
+        ArgumentError("PairKernel's calendar schedule needs the infector's infectious opening time")
+    )
+    return _CalendarScaledKernel(profile, sched, opening)
+end
+
+pair_kernel(k::PairKernel, i, j, infection_time) =
+    _finish_kernel(k, _pair_result(k, PairContext(i, j, infection_time), i, j), nothing)
+function pair_kernel(k::PairKernel, i, j, infection_time, infectious_time)
+    return _finish_kernel(
+        k, _pair_result(k, PairContext(i, j, infection_time), i, j), infectious_time
+    )
+end
+function pair_kernel(k::PairKernel, i, j, infection_time, infectious_time, state::SimulationState)
+    return _finish_kernel(
+        k, _pair_result(k, PairContext(i, j, infection_time), i, j, state), infectious_time
+    )
+end
+
+"""
+    pair_kernel(kernel, infector, susceptible, infector_infection_time)
+    pair_kernel(kernel, infector, susceptible, infector_infection_time, infectious_time)
+    pair_kernel(kernel, infector, susceptible, infector_infection_time, infectious_time,
+        state)
+
+Resolve a contact-interval distribution for an ordered pair. A shared continuous
+distribution is returned unchanged; an ordinary callable receives the two IDs;
+a [`PairKernel`](@ref) receives a [`PairContext`](@ref) and, when it has host
+state, each host's record. The five-argument form supplies the infectious
+opening required by a `PairKernel` with a calendar schedule. The six-argument
+form also passes the `SimulationState`, from which a live `PairKernel` reads
+both hosts' records; simulation must use it, since the shorter forms are for
+likelihoods and throw for a live kernel. Every other kernel returns what the
+five-argument form does.
+"""
+pair_kernel(k::ContinuousUnivariateDistribution, i, j, infection_time) = k
+pair_kernel(k, i, j, infection_time) = k(i, j)
+
+# The five-argument interface also supplies the origin of the contact interval.
+pair_kernel(k, i, j, infection_time, infectious_time) = pair_kernel(k, i, j, infection_time)
+
 # The extra argument is supplied only by simulation; ordinary kernels retain
 # their existing extension methods and compiled likelihood fast paths.
 function pair_kernel(k, i, j, infection_time, opening, state)
     return pair_kernel(k, i, j, infection_time, opening)
 end
-function pair_kernel(k::StatefulKernel, i, j, infection_time, opening, state)
-    return k.callback(
-        PairContext(i, j, infection_time),
-        _pair_state(k.state, state.individuals[i]),
-        _pair_state(k.state, state.individuals[j])
-    )
-end
-function pair_kernel(k::StatefulKernel{<:AbstractVector}, i, j, infection_time)
-    return k.callback(PairContext(i, j, infection_time), k.state[i], k.state[j])
-end
-function pair_kernel(::StatefulKernel, i, j, infection_time)
-    throw(
-        ArgumentError(
-            "a live StatefulKernel needs simulation state; " *
-                "supply recorded host states for likelihood evaluation with record_kernel"
-        )
-    )
-end
-function pair_kernel(k::CalendarKernel, i, j, infection_time, opening, state)
-    return _calendar_interval(pair_kernel(k.kernel, i, j, infection_time, opening, state), opening)
-end
 
 """
     record_kernel(kernel, state::SimulationState)
 
-Return a kernel with the same callback and a vector of host records extracted
-from a finished simulation. For a `StatefulKernel`, apply its projection to each
+Return a kernel with the same callback and calendar and a vector of host
+records extracted from a finished simulation. For a live [`PairKernel`](@ref)
+(one whose `state` is a projection function), apply the projection to each
 individual and copy the results so later simulation mutations cannot change the
-record. A `CalendarKernel` preserves its calendar-time conversion. Other kernels
-are returned unchanged.
+record. Other kernels are returned unchanged.
 
 The projection must retain event dates or full histories when hazards change.
 This is extraction, not automatic history logging: overwritten past values cannot
 be recovered. The resulting likelihood evaluates the transmission contribution along these
 histories. Include separate attribute/intervention models when their probabilities
 also belong in the joint likelihood. During inference, construct
-`StatefulKernel(records, callback)` with the current latent records on each call.
+`PairKernel(callback; state = records)` with the current latent records on each call.
 """
 record_kernel(k, state::SimulationState) = k
-function record_kernel(k::StatefulKernel, state::SimulationState)
-    return StatefulKernel(
+record_kernel(k::PairKernel{F, Nothing}, state::SimulationState) where {F} = k
+function record_kernel(k::PairKernel, state::SimulationState)
+    return PairKernel(
+        k.callback,
         [deepcopy(_pair_state(k.state, ind)) for ind in state.individuals],
-        k.callback
+        k.calendar
     )
 end
-function record_kernel(k::CalendarKernel, state::SimulationState)
-    return CalendarKernel(record_kernel(k.kernel, state))
+
+# ── Calendar-scaled kernels ───────────────────────────────────────────
+#
+# The contact interval since `opening` under a `profile` hazard multiplied by a
+# `Steps` schedule on the calendar-time axis. The multiplier is constant on
+# each step, so the cumulative hazard over any interval splits into segments,
+# each a scaled difference of the profile's cumulative hazard, and inverting a
+# target log-survival walks the same segments. This keeps simulation and the
+# likelihood exact wherever the profile's own hazard is.
+
+struct _CalendarScaledKernel{P, S <: Steps, T <: Real}
+    profile::P
+    calendar::S
+    opening::T
 end
+
+# The segment starting at time-since-opening `t_lo`: its multiplier and the
+# time-since-opening its schedule step ends at (`Inf` for the last step).
+function _calendar_segment(k::_CalendarScaledKernel, t_lo)
+    calendar_t = k.opening + t_lo
+    idx = searchsortedlast(k.calendar.breaks, calendar_t) + 1
+    m = k.calendar.values[idx]
+    seg_hi = idx <= length(k.calendar.breaks) ?
+        k.calendar.breaks[idx] - k.opening : oftype(float(t_lo), Inf)
+    return m, seg_hi
+end
+
+function SurvivalDistributions.cumhazard(k::_CalendarScaledKernel, τ::Real)
+    τ >= 0 || throw(ArgumentError("τ must be non-negative"))
+    total = zero(float(τ))
+    t_lo = zero(float(τ))
+    while t_lo < τ
+        m, seg_hi = _calendar_segment(k, t_lo)
+        t_hi = min(τ, seg_hi)
+        m == 0 ||
+            (total += m * (cumhazard(k.profile, t_hi) - cumhazard(k.profile, t_lo)))
+        t_lo = t_hi
+    end
+    return total
+end
+
+function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
+    m, _ = _calendar_segment(k, τ)
+    return loghazard(k.profile, τ) + log(m)
+end
+
+Distributions.logccdf(k::_CalendarScaledKernel, τ::Real) = -cumhazard(k, τ)
+
+# Invert a target log-survival `lp` segment by segment: consume each step's
+# cumulative hazard budget until the remaining budget is met inside the
+# current step, then invert within the profile alone with the same machinery
+# used for a constant rate multiplier.
+function Distributions.invlogccdf(k::_CalendarScaledKernel, lp::Real)
+    isfinite(lp) || return oftype(float(lp), Inf)
+    lp <= 0 || throw(ArgumentError("invlogccdf needs a non-positive log-survival"))
+    target = float(-lp)
+    acc = zero(target)
+    t_lo = zero(target)
+    while true
+        m, seg_hi = _calendar_segment(k, t_lo)
+        if m > 0
+            base = cumhazard(k.profile, t_lo)
+            seg_cum = isfinite(seg_hi) ?
+                m * (cumhazard(k.profile, seg_hi) - base) : oftype(target, Inf)
+            if acc + seg_cum >= target
+                want = base + (target - acc) / m
+                return _time_at_log_survival(k.profile, -want)
+            end
+            acc += seg_cum
+        end
+        isfinite(seg_hi) || return oftype(target, Inf)
+        t_lo = seg_hi
+    end
+    return
+end
+
+Base.rand(rng::AbstractRNG, k::_CalendarScaledKernel) = _time_at_log_survival(k, log(rand(rng)))
+Base.minimum(k::_CalendarScaledKernel) = minimum(k.profile)
+Distributions.partype(k::_CalendarScaledKernel) = Distributions.partype(k.profile)
