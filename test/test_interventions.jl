@@ -285,6 +285,72 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test isolation_time(negative) == 50.0
     end
 
+    @testset "Isolation does not record a case as isolated after its outcome" begin
+        # A case whose isolation time would fall after `:outcome_time` (its
+        # recovery, death, or other terminal transition) has already left the
+        # infectious period by then, so isolating it has no effect on
+        # transmission and should not be recorded.
+        iso = Isolation(onset_to_isolation_delay = Dirac(5.0))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+
+        # Self-reported pathway: onset at 1.0 + delay 5.0 = 6.0, after the
+        # case recovered at 2.0.
+        recovered_before_test = Individual(id = 1)
+        recovered_before_test.state[:onset_time] = 1.0
+        recovered_before_test.state[:test_positive] = true
+        recovered_before_test.state[:outcome_time] = 2.0
+        EpiBranch.resolve_individual!(iso, recovered_before_test, state)
+        @test !is_isolated(recovered_before_test)
+
+        # Traced pathway: the same bound applies regardless of which pathway
+        # produces the isolation time.
+        recovered_before_trace = Individual(id = 2)
+        recovered_before_trace.state[:onset_time] = 1.0
+        recovered_before_trace.state[:test_positive] = false
+        recovered_before_trace.state[:traced_isolation_time] = 6.0
+        recovered_before_trace.state[:outcome_time] = 2.0
+        EpiBranch.resolve_individual!(iso, recovered_before_trace, state)
+        @test !is_isolated(recovered_before_trace)
+
+        # An isolation time before the outcome is unaffected.
+        recovered_after = Individual(id = 3)
+        recovered_after.state[:onset_time] = 1.0
+        recovered_after.state[:test_positive] = true
+        recovered_after.state[:outcome_time] = 10.0
+        EpiBranch.resolve_individual!(iso, recovered_after, state)
+        @test is_isolated(recovered_after)
+        @test isolation_time(recovered_after) ≈ 6.0 atol = 1.0e-6
+
+        # An already-isolated (quarantined) individual whose self-report
+        # would fall after the outcome must not overwrite the quarantine.
+        quarantined = Individual(id = 4)
+        quarantined.state[:onset_time] = 1.0
+        quarantined.state[:test_positive] = true
+        quarantined.state[:outcome_time] = 2.0
+        set_isolated!(quarantined, 50.0)
+        EpiBranch.resolve_individual!(iso, quarantined, state)
+        @test isolation_time(quarantined) == 50.0
+        @test !get(quarantined.state, :isolated_by_isolation, false)
+    end
+
+    @testset "End-to-end: isolation does not follow recovery" begin
+        # Reproduces the reported case: onset at 1.0, recovery a day later,
+        # and a self-reported isolation delay long enough to fall after it.
+        model = ModelSpec(
+            BranchingProcess(Poisson(0.0), Exponential(1.0e9));
+            attributes = clinical_presentation(incubation_period = Dirac(1.0)),
+            progression = [Transition(:recovered; from = :onset, delay = 1.0, terminal = true)],
+            interventions = [Isolation(onset_to_isolation_delay = Dirac(5.0))]
+        )
+        state = simulate(model; n_initial = 1, rng = StableRNG(1))
+        ind = only(state.individuals)
+        @test ind.state[:recovered_time] == 2.0
+        @test !is_isolated(ind)
+    end
+
     @testset "Asymptomatic cases are not isolated" begin
         rng = StableRNG(42)
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
@@ -1846,7 +1912,14 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # A vaccine with efficacy = 0.0 leaves transmission untouched;
                 # severity_efficacy = 1.0 fully protects anyone whose immunity
                 # has developed by their own onset from the (otherwise
-                # certain) death drawn below.
+                # certain) death drawn below. Death's own delay is fixed away
+                # from onset (rather than 0) so isolation and tracing have
+                # room to reach a case, and so RingVaccination, before it
+                # dies; kept a fixed `Real` rather than a `Distribution` so it
+                # draws no extra random number, which would otherwise desync
+                # the two scenarios' RNG streams whenever they disagree on
+                # whether death fires and break the case-count comparison
+                # below.
                 iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
                 ct = ContactTracing(
                     probability = 1.0,
@@ -1854,7 +1927,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 )
                 progression = [
                     Death(
-                        delay = 0.0,
+                        delay = 10.0,
                         probability = (rng, ind) -> immunity_time(ind) <= onset_time(ind) ?
                             1.0 - severity_efficacy(ind) : 1.0
                     ),
@@ -1916,7 +1989,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @testset "Immunity arriving after the outcome confers no protection" begin
                 # delay_to_immunity is long enough that immunity never
                 # develops before onset, so severity_efficacy must leave
-                # every death exactly as if the dose were never given.
+                # every death exactly as if the dose were never given. Death's
+                # own delay is fixed away from onset (rather than 0) so
+                # isolation and tracing have room to reach a case before it
+                # dies.
                 iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
                 ct = ContactTracing(
                     probability = 1.0,
@@ -1924,7 +2000,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 )
                 progression = [
                     Death(
-                        delay = 0.0,
+                        delay = 10.0,
                         probability = (rng, ind) -> immunity_time(ind) <= onset_time(ind) ?
                             1.0 - severity_efficacy(ind) : 1.0
                     ),
