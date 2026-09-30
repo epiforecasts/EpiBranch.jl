@@ -296,10 +296,10 @@ function fit(
     # bad score instead of letting the domain check inside `ll` throw.
     function neg_ll(θ)
         R, k = exp(θ[1]), exp(θ[2])
-        # The lower bound matches the one used for the golden-section passes
-        # below: below it, `NegBin`'s `p = k / (k + R)` rounds to `1.0` and
-        # its `mean` collapses to exactly `0.0`, which fails `GammaBorel`'s
-        # domain check just as surely as `R`/`k` underflowing to `0.0` would.
+        # The lower bound matches the golden-section passes below: below it,
+        # `NegBin`'s `p = k / (k + R)` rounds to `1.0` and its `mean`
+        # collapses to exactly `0.0`, failing `GammaBorel`'s domain check the
+        # same way `R`/`k` underflowing to `0.0` would.
         (R <= 1.0e-8 || k <= 1.0e-8 || R >= r_bound || k >= _K_SEARCH_BOUND) && return Inf
         return -ll(R, k)
     end
