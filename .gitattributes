@@ -11,3 +11,9 @@
 *.gif binary
 *.ico binary
 *.pdf binary
+
+# Every pull request appends under the same heading, so two of them conflict on
+# entries that do not disagree. Union takes both sides' lines instead. It never
+# reports a conflict, so two edits to one entry both survive and are caught in
+# review rather than by git.
+CHANGELOG.md merge=union
