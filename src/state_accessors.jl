@@ -25,6 +25,16 @@ incubation period.
 """
 incubation_period(ind::Individual) = onset_time(ind) - ind.infection_time
 
+"""
+Time of the individual's terminal outcome — the earliest terminal
+[`Transition`](@ref) to fire, e.g. recovery or death (`Inf` if none has
+fired, whether because the case is still ongoing or the progression has no
+terminal transition); a dual under AD.
+"""
+function outcome_time(ind::Individual{T}) where {T}
+    return convert(T, get(ind.state, :outcome_time, T(Inf)))::T
+end
+
 """Whether the individual is isolated."""
 is_isolated(ind::Individual) = get(ind.state, :isolated, false)::Bool
 
