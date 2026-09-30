@@ -12,6 +12,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- `Isolation`'s `onset_to_isolation_delay` accepts a `Real`, a `Distribution`,
+  or a function `(rng, ind) -> Real`, matching `test_sensitivity`. The function
+  form can read state that another intervention recorded on the individual,
+  such as a group's own event time, so detection can speed up once a
+  household's first case is found.
 - `StatefulKernel` shares sampled attributes and dated intervention histories
   between structured simulation and likelihoods. `record_kernel` extracts typed
   host records for inference. An infection layer can hold per-host times such
