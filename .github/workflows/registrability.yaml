@@ -5,8 +5,14 @@ name: Registrability
 # Registration-safety checks (thin caller of the EpiAware/.github reusable):
 # that every dependency is registrable, and that no org reverse-dependency's
 # compat is stranded by the version under test. Runs when a change could
-# affect registrability (a Project.toml edit), on demand, and on main so the
-# default branch is always known-registrable.
+# affect registrability (a Project.toml edit), on demand, and on main.
+#
+# Covers the root package alone. `lib/EpiNetwork` and `lib/EpiHouseholds` are
+# separately registrable and both pin `EpiBranch` through `[sources]`, which is
+# the blocker this checks for, but the reusable takes its package directory from
+# script arguments rather than a `workflow_call` input, so a caller cannot point
+# it at them. Covering them needs a `pkg_dir` input upstream in
+# `EpiAware/.github`, and until then their registrability is unguarded.
 #
 # The reverse-dep check is a warning by default; a breaking release
 # legitimately strands a downstream bound. Set fail_on_revdep_break: true on
