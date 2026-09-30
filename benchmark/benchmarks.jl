@@ -93,11 +93,12 @@ SUITE["Evaluation"]["pairwise_surv_loglik"] = @benchmarkable pairwise_surv_logli
     $(Exponential(1.2)), $LIK_DATA, $LIK_LAYOUT
 )
 
-# Closed-form analytics, where a regression would show up as a change in the
-# number of fixed-point iterations rather than in allocation.
+# Closed-form analytics. `chain_size_distribution` returns a law rather than
+# computing one, so the size law is timed by evaluating it.
 SUITE["Evaluation"]["extinction_probability"] = @benchmarkable extinction_probability(
     $(BranchingProcess(Poisson(1.5)))
 )
-SUITE["Evaluation"]["chain_size_distribution"] = @benchmarkable chain_size_distribution(
-    $(BranchingProcess(Poisson(0.8)))
+const CHAIN_LAW = chain_size_distribution(BranchingProcess(Poisson(0.8)))
+SUITE["Evaluation"]["chain size loglikelihood"] = @benchmarkable loglikelihood(
+    $CHAIN_LAW, $(collect(1:50))
 )
