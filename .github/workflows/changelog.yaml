@@ -25,10 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          # Two, so the merge commit's parents are both present.
+          fetch-depth: 2
       - name: Check for a changelog fragment
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           # Tolerated so this workflow can merge before or after the one that
           # creates the directory.
@@ -36,7 +35,19 @@ jobs:
             echo "no changelog.d/ in this revision: nothing to check"
             exit 0
           fi
-          added=$(git diff --name-only --diff-filter=d "$BASE_SHA"...HEAD \
+          # `HEAD` is `refs/pull/N/merge`, so `HEAD^1` is the current base tip
+          # and the diff is this pull request's own change. `base.sha` from the
+          # event is the base as it stood when the branch was last pushed,
+          # which in this repository is routinely several merges behind, and
+          # diffing from it would count a fragment another pull request merged
+          # in the meantime as this one's.
+          if ! git rev-parse -q --verify HEAD^2 >/dev/null; then
+            echo "HEAD is not a merge ref, so the base cannot be identified." >&2
+            exit 1
+          fi
+          # `A` for added: a modification to someone else's existing fragment
+          # is not this pull request's entry.
+          added=$(git diff --name-only --diff-filter=A HEAD^1 HEAD \
             -- 'changelog.d/*.md' | grep -v '^changelog.d/README.md$' || true)
           if [ -z "$added" ]; then
             echo "This pull request adds no changelog fragment."
