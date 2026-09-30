@@ -13,7 +13,11 @@
 *.pdf binary
 
 # Every pull request appends under the same heading, so two of them conflict on
-# entries that do not disagree. Union takes both sides' lines instead. It never
-# reports a conflict, so two edits to one entry both survive and are caught in
-# review rather than by git.
+# entries that do not disagree. Union takes both sides' lines instead.
+#
+# It never reports a conflict, and that costs something at release time. A
+# release empties `## [Unreleased]`; a branch that merges main afterwards takes
+# the lines from both sides, so the emptied entries come back under that heading
+# with a clean merge and no warning. After merging a release into an open
+# branch, read that section before pushing.
 CHANGELOG.md merge=union
