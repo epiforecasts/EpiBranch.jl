@@ -36,3 +36,8 @@ concurrency:
 jobs:
   registrability:
     uses: EpiAware/.github/.github/workflows/registrability.yml@24c8d984a679b1d46c1c04afc9ea5cdecaa1730d
+    with:
+      # The reusable's `org` defaults to EpiAware, and this package lives in
+      # epiforecasts. Left at the default the reverse-dependency scan reads a
+      # different organisation, finds nothing, and reports that as all-clear.
+      org: epiforecasts
