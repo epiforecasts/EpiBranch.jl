@@ -10,6 +10,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 Development versions target 0.2.0. Both companion packages require EpiBranch 0.2;
 EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
+<!-- releases go below this line -->
+
 ### Added
 
 - `Isolation`'s `onset_to_isolation_delay` accepts a `Real`, a `Distribution`,
@@ -452,8 +454,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   first trigger found even once a genuinely earlier one turned up. A settled
   member's dose, and a dose another vaccination already gave, still keep
   their date.
-
-<!-- releases go below this line -->
 
 ## [0.1.0] - 2026-06-16
 
