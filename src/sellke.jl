@@ -518,7 +518,11 @@ A model with several transmission routes passes `routes`, a collection of
 opens and closes on its own window, and only a route listing
 `INTERVENTION_REMOVAL` in its `until` is cut by the interventions' removals and
 blocked by removal risks such as isolation. Other risks select their routes
-through [`risk_applies`](@ref).
+through [`risk_applies`](@ref). A case infected along one of these routes has
+the route's `name` written to its `:infection_route`, so a run's cases can be
+broken down by setting without reconstructing it from the population structure.
+The single-window shorthand writes nothing, since it has no named route to
+report.
 
 `introduction`, when given, is the `(kernel, until)` of the community hazard the
 model seeded its members from: the contact-interval distribution of an
@@ -530,7 +534,8 @@ blocked introduction is followed by the next one from the same hazard. The risks
 of isolation and quarantine are not: they
 stand in for removing an infector, and an introduction's source is outside the
 population. Omit `introduction` for a model whose seeds are index cases, which
-are put to no risk at all.
+are put to no risk at all. An introduced case's `:infection_route` is
+`:external`, whether or not the model also names routes.
 
 `max_time` ends the race at that time: individuals whose infection would fall
 later are left uninfected, and the state is exactly the full run's state
@@ -751,6 +756,13 @@ function _sellke_race!(
             ind.parent_id = infector.id
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
+            # Only a model with named routes (`routes`, not the single-window
+            # shorthand) has a route worth reporting; the shorthand's one window
+            # is an implementation detail, not a setting a calibration target
+            # would break cases down by.
+            routes === nothing || (ind.state[:infection_route] = rts[opening.route][1].name)
+        elseif introduction !== nothing
+            ind.state[:infection_route] = :external
         end
         # A pre-created node has no infection time, and so no onset, until now.
         # Derive the onset from the infection time before transitions and
