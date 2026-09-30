@@ -28,6 +28,9 @@ bullet when assembled, so write it flush left.
     task changelog          # what the next release's section will say
     task changelog-release -- 0.2.0
 
-`changelog-release` folds every fragment into `CHANGELOG.md` under a new
-version heading, deletes the fragments, and leaves `## [Unreleased]` empty for
-the next cycle. Run it on the release branch and commit the result.
+`changelog-release` folds every fragment into `CHANGELOG.md` under a new version
+heading and deletes the fragments. Entries already sitting under
+`## [Unreleased]` are merged in by category, so each heading appears once. The
+prose above those headings describes the unreleased state, so it stays where it
+is; edit it yourself if the release makes it wrong. Run this on the release
+branch and read the result before committing.

@@ -54,16 +54,23 @@ end
 function split_unreleased(body)
     preamble = IOBuffer()
     entries = Dict{String, String}()
+    order = String[]
     current = ""
     buffer = IOBuffer()
     function flush_current()
         isempty(current) && return nothing
         text = rstrip(String(take!(buffer)))
-        isempty(text) || (entries[current] = text)
+        if !isempty(text)
+            # Appended, never assigned: a merge leaves two `### Added` blocks
+            # under one heading, and assigning would drop the first.
+            entries[current] = haskey(entries, current) ?
+                entries[current] * "\n" * text : text
+            current in order || push!(order, current)
+        end
         return nothing
     end
     for line in split(body, '\n')
-        heading = match(r"^###\s+(\w+)\s*$", line)
+        heading = match(r"^###\s+([\w ]+?)\s*$", line)
         if heading !== nothing
             flush_current()
             current = lowercase(heading.captures[1])
@@ -72,12 +79,16 @@ function split_unreleased(body)
         println(isempty(current) ? preamble : buffer, line)
     end
     flush_current()
-    return rstrip(String(take!(preamble))), entries
+    return rstrip(String(take!(preamble))), entries, order
 end
 
-function render(fragments, existing = Dict{String, String}())
+function render(fragments, existing = Dict{String, String}(), order = String[])
     io = IOBuffer()
-    for category in CATEGORIES
+    # The six standard categories first, then any other heading the file already
+    # had, in the order it had them. Carried through rather than dropped: this
+    # rewrites the project's history, so an unrecognised heading must survive.
+    extra = filter(c -> !(c in CATEGORIES), order)
+    for category in vcat(CATEGORIES, extra)
         selected = filter(f -> f.category == category, fragments)
         carried = get(existing, category, "")
         (isempty(selected) && isempty(carried)) && continue
@@ -92,16 +103,21 @@ function render(fragments, existing = Dict{String, String}())
 end
 
 function release!(version, fragments)
+    isempty(strip(version)) && error("give a version, e.g. `changelog-release -- 0.2.0`.")
     source = read(CHANGELOG, String)
+    occursin("## [$version]", source) &&
+        error("$CHANGELOG already has a '## [$version]' section.")
     marker = findfirst(UNRELEASED, source)
     marker === nothing && error("$CHANGELOG has no '$UNRELEASED' heading.")
     rest = source[(last(marker) + 1):end]
     next_section = findfirst("\n## ", rest)
-    body = next_section === nothing ? rest : rest[1:(first(next_section) - 1)]
+    # `prevind`, because a line ending in a multibyte character before a `##`
+    # heading would make a byte index land mid-character and throw.
+    body = next_section === nothing ? rest : rest[1:prevind(rest, first(next_section))]
     tail = next_section === nothing ? "" : rest[first(next_section):end]
 
-    preamble, existing = split_unreleased(body)
-    entries = render(fragments, existing)
+    preamble, existing, order = split_unreleased(body)
+    entries = render(fragments, existing, order)
     isempty(entries) &&
         error("nothing to release: no fragments, and no entries under $UNRELEASED.")
 
