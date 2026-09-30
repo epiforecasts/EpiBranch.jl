@@ -1,3 +1,99 @@
+function test_contextual_simulation(make_process, extract)
+    return @testset "Contextual pair kernels" begin
+        covariates = [0.5, 1.0, 1.5]
+        interval(context) = Exponential(
+            0.25 * exp(
+                0.1 * context.infector_infection_time + 0.2 * covariates[context.susceptible]
+            )
+        )
+        seen = Tuple{Int, Int, Float64}[]
+        kernel = PairKernel(
+            context -> begin
+                push!(
+                    seen, (
+                        context.infector, context.susceptible, context.infector_infection_time,
+                    )
+                )
+                interval(context)
+            end
+        )
+        progression = [
+            Transition(:infectious; delay = 0.75),
+            Transition(:recovered; from = :infectious, delay = 10.0, terminal = true),
+        ]
+        spec = ModelSpec(make_process(kernel); progression)
+        state = simulate(spec; rng = StableRNG(233))
+        @test state.cumulative_cases == 3
+        @test any(record -> record[3] > 0, seen)
+        @test all(record -> record[3] == state.individuals[record[1]].infection_time, seen)
+        data = extract(state, spec)
+        contextual = ModelSpec(make_process(PairKernel(interval)); progression)
+        frozen(i, j) = interval(PairContext(i, j, data.infection_time[i]))
+        legacy = ModelSpec(make_process(frozen); progression)
+        @test isfinite(loglikelihood(data, contextual))
+        @test loglikelihood(data, contextual) ≈ loglikelihood(data, legacy)
+        layout = compile_contact_pairs(data)
+        @test pairwise_surv_loglik(PairKernel(interval), data, layout) ≈
+            loglikelihood(data, legacy)
+
+        fixed_ids(i, j) = Exponential(0.25 * covariates[j])
+        fixed_context = PairKernel(context -> fixed_ids(context.infector, context.susceptible))
+        id_spec = ModelSpec(make_process(fixed_ids); progression)
+        context_spec = ModelSpec(make_process(fixed_context); progression)
+        id_state = simulate(id_spec; rng = StableRNG(41))
+        context_state = simulate(context_spec; rng = StableRNG(41))
+        @test [i.infection_time for i in id_state.individuals] ==
+            [i.infection_time for i in context_state.individuals]
+        @test loglikelihood(extract(id_state, id_spec), id_spec) ≈
+            loglikelihood(extract(context_state, context_spec), context_spec)
+    end
+end
+
+function test_calendar_simulation(make_process, extract)
+    return @testset "Calendar-time step kernels with sampled infectious openings" begin
+        progression = [
+            Transition(:infectious; delay = Uniform(0.4, 0.8)),
+            Transition(:recovered; from = :infectious, delay = 4.0, terminal = true),
+        ]
+        before, after, date = 0.4, 0.1, 2.0
+        calendar_kernel = PairKernel(
+            ctx -> Exponential(1.0);
+            calendar = Steps([date], [before, after])
+        )
+        spec = ModelSpec(make_process(calendar_kernel); progression)
+        state = simulate(spec; rng = StableRNG(234))
+        data = extract(state, spec)
+        @test any(isfinite, data.infectious_time)
+        @test all(
+            i -> !isfinite(data.infectious_time[i]) ||
+                0.4 <= data.infectious_time[i] - data.infection_time[i] <= 0.8,
+            eachindex(data.infection_time)
+        )
+
+        rate_at(t) = t < date ? before : after
+        integrated(t) = before * min(t, date) + after * max(t - date, 0.0)
+        expected = 0.0
+        for j in eachindex(data.infection_time)
+            tj = isnan(data.infection_time[j]) ? Inf : data.infection_time[j]
+            event_hazard = 0.0
+            for i in eachindex(data.infection_time)
+                i == j && continue
+                opening = data.infectious_time[i]
+                isfinite(opening) || continue
+                stop = min(tj, data.removal_time[i])
+                stop > opening && (expected -= integrated(stop) - integrated(opening))
+                opening < tj <= data.removal_time[i] && (event_hazard += rate_at(tj))
+            end
+            isfinite(tj) && !data.is_index[j] && (expected += log(event_hazard))
+        end
+        @test loglikelihood(data, spec) ≈ expected
+        @test pairwise_surv_loglik(
+            calendar_kernel, data,
+            compile_contact_pairs(data)
+        ) ≈ expected
+    end
+end
+
 # The second case records a future intervention on a different, pending host.
 struct RecordKernelPolicy <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::RecordKernelPolicy, ind, state)
@@ -6,6 +102,18 @@ function EpiBranch.resolve_individual!(::RecordKernelPolicy, ind, state)
     return nothing
 end
 
+# A two-rate calendar policy — rate `before` up to `date`, `after` afterwards —
+# as a PairKernel result: a flat unit-hazard profile scaled by a single-step
+# calendar schedule. `date = Inf` means the policy never triggered, so the
+# schedule never switches and the rate stays `before` throughout.
+function policy_kernel_result(before, after, date)
+    isfinite(date) || return Exponential(inv(before))
+    return (profile = Exponential(1.0), calendar = Steps([date], [before, after]))
+end
+
+# The same two-rate law used directly as a contact-interval profile, with no
+# calendar interpretation: `date` is a threshold in elapsed time since the
+# infector's own opening rather than a calendar date.
 function state_policy_law(before, after, date)
     isfinite(date) || return Exponential(inv(before))
     survival = exp(-before * date)
@@ -85,7 +193,7 @@ function test_stateful_simulation(make_process, extract)
         for d in (Exponential(1.5), Weibull(2.0, 2.0), Gamma(3.0, 0.7))
             ordinary = ModelSpec(make_process(d); progression)
             stateful = ModelSpec(
-                make_process(StatefulKernel(project, (c, a, b) -> d));
+                make_process(PairKernel((c, a, b) -> d; state = project));
                 progression
             )
             for seed in 1:25
@@ -107,7 +215,7 @@ function test_stateful_simulation(make_process, extract)
             interventions = [StampOwnCase()]
         )
         stateful = ModelSpec(
-            make_process(StatefulKernel(project, (c, a, b) -> d));
+            make_process(PairKernel((c, a, b) -> d; state = project));
             progression, interventions = [StampOwnCase()]
         )
         for seed in 1:25
@@ -121,9 +229,9 @@ function test_stateful_simulation(make_process, extract)
     end
     @testset "A record may change type during a run" begin
         project(ind) = (dose = get(ind.state, :dose_time, nothing),)
-        kernel = StatefulKernel(
-            project,
-            (c, a, b) -> Exponential(b.dose === nothing ? 1.0 : 2.0)
+        kernel = PairKernel(
+            (c, a, b) -> Exponential(b.dose === nothing ? 1.0 : 2.0);
+            state = project
         )
         model = ModelSpec(
             make_process(kernel);
@@ -142,7 +250,7 @@ function test_stateful_simulation(make_process, extract)
         callback(c, a, b) = b.dose <= c.infector_infection_time + 1.0 ? Dirac(2.0) :
             Dirac(1.0)
         model = ModelSpec(
-            make_process(StatefulKernel(project, callback));
+            make_process(PairKernel(callback; state = project));
             progression = [Transition(:recovered; delay = 4.0, terminal = true)],
             interventions = [DoseAtSecondCase(), BlockOneToThree()]
         )
@@ -158,7 +266,7 @@ function test_stateful_simulation(make_process, extract)
         delay = DiscreteNonParametric([1.0, 3.0], [0.5, 0.5])
         progression = [Transition(:recovered; delay = 5.0, terminal = true)]
         live = ModelSpec(
-            make_process(StatefulKernel(project, (c, a, b) -> delay));
+            make_process(PairKernel((c, a, b) -> delay; state = project));
             progression, interventions = [DoseAtSecondCase()]
         )
         n = 4000
@@ -180,9 +288,9 @@ function test_stateful_simulation(make_process, extract)
             state.individuals[2].infection_time == 1.0
         end / n
         two_atoms = DiscreteNonParametric([1.0, 2.0], [0.5, 0.5])
-        kernel = StatefulKernel(
-            tick_state,
-            (c, a, b) -> c.susceptible == 2 ? two_atoms : Dirac(1.0)
+        kernel = PairKernel(
+            (c, a, b) -> c.susceptible == 2 ? two_atoms : Dirac(1.0);
+            state = tick_state
         )
         drawn_later = ModelSpec(
             make_process(kernel); progression,
@@ -190,13 +298,13 @@ function test_stateful_simulation(make_process, extract)
         )
         @test isapprox(at_one(drawn_later), 0.5; atol = 0.04)
         blocked = ModelSpec(
-            make_process(StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0)));
+            make_process(PairKernel((c, a, b) -> Dirac(1.0); state = tick_state));
             progression, interventions = [HalfBlockOneToTwo(), TickEveryCase()]
         )
         @test isapprox(at_one(blocked), 0.5; atol = 0.04)
     end
     @testset "Simultaneous contacts survive refresh" begin
-        kernel = StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0))
+        kernel = PairKernel((c, a, b) -> Dirac(1.0); state = tick_state)
         model = ModelSpec(
             make_process(kernel);
             progression = [Transition(:recovered; delay = 5.0, terminal = true)],
@@ -211,7 +319,7 @@ function test_stateful_simulation(make_process, extract)
         # the infection layer's host times in the likelihood.
         project(ind) = (onset = get(ind.state, :onset_time, NaN),)
         callback(c, a, b) = (a.onset - c.infector_infection_time) + Exponential(1.0)
-        live = StatefulKernel(project, callback)
+        live = PairKernel(callback; state = project)
         model = ModelSpec(
             make_process(live);
             attributes = clinical_presentation(incubation_period = Gamma(2.0, 1.0)),
@@ -235,7 +343,7 @@ function test_stateful_simulation(make_process, extract)
             onset = get(ind.state, :onset_time, NaN),
             traced = get(ind.state, :trace_time, Inf),
         )
-        wider_kernel = StatefulKernel(wider, callback)
+        wider_kernel = PairKernel(callback; state = wider)
         @test_throws ArgumentError loglikelihood(data, make_process(wider_kernel))
         # A time no host holds, as when a policy never triggered, is recorded as
         # absent everywhere, and a projection reading it falls back to its default.
@@ -245,7 +353,7 @@ function test_stateful_simulation(make_process, extract)
             onset = get(ind.state, :onset_time, NaN),
             date = get(ind.state, :policy_time, Inf),
         )
-        policy_kernel = StatefulKernel(policy, callback)
+        policy_kernel = PairKernel(callback; state = policy)
         @test loglikelihood(unset, make_process(policy_kernel)) ≈
             loglikelihood(data, make_process(live))
         # A misspelt key leaves the key the projection reads unrecorded.
@@ -253,7 +361,7 @@ function test_stateful_simulation(make_process, extract)
         @test_throws ArgumentError loglikelihood(misspelt, make_process(live))
         # A projection reading only the host's id needs no host times.
         scales = [1.0, 2.0, 0.5]
-        by_id = StatefulKernel(ind -> (s = scales[ind.id],), (c, a, b) -> Exponential(a.s))
+        by_id = PairKernel((c, a, b) -> Exponential(a.s); state = ind -> (s = scales[ind.id],))
         plain = extract(state, model)
         @test loglikelihood(plain, make_process(by_id)) ≈
             pairwise_surv_loglik((i, j) -> Exponential(scales[i]), plain)
@@ -261,7 +369,7 @@ function test_stateful_simulation(make_process, extract)
         # A projection reading it as such scores the same as recorded records.
         stored(ind) = (onset = ind.state[:onset_time]::Float64,)
         branch(c, a, b) = isnan(a.onset) ? Exponential(2.0) : callback(c, a, b)
-        asym_kernel = StatefulKernel(stored, branch)
+        asym_kernel = PairKernel(branch; state = stored)
         asym_model = ModelSpec(
             make_process(asym_kernel);
             attributes = clinical_presentation(
@@ -282,7 +390,7 @@ function test_stateful_simulation(make_process, extract)
     @testset "Sampled attributes in pair kernels" begin
         project(ind) = (scale = ind.state[:sampled_scale]::Float64,)
         callback(c, a, b) = Exponential(a.scale + b.scale)
-        live = StatefulKernel(project, callback)
+        live = PairKernel(callback; state = project)
         attributes = (rng, ind) -> (ind.state[:sampled_scale] = rand(rng, Uniform(0.5, 1.5)))
         progression = [Transition(:recovered; delay = 5.0, terminal = true)]
         spec = ModelSpec(make_process(live); attributes, progression)
@@ -307,11 +415,9 @@ function test_stateful_simulation(make_process, extract)
     end
     @testset "Recorded endogenous histories reproduce integrated hazards" begin
         project(ind) = (date = get(ind.state, :policy_time, Inf)::Float64,)
-        kernel = CalendarKernel(
-            StatefulKernel(
-                project,
-                (c, a, b) -> state_policy_law(0.4, 0.1, b.date)
-            )
+        kernel = PairKernel(
+            (c, a, b) -> policy_kernel_result(0.4, 0.1, b.date);
+            state = project
         )
         model = ModelSpec(
             make_process(kernel);
@@ -326,7 +432,7 @@ function test_stateful_simulation(make_process, extract)
             state = simulate(model; initial_cases = [1], rng = StableRNG(seed))
             data = extract(state, model)
             recorded = record_kernel(kernel, state)
-            dates = [r.date for r in recorded.kernel.state]
+            dates = [r.date for r in recorded.state]
             observed_policy |= isfinite(dates[3])
             expected = 0.0
             for j in eachindex(data.infection_time)
@@ -352,7 +458,7 @@ function test_stateful_simulation(make_process, extract)
         @test observed_policy
     end
     @testset "Refresh preserves blocked external introductions" begin
-        live = StatefulKernel(tick_state, (c, a, b) -> Dirac(20.0))
+        live = PairKernel((c, a, b) -> Dirac(20.0); state = tick_state)
         process = make_process(live; external_hazard = 0.8, obs_end = 3.0)
         model = ModelSpec(
             process;
@@ -376,7 +482,7 @@ function test_stateful_simulation(make_process, extract)
                 return state_policy_law(0.1, 1.0, b.policy_time)
             return Dirac(20.0)
         end
-        kernel = StatefulKernel(project, callback)
+        kernel = PairKernel(callback; state = project)
         spec = ModelSpec(
             make_process(kernel);
             progression = [Transition(:recovered; delay = 5.0, terminal = true)],

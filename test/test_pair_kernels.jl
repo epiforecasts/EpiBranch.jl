@@ -3,6 +3,136 @@ using DifferentiationInterface: DifferentiationInterface
 using ADTypes: AutoMooncake
 import Mooncake
 
+struct ContextRule{T}
+    slope::T
+end
+function (rule::ContextRule)(context::PairContext)
+    return Exponential(exp(rule.slope * context.infector_infection_time))
+end
+
+struct ContextInfections{T} <: InfectionLayer
+    infection_time::Vector{T}
+    infectious_time::Vector{T}
+    removal_time::Vector{T}
+    is_index::Vector{Bool}
+    obs_end::Float64
+end
+EpiBranch.contact_structure(::ContextInfections) = [[2], [1]]
+function context_data(t)
+    return ContextInfections(
+        [t, oftype(t, 4)], [t + 1, oftype(t, 5)],
+        [t + 6, oftype(t, 10)], [true, false], 0.0
+    )
+end
+
+@testset "Contextual pair kernels" begin
+    distribution = Exponential(2.0)
+    @test EpiBranch.pair_kernel(distribution, 1, 2, 3.0) === distribution
+    @test mean(EpiBranch.pair_kernel((i, j) -> Exponential(i + j), 1, 2, NaN)) == 3.0
+    rule = PairKernel(ContextRule(0.2))
+    @test mean(EpiBranch.pair_kernel(rule, 1, 2, 3.0)) ≈ exp(0.6)
+    @test isbitstype(typeof(PairContext(1, 2, 3.0)))
+    rows = PairwiseSurvivalData([2], [0.0], [1.0], [true])
+    @test_throws ArgumentError pairwise_surv_loglik(rule, rows)
+
+    covariates = [0.5, 1.5]
+    data = context_data(2.0)
+    layout = compile_contact_pairs(data)
+    kernel(a, b) = PairKernel(
+        context -> Exponential(
+            exp(
+                a + b * context.infector_infection_time +
+                    0.1 * covariates[context.susceptible]
+            )
+        )
+    )
+    expected(a, b, t) = -(a + b * t + 0.15) - (3 - t) * exp(-(a + b * t + 0.15))
+    for t in (1.8, 2.0, 2.2)
+        current = context_data(t)
+        @test pairwise_surv_loglik(kernel(0.3, 0.2), current, layout) ≈
+            expected(0.3, 0.2, t)
+        @test pairwise_surv_loglik(kernel(0.3, 0.2), current) ≈ expected(0.3, 0.2, t)
+    end
+    f(x) = pairwise_surv_loglik(kernel(x[1], x[2]), context_data(x[3]), layout)
+    reference(x) = expected(x[1], x[2], x[3])
+    x = [0.3, 0.2, 2.0]
+    @test ForwardDiff.gradient(f, x) ≈ ForwardDiff.gradient(reference, x)
+    @test DifferentiationInterface.gradient(f, AutoMooncake(), x) ≈
+        ForwardDiff.gradient(reference, x)
+end
+
+struct CalendarInfections{T} <: InfectionLayer
+    infection_time::Vector{T}
+    infectious_time::Vector{T}
+    removal_time::Vector{T}
+    is_index::Vector{Bool}
+    obs_end::Float64
+end
+EpiBranch.contact_structure(::CalendarInfections) = [[2], [1]]
+function calendar_data(t, opening)
+    return CalendarInfections(
+        [t, oftype(t, 4)],
+        [opening, oftype(opening, 5)], [oftype(t, 6), oftype(t, 7)], [true, false], 0.0
+    )
+end
+
+@testset "Calendar-time pair kernels" begin
+    before, after, date = 0.4, 0.1, 3.0
+    kernel = PairKernel(ctx -> Exponential(1.0); calendar = Steps([date], [before, after]))
+    integrated(t) = before * min(t, date) + after * max(t - date, 0.0)
+    for opening in (1.0, 3.5)
+        interval = EpiBranch.pair_kernel(kernel, 1, 2, 0.0, opening)
+        for d in (opening + 0.2, opening + 2.1)
+            @test EpiBranch.cumhazard(interval, d - opening) ≈
+                integrated(d) - integrated(opening)
+            @test exp(EpiBranch.loghazard(interval, d - opening)) ≈
+                (d < date ? before : after)
+        end
+    end
+    interval = EpiBranch.pair_kernel(kernel, 1, 2, 0.0, 1.0)
+    rng = StableRNG(233)
+    draws = [rand(rng, interval) for _ in 1:10000]
+    @test count(<=(4.0), draws) / length(draws) ≈
+        1 - exp(-EpiBranch.cumhazard(interval, 4.0)) atol = 0.02
+    @test_throws ArgumentError EpiBranch.pair_kernel(kernel, 1, 2, 0.0)
+    @test_throws ArgumentError Steps([1.0, 0.5], [1.0, 1.0, 1.0])
+    @test_throws ArgumentError Steps([1.0], [1.0, -0.5])
+    @test_throws ArgumentError Steps([1.0], [1.0])
+    rows = PairwiseSurvivalData([2], [0.0], [1.0], [true])
+    @test_throws ArgumentError pairwise_surv_loglik(kernel, rows)
+
+    data = calendar_data(1.0, 2.0)
+    layout = compile_contact_pairs(data)
+    @test pairwise_surv_loglik(kernel, data, layout) ≈ log(0.1) - 0.5
+    @test pairwise_surv_loglik(kernel, calendar_data(1.0, 3.5), layout) ≈ log(0.1) - 0.05
+    @test pairwise_surv_loglik(kernel, calendar_data(1.0, Inf), layout) == -Inf
+    @test pairwise_surv_loglik(kernel, calendar_data(1.0, NaN), layout) == -Inf
+
+    # A single step's rate and its breakpoint are both differentiable, since the
+    # cumulative hazard splits into a scaled difference of the profile's own.
+    f(x) = pairwise_surv_loglik(
+        PairKernel(ctx -> Exponential(1.0); calendar = Steps([x[3]], [x[1], x[2]])),
+        data, layout
+    )
+    reference(x) = begin
+        integ(t) = x[1] * min(t, x[3]) + x[2] * max(t - x[3], 0.0)
+        log(x[2]) - (integ(4.0) - integ(2.0))
+    end
+    x = [before, after, date]
+    @test f(x) ≈ reference(x)
+    @test ForwardDiff.gradient(f, x) ≈ ForwardDiff.gradient(reference, x)
+    @test DifferentiationInterface.gradient(f, AutoMooncake(), x) ≈
+        ForwardDiff.gradient(reference, x)
+
+    # A pair's own calendar, returned from the callback, scores the same as the
+    # kernel-level schedule.
+    contextual = PairKernel(c -> (profile = Exponential(1.0), calendar = Steps([date], [before, after])))
+    @test pairwise_surv_loglik(contextual, data, layout) ≈
+        pairwise_surv_loglik(kernel, data, layout)
+end
+
+include("testutils/pair_kernels.jl")
+
 struct StateKernelInfections{T} <: InfectionLayer
     infection_time::Vector{T}
     infectious_time::Vector{T}
@@ -22,21 +152,21 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
         )
     )
     records = [(log_scale = 0.1,), (log_scale = 0.3,)]
-    kernel = StatefulKernel(records, callback)
+    kernel = PairKernel(callback; state = records)
     @test mean(EpiBranch.pair_kernel(kernel, 1, 2, 0.0)) ≈ exp(0.4)
     @test pairwise_surv_loglik(kernel, data, layout) ≈ -0.4 - 2exp(-0.4)
-    live = StatefulKernel(ind -> (log_scale = ind.state[:log_scale]::Float64,), callback)
+    live = PairKernel(callback; state = ind -> (log_scale = ind.state[:log_scale]::Float64,))
     @test_throws ArgumentError pairwise_surv_loglik(live, data, layout)
     @test_throws ArgumentError pairwise_surv_loglik(
         kernel,
         PairwiseSurvivalData([2], [0.0], [1.0], [true])
     )
     f(x) = pairwise_surv_loglik(
-        StatefulKernel(
-            [
+        PairKernel(
+            callback; state = [
                 (log_scale = x[1],),
                 (log_scale = x[2],),
-            ], callback
+            ]
         ), data, layout
     )
     reference(x) = -sum(x) - 2exp(-sum(x))
@@ -44,8 +174,6 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
     @test ForwardDiff.gradient(f, x) ≈ ForwardDiff.gradient(reference, x)
     @test DifferentiationInterface.gradient(f, AutoMooncake(), x) ≈
         ForwardDiff.gradient(reference, x)
-    @test pairwise_surv_loglik(CalendarKernel(kernel), data, layout) ≈
-        pairwise_surv_loglik(kernel, data, layout)
 
     state = EpiBranch.new_state(BranchingProcess(Poisson(0.0)), [], NoAttributes(), StableRNG(233))
     EpiBranch.add_individuals!(state, 2, [])
@@ -56,13 +184,22 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
     saved = record_kernel(live, state)
     @test saved.state == records
     @test pairwise_surv_loglik(saved, data, layout) ≈ reference(x)
-    @test record_kernel(CalendarKernel(live), state).kernel.state == records
     @test record_kernel(Exponential(), state) == Exponential()
-    history = record_kernel(StatefulKernel(ind -> ind.state[:history], callback), state)
+    history = record_kernel(PairKernel(callback; state = ind -> ind.state[:history]), state)
     push!(state.individuals[1].state[:history], 2.0)
     @test history.state[1] == [1.0]
     @test !EpiBranch._live_kernel(saved)
-    @test EpiBranch._live_kernel(CalendarKernel(live))
+
+    # A calendar schedule is carried through recording unchanged, and a kernel
+    # with one is live exactly when its host state is.
+    calendar_live = PairKernel(
+        (c, a, b) -> Exponential(2.0);
+        state = ind -> (tag = 0.0,), calendar = Steps([5.0], [1.0, 0.5])
+    )
+    @test EpiBranch._live_kernel(calendar_live)
+    recorded_calendar = record_kernel(calendar_live, state)
+    @test recorded_calendar.calendar === calendar_live.calendar
+    @test !EpiBranch._live_kernel(recorded_calendar)
 end
 
 @testset "Differentiable recorded event dates" begin
@@ -71,16 +208,9 @@ end
     f = function (x)
         records = [(date = x[3],), (date = x[3],)]
         callback = function (c, a, b)
-            survival = exp(-x[1] * b.date)
-            MixtureModel(
-                [
-                    truncated(Exponential(inv(x[1])); upper = b.date),
-                    b.date + Exponential(inv(x[2])),
-                ],
-                [1 - survival, survival]
-            )
+            (profile = Exponential(1.0), calendar = Steps([b.date], [x[1], x[2]]))
         end
-        pairwise_surv_loglik(CalendarKernel(StatefulKernel(records, callback)), data, layout)
+        pairwise_surv_loglik(PairKernel(callback; state = records), data, layout)
     end
     reference(x) = log(x[2]) - x[1] * (x[3] - 1) - x[2] * (3 - x[3])
     x = [0.4, 0.1, 2.0]
@@ -89,8 +219,6 @@ end
     @test DifferentiationInterface.gradient(f, AutoMooncake(), x) ≈
         ForwardDiff.gradient(reference, x)
 end
-
-include("testutils/stateful_kernels.jl")
 
 # Exercise the shared primitive without depending on a companion package.
 function stateful_test_race(
@@ -127,10 +255,7 @@ end
 @testset "An unchanging live kernel leaves the race stream alone" begin
     seeds = [0.0; fill(Inf, 11)]
     for d in (Exponential(1.5), Weibull(2.0, 2.0), Gamma(3.0, 0.7))
-        live = StatefulKernel(
-            ind -> (tag = get(ind.state, :tag, 0.0)::Float64,),
-            (c, a, b) -> d
-        )
+        live = PairKernel((c, a, b) -> d; state = ind -> (tag = get(ind.state, :tag, 0.0)::Float64,))
         @test isequal(
             [i.infection_time for i in stateful_test_race(d, seeds).individuals],
             [i.infection_time for i in stateful_test_race(live, seeds).individuals]
@@ -244,7 +369,7 @@ end
 end
 
 @testset "Shared race refreshes live pair kernels" begin
-    ties = StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0))
+    ties = PairKernel((c, a, b) -> Dirac(1.0); state = tick_state)
     state = stateful_test_race(ties, [0.0, Inf, Inf]; interventions = [TickEveryCase()])
     @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0]
 
@@ -255,7 +380,7 @@ end
             return state_policy_law(0.1, 1.0, b.date)
         return Dirac(20.0)
     end
-    kernel = StatefulKernel(project, callback)
+    kernel = PairKernel(callback; state = project)
     changed = stateful_test_race(
         kernel, [0.0, Inf, Inf];
         interventions = [RecordKernelPolicy()]
@@ -265,17 +390,10 @@ end
     recorded = record_kernel(kernel, changed)
     @test logccdf(EpiBranch.pair_kernel(kernel, 1, 3, 0.0, 0.0, changed), 2.0) ≈
         logccdf(EpiBranch.pair_kernel(recorded, 1, 3, 0.0), 2.0)
-    calendar = CalendarKernel(
-        StatefulKernel(
-            project,
-            (c, a, b) -> Exponential(2.0)
-        )
-    )
-    @test mean(EpiBranch.pair_kernel(calendar, 1, 3, 0.0, 0.5, changed)) ≈ 2.0
     @test mean(EpiBranch.pair_kernel(Exponential(2.0), 1, 3, 0.0, 0.5, changed)) == 2.0
     @test logccdf(EpiBranch.pair_kernel(recorded, 1, 3, 0.0, 0.0, changed), 2.0) ≈
         logccdf(EpiBranch.pair_kernel(recorded, 1, 3, 0.0), 2.0)
-    fixed = StatefulKernel([nothing, nothing], (c, a, b) -> Exponential(1.0))
+    fixed = PairKernel((c, a, b) -> Exponential(1.0); state = [nothing, nothing])
     replay = stateful_test_race(fixed, [0.0, Inf])
     ordinary = stateful_test_race(Exponential(1.0), [0.0, Inf])
     @test isequal(
@@ -285,7 +403,7 @@ end
 
     # Retried introductions must remain later than the admission boundary even
     # when another introduction settles and refreshes the remaining queue.
-    inactive = StatefulKernel(tick_state, (c, a, b) -> Dirac(20.0))
+    inactive = PairKernel((c, a, b) -> Dirac(20.0); state = tick_state)
     introduced = stateful_test_race(
         inactive, [0.1, 0.2, 0.3];
         interventions = [WaitForKernelDay(), TickEveryCase()],
@@ -300,9 +418,9 @@ end
     # Host 2 comes before host 3, so when host 3 settles at t = 1 every contact
     # to host 2 at t = 1 has been resolved; the redraw must not offer it again.
     two_atoms = DiscreteNonParametric([1.0, 2.0], [0.5, 0.5])
-    atoms = StatefulKernel(
-        tick_state,
-        (c, a, b) -> c.susceptible == 2 ? two_atoms : Dirac(1.0)
+    atoms = PairKernel(
+        (c, a, b) -> c.susceptible == 2 ? two_atoms : Dirac(1.0);
+        state = tick_state
     )
     at_one = count(1:2000) do seed
         state = stateful_test_race(
@@ -318,7 +436,7 @@ end
     # ordinary kernel does.
     seeds = [0.0; fill(Inf, 29)]
     law = Exponential(4.0)
-    live = StatefulKernel(tick_state, (c, a, b) -> law)
+    live = PairKernel((c, a, b) -> law; state = tick_state)
     early(state) = count(ind -> ind.infection_time < 1.0, state.individuals)
     redrawn = mean(
         early(
@@ -333,7 +451,7 @@ end
 end
 
 @testset "Live kernels outside a race" begin
-    live = StatefulKernel(tick_state, (c, a, b) -> Exponential(1.0))
+    live = PairKernel((c, a, b) -> Exponential(1.0); state = tick_state)
     @test EpiBranch._watched_projection(live, ()) === nothing
     @test EpiBranch._watched_projection(live, [TickEveryCase()]) === tick_state
     @test EpiBranch._watched_projection(Exponential(1.0), [TickEveryCase()]) === nothing
