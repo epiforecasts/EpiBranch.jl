@@ -1883,8 +1883,11 @@ need distinct keys. Ring and group delivery cache these draws per policy and
 individual. A denied admission may be reconsidered when it is discovered again,
 but is not queued automatically. Earlier triggers can bring an unadmitted action
 forward using the same delay. Admission fixes its recorded date and effect draws;
-later triggers do not revise completed actions. Dose prerequisites are checked
-against the proposed date before admission.
+later triggers do not revise completed actions, with one exception described
+below: on a continuous-time race, a pending member's group dose moves to a
+trigger discovered later that turns out to be earlier than the one the dose
+was first given from. Dose prerequisites are checked against the proposed
+date before admission.
 
 For example, draw one visit time and reuse it if admission is attempted again:
 
@@ -1918,3 +1921,11 @@ finalised cases and their clinical outcomes are not revised. An action whose dat
 precedes the current simulation clock has expired and is skipped. Selection and
 delay callbacks must use information available at discovery. Protection still
 uses proposal-time competing risks and the recorded delivery and immunity dates.
+
+Cases settle in order of infection on the race, not in order of eligibility, so
+a case can be found eligible earlier than the one that infected it: a secondary
+case lab-confirmed before its infector, say, or the first case in a group that
+is never confirmed at all. Group vaccination's own trigger for a pending member
+therefore moves earlier whenever a later discovery finds one, keeping the dose
+at the group's true earliest trigger rather than the first one found; a
+settled member's dose, and a dose another vaccination gave, keep their date.
