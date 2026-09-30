@@ -19,6 +19,17 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   infection layer can hold per-host times such as onsets (`host_times`), which a
   live `PairKernel` reads in the likelihood, so one kernel timed from symptom
   onset serves both simulation and inference.
+- `Isolation`'s `onset_to_isolation_delay` accepts a `Real`, a `Distribution`,
+  or a function `(rng, ind) -> Real`, matching `test_sensitivity`. The function
+  form can read state that another intervention recorded on the individual,
+  such as a group's own event time, so detection can speed up once a
+  household's first case is found.
+- `StatefulKernel` shares sampled attributes and dated intervention histories
+  between structured simulation and likelihoods. `record_kernel` extracts typed
+  host records for inference. An infection layer can hold per-host times such
+  as onsets (`host_times`), which a live `StatefulKernel` reads in the
+  likelihood, so one kernel timed from symptom onset serves both simulation and
+  inference.
 - The households tutorial casts the classical households model as a branching
   process over households: the households-of-one limit, the offspring matrix as
   a multi-type `BranchingProcess`, and the scope of the approximation.
@@ -343,6 +354,10 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
+- `initial_cases` can now be combined with an active `external_hazard` on
+  `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess`: the chosen cases are
+  seeded at time zero, and the hazard still acts on everyone else from the
+  same time, rather than the combination being rejected.
 - `AllOrNothingMode` now draws a vaccinated individual's responder status once,
   when the dose is recorded, rather than resolving it per-exposure, so a
   responder is protected against infection at every exposure and a
@@ -432,6 +447,14 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   `:vaccinated` and `:vaccination_time` that an `attributes` function already
   set, such as a dose recorded from an earlier campaign. It now only fills in
   the unvaccinated defaults when those keys are absent.
+- `GroupVaccination` now moves a pending member's dose earlier on a
+  continuous-time race when a later discovery finds an earlier group trigger.
+  Cases settle there in order of infection, not of eligibility, so a secondary
+  case can be lab-confirmed before the case that infected it, or the first
+  case in a group can go unconfirmed; the group's dose used to stay at the
+  first trigger found even once a genuinely earlier one turned up. A settled
+  member's dose, and a dose another vaccination already gave, still keep
+  their date.
 
 ## [0.1.0] - 2026-06-16
 
