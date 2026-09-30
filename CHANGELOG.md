@@ -12,6 +12,10 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- A case infected through a named `RouteWindow` (as on `RoutedNetwork`) carries
+  the route's name in `:infection_route`, and a community introduction carries
+  `:external`; both appear in `linelist`, so cases can be broken down by
+  setting without reconstructing it from population structure and timing.
 - `StatefulKernel` shares sampled attributes and dated intervention histories
   between structured simulation and likelihoods. `record_kernel` extracts typed
   host records for inference. An infection layer can hold per-host times such
