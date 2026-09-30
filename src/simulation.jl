@@ -19,9 +19,10 @@ extinction. For finer control pass a `stopping_rules` vector of
 `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess` accept `initial_cases`
 as a vector of distinct population IDs to infect at time zero, including an empty
 vector. It replaces each process's default seeding rule. Supply either
-`initial_cases` or `n_initial`; out-of-range IDs raise an error. Chosen initial
-cases currently require `external_hazard = 0`. Other processes reject this
-keyword when a vector is supplied. Random seeding is unchanged when it is omitted.
+`initial_cases` or `n_initial`; out-of-range IDs raise an error. With an active
+`external_hazard`, everyone outside `initial_cases` remains open to community
+introduction from time zero, as usual. Other processes reject this keyword when
+a vector is supplied. Random seeding is unchanged when it is omitted.
 
 The case's clinical timeline — the [`AbstractClinicalTransition`](@ref)s a
 case moves through (latent, onset, severity, death/recovery, burial) — is the

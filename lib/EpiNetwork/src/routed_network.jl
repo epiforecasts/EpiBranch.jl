@@ -313,5 +313,5 @@ function _route_targets(w::RouteWindow)
 end
 
 function EpiBranch._validate_initial_cases(model::RoutedNetwork, opts::SimOpts)
-    return EpiBranch._validate_initial_case_ids(opts, model.n, model.external_hazard)
+    return EpiBranch._validate_initial_case_ids(opts, model.n)
 end
