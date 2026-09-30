@@ -1,0 +1,17 @@
+# Taken from EpiAwarePackageTools' templates. No sync manages it yet, so edit
+# it here and carry the change over if this repository adopts the kit.
+name: Doc Preview Cleanup
+
+# `docs/make.jl` deploys with `push_preview = true`, so every PR leaves a
+# directory under `previews/` on `gh-pages` that nothing removes.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  doc-preview-cleanup:
+    uses: EpiAware/.github/.github/workflows/docs-preview-cleanup.yml@42a0501ccacefbfc2f2eeca640714a19c50bfe58

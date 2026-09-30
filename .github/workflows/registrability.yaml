@@ -1,0 +1,43 @@
+# Taken from EpiAwarePackageTools' templates. No sync manages it yet, so edit
+# it here and carry the change over if this repository adopts the kit.
+name: Registrability
+
+# Registration-safety checks (thin caller of the EpiAware/.github reusable):
+# that every dependency is registrable, and that no org reverse-dependency's
+# compat is stranded by the version under test. Runs when a change could
+# affect registrability (a Project.toml edit), on demand, and on main.
+#
+# Covers the root package alone. `lib/EpiNetwork` and `lib/EpiHouseholds` are
+# separately registrable and both pin `EpiBranch` through `[sources]`, which is
+# the blocker this checks for, but the reusable takes its package directory from
+# script arguments rather than a `workflow_call` input, so a caller cannot point
+# it at them. Covering them needs a `pkg_dir` input upstream in
+# `EpiAware/.github`, and until then their registrability is unguarded.
+#
+# The reverse-dep check is a warning by default; a breaking release
+# legitimately strands a downstream bound. Set fail_on_revdep_break: true on
+# the caller job to gate on it.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Project.toml'
+  pull_request:
+    paths:
+      - 'Project.toml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  registrability:
+    uses: EpiAware/.github/.github/workflows/registrability.yml@24c8d984a679b1d46c1c04afc9ea5cdecaa1730d
+    with:
+      # The reusable's `org` defaults to EpiAware, and this package lives in
+      # epiforecasts. Left at the default the reverse-dependency scan reads a
+      # different organisation, finds nothing, and reports that as all-clear.
+      org: epiforecasts
