@@ -220,7 +220,7 @@ _fix_R(ll, R) = k -> ll(R, k)
 
 """Point estimate only, skipping the profile-likelihood interval — for
 [`_bootstrap_ci`](@ref), which discards everything but `.estimate` from a
-full [`fit`](@ref) and so would otherwise pay for the profile search on
+full [`fit`](@ref) and would otherwise pay for the profile search on
 every replicate."""
 function _point_estimate(data, ::Type{Poisson})
     r_bound = _r_search_bound(data)
