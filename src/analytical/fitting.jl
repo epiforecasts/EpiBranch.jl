@@ -20,9 +20,9 @@ distribution, e.g. `NegBin.(exp.(X * β), k)` for a case-level covariate
 matrix `X`. `offspring` must have one distribution per observation in
 `data`.
 
-A zero-truncated variant, for data that list only cases with at least one
-secondary case, needs no dedicated method: pass `truncated.(offspring, 1, Inf)`
-(or a scalar `truncated(dist, 1, Inf)` to the single-distribution method).
+For data that list only cases with at least one secondary case, pass
+`truncated.(offspring, 1, Inf)`, or a scalar `truncated(dist, 1, Inf)` to the
+single-distribution method.
 
 # Examples
 

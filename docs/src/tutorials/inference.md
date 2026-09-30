@@ -70,7 +70,7 @@ println("Posterior k: $(round(mean(chain[:k]), digits=2)) " *
 ### Case-level covariates
 
 The number of secondary cases a case causes often depends on its own
-characteristics — setting of exposure, age, time of infection. Passing a
+characteristics: the setting of exposure, age, or time of infection. Passing a
 vector of distributions, one per observation, scores each count against its
 own offspring distribution instead of a single shared one:
 
@@ -103,9 +103,8 @@ println("MLE: β0=$(round(mle_params.β0, digits=2)), " *
         "β1=$(round(mle_params.β1, digits=2)), k=$(round(mle_params.k, digits=2))")
 ```
 
-For data that list only cases with at least one secondary case, truncate
-each distribution rather than reaching for a dedicated data type:
-`loglikelihood(OffspringCounts(y), truncated.(offspring, 1, Inf))`.
+For data that list only cases with at least one secondary case, truncate each
+distribution: `loglikelihood(OffspringCounts(y), truncated.(offspring, 1, Inf))`.
 
 ## From chain sizes
 
