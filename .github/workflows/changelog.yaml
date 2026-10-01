@@ -53,7 +53,9 @@ jobs:
           # and reads the directory non-recursively, so `fix-x.md` or
           # `sub/x.md` would pass here and then break `task changelog` on main
           # for everyone.
-          added=$(git diff --name-only --diff-filter=A HEAD^1 HEAD \
+          # `core.quotePath=false`, or git wraps a non-ASCII path in quotes
+          # with octal escapes and the pattern below stops matching it.
+          added=$(git -c core.quotePath=false diff --name-only --diff-filter=A HEAD^1 HEAD \
             -- 'changelog.d/*.md' \
             | grep -E '^changelog\.d/(added|changed|deprecated|removed|fixed|security)-[^/]+\.md$' \
             || true)
