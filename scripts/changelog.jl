@@ -30,8 +30,10 @@ struct Fragment
 end
 
 # An editor backup, an auto-save or a merge leftover is nobody's entry, and
-# `.gitignore` does not cover them, so they are passed over.
-const STRAY = r"(^#.*#$)|(~$)|\.(orig|rej|bak|swp)$"
+# `.gitignore` does not cover them, so they are passed over. `git mergetool`
+# writes its copies as `added-foo.BACKUP.4321.md`, which would otherwise parse
+# as a fragment and ship as a duplicate bullet.
+const STRAY = r"(^#.*#$)|(~$)|\.(orig|rej|bak|swp|swo)$|\.(BACKUP|BASE|LOCAL|REMOTE)\.\d+\."
 
 _ignored(name) = name == "README.md" || startswith(name, ".") || occursin(STRAY, name)
 
