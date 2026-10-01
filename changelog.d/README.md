@@ -23,6 +23,18 @@ or a function `(rng, ind) -> Real`.
 Several paragraphs and nested bullets are fine. The text is indented under its
 bullet when assembled, so write it flush left.
 
+Everything in this directory is read as an entry, so a file that cannot be read
+fails CI rather than being passed over: a name without one of the categories
+above, a subdirectory, an empty file. Editor backups and merge leftovers
+(`#...#`, `...~`, `.orig`, `.rej`) are ignored.
+
+## Carrying no entry
+
+CI fails a pull request that adds no fragment. A change that carries none — one
+touching only CI or tests, and the release pull request, which removes the
+fragments — takes the `no changelog` label. The label excuses the entry alone;
+the fragments the pull request touched are still read.
+
 ## Reading them
 
     task changelog          # what the next release's section will say
