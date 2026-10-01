@@ -46,6 +46,10 @@ jobs:
         # this step alone.
         if: ${{ !contains(github.event.pull_request.labels.*.name, 'no changelog') }}
         run: |
+          # The default shell is `bash -e` without it, and a `git diff` that
+          # failed inside the pipeline below would then read as this pull
+          # request having added nothing.
+          set -o pipefail
           # `HEAD` is `refs/pull/N/merge`, so `HEAD^1` is the current base tip
           # and the diff is this pull request's own change. `base.sha` from the
           # event is the base as it stood when the branch was last pushed,
