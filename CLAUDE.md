@@ -1,108 +1,81 @@
-# simulist.jl — Consolidated Branching Process Framework for Epidemiology
+# EpiBranch.jl
 
-This is a monorepo that may host multiple Julia packages. You are building a framework that unifies the functionality of three R packages from the epiverse-trace ecosystem:
+A Julia framework for branching-process models of infectious disease outbreaks,
+consolidating what three R packages from the epiverse-trace ecosystem do onto
+one shared engine with composable layers:
 
-- **simulist** (https://github.com/epiverse-trace/simulist) — simulates line list and contact tracing data from branching process outbreaks
-- **epichains** (https://github.com/epiverse-trace/epichains) — simulates and analyses transmission chain statistics using branching process models
-- **ringbp** (https://github.com/epiforecasts/ringbp) — simulates outbreaks with non-pharmaceutical interventions (isolation, contact tracing, ring vaccination) to assess containment probability
+- **simulist** (https://github.com/epiverse-trace/simulist) — line list and
+  contact tracing data from branching process outbreaks
+- **epichains** (https://github.com/epiverse-trace/epichains) — transmission
+  chain statistics
+- **ringbp** (https://github.com/epiforecasts/ringbp) — isolation, contact
+  tracing and ring vaccination, and the containment probability under them
 
-## Context
+Where a closed-form result exists (extinction probability, expected chain size,
+offspring distribution fitting, as in
+https://github.com/epiverse-trace/superspreading), prefer it to simulation.
+Simulate what has no closed form, such as containment under a combination of
+interventions.
 
-These three R packages share a common core: stochastic branching process simulation of infectious disease outbreaks. In R they are separate CRAN packages; in Julia they should be a single package with a shared simulation engine and composable components. The user (Sebastian Funk, LSHTM) is one of the authors of ringbp and a key contributor to the epiverse ecosystem.
+## Design
 
-This is the **starting point** in a broader plan to build a Julia epidemiology ecosystem. It was chosen first because simulation-heavy code benefits most from Julia's performance, and the branching process core can be shared across use cases.
+The architecture lives in [`docs/src/design.md`](docs/src/design.md) — read it
+first. The concrete contracts (hook signatures, the reserved keys table for
+`Individual.state`, worked examples) are in
+[`docs/src/tutorials/extending.md`](docs/src/tutorials/extending.md).
 
-Related projects in `~/code/`:
-- `EpiNow2.jl` — Rt estimation (long-term flagship, deprioritised)
-- `outbreak-analytics-jl` — course materials and supporting packages
-- `messy-line-lists` — typo challenge / data quality tools (may fold into this repo)
+The rule that matters most, from design.md's "Extension by dispatch": new
+behaviour is added by defining a new type and a method, not by growing options
+on an existing struct. A `Union` field whose members trigger different
+branches, a `Symbol` that switches behaviour inside a function, or a `Bool`
+that selects a policy each mean a seam is in the wrong place.
 
-## Monorepo structure
+Before adding a field, keyword or flag to an existing type, or a branch to an
+engine loop, work through these:
 
-This repo may contain multiple packages (e.g., BranchingProcess.jl, Interventions.jl, LineList.jl) or a single unified package — this is an open design decision. The prompt below covers the full scope; the package boundary question should be resolved early based on how cleanly the components separate.
+1. **Which existing seam covers it?** `keep_active`, `competing_risk`,
+   `transmission_risks`, `is_eligible`, `should_stop`, `_sample_value`,
+   `trace_contacts!`, `intervention_actions`, `loglikelihood`, `Transition`
+   and the attribute builders are all dispatched extension points. Prefer one
+   of them to a new option.
+2. **If none fits, add a dispatched trait with a default**, and document it in
+   the extending guide, so the variant can be written from outside the
+   package. A seam nobody outside can reach is not a seam (principle 4).
+3. **Engine loops ask the composed layers; they never decide for them.** A
+   race or stepping loop that names a concrete intervention type, reads a
+   state key an intervention owns, or keeps its own table of what has already
+   been done to whom has taken a policy decision into core.
+4. **Say in the pull request which seam was used**, or which was considered
+   and why it did not fit. A new `Bool`, `Symbol` or `Union` field on a core
+   type, or a new verb alongside an existing one, needs that justification.
 
-## What to build
+The test, as design.md puts it: can a plausible new variant be added without
+editing the component's source? If not, the varying part belongs in a
+dispatched-on trait.
 
-### Core simulation engine
+## Conventions
 
-Design a model-agnostic branching process simulation engine using Julia's multiple dispatch. The engine should:
+1. **Distributions from Distributions.jl**: use standard `Distributions.jl`
+   types for offspring distributions, delay distributions, etc. Do not wrap
+   these in bespoke distribution types. The one sanctioned exception is the
+   internal `_ChainSizeLaw`/`_ChainLengthLaw` wrappers in
+   `src/likelihood_dists.jl`, which subtype `Distribution` solely so a model
+   can sit on the right-hand side of Turing's `~`; they delegate to the
+   existing `loglikelihood` methods and are not exported.
+2. **DataFrames output**: line lists and chain statistics returned as
+   DataFrames, matching epidemiological conventions (one row per case or per
+   contact pair).
+3. **Reproducibility**: explicit RNG threading for reproducible parallel
+   simulations.
 
-1. **Step individuals through infection events**: each infected individual generates secondary cases drawn from an offspring distribution, with timing governed by delay distributions (generation time, incubation period, etc.)
-2. **Support multiple transmission models** via dispatch: standard branching process, density-dependent susceptible adjustment (DSA), and future extensions — all sharing the same stepping interface
-3. **Track individual-level state**: infection time, symptom onset time, reporting time, contact history, vaccination status, isolation status, and any other state the intervention layer needs
-4. **Generate line list output**: a DataFrame with one row per case, columns for dates (infection, onset, hospitalisation, death/recovery), demographics, and contact tracing links — matching the output format of simulist
+## Style
 
-### Intervention layer
-
-This is a critical design challenge. Interventions in ringbp operate at the **population policy level** (e.g., "isolate confirmed cases within 2 days", "trace and test contacts of confirmed cases", "vaccinate contacts in a ring"), not at the individual agent level. This means:
-
-1. **Interventions are functions of global/population state**, not individual decision rules. They take the current epidemic state and modify transmission probabilities, delays, or individual statuses
-2. **The simulation engine must expose a clear state interface** that interventions can read and modify: individual infection times, contact history, vaccination status, population-level summaries (cumulative cases, active cases, etc.)
-3. **Interventions should be composable**: you should be able to layer isolation + contact tracing + ring vaccination and have them interact correctly
-4. **Time-dependent policies**: interventions can switch on/off or change parameters over time (e.g., "start contact tracing on day 14")
-
-### Agents.jl decision
-
-Evaluate carefully whether to use Agents.jl or build a lighter-weight simulation loop:
-
-- **Against Agents.jl**: the intervention layer sits above individual agent rules, which is not Agents.jl's natural model. Agents.jl adds overhead (scheduler, space, model object) that may not be needed for a branching process where individuals don't move or interact spatially
-- **For Agents.jl**: mature ecosystem, visualisation tools, parameter scanning
-- **Recommendation**: start with a minimal custom stepping function. If spatial structure or complex agent interactions become needed later, consider wrapping in Agents.jl then
-
-### Inference / analytical solutions
-
-Where analytical solutions exist (e.g., extinction probability from offspring distribution parameters, expected chain size), prefer them over simulation. Use simulation for quantities that don't have closed-form solutions (e.g., containment probability under complex intervention combinations).
-
-The superspreading R package (https://github.com/epiverse-trace/superspreading) provides analytical functions for offspring distribution estimation and SSE probability — these should be incorporated as analytical methods alongside the simulation engine.
-
-## Key design principles
-
-The architectural design lives in [`docs/src/design.md`](docs/src/design.md) — high-level concepts only, no API names. Read that first, in particular the "Extension by dispatch" section, which governs how new transmission models, interventions, and output rules should be added. The concrete contracts (hook signatures, the "Reserved keys" table for `Individual.state`, worked examples) live in [`docs/src/tutorials/extending.md`](docs/src/tutorials/extending.md). The points below are package-level coding conventions that sit on top of the design.
-
-1. **Distributions from Distributions.jl**: use standard `Distributions.jl` types for offspring distributions, delay distributions, etc. Do not wrap these in bespoke distribution types. The one sanctioned exception is the internal `_ChainSizeLaw`/`_ChainLengthLaw` wrappers in `src/likelihood_dists.jl`, which subtype `Distribution` solely so a model can sit on the right-hand side of Turing's `~`; they delegate to the existing `loglikelihood` methods and are not exported.
-2. **DataFrames output**: line lists and chain statistics returned as DataFrames, matching epidemiological conventions (one row per case or per contact pair).
-3. **Reproducibility**: explicit RNG threading for reproducible parallel simulations.
-
-## Research before coding
-
-Before writing code, thoroughly investigate:
-
-1. **ringbp repository** (https://github.com/epiforecasts/ringbp): read the README, all open issues (especially discussions about flexible simulation engines), closed issues, and the intervention interface. Also check linked repos: contact network extension and PEP (post-exposure prophylaxis) variant
-2. **Ring vaccination Ebola code**: historical code that ringbp built on, for context on intervention modelling
-3. **simulist internals**: understand how it generates line lists, handles age structure, time-varying CFR, and contact tracing data
-4. **epichains**: understand its chain statistics (size, length) and how it relates to the offspring distribution
-5. **Existing Julia solutions**: check what JuliaEpi, Epirecipes, and other Julia epi packages already provide — avoid duplicating existing work
-
-## Package structure suggestion
-
-```
-OutbreakSim.jl/  (or EpiBranch.jl — name TBD)
-├── src/
-│   ├── OutbreakSim.jl          # module definition
-│   ├── types.jl                # TransmissionModel, Individual, Intervention abstract types
-│   ├── models/
-│   │   ├── branching_process.jl  # standard BP
-│   │   └── density_dependent.jl  # DSA
-│   ├── simulation.jl           # core simulation loop
-│   ├── interventions/
-│   │   ├── isolation.jl
-│   │   ├── contact_tracing.jl
-│   │   ├── vaccination.jl      # ring vaccination, mass vaccination
-│   │   └── compose.jl          # intervention stacking
-│   ├── linelist.jl             # line list generation from simulation output
-│   ├── chains.jl               # chain statistics (size, length, etc.)
-│   ├── analytical.jl           # closed-form solutions (extinction prob, etc.)
-│   ├── offspring.jl            # offspring distribution fitting (from superspreading)
-│   └── summary.jl              # containment probability, summary statistics
-├── test/
-└── Project.toml
-```
-
-## Style and conventions
-
-- Use British English in all documentation and comments ("modelling", "behaviour", etc.)
+- Use British English in all documentation and comments ("modelling",
+  "behaviour", etc.)
 - Prefer explicit types over duck typing for the core simulation types
 - Document all public functions with docstrings
 - Write tests alongside implementation
-- Keep the package self-contained — no dependency on EpiAware.jl (it will be redesigned)
-- PrimaryCensored.jl is available and stable if needed for delay distribution censoring
+- Keep the package self-contained — no dependency on EpiAware.jl (it will be
+  redesigned)
+- PrimaryCensored.jl is available and stable if needed for delay distribution
+  censoring
