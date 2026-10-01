@@ -88,7 +88,10 @@ function render(fragments)
 end
 
 function release!(version, fragments)
-    isempty(strip(version)) && error("give a version, e.g. `changelog-release -- 0.2.0`.")
+    # A release deletes every fragment, so the argument is checked before
+    # anything is unlinked.
+    occursin(r"^v?\d", version) ||
+        error("'$version' does not look like a version, e.g. `changelog-release -- 0.2.0`.")
     isempty(fragments) && error("no fragments in changelog.d/: nothing to release.")
     source = read(CHANGELOG, String)
     occursin("## [$version]", source) &&
@@ -121,7 +124,9 @@ end
 
 function main(args)
     isdir(FRAGMENT_DIR) || error("no changelog.d/ directory at $FRAGMENT_DIR.")
-    if args == ["--list"]
+    if !isempty(args) && startswith(first(args), "-")
+        args == ["--list"] ||
+            error("unknown option '$(first(args))'. Pass --list, or a version.")
         foreach(f -> println(f.name), read_fragments(FRAGMENT_DIR))
         return 0
     end
