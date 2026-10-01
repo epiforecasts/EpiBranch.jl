@@ -57,10 +57,12 @@ jobs:
             exit 1
           fi
           # `A` for added: a modification to an existing fragment is not this
-          # pull request's entry. `core.quotePath=false`, or git wraps a
-          # non-ASCII path in quotes and the match below misses it.
+          # pull request's entry. `--no-renames`, so correcting the category of
+          # a fragment already on main reads as adding the new name. And
+          # `core.quotePath=false`, or git wraps a non-ASCII path in quotes and
+          # the match below misses it.
           added=$(git -c core.quotePath=false diff --name-only --diff-filter=A \
-            HEAD^1 HEAD -- changelog.d/ | sed -n 's#^changelog\.d/##p')
+            --no-renames HEAD^1 HEAD -- changelog.d/ | sed -n 's#^changelog\.d/##p')
           mine=$(printf '%s\n' "$added" \
             | grep -Fxf "$RUNNER_TEMP/fragments.txt" || true)
           if [ -z "$mine" ]; then
