@@ -27,57 +27,44 @@ jobs:
         with:
           # Two, so the merge commit's parents are both present.
           fetch-depth: 2
-      - name: Check for a changelog fragment
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
+        with:
+          version: '1'
+      - name: Read the fragments
+        # The assembler does the reading, so the rules live in one place.
+        # Earlier revisions restated them in `grep`, and every gap between the
+        # two let a fragment through that then broke `task changelog` on main.
+        # It errors on any entry it cannot use and names the rest, which the
+        # next step matches against the diff. It needs only the standard
+        # library, so there is no package environment to set up.
         run: |
-          # Tolerated so this workflow can merge before or after the one that
-          # creates the directory.
-          if [ ! -d changelog.d ]; then
-            echo "no changelog.d/ in this revision: nothing to check"
-            exit 0
-          fi
+          julia scripts/changelog.jl --list > "$RUNNER_TEMP/fragments.txt"
+          cat "$RUNNER_TEMP/fragments.txt"
+      - name: Check this pull request adds one
+        run: |
           # `HEAD` is `refs/pull/N/merge`, so `HEAD^1` is the current base tip
           # and the diff is this pull request's own change. `base.sha` from the
           # event is the base as it stood when the branch was last pushed,
-          # which in this repository is routinely several merges behind, and
-          # diffing from it would count a fragment another pull request merged
-          # in the meantime as this one's.
+          # which here is routinely several merges behind, and diffing from it
+          # would count a fragment another pull request merged in the meantime
+          # as this one's.
           if ! git rev-parse -q --verify HEAD^2 >/dev/null; then
             echo "HEAD is not a merge ref, so the base cannot be identified." >&2
             exit 1
           fi
-          # `A` for added: a modification to someone else's existing fragment
-          # is not this pull request's entry.
-          #
-          # Matched against the shape `scripts/changelog.jl` accepts, rather
-          # than any `.md`: that script errors on an unknown category prefix
-          # and reads the directory non-recursively, so `fix-x.md` or
-          # `sub/x.md` would pass here and then break `task changelog` on main
-          # for everyone.
-          # `core.quotePath=false`, or git wraps a non-ASCII path in quotes
-          # with octal escapes and the pattern below stops matching it.
-          added=$(git -c core.quotePath=false diff --name-only --diff-filter=A HEAD^1 HEAD \
-            -- 'changelog.d/*.md' \
-            | grep -E '^changelog\.d/(added|changed|deprecated|removed|fixed|security)-[^/]+\.md$' \
-            || true)
-          # `scripts/changelog.jl` also rejects a fragment that is empty once
-          # stripped, and nothing else runs it before a release, so an empty
-          # one would merge and then break `task changelog` for everyone.
-          usable=$(printf '%s\n' "$added" | while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            if grep -q '[^[:space:]]' "$f"; then printf '%s\n' "$f"; fi
-          done)
-          if [ -z "$usable" ]; then
-            if [ -n "$added" ]; then
-              echo "This pull request's changelog fragment is empty:"
-              echo "$added"
-              echo "Write the entry's text in it, without the leading '- '."
-            else
-              echo "This pull request adds no changelog fragment."
-              echo "Add changelog.d/<category>-<slug>.md, or apply the"
-              echo "'no changelog' label if the change warrants no entry."
-            fi
+          # `A` for added: a modification to an existing fragment is not this
+          # pull request's entry. `core.quotePath=false`, or git wraps a
+          # non-ASCII path in quotes and the match below misses it.
+          added=$(git -c core.quotePath=false diff --name-only --diff-filter=A \
+            HEAD^1 HEAD -- changelog.d/ | sed -n 's#^changelog\.d/##p')
+          mine=$(printf '%s\n' "$added" \
+            | grep -Fxf "$RUNNER_TEMP/fragments.txt" || true)
+          if [ -z "$mine" ]; then
+            echo "This pull request adds no changelog fragment."
+            echo "Add changelog.d/<category>-<slug>.md, or apply the"
+            echo "'no changelog' label if the change warrants no entry."
             echo "See changelog.d/README.md."
             exit 1
           fi
           echo "found:"
-          echo "$usable"
+          echo "$mine"

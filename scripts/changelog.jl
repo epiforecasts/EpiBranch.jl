@@ -3,6 +3,7 @@
 # Assemble the changelog fragments in `changelog.d/` (see its README).
 #
 #   julia scripts/changelog.jl                 # print the pending section
+#   julia scripts/changelog.jl --list          # name the fragments it can read
 #   julia scripts/changelog.jl 0.2.0           # fold them into CHANGELOG.md
 #
 # A release inserts its section at a literal marker and reads nothing else in
@@ -28,16 +29,27 @@ struct Fragment
     text::String
 end
 
+# Anything in the directory that is not the README and not a hidden file is
+# meant as a fragment, so an entry this cannot use is an error rather than
+# something to pass over. A skipped file is an entry its author believes is
+# recorded, and nothing would say otherwise until the release.
 function read_fragments(dir)
     fragments = Fragment[]
     for name in sort(readdir(dir))
-        (endswith(name, ".md") && name != "README.md") || continue
+        (name == "README.md" || startswith(name, ".")) && continue
+        path = joinpath(dir, name)
+        isdir(path) && error(
+            "changelog.d/$name is a directory. Fragments sit directly in changelog.d/."
+        )
+        endswith(name, ".md") && occursin('-', name) || error(
+            "changelog.d/$name is not named <category>-<slug>.md."
+        )
         category = first(split(name, '-'; limit = 2))
         category in CATEGORIES || error(
             "changelog.d/$name: '$category' is not one of $(join(CATEGORIES, ", ")). " *
                 "Name the file <category>-<slug>.md."
         )
-        text = strip(read(joinpath(dir, name), String))
+        text = strip(read(path, String))
         isempty(text) && error("changelog.d/$name is empty.")
         push!(fragments, Fragment(category, name, text))
     end
@@ -104,6 +116,10 @@ end
 
 function main(args)
     isdir(FRAGMENT_DIR) || error("no changelog.d/ directory at $FRAGMENT_DIR.")
+    if args == ["--list"]
+        foreach(f -> println(f.name), read_fragments(FRAGMENT_DIR))
+        return 0
+    end
     fragments = read_fragments(FRAGMENT_DIR)
     if isempty(args)
         isempty(fragments) ? println("No changelog fragments pending.") :
