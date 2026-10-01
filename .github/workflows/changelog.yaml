@@ -59,12 +59,25 @@ jobs:
             -- 'changelog.d/*.md' \
             | grep -E '^changelog\.d/(added|changed|deprecated|removed|fixed|security)-[^/]+\.md$' \
             || true)
-          if [ -z "$added" ]; then
-            echo "This pull request adds no changelog fragment."
-            echo "Add changelog.d/<category>-<slug>.md, or apply the"
-            echo "'no changelog' label if the change warrants no entry."
+          # `scripts/changelog.jl` also rejects a fragment that is empty once
+          # stripped, and nothing else runs it before a release, so an empty
+          # one would merge and then break `task changelog` for everyone.
+          usable=$(printf '%s\n' "$added" | while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            if grep -q '[^[:space:]]' "$f"; then printf '%s\n' "$f"; fi
+          done)
+          if [ -z "$usable" ]; then
+            if [ -n "$added" ]; then
+              echo "This pull request's changelog fragment is empty:"
+              echo "$added"
+              echo "Write the entry's text in it, without the leading '- '."
+            else
+              echo "This pull request adds no changelog fragment."
+              echo "Add changelog.d/<category>-<slug>.md, or apply the"
+              echo "'no changelog' label if the change warrants no entry."
+            fi
             echo "See changelog.d/README.md."
             exit 1
           fi
           echo "found:"
-          echo "$added"
+          echo "$usable"
