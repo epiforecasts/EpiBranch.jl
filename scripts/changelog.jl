@@ -29,14 +29,19 @@ struct Fragment
     text::String
 end
 
-# Anything in the directory that is not the README and not a hidden file is
-# meant as a fragment, so an entry this cannot use is an error rather than
-# something to pass over. A skipped file is an entry its author believes is
+# An editor backup, an auto-save or a merge leftover is nobody's entry, and
+# `.gitignore` does not cover them, so they are passed over.
+const STRAY = r"(^#.*#$)|(~$)|\.(orig|rej|bak|swp)$"
+
+_ignored(name) = name == "README.md" || startswith(name, ".") || occursin(STRAY, name)
+
+# Every other name in the directory is meant as a fragment, so one this cannot
+# use is an error. A file quietly skipped is an entry its author believes is
 # recorded, and nothing would say otherwise until the release.
 function read_fragments(dir)
     fragments = Fragment[]
     for name in sort(readdir(dir))
-        (name == "README.md" || startswith(name, ".")) && continue
+        _ignored(name) && continue
         path = joinpath(dir, name)
         isdir(path) && error(
             "changelog.d/$name is a directory. Fragments sit directly in changelog.d/."
