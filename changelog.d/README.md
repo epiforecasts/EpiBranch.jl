@@ -30,7 +30,16 @@ bullet when assembled, so write it flush left.
 
 `changelog-release` writes a new version section at the
 `<!-- releases go below this line -->` marker in `CHANGELOG.md` and deletes the
-fragments. It reads nothing else in the file, so it cannot misplace existing
-content, and equally cannot tidy it: anything written by hand under
-`## [Unreleased]` stays there, and the script warns when it finds some. Run this
-on the release branch and read the result before committing.
+fragments. The marker is the only thing it looks for, so where a line sits
+relative to it decides that line's fate:
+
+- **Below the marker**, and so inside the new release: the fragments, and any
+  entry written by hand under `## [Unreleased]`. That is how the entries
+  already in `CHANGELOG.md` will ship with 0.2.0.
+- **Above the marker**, and so left under `## [Unreleased]`: the prose
+  describing the unreleased state. An entry written up there stays behind after
+  the release, which is rarely meant, so the script warns about one.
+
+Run this on the release branch and read the result before committing. A release
+that carries hand-written entries gets two `### Added` headings, one from the
+fragments and one from those entries; merge them yourself.
