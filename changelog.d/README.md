@@ -25,8 +25,9 @@ bullet when assembled, so write it flush left.
 
 Everything in this directory is read as an entry, so a file that cannot be read
 fails CI rather than being passed over: a name without one of the categories
-above, a subdirectory, an empty file. Editor backups and merge leftovers
-(`#...#`, `...~`, `.orig`, `.rej`) are ignored.
+above, a subdirectory, an empty file. Ignored are names beginning with a dot,
+and the leavings of an editor or a merge — `#...#`, `...~`, `.bak`, `.swp`,
+`.swo`, `.orig`, `.rej`, and `git mergetool`'s `.BACKUP.1234.` copies.
 
 ## Carrying no entry
 
