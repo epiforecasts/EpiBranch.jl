@@ -3,7 +3,7 @@
 # Assemble the changelog fragments in `changelog.d/` (see its README).
 #
 #   julia scripts/changelog.jl                 # print the pending section
-#   julia scripts/changelog.jl --list          # name the fragments it can read
+#   julia scripts/changelog.jl --list          # name the fragments it reads
 #   julia scripts/changelog.jl 0.2.0           # fold them into CHANGELOG.md
 #
 # A release inserts its section at a literal marker and reads nothing else in

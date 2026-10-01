@@ -31,12 +31,10 @@ jobs:
         with:
           version: '1'
       - name: Read the fragments
-        # The assembler does the reading, so the rules live in one place.
-        # Earlier revisions restated them in `grep`, and every gap between the
-        # two let a fragment through that then broke `task changelog` on main.
-        # It errors on any entry it cannot use and names the rest, which the
-        # next step matches against the diff. It needs only the standard
-        # library, so there is no package environment to set up.
+        # The assembler does the reading, so the rules live in one place: it
+        # errors on any entry it cannot use and names the rest, which the next
+        # step matches against the diff. It needs only the standard library, so
+        # there is no package environment to set up.
         run: |
           julia scripts/changelog.jl --list > "$RUNNER_TEMP/fragments.txt"
           cat "$RUNNER_TEMP/fragments.txt"
