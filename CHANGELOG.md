@@ -12,13 +12,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
-- `PairKernel` shares fixed covariates, the infector's infection time, sampled
-  attributes and dated intervention histories between structured simulation and
-  likelihoods, and multiplies the contact-interval hazard by a `Steps` schedule
-  on the calendar. `record_kernel` extracts typed host records for inference. An
-  infection layer can hold per-host times such as onsets (`host_times`), which a
-  live `PairKernel` reads in the likelihood, so one kernel timed from symptom
-  onset serves both simulation and inference.
 - `Isolation`'s `onset_to_isolation_delay` accepts a `Real`, a `Distribution`,
   or a function `(rng, ind) -> Real`, matching `test_sensitivity`. The function
   form can read state that another intervention recorded on the individual,
