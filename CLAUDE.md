@@ -51,14 +51,16 @@ engine loop, work through these:
 2. **If none fits, add a dispatched trait with a default**, and document it in
    the extending guide, so the variant can be written from outside the
    package. A seam nobody outside can reach is not a seam (principle 4).
-3. **Engine loops ask the composed layers; they never decide for them.** A
+3. **Engine loops should ask the composed layers, never decide for them.** A
    race or stepping loop that decides what a named intervention does to whom,
    reads a state key an intervention owns, or keeps its own record of what has
    already been done to whom has taken a policy decision into core. Where a
-   loop needs a fact about an intervention, it asks a documented trait with a
-   conservative default that the intervention's own author opts out of, as
-   `infection_likelihood_compatible` is asked. A method the engine keeps on
-   its own built-ins closes the path to everyone else.
+   loop needs a fact about an intervention, the shape is a documented trait
+   with a conservative default that the intervention's own author opts out of,
+   as `infection_likelihood_compatible` is asked; a method the engine keeps on
+   its own built-ins is reachable only from inside the package. Several loops
+   do not meet this yet, so adding a case to one of them is the thing to
+   justify, and matching the existing shape is not justification.
 4. **Say in the pull request which seam was used**, or which was considered
    and why it did not fit. A new `Bool`, `Symbol` or `Union` field on a core
    type, or a new verb alongside an existing one, needs that justification.
