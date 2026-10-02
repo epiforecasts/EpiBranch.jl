@@ -1477,15 +1477,15 @@ struct CensoredAtSize <: ObservationModel
 end
 
 # 2. Transformed chain size distribution
-struct TruncatedChainSize{D} <: DiscreteUnivariateDistribution
+struct CappedChainSize{D} <: DiscreteUnivariateDistribution
     base::D
     cap::Int
 end
-Distributions.minimum(::TruncatedChainSize) = 1
-Distributions.maximum(d::TruncatedChainSize) = d.cap
-Distributions.insupport(d::TruncatedChainSize, n::Integer) = 1 <= n <= d.cap
+Distributions.minimum(::CappedChainSize) = 1
+Distributions.maximum(d::CappedChainSize) = d.cap
+Distributions.insupport(d::CappedChainSize, n::Integer) = 1 <= n <= d.cap
 
-function Distributions.logpdf(d::TruncatedChainSize, n::Integer)
+function Distributions.logpdf(d::CappedChainSize, n::Integer)
     1 <= n <= d.cap || return -Inf
     Z = sum(pdf(d.base, m) for m in 1:d.cap)
     return logpdf(d.base, n) - log(Z)
@@ -1493,12 +1493,15 @@ end
 
 # 3. The analytical side of the protocol: one method, dispatched on the
 #    observation. loglikelihood(data, model) routes through it.
-EpiBranch.observe(base, o::CensoredAtSize) = TruncatedChainSize(base, o.cap)
+EpiBranch.observe(base, o::CensoredAtSize) = CappedChainSize(base, o.cap)
 ```
 
 Usage: `ModelSpec(BranchingProcess(...); observation = CensoredAtSize(10))`. No
 per-observation `loglikelihood` method is needed — returning a distribution
 from `observe` means the shared machinery evaluates `logpdf` on it.
+
+For the common case of a lower bound instead of an upper cap, the built-in
+[`MinimumSize`](@ref)/[`TruncatedChainSize`](@ref) pair does this already.
 
 ### Sim ↔ analytical consistency test
 
