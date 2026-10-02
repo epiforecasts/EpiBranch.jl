@@ -288,6 +288,19 @@ group-to-members index (see `EpiBranch._group_members`), so they override
 this with a candidate list bounded by ring or group size rather than
 population size.
 """
+# Whether `id` belongs to this race and the race has not finalised it yet, so
+# that an action may still reach it. `pos` is the race's id-to-index map into
+# `members`; a caller with no map walks the members instead, which is what the
+# map exists to avoid on the race's own path.
+function _pending(id, members, processed, pos)
+    if pos === nothing
+        k = findfirst(==(id), members)
+        return k !== nothing && !processed[k]
+    end
+    k = get(pos, id, 0)
+    return k != 0 && !processed[k]
+end
+
 function _continuous_candidates(
         ::AbstractIntervention, state, current, members, processed, contacts, pos
     )
@@ -311,8 +324,7 @@ function _continuous_candidates(
     contacts === nothing && return candidates
     for c in contacts(current.id, state)
         cid = c isa Tuple ? c[1] : c
-        k = get(pos, cid, 0)
-        (k == 0 || processed[k]) && continue
+        _pending(cid, members, processed, pos) || continue
         push!(candidates, state.individuals[cid])
     end
     return candidates
@@ -326,8 +338,7 @@ function _continuous_candidates(
     group === nothing && return candidates
     for id in _group_members(state, gv.group_key, group)
         id == current.id && continue
-        k = get(pos, id, 0)
-        (k == 0 || processed[k]) && continue
+        _pending(id, members, processed, pos) || continue
         push!(candidates, state.individuals[id])
     end
     return candidates
