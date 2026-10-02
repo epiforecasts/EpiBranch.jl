@@ -207,6 +207,7 @@ ones your intervention needs (all default to no-ops).
 | `trace_contacts!(iv, state, infector, contacts[, not_before])` | Continuous-time models only: once per case, when the race settles it | The case, the contacts it reached that are not yet settled, and, from a model whose contacts can come about after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing` (mutate the contacts' `state` in place) |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to gather contacts at all | Nothing | `true` if this intervention implements `trace_contacts!` (default `false`) |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
+| `on_infection_settled!(iv, individual, state, rng)` | Continuous-time models only: once the race fixes a case's infection time, before its onset or transitions read it | The case, and the race's own `rng` | `nothing` (mutate the case's `state` in place; default no-op) |
 | `risk_applies(iv, route)` | Continuous-time models selecting risks for a route (`nothing` for an external introduction) | Nothing | `Bool`; defaults to `true` |
 
 ### Which hooks fire on which engine
@@ -226,6 +227,7 @@ hang after all, alongside the infectious window.
 | `resolve_individual!` | yes | yes | yes |
 | `competing_risk` | yes | yes | yes |
 | `infectious_removal_time` | not read | yes | yes |
+| `on_infection_settled!` | not called | yes | not called |
 | `trace_contacts!` | not called | yes | no contact set |
 | `apply_post_transmission!` | yes | not called | not called |
 | `keep_active` | yes | not called | not called |

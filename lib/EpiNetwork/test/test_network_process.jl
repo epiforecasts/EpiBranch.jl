@@ -1173,12 +1173,11 @@ end
         )
         @test meansize([iso, late]) <= meansize([iso]) * 1.05
 
-        # Exposure-dependent eligibility and PEP require a known infection time.
+        # Exposure-dependent eligibility requires a known infection time; PEP
+        # does not, since a dose given to a still-pending member is
+        # reconsidered once the race settles that member's own infection.
         model = build([iso]).process
-        for rv in (
-                RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8),
-                RingVaccination(efficacy = 0.8, eligibility_window = 21.0),
-            )
+        for rv in (RingVaccination(efficacy = 0.8, eligibility_window = 21.0),)
             @test !EpiBranch._sellke_honours(model, rv)
             warning_name = rv isa Scheduled ? r"Scheduled" : r"RingVaccination"
             undosed = @test_logs (:warn, warning_name) match_mode = :any simulate(
@@ -1196,7 +1195,17 @@ end
             n_initial = 1, rng = StableRNG(4)
         )
 
-        # Tracing and actions share the continuous-time candidate state.
+        # Tracing and actions share the continuous-time candidate state. A
+        # post-exposure dose is honoured too: a contact traced while still
+        # pending is dosed, and the dose is reconsidered against its own
+        # exposure once its infection settles.
+        pep = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8)
+        @test EpiBranch._sellke_honours(model, pep)
+        dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
+            build([iso, ct, pep]); n_initial = 1, rng = StableRNG(4)
+        )
+        @test any(is_vaccinated, dosed.individuals)
+
         honoured = [iso, ct, RingVaccination(efficacy = 0.8)]
         @test all(iv -> EpiBranch._sellke_honours(model, iv), honoured)
         @test_logs min_level = Base.CoreLogging.Warn simulate(

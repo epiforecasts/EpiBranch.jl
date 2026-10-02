@@ -362,14 +362,20 @@ EpiBranch.risk_applies).
 """
 const INTERVENTION_REMOVAL = :intervention_removal
 
-# Close a window: the earliest of its `until` states' times, plus the
-# intervention removal when the window opted into it.
+# Close a window: the earliest of its `until` states' times, the intervention
+# removal when the window opted into it, and a post-exposure abort, which ends
+# the infection outright and so closes every route, opted in or not — the same
+# reach as the `AbortedInfection` risk that blocks each route's transmission
+# from that time on. Without this, a route whose only removal state is one an
+# abort undoes (see `resolve_transitions!`) never closes, and the rejection
+# sampler that redraws a blocked pair's next contact has no bound to redraw
+# within.
 function _route_close(ind, w::RouteWindow, interventions)
     t = _window_close(ind, w.until)
     if INTERVENTION_REMOVAL in w.until
         t = min(t, _intervention_removal_time(ind, interventions))
     end
-    return t
+    return min(t, get(ind.state, :infection_aborted_time, Inf))
 end
 
 # The one window of `_sellke_race!`'s `from`/`until`/`targets` shorthand. Reading
@@ -761,6 +767,13 @@ function _sellke_race!(
             routes === nothing || (ind.state[:infection_route] = rts[opening.route][1].name)
         elseif introduction !== nothing
             ind.state[:infection_route] = :external
+        end
+        # The infection time is now fixed, so an intervention whose effect
+        # depends on the exposure the race chose can settle it (see
+        # `on_infection_settled!`), before the onset derived from it or any
+        # transition reads it.
+        for iv in interventions
+            on_infection_settled!(iv, ind, state, rng)
         end
         # A pre-created node has no infection time, and so no onset, until now.
         # Derive the onset from the infection time before transitions and
