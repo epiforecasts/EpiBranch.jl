@@ -611,6 +611,90 @@ end
         @test count(p -> hh_of(p[1]) == hh_of(p[2]), pairs) > length(pairs) ÷ 2
     end
 
+    @testset "RoutedNetwork: infection route recorded on the case" begin
+        # Households of 4 as cliques, plus a community ring over the same
+        # people, plus a community-wide external hazard: every route a case
+        # can be infected through, seen from the case's own state.
+        nh, hs = 20, 4
+        n = nh * hs
+        hh = [Int[] for _ in 1:n]
+        for h in 0:(nh - 1), i in (h * hs + 1):(h * hs + hs),
+                j in (h * hs + 1):(h * hs + hs)
+            i != j && push!(hh[i], j)
+        end
+        comm = ring_adjacency(n)
+        routes = [
+            RouteWindow(:household; until = (:recovered,), kernel = Weibull(1.5, 4.0), reach = hh),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(20.0), reach = comm),
+        ]
+
+        # With no external hazard, a seed is a true index case rather than a
+        # community introduction, and carries no route at all.
+        no_hazard = simulate(
+            ModelSpec(RoutedNetwork(routes); progression = _sir(10.0));
+            n_initial = 2, rng = StableRNG(7)
+        )
+        index_df = linelist(no_hazard)
+        @test all(ismissing, index_df.infection_route[index_df.index])
+
+        m = ModelSpec(
+            RoutedNetwork(routes; external_hazard = 0.02, obs_end = 30.0);
+            progression = _sir(10.0)
+        )
+        state = simulate(m; n_initial = 2, rng = StableRNG(7))
+        df = linelist(state)
+
+        @test :infection_route in propertynames(df)
+        @test Set(skipmissing(df.infection_route)) ⊆ Set(["household", "community", "external"])
+        @test "household" in df.infection_route
+        @test "community" in df.infection_route
+        @test "external" in df.infection_route
+
+        # A case's recorded route matches the route its infector actually
+        # reached it on: a household neighbour's route is :household, and vice
+        # versa.
+        by_id = Dict(ind.id => ind for ind in state.individuals)
+        for ind in state.individuals
+            is_infected(ind) && ind.parent_id != 0 || continue
+            infector = by_id[ind.parent_id]
+            route = ind.state[:infection_route]
+            if route == :household
+                @test ind.id in hh[infector.id]
+            elseif route == :community
+                @test ind.id in comm[infector.id]
+            end
+        end
+
+        # With the external hazard active, every seed is a community
+        # introduction rather than a true index case, so all of them are
+        # `:external` too.
+        @test all(==("external"), df.infection_route[df.index])
+    end
+
+    @testset "NetworkProcess: introductions marked external, no route otherwise" begin
+        # A plain NetworkProcess has one implicit route, not a named one, so
+        # onward transmission along the graph carries no `:infection_route`;
+        # only introductions from outside the population are distinguishable,
+        # and those are `:external`.
+        n = 50
+        m = ModelSpec(
+            NetworkProcess(
+                ring_adjacency(n), Exponential(2.0);
+                external_hazard = 0.05, obs_end = 30.0
+            );
+            progression = _sir(6.0)
+        )
+        state = simulate(m; rng = StableRNG(5))
+        df = linelist(state)
+        @test count(df.index) >= 1                        # community introductions happened
+        @test :infection_route in propertynames(df)
+        @test all(==("external"), df.infection_route[df.index])
+        @test all(
+            !haskey(ind.state, :infection_route)
+                for ind in state.individuals if is_infected(ind) && !ind.state[:index]
+        )
+    end
+
     @testset "RoutedNetwork: route start under a latent period" begin
         # Two nodes, a fixed 5-day latent period and near-immediate contact. A
         # route left at the default opens when the case becomes infectious; an

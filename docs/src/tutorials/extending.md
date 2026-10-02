@@ -56,6 +56,7 @@ downstream packages should pick names that do not collide.
 | Key | Type | Default | Owner | When set |
 |---|---|---|---|---|
 | `:infected` | `Bool` | `true` | Engine | Competing-risks resolution |
+| `:infection_route` | `Symbol` | — | Engine (routed models) | Competing-risks resolution |
 | `:type` | `Int` | `1` | Engine (multi-type) | Contact creation |
 | `:onset_time` | `Float64` | `NaN` | `clinical_presentation` | Init |
 | `:asymptomatic` | `Bool` | `false` | `clinical_presentation` | Init |
