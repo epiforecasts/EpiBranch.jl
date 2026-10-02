@@ -79,6 +79,45 @@ println("Posterior k: $(round(mean(chain[:k]), digits=2)) " *
         "$(round(quantile(vec(chain[:k]), 0.975), digits=2)))")
 ```
 
+### Case-level covariates
+
+The number of secondary cases a case causes often depends on its own
+characteristics: the setting of exposure, age, or time of infection. Passing a
+vector of distributions, one per observation, scores each count against its
+own offspring distribution instead of a single shared one:
+
+```@example inference
+rng_cov = StableRNG(7)
+x = rand(rng_cov, 0:1, 100)  # e.g. household (1) vs community (0) exposure
+β0_true, β1_true, k_true = -0.3, 0.8, 0.6
+μ_true = exp.(β0_true .+ β1_true .* x)
+y = [rand(rng_cov, NegativeBinomial(NegBin(m, k_true).r, NegBin(m, k_true).p)) for m in μ_true]
+
+loglikelihood(OffspringCounts(y), NegBin.(μ_true, k_true))
+```
+
+`product_distribution` (from Distributions.jl) turns the same vector of
+per-case distributions into a single `Distribution` you can put on the
+right-hand side of Turing's `~`, so the covariate coefficients can be
+fitted directly:
+
+```@example inference
+@model function offspring_covariate_model(x, y)
+    β0 ~ Normal(0.0, 2.0)
+    β1 ~ Normal(0.0, 2.0)
+    k ~ Exponential(1.0)
+    y ~ product_distribution(NegBin.(exp.(β0 .+ β1 .* x), k))
+end
+
+mle = maximum_likelihood(offspring_covariate_model(x, y))
+mle_params = NamedTuple(mle.params)
+println("MLE: β0=$(round(mle_params.β0, digits=2)), " *
+        "β1=$(round(mle_params.β1, digits=2)), k=$(round(mle_params.k, digits=2))")
+```
+
+For data that list only cases with at least one secondary case, truncate each
+distribution: `loglikelihood(OffspringCounts(y), truncated.(offspring, 1, Inf))`.
+
 ## From chain sizes
 
 When you observe final outbreak sizes but not who-infected-whom:

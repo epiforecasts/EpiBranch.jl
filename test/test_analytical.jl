@@ -816,6 +816,92 @@
         end
     end
 
+    @testset "Proportion of cases responsible for transmission" begin
+        @testset "Individual-R version inverts proportion_transmission" begin
+            R, k = 2.5, 0.4
+            q = proportion_cases_individual(R, k; prop_transmission = 0.8)
+            @test 0.0 < q < 1.0
+            @test proportion_transmission(R, k; prop_cases = q) ≈ 0.8 atol = 1.0e-8
+        end
+
+        @testset "Individual-R version depends only on k" begin
+            @test proportion_cases_individual(0.5, 0.3) ==
+                proportion_cases_individual(100.0, 0.3)
+        end
+
+        @testset "No overdispersion → proportion of cases ≈ proportion of transmission" begin
+            # For k → ∞ the Lorenz curve is the diagonal, so the top q
+            # fraction of cases causes ≈ q of transmission.
+            q = proportion_cases_individual(2.0, 1000.0; prop_transmission = 0.8)
+            @test q ≈ 0.8 atol = 0.05
+        end
+
+        @testset "Individual-R argument validation" begin
+            @test_throws ArgumentError proportion_cases_individual(-1.0, 0.5)
+            @test_throws ArgumentError proportion_cases_individual(2.0, -0.5)
+            @test_throws ArgumentError proportion_cases_individual(2.0, 0.5; prop_transmission = 0.0)
+            @test_throws ArgumentError proportion_cases_individual(2.0, 0.5; prop_transmission = 1.0)
+        end
+
+        @testset "Individual-R distribution and model dispatch" begin
+            d = NegBin(2.5, 0.16)
+            @test proportion_cases_individual(d) ≈ proportion_cases_individual(2.5, 0.16)
+            @test proportion_cases_individual(Poisson(2.0); prop_transmission = 0.8) ≈
+                proportion_cases_individual(2.0, 1.0e6; prop_transmission = 0.8)
+            @test_throws ArgumentError proportion_cases_individual(Gamma(2.0, 1.0))
+
+            model = BranchingProcess(NegBin(2.5, 0.16))
+            @test proportion_cases_individual(model) ≈ proportion_cases_individual(d)
+        end
+
+        @testset "Realised-offspring version: basic sanity" begin
+            q = proportion_cases_offspring(2.5, 0.4; prop_transmission = 0.8)
+            @test 0.0 < q < 1.0
+        end
+
+        @testset "Realised-offspring version: lower k concentrates transmission" begin
+            q_low_k = proportion_cases_offspring(2.0, 0.1; prop_transmission = 0.8)
+            q_high_k = proportion_cases_offspring(2.0, 10.0; prop_transmission = 0.8)
+            @test q_low_k < q_high_k
+        end
+
+        @testset "Realised-offspring version works for any discrete offspring law" begin
+            # Not restricted to NegativeBinomial/Poisson, unlike the
+            # individual-R version.
+            q_geom = proportion_cases_offspring(Geometric(0.4); prop_transmission = 0.8)
+            @test 0.0 < q_geom < 1.0
+
+            q_pois = proportion_cases_offspring(Poisson(2.0); prop_transmission = 0.8)
+            @test 0.0 < q_pois < 1.0
+        end
+
+        @testset "Realised-offspring version requires a finite mean" begin
+            @test_throws ArgumentError proportion_cases_offspring(PoissonGammaChainSize(0.5, 0.8))
+        end
+
+        @testset "Realised-offspring argument validation" begin
+            @test_throws ArgumentError proportion_cases_offspring(-1.0, 0.5)
+            @test_throws ArgumentError proportion_cases_offspring(2.0, -0.5)
+            @test_throws ArgumentError proportion_cases_offspring(2.0, 0.5; prop_transmission = 0.0)
+            @test_throws ArgumentError proportion_cases_offspring(2.0, 0.5; prop_transmission = 1.0)
+        end
+
+        @testset "Realised-offspring model dispatch" begin
+            model = BranchingProcess(NegBin(2.5, 0.16))
+            @test proportion_cases_offspring(model) ≈ proportion_cases_offspring(2.5, 0.16)
+        end
+
+        @testset "The two versions differ substantially" begin
+            # This is the point of the issue: the continuous individual-R
+            # approximation and the realised, integer offspring counts
+            # answer different questions and should not be conflated.
+            R, k = 2.5, 0.4
+            q_individual = proportion_cases_individual(R, k; prop_transmission = 0.8)
+            q_offspring = proportion_cases_offspring(R, k; prop_transmission = 0.8)
+            @test abs(q_individual - q_offspring) > 0.01
+        end
+    end
+
     @testset "Proportion cluster size" begin
         @testset "High overdispersion concentrates cases" begin
             # k=0.1 → most cases from large clusters
@@ -900,6 +986,42 @@
             ll = loglikelihood(OffspringCounts([0, 1, 2, 0, 3]), Poisson(1.2))
             @test isfinite(ll)
             @test ll < 0.0
+        end
+
+        @testset "Per-case covariate distributions" begin
+            counts = [0, 1, 4, 0, 2]
+            μ = [0.5, 0.8, 3.0, 0.5, 1.2]
+            dists = NegBin.(μ, 0.5)
+            ll = loglikelihood(OffspringCounts(counts), dists)
+            @test ll ≈ sum(logpdf(d, x) for (d, x) in zip(dists, counts))
+            # Same as scoring each count against its own distribution one at
+            # a time, matching the workaround the vectorised method replaces.
+            @test ll ≈
+                sum(loglikelihood(OffspringCounts([x]), d) for (d, x) in zip(dists, counts))
+
+            @test_throws ArgumentError loglikelihood(
+                OffspringCounts(counts), dists[1:(end - 1)]
+            )
+        end
+
+        @testset "Zero-truncated variant composes via Distributions.truncated" begin
+            counts = [1, 4, 2, 1, 3]
+            μ = [0.8, 3.0, 1.2, 0.8, 2.0]
+            dists = truncated.(NegBin.(μ, 0.5), 1, Inf)
+            ll = loglikelihood(OffspringCounts(counts), dists)
+            @test ll ≈ sum(logpdf(d, x) for (d, x) in zip(dists, counts))
+
+            # Scalar single-distribution method also composes with truncated.
+            ll_scalar = loglikelihood(OffspringCounts(counts), truncated(NegBin(1.0, 0.5), 1, Inf))
+            @test isfinite(ll_scalar)
+        end
+
+        @testset "Usable from Turing via product_distribution" begin
+            counts = [0, 1, 4, 0, 2]
+            μ = [0.5, 0.8, 3.0, 0.5, 1.2]
+            dists = NegBin.(μ, 0.5)
+            d = product_distribution(dists)
+            @test logpdf(d, counts) ≈ loglikelihood(OffspringCounts(counts), dists)
         end
     end
 
