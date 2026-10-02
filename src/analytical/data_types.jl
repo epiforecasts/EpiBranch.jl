@@ -23,12 +23,15 @@ end
 """
     OffspringCounts(infector, infectee; unlinked = 0)
 
-Build offspring counts from a table of infector–infectee pairs, the
-inverse of what [`contacts`](@ref) reports: `infector[i]` transmitted to
-`infectee[i]`. Every case appearing in either vector gets one count, the
-number of times it appears in `infector` (zero for a case identified only
-as an infectee). `unlinked` adds that many extra cases with no identified
-transmission link at all, each with an offspring count of zero.
+Build offspring counts from a table of infector–infectee pairs:
+`infector[i]` transmitted to `infectee[i]`. Only confirmed transmissions
+belong here -- from [`contacts`](@ref), that means rows filtered to
+`infected == true`, since `contacts` also reports exposure events that did
+not result in infection. Every case appearing in either vector gets one
+count, the number of times it appears in `infector` (zero for a case
+identified only as an infectee). `unlinked` adds that many extra cases
+with no identified transmission link at all, each with an offspring count
+of zero.
 
 # Examples
 
