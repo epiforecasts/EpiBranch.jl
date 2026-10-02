@@ -12,14 +12,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
-- `compile_household_pairs` and `loglikelihood(::HouseholdInfections, ::HouseholdProcess)`
-  take `condition_on = :is_index` or `:earliest`. Without a community hazard,
-  `:earliest` conditions each household on whichever member currently has the
-  lowest infection time instead of the recruited index, resolved afresh on
-  every call — the recruited index need not be the first household member
-  infected, and augmenting infection times in inference can otherwise move an
-  earlier infection onto a non-index member and make the configuration
-  impossible.
 - `Isolation`'s `onset_to_isolation_delay` accepts a `Real`, a `Distribution`,
   or a function `(rng, ind) -> Real`, matching `test_sensitivity`. The function
   form can read state that another intervention recorded on the individual,
