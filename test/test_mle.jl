@@ -12,6 +12,28 @@
         @test lo < f.estimate.R < hi
         # Both sides are finite for a well-identified single-parameter fit.
         @test isfinite(lo) && isfinite(hi)
+
+        # Pin the profile interval against a closed-form calculation, computed
+        # independently of `_profile_bound`/`_bisect`: for Poisson counts with
+        # sum S and n observations, the log-likelihood (up to an additive
+        # constant) is S*log(R) - n*R, so the chi-square profile bounds solve
+        # S*log(R) - n*R = S*log(R̂) - n*R̂ - quantile(Chisq(1), level)/2. A
+        # wrong quantile, degrees of freedom, or factor of 2 in the package's
+        # calibration would move `f.ci.R` away from this independently-solved
+        # root.
+        n, S = length(data.data), sum(data.data)
+        R̂ = S / n
+        target = S * log(R̂) - n * R̂ - quantile(Chisq(1), f.level) / 2
+        g(R) = S * log(R) - n * R - target
+        function bisect_root(lo, hi)
+            for _ in 1:200
+                mid = (lo + hi) / 2
+                sign(g(mid)) == sign(g(lo)) ? (lo = mid) : (hi = mid)
+            end
+            return (lo + hi) / 2
+        end
+        @test lo ≈ bisect_root(1.0e-8, R̂) atol = 1.0e-4
+        @test hi ≈ bisect_root(R̂, 1.0e6) atol = 1.0e-4
     end
 
     @testset "OffspringCounts — NegativeBinomial" begin
