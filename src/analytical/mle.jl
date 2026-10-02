@@ -265,6 +265,15 @@ function _bootstrap_ci(
     return (R = _percentile_interval(Rs, level), k = _percentile_interval(ks, level))
 end
 
+"""Validate a confidence `level`, raising an error that names both the
+argument and `fit` rather than letting an invalid value reach `quantile`
+(outside (0, 1)) or silently produce a degenerate `(0, Inf)` interval (at
+the boundary)."""
+function _check_level(level::Real)
+    0 < level < 1 || throw(ArgumentError("fit: level must be strictly between 0 and 1, got $level"))
+    return nothing
+end
+
 """
     fit(data, ::Type{Poisson}; level=0.95, bootstrap=0, rng=Random.default_rng())
     fit(data, ::Type{NegativeBinomial}; level=0.95, bootstrap=0, rng=Random.default_rng())
@@ -297,6 +306,7 @@ function fit(
         level::Real = 0.95, bootstrap::Int = 0,
         rng::AbstractRNG = Random.default_rng()
     )
+    _check_level(level)
     r_bound = _r_search_bound(data)
     ll(R) = loglikelihood(data, Poisson(R))
     R̂, ll_max = _point_estimate(data, Poisson)
@@ -312,6 +322,7 @@ function fit(
         level::Real = 0.95, bootstrap::Int = 0,
         rng::AbstractRNG = Random.default_rng()
     )
+    _check_level(level)
     r_bound = _r_search_bound(data)
     ll(R, k) = loglikelihood(data, NegBin(R, k))
     R̂, k̂, ll_max = _point_estimate(data, NegativeBinomial)

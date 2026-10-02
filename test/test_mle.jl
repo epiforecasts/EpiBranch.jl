@@ -120,6 +120,14 @@
         end
     end
 
+    @testset "fit validates level" begin
+        data = OffspringCounts([0, 1, 2, 0, 3, 1, 0, 2, 1, 4])
+        for level in (1.0, 1.5, -0.1, 0.0)
+            @test_throws ArgumentError fit(data, Poisson; level)
+            @test_throws ArgumentError fit(data, NegativeBinomial; level)
+        end
+    end
+
     @testset "A profile side that never crosses is reported as unbounded" begin
         # `_profile_bound` walks outward by a fixed factor and gives up at
         # `hi_bound`. With no bound to reach and a profile that never drops, the
