@@ -174,6 +174,55 @@ end
         @test latecomer.state[:vaccination_time] == confirmed.state[:vaccination_time]
     end
 
+    @testset "A pending member's dose moves earlier when the group's trigger moves earlier" begin
+        # On a continuous-time race, cases settle in order of infection, not
+        # in order of eligibility: a secondary case can be lab-confirmed
+        # before the case that infected it. A dose already given from the
+        # first trigger found must still move earlier for a member that has
+        # not yet settled, once the group's true earliest trigger is known.
+        gv = GroupVaccination(
+            efficacy = 0.9, eligibility = OnLabConfirmation(),
+            dose_delay = 1.0, delay_to_immunity = 3.0
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+
+        a = _group_member(gv, 1, :A, test_positive = false)
+        b = _group_member(gv, 2, :A, test_positive = false)
+        c = _group_member(gv, 3, :A, test_positive = false)
+        append!(state.individuals, [a, b, c])
+        members = [1, 2, 3]
+        processed = falses(3)
+
+        # `a` settles first, with a late trigger (isolated at 20).
+        a.state[:test_positive] = true
+        set_isolated!(a, 20.0)
+        processed[1] = true
+        state.max_infection_time = 5.0
+        EpiBranch._apply_continuous_actions!(state, a, [gv], members, processed)
+        @test b.state[:vaccination_time] == 21.0
+        @test c.state[:vaccination_time] == 21.0
+
+        # `b` settles next, with an earlier trigger (isolated at 8) than
+        # `a`'s, despite settling later.
+        b.state[:test_positive] = true
+        set_isolated!(b, 8.0)
+        processed[2] = true
+        state.max_infection_time = 6.0
+        EpiBranch._apply_continuous_actions!(state, b, [gv], members, processed)
+
+        # `c` is still pending and had not yet been evaluated against the
+        # stale dose, so it moves to the true, earlier trigger.
+        @test c.state[:vaccination_time] == 9.0
+        @test immunity_time(c) == 12.0
+        # `b` had not settled its own dose against the old trigger either.
+        @test b.state[:vaccination_time] == 9.0
+        # `a` is already processed: its completed action keeps its date.
+        @test a.state[:vaccination_time] == 21.0
+    end
+
     @testset "No triggering case leaves the group unvaccinated" begin
         gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation())
         state = EpiBranch.new_state(

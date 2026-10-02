@@ -64,6 +64,37 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         end
     end
 
+    @testset "onset_to_isolation_delay accepts a function" begin
+        # Age-conditional delay stands in for a delay that depends on
+        # per-individual state recorded by another intervention, e.g. a
+        # group's own event time.
+        attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
+        iso = Isolation(
+            onset_to_isolation_delay = (rng, ind) -> ind.state[:age] >= 50 ? 0.1 : 5.0
+        )
+        rng = StableRNG(21)
+        state = simulate(
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [iso], attributes = attrs
+            );
+            max_cases = 100,
+            rng = rng
+        )
+        # Isolation time is only set once `resolve_individual!` has run on an
+        # individual, which does not happen for every case before the run
+        # stops at `max_cases`; restrict the check to those it did reach.
+        checked = 0
+        for ind in state.individuals
+            is_test_positive(ind) || continue
+            isfinite(isolation_time(ind)) || continue
+            checked += 1
+            expected_delay = ind.state[:age] >= 50 ? 0.1 : 5.0
+            @test isolation_time(ind) - onset_time(ind) ≈ expected_delay
+        end
+        @test checked > 0
+    end
+
     @testset "required_fields dispatches on eligibility" begin
         # Default SymptomaticOnly requires :asymptomatic.
         @test :asymptomatic in EpiBranch.required_fields(
