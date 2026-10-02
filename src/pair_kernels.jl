@@ -91,7 +91,9 @@ PairKernel((ctx, source, target) -> Gamma(2.0, 1.5);
            state = ind -> (age = ind.state[:age],))  # optional per-person record
 
 PairKernel((ctx, source, target) ->
-               (profile = Exponential(2.5), calendar = Steps([target.date], [1.0, 0.25]));
+               isfinite(target.date) ?
+               (profile = Exponential(2.5), calendar = Steps([target.date], [1.0, 0.25])) :
+               Exponential(2.5);
            state = ind -> (date = get(ind.state, :policy_time, Inf)::Float64,))
 ```
 
