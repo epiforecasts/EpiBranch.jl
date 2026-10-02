@@ -755,6 +755,45 @@ end
                     [i.infection_time for i in b.individuals]
             end
         end
+
+        # A kernel reading host records is refused rather than resolved. The
+        # race redraws pending contacts from one set of watched records, and
+        # several routes can carry several such kernels, so resolving per pair
+        # would draw a route's contacts from whatever the records held when
+        # they were proposed. `NetworkProcess` takes the same kernel.
+        live = StatefulKernel(
+            ind -> (tick = get(ind.state, :tick, 0)::Int,),
+            (c, a, b) -> Exponential(1.0 + a.tick)
+        )
+        err = try
+            RoutedNetwork(
+                [RouteWindow(:all; until = (:recovered,), kernel = live, reach = adj)]
+            )
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin("reads host records", err.msg)
+        @test occursin(":all", err.msg)
+        @test NetworkProcess(adj, live; until = (:recovered,)) isa NetworkProcess
+
+        # A per-edge kernel of the wrong shape names the route it came from.
+        bad = try
+            RoutedNetwork(
+                [
+                    RouteWindow(
+                        :community; until = (:recovered,),
+                        kernel = [[Exponential(1.0)] for _ in adj], reach = adj
+                    ),
+                ]
+            )
+            nothing
+        catch e
+            e
+        end
+        @test bad isa ArgumentError
+        @test occursin("route :community", bad.msg)
     end
 
     @testset "RoutedNetwork: a route's infectiousness start does not delay tracing" begin

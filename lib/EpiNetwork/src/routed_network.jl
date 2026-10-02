@@ -23,9 +23,12 @@ Network transmission over several routes at once.
 - `kernel`: the contact-interval distribution along those edges — a shared
   `Distributions.jl` distribution, a callable `(infector, susceptible) ->
   Distribution` for covariate models, a [`ContextualKernel`](@ref) that also
-  reads the infector's infection time, a [`StatefulKernel`](@ref), or a
-  per-edge vector parallel to `reach`, resolved per pair exactly as on
-  [`NetworkProcess`](@ref);
+  reads the infector's infection time, or a per-edge vector parallel to
+  `reach`, resolved per pair exactly as on [`NetworkProcess`](@ref). A kernel
+  that reads host records is refused: several routes can carry several of them
+  and the race is given one set of records to watch, so there is no way to keep
+  a route's pending contacts current. Use [`NetworkProcess`](@ref) for a single
+  such route;
 - `until`: the states that end this route, which is what lets one route be cut
   and another left alone. Include `EpiBranch.INTERVENTION_REMOVAL` for a route
   that a composed `Isolation` should end;
@@ -154,8 +157,23 @@ end
 # Validate and normalise a route's kernel against its own adjacency, exactly
 # as `NetworkProcess` does for its edge kernel.
 function _validate_route_kernel(w::RouteWindow)
+    # A kernel that reads host records has to be refreshed when a record moves,
+    # which the race does from the single `refresh_projection` a one-kernel
+    # model gives it. Several routes can carry several such kernels, so there is
+    # no one projection to hand it, and a route's contacts would be drawn from
+    # whatever the records held when they were proposed. Refused rather than
+    # simulated from stale hazards.
+    EpiBranch._kernel_projection(w.kernel) === nothing || throw(
+        ArgumentError(
+            "route :$(w.name) carries a kernel that reads host records, which " *
+                "`RoutedNetwork` cannot keep up to date. Use `NetworkProcess` " *
+                "for a single such route, or a kernel that reads only the pair " *
+                "and the calendar."
+        )
+    )
     return RouteWindow(
-        w.name, w.from, w.until, _validate_kernel(w.kernel, w.reach), w.reach,
+        w.name, w.from, w.until,
+        _validate_kernel(w.kernel, w.reach; route = w.name), w.reach,
         w.contacts_from, w.traceable
     )
 end
@@ -300,9 +318,9 @@ function _simulate(
 end
 
 # One route's susceptible targets, each with that route's kernel resolved for
-# the pair — a shared distribution, a per-edge vector, a covariate callable, a
-# `ContextualKernel` or a `StatefulKernel`, exactly as `NetworkProcess`
-# resolves its edge kernel (see `_resolve_kernel`).
+# the pair: a shared distribution, a per-edge vector, a covariate callable or a
+# `ContextualKernel`, exactly as `NetworkProcess` resolves its edge kernel (see
+# `_resolve_kernel`). A record-reading kernel is refused at construction.
 function _route_targets(w::RouteWindow)
     adjacency, kernel = w.reach, w.kernel
     return (inf, st) -> (
