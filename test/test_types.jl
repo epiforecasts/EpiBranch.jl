@@ -2,7 +2,7 @@
     @testset "NegBin convenience constructor" begin
         d = NegBin(2.5, 0.16)
         @test d isa NegativeBinomial
-        @test mean(d) ≈ 2.5 atol=0.01
+        @test mean(d) ≈ 2.5 atol = 0.01
         @test_throws ArgumentError NegBin(-1.0, 0.5)
         @test_throws ArgumentError NegBin(2.0, -0.1)
     end
@@ -56,12 +56,12 @@
     @testset "scale_distribution" begin
         d = NegBin(2.0, 0.5)
         scaled = scale_distribution(d, 0.5)
-        @test mean(scaled) ≈ 1.0 atol=0.01
+        @test mean(scaled) ≈ 1.0 atol = 0.01
         @test scaled.r ≈ 0.5
 
         d_pois = Poisson(3.0)
         scaled_pois = scale_distribution(d_pois, 0.0)
-        @test mean(scaled_pois) ≈ 0.0 atol=1e-10
+        @test mean(scaled_pois) ≈ 0.0 atol = 1.0e-10
 
         # An unsupported family gives a clear ArgumentError, not a MethodError.
         @test_throws ArgumentError scale_distribution(Geometric(0.3), 0.5)

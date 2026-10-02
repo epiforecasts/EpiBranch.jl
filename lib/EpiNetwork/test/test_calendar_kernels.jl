@@ -9,8 +9,10 @@ test_calendar_simulation(k -> NetworkProcess([[2, 3], [1, 3], [1, 2]], k), netwo
     per_edge = NetworkProcess(adjacency, CalendarKernel(edges))
     a = simulate(shared; rng = StableRNG(234))
     b = simulate(per_edge; rng = StableRNG(234))
-    @test isequal([i.infection_time for i in a.individuals],
-        [i.infection_time for i in b.individuals])
+    @test isequal(
+        [i.infection_time for i in a.individuals],
+        [i.infection_time for i in b.individuals]
+    )
     data = network_infections(a, shared)
     @test loglikelihood(data, shared) ≈ loglikelihood(data, per_edge)
 end

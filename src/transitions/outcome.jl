@@ -116,8 +116,10 @@ end
 
 function resolve_individual!(d::Death, individual, state)
     anchor = _resolve_anchor(d.from, individual)
-    time = transition_time(state.rng, individual, anchor, d.delay;
-        probability = d.probability)
+    time = transition_time(
+        state.rng, individual, anchor, d.delay;
+        probability = d.probability
+    )
     time === nothing && return nothing
     individual.state[:death_candidate_time] = time
     return nothing

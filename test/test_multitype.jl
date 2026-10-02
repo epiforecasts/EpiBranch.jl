@@ -6,8 +6,10 @@ using DataFrames
         # R_by_type[2] == 0. The documented dist_fn `R -> NegBin(R, k)` rejects
         # R = 0, so the offspring function must short-circuit a sink type before
         # calling it, rather than crashing partway through the simulation.
-        M = [2.0 0.0;
-             1.0 0.0]
+        M = [
+            2.0 0.0;
+            1.0 0.0
+        ]
         model = BranchingProcess(M, R -> NegBin(R, 0.16), Exponential(5.0))
         # Draw offspring for a type-2 (sink) parent directly: no offspring, no throw.
         off = model.infectiousness[1].offspring
@@ -21,8 +23,10 @@ using DataFrames
 
     @testset "Offspring matrix construction" begin
         # 2x2 offspring matrix: type 1 infects mostly type 1, type 2 mostly type 2
-        M = [1.5 0.3;
-             0.3 1.0]
+        M = [
+            1.5 0.3;
+            0.3 1.0
+        ]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         @test model.n_types == 2
@@ -35,9 +39,11 @@ using DataFrames
         # multinomially. The same rule written as an offspring function must give
         # the same run under the same seed, which checks that storing the offspring
         # as `MultiTypeOffspring` uses the random stream in the same way.
-        M = [1.2 0.4 0.0;
-             0.6 1.0 0.0;
-             0.3 0.5 0.0]
+        M = [
+            1.2 0.4 0.0;
+            0.6 1.0 0.0;
+            0.3 0.5 0.0
+        ]
         dist_fn = R -> NegBin(R, 0.5)
         R_by_type = vec(sum(M, dims = 1))
         function matrix_rule(rng, individual)
@@ -55,27 +61,33 @@ using DataFrames
             @test length(a.individuals) == length(b.individuals)
             @test individual_type.(a.individuals) == individual_type.(b.individuals)
             @test [i.infection_time for i in a.individuals] ==
-                  [i.infection_time for i in b.individuals]
+                [i.infection_time for i in b.individuals]
             @test [i.parent_id for i in a.individuals] ==
-                  [i.parent_id for i in b.individuals]
+                [i.parent_id for i in b.individuals]
         end
     end
 
     @testset "Non-square matrix throws" begin
-        M = [1.0 0.5 0.3;
-             0.5 1.0 0.3]
+        M = [
+            1.0 0.5 0.3;
+            0.5 1.0 0.3
+        ]
         @test_throws ArgumentError BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
     end
 
     @testset "Simulation runs with offspring matrix" begin
-        M = [1.5 0.3;
-             0.3 1.0]
+        M = [
+            1.5 0.3;
+            0.3 1.0
+        ]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         rng = StableRNG(42)
-        state = simulate(model;
+        state = simulate(
+            model;
             max_cases = 100,
-            rng = rng)
+            rng = rng
+        )
 
         @test state.cumulative_cases > 0
 
@@ -89,14 +101,18 @@ using DataFrames
 
     @testset "Types are distributed according to matrix" begin
         # Strongly assortative: type 1 → type 1, type 2 → type 2
-        M = [3.0 0.0;
-             0.0 3.0]
+        M = [
+            3.0 0.0;
+            0.0 3.0
+        ]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         rng = StableRNG(42)
-        state = simulate(model;
+        state = simulate(
+            model;
             max_cases = 200,
-            rng = rng)
+            rng = rng
+        )
 
         infected = filter(is_infected, state.individuals)
         # Children should have the same type as their parent
@@ -110,8 +126,10 @@ using DataFrames
 
     @testset "Asymmetric R by type" begin
         # Type 1 has R=3, type 2 has R=0.5
-        M = [2.5 0.1;
-             0.5 0.4]
+        M = [
+            2.5 0.1;
+            0.5 0.4
+        ]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         # Run multiple simulations to reduce stochastic variation
@@ -130,14 +148,18 @@ using DataFrames
     end
 
     @testset "NegBin offspring with matrix" begin
-        M = [1.5 0.3;
-             0.3 1.0]
+        M = [
+            1.5 0.3;
+            0.3 1.0
+        ]
         model = BranchingProcess(M, R_j -> NegBin(R_j, 0.5), Exponential(5.0))
 
         rng = StableRNG(42)
-        state = simulate(model;
+        state = simulate(
+            model;
             max_cases = 50,
-            rng = rng)
+            rng = rng
+        )
 
         @test state.cumulative_cases > 0
     end
@@ -155,9 +177,11 @@ using DataFrames
         model = BranchingProcess(my_offspring, Exponential(5.0); n_types = 2)
 
         rng = StableRNG(42)
-        state = simulate(model;
+        state = simulate(
+            model;
             max_cases = 50,
-            rng = rng)
+            rng = rng
+        )
 
         @test state.cumulative_cases > 0
         infected = filter(is_infected, state.individuals)
@@ -165,39 +189,52 @@ using DataFrames
     end
 
     @testset "Multi-type with interventions" begin
-        M = [1.5 0.3;
-             0.3 1.0]
+        M = [
+            1.5 0.3;
+            0.3 1.0
+        ]
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
         rng = StableRNG(42)
         state = simulate(
-            ModelSpec(BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0));
-                interventions = [iso], attributes = init_fn);
+            ModelSpec(
+                BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0));
+                interventions = [iso], attributes = init_fn
+            );
             max_cases = 100,
-            rng = rng)
+            rng = rng
+        )
 
         n_isolated = count(ind -> is_isolated(ind), state.individuals)
         @test n_isolated > 0
     end
 
     @testset "Multi-type with finite population" begin
-        M = [1.5 0.3;
-             0.3 1.0]
-        model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0);
-            population_size = 50)
+        M = [
+            1.5 0.3;
+            0.3 1.0
+        ]
+        model = BranchingProcess(
+            M, R_j -> Poisson(R_j), Exponential(5.0);
+            population_size = 50
+        )
 
         rng = StableRNG(42)
-        state = simulate(model;
+        state = simulate(
+            model;
             max_cases = 100,
-            rng = rng)
+            rng = rng
+        )
 
         @test state.cumulative_cases <= 50
     end
 
     @testset "Chain statistics work with multi-type" begin
-        M = [1.5 0.3;
-             0.3 1.0]
+        M = [
+            1.5 0.3;
+            0.3 1.0
+        ]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         rng = StableRNG(42)
@@ -209,8 +246,10 @@ using DataFrames
     end
 
     @testset "Contacts table includes type" begin
-        M = [1.5 0.3;
-             0.3 1.0]
+        M = [
+            1.5 0.3;
+            0.3 1.0
+        ]
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         rng = StableRNG(42)
@@ -222,24 +261,34 @@ using DataFrames
     end
 
     @testset "Type labels" begin
-        M = [1.5 0.3;
-             0.3 1.0]
-        model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0);
-            type_labels = ["children", "adults"])
+        M = [
+            1.5 0.3;
+            0.3 1.0
+        ]
+        model = BranchingProcess(
+            M, R_j -> Poisson(R_j), Exponential(5.0);
+            type_labels = ["children", "adults"]
+        )
         @test model.type_labels == ["children", "adults"]
     end
 
     @testset "3-type model" begin
-        M = [2.0 0.5 0.1;
-             0.5 1.5 0.3;
-             0.1 0.3 0.8]
-        model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0);
-            type_labels = ["0-14", "15-64", "65+"])
+        M = [
+            2.0 0.5 0.1;
+            0.5 1.5 0.3;
+            0.1 0.3 0.8
+        ]
+        model = BranchingProcess(
+            M, R_j -> Poisson(R_j), Exponential(5.0);
+            type_labels = ["0-14", "15-64", "65+"]
+        )
 
         rng = StableRNG(42)
-        state = simulate(model;
+        state = simulate(
+            model;
             max_cases = 100,
-            rng = rng)
+            rng = rng
+        )
 
         infected = filter(is_infected, state.individuals)
         types = [individual_type(ind) for ind in infected]

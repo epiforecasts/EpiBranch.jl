@@ -52,14 +52,20 @@ struct CapacityConstrained{I <: AbstractIntervention, F} <: InterventionWrapper
     priority::F
 end
 
-function CapacityConstrained(intervention::AbstractIntervention;
+function CapacityConstrained(
+        intervention::AbstractIntervention;
         budget_per_period::Real, period::Real = Inf, carry_over::Bool = true,
-        priority = default_capacity_priority)
-    budget_per_period >= 0 || throw(ArgumentError(
-        "budget_per_period must be non-negative, got $budget_per_period"))
+        priority = default_capacity_priority
+    )
+    budget_per_period >= 0 || throw(
+        ArgumentError(
+            "budget_per_period must be non-negative, got $budget_per_period"
+        )
+    )
     period > 0 || throw(ArgumentError("period must be positive, got $period"))
     return CapacityConstrained(
-        intervention, Float64(budget_per_period), Float64(period), carry_over, priority)
+        intervention, Float64(budget_per_period), Float64(period), carry_over, priority
+    )
 end
 
 """
@@ -72,7 +78,7 @@ timed candidate in the same call has been.
 """
 function default_capacity_priority(individual, state)
     t = get(individual.state, :trace_time, NaN)
-    isnan(t) ? Inf : t
+    return isnan(t) ? Inf : t
 end
 
 """
@@ -89,10 +95,13 @@ a custom intervention to make it capacity-constrained the same way.
 a triggered group before the wrapper admits individual members.
 """
 function capacity_key(iv::AbstractIntervention)
-    throw(ArgumentError(
-        "CapacityConstrained needs a `capacity_key` method for $(typeof(iv)) " *
-        "to know which state key measures how much of its resource has been " *
-        "used. See the Extending guide."))
+    throw(
+        ArgumentError(
+            "CapacityConstrained needs a `capacity_key` method for $(typeof(iv)) " *
+                "to know which state key measures how much of its resource has been " *
+                "used. See the Extending guide."
+        )
+    )
 end
 
 """
@@ -104,10 +113,13 @@ usage it did not itself admit — a dose given by some other intervention
 sharing the same [`capacity_key`](@ref) — in a period.
 """
 function capacity_time_key(iv::AbstractIntervention)
-    throw(ArgumentError(
-        "CapacityConstrained needs a `capacity_time_key` method for " *
-        "$(typeof(iv)) to measure usage within a period (carry_over = false). " *
-        "See the Extending guide."))
+    throw(
+        ArgumentError(
+            "CapacityConstrained needs a `capacity_time_key` method for " *
+                "$(typeof(iv)) to measure usage within a period (carry_over = false). " *
+                "See the Extending guide."
+        )
+    )
 end
 
 # Read through any wrapper, so `CapacityConstrained` composes with
@@ -228,7 +240,7 @@ end
 
 # The remaining hooks are inherited from `InterventionWrapper`.
 function keep_active(cc::CapacityConstrained, state, targets, is_new)
-    keep_active(cc.intervention, state, targets, is_new)
+    return keep_active(cc.intervention, state, targets, is_new)
 end
 
 # The continuous-time race has no batch of competing contacts to ration, so

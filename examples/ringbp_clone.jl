@@ -78,7 +78,8 @@ for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan
                 # model: the base process composed with the policy in force.
                 model = ModelSpec(process; interventions, attributes = clinical)
 
-                batch = simulate(model, n_sim;
+                batch = simulate(
+                    model, n_sim;
                     max_cases = 5000,
                     max_time = 350.0,
                     n_initial = initial_cases,
@@ -87,15 +88,17 @@ for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan
 
                 cp = containment_probability(batch)
 
-                push!(results,
+                push!(
+                    results,
                     (
                         delay_group = delay_name,
                         R0 = R0,
                         k = k,
                         tracing_prob = tracing_prob,
                         initial_cases = initial_cases,
-                        containment_prob = round(cp, digits = 3)
-                    ))
+                        containment_prob = round(cp, digits = 3),
+                    )
+                )
             end
         end
     end
@@ -126,8 +129,8 @@ println()
 println("Analytical extinction probabilities (no interventions):")
 for R0 in [1.5, 2.5]
     q = extinction_probability(R0, 0.16)
-    println("  R0=$R0, k=0.16: P(extinct|1 case) = $(round(q, digits=3))")
-    println("                   P(extinct|5 cases) = $(round(q^5, digits=3))")
+    println("  R0=$R0, k=0.16: P(extinct|1 case) = $(round(q, digits = 3))")
+    println("                   P(extinct|5 cases) = $(round(q^5, digits = 3))")
 end
 
 println("\n=== Done ===")

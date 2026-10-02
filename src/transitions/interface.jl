@@ -126,15 +126,23 @@ progression = [
 ```
 """
 function exclusive_probabilities(ps::AbstractVector{<:Real})
-    all(>=(0), ps) || throw(ArgumentError(
-        "exclusive_probabilities needs non-negative probabilities, got $ps"))
+    all(>=(0), ps) || throw(
+        ArgumentError(
+            "exclusive_probabilities needs non-negative probabilities, got $ps"
+        )
+    )
     total = sum(ps)
-    total <= 1 + sqrt(eps(float(total))) || throw(ArgumentError(
-        "exclusive_probabilities needs probabilities summing to at most 1, got $total"))
+    total <= 1 + sqrt(eps(float(total))) || throw(
+        ArgumentError(
+            "exclusive_probabilities needs probabilities summing to at most 1, got $total"
+        )
+    )
     key = gensym(:exclusive_draw)
     bounds = cumsum(ps)
-    return [_exclusive_gate(key, i == 1 ? zero(total) : bounds[i - 1], bounds[i])
-            for i in eachindex(ps)]
+    return [
+        _exclusive_gate(key, i == 1 ? zero(total) : bounds[i - 1], bounds[i])
+            for i in eachindex(ps)
+    ]
 end
 
 # One bucket of a shared draw: `lo <= u < hi` fires, everything else doesn't.
@@ -181,7 +189,7 @@ end
 # anchors). Returning `NaN` signals "no anchor" and the transition is
 # skipped.
 function _resolve_anchor(s::Symbol, ind::Individual{T}) where {T}
-    convert(T, get(ind.state, s, T(NaN)))
+    return convert(T, get(ind.state, s, T(NaN)))
 end
 _resolve_anchor(f, ind) = float(f(ind))
 

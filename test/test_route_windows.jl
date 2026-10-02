@@ -8,11 +8,11 @@ struct BlockFrom <: EpiBranch.AbstractIntervention
     id::Int
 end
 function EpiBranch.competing_risk(b::BlockFrom, parent, contact, state)
-    parent.id == b.id ? Risk(block_probability = 1.0) : nothing
+    return parent.id == b.id ? Risk(block_probability = 1.0) : nothing
 end
 # Its block stands in for taking the infector out of circulation.
 function EpiBranch.risk_applies(::BlockFrom, route)
-    route !== nothing && EpiBranch.INTERVENTION_REMOVAL in route.until
+    return route !== nothing && EpiBranch.INTERVENTION_REMOVAL in route.until
 end
 
 # Blocks every transmission into one named contact: a protection that belongs to
@@ -21,7 +21,7 @@ struct ProtectTo <: EpiBranch.AbstractIntervention
     id::Int
 end
 function EpiBranch.competing_risk(p::ProtectTo, parent, contact, state)
-    contact.id == p.id ? Risk(block_probability = 1.0) : nothing
+    return contact.id == p.id ? Risk(block_probability = 1.0) : nothing
 end
 
 # A custom route predicate can select a route independently of removal.
@@ -30,7 +30,7 @@ struct ProtectOnRoute <: EpiBranch.AbstractIntervention
 end
 EpiBranch.risk_applies(p::ProtectOnRoute, route) = route !== nothing && route.name == p.name
 function EpiBranch.competing_risk(::ProtectOnRoute, parent, contact, state)
-    Risk(block_probability = 1.0)
+    return Risk(block_probability = 1.0)
 end
 
 # Traces every contact a case reaches at a fixed time per tracer, keeping the
@@ -44,6 +44,7 @@ function EpiBranch.trace_contacts!(tr::TraceAtFixedTimes, state, infector, conta
         c.state[:traced] = true
         c.state[:trace_time] = min(get(c.state, :trace_time, Inf), tr.times[infector.id])
     end
+    return
 end
 
 # A per-contact risk with a constant block probability, of the shape a user
@@ -52,7 +53,7 @@ struct FlatBlock <: EpiBranch.AbstractIntervention
     p::Float64
 end
 function EpiBranch.competing_risk(b::FlatBlock, parent, contact, state)
-    parent === contact ? nothing : Risk(block_probability = b.p)
+    return parent === contact ? nothing : Risk(block_probability = b.p)
 end
 
 # The same risk with its arguments typed, as the style guide asks for. The race
@@ -60,9 +61,11 @@ end
 struct TypedBlock <: EpiBranch.AbstractIntervention
     p::Float64
 end
-function EpiBranch.competing_risk(b::TypedBlock, parent::Individual, contact::Individual,
-        state::EpiBranch.SimulationState)
-    parent === contact ? nothing : Risk(block_probability = b.p)
+function EpiBranch.competing_risk(
+        b::TypedBlock, parent::Individual, contact::Individual,
+        state::EpiBranch.SimulationState
+    )
+    return parent === contact ? nothing : Risk(block_probability = b.p)
 end
 
 # A certain block given as a function rather than a plain number: the value
@@ -74,21 +77,25 @@ struct FunctionBlock <: EpiBranch.AbstractIntervention
     p::Float64
 end
 function EpiBranch.competing_risk(b::FunctionBlock, parent, contact, state)
-    parent === contact ? nothing : Risk(block_probability = (rng, p, c, st) -> b.p)
+    return parent === contact ? nothing : Risk(block_probability = (rng, p, c, st) -> b.p)
 end
 
 @testset "Route windows" begin
     @testset "construction and show" begin
-        w = RouteWindow(:community; from = :infectious, until = (:recovered,),
-            kernel = Exponential(3.0))
+        w = RouteWindow(
+            :community; from = :infectious, until = (:recovered,),
+            kernel = Exponential(3.0)
+        )
         @test w.name === :community
         @test w.from === :infectious
         @test w.until == (:recovered,)
         @test w.reach === :community          # defaults to the route name
         @test w.contacts_from === :infection  # standing relationships by default
         @test !occursin("contacts_from", repr(w))
-        f = RouteWindow(:funeral; from = :died, kernel = Exponential(1.0),
-            contacts_from = :died)
+        f = RouteWindow(
+            :funeral; from = :died, kernel = Exponential(1.0),
+            contacts_from = :died
+        )
         @test f.contacts_from === :died
         @test occursin("contacts_from=:died", repr(f))
         @test occursin("RouteWindow(:community", repr(w))
@@ -122,8 +129,10 @@ end
         @test_throws ArgumentError RouteWindow(:a; kernel = nothing, traceable = 1.5)
         @test_throws ArgumentError RouteWindow(:a; kernel = nothing, traceable = NaN)
         # the positional form validates too, so no construction path skips it
-        @test_throws ArgumentError RouteWindow(:a, nothing, (), nothing, :a,
-            :infection, 2.0)
+        @test_throws ArgumentError RouteWindow(
+            :a, nothing, (), nothing, :a,
+            :infection, 2.0
+        )
     end
 
     @testset "opening and closing read the state-time convention" begin
@@ -149,9 +158,11 @@ end
 
         # closing takes the earliest of the `until` states
         @test window_close(ind, RouteWindow(:c; until = (:recovered,), kernel = nothing)) ==
-              20.0
-        @test window_close(ind,
-            RouteWindow(:c; until = (:recovered, :died), kernel = nothing)) == 14.0
+            20.0
+        @test window_close(
+            ind,
+            RouteWindow(:c; until = (:recovered, :died), kernel = nothing)
+        ) == 14.0
         # no `until` means the route is never censored
         @test window_close(ind, RouteWindow(:c; kernel = nothing)) == Inf
     end
@@ -165,7 +176,7 @@ end
         # listing `:isolated` is not closed by the intervention, leaky or not
         @test !haskey(ind.state, :isolated_time)
         @test window_close(ind, RouteWindow(:c; until = (:isolated,), kernel = nothing)) ==
-              Inf
+            Inf
 
         clear_isolated!(ind)
         @test !is_isolated(ind)
@@ -184,15 +195,19 @@ end
         set_isolated!(ind, 3.0)
 
         household = RouteWindow(:household; until = (:recovered,), kernel = nothing)
-        community = RouteWindow(:community;
-            until = (:recovered, EpiBranch.INTERVENTION_REMOVAL), kernel = nothing)
+        community = RouteWindow(
+            :community;
+            until = (:recovered, EpiBranch.INTERVENTION_REMOVAL), kernel = nothing
+        )
 
         @test EpiBranch._route_close(ind, household, (iso,)) == 10.0   # not cut
         @test EpiBranch._route_close(ind, community, (iso,)) == 3.0    # cut at isolation
 
         # Leaky isolation removes no one, so even the opted-in route runs on.
-        leaky = Isolation(onset_to_isolation_delay = Exponential(1.0),
-            post_isolation_transmission = 0.3)
+        leaky = Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            post_isolation_transmission = 0.3
+        )
         @test EpiBranch._route_close(ind, community, (leaky,)) == 10.0
 
         # With no interventions composed, opting in changes nothing.
@@ -211,23 +226,34 @@ end
         # recovers at 10 and, with onset at 1 and immediate isolation, isolates
         # at 1.
         REM = EpiBranch.INTERVENTION_REMOVAL
-        prog = [Transition(:recovered; from = :infection, delay = 10.0,
-            terminal = true)]
-        onsets = clinical_presentation(incubation_period = Dirac(1.0),
-            prob_asymptomatic = 0.0)
+        prog = [
+            Transition(
+                :recovered; from = :infection, delay = 10.0,
+                terminal = true
+            ),
+        ]
+        onsets = clinical_presentation(
+            incubation_period = Dirac(1.0),
+            prob_asymptomatic = 0.0
+        )
         function infected_after(routes, interventions)
             rng = StableRNG(1)
-            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
-                prog, onsets, rng)
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, onsets, rng
+            )
             EpiBranch.add_individuals!(state, 3, interventions)
-            EpiBranch._sellke_race!(state, [1, 2, 3], rng; routes = routes,
+            EpiBranch._sellke_race!(
+                state, [1, 2, 3], rng; routes = routes,
                 interventions = interventions, seed! = (
-                    best, members, r) -> (best[1] = 0.0))
+                    best, members, r
+                ) -> (best[1] = 0.0)
+            )
             return [get(ind.state, :infected, false) for ind in state.individuals]
         end
         edge(to) = (inf, st) -> inf == 1 &&
-                                !get(st.individuals[to].state, :infected, false) ?
-                                ((to, Dirac(5.0)),) : ()
+            !get(st.individuals[to].state, :infected, false) ?
+            ((to, Dirac(5.0)),) : ()
 
         community = RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(5.0))
         household = RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0))
@@ -239,10 +265,14 @@ end
         @test infected_after(routes, isolate) == [true, false, true]
 
         # a route whose `from` state is never reached contributes no contacts
-        funeral = RouteWindow(:funeral; from = :died, until = (:buried,),
-            kernel = Dirac(5.0))
-        @test infected_after(((funeral, edge(2)), (household, edge(3))),
-            AbstractIntervention[]) == [true, false, true]
+        funeral = RouteWindow(
+            :funeral; from = :died, until = (:buried,),
+            kernel = Dirac(5.0)
+        )
+        @test infected_after(
+            ((funeral, edge(2)), (household, edge(3))),
+            AbstractIntervention[]
+        ) == [true, false, true]
     end
 
     @testset "the race traces a settled case's contacts" begin
@@ -253,25 +283,36 @@ end
         # isolation (time 1) quarantines node 2 before it is infected, which
         # closes node 2's community window and spares node 3.
         REM = EpiBranch.INTERVENTION_REMOVAL
-        prog = [Transition(:onset; from = :infection, delay = 1.0),
-            Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
+        prog = [
+            Transition(:onset; from = :infection, delay = 1.0),
+            Transition(:recovered; from = :infection, delay = 20.0, terminal = true),
+        ]
         function race(interventions; contacts = nothing)
             rng = StableRNG(1)
-            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
-                prog, EpiBranch.NoAttributes(), rng)
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, EpiBranch.NoAttributes(), rng
+            )
             EpiBranch.add_individuals!(state, 3, interventions)
             function edge(from, to, t)
                 (inf, st) -> inf == from &&
-                             !get(st.individuals[to].state, :infected, false) ?
-                             ((to, Dirac(t)),) : ()
+                    !get(st.individuals[to].state, :infected, false) ?
+                    ((to, Dirac(t)),) : ()
             end
             routes = (
-                (RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0)),
-                    edge(1, 2, 5.0)),
-                (RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(0.5)),
-                    edge(2, 3, 0.5)))
-            EpiBranch._sellke_race!(state, [1, 2, 3], rng; routes, interventions,
-                contacts, seed! = (best, members, r) -> (best[1] = 0.0))
+                (
+                    RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0)),
+                    edge(1, 2, 5.0),
+                ),
+                (
+                    RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(0.5)),
+                    edge(2, 3, 0.5),
+                ),
+            )
+            EpiBranch._sellke_race!(
+                state, [1, 2, 3], rng; routes, interventions,
+                contacts, seed! = (best, members, r) -> (best[1] = 0.0)
+            )
             return state
         end
         infected(state) = [get(ind.state, :infected, false) for ind in state.individuals]
@@ -292,15 +333,21 @@ end
         @test !EpiBranch._sellke_honours(nameless, RingVaccination(efficacy = 0.9))
         # A rollout that doses each newly created contact has nobody to dose
         # when no contacts are created, wherever it runs.
-        @test !EpiBranch._sellke_honours(nameless,
-            MassVaccination(efficacy = 0.9, eligibility_time = 0.0))
+        @test !EpiBranch._sellke_honours(
+            nameless,
+            MassVaccination(efficacy = 0.9, eligibility_time = 0.0)
+        )
         # Group vaccination doses whole groups as the generation engine creates
         # their members, so it has nobody to dose either.
         @test !EpiBranch._sellke_honours(nameless, GroupVaccination(efficacy = 0.9))
         # A leaky isolation is a per-contact block, and the race now resolves it.
-        @test EpiBranch._sellke_honours(nameless,
-            Isolation(onset_to_isolation_delay = Dirac(1.0),
-                post_isolation_transmission = 0.5))
+        @test EpiBranch._sellke_honours(
+            nameless,
+            Isolation(
+                onset_to_isolation_delay = Dirac(1.0),
+                post_isolation_transmission = 0.5
+            )
+        )
     end
 
     @testset "a per-contact risk thins the pair's hazard" begin
@@ -311,17 +358,25 @@ end
         # Halving the transmission probability instead would give 0.43 at
         # m = 0.5, where thinning the hazard gives 0.63.
         function secondary(kernel, sus, ivs, period, seed)
-            prog = [Transition(:recovered; from = :infection, delay = period,
-                terminal = true)]
+            prog = [
+                Transition(
+                    :recovered; from = :infection, delay = period,
+                    terminal = true
+                ),
+            ]
             rng = StableRNG(seed)
-            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
-                prog, transmission_traits(susceptibility = sus), rng)
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, transmission_traits(susceptibility = sus), rng
+            )
             EpiBranch.add_individuals!(state, 2, ivs)
-            EpiBranch._sellke_race!(state, [1, 2], rng; from = :infection,
+            EpiBranch._sellke_race!(
+                state, [1, 2], rng; from = :infection,
                 until = (:recovered,), interventions = ivs,
                 targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
-                                       ((2, kernel),) : (),
-                seed! = (best, members, r) -> (best[1] = 0.0))
+                    ((2, kernel),) : (),
+                seed! = (best, members, r) -> (best[1] = 0.0)
+            )
             return is_infected(state.individuals[2])
         end
         function share(kernel, sus, ivs = AbstractIntervention[]; period = 2.0)
@@ -330,18 +385,24 @@ end
 
         # A schedule is evaluated at the proposed contact time, even if the
         # most recent accepted infection is the seed at time zero.
-        @test !secondary(Dirac(10.0), 1.0,
-            [Scheduled(FlatBlock(1.0); start_time = 5.0)], 20.0, 1)
-        @test secondary(Dirac(10.0), 1.0,
-            [Scheduled(FlatBlock(1.0); end_time = 5.0)], 20.0, 1)
+        @test !secondary(
+            Dirac(10.0), 1.0,
+            [Scheduled(FlatBlock(1.0); start_time = 5.0)], 20.0, 1
+        )
+        @test secondary(
+            Dirac(10.0), 1.0,
+            [Scheduled(FlatBlock(1.0); end_time = 5.0)], 20.0, 1
+        )
 
         # A schedule-gated block of 1 still looks certain at the moment it
         # fires, but its schedule can end and hand the pair back, so it must
         # not be read as standing the way an unscheduled `FlatBlock(1.0)` is:
         # some contacts still get through once the block lapses, where an
         # unscheduled certain block lets none through at all.
-        @test share(Exponential(1.0), 1.0,
-            [Scheduled(FlatBlock(1.0); end_time = 1.0)]; period = 20.0) > 0.5
+        @test share(
+            Exponential(1.0), 1.0,
+            [Scheduled(FlatBlock(1.0); end_time = 1.0)]; period = 20.0
+        ) > 0.5
         @test share(Exponential(1.0), 1.0, [FlatBlock(1.0)]; period = 20.0) == 0.0
 
         # The trait folds into the contact-interval draw.
@@ -353,13 +414,19 @@ end
         # An intervention's risk is resolved contact by contact instead, and the
         # pair goes on meeting after a blocked one, which thins the same hazard
         # by the same factor. The two compose: half of a half is a quarter.
-        @test isapprox(share(Exponential(1.0), 1.0, [FlatBlock(0.5)]), 1 - exp(-1.0);
-            atol = 0.025)
-        @test isapprox(share(Exponential(1.0), 0.5, [FlatBlock(0.5)]), 1 - exp(-0.5);
-            atol = 0.025)
+        @test isapprox(
+            share(Exponential(1.0), 1.0, [FlatBlock(0.5)]), 1 - exp(-1.0);
+            atol = 0.025
+        )
+        @test isapprox(
+            share(Exponential(1.0), 0.5, [FlatBlock(0.5)]), 1 - exp(-0.5);
+            atol = 0.025
+        )
         # A risk written with typed arguments is found and applied the same way.
-        @test isapprox(share(Exponential(1.0), 1.0, [TypedBlock(0.5)]), 1 - exp(-1.0);
-            atol = 0.025)
+        @test isapprox(
+            share(Exponential(1.0), 1.0, [TypedBlock(0.5)]), 1 - exp(-1.0);
+            atol = 0.025
+        )
 
         # A small multiplier puts the contact far out in the tail of the kernel's
         # survival, where a linear argument loses it: subtracting from 1 rounds to
@@ -367,14 +434,22 @@ end
         # logs instead. Ten and a hundred days of an Exponential(0.1) contact
         # interval, at a rate of 10, so transmission is nearly certain, or two in
         # three — never 0.84, 0.51 or 0.31.
-        @test isapprox(share(Exponential(0.1), 0.05; period = 10.0), 1 - exp(-5.0);
-            atol = 0.02)
-        @test isapprox(share(Exponential(0.1), 1.0, [FlatBlock(0.99)]; period = 10.0),
-            1 - exp(-1.0); atol = 0.025)
-        @test isapprox(share(Exponential(0.1), 0.001; period = 100.0), 1 - exp(-1.0);
-            atol = 0.025)
-        @test isapprox(share(Exponential(0.1), 1.0, [FlatBlock(0.999)]; period = 100.0),
-            1 - exp(-1.0); atol = 0.025)
+        @test isapprox(
+            share(Exponential(0.1), 0.05; period = 10.0), 1 - exp(-5.0);
+            atol = 0.02
+        )
+        @test isapprox(
+            share(Exponential(0.1), 1.0, [FlatBlock(0.99)]; period = 10.0),
+            1 - exp(-1.0); atol = 0.025
+        )
+        @test isapprox(
+            share(Exponential(0.1), 0.001; period = 100.0), 1 - exp(-1.0);
+            atol = 0.025
+        )
+        @test isapprox(
+            share(Exponential(0.1), 1.0, [FlatBlock(0.999)]; period = 100.0),
+            1 - exp(-1.0); atol = 0.025
+        )
 
         # A kernel whose own inverse survival is only defined over part of the
         # unit interval — `Gamma` below shape 1, whose inverse raises a
@@ -382,11 +457,15 @@ end
         # the same reason, so a small multiplier runs rather than throwing.
         scaled_law(kernel, m, period) = 1 - ccdf(kernel, period)^m
         for (kernel, m) in ((Gamma(0.3, 2.0), 0.01), (Gamma(0.7, 1.0), 0.005))
-            @test isapprox(share(kernel, m; period = 6.0), scaled_law(kernel, m, 6.0);
-                atol = 0.025)
+            @test isapprox(
+                share(kernel, m; period = 6.0), scaled_law(kernel, m, 6.0);
+                atol = 0.025
+            )
         end
-        @test isapprox(share(Gamma(0.3, 2.0), 1.0, [FlatBlock(0.99)]; period = 6.0),
-            scaled_law(Gamma(0.3, 2.0), 0.01, 6.0); atol = 0.025)
+        @test isapprox(
+            share(Gamma(0.3, 2.0), 1.0, [FlatBlock(0.99)]; period = 6.0),
+            scaled_law(Gamma(0.3, 2.0), 0.01, 6.0); atol = 0.025
+        )
 
         # A kernel with no inverse survival of its own falls back on one that
         # rebuilds the argument in linear space and hands back the top of the
@@ -395,30 +474,40 @@ end
         # `Weibull(2, sqrt(2))`. Inverting the kernel's own log-survival instead
         # keeps them together, and covers a mixture, a truncated and a shifted
         # distribution too.
-        @test isapprox(share(Rayleigh(1.0), 0.005; period = 20.0),
-            share(Weibull(2.0, sqrt(2)), 0.005; period = 20.0); atol = 0.025)
-        fallbacks = ((Rayleigh(1.0), 20.0, 0.005), (Rayleigh(1.0), 20.0, 0.05),
+        @test isapprox(
+            share(Rayleigh(1.0), 0.005; period = 20.0),
+            share(Weibull(2.0, sqrt(2)), 0.005; period = 20.0); atol = 0.025
+        )
+        fallbacks = (
+            (Rayleigh(1.0), 20.0, 0.005), (Rayleigh(1.0), 20.0, 0.05),
             (1.0 + Exponential(1.0), 100.0, 0.01),
             (MixtureModel([Exponential(1.0), Exponential(5.0)]), 100.0, 0.01),
-            (truncated(Exponential(1.0), 0.0, 5.0), 20.0, 0.05))
+            (truncated(Exponential(1.0), 0.0, 5.0), 20.0, 0.05),
+        )
         for (kernel, period, m) in fallbacks
-            @test isapprox(share(kernel, m; period), scaled_law(kernel, m, period);
-                atol = 0.025)
+            @test isapprox(
+                share(kernel, m; period), scaled_law(kernel, m, period);
+                atol = 0.025
+            )
         end
         # and through the blocked-contact continuation, which inverts the same
         # survival from the time of the contact it blocked
         for (kernel, period, m) in fallbacks[1:(end - 1)]
-            @test isapprox(share(kernel, 1.0, [FlatBlock(1 - m)]; period),
-                scaled_law(kernel, m, period); atol = 0.03)
+            @test isapprox(
+                share(kernel, 1.0, [FlatBlock(1 - m)]; period),
+                scaled_law(kernel, m, period); atol = 0.03
+            )
         end
         # Rejection sampling cannot enumerate infinitely many contacts before
         # a bounded continuous kernel reaches the end of its support.
-        @test_throws ArgumentError share(truncated(Exponential(1.0), 0.0, 5.0),
-            1.0, [FlatBlock(0.95)]; period = 20.0)
+        @test_throws ArgumentError share(
+            truncated(Exponential(1.0), 0.0, 5.0),
+            1.0, [FlatBlock(0.95)]; period = 20.0
+        )
         @test share(Uniform(1.5, 1.9), 0.5) == 1.0
         # A block probability of 1 is certain and does not fade, so the race
         # drops the pair after the first block instead of asking the kernel
-        # again — which is what spares this pair, and the unbounded window
+        # again, which is what spares this pair, and the unbounded window
         # below, the rejection-continuation guard the leaky case above hits.
         @test share(Uniform(0.1, 0.5), 1.0, [FlatBlock(1.0)]) == 0.0
         @test share(Exponential(1.0), 1.0, [FlatBlock(1.0)]; period = Inf) == 0.0
@@ -437,16 +526,20 @@ end
         prog = [Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
         function race(interventions; attributes = EpiBranch.NoAttributes())
             rng = StableRNG(1)
-            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
-                prog, attributes, rng)
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, attributes, rng
+            )
             EpiBranch.add_individuals!(state, 3, interventions)
             targets = function (inf, st)
                 (inf == 3 || get(st.individuals[3].state, :infected, false)) && return ()
                 return ((3, Dirac(inf == 1 ? 2.0 : 5.0)),)
             end
-            EpiBranch._sellke_race!(state, [1, 2, 3], rng; targets,
+            EpiBranch._sellke_race!(
+                state, [1, 2, 3], rng; targets,
                 from = :infection, until = (:recovered,), interventions,
-                seed! = (best, members, r) -> (best[1] = 0.0; best[2] = 0.0))
+                seed! = (best, members, r) -> (best[1] = 0.0; best[2] = 0.0)
+            )
             return state
         end
 
@@ -463,8 +556,10 @@ end
         @test blocked.individuals[3].infection_time == 5.0
 
         # A susceptibility of 0 blocks every proposal, so node 3 is never reached.
-        immune = race(AbstractIntervention[];
-            attributes = transmission_traits(susceptibility = 0.0))
+        immune = race(
+            AbstractIntervention[];
+            attributes = transmission_traits(susceptibility = 0.0)
+        )
         @test !is_infected(immune.individuals[3])
 
         # A risk reads the exposure from the contact's `infection_time`
@@ -481,8 +576,10 @@ end
 
         # Traits at their defaults contribute no risk, draw nothing from the rng,
         # and leave the race stream exactly as it was.
-        neutral = race(AbstractIntervention[];
-            attributes = transmission_traits(susceptibility = 1.0, infectiousness = 1.0))
+        neutral = race(
+            AbstractIntervention[];
+            attributes = transmission_traits(susceptibility = 1.0, infectiousness = 1.0)
+        )
         @test neutral.individuals[3].parent_id == 1
         @test neutral.individuals[3].infection_time == 2.0
     end
@@ -496,74 +593,109 @@ end
         prog = [Transition(:recovered; from = :infection, delay = 10.0, terminal = true)]
         function infected_after(interventions)
             rng = StableRNG(1)
-            state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
-                prog, EpiBranch.NoAttributes(), rng)
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, EpiBranch.NoAttributes(), rng
+            )
             EpiBranch.add_individuals!(state, 3, interventions)
             edge(to) = (inf, st) -> inf == 1 &&
-                                    !get(st.individuals[to].state, :infected, false) ?
-                                    ((to, Dirac(5.0)),) : ()
+                !get(st.individuals[to].state, :infected, false) ?
+                ((to, Dirac(5.0)),) : ()
             routes = (
-                (RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(5.0)),
-                    edge(2)),
-                (RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0)),
-                    edge(3)))
-            EpiBranch._sellke_race!(state, [1, 2, 3], rng; routes, interventions,
+                (
+                    RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(5.0)),
+                    edge(2),
+                ),
+                (
+                    RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0)),
+                    edge(3),
+                ),
+            )
+            EpiBranch._sellke_race!(
+                state, [1, 2, 3], rng; routes, interventions,
                 contacts = (inf, st) -> inf == 1 ? (2, 3) : (),
-                seed! = (best, members, r) -> (best[1] = 0.0))
+                seed! = (best, members, r) -> (best[1] = 0.0)
+            )
             return [get(ind.state, :infected, false) for ind in state.individuals]
         end
         @test infected_after(AbstractIntervention[]) == [true, true, true]
         @test infected_after([BlockFrom(1)]) == [true, false, true]
         @test infected_after([EpiBranch.Scheduled(BlockFrom(1); start_time = 0.0)]) ==
-              [true, false, true]
+            [true, false, true]
         # A protection scoped to every route applies on the household route too.
         @test EpiBranch.risk_applies(ProtectTo(3), nothing)
         @test infected_after([ProtectTo(3)]) == [true, true, false]
         @test infected_after([ProtectTo(2)]) == [true, false, true]
         @test infected_after([ProtectOnRoute(:household)]) == [true, true, false]
-        @test infected_after([Scheduled(
-            Scheduled(ProtectOnRoute(:community);
-                start_time = 0.0); start_time = 0.0)]) == [true, false, true]
+        @test infected_after(
+            [
+                Scheduled(
+                    Scheduled(
+                        ProtectOnRoute(:community);
+                        start_time = 0.0
+                    ); start_time = 0.0
+                ),
+            ]
+        ) == [true, false, true]
         @test !EpiBranch.risk_applies(ProtectOnRoute(:household), nothing)
         # Isolation and quarantine follow the route's removal listing; a vaccine,
         # including its effect on onward transmission, does not.
-        for route in (nothing, RouteWindow(:household; until = (:recovered,), kernel = Dirac(1.0)),
-            RouteWindow(:community; until = (REM,), kernel = Dirac(1.0)))
+        for route in (
+                nothing, RouteWindow(:household; until = (:recovered,), kernel = Dirac(1.0)),
+                RouteWindow(:community; until = (REM,), kernel = Dirac(1.0)),
+            )
             removes = route !== nothing && REM in route.until
             @test EpiBranch.risk_applies(Isolation(onset_to_isolation_delay = Dirac(1.0)), route) ==
-                  removes
+                removes
             @test EpiBranch.risk_applies(
-                ContactTracing(probability = 1.0,
-                    isolation_to_trace_delay = Dirac(1.0)),
-                route) == removes
+                ContactTracing(
+                    probability = 1.0,
+                    isolation_to_trace_delay = Dirac(1.0)
+                ),
+                route
+            ) == removes
             @test EpiBranch.risk_applies(
-                RingVaccination(efficacy = 1.0,
-                    onward_efficacy = 1.0), route)
+                RingVaccination(
+                    efficacy = 1.0,
+                    onward_efficacy = 1.0
+                ), route
+            )
             @test EpiBranch.risk_applies(
-                MassVaccination(efficacy = 1.0,
-                    eligibility_time = 0.0), route)
+                MassVaccination(
+                    efficacy = 1.0,
+                    eligibility_time = 0.0
+                ), route
+            )
         end
     end
 
     @testset "the race takes routes or the shorthand, not both" begin
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
-            AbstractClinicalTransition[], nothing, StableRNG(1))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(1.0)),
+            AbstractClinicalTransition[], nothing, StableRNG(1)
+        )
         seed! = (best, members, r) -> nothing
         w = RouteWindow(:c; until = (:recovered,), kernel = Dirac(1.0))
         targets = (inf, st) -> ()
-        @test_throws ArgumentError EpiBranch._sellke_race!(state, Int[], StableRNG(1);
-            seed!, routes = ((w, targets),), until = (:recovered,))
-        @test_throws ArgumentError EpiBranch._sellke_race!(state, Int[], StableRNG(1);
-            seed!, routes = ((w, targets),), targets)
-        @test_throws ArgumentError EpiBranch._sellke_race!(state, Int[], StableRNG(1);
-            seed!)
+        @test_throws ArgumentError EpiBranch._sellke_race!(
+            state, Int[], StableRNG(1);
+            seed!, routes = ((w, targets),), until = (:recovered,)
+        )
+        @test_throws ArgumentError EpiBranch._sellke_race!(
+            state, Int[], StableRNG(1);
+            seed!, routes = ((w, targets),), targets
+        )
+        @test_throws ArgumentError EpiBranch._sellke_race!(
+            state, Int[], StableRNG(1);
+            seed!
+        )
     end
 end
 
 @testset "Community introductions respect susceptibility" begin
     for source in (0.5, Gamma(2.0, 3.0))
         @test EpiBranch._ext_draw(StableRNG(7), source, 1.0) ==
-              EpiBranch._ext_draw(StableRNG(7), source)
+            EpiBranch._ext_draw(StableRNG(7), source)
         rng = StableRNG(7)
         @test EpiBranch._ext_draw(rng, source, 0.0) == Inf
         @test rand(rng) == rand(StableRNG(7))
@@ -576,10 +708,12 @@ end
 @testset "A withdrawn edge cannot offer another contact after a block" begin
     rng = StableRNG(11)
     prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
-    state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
-        prog, NoAttributes(), rng)
-    # A function-valued block, not a certain one the race could drop the pair
-    # for on sight, so this still exercises the ask-again path.
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(1.0)),
+        prog, NoAttributes(), rng
+    )
+    # A function-valued block, which the race cannot drop the pair for on
+    # sight, so this still exercises the ask-again path.
     interventions = [FunctionBlock(1.0)]
     EpiBranch.add_individuals!(state, 2, interventions)
     enquiries = Ref(0)
@@ -588,9 +722,11 @@ end
         # The edge is available for the original proposal, then withdrawn.
         return enquiries[] == 1 ? ((2, Exponential(1.0)),) : ()
     end
-    EpiBranch._sellke_race!(state, [1, 2], rng; targets,
+    EpiBranch._sellke_race!(
+        state, [1, 2], rng; targets,
         from = :infection, until = (:recovered,), interventions,
-        seed! = (best, members, r) -> (best[1] = 0.0))
+        seed! = (best, members, r) -> (best[1] = 0.0)
+    )
     @test !is_infected(state.individuals[2])
     @test enquiries[] == 2
 end
@@ -601,8 +737,10 @@ end
     # the first block instead of asking the model for the edge again.
     rng = StableRNG(11)
     prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
-    state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(1.0)),
-        prog, NoAttributes(), rng)
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(1.0)),
+        prog, NoAttributes(), rng
+    )
     interventions = [FlatBlock(1.0)]
     EpiBranch.add_individuals!(state, 2, interventions)
     enquiries = Ref(0)
@@ -610,9 +748,11 @@ end
         enquiries[] += 1
         return ((2, Exponential(1.0)),)
     end
-    EpiBranch._sellke_race!(state, [1, 2], rng; targets,
+    EpiBranch._sellke_race!(
+        state, [1, 2], rng; targets,
         from = :infection, until = (:recovered,), interventions,
-        seed! = (best, members, r) -> (best[1] = 0.0))
+        seed! = (best, members, r) -> (best[1] = 0.0)
+    )
     @test !is_infected(state.individuals[2])
     @test enquiries[] == 1
 end
@@ -623,13 +763,17 @@ end
     # towards a window that never closes — what used to need the
     # rejection-continuation guard to refuse promptly now never reaches it.
     rng = StableRNG(1)
-    state = EpiBranch.new_state(BranchingProcess(Poisson(0.0), Exponential(1.0)),
-        AbstractClinicalTransition[], NoAttributes(), rng)
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0), Exponential(1.0)),
+        AbstractClinicalTransition[], NoAttributes(), rng
+    )
     interventions = [ProtectTo(1)]
     EpiBranch.add_individuals!(state, 1, interventions)
-    @test EpiBranch._sellke_race!(state, [1], rng;
+    @test EpiBranch._sellke_race!(
+        state, [1], rng;
         from = :infection, until = (), interventions,
         introduction = (Exponential(1.0), Inf), targets = (i, st) -> (),
-        seed! = (best, members, r) -> (best[1] = 1.0))
+        seed! = (best, members, r) -> (best[1] = 1.0)
+    )
     @test !is_infected(only(state.individuals))
 end

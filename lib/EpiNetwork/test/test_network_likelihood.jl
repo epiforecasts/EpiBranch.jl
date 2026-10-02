@@ -24,8 +24,10 @@ end
 # A latent period followed by a fixed infectious period: the window the kernel
 # times contacts from opens after infection.
 function _seir(ip)
-    [Transition(:infectious; from = :infection, delay = LogNormal(0.3, 0.3)),
-        Transition(:recovered; from = :infectious, delay = ip, terminal = true)]
+    return [
+        Transition(:infectious; from = :infection, delay = LogNormal(0.3, 0.3)),
+        Transition(:recovered; from = :infectious, delay = ip, terminal = true),
+    ]
 end
 
 # Newton's method on a scalar log-likelihood, returning the maximiser and its
@@ -70,10 +72,14 @@ end
 
         # a bare process reads its window from :infection
         bare = NetworkProcess(adj, Exponential(3.0))
-        sb = simulate(ModelSpec(bare; progression = _seir(4.0)); n_initial = 3,
-            rng = StableRNG(2))
-        @test isequal(network_infections(sb, bare).infectious_time,
-            network_infections(sb, bare).infection_time)
+        sb = simulate(
+            ModelSpec(bare; progression = _seir(4.0)); n_initial = 3,
+            rng = StableRNG(2)
+        )
+        @test isequal(
+            network_infections(sb, bare).infectious_time,
+            network_infections(sb, bare).infection_time
+        )
 
         @test_throws ArgumentError NetworkInfections(adj, [0.0], [0.0], [1.0], [true])
     end
@@ -88,7 +94,7 @@ end
 
         for s in 2.0:1.0:6.0
             @test pairwise_surv_loglik(Weibull(1.5, s), data, layout) ==
-                  pairwise_surv_loglik(Weibull(1.5, s), data)
+                pairwise_surv_loglik(Weibull(1.5, s), data)
         end
         @test loglikelihood(data, m) == pairwise_surv_loglik(Weibull(1.5, 4.0), data)
         @test loglikelihood(data, m.process) == loglikelihood(data, m)
@@ -112,13 +118,15 @@ end
     @testset "per-edge and covariate kernels" begin
         adj = _random_graph(300, 900, StableRNG(5))
         shared = ModelSpec(NetworkProcess(adj, Exponential(3.0)); progression = _seir(4.0))
-        data = network_infections(simulate(shared; n_initial = 3, rng = StableRNG(6)),
-            shared)
+        data = network_infections(
+            simulate(shared; n_initial = 3, rng = StableRNG(6)),
+            shared
+        )
 
         # a per-edge vector of identical kernels is the shared kernel
         same = [[Exponential(3.0) for _ in nbrs] for nbrs in adj]
         @test loglikelihood(data, NetworkProcess(adj, same)) ≈
-              loglikelihood(data, shared)
+            loglikelihood(data, shared)
 
         # heterogeneous per-edge kernels resolve along the edge each row travels,
         # as the equivalent (infector, susceptible) callable does
@@ -128,7 +136,7 @@ end
         dpe = network_infections(simulate(pe; n_initial = 3, rng = StableRNG(7)), pe)
         @test isfinite(loglikelihood(dpe, pe))
         @test loglikelihood(dpe, pe) ≈
-              pairwise_surv_loglik((i, j) -> Exponential(scale(i, j)), dpe)
+            pairwise_surv_loglik((i, j) -> Exponential(scale(i, j)), dpe)
     end
 
     @testset "simulate → loglikelihood round trip recovers the kernel scale" begin
@@ -137,15 +145,17 @@ end
         # its standard error from the observed information
         true_scale = 6.0
         adj = _random_graph(2000, 6000, StableRNG(8))
-        m = ModelSpec(NetworkProcess(adj, Exponential(true_scale));
-            progression = _seir(4.0))
+        m = ModelSpec(
+            NetworkProcess(adj, Exponential(true_scale));
+            progression = _seir(4.0)
+        )
         data = network_infections(simulate(m; n_initial = 10, rng = StableRNG(9)), m)
         @test count(!isnan, data.infection_time) > 500   # a real outbreak to fit
 
         layout = compile_contact_pairs(data)
         f(θ) = pairwise_surv_loglik(Exponential(exp(θ)), data, layout)
         θhat, se = _newton_mle(f, log(3.0))
-        @test abs(ForwardDiff.derivative(f, θhat)) < 1e-6
+        @test abs(ForwardDiff.derivative(f, θhat)) < 1.0e-6
         @test se < 0.1
         @test abs(θhat - log(true_scale)) < 3 * se
     end
@@ -154,24 +164,38 @@ end
         # the race closes a case's window when it is isolated and the data must
         # too; otherwise the likelihood sees cases infectious after isolation and
         # overestimates the kernel scale
-        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
-            prob_asymptomatic = 0.0)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
-            test_sensitivity = 1.0)
+        clinical = clinical_presentation(
+            incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0
+        )
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0
+        )
         adj = _random_graph(3000, 12000, StableRNG(14))
-        m = ModelSpec(NetworkProcess(adj, Exponential(4.0));
-            progression = [Transition(:recovered; from = :infection, delay = 8.0,
-                terminal = true)],
-            interventions = [iso], attributes = clinical)
+        m = ModelSpec(
+            NetworkProcess(adj, Exponential(4.0));
+            progression = [
+                Transition(
+                    :recovered; from = :infection, delay = 8.0,
+                    terminal = true
+                ),
+            ],
+            interventions = [iso], attributes = clinical
+        )
         state = simulate(m; n_initial = 20, rng = StableRNG(15))
         data = network_infections(state, m)
 
         infected = findall(!isnan, data.infection_time)
-        expected = [min(data.infection_time[i] + 8.0,
-                        EpiBranch.isolation_time(state.individuals[i])) for i in infected]
+        expected = [
+            min(
+                data.infection_time[i] + 8.0,
+                EpiBranch.isolation_time(state.individuals[i])
+            ) for i in infected
+        ]
         @test data.removal_time[infected] == expected
         @test count(data.removal_time[infected] .< data.infection_time[infected] .+ 8.0) >
-              length(infected) / 2
+            length(infected) / 2
 
         layout = compile_contact_pairs(data)
         f(θ) = pairwise_surv_loglik(Exponential(exp(θ)), data, layout)
@@ -180,31 +204,45 @@ end
     end
 
     @testset "simulated infection layers never have zero density" begin
-        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
-            prob_asymptomatic = 0.0)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
-            test_sensitivity = 1.0)
+        clinical = clinical_presentation(
+            incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0
+        )
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0
+        )
         for seed in 1:4, (ext, Tobs) in ((0.0, Inf), (0.03, 10.0)),
-            interventions in ([], [iso])
+                interventions in ([], [iso])
             adj = _random_graph(400, 900, StableRNG(seed))
             m = ModelSpec(
-                NetworkProcess(adj, Weibull(1.5, 4.0); external_hazard = ext,
-                    obs_end = Tobs);
-                progression = _seir(5.0), interventions, attributes = clinical)
+                NetworkProcess(
+                    adj, Weibull(1.5, 4.0); external_hazard = ext,
+                    obs_end = Tobs
+                );
+                progression = _seir(5.0), interventions, attributes = clinical
+            )
             d = network_infections(simulate(m; n_initial = 3, rng = StableRNG(seed)), m)
             layout = compile_contact_pairs(d; external = ext > 0)
             @test isfinite(loglikelihood(d, m))
-            @test isfinite(pairwise_surv_loglik(Weibull(1.5, 4.0), d, layout;
-                external_hazard = ext))
+            @test isfinite(
+                pairwise_surv_loglik(
+                    Weibull(1.5, 4.0), d, layout;
+                    external_hazard = ext
+                )
+            )
         end
     end
 
     @testset "community hazard" begin
         adj = _random_graph(1000, 3000, StableRNG(10))
         m = ModelSpec(
-            NetworkProcess(adj, Exponential(6.0);
-                external_hazard = 0.005, obs_end = 40.0);
-            progression = _seir(4.0))
+            NetworkProcess(
+                adj, Exponential(6.0);
+                external_hazard = 0.005, obs_end = 40.0
+            );
+            progression = _seir(4.0)
+        )
         data = network_infections(simulate(m; rng = StableRNG(11)), m)
         @test data.obs_end == 40.0
         @test count(data.is_index) >= 1
@@ -212,13 +250,17 @@ end
         layout = compile_contact_pairs(data; external = true)
         @test layout.external
         @test loglikelihood(data, m) ==
-              pairwise_surv_loglik(Exponential(6.0), data, layout;
-            external_hazard = 0.005)
+            pairwise_surv_loglik(
+            Exponential(6.0), data, layout;
+            external_hazard = 0.005
+        )
         @test_throws ArgumentError pairwise_surv_loglik(Exponential(6.0), data, layout)
 
         # the rate and the kernel scale are both recovered jointly
-        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout;
-            external_hazard = exp(θ[2]))
+        g(θ) = pairwise_surv_loglik(
+            Exponential(exp(θ[1])), data, layout;
+            external_hazard = exp(θ[2])
+        )
         θ = [log(6.0), log(0.005)]
         θhat, se = _newton_mle_joint(g, θ)
         @test all(abs.(θhat - θ) .< 3 .* se)
@@ -230,16 +272,21 @@ end
         # over their neighbours' whole windows, as the simulation does
         adj = _random_graph(2000, 4000, StableRNG(16))
         m = ModelSpec(
-            NetworkProcess(adj, Exponential(8.0);
-                external_hazard = 0.01, obs_end = 10.0);
-            progression = _seir(4.0))
+            NetworkProcess(
+                adj, Exponential(8.0);
+                external_hazard = 0.01, obs_end = 10.0
+            );
+            progression = _seir(4.0)
+        )
         data = network_infections(simulate(m; rng = StableRNG(17)), m)
         inf = filter(!isnan, data.infection_time)
         @test count(>(10.0), inf) > length(inf) / 2
 
         layout = compile_contact_pairs(data; external = true)
-        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout;
-            external_hazard = exp(θ[2]))
+        g(θ) = pairwise_surv_loglik(
+            Exponential(exp(θ[1])), data, layout;
+            external_hazard = exp(θ[2])
+        )
         θ = [log(8.0), log(0.01)]
         θhat, se = _newton_mle_joint(g, θ)
         @test all(abs.(θhat - θ) .< 3 .* se)
@@ -250,25 +297,32 @@ end
         # open recorded as `Inf`
         adj = _random_graph(2000, 4000, StableRNG(16))
         m = ModelSpec(
-            NetworkProcess(adj, Exponential(8.0);
-                external_hazard = 0.01, obs_end = 10.0);
-            progression = _seir(4.0))
+            NetworkProcess(
+                adj, Exponential(8.0);
+                external_hazard = 0.01, obs_end = 10.0
+            );
+            progression = _seir(4.0)
+        )
         state = simulate(m; rng = StableRNG(17))
         tf = 15.0
         full = network_infections(state, m)
         late = .!(full.infection_time .<= tf)
         nan_late(x) = [l ? NaN : v for (v, l) in zip(x, late)]
-        ongoing = NetworkInfections(adj, nan_late(full.infection_time),
+        ongoing = NetworkInfections(
+            adj, nan_late(full.infection_time),
             nan_late(full.infectious_time),
             [l ? NaN : (r > tf ? Inf : r) for (r, l) in zip(full.removal_time, late)],
-            full.is_index .& .!late; obs_end = 10.0, followup_end = tf)
+            full.is_index .& .!late; obs_end = 10.0, followup_end = tf
+        )
         @test any(isinf, ongoing.removal_time)
         @test count(!isnan, ongoing.infection_time) < count(!isnan, full.infection_time)
 
         read = network_infections(state, m; followup_end = tf)
         @test read.followup_end == tf
-        capped = NetworkInfections(adj, ongoing.infection_time, ongoing.infectious_time,
-            min.(ongoing.removal_time, tf), ongoing.is_index; obs_end = 10.0)
+        capped = NetworkInfections(
+            adj, ongoing.infection_time, ongoing.infectious_time,
+            min.(ongoing.removal_time, tf), ongoing.is_index; obs_end = 10.0
+        )
         k = Exponential(8.0)
         v = pairwise_surv_loglik(k, ongoing; external_hazard = 0.01)
         @test isfinite(v)
@@ -277,8 +331,10 @@ end
         @test loglikelihood(ongoing, m) ≈ v
 
         layout = compile_contact_pairs(ongoing; external = true)
-        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), ongoing, layout;
-            external_hazard = exp(θ[2]))
+        g(θ) = pairwise_surv_loglik(
+            Exponential(exp(θ[1])), ongoing, layout;
+            external_hazard = exp(θ[2])
+        )
         θ = [log(8.0), log(0.01)]
         θhat, se = _newton_mle_joint(g, θ)
         @test all(abs.(θhat - θ) .< 3 .* se)
@@ -292,18 +348,19 @@ end
         x = [log(3.0)]
 
         f_shared(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout)
-        h = 1e-6
+        h = 1.0e-6
         fd = (f_shared(x .+ h) - f_shared(x .- h)) / 2h
-        @test ForwardDiff.gradient(f_shared, x)[1] ≈ fd rtol = 1e-5
+        @test ForwardDiff.gradient(f_shared, x)[1] ≈ fd rtol = 1.0e-5
 
         f_edge(θ) = pairwise_surv_loglik(
             [[Exponential(exp(θ[1]) * (1 + 0.01 * j)) for j in nbrs] for nbrs in adj],
-            data, layout)
+            data, layout
+        )
         @test ForwardDiff.gradient(f_edge, x)[1] ≈
-              (f_edge(x .+ h) - f_edge(x .- h)) / 2h rtol = 1e-5
+            (f_edge(x .+ h) - f_edge(x .- h)) / 2h rtol = 1.0e-5
 
         backend = AutoMooncake(; config = nothing)
         @test DifferentiationInterface.gradient(f_shared, backend, x) ≈
-              ForwardDiff.gradient(f_shared, x)
+            ForwardDiff.gradient(f_shared, x)
     end
 end

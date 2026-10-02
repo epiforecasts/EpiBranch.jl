@@ -1,16 +1,26 @@
 function test_contextual_simulation(make_process, extract)
-    @testset "Contextual kernel simulation and likelihood" begin
+    return @testset "Contextual kernel simulation and likelihood" begin
         covariates = [0.5, 1.0, 1.5]
-        interval(context) = Exponential(0.25 * exp(
-            0.1 * context.infector_infection_time + 0.2 * covariates[context.susceptible]))
+        interval(context) = Exponential(
+            0.25 * exp(
+                0.1 * context.infector_infection_time + 0.2 * covariates[context.susceptible]
+            )
+        )
         seen = Tuple{Int, Int, Float64}[]
-        kernel = ContextualKernel(context -> begin
-            push!(seen, (
-                context.infector, context.susceptible, context.infector_infection_time))
-            interval(context)
-        end)
-        progression = [Transition(:infectious; delay = 0.75),
-            Transition(:recovered; from = :infectious, delay = 10.0, terminal = true)]
+        kernel = ContextualKernel(
+            context -> begin
+                push!(
+                    seen, (
+                        context.infector, context.susceptible, context.infector_infection_time,
+                    )
+                )
+                interval(context)
+            end
+        )
+        progression = [
+            Transition(:infectious; delay = 0.75),
+            Transition(:recovered; from = :infectious, delay = 10.0, terminal = true),
+        ]
         spec = ModelSpec(make_process(kernel); progression)
         state = simulate(spec; rng = StableRNG(233))
         @test state.cumulative_cases == 3
@@ -24,7 +34,7 @@ function test_contextual_simulation(make_process, extract)
         @test loglikelihood(data, contextual) ≈ loglikelihood(data, legacy)
         layout = compile_contact_pairs(data)
         @test pairwise_surv_loglik(ContextualKernel(interval), data, layout) ≈
-              loglikelihood(data, legacy)
+            loglikelihood(data, legacy)
 
         fixed_ids(i, j) = Exponential(0.25 * covariates[j])
         fixed_context = ContextualKernel(context -> fixed_ids(context.infector, context.susceptible))
@@ -33,8 +43,8 @@ function test_contextual_simulation(make_process, extract)
         id_state = simulate(id_spec; rng = StableRNG(41))
         context_state = simulate(context_spec; rng = StableRNG(41))
         @test [i.infection_time for i in id_state.individuals] ==
-              [i.infection_time for i in context_state.individuals]
+            [i.infection_time for i in context_state.individuals]
         @test loglikelihood(extract(id_state, id_spec), id_spec) ≈
-              loglikelihood(extract(context_state, context_spec), context_spec)
+            loglikelihood(extract(context_state, context_spec), context_spec)
     end
 end

@@ -8,7 +8,8 @@
         for s in 1:200
             st = simulate(
                 BranchingProcess(Poisson(2.0), Exponential(5.0); population_size = N);
-                max_cases = N, rng = StableRNG(s))
+                max_cases = N, rng = StableRNG(s)
+            )
             push!(finals, st.cumulative_cases)
         end
         major = filter(x -> x > 0.2N, finals)
@@ -25,8 +26,10 @@
 
     @testset "Large population behaves like infinite BP" begin
         rng1 = StableRNG(42)
-        model_finite = BranchingProcess(Poisson(0.5), Exponential(5.0);
-            population_size = 1_000_000)
+        model_finite = BranchingProcess(
+            Poisson(0.5), Exponential(5.0);
+            population_size = 1_000_000
+        )
         state_finite = simulate(model_finite; rng = rng1)
 
         rng2 = StableRNG(42)
@@ -45,9 +48,11 @@
         state = simulate(
             ModelSpec(
                 BranchingProcess(Poisson(3.0), Exponential(5.0); population_size = 500);
-                interventions = [iso], attributes = init_fn);
+                interventions = [iso], attributes = init_fn
+            );
             max_cases = 200,
-            rng = rng)
+            rng = rng
+        )
 
         @test count(is_isolated, state.individuals) > 0
     end

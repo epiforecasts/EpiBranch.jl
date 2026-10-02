@@ -60,8 +60,10 @@
 # `force` with a count-independent hazard, e.g. external importation, or only
 # zero-infectiousness cases — there is no infector to attribute to, so fall back
 # to the index-case label 0.
-function _draw_infector(rng::AbstractRNG, state::SimulationState,
-        infectious_ids::AbstractVector{Int}, equal_infectiousness::Bool)
+function _draw_infector(
+        rng::AbstractRNG, state::SimulationState,
+        infectious_ids::AbstractVector{Int}, equal_infectiousness::Bool
+    )
     isempty(infectious_ids) && return 0
     equal_infectiousness && return infectious_ids[rand(rng, 1:length(infectious_ids))]
     u = rand(rng) * sum(id -> state.individuals[id].infectiousness, infectious_ids)
@@ -105,7 +107,7 @@ end
 # intervention without a `competing_risk` method of its own contributes no risk.
 _blocks_by_infector(source) = true
 function _blocks_by_infector(iv::AbstractIntervention)
-    _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
+    return _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
 end
 # Perfect isolation's block starts when the infector's window closes, so the
 # infector is never drawn once it could apply; only a leaky residual can bite.
@@ -114,7 +116,7 @@ _blocks_by_infector(iso::Isolation) = iso.post_isolation_transmission > 0
 # a ring's onward effect — but that holds for the ones this package writes. A
 # subtype of its own is taken to read the infector, as any other intervention is.
 function _blocks_by_infector(v::AbstractVaccination)
-    _has_own_method(competing_risk, typeof(v), AbstractVaccination)
+    return _has_own_method(competing_risk, typeof(v), AbstractVaccination)
 end
 _blocks_by_infector(rv::RingVaccination) = rv.onward_efficacy > 0
 _blocks_by_infector(s::Scheduled) = _blocks_by_infector(s.intervention)
@@ -126,15 +128,18 @@ function _refuse_infector_side_risks(state, members, risks, interventions)
         push!(culprits, string(nameof(typeof(_unwrap_scheduled(source)))))
     end
     isempty(culprits) && return nothing
-    throw(ArgumentError(
-        "the fixed-size pool with more than one mixing type draws each contact's " *
-        "infector in proportion to infectiousness rather than by its share of " *
-        "the force, which gives the right " *
-        "dynamics only while the infector cannot change whether a contact " *
-        "transmits. These can: $(join(unique(culprits), ", ")). Fold differences " *
-        "in infectiousness between types into `force`, or run a single mixing " *
-        "type (`mixing_by = ()`). Risks that act on the contact alone, such as " *
-        "susceptibility, are supported."))
+    throw(
+        ArgumentError(
+            "the fixed-size pool with more than one mixing type draws each contact's " *
+                "infector in proportion to infectiousness rather than by its share of " *
+                "the force, which gives the right " *
+                "dynamics only while the infector cannot change whether a contact " *
+                "transmits. These can: $(join(unique(culprits), ", ")). Fold differences " *
+                "in infectiousness between types into `force`, or run a single mixing " *
+                "type (`mixing_by = ()`). Risks that act on the contact alone, such as " *
+                "susceptibility, are supported."
+        )
+    )
 end
 
 """
@@ -186,9 +191,11 @@ refused with an `ArgumentError`, because the infector a contact is attributed to
 is not weighted by its share of the force. Per-individual infectiousness is not
 refused: it reaches the force through the weighted `counts`.
 """
-function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
+function _sellke_pool!(
+        state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; mixing_by::Tuple = (), force, n_initial::Integer,
-        from::Symbol, until::Tuple, interventions = (), risks = (), max_time = Inf)
+        from::Symbol, until::Tuple, interventions = (), risks = (), max_time = Inf
+    )
     N = length(members)
     N == 0 && return true
 
@@ -272,8 +279,10 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
     push_windows! = function (ind)
         open_t = _window_open(ind, from)
         isfinite(open_t) || return nothing
-        close_t = min(_window_close(ind, until),
-            _intervention_removal_time(ind, interventions))
+        close_t = min(
+            _window_close(ind, until),
+            _intervention_removal_time(ind, interventions)
+        )
         (isfinite(close_t) && close_t <= open_t) && return nothing
         _heap_push!(open_heap, (open_t, ind.id))
         isfinite(close_t) && _heap_push!(close_heap, (close_t, ind.id))
@@ -321,8 +330,10 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
         end
         push!(sus_by_group[g], id)
         susceptibility = state.individuals[id].susceptibility
-        push!(Q_by_group[g],
-            susceptibility > 0 ? rand(rng, Exponential(1.0)) / susceptibility : T(Inf))
+        push!(
+            Q_by_group[g],
+            susceptibility > 0 ? rand(rng, Exponential(1.0)) / susceptibility : T(Inf)
+        )
     end
     G = length(types)                   # number of susceptible groups in play
     for g in 1:G
@@ -407,7 +418,7 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             tp = typ[id]
             n_infectious[tp] -= 1
             counts[tp] = n_infectious[tp] == 0 ? zero(T) :
-                         counts[tp] - state.individuals[id].infectiousness
+                counts[tp] - state.individuals[id].infectiousness
         elseif t_open == t_event
             _, id = _heap_pop!(open_heap)
             push!(infectious_ids, id)
@@ -443,8 +454,11 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             # only `blocked` is read, and a permanently-blocking risk simply keeps
             # rejecting this susceptible's contacts until one draws an unblocked
             # infector or its window closes.
-            blocked = src != 0 && first(_proposal_blocked(
-                state, state.individuals[src], ind, t, risks, risk_interventions))
+            blocked = src != 0 && first(
+                _proposal_blocked(
+                    state, state.individuals[src], ind, t, risks, risk_interventions
+                )
+            )
             if blocked
                 # With an opaque risk, an immortal infectious source can keep
                 # generating rejected contacts forever. Require every active
@@ -452,30 +466,40 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
                 # how many rejections have occurred.
                 all(infectious_ids) do source_id
                     source = state.individuals[source_id]
-                    isfinite(min(_window_close(source, until),
-                        _intervention_removal_time(source, interventions)))
-                end || throw(ArgumentError(
-                    "repeated contacts after a blocked pool proposal require " *
-                    "finite infectious windows. Add a removal transition, or " *
-                    "encode static protection in host susceptibility or force. " *
-                    "The likely cause is a case whose infectious window never " *
-                    "closes — either the progression has no terminal transition " *
-                    "reaching one of `until`'s states, or one is reachable but " *
-                    "gated so that some cases fire none of them (see " *
-                    "`exclusive_probabilities` for terminal transitions meant " *
-                    "to partition the population exactly)."))
+                    isfinite(
+                        min(
+                            _window_close(source, until),
+                            _intervention_removal_time(source, interventions)
+                        )
+                    )
+                end || throw(
+                    ArgumentError(
+                        "repeated contacts after a blocked pool proposal require " *
+                            "finite infectious windows. Add a removal transition, or " *
+                            "encode static protection in host susceptibility or force. " *
+                            "The likely cause is a case whose infectious window never " *
+                            "closes — either the progression has no terminal transition " *
+                            "reaching one of `until`'s states, or one is reachable but " *
+                            "gated so that some cases fire none of them (see " *
+                            "`exclusive_probabilities` for terminal transitions meant " *
+                            "to partition the population exactly)."
+                    )
+                )
                 # The contact did not transmit. Put the susceptible back with the
                 # residual of its resistance: a fresh Exponential(1) above the
                 # threshold this contact consumed.
                 # The residual is in the group's pressure, so it is the
                 # individual's own fresh `Exponential(1)` over its
                 # susceptibility, exactly as its first threshold was.
-                _heap_push!(redrawn[gstar],
+                _heap_push!(
+                    redrawn[gstar],
                     (
                         q +
-                        convert(T, rand(rng, Exponential(1.0))) /
-                        state.individuals[id].susceptibility,
-                        id))
+                            convert(T, rand(rng, Exponential(1.0))) /
+                            state.individuals[id].susceptibility,
+                        id,
+                    )
+                )
             else
                 stamp!(ind, t, src)
                 equal_infectiousness &= ind.infectiousness == 1
@@ -483,4 +507,5 @@ function _sellke_pool!(state::SimulationState, members::AbstractVector{Int},
             end
         end
     end
+    return
 end

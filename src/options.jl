@@ -97,10 +97,14 @@ function SimOpts(;
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
         max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
-        stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing)
+        stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing
+    )
     initial_cases !== nothing && n_initial !== nothing &&
-        throw(ArgumentError(
-            "provide either initial_cases or n_initial, not both"))
+        throw(
+        ArgumentError(
+            "provide either initial_cases or n_initial, not both"
+        )
+    )
     ids = initial_cases === nothing ? nothing : collect(Int, initial_cases)
     if ids !== nothing
         all(>(0), ids) || throw(ArgumentError("initial_cases must contain positive IDs"))
@@ -135,23 +139,26 @@ end
 
 # Preserve the positional constructor used by external simulation methods.
 function SimOpts(n_initial, rules)
-    SimOpts(n_initial, nothing, rules)
+    return SimOpts(n_initial, nothing, rules)
 end
 
 function _validate_initial_cases(model::TransmissionModel, opts::SimOpts)
-    opts.initial_cases === nothing || throw(ArgumentError(
-        "$(nameof(typeof(model))) does not support initial_cases"))
+    opts.initial_cases === nothing || throw(
+        ArgumentError(
+            "$(nameof(typeof(model))) does not support initial_cases"
+        )
+    )
     return nothing
 end
 
-function _validate_initial_case_ids(opts::SimOpts, n, external_hazard)
+function _validate_initial_case_ids(opts::SimOpts, n)
     ids = opts.initial_cases
     ids === nothing && return nothing
-    all(id -> id <= n, ids) || throw(ArgumentError(
-        "initial_cases IDs must be in 1:$n"))
-    _ext_active(external_hazard) && throw(ArgumentError(
-        "initial_cases cannot yet be combined with external_hazard; use " *
-        "chosen initial cases with external_hazard = 0"))
+    all(id -> id <= n, ids) || throw(
+        ArgumentError(
+            "initial_cases IDs must be in 1:$n"
+        )
+    )
     return nothing
 end
 

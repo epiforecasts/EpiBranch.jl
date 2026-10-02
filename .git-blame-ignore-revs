@@ -1,0 +1,6 @@
+# Revisions that only reformat. `git blame --ignore-revs-file .git-blame-ignore-revs`
+# skips them, and `git config blame.ignoreRevsFile .git-blame-ignore-revs` makes
+# that the default for this checkout.
+
+# Format with Runic and check it in the suite and pre-commit
+440f2b69aa6c870d9a6b219febcefe4370fa6213

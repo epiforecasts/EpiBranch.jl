@@ -47,7 +47,7 @@ ClusterMixed(::Type{Poisson}, m::Distribution) = ClusterMixed(PoissonFamily(), m
 
 function Base.show(io::IO, o::ClusterMixed)
     build_str = o.build isa PoissonFamily ? "Poisson" : "Function"
-    print(io, "ClusterMixed(build=$(build_str), mixing=$(typeof(o.mixing)))")
+    return print(io, "ClusterMixed(build=$(build_str), mixing=$(typeof(o.mixing)))")
 end
 
 """
@@ -73,8 +73,8 @@ Distributions.insupport(::ChainSizeMixture, n::Integer) = n >= 1
 
 function Distributions.logpdf(d::ChainSizeMixture, n::Integer)
     n < 1 && return -Inf
-    lo = quantile(d.mixing, 1e-3)
-    hi = quantile(d.mixing, 1 - 1e-3)
+    lo = quantile(d.mixing, 1.0e-3)
+    hi = quantile(d.mixing, 1 - 1.0e-3)
     integrand = θ -> pdf(chain_size_distribution(d.build(θ)), n) * pdf(d.mixing, θ)
     prob, _ = quadgk(integrand, lo, hi)
     return prob > 0.0 ? log(prob) : -Inf
@@ -117,15 +117,21 @@ descendant via `parent_id` lookup. The per-individual draw is
 The process describes the transmission alone; attach interventions, attributes
 or an observation model with a [`ModelSpec`](@ref).
 """
-function BranchingProcess(offspring::ClusterMixed, gt;
-        population_size::Union{Int, NoPopulation} = NoPopulation())
-    BranchingProcess((Infectiousness(offspring; kernel = gt),), population_size, 1,
-        NoTypeLabels())
+function BranchingProcess(
+        offspring::ClusterMixed, gt;
+        population_size::Union{Int, NoPopulation} = NoPopulation()
+    )
+    return BranchingProcess(
+        (Infectiousness(offspring; kernel = gt),), population_size, 1,
+        NoTypeLabels()
+    )
 end
 
-function BranchingProcess(offspring::ClusterMixed;
-        population_size::Union{Int, NoPopulation} = NoPopulation())
-    BranchingProcess((Infectiousness(offspring),), population_size, 1, NoTypeLabels())
+function BranchingProcess(
+        offspring::ClusterMixed;
+        population_size::Union{Int, NoPopulation} = NoPopulation()
+    )
+    return BranchingProcess((Infectiousness(offspring),), population_size, 1, NoTypeLabels())
 end
 
 """
@@ -135,8 +141,10 @@ Draw offspring under a cluster-mixed specification. Samples `θ ~ mixing`
 once per chain, caches it on the index case, and looks it up via
 `parent_id` for every descendant so all members of a chain share `θ`.
 """
-function draw_offspring(rng::AbstractRNG, offspring::ClusterMixed,
-        individual, state::SimulationState)
+function draw_offspring(
+        rng::AbstractRNG, offspring::ClusterMixed,
+        individual, state::SimulationState
+    )
     θ = get!(individual.state, :cluster_theta) do
         if individual.parent_id == 0
             rand(rng, offspring.mixing)
@@ -157,12 +165,14 @@ end
 # integral is taken over the probability scale, `∫₀¹ f(quantile(mixing, u)) du`,
 # which covers an unbounded support without truncating it; Gauss-Kronrod nodes
 # never fall on the endpoints, so the quantile stays finite.
-function _mixture_expectation(f, mixing::ContinuousUnivariateDistribution;
-        atol::Real = 1e-10)
+function _mixture_expectation(
+        f, mixing::ContinuousUnivariateDistribution;
+        atol::Real = 1.0e-10
+    )
     value, _ = quadgk(u -> f(quantile(mixing, u)), 0, 1; atol, rtol = sqrt(eps()))
     return value
 end
-function _mixture_expectation(f, mixing::DiscreteNonParametric; atol::Real = 1e-10)
+function _mixture_expectation(f, mixing::DiscreteNonParametric; atol::Real = 1.0e-10)
     return sum(p * f(θ) for (θ, p) in zip(support(mixing), probs(mixing)))
 end
 
@@ -183,8 +193,10 @@ end
 # the smallest fixed point, and the rate stays at least linear with ratio 1/2
 # however close the law is to critical. Plain fixed-point iteration slows to a
 # stall there, and the quadrature over θ evaluates laws on both sides of R = 1.
-function _extinction_at_fixed_law(d::DiscreteUnivariateDistribution; tol::Real,
-        max_iter::Int)
+function _extinction_at_fixed_law(
+        d::DiscreteUnivariateDistribution; tol::Real,
+        max_iter::Int
+    )
     R = float(_law_mean(d))
     R <= 1 && return one(R)
     s = zero(R)
@@ -217,9 +229,12 @@ this assumes the offspring count varies.
 `mixing` can be any continuous distribution, integrated by adaptive quadrature
 on the probability scale, or a `DiscreteNonParametric`, summed over its support.
 """
-function extinction_probability(o::ClusterMixed; tol::Real = 1e-10,
-        max_iter::Int = 1000)
+function extinction_probability(
+        o::ClusterMixed; tol::Real = 1.0e-10,
+        max_iter::Int = 1000
+    )
     return _mixture_expectation(
         θ -> _extinction_at_fixed_law(o.build(θ); tol, max_iter), o.mixing;
-        atol = tol)
+        atol = tol
+    )
 end

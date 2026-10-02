@@ -11,11 +11,11 @@ EpiBranch = "d1aa5d78-c683-4158-9743-7109392647a5"
 ExplicitImports = "7d51a73a-1435-4ff3-83d9-f097790105c7"
 FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
-JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Runic = "62bfec6d-59d7-401d-8490-b29ee721c001"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
@@ -26,3 +26,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 # dependency of `LogExpFunctions`, and reports the package as having persistent
 # tasks. Unpin once that is fixed upstream.
 Aqua = "=0.8.16"
+# The pre-commit hook builds its own environment from a `Runic@1` floor, so
+# that spec and this bound are the two places a version enters. They stay in
+# step, or the hook and the suite disagree about whether a file is formatted.
+Runic = "1"

@@ -6,13 +6,15 @@
 function Base.show(io::IO, ind::Individual)
     infected_str = is_infected(ind) ? "infected" : "contact-only"
     isolated_str = is_isolated(ind) ? ", isolated" : ""
-    print(io,
-        "Individual(id=$(ind.id), gen=$(ind.generation), chain=$(ind.chain_id), t=$(round(ind.infection_time, digits=1)), $(infected_str)$(isolated_str))")
+    return print(
+        io,
+        "Individual(id=$(ind.id), gen=$(ind.generation), chain=$(ind.chain_id), t=$(round(ind.infection_time, digits = 1)), $(infected_str)$(isolated_str))"
+    )
 end
 
 """Symptom onset time (`NaN` if asymptomatic or not set); a dual under AD."""
 function onset_time(ind::Individual{T}) where {T}
-    convert(T, get(ind.state, :onset_time, T(NaN)))::T
+    return convert(T, get(ind.state, :onset_time, T(NaN)))::T
 end
 
 """
@@ -28,7 +30,7 @@ is_isolated(ind::Individual) = get(ind.state, :isolated, false)::Bool
 
 """Time of isolation (Inf if not isolated); a dual under AD."""
 function isolation_time(ind::Individual{T}) where {T}
-    convert(T, get(ind.state, :isolation_time, T(Inf)))::T
+    return convert(T, get(ind.state, :isolation_time, T(Inf)))::T
 end
 
 """Whether the individual was traced via contact tracing."""
@@ -41,7 +43,7 @@ is_quarantined(ind::Individual) = get(ind.state, :quarantined, false)::Bool
 default label reads the plain `:vaccinated` key; a non-default label reads the
 namespaced key an `AbstractVaccination` with that `dose_label` writes."""
 function is_vaccinated(ind::Individual; dose_label::Symbol = :default)
-    get(ind.state, _vaccinated_key(dose_label), false)::Bool
+    return get(ind.state, _vaccinated_key(dose_label), false)::Bool
 end
 
 """Time the individual's vaccine-induced immunity develops under the given
@@ -53,7 +55,7 @@ outcome would take effect (e.g. `onset_time(ind)` for the default `Death`) to
 decide whether that dose's [`severity_efficacy`](@ref) applies: a dose whose
 immunity develops after that time confers no protection."""
 function immunity_time(ind::Individual{T}; dose_label::Symbol = :default) where {T}
-    convert(T, get(ind.state, _immunity_time_key(dose_label), T(Inf)))::T
+    return convert(T, get(ind.state, _immunity_time_key(dose_label), T(Inf)))::T
 end
 
 """Probability that the individual's own disease course is milder — e.g. a
@@ -72,7 +74,7 @@ Death(delay = LogNormal(2.5, 0.4),
 ```
 """
 function severity_efficacy(ind::Individual; dose_label::Symbol = :default)
-    get(ind.state, _severity_efficacy_key(dose_label), 0.0)::Float64
+    return get(ind.state, _severity_efficacy_key(dose_label), 0.0)::Float64
 end
 
 """Whether the individual is asymptomatic."""
@@ -108,7 +110,7 @@ respects leaky isolation. `:isolated` in an `until` refers to a
 `Transition(:isolated, …)` in the natural history."""
 function set_isolated!(ind::Individual, time::Real)
     ind.state[:isolated] = true
-    ind.state[:isolation_time] = time
+    return ind.state[:isolation_time] = time
 end
 
 """Clear an individual's isolation, the inverse of [`set_isolated!`](@ref)."""

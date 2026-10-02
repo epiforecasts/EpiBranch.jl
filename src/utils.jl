@@ -8,20 +8,23 @@ Any other family raises an `ArgumentError` naming it, rather than a bare
 `MethodError`.
 """
 function scale_distribution(d::Poisson, factor::Real)
-    Poisson(mean(d) * factor)
+    return Poisson(mean(d) * factor)
 end
 
 function scale_distribution(d::NegativeBinomial, factor::Real)
     k = d.r
     new_mean = mean(d) * factor
     p = k / (k + new_mean)
-    NegativeBinomial(k, p)
+    return NegativeBinomial(k, p)
 end
 
 function scale_distribution(d::Distribution, ::Real)
-    throw(ArgumentError(
-        "scale_distribution is not defined for $(typeof(d)); only Poisson and " *
-        "NegativeBinomial offspring distributions can be scaled."))
+    throw(
+        ArgumentError(
+            "scale_distribution is not defined for $(typeof(d)); only Poisson and " *
+                "NegativeBinomial offspring distributions can be scaled."
+        )
+    )
 end
 
 # A minimal binary min-heap over `(time, id, ...)` tuples, used by the
@@ -46,11 +49,11 @@ end
 
 # What an empty heap reports: an event that never happens, with zero ids.
 function _heap_empty(::Type{E}) where {E <: _HeapEntry}
-    ntuple(i -> i == 1 ? fieldtype(E, 1)(Inf) : 0, Val(fieldcount(E)))::E
+    return ntuple(i -> i == 1 ? fieldtype(E, 1)(Inf) : 0, Val(fieldcount(E)))::E
 end
 
 function _heap_peek(h::Vector{E}) where {E <: _HeapEntry}
-    isempty(h) ? _heap_empty(E) : @inbounds h[1]
+    return isempty(h) ? _heap_empty(E) : @inbounds h[1]
 end
 
 function _heap_pop!(h::Vector{E}) where {E <: _HeapEntry}

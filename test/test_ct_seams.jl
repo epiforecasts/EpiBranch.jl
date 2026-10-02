@@ -7,13 +7,13 @@ EpiBranch.is_eligible(::OddIdSeeds, infector, contact, state) = isodd(infector.i
 # a custom trigger time that says nothing about when tracing started.
 struct NaNForEvenIds <: EpiBranch.TraceEligibility end
 function EpiBranch.trigger_time(::NaNForEvenIds, infector, state)
-    iseven(infector.id) ? NaN : EpiBranch.isolation_time(infector)
+    return iseven(infector.id) ? NaN : EpiBranch.isolation_time(infector)
 end
 
 # Custom TraceEligibility used by the user-extension test below.
 struct WithinChain <: EpiBranch.TraceEligibility end
 function EpiBranch.is_eligible(::WithinChain, infector, contact, state)
-    infector.chain_id == contact.chain_id
+    return infector.chain_id == contact.chain_id
 end
 
 @testset "ContactTracing trait seams" begin
@@ -32,8 +32,10 @@ end
     end
 
     @testset "quarantine_on_trace = false selects FlagOnly" begin
-        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.1),
-            quarantine_on_trace = false)
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.1),
+            quarantine_on_trace = false
+        )
         @test ct.action isa FlagOnly
     end
 
@@ -43,9 +45,12 @@ end
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                interventions = [iso, ct], attributes = clinical);
-            max_cases = 50, rng = rng)
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [iso, ct], attributes = clinical
+            );
+            max_cases = 50, rng = rng
+        )
         # Some traces should fire: at least one quarantined contact.
         @test any(get(ind.state, :quarantined, false) for ind in state.individuals)
     end
@@ -54,17 +59,23 @@ end
         # User-defined eligibility slots in by type. We check the
         # struct accepts the custom trait and exposes it on the
         # intervention without any further hook changes.
-        ct = ContactTracing(WithinChain(), ConstantRate(0.5),
-            ConstantDelay(Exponential(1.0)), Quarantine())
+        ct = ContactTracing(
+            WithinChain(), ConstantRate(0.5),
+            ConstantDelay(Exponential(1.0)), Quarantine()
+        )
         @test ct.eligibility isa WithinChain
-        @test EpiBranch.is_eligible(ct.eligibility,
+        @test EpiBranch.is_eligible(
+            ct.eligibility,
             Individual(id = 1, chain_id = 7),
             Individual(id = 2, chain_id = 7, parent_id = 1),
-            nothing)
-        @test !EpiBranch.is_eligible(ct.eligibility,
+            nothing
+        )
+        @test !EpiBranch.is_eligible(
+            ct.eligibility,
             Individual(id = 1, chain_id = 7),
             Individual(id = 2, chain_id = 8, parent_id = 1),
-            nothing)
+            nothing
+        )
     end
 
     @testset "Stacked tracing keeps the earliest trace time" begin
@@ -72,10 +83,14 @@ end
         # first of them got there, so the recorded trace time must not
         # depend on the order the interventions sit in the stack.
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-        fast = ContactTracing(probability = 1.0,
-            isolation_to_trace_delay = Dirac(0.5), quarantine_on_trace = false)
-        slow = ContactTracing(probability = 1.0,
-            isolation_to_trace_delay = Dirac(20.0), quarantine_on_trace = false)
+        fast = ContactTracing(
+            probability = 1.0,
+            isolation_to_trace_delay = Dirac(0.5), quarantine_on_trace = false
+        )
+        slow = ContactTracing(
+            probability = 1.0,
+            isolation_to_trace_delay = Dirac(20.0), quarantine_on_trace = false
+        )
 
         # Each tracer draws its own delay, so the two stack orders consume the
         # rng differently and their runs diverge, so the check is within a
@@ -83,12 +98,17 @@ end
         # infector's isolation, whichever order the stack is in.
         function trace_lags(stack)
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                    interventions = stack, attributes = clinical);
-                max_cases = 50, rng = StableRNG(9))
+                ModelSpec(
+                    BranchingProcess(Poisson(2.0), Exponential(5.0));
+                    interventions = stack, attributes = clinical
+                );
+                max_cases = 50, rng = StableRNG(9)
+            )
             by_id = Dict(ind.id => ind for ind in state.individuals)
-            [ind.state[:trace_time] - isolation_time(by_id[ind.state[:traced_by]])
-             for ind in state.individuals if is_traced(ind)]
+            [
+                ind.state[:trace_time] - isolation_time(by_id[ind.state[:traced_by]])
+                    for ind in state.individuals if is_traced(ind)
+            ]
         end
 
         for stack in ([iso, fast, slow], [iso, slow, fast])
@@ -104,9 +124,12 @@ end
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         ct = ContactTracing(NaNForEvenIds(), 1.0, Exponential(1.0))
         state = simulate(
-            ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
-                interventions = [iso, ct], attributes = clinical);
-            max_cases = 300, rng = StableRNG(11))
+            ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [iso, ct], attributes = clinical
+            );
+            max_cases = 300, rng = StableRNG(11)
+        )
         traced = filter(is_traced, state.individuals)
         @test !isempty(traced)  # otherwise the test is vacuous
         # Some trace time has to have been skipped, or this proves nothing.
@@ -120,29 +143,40 @@ end
 @testset "ContactTracing ring depth" begin
     # All cases symptomatic, so an infected case always seeds a ring.
     clinical = clinical_presentation(
-        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+    )
 
     @testset "depth defaults to 1" begin
         @test ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5)).depth == 1
-        @test ContactTracing(probability = 1.0,
-            isolation_to_trace_delay = Exponential(0.5)).depth == 1
+        @test ContactTracing(
+            probability = 1.0,
+            isolation_to_trace_delay = Exponential(0.5)
+        ).depth == 1
     end
 
     @testset "depth is settable through every constructor" begin
         @test ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2).depth == 2
-        @test ContactTracing(probability = 1.0,
-            isolation_to_trace_delay = Exponential(0.5), depth = 3).depth == 3
-        @test ContactTracing(OnSymptomOnset(), ConstantRate(1.0),
-            ConstantDelay(Exponential(0.5)), Quarantine(); depth = 2).depth == 2
+        @test ContactTracing(
+            probability = 1.0,
+            isolation_to_trace_delay = Exponential(0.5), depth = 3
+        ).depth == 3
+        @test ContactTracing(
+            OnSymptomOnset(), ConstantRate(1.0),
+            ConstantDelay(Exponential(0.5)), Quarantine(); depth = 2
+        ).depth == 2
     end
 
     @testset "depth below 1 is rejected" begin
         @test_throws ArgumentError ContactTracing(
-            OnSymptomOnset(), 1.0, Exponential(0.5); depth = 0)
+            OnSymptomOnset(), 1.0, Exponential(0.5); depth = 0
+        )
         @test_throws ArgumentError ContactTracing(
-            probability = 1.0, isolation_to_trace_delay = Exponential(0.5), depth = -1)
-        @test_throws ArgumentError ContactTracing(OnSymptomOnset(), ConstantRate(1.0),
-            ConstantDelay(Exponential(0.5)), Quarantine(); depth = 0)
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5), depth = -1
+        )
+        @test_throws ArgumentError ContactTracing(
+            OnSymptomOnset(), ConstantRate(1.0),
+            ConstantDelay(Exponential(0.5)), Quarantine(); depth = 0
+        )
     end
 
     # Offspring-as-ring with susceptibility 0.5: each case has four
@@ -157,15 +191,20 @@ end
         # reached. That time is recorded, so a ring member that cannot seed
         # its own ring extends the ring only at a finite time when it was
         # itself reached at a finite time, whatever its own isolation.
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
-            test_sensitivity = 0.5)
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 0.5
+        )
         ct = ContactTracing(OddIdSeeds(), 1.0, Exponential(0.5); depth = 2)
         checked = 0
         for s in 1:20
             state = simulate(
-                ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
-                    interventions = [iso, ct], attributes = attrs);
-                opts..., rng = StableRNG(s))
+                ModelSpec(
+                    BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                    interventions = [iso, ct], attributes = attrs
+                );
+                opts..., rng = StableRNG(s)
+            )
             for ind in state.individuals
                 t = get(ind.state, :trace_time, Inf)
                 (is_traced(ind) && isfinite(t)) || continue
@@ -181,9 +220,12 @@ end
     @testset "depth 1 traces direct contacts only; the fringe does not grow" begin
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 1)
         state = simulate(
-            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
-                interventions = [ct], attributes = attrs);
-            opts..., rng = StableRNG(1))
+            ModelSpec(
+                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                interventions = [ct], attributes = attrs
+            );
+            opts..., rng = StableRNG(1)
+        )
         # No uninfected contact ever generated contacts of its own.
         for ind in state.individuals
             ind.parent_id == 0 && continue
@@ -196,13 +238,19 @@ end
         ct1 = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 1)
         ct2 = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
         s1 = simulate(
-            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
-                interventions = [ct1], attributes = attrs);
-            opts..., rng = StableRNG(1))
+            ModelSpec(
+                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                interventions = [ct1], attributes = attrs
+            );
+            opts..., rng = StableRNG(1)
+        )
         s2 = simulate(
-            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
-                interventions = [ct2], attributes = attrs);
-            opts..., rng = StableRNG(1))
+            ModelSpec(
+                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                interventions = [ct2], attributes = attrs
+            );
+            opts..., rng = StableRNG(1)
+        )
 
         # The uninfected fringe now grows its own contacts: more nodes.
         @test length(s2.individuals) > length(s1.individuals)
@@ -228,9 +276,12 @@ end
         # the ring stops there rather than running away.
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
         state = simulate(
-            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
-                interventions = [ct], attributes = attrs);
-            n_initial = 3, max_generations = 6, rng = StableRNG(7))
+            ModelSpec(
+                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                interventions = [ct], attributes = attrs
+            );
+            n_initial = 3, max_generations = 6, rng = StableRNG(7)
+        )
         for ind in state.individuals
             ind.parent_id == 0 && continue
             parent = state.individuals[ind.parent_id]
@@ -247,9 +298,12 @@ end
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
         rv = RingVaccination(efficacy = 0.9)
         state = simulate(
-            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
-                interventions = [ct, rv], attributes = attrs);
-            opts..., rng = StableRNG(3))
+            ModelSpec(
+                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                interventions = [ct, rv], attributes = attrs
+            );
+            opts..., rng = StableRNG(3)
+        )
         # At least one vaccinated contact sits past the fringe (its parent
         # was never infected): the level-2 ring delivered doses there.
         outer_vaccinated = false
@@ -268,7 +322,8 @@ end
     @testset "compute_trace_level! walks traced_by back to the index" begin
         mini(inds) = SimulationState(
             inds, Int[], 0, StableRNG(1), 0, false, nothing, Inf, nothing,
-            AbstractClinicalTransition[])
+            AbstractClinicalTransition[]
+        )
 
         # 1 (seed) ← 2 ← 3 ; 1 ← 4 ; 5 never traced.
         inds = [Individual(id = i) for i in 1:5]
@@ -293,7 +348,8 @@ end
     @testset "batch overload stamps every state" begin
         mini(inds) = SimulationState(
             inds, Int[], 0, StableRNG(1), 0, false, nothing, Inf, nothing,
-            AbstractClinicalTransition[])
+            AbstractClinicalTransition[]
+        )
         a = [Individual(id = i) for i in 1:2]
         a[2].state[:traced_by] = 1
         b = [Individual(id = i) for i in 1:2]
@@ -305,8 +361,10 @@ end
     end
 
     @testset "reset! clears traced_by and trace_level" begin
-        ct = ContactTracing(probability = 1.0,
-            isolation_to_trace_delay = Exponential(1.0))
+        ct = ContactTracing(
+            probability = 1.0,
+            isolation_to_trace_delay = Exponential(1.0)
+        )
         ind = Individual(id = 1)
         ind.state[:traced] = true
         ind.state[:traced_by] = 7
@@ -319,13 +377,17 @@ end
 
     @testset "trace_level lines up with the ring on a tree sim" begin
         clinical = clinical_presentation(
-            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+        )
         attrs = [clinical, transmission_traits(susceptibility = 0.5)]
         ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
         state = simulate(
-            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0));
-                interventions = [ct], attributes = attrs);
-            n_initial = 3, max_generations = 4, rng = StableRNG(1))
+            ModelSpec(
+                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                interventions = [ct], attributes = attrs
+            );
+            n_initial = 3, max_generations = 4, rng = StableRNG(1)
+        )
 
         # Every traced node records the infector it was traced from; on a
         # branching process that is its (final) parent.
@@ -335,8 +397,11 @@ end
         end
 
         compute_trace_level!(state)
-        levels = collect(skipmissing(
-            get(ind.state, :trace_level, missing) for ind in state.individuals))
+        levels = collect(
+            skipmissing(
+                get(ind.state, :trace_level, missing) for ind in state.individuals
+            )
+        )
         @test 0 in levels        # the index/anchor
         @test 1 in levels        # directly traced contacts
         @test 2 in levels        # contacts-of-contacts (the depth-2 reach)

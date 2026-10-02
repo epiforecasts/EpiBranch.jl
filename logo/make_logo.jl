@@ -26,8 +26,10 @@ const HEX_HEIGHT = round(Int, HEX_WIDTH * 2 / sqrt(3))
 const HEX_RADIUS = HEX_HEIGHT / 2  # circumradius
 
 "Generate a branching process realisation. Returns Vector of (id, gen, parent)."
-function generate_tree(; R0 = 1.6, k = 0.7, max_gens = 4, max_nodes = 22,
-        rng = Random.default_rng())
+function generate_tree(;
+        R0 = 1.6, k = 0.7, max_gens = 4, max_nodes = 22,
+        rng = Random.default_rng()
+    )
     p = k / (k + R0)
     offspring = NegativeBinomial(k, p)
     nodes = [(id = 1, gen = 0, parent = 0)]
@@ -79,7 +81,7 @@ function layout_dendrogram(nodes, root_id; gen_height, leaf_step)
             end
             sum(child_xs) / length(child_xs)
         end
-        positions[id] = (x, depth * gen_height)
+        return positions[id] = (x, depth * gen_height)
     end
     assign!(root_id, 0)
     # Centre horizontally on x = 0.
@@ -99,7 +101,7 @@ function pick_tree(seed_range; target_nodes = (12, 22), target_gens = (3, 4))
         n = length(tree)
         max_gen = maximum(node.gen for node in tree)
         if target_nodes[1] <= n <= target_nodes[2] &&
-           target_gens[1] <= max_gen <= target_gens[2]
+                target_gens[1] <= max_gen <= target_gens[2]
             return tree, seed
         end
     end
@@ -113,8 +115,10 @@ function node_colour(gen)
     return palette[mod1(gen, length(palette))]
 end
 
-function draw_tree(tree, positions; node_radius_root = 34, node_radius = 22,
-        edge_width = 5.0)
+function draw_tree(
+        tree, positions; node_radius_root = 34, node_radius = 22,
+        edge_width = 5.0
+    )
     setline(edge_width)
     setlinecap("round")
     sethue(EDGE_COLOUR)
@@ -133,17 +137,22 @@ function draw_tree(tree, positions; node_radius_root = 34, node_radius = 22,
         setline(2.5)
         circle(Point(x, y), r, :stroke)
     end
+    return
 end
 
 function draw_hex_frame(radius; border_width = 20)
     # Pointy-top hex: first vertex at the top.
-    vertices = [Point(radius * cos(π / 2 + i * π / 3),
-                    -radius * sin(π / 2 + i * π / 3)) for i in 0:5]
+    vertices = [
+        Point(
+            radius * cos(π / 2 + i * π / 3),
+            -radius * sin(π / 2 + i * π / 3)
+        ) for i in 0:5
+    ]
     sethue(BG_DARK)
     poly(vertices, :fill, close = true)
     sethue(RIM_COLOUR)
     setline(border_width)
-    poly(vertices, :stroke, close = true)
+    return poly(vertices, :stroke, close = true)
 end
 
 function draw_title(radius; text = "EpiBranch.jl", font_size = 112)
@@ -151,7 +160,7 @@ function draw_title(radius; text = "EpiBranch.jl", font_size = 112)
     fontface("Helvetica-Bold")
     fontsize(font_size)
     y = radius * 0.48
-    textcentred(text, Point(0, y))
+    return textcentred(text, Point(0, y))
 end
 
 "Seed used for the committed logo asset. Pin explicitly so the rendered tree
@@ -160,12 +169,16 @@ offspring parameters change. To pick a fresh seed, call `pick_tree(1:300)`
 in the REPL and bake the result back in here."
 const LOGO_SEED = 13
 
-function build_logo(path_svg::AbstractString, path_png::AbstractString;
-        seed::Integer = LOGO_SEED)
+function build_logo(
+        path_svg::AbstractString, path_png::AbstractString;
+        seed::Integer = LOGO_SEED
+    )
     rng = MersenneTwister(seed)
     tree = generate_tree(rng = rng)
-    @info "Selected branching tree" seed n_nodes=length(tree) max_gen=maximum(n.gen
-    for n in tree)
+    @info "Selected branching tree" seed n_nodes = length(tree) max_gen = maximum(
+        n.gen
+            for n in tree
+    )
 
     # Lay out and then scale to fit a target bounding box inside the hex.
     raw = layout_dendrogram(tree, 1; gen_height = 1.0, leaf_step = 1.0)
@@ -175,21 +188,23 @@ function build_logo(path_svg::AbstractString, path_png::AbstractString;
     y_span = maximum(ys) - minimum(ys)
 
     target_width = HEX_WIDTH * 0.72
-    target_height = HEX_HEIGHT * 0.40
+    target_height = HEX_HEIGHT * 0.4
     sx = x_span > 0 ? target_width / x_span : 1.0
     sy = y_span > 0 ? target_height / y_span : 1.0
 
     # Root translated so its centre sits near y = -HEX_RADIUS * 0.46,
     # leaving the bottom band of the hex for the wordmark.
     root_y_screen = -HEX_RADIUS * 0.55
-    drawables = Dict(k => (v[1] * sx, v[2] * sy + root_y_screen)
-    for (k, v) in raw)
+    drawables = Dict(
+        k => (v[1] * sx, v[2] * sy + root_y_screen)
+            for (k, v) in raw
+    )
 
     function render()
         origin()
         draw_hex_frame(HEX_RADIUS)
         draw_tree(tree, drawables)
-        draw_title(HEX_RADIUS)
+        return draw_title(HEX_RADIUS)
     end
 
     Drawing(HEX_WIDTH, HEX_HEIGHT, path_svg)

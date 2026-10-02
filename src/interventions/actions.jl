@@ -23,7 +23,20 @@ implement this method and call `apply_actions!` from its batch hook.
 """
 intervention_actions(::AbstractIntervention, state, candidates) = nothing
 function intervention_actions(w::Union{Scheduled, CapacityConstrained}, state, candidates)
-    intervention_actions(w.intervention, state, candidates)
+    return intervention_actions(w.intervention, state, candidates)
+end
+
+"""
+    _action_cache(individual)
+
+The per-individual cache action discovery draws into (see [`action_draw!`](@ref)).
+Exposed so an intervention can also record bookkeeping of its own, such as which
+discovery a decision was made under. The cache is omitted from line-list output.
+"""
+function _action_cache(individual)
+    return get!(individual.state, :_intervention_actions) do
+        Dict{Any, Any}()
+    end
 end
 
 """
@@ -35,10 +48,7 @@ for distinct visits or dose labels. The cache belongs to the simulation's
 individual and is omitted from line-list output.
 """
 function action_draw!(sample, individual, key)
-    cache = get!(individual.state, :_intervention_actions) do
-        Dict{Any, Any}()
-    end
-    return get!(sample, cache, key)
+    return get!(sample, _action_cache(individual), key)
 end
 
 """
@@ -77,7 +87,7 @@ function _action_in_schedule(s::Scheduled, action, state)
 end
 function _admit_actions!(s::Scheduled, state, actions)
     selected = filter(a -> isfinite(a.time) && _action_in_schedule(s, a, state), actions)
-    _admit_actions!(s.intervention, state, selected)
+    return _admit_actions!(s.intervention, state, selected)
 end
 
 function _admit_actions!(cc::CapacityConstrained, state, actions)
@@ -127,13 +137,14 @@ function intervention_actions(rv::RingVaccination, state, candidates)
             if _maybe_positive(rv.post_exposure_efficacy)
                 # Reconsider protection at this exposure without recording a new dose.
                 effect! = (person, at, st) -> _abort_infection!(
-                    rv, person, person.state[_vaccination_time_key(label)], st.rng)
+                    rv, person, person.state[_vaccination_time_key(label)], st.rng
+                )
                 push!(actions, InterventionAction(ind, state.max_infection_time, effect!))
             end
             continue
         end
         trace_t = haskey(ind.state, :trace_time) ? ind.state[:trace_time] :
-                  min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
+            min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
         isfinite(trace_t) || continue
         delay = action_draw!(ind, (rv, :delay)) do
             _sample_value(rv.dose_delay, state.rng, ind)
@@ -153,17 +164,69 @@ function intervention_actions(rv::RingVaccination, state, candidates)
     return actions
 end
 
+_group_trigger_cache_key(gv::GroupVaccination) = (gv, :trigger)
+
+# Records the trigger a dose this action gave was timed from, so a later
+# discovery can tell whether its own trigger is a genuine revision of *this*
+# action's dose rather than a dose another vaccination (sharing the same
+# `dose_label`) already gave.
+function _group_dose_action(gv::GroupVaccination, ind, trigger, time)
+    base = _dose_action(gv, ind, time)
+    effect! = function (person, at, state)
+        base.effect!(person, at, state)
+        _action_cache(person)[_group_trigger_cache_key(gv)] = trigger
+        return nothing
+    end
+    return InterventionAction(ind, time, effect!)
+end
+
+# Moves an already-given dose from this action to an earlier trigger, on a
+# member the race has not yet settled: `:vaccination_time` moves to the new
+# trigger plus the member's own (already-drawn) delay, and `:immunity_time`
+# shifts by the same amount, keeping the delay to immunity that was drawn for
+# it. Efficacy and severity efficacy are untouched, since neither depends on
+# when the dose was given.
+function _revise_group_dose_action(gv::GroupVaccination, ind, trigger, time)
+    label = dose_label(gv)
+    effect! = function (person, at, state)
+        old_time = person.state[_vaccination_time_key(label)]
+        person.state[_vaccination_time_key(label)] = at
+        person.state[_immunity_time_key(label)] += at - old_time
+        _action_cache(person)[_group_trigger_cache_key(gv)] = trigger
+        return nothing
+    end
+    return InterventionAction(ind, time, effect!)
+end
+
 function intervention_actions(gv::GroupVaccination, state, candidates)
     actions = InterventionAction[]
-    groups_here = Set(get(ind.state, gv.group_key, nothing)
-    for ind in candidates
-    if haskey(ind.state, gv.group_key))
+    allowed = Set(ind.id for ind in candidates)
+    groups_here = Set(
+        get(ind.state, gv.group_key, nothing)
+            for ind in candidates
+            if haskey(ind.state, gv.group_key)
+    )
     for group in groups_here
         trigger = _group_trigger_time(gv, state, group)
         isfinite(trigger) || continue
         for ind in state.individuals
             get(ind.state, gv.group_key, nothing) == group || continue
-            get(ind.state, _vaccinated_key(dose_label(gv)), false) && continue
+            if get(ind.state, _vaccinated_key(dose_label(gv)), false)
+                # A member not yet settled in a continuous-time race can still
+                # be reached by an earlier trigger this same action gave it;
+                # a settled member's dose, and one another vaccination gave,
+                # keep their date. `intervention_actions` is called before the
+                # candidate restriction the continuous-time race applies, so
+                # `allowed` mirrors it here.
+                ind.id in allowed || continue
+                prior = get(_action_cache(ind), _group_trigger_cache_key(gv), nothing)
+                (prior === nothing || trigger >= prior) && continue
+                delay = action_draw!(ind, (gv, :delay)) do
+                    _sample_value(gv.dose_delay, state.rng, ind)
+                end
+                push!(actions, _revise_group_dose_action(gv, ind, trigger, trigger + delay))
+                continue
+            end
             get(ind.state, _coverage_declined_key(dose_label(gv)), false) && continue
             accepted = action_draw!(ind, (gv, :acceptance)) do
                 _covers(gv.coverage, ind, state.rng)
@@ -175,7 +238,7 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
             delay = action_draw!(ind, (gv, :delay)) do
                 _sample_value(gv.dose_delay, state.rng, ind)
             end
-            push!(actions, _dose_action(gv, ind, trigger + delay))
+            push!(actions, _group_dose_action(gv, ind, trigger, trigger + delay))
         end
     end
     return actions
@@ -203,11 +266,11 @@ finalised case. The default is `false`.
 """
 continuous_actions(::AbstractIntervention) = false
 function continuous_actions(w::Union{Scheduled, CapacityConstrained})
-    continuous_actions(w.intervention)
+    return continuous_actions(w.intervention)
 end
 continuous_actions(::GroupVaccination) = true
 function continuous_actions(rv::RingVaccination)
-    rv.eligibility_window isa Real &&
+    return rv.eligibility_window isa Real &&
         rv.eligibility_window == Inf && rv.post_exposure_efficacy isa Real &&
         rv.post_exposure_efficacy == 0
 end
@@ -216,9 +279,11 @@ function _apply_continuous_actions!(state, current, interventions, members, proc
     any(continuous_actions, interventions) || return nothing
     # Finalised cases have already generated proposals. A new action may affect
     # the current case and pending people, but must not revise earlier cases.
-    candidates = [state.individuals[id]
-                  for (k, id) in enumerate(members)
-                  if !processed[k] || id == current.id]
+    candidates = [
+        state.individuals[id]
+            for (k, id) in enumerate(members)
+            if !processed[k] || id == current.id
+    ]
     allowed = Set(ind.id for ind in candidates)
     for iv in interventions
         continuous_actions(iv) || continue
@@ -226,7 +291,8 @@ function _apply_continuous_actions!(state, current, interventions, members, proc
         actions === nothing && continue
         selected = filter(
             a -> a.individual.id in allowed &&
-                 a.time >= state.max_infection_time, actions)
+                a.time >= state.max_infection_time, actions
+        )
         _admit_actions!(iv, state, selected)
     end
     return nothing
