@@ -10,6 +10,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 Development versions target 0.2.0. Both companion packages require EpiBranch 0.2;
 EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
+<!-- releases go below this line -->
+
 ### Added
 
 - `pairwise_surv_loglik_by_component` splits the pairwise survival
