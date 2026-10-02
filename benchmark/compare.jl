@@ -3,8 +3,10 @@
 # it here and carry the change over if this repository adopts the kit.
 #
 # Compare two benchmark result files and write a Markdown PR comment, via the
-# shared EpiAwarePackageTools benchmark harness. Per-(scenario x backend) AD rows
-# are folded into a compact matrix using the `"AD gradients"` group convention.
+# shared EpiAwarePackageTools benchmark harness. `BACKEND_ORDER` orders the
+# automatic-differentiation rows the harness folds into a matrix; this suite has
+# none, so that section of the comment is empty and the order is kept for when
+# it does.
 #
 #   julia --project=benchmark benchmark/compare.jl pr.json base.json out.md
 

@@ -82,15 +82,18 @@ jobs:
           if [ "${{ matrix.name }}" = "main" ]; then
             echo "present=false" >> "$GITHUB_OUTPUT"
             echo "No benchmark/benchmarks.jl at the base revision; nothing to run."
+            # A marker, so `compare` can tell a base that genuinely had no
+            # suite from an artifact download that failed.
+            echo "no suite at this revision" > no-suite.txt
           else
             echo "::error::benchmark/benchmarks.jl is missing from this revision."
             exit 1
           fi
       # The benchmark environment installs the package as a dependency
-      # (`Pkg.develop` + `Pkg.instantiate` below), and Pkg honours only the
+      # (pinned by relative path in its `[sources]`), and Pkg honours only the
       # *active* project's `[sources]`. A dependency pinned there by git
       # url/rev (not yet registered) cannot resolve, failing with "has no
-      # known versions!" (#216). Register each such pin into a throwaway
+      # known versions!" (EpiAware/EpiAwarePackageTools.jl#216). Register each such pin into a throwaway
       # registry in this runner's depot instead: registries are depot-level,
       # so the dependency resolves by name in every environment on the
       # runner. A package with no unregistered pins is a no-op.
@@ -123,7 +126,6 @@ jobs:
         run: |
           julia --project=benchmark -e '
             using Pkg
-            Pkg.develop(path = pwd())
             Pkg.instantiate()
             using BenchmarkTools
             include("benchmark/benchmarks.jl")
@@ -134,6 +136,11 @@ jobs:
         with:
           name: bench-${{ matrix.name }}
           path: results-${{ matrix.name }}.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.suite.outputs.present != 'true'
+        with:
+          name: bench-${{ matrix.name }}
+          path: no-suite.txt
 
   compare:
     needs: benchmark
@@ -172,14 +179,26 @@ jobs:
           if [ -f artifacts/bench-main/results-main.json ] &&
              [ -f artifacts/bench-pr/results-pr.json ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "present=false" >> "$GITHUB_OUTPUT"
+          if [ -f artifacts/bench-main/no-suite.txt ]; then
             {
               echo "### Benchmark"
               echo
-              echo "No baseline results for the base revision, so there is"
-              echo "nothing to compare against. This is expected on a pull"
-              echo "request that introduces or moves the benchmark suite."
+              echo "The base revision has no benchmark suite, so there is"
+              echo "nothing to compare against. Expected on the pull request"
+              echo "that introduces it."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::No results to compare, although the base" \
+              "revision has a suite."
+            {
+              echo "### Benchmark"
+              echo
+              echo "Results are missing while the base revision does have a"
+              echo "suite, so the comparison was skipped. Check the"
+              echo "Benchmark (main) leg and its artifact upload."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Build comparison comment
