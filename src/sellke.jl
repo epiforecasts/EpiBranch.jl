@@ -344,8 +344,8 @@ standing_block(::AbortedInfection) = true
 # An `AllOrNothingMode` responder's block is a one-time draw at vaccination
 # that never fades: `waning` is disallowed under this mode, so once immunity
 # has developed the block it composes is certain for good. `LeakyMode` is not
-# declared here even at `efficacy = 1.0`, since nothing stops a later waning
-# value from giving a smaller block to a later exposure.
+# declared here even at `efficacy = 1.0`, because a later waning value could
+# still give a smaller block to a later exposure.
 standing_block(v::AbstractVaccination) = effect_mode(v) isa AllOrNothingMode
 
 # Whether a resolved risk is certain and already in force at this proposal: its
