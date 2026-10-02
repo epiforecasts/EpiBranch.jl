@@ -201,12 +201,18 @@ This holds on every axis:
   mortality, hospitalisation, reporting, stopping conditions, and line-list
   columns are typed objects with methods, not closed sets of fields.
 - **Engine loops** ask the composed layers and never decide for them. A
-  stepping loop or continuous-time race that names a concrete intervention
-  type, reads a state key an intervention owns, or keeps its own table of
-  what has already been done to whom has taken a policy decision into core,
-  where nothing a user writes can reach it. The varying part belongs behind
-  the hook the layer already implements, and the loop's own bookkeeping
-  should be about running the simulation, not about the response.
+  stepping loop or continuous-time race that decides what a named intervention
+  does to whom, reads a state key an intervention owns (see "Individual
+  state"), or keeps its own table of what has already been done to whom has
+  taken a policy decision into core, where nothing a user writes can reach it.
+  The varying part belongs behind the hook the layer already implements, and
+  the loop's own bookkeeping should be about running the simulation.
+
+  Naming a concrete type to *loosen* a conservative default is the sanctioned
+  exception: an engine may know that one of its own interventions is safe in a
+  case where it has to assume the worst of an unknown one, because an
+  outside type still gets the safe answer and loses nothing. What it may not
+  do is decide the response itself.
 
 The test of correctness for any component: can a plausible new variant be
 added without editing the component's source? If not, the component is

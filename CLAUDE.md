@@ -17,10 +17,16 @@ https://github.com/epiverse-trace/superspreading), prefer it to simulation.
 Simulate what has no closed form, such as containment under a combination of
 interventions.
 
+The repository holds the core package at the root and a satellite package per
+contact structure under `lib/` (`EpiNetwork`, `EpiHouseholds`), each with its
+own `Project.toml` and test environment. A new transmission structure goes
+there; the seams it extends stay in core.
+
 ## Design
 
 The architecture lives in [`docs/src/design.md`](docs/src/design.md) — read it
-first. The concrete contracts (hook signatures, the reserved keys table for
+first. Keep it to high-level concepts: it names no hook signatures, and the
+concrete contracts (those signatures, the reserved keys table for
 `Individual.state`, worked examples) are in
 [`docs/src/tutorials/extending.md`](docs/src/tutorials/extending.md).
 
@@ -36,15 +42,18 @@ engine loop, work through these:
 1. **Which existing seam covers it?** `keep_active`, `competing_risk`,
    `transmission_risks`, `is_eligible`, `should_stop`, `_sample_value`,
    `trace_contacts!`, `intervention_actions`, `loglikelihood`, `Transition`
-   and the attribute builders are all dispatched extension points. Prefer one
-   of them to a new option.
+   and the attribute builders (`clinical_presentation`, `demographics`,
+   `group_attribute` and the rest) are all dispatched extension points. Prefer
+   one of them to a new option.
 2. **If none fits, add a dispatched trait with a default**, and document it in
    the extending guide, so the variant can be written from outside the
    package. A seam nobody outside can reach is not a seam (principle 4).
 3. **Engine loops ask the composed layers; they never decide for them.** A
-   race or stepping loop that names a concrete intervention type, reads a
-   state key an intervention owns, or keeps its own table of what has already
-   been done to whom has taken a policy decision into core.
+   race or stepping loop that decides what a named intervention does to whom,
+   reads a state key an intervention owns, or keeps its own table of what has
+   already been done to whom has taken a policy decision into core. Naming a
+   concrete type to loosen a conservative default is the exception design.md
+   allows, since an outside type still gets the safe answer.
 4. **Say in the pull request which seam was used**, or which was considered
    and why it did not fit. A new `Bool`, `Symbol` or `Union` field on a core
    type, or a new verb alongside an existing one, needs that justification.
