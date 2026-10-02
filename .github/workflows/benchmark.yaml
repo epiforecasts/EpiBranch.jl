@@ -2,18 +2,15 @@
 # it here and carry the change over if this repository adopts the kit.
 name: Benchmark
 
-# Benchmarks the evaluation AND AD gradient suites against `main` and posts a
-# single PR comparison comment (bucketed summary plus collapsed detail
-# tables, split into Evaluation and AD gradients — see
-# `EpiAwarePackageTools.Benchmarks.compare_comment`, called from the
-# scaffolded `benchmark/compare.jl` below).
+# Benchmarks `benchmark/benchmarks.jl` against the pull request's base and
+# posts a single comparison comment (a bucketed summary plus a collapsed detail
+# table, from `EpiAwarePackageTools.Benchmarks.compare_comment`, called by
+# `benchmark/compare.jl` below).
 #
-# Each revision is benchmarked in its own job (a fresh runner checked out at
-# that revision), so `main` runs `main`'s sources and AD fixtures while the
-# PR runs its own. This lets the AD gradient benchmarks compare across an
-# API change, where staging one set of fixtures against both revisions could
-# not. It also keeps a single runner from loading two heavy AD stacks (e.g.
-# Enzyme + Mooncake) at once, which can exhaust it.
+# Each revision is benchmarked in its own job, on a fresh runner checked out at
+# that revision, so each leg runs its own sources. That is what lets the two be
+# compared across an API change, where one staged copy of the suite would have
+# to work against both.
 #
 # Uses `pull_request` (not `pull_request_target`), so the comparison runs
 # the PR's own code and the comment-posting token stays scoped to same-repo
@@ -30,10 +27,12 @@ on:
       - 'lib/**'
       - '.github/workflows/benchmark.yaml'
 
+# Read-only for the workflow. Only `compare` comments, and only that job takes
+# the scope for it: the `benchmark` job runs `benchmark/benchmarks.jl` from the
+# pull request's own checkout, which has no reason to hold a token that can
+# write to issues.
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -74,9 +73,18 @@ jobs:
         run: |
           if [ -f benchmark/benchmarks.jl ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
-          else
+            exit 0
+          fi
+          # Only the base can legitimately predate the suite. The pull request
+          # losing it is the pull request removing the thing this workflow
+          # exists to run, so that fails here rather than being reported as an
+          # expected absence by `compare`.
+          if [ "${{ matrix.name }}" = "main" ]; then
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "No benchmark/benchmarks.jl at ${{ matrix.ref }}; nothing to run."
+            echo "No benchmark/benchmarks.jl at the base revision; nothing to run."
+          else
+            echo "::error::benchmark/benchmarks.jl is missing from this revision."
+            exit 1
           fi
       # The benchmark environment installs the package as a dependency
       # (`Pkg.develop` + `Pkg.instantiate` below), and Pkg honours only the
@@ -105,8 +113,7 @@ jobs:
             Pkg.add([
                 Pkg.PackageSpec(name = "LocalRegistry"),
                 Pkg.PackageSpec(
-                    url = "https://github.com/EpiAware/EpiAwarePackageTools.jl",
-                    rev = "main")])
+                    name = "EpiAwarePackageTools", version = "0.4")])
             using EpiAwarePackageTools.Benchmarks: bootstrap_sources_registry
             done = bootstrap_sources_registry(pwd())
             println(isempty(done) ? "no unregistered [sources] deps" :
@@ -131,6 +138,9 @@ jobs:
   compare:
     needs: benchmark
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       # PR checkout (no ref override, so this always runs the workflow's own
       # commit): unlike the per-revision `benchmark` job above, this never
@@ -140,9 +150,18 @@ jobs:
       - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
           version: '1'
+      # By name, one at a time: a bulk download flattens into `path` when the
+      # run holds a single artifact, so the directory layout below would depend
+      # on how many legs uploaded.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          path: artifacts
+          name: bench-pr
+          path: artifacts/bench-pr
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: bench-main
+          path: artifacts/bench-main
       # A leg that found no suite uploaded nothing, so there is no baseline to
       # compare against and the comparison is the only thing with nothing to
       # say. Reported in the summary and skipped, so the pull request that
@@ -171,15 +190,14 @@ jobs:
         # always installs both rather than relying on `benchmark/Project.toml`
         # having them pinned — that file is package-owned and scaffold never
         # overwrites an adopter's pre-existing `benchmark/` dir, so either
-        # dependency could otherwise be silently missing (#821).
+        # dependency could otherwise be silently missing
+        # (EpiAware/EpiAwarePackageTools.jl#821).
         run: |
           julia -e '
             using Pkg
             Pkg.activate(; temp = true)
             Pkg.add([
-                Pkg.PackageSpec(
-                    url = "https://github.com/EpiAware/EpiAwarePackageTools.jl",
-                    rev = "main"),
+                Pkg.PackageSpec(name = "EpiAwarePackageTools", version = "0.4"),
                 Pkg.PackageSpec(name = "BenchmarkTools")])
             include("benchmark/compare.jl")' \
             artifacts/bench-pr/results-pr.json \

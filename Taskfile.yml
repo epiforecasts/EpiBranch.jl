@@ -18,6 +18,7 @@ tasks:
     desc: Build documentation with Documenter.jl
     cmds:
       - julia --project=docs -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+      - julia --project=benchmark -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
       - julia --project=docs docs/make.jl
 
   # === FORMATTING ===
@@ -57,14 +58,15 @@ tasks:
 
   # === BENCHMARKS ===
   benchmark:
-    desc: Run the standalone R-comparison benchmarks in benchmarks/
-    cmds:
-      - julia --project=. benchmarks/benchmark_julia.jl
-
-  benchmarks:
     desc: Run the BenchmarkTools suite in benchmark/, the one CI compares
     cmds:
+      - julia --project=benchmark -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
       - julia --project=benchmark benchmark/run.jl
+
+  benchmark-r:
+    desc: Run the standalone R-comparison scripts in benchmarks/
+    cmds:
+      - julia --project=. benchmarks/benchmark_julia.jl
 
   changelog:
     desc: Show the changelog section the pending fragments will produce
@@ -103,6 +105,7 @@ tasks:
     cmds:
       - julia --project=. -e 'using Pkg; Pkg.instantiate()'
       - julia --project=docs -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+      - julia --project=benchmark -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
 
   # === DEVELOPMENT WORKFLOWS ===
   dev:

@@ -1,9 +1,12 @@
 # PACKAGE-OWNED — scaffold writes this once and never overwrites it.
 #
 # Benchmark suite definition. Build a BenchmarkTools `BenchmarkGroup` named
-# `SUITE`; the managed `run.jl` / `compare.jl` consume it. Put AD-gradient
-# benchmarks under the `"AD gradients"` group so the comparison comment folds
-# them into a compact per-(scenario x backend) matrix. Edit freely.
+# `SUITE`; the managed `run.jl` / `compare.jl` consume it. Edit freely.
+#
+# One flat group, with the area in each name. `compare_comment` files every
+# benchmark that is not an AD-gradient one under a single heading of its own
+# choosing, so a group named here would not reach the comment and a reader
+# would see a simulation regression under a heading about evaluation.
 
 using BenchmarkTools
 using Distributions
@@ -38,11 +41,11 @@ const PROGRESSION = [Transition(:recovered; delay = 3.0, terminal = true)]
 # The Sellke race over a network, which is the engine's hot path.
 network_model(kernel) = ModelSpec(NetworkProcess(GRAPH, kernel); progression = PROGRESSION)
 
-SUITE["Simulation"]["network, shared kernel"] = @benchmarkable simulate(
+SUITE["simulation: network, shared kernel"] = @benchmarkable simulate(
     $(network_model(Exponential(1.2))); initial_cases = [1], rng = StableRNG(1)
 )
 
-SUITE["Simulation"]["households"] = @benchmarkable simulate(
+SUITE["simulation: households"] = @benchmarkable simulate(
     $(
         ModelSpec(
             HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
@@ -58,7 +61,7 @@ const LIVE_KERNEL = StatefulKernel(
     ind -> (tag = get(ind.state, :tag, 0.0)::Float64,), (c, a, b) -> Exponential(1.2)
 )
 
-SUITE["Simulation"]["network, live kernel"] = @benchmarkable simulate(
+SUITE["simulation: network, live kernel"] = @benchmarkable simulate(
     $(network_model(LIVE_KERNEL)); initial_cases = [1], rng = StableRNG(1)
 )
 
@@ -71,7 +74,7 @@ function EpiBranch.resolve_individual!(::BenchmarkPolicy, ind, state)
     return nothing
 end
 
-SUITE["Simulation"]["network, live kernel with policy"] = @benchmarkable simulate(
+SUITE["simulation: network, live kernel with policy"] = @benchmarkable simulate(
     $(
         ModelSpec(
             NetworkProcess(GRAPH, LIVE_KERNEL); progression = PROGRESSION,
@@ -88,17 +91,17 @@ const LIK_DATA = network_infections(
 )
 const LIK_LAYOUT = compile_contact_pairs(LIK_DATA)
 
-SUITE["Evaluation"]["compile_contact_pairs"] = @benchmarkable compile_contact_pairs($LIK_DATA)
-SUITE["Evaluation"]["pairwise_surv_loglik"] = @benchmarkable pairwise_surv_loglik(
+SUITE["evaluation: compile_contact_pairs"] = @benchmarkable compile_contact_pairs($LIK_DATA)
+SUITE["evaluation: pairwise_surv_loglik"] = @benchmarkable pairwise_surv_loglik(
     $(Exponential(1.2)), $LIK_DATA, $LIK_LAYOUT
 )
 
 # Closed-form analytics. `chain_size_distribution` returns a law rather than
 # computing one, so the size law is timed by evaluating it.
-SUITE["Evaluation"]["extinction_probability"] = @benchmarkable extinction_probability(
+SUITE["evaluation: extinction_probability"] = @benchmarkable extinction_probability(
     $(BranchingProcess(Poisson(1.5)))
 )
 const CHAIN_LAW = chain_size_distribution(BranchingProcess(Poisson(0.8)))
-SUITE["Evaluation"]["chain size loglikelihood"] = @benchmarkable loglikelihood(
+SUITE["evaluation: chain size loglikelihood"] = @benchmarkable loglikelihood(
     $CHAIN_LAW, $(collect(1:50))
 )
