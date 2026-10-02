@@ -78,7 +78,46 @@ function household_infections(
 end
 
 """
-    loglikelihood(data::HouseholdInfections, model::HouseholdProcess; condition_on = :is_index) -> Float64
+    ConditionOn
+
+Supertype for the rule choosing which host in each household the likelihood
+does not need to explain. [`RecruitedIndex`](@ref) and
+[`EarliestInfected`](@ref) are the two supplied; a rule of your own needs a
+[`condition_mask`](@ref EpiHouseholds.condition_mask) method and nothing else.
+"""
+abstract type ConditionOn end
+
+"""
+    RecruitedIndex()
+
+Condition each household on its recruited index, `data.is_index`, as read.
+"""
+struct RecruitedIndex <: ConditionOn end
+
+"""
+    EarliestInfected()
+
+Condition each household on whichever member has the lowest `infection_time`,
+ties keeping the lowest host id. Resolved from `data` on every call, so the
+host can change between augmented draws.
+"""
+struct EarliestInfected <: ConditionOn end
+
+"""
+    condition_mask(rule::ConditionOn, data::HouseholdInfections) -> AbstractVector{Bool}
+
+The `is_index`-shaped mask `rule` conditions on: `true` for each household's
+conditioned host, `false` elsewhere. One method per rule.
+"""
+condition_mask(::RecruitedIndex, data::HouseholdInfections) = data.is_index
+function condition_mask(::EarliestInfected, data::HouseholdInfections)
+    return _earliest_infected(
+        data.household_of, data.infection_time, .!isnan.(data.infection_time)
+    )
+end
+
+"""
+    loglikelihood(data::HouseholdInfections, model::HouseholdProcess; condition_on = RecruitedIndex()) -> Float64
 
 The contact-process log-density of `model`'s kernel given the infection layer
 `data`, on the layout [`compile_household_pairs`](@ref) builds for
@@ -87,7 +126,7 @@ external_hazard = model.external_hazard)`.
 """
 function Distributions.loglikelihood(
         data::HouseholdInfections, model::HouseholdProcess;
-        condition_on::Symbol = :is_index
+        condition_on::ConditionOn = RecruitedIndex()
     )
     layout = compile_household_pairs(
         data; external = _ext_active(model.external_hazard), condition_on
@@ -99,7 +138,8 @@ end
 
 function Distributions.loglikelihood(
         data::HouseholdInfections,
-        model::ModelSpec{<:HouseholdProcess}; condition_on::Symbol = :is_index
+        model::ModelSpec{<:HouseholdProcess};
+        condition_on::ConditionOn = RecruitedIndex()
     )
     EpiBranch._validate_infection_likelihood(model)
     return loglikelihood(data, model.process; condition_on)
@@ -121,25 +161,25 @@ const HouseholdPairsLayout = ContactPairsLayout
 
 """
     compile_household_pairs(household_of, is_index, infected; external=false)
-    compile_household_pairs(data::HouseholdInfections; external=false, condition_on=:is_index)
+    compile_household_pairs(data::HouseholdInfections; external=false, condition_on=RecruitedIndex())
 
 [`compile_contact_pairs`](@ref) on a household partition, where household-mates
 are each other's possible infectors. The arguments and the layout are as
 described there. Evaluate the result with
 `pairwise_surv_loglik(kernel, data, layout; external_hazard)`.
 
-`condition_on` chooses which host in each household the likelihood does not
-need to explain, when there is no community hazard (`external = false`; with
-one every host is explained and `condition_on` has no effect). `:is_index`,
-the default, conditions on the recruited index, `data.is_index`, fixed at
-read time. `:earliest` instead conditions on whichever household member has
-the lowest `infection_time` in `data` (ties keep the lowest host id),
-resolved afresh on every call. Use it when the recruited index need not be
-the first household member infected, which is otherwise expected in real
-recruited households and can otherwise turn an infection time augmented
-below the recruited index's into an impossible (`-Inf`) configuration. Because
-the conditioned host can change between calls, compile a fresh layout for
-`:earliest` on every evaluation rather than reusing one across augmented
+`condition_on` is a [`ConditionOn`](@ref) rule choosing which host in each
+household the likelihood does not need to explain, when there is no community
+hazard (`external = false`; with one every host is explained and the rule has
+no effect). [`RecruitedIndex`](@ref), the default, conditions on the recruited
+index, `data.is_index`, fixed at read time. [`EarliestInfected`](@ref)
+conditions on whichever household member has the lowest `infection_time` in
+`data`, resolved afresh on every call. Use it when the recruited index need not
+be the first household member infected, which is expected in real recruited
+households and can otherwise turn an infection time augmented below the
+recruited index's into an impossible (`-Inf`) configuration. Because the
+conditioned host can change between calls, compile a fresh layout for
+`EarliestInfected` on every evaluation rather than reusing one across augmented
 draws.
 """
 function compile_household_pairs(
@@ -153,27 +193,11 @@ end
 
 function compile_household_pairs(
         d::HouseholdInfections; external::Bool = false,
-        condition_on::Symbol = :is_index
+        condition_on::ConditionOn = RecruitedIndex()
     )
     infected = .!isnan.(d.infection_time)
     return compile_contact_pairs(
-        d.household_of, _condition_mask(d, condition_on), infected; external
-    )
-end
-
-# The `is_index` mask `compile_household_pairs` conditions on for `data`: the
-# recruited index (`condition_on = :is_index`) or each household's
-# earliest-infected member, resolved from `data.infection_time`
-# (`condition_on = :earliest`).
-function _condition_mask(data::HouseholdInfections, condition_on::Symbol)
-    condition_on === :is_index && return data.is_index
-    condition_on === :earliest && return _earliest_infected(
-        data.household_of, data.infection_time, .!isnan.(data.infection_time)
-    )
-    throw(
-        ArgumentError(
-            "condition_on must be :is_index or :earliest, got $(repr(condition_on))"
-        )
+        d.household_of, condition_mask(condition_on, d), infected; external
     )
 end
 

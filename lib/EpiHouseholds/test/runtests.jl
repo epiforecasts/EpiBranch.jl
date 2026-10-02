@@ -22,6 +22,10 @@ function EpiBranch.competing_risk(::BlockEverything, parent, contact, state)
     return Risk(block_probability = 1.0)
 end
 
+# A `ConditionOn` with no `condition_mask` method, to check the seam is
+# reached by dispatch rather than by a branch.
+struct _MaskLessRule <: EpiHouseholds.ConditionOn end
+
 @testset "EpiHouseholds.jl" begin
     @testset "max_time ends each household race at that time" begin
         spec = ModelSpec(
@@ -833,7 +837,7 @@ end
         end
     end
 
-    @testset "condition_on = :earliest resolves the conditioned host from infection times" begin
+    @testset "EarliestInfected resolves the conditioned host from infection times" begin
         # a household of 3 recruited on member 1, but with augmented times where
         # member 2 turns out to be the first infected: conditioning on the fixed
         # recruited index (the default) leaves member 2 with no possible infector,
@@ -850,7 +854,7 @@ end
         index_layout = compile_household_pairs(data)
         @test pairwise_surv_loglik(Exponential(3.0), data, index_layout) == -Inf
 
-        earliest_layout = compile_household_pairs(data; condition_on = :earliest)
+        earliest_layout = compile_household_pairs(data; condition_on = EarliestInfected())
         ll = pairwise_surv_loglik(Exponential(3.0), data, earliest_layout)
         @test isfinite(ll)
 
@@ -862,15 +866,18 @@ end
 
         m = ModelSpec(HouseholdProcess([3], Exponential(3.0)); progression = _sir(6.0))
         @test loglikelihood(data, m) == -Inf
-        @test loglikelihood(data, m; condition_on = :earliest) ≈ ll
+        @test loglikelihood(data, m; condition_on = EarliestInfected()) ≈ ll
 
-        @test_throws ArgumentError compile_household_pairs(data; condition_on = :bogus)
+        # a rule with no `condition_mask` method of its own cannot be used
+        @test_throws MethodError compile_household_pairs(
+            data; condition_on = _MaskLessRule()
+        )
 
         # a community hazard already explains every host, so which host
         # `condition_on` names makes no difference to the layout
-        ext_index = compile_household_pairs(data; external = true, condition_on = :is_index)
+        ext_index = compile_household_pairs(data; external = true, condition_on = RecruitedIndex())
         ext_earliest = compile_household_pairs(
-            data; external = true, condition_on = :earliest
+            data; external = true, condition_on = EarliestInfected()
         )
         @test ext_index.sus == ext_earliest.sus
         @test ext_index.infector == ext_earliest.infector
@@ -881,7 +888,7 @@ end
         @test pairwise_surv_loglik(Exponential(3.0), solo) ≈
             pairwise_surv_loglik(
             Exponential(3.0), solo,
-            compile_household_pairs(solo; condition_on = :earliest)
+            compile_household_pairs(solo; condition_on = EarliestInfected())
         )
     end
 

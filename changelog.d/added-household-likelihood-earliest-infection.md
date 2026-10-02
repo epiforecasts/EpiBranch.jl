@@ -1,8 +1,8 @@
-`compile_household_pairs` and `loglikelihood(::HouseholdInfections, ::HouseholdProcess)`
-take `condition_on = :is_index` or `:earliest`. Without a community hazard,
-`:earliest` conditions each household on whichever member currently has the
-lowest infection time instead of the recruited index, resolved afresh on
-every call — the recruited index need not be the first household member
-infected, and augmenting infection times in inference can otherwise move an
-earlier infection onto a non-index member and make the configuration
-impossible.
+The household likelihood can condition each household on its earliest infection
+instead of its recruited index: `condition_on = EarliestInfected()` on
+`loglikelihood(data, model)` and `compile_household_pairs(data)`, against the
+default `RecruitedIndex()`. A recruited index need not be the first household
+member infected, and augmenting an earlier infection onto a household-mate
+otherwise makes the draw impossible. The conditioned host is resolved on every
+call, so recompile the layout each evaluation. A rule of your own subtypes
+`ConditionOn` and supplies one `condition_mask` method.
