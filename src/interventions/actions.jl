@@ -22,7 +22,7 @@ groups. Return `nothing` to use the legacy batch hook. An external producer can
 implement this method and call `apply_actions!` from its batch hook.
 """
 intervention_actions(::AbstractIntervention, state, candidates) = nothing
-function intervention_actions(w::Union{Scheduled, CapacityConstrained}, state, candidates)
+function intervention_actions(w::InterventionWrapper, state, candidates)
     return intervention_actions(w.intervention, state, candidates)
 end
 
@@ -265,7 +265,7 @@ not require a pending contact's unknown infection time or revise an already
 finalised case. The default is `false`.
 """
 continuous_actions(::AbstractIntervention) = false
-function continuous_actions(w::Union{Scheduled, CapacityConstrained})
+function continuous_actions(w::InterventionWrapper)
     return continuous_actions(w.intervention)
 end
 continuous_actions(::GroupVaccination) = true
@@ -311,7 +311,7 @@ function _continuous_candidates(
     ]
 end
 function _continuous_candidates(
-        w::Union{Scheduled, CapacityConstrained}, state, current,
+        w::InterventionWrapper, state, current,
         members, processed, contacts, pos
     )
     return _continuous_candidates(w.intervention, state, current, members, processed, contacts, pos)

@@ -1156,15 +1156,16 @@ function required_fields(gv::GroupVaccination)
     return union([gv.group_key], required_fields(gv.eligibility))
 end
 
-# A group's members under `key`, from a cache on `state` grown incrementally
-# as `state.individuals` grows: only the tail added since the last query is
-# scanned, rather than every individual on every call. Correct because
-# membership is set once, at creation, and never changes afterwards (see
-# `groups`/`group_attribute`), so an id already indexed never needs revisiting.
+# A group's members under `key`, from an index this intervention keeps in the
+# run's `scratch` and grows incrementally as `state.individuals` grows: only
+# the tail added since the last query is scanned, rather than every individual
+# on every call. Correct because membership is set once, at creation, and never
+# changes afterwards (see `groups`/`group_attribute`), so an id already indexed
+# never needs revisiting.
 function _group_members(state::SimulationState, key::Symbol, group)
-    seen, index = get!(state.group_index, key) do
+    seen, index = get!(state.scratch, (:group_members, key)) do
         (Ref(0), Dict{Any, Vector{Int}}())
-    end
+    end::Tuple{Base.RefValue{Int}, Dict{Any, Vector{Int}}}
     n = length(state.individuals)
     for id in (seen[] + 1):n
         g = get(state.individuals[id].state, key, nothing)

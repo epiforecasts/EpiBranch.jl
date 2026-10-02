@@ -474,4 +474,11 @@ end
     state.individuals[2].state[:household] = :H1
     @test Set(EpiBranch._group_members(state, :household, :H1)) == Set([1, 2])
     @test Set(EpiBranch._group_members(state, :group, :A)) == Set([1, 2, 4])
+
+    # The index lives in the run's `scratch`, which an intervention keys
+    # however it likes, so nothing on the state is specific to this one.
+    @test haskey(state.scratch, (:group_members, :group))
+    @test haskey(state.scratch, (:group_members, :household))
+    state.scratch[:anything_else] = 42
+    @test Set(EpiBranch._group_members(state, :group, :A)) == Set([1, 2, 4])
 end
