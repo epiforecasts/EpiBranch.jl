@@ -987,6 +987,42 @@
             @test isfinite(ll)
             @test ll < 0.0
         end
+
+        @testset "Per-case covariate distributions" begin
+            counts = [0, 1, 4, 0, 2]
+            μ = [0.5, 0.8, 3.0, 0.5, 1.2]
+            dists = NegBin.(μ, 0.5)
+            ll = loglikelihood(OffspringCounts(counts), dists)
+            @test ll ≈ sum(logpdf(d, x) for (d, x) in zip(dists, counts))
+            # Same as scoring each count against its own distribution one at
+            # a time, matching the workaround the vectorised method replaces.
+            @test ll ≈
+                sum(loglikelihood(OffspringCounts([x]), d) for (d, x) in zip(dists, counts))
+
+            @test_throws ArgumentError loglikelihood(
+                OffspringCounts(counts), dists[1:(end - 1)]
+            )
+        end
+
+        @testset "Zero-truncated variant composes via Distributions.truncated" begin
+            counts = [1, 4, 2, 1, 3]
+            μ = [0.8, 3.0, 1.2, 0.8, 2.0]
+            dists = truncated.(NegBin.(μ, 0.5), 1, Inf)
+            ll = loglikelihood(OffspringCounts(counts), dists)
+            @test ll ≈ sum(logpdf(d, x) for (d, x) in zip(dists, counts))
+
+            # Scalar single-distribution method also composes with truncated.
+            ll_scalar = loglikelihood(OffspringCounts(counts), truncated(NegBin(1.0, 0.5), 1, Inf))
+            @test isfinite(ll_scalar)
+        end
+
+        @testset "Usable from Turing via product_distribution" begin
+            counts = [0, 1, 4, 0, 2]
+            μ = [0.5, 0.8, 3.0, 0.5, 1.2]
+            dists = NegBin.(μ, 0.5)
+            d = product_distribution(dists)
+            @test logpdf(d, counts) ≈ loglikelihood(OffspringCounts(counts), dists)
+        end
     end
 
     @testset "Data wrapper validation" begin
