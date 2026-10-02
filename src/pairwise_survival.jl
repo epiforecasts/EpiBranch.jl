@@ -321,6 +321,12 @@ is modelled, one row per susceptible for the community hazard. Rows whose times
 do not overlap are kept and skipped at evaluation. One layout then works for
 every configuration of latent times with the same structure and infected set.
 
+`component` gives each host's connected component of the contact structure (a
+household on a household partition, or a connected component of a contact
+network), numbered `1:ncomponents`. [`pairwise_surv_loglik_by_component`](@ref)
+reads it to attribute the likelihood to the groups a sampler updating the
+infection layer group by group accepts or rejects separately.
+
 Build it with [`compile_contact_pairs`](@ref).
 """
 struct ContactPairsLayout
@@ -334,6 +340,8 @@ struct ContactPairsLayout
     no_rows::Vector{Int}                   # hosts not conditioned on that have no row
     external::Bool
     nhosts::Int                            # population the layout was compiled for
+    component::Vector{Int}                 # host → connected-component id (1:ncomponents)
+    ncomponents::Int                       # number of connected components of the contact structure
 end
 
 Base.length(L::ContactPairsLayout) = length(L.sus)
@@ -347,13 +355,51 @@ function _check_host_masks(n, is_index, infected)
     return nothing
 end
 
+# The 1:ncomponents grouping of a contact structure, so that
+# `pairwise_surv_loglik_by_component` can attribute rows to the household or
+# network component they fall in. A membership vector's labels are already the
+# components; an adjacency list needs its connectivity found, undirected,
+# since a susceptible and its possible infectors must be updated together
+# whichever way the edge between them points.
+function _structure_components(membership::AbstractVector{<:Integer})
+    ids = Dict{Int, Int}()
+    component = Vector{Int}(undef, length(membership))
+    for i in eachindex(membership)
+        component[i] = get!(ids, membership[i], length(ids) + 1)
+    end
+    return component, length(ids)
+end
+
+function _structure_components(contacts::AbstractVector{<:AbstractVector{<:Integer}})
+    n = length(contacts)
+    parent = collect(1:n)
+    function _root(x)
+        while parent[x] != x
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        end
+        return x
+    end
+    for i in 1:n, j in contacts[i]
+        1 <= j <= n || continue
+        ri, rj = _root(i), _root(j)
+        ri == rj || (parent[ri] = rj)
+    end
+    ids = Dict{Int, Int}()
+    component = Vector{Int}(undef, n)
+    for i in 1:n
+        component[i] = get!(ids, _root(i), length(ids) + 1)
+    end
+    return component, length(ids)
+end
+
 # Group rows by susceptible for the per-susceptible log-sum-exp, and wrap up.
 # Hosts that are explained (all of them with a community hazard, all but the
 # index cases without one) and have no possible infector are listed apart, since
 # an infection of one has zero density.
 function _contact_pairs_layout(
         sus, infector, contact_index, is_ext, external,
-        is_index, n
+        is_index, n, component, ncomponents
     )
     n_rows = length(sus)
     sus_row_order = sortperm(sus)
@@ -379,7 +425,8 @@ function _contact_pairs_layout(
     no_rows = [j for j in 1:n if !has_rows[j] && (external || !is_index[j])]
     return ContactPairsLayout(
         sus, infector, contact_index, is_ext, sus_unique,
-        sus_row_ranges, sus_row_order, no_rows, external, n
+        sus_row_ranges, sus_row_order, no_rows, external, n,
+        component, ncomponents
     )
 end
 
@@ -415,7 +462,7 @@ function compile_contact_pairs(
     n = length(membership)
     _check_host_masks(n, is_index, infected)
     isempty(membership) && return _contact_pairs_layout(
-        Int[], Int[], Int[], Bool[], external, is_index, 0
+        Int[], Int[], Int[], Bool[], external, is_index, 0, Int[], 0
     )
 
     # Bucket hosts by label into a `Vector{Vector{Int}}` indexed by label offset,
@@ -451,9 +498,10 @@ function compile_contact_pairs(
     end
     # A group has no per-edge list for a kernel to index into.
     contact_index = zeros(Int, length(sus))
+    component, ncomponents = _structure_components(membership)
     return _contact_pairs_layout(
         sus, infector, contact_index, is_ext, external,
-        is_index, n
+        is_index, n, component, ncomponents
     )
 end
 
@@ -520,9 +568,10 @@ function compile_contact_pairs(
             is_ext[r] = false
         end
     end
+    component, ncomponents = _structure_components(contacts)
     return _contact_pairs_layout(
         sus, infector, contact_index, is_ext, external,
-        is_index, n
+        is_index, n, component, ncomponents
     )
 end
 
@@ -711,10 +760,11 @@ and `Exponential` differentiate under either mode.
     community alone can explain and `T` is the total time hosts are exposed to
     it. In `log α` this is a straight line of slope `k`.
 """
-function pairwise_surv_loglik(
-        kernel, data::InfectionLayer, layout::ContactPairsLayout;
-        external_hazard = 0.0
-    )
+# Validation and type promotion shared by the layout-based forms of
+# `pairwise_surv_loglik`: the community-hazard survival distribution, the time
+# to truncate at, and the number type the reduction runs in, promoted against
+# the kernel's parameter type so AD values in a fitted kernel survive it.
+function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_hazard)
     external = _ext_active(external_hazard)
     external == layout.external ||
         throw(ArgumentError("layout.external = $(layout.external) but external_hazard = $external_hazard"))
@@ -745,16 +795,19 @@ function pairwise_surv_loglik(
         typeof(tfollow),
         Float64
     )
-    # Promote against the kernel's parameter type so AD values in the fitted
-    # kernel survive the reduction.
     Text = external ? Distributions.partype(extdist) : Union{}
     T = promote_type(Tdata, _kernel_partype(kernel, layout, data, Tdata), Text)
+    return extdist, convert(Tdata, tfollow), T
+end
+
+function pairwise_surv_loglik(
+        kernel, data::InfectionLayer, layout::ContactPairsLayout;
+        external_hazard = 0.0
+    )
+    extdist, tfollow, T = _pairwise_setup(kernel, data, layout, external_hazard)
     # A per-edge or covariate kernel's parameter type is only known at run time;
     # the function barrier keeps the passes type-stable.
-    return _pairwise_surv_loglik(
-        kernel, extdist, data, layout,
-        convert(Tdata, tfollow), T
-    )
+    return _pairwise_surv_loglik(kernel, extdist, data, layout, tfollow, T)
 end
 
 function _pairwise_surv_loglik(
@@ -869,4 +922,171 @@ end
 function pairwise_surv_loglik(kernel, data::InfectionLayer; external_hazard = 0.0)
     layout = compile_contact_pairs(data; external = _ext_active(external_hazard))
     return pairwise_surv_loglik(kernel, data, layout; external_hazard)
+end
+
+# ── Per-component contributions ──────────────────────────────────────
+#
+# A sampler that updates the latent infection layer one connected component at
+# a time (a household, say) accepts or rejects the move on that component's
+# own share of the log-likelihood. Every row's susceptible and infector share a
+# component, since the contact structure is what makes them a possible pair, so
+# the total is exactly the sum of the per-component contributions below.
+
+"""
+    pairwise_surv_loglik_by_component(kernel, data::InfectionLayer, layout::ContactPairsLayout;
+                                      external_hazard = 0.0) -> Vector{<:Real}
+    pairwise_surv_loglik_by_component(kernel, data::InfectionLayer;
+                                      external_hazard = 0.0) -> Vector{<:Real}
+
+The per-component breakdown of [`pairwise_surv_loglik`](@ref): entry `c` sums
+every term whose susceptible and infector lie in component `c` of `layout` (a
+household on a household partition, or a connected component of a contact
+network), with `sum(pairwise_surv_loglik_by_component(...)) ==
+pairwise_surv_loglik(...)`. `layout.component` gives each host's component and
+`layout.ncomponents` their count.
+
+A component with an infected host that no possible infector can explain gets
+`-Inf`, as does the total; unlike the total, the other components keep their
+finite value, so a sampler that updates the infection layer component by
+component can accept or reject each move on its own entry without recompiling
+the layout.
+
+Arguments and community-hazard handling are otherwise as in
+[`pairwise_surv_loglik`](@ref).
+"""
+function pairwise_surv_loglik_by_component(
+        kernel, data::InfectionLayer, layout::ContactPairsLayout;
+        external_hazard = 0.0
+    )
+    extdist, tfollow, T = _pairwise_setup(kernel, data, layout, external_hazard)
+    return _pairwise_surv_loglik_by_component(kernel, extdist, data, layout, tfollow, T)
+end
+
+function _pairwise_surv_loglik_by_component(
+        kernel, extdist, data, layout, tfollow,
+        ::Type{T}
+    ) where {T}
+    component = layout.component
+    infeasible = falses(layout.ncomponents)
+    # As in the total, a conditioned-on host with no possible infector makes its
+    # whole component impossible; mark it before either pass runs.
+    @inbounds for j in layout.no_rows
+        tj = data.infection_time[j]
+        !(isnan(tj) || tj > tfollow) && (infeasible[component[j]] = true)
+    end
+    ll = _pairwise_cumhazard_by_component(infeasible, kernel, extdist, data, layout, tfollow, T)
+    _pairwise_events_by_component!(ll, infeasible, kernel, extdist, data, layout, tfollow, eltype(ll))
+    return ll
+end
+
+# A per-edge or covariate kernel may hold the fitted parameters on only some
+# rows, and the probe behind `T` can miss them, as for the total. There the
+# accumulator is an untyped local that Julia silently widens if a row
+# disagrees; here it is a concretely-typed vector, which would throw instead.
+# Attempt it at `T` first, since that holds on every row but the rare one
+# the probe missed. If a row does disagree, `_pairwise_cumhazard` (which
+# visits the same rows, unsplit by component) has by then seen every kernel
+# this pass will use, so its result's type is wide enough to retry with.
+function _pairwise_cumhazard_by_component(
+        infeasible, kernel, extdist, data, layout, tfollow, ::Type{T}
+    ) where {T}
+    ll = [c ? T(-Inf) : zero(T) for c in infeasible]
+    try
+        return _pairwise_cumhazard_by_component!(ll, infeasible, kernel, extdist, data, layout, tfollow)
+    catch e
+        e isa MethodError || rethrow()
+        T2 = promote_type(
+            T, typeof(_pairwise_cumhazard(kernel, extdist, data, layout, tfollow, T))
+        )
+        ll2 = [c ? T2(-Inf) : zero(T2) for c in infeasible]
+        return _pairwise_cumhazard_by_component!(ll2, infeasible, kernel, extdist, data, layout, tfollow)
+    end
+end
+
+function _pairwise_cumhazard_by_component!(
+        ll, infeasible, kernel, extdist, data, layout, tfollow
+    )
+    sus = layout.sus
+    infector = layout.infector
+    is_ext = layout.is_ext
+    component = layout.component
+
+    # Pass 1, as in `_pairwise_cumhazard`, but added into the row's own
+    # component rather than a single total; an already-infeasible component's
+    # rows are skipped, since their contribution is discarded regardless.
+    @inbounds for r in eachindex(sus)
+        j = sus[r]
+        c = component[j]
+        infeasible[c] && continue
+        tj = data.infection_time[j]
+        tend = (isnan(tj) || tj > tfollow) ? tfollow : convert(typeof(tfollow), tj)
+        if is_ext[r]
+            stop = min(tend, data.obs_end)
+            stop > 0 || continue
+            ll[c] -= cumhazard(extdist, stop)
+        else
+            i = infector[r]
+            oi = data.infectious_time[i]
+            isfinite(oi) || continue
+            oi < tend || continue
+            stop = min(data.removal_time[i], tend) - oi
+            stop > 0 || continue
+            ll[c] -= cumhazard(_pair_kernel(kernel, layout, r, data), stop)
+        end
+    end
+    return ll
+end
+
+function _pairwise_events_by_component!(
+        ll, infeasible, kernel, extdist, data, layout, tfollow,
+        ::Type{T}
+    ) where {T}
+    sus = layout.sus
+    infector = layout.infector
+    is_ext = layout.is_ext
+    component = layout.component
+
+    # Pass 2, as in `_pairwise_events`. A group whose log-sum-exp is -Inf makes
+    # its own component impossible: overwrite that entry with a literal -Inf,
+    # discarding whatever finite, AD-tracked value it held (from this pass or
+    # pass 1), so the component's derivative is exactly zero rather than the
+    # sum of finite terms next to an infinite one.
+    acc = _LogSumExpAcc{T}()
+    @inbounds for g in eachindex(layout.sus_unique)
+        j = layout.sus_unique[g]
+        c = component[j]
+        infeasible[c] && continue
+        tj = data.infection_time[j]
+        (isnan(tj) || tj > tfollow) && continue
+        acc.m = T(-Inf)
+        acc.s = zero(T)
+        acc.nseen = 0
+        for k in layout.sus_row_ranges[g]
+            r = layout.sus_row_order[k]
+            if is_ext[r]
+                (tj >= 0 && tj <= data.obs_end) || continue
+                _push!(acc, loghazard(extdist, tj))
+            else
+                i = infector[r]
+                oi = data.infectious_time[i]
+                isfinite(oi) || continue
+                if oi < tj && tj <= data.removal_time[i]
+                    _push!(acc, loghazard(_pair_kernel(kernel, layout, r, data), tj - oi))
+                end
+            end
+        end
+        v = _value(acc)
+        if _is_minus_inf(v)
+            ll[c] = T(-Inf)
+            infeasible[c] = true
+        else
+            ll[c] += v
+        end
+    end
+    return ll
+end
+
+function pairwise_surv_loglik_by_component(kernel, data::InfectionLayer; external_hazard = 0.0)
+    layout = compile_contact_pairs(data; external = _ext_active(external_hazard))
+    return pairwise_surv_loglik_by_component(kernel, data, layout; external_hazard)
 end

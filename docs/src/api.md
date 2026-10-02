@@ -33,6 +33,7 @@ PairContext
 LayerHost
 EpiBranch.pair_kernel
 pairwise_surv_loglik
+pairwise_surv_loglik_by_component
 PairwiseSurvivalData
 InfectionLayer
 EpiBranch.infection_likelihood_compatible
