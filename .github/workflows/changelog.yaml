@@ -1,0 +1,78 @@
+name: Changelog
+
+# A pull request records its entry as a file in `changelog.d/` (see that
+# directory's README). This checks one is there, because the entry is easy to
+# forget once it is no longer part of editing `CHANGELOG.md`.
+#
+# Add the `no changelog` label for a change that needs no entry: one touching
+# only CI or tests, and the release pull request, which deletes the fragments.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fragment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Two, so the merge commit's parents are both present.
+          fetch-depth: 2
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
+        with:
+          version: '1'
+      - name: Read the fragments
+        # The assembler does the reading, so the rules live in one place: it
+        # errors on any entry it cannot use and names the rest, which the next
+        # step matches against the diff. It needs only the standard library, so
+        # there is no package environment to set up.
+        run: |
+          julia scripts/changelog.jl --list > "$RUNNER_TEMP/fragments.txt"
+          cat "$RUNNER_TEMP/fragments.txt"
+      - name: Check this pull request adds one
+        # The label excuses a pull request from carrying an entry. It does not
+        # excuse the fragments it touched from being readable, so it guards
+        # this step alone.
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'no changelog') }}
+        run: |
+          # The default shell is `bash -e` without it, and a `git diff` that
+          # failed inside the pipeline below would then read as this pull
+          # request having added nothing.
+          set -o pipefail
+          # `HEAD` is `refs/pull/N/merge`, so `HEAD^1` is the current base tip
+          # and the diff is this pull request's own change. `base.sha` from the
+          # event is the base as it stood when the branch was last pushed,
+          # which here is routinely several merges behind, and diffing from it
+          # would count a fragment another pull request merged in the meantime
+          # as this one's.
+          if ! git rev-parse -q --verify HEAD^2 >/dev/null; then
+            echo "HEAD is not a merge ref, so the base cannot be identified." >&2
+            exit 1
+          fi
+          # `A` for added: a modification to an existing fragment is not this
+          # pull request's entry. `--no-renames`, so correcting the category of
+          # a fragment already on main reads as adding the new name. And
+          # `core.quotePath=false`, or git wraps a non-ASCII path in quotes and
+          # the match below misses it.
+          added=$(git -c core.quotePath=false diff --name-only --diff-filter=A \
+            --no-renames HEAD^1 HEAD -- changelog.d/ | sed -n 's#^changelog\.d/##p')
+          mine=$(printf '%s\n' "$added" \
+            | grep -Fxf "$RUNNER_TEMP/fragments.txt" || true)
+          if [ -z "$mine" ]; then
+            echo "This pull request adds no changelog fragment."
+            echo "Add changelog.d/<category>-<slug>.md, or apply the"
+            echo "'no changelog' label if this change needs no entry --"
+            echo "a release, or a change touching only CI or tests."
+            echo "See changelog.d/README.md."
+            exit 1
+          fi
+          echo "found:"
+          echo "$mine"

@@ -23,7 +23,8 @@ With no external hazard, `sim_opts.n_initial` distinct nodes are seeded at time
 0 and the outbreak spreads along the edges. With an `external_hazard` — a
 positive scalar or a calendar-time distribution — community introductions emerge
 over `[0, model.obs_end]`, so a finite `obs_end` is required (an unbounded window
-would seed every node).
+would seed every node). Chosen `initial_cases` are seeded at time 0 regardless;
+any external hazard still acts on the rest of the network from time 0.
 """
 function _simulate(
         model::NetworkProcess, sim_opts::SimOpts;
@@ -84,21 +85,23 @@ function _simulate(
     return state
 end
 
-# Seed the candidate table over all nodes: community introductions under the
-# external hazard (each node drawn, kept if it lands within `[0, Tobs]`), or
-# `n_initial` distinct random nodes at time 0 when there is no external source.
+# Seed the candidate table over all nodes: chosen `initial_cases` at time 0,
+# each remaining node drawn from the external hazard and kept if it lands
+# within `[0, Tobs]`, or `n_initial` distinct random nodes at time 0 when
+# there is neither.
 function _seed_network!(
         best, members, state, extsrc, n_initial, Tobs, rng;
         initial_cases = nothing
     )
-    initial_cases === nothing ||
-        return EpiBranch._seed_initial_cases!(best, members, initial_cases)
+    if initial_cases !== nothing
+        chosen = initial_cases isa AbstractSet ? initial_cases : Set(initial_cases)
+        EpiBranch._seed_initial_cases!(best, members, chosen)
+        _ext_active(extsrc) && _seed_external!(best, members, state, extsrc, Tobs, rng, chosen)
+        return nothing
+    end
     m = length(members)
     if _ext_active(extsrc)
-        for k in 1:m
-            t = _ext_draw(rng, extsrc, state.individuals[members[k]].susceptibility)
-            t <= Tobs && (best[k] = t)
-        end
+        _seed_external!(best, members, state, extsrc, Tobs, rng)
     else
         for id in randperm(rng, m)[1:min(n_initial, m)]
             best[id] = 0.0
@@ -107,6 +110,17 @@ function _seed_network!(
     return nothing
 end
 
+# Draw an external-hazard introduction time for each member not in `skip`
+# (e.g. already-seeded chosen cases), keeping those landing within `[0, Tobs]`.
+function _seed_external!(best, members, state, extsrc, Tobs, rng, skip = ())
+    for k in eachindex(members)
+        members[k] in skip && continue
+        t = _ext_draw(rng, extsrc, state.individuals[members[k]].susceptibility)
+        t <= Tobs && (best[k] = t)
+    end
+    return nothing
+end
+
 function EpiBranch._validate_initial_cases(model::NetworkProcess, opts::SimOpts)
-    return EpiBranch._validate_initial_case_ids(opts, length(model.adjacency), model.external_hazard)
+    return EpiBranch._validate_initial_case_ids(opts, length(model.adjacency))
 end
