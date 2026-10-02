@@ -168,7 +168,7 @@
     end
 
     @testset "Bootstrap interval for k reflects an unidentified point estimate" begin
-        # Every cluster the same size, with no seed variation, carries no
+        # Every cluster the same size, with no seed variation, holds no
         # information about dispersion: each bootstrap replicate's k is itself
         # unidentified, so the percentile interval should say so rather than
         # bracket the search cap as if it were a precise estimate.

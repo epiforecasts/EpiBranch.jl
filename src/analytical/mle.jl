@@ -25,14 +25,13 @@ maximised log-likelihood, and a profile-likelihood confidence interval
 per parameter. A side of an interval that the search never bounds — most
 often the upper side of `k`, where the Negative Binomial likelihood keeps
 improving towards the Poisson limit as `k → ∞` — is reported as `Inf`
-rather than a value the search had to give up on, except for the upper
-side of `R` for [`ChainLengths`](@ref), which is instead capped at the
-model's own subcritical domain edge (just below 1), since that side is a
-real boundary rather than a numerical stand-in for infinity. The same `k →
-∞` non-identification is reflected in `estimate.k`: if the likelihood is no
-better at the search cap than at the point estimate, the data do not
-identify `k` and it is reported as `Inf` rather than the cap value or
-search noise near it.
+rather than a value the search had to give up on. The upper side of `R`
+for [`ChainLengths`](@ref) is the exception: it is capped at the model's
+own subcritical domain edge (just below 1), a real boundary rather than a
+numerical stand-in for infinity. The same `k → ∞` non-identification
+shows up in `estimate.k`: when the likelihood is no better at the search
+cap than at the point estimate, the data do not identify `k`, and it is
+reported as `Inf` rather than the cap value or search noise near it.
 
 Fields:
 
@@ -152,10 +151,10 @@ end
 One side (`direction = ±1`) of a profile-likelihood interval: expand
 outward from the MLE `θ̂` until the profile `f(θ)` drops below `target`,
 then bisect for the crossing. A side that reaches `bound` without crossing
-is reported as `lo_bound` on the lower side, or `hi_report` on the upper —
-`Inf` where `hi_bound` is the search's own numerical stand-in for infinity
-(the default), or `hi_bound` itself where that is instead a genuine domain
-edge the parameter cannot reach.
+is reported as `lo_bound` on the lower side, or `hi_report` on the upper.
+`hi_report` defaults to `Inf`, for when `hi_bound` is only the search's
+numerical stand-in for infinity; pass `hi_bound` itself when it marks a
+genuine domain edge instead.
 """
 function _profile_bound(
         f, θ̂::Float64, target::Float64, direction::Int;
