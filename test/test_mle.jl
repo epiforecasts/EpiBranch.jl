@@ -43,6 +43,17 @@
         k_lo, k_hi = f.ci.k
         @test isfinite(k_lo)
         @test k_hi == Inf
+        # The point estimate is likewise not identified: it should not report
+        # the numerical search cap as if it were a meaningful dispersion value.
+        @test f.estimate.k == Inf
+    end
+
+    @testset "Point estimate of k is unbounded when data carry no dispersion information" begin
+        # All-zero counts: the likelihood is flat in k regardless of its value,
+        # so golden-section search can land anywhere short of the cap rather
+        # than at it.
+        f = fit(OffspringCounts(zeros(Int, 10)), NegativeBinomial)
+        @test f.estimate.k == Inf
     end
 
     @testset "ChainSizes — Poisson" begin

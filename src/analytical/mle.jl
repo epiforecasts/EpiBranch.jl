@@ -28,7 +28,11 @@ improving towards the Poisson limit as `k → ∞` — is reported as `Inf`
 rather than a value the search had to give up on, except for the upper
 side of `R` for [`ChainLengths`](@ref), which is instead capped at the
 model's own subcritical domain edge (just below 1), since that side is a
-real boundary rather than a numerical stand-in for infinity.
+real boundary rather than a numerical stand-in for infinity. The same `k →
+∞` non-identification is reflected in `estimate.k`: if the likelihood is no
+better at the search cap than at the point estimate, the data do not
+identify `k` and it is reported as `Inf` rather than the cap value or
+search noise near it.
 
 Fields:
 
@@ -257,6 +261,17 @@ function _point_estimate(data, ::Type{NegativeBinomial})
     return R̂, k̂, ll(R̂, k̂)
 end
 
+# A `k̂` at or near `_K_SEARCH_BOUND` is not a real optimum: either the search
+# ran into the cap, or golden-section noise on an objective that is flat (in
+# floating point) near the Poisson limit left it somewhere short of the cap.
+# Either way, the likelihood at the cap is no lower than at `k̂` (up to a
+# tolerance well above that noise), so the data do not identify `k` and it is
+# reported as `Inf` rather than a fabricated finite value.
+_k_is_capped(data, R̂::Float64, k̂::Float64) =
+    loglikelihood(data, NegBin(R̂, _K_SEARCH_BOUND)) - loglikelihood(data, NegBin(R̂, k̂)) > -1.0e-3
+
+_report_k(data, R̂::Float64, k̂::Float64) = _k_is_capped(data, R̂, k̂) ? Inf : k̂
+
 function _bootstrap_ci(
         data, family::Type{Poisson}, θ̂::NamedTuple,
         n_boot::Int, level::Real, rng::AbstractRNG
@@ -356,5 +371,5 @@ function fit(
     boot = bootstrap > 0 ?
         _bootstrap_ci(data, NegativeBinomial, (R = R̂, k = k̂), bootstrap, level, rng) :
         nothing
-    return MLEFit((R = R̂, k = k̂), ll_max, ci, Float64(level), boot)
+    return MLEFit((R = R̂, k = _report_k(data, R̂, k̂)), ll_max, ci, Float64(level), boot)
 end
