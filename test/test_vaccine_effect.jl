@@ -189,6 +189,10 @@ end
         @test EpiBranch._vaccine_efficacy(full, responder) == 1.0
         risk = EpiBranch.competing_risk(full, Individual(id = 1), responder, nothing)
         @test risk.block_probability == 1.0
+        # A responder's block never fades (`waning` is disallowed under this
+        # mode), so a race can drop a pair it blocks instead of redrawing
+        # towards it on an unbounded window.
+        @test EpiBranch.standing_block(full)
 
         # At efficacy 0.0 nobody responds: no risk is built at all, so a
         # non-responder is exposed exactly as an unvaccinated contact.
@@ -217,6 +221,9 @@ end
         contact = Individual(id = 1, parent_id = 0, infection_time = 10.0)
         EpiBranch._record_vaccination!(leaky, contact, 0.0, StableRNG(1))
         @test EpiBranch._vaccine_efficacy(leaky, contact) == 0.5
+        # Not declared standing even at efficacy 1.0: a waning value could
+        # still give a smaller block to a later exposure.
+        @test !EpiBranch.standing_block(RingVaccination(efficacy = 1.0, mode = LeakyMode()))
     end
 
     @testset "AllOrNothingMode draws a responder for a dose recorded beforehand" begin
