@@ -65,6 +65,19 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/cache@a7bed9df697e5d7309d68afe7542a87621a8b6c8 # v3.3.0
+      # A revision from before this directory existed has no suite to run, and
+      # the base of the pull request that adds it is one. That leg reports
+      # nothing and `compare` says so, rather than the job failing on a
+      # `benchmark/` that was never there.
+      - name: Is there a suite at this revision?
+        id: suite
+        run: |
+          if [ -f benchmark/benchmarks.jl ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No benchmark/benchmarks.jl at ${{ matrix.ref }}; nothing to run."
+          fi
       # The benchmark environment installs the package as a dependency
       # (`Pkg.develop` + `Pkg.instantiate` below), and Pkg honours only the
       # *active* project's `[sources]`. A dependency pinned there by git
@@ -79,6 +92,7 @@ jobs:
       # dropped its pin is left with a registry still carrying the name,
       # which fails the depot with a hash mismatch.
       - name: Bootstrap registry for unregistered [sources] deps
+        if: steps.suite.outputs.present == 'true'
         run: |
           rm -rf "${JULIA_DEPOT_PATH:-$HOME/.julia}/registries/EpiAwareScratch"
           if ! grep -qE '^\[sources(\.|\])' Project.toml; then
@@ -98,6 +112,7 @@ jobs:
             println(isempty(done) ? "no unregistered [sources] deps" :
                     "registered: " * join(done, ", "))'
       - name: Run benchmark suite
+        if: steps.suite.outputs.present == 'true'
         run: |
           julia --project=benchmark -e '
             using Pkg
@@ -108,6 +123,7 @@ jobs:
             results = run(SUITE; verbose = true, seconds = 1)
             BenchmarkTools.save("results-${{ matrix.name }}.json", results)'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.suite.outputs.present == 'true'
         with:
           name: bench-${{ matrix.name }}
           path: results-${{ matrix.name }}.json
@@ -127,7 +143,28 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
+      # A leg that found no suite uploaded nothing, so there is no baseline to
+      # compare against and the comparison is the only thing with nothing to
+      # say. Reported in the summary and skipped, so the pull request that
+      # introduces the suite is not held up by the absence it is fixing.
+      - name: Is there a baseline to compare against?
+        id: baseline
+        run: |
+          if [ -f artifacts/bench-main/results-main.json ] &&
+             [ -f artifacts/bench-pr/results-pr.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Benchmark"
+              echo
+              echo "No baseline results for the base revision, so there is"
+              echo "nothing to compare against. This is expected on a pull"
+              echo "request that introduces or moves the benchmark suite."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Build comparison comment
+        if: steps.baseline.outputs.present == 'true'
         # `compare.jl` only needs the kit (`compare_comment`) and
         # `BenchmarkTools` (lazily `Base.require`d to load result files), not
         # the package's own benchmark deps, so it runs in a scratch env that
@@ -153,7 +190,9 @@ jobs:
       - name: Post comparison comment
         # A fork PR's token is read-only whatever `permissions:` says, so
         # commenting returns 403 and fails the job.
-        if: github.event.pull_request.head.repo.full_name == github.repository
+        if: >-
+          steps.baseline.outputs.present == 'true' &&
+          github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
