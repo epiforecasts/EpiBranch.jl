@@ -159,10 +159,12 @@ end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
 [Transmission routes](#Transmission-routes)), which respects leaky isolation.
 `:isolated` in an `until` refers to a `Transition(:isolated, …)` in the natural
 history. Set and undo isolation with `set_isolated!` and `clear_isolated!`.
-`Isolation` itself never records a case as isolated at or after
-[`outcome_time`](@ref): a self-report or trace that only fires that late
-arrives after the case has already left the infectious period, so the case
-is left unisolated instead of recorded after the fact.
+By default `Isolation` records a case as isolated only before
+[`outcome_time`](@ref), since a self-report or trace reaching the case only
+after it has recovered or died describes a detection that did not happen.
+Whether such a time counts is the eligibility's call, through
+[`EpiBranch.records_isolation`](@ref): override it for a policy that does
+record a late detection, such as a death found at burial.
 
 The tracing keys name two hooks because the two engines reach them
 differently: `apply_post_transmission!` on the generation-based engine, and

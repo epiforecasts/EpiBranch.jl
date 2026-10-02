@@ -293,9 +293,9 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "An eligibility can record a detection after the outcome" begin
-        # The bound is the eligibility's, not the engine's: a policy that wants
-        # post-mortem detection, as an Ebola death found at burial does, says so
-        # by overriding `records_isolation`. The default declines it.
+        # The eligibility decides: a policy that wants post-mortem detection,
+        # as an Ebola death found at burial does, overrides
+        # `records_isolation`. The default declines such a time.
         iso_default = Isolation(onset_to_isolation_delay = Dirac(5.0))
         iso_late = Isolation(
             onset_to_isolation_delay = Dirac(5.0), eligibility = _DetectAfterOutcome()

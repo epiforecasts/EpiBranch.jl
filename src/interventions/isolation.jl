@@ -34,7 +34,7 @@ is_eligible_for_isolation(::IsolationEligibility, individual, state) = true
     records_isolation(eligibility, individual, state, isolation_time) -> Bool
 
 Whether a case is recorded as isolated at `isolation_time`, once a pathway has
-produced one. The default declines a time at or after the case's own outcome:
+reached one. The default declines a time at or after the case's own outcome:
 isolating a case that has already recovered or died has no effect on
 transmission, and recording it would report a detection that did not happen to
 tracing, line lists and containment counts.
@@ -199,10 +199,8 @@ function resolve_individual!(iso::Isolation, individual, state)
         is_test_positive(individual) || return nothing
         self_t = onset_time(individual) +
             _sample_value(iso.onset_to_isolation_delay, state.rng, individual)
-        # Whether a self-report reaching past the case's own outcome counts as
-        # a detection is the eligibility's call (`records_isolation`); the
-        # default declines it.
         self_t < isolation_time(individual) || return nothing
+        isfinite(self_t) || return nothing
         records_isolation(iso.eligibility, individual, state, self_t) ||
             return nothing
         # Remember what we are overwriting. Claiming provenance below tells a
@@ -237,9 +235,8 @@ function resolve_individual!(iso::Isolation, individual, state)
         Inf
     end
     final = min(test_time, traced_time)
-    # Whether an isolation reaching past the case's own outcome counts as a
-    # detection is the eligibility's call (`records_isolation`); the default
-    # declines it, since by then the case has left the infectious period.
+    # No pathway produced a time, so there is nothing for a policy to judge.
+    isfinite(final) || return nothing
     records_isolation(iso.eligibility, individual, state, final) || return nothing
     set_isolated!(individual, final)
     # Mark provenance so a Scheduled reset undoes only Isolation's own effect.
