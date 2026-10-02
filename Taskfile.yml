@@ -57,9 +57,14 @@ tasks:
 
   # === BENCHMARKS ===
   benchmark:
-    desc: Run Julia benchmarks
+    desc: Run the standalone R-comparison benchmarks in benchmarks/
     cmds:
       - julia --project=. benchmarks/benchmark_julia.jl
+
+  benchmarks:
+    desc: Run the BenchmarkTools suite in benchmark/, the one CI compares
+    cmds:
+      - julia --project=benchmark benchmark/run.jl
 
   changelog:
     desc: Show the changelog section the pending fragments will produce
