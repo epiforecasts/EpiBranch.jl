@@ -54,10 +54,10 @@ left at the default use no random numbers for naming.
 All routes run over the same node set, so every adjacency must have the same
 length.
 
-A case infected on one of these routes carries the route's `name` in its
-`:infection_route`, and a community introduction carries `:external`; both
-appear in [`linelist`](@ref), so a run's cases can be broken down by setting
-directly, without reconstructing it from the population structure and timing.
+A case infected on one of these routes records the route's `name` in its
+`:infection_route`. A community introduction records `:external`. Both appear
+in [`linelist`](@ref), so a run's cases break down by setting with no need to
+reconstruct one from the population structure and the timing.
 
 # Example
 
