@@ -39,21 +39,26 @@ that selects a policy each mean a seam is in the wrong place.
 Before adding a field, keyword or flag to an existing type, or a branch to an
 engine loop, work through these:
 
-1. **Which existing seam covers it?** `keep_active`, `competing_risk`,
-   `transmission_risks`, `is_eligible`, `should_stop`, `_sample_value`,
-   `trace_contacts!`, `intervention_actions`, `loglikelihood`, `Transition`
-   and the attribute builders (`clinical_presentation`, `demographics`,
-   `group_attribute` and the rest) are all dispatched extension points. Prefer
-   one of them to a new option.
+1. **Which existing seam covers it?** The dispatched verbs are
+   `keep_active`, `competing_risk`, `transmission_risks`, `is_eligible`,
+   `should_stop`, `trace_contacts!`, `intervention_actions` and
+   `loglikelihood`. The rest of the variation is a value a caller supplies: a
+   `Transition` in the progression, an attribute builder (a `(rng, ind)`
+   callable, which `clinical_presentation` and `demographics` return and
+   `group_attribute` dispatches), and a `Real`, `Distribution` or
+   `(rng, ind)` callable wherever a delay or a probability is read. Prefer one
+   of these to a new option.
 2. **If none fits, add a dispatched trait with a default**, and document it in
    the extending guide, so the variant can be written from outside the
    package. A seam nobody outside can reach is not a seam (principle 4).
 3. **Engine loops ask the composed layers; they never decide for them.** A
    race or stepping loop that decides what a named intervention does to whom,
-   reads a state key an intervention owns, or keeps its own table of what has
-   already been done to whom has taken a policy decision into core. Naming a
-   concrete type to loosen a conservative default is the exception design.md
-   allows, since an outside type still gets the safe answer.
+   reads a state key an intervention owns, or keeps its own record of what has
+   already been done to whom has taken a policy decision into core. Where a
+   loop needs a fact about an intervention, it asks a documented trait with a
+   conservative default that the intervention's own author opts out of, as
+   `infection_likelihood_compatible` is asked. A method the engine keeps on
+   its own built-ins closes the path to everyone else.
 4. **Say in the pull request which seam was used**, or which was considered
    and why it did not fit. A new `Bool`, `Symbol` or `Union` field on a core
    type, or a new verb alongside an existing one, needs that justification.

@@ -202,17 +202,23 @@ This holds on every axis:
   columns are typed objects with methods, not closed sets of fields.
 - **Engine loops** ask the composed layers and never decide for them. A
   stepping loop or continuous-time race that decides what a named intervention
-  does to whom, reads a state key an intervention owns (see "Individual
-  state"), or keeps its own table of what has already been done to whom has
-  taken a policy decision into core, where nothing a user writes can reach it.
-  The varying part belongs behind the hook the layer already implements, and
-  the loop's own bookkeeping should be about running the simulation.
+  does to whom, reads a state key an intervention owns (see
+  [Individual state](@ref)), or keeps its own record of what has already been
+  done to whom has taken a policy decision into core, where nothing a user
+  writes can reach it. The varying part belongs behind the hook the layer
+  already implements, and the loop's own bookkeeping should be about running
+  the simulation.
 
-  Naming a concrete type to *loosen* a conservative default is the sanctioned
-  exception: an engine may know that one of its own interventions is safe in a
-  case where it has to assume the worst of an unknown one, because an
-  outside type still gets the safe answer and loses nothing. What it may not
-  do is decide the response itself.
+  A loop does sometimes need a fact about an intervention: whether it can be
+  honoured at all, whether its effects are exact enough for a fast path. It
+  asks through a documented trait with a conservative default, which an
+  intervention opts out of for itself, as
+  [`infection_likelihood_compatible`](@ref EpiBranch.infection_likelihood_compatible)
+  is asked of a composed component. A method on a concrete type is then that
+  type's author declaring something about it, open to anyone who writes a
+  type. A method the engine keeps on its own built-ins closes the path to
+  everyone else, which principle 4 rules out however conservative the
+  default it relaxes.
 
 The test of correctness for any component: can a plausible new variant be
 added without editing the component's source? If not, the component is
