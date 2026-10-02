@@ -61,6 +61,16 @@ tasks:
     cmds:
       - julia --project=. benchmarks/benchmark_julia.jl
 
+  changelog:
+    desc: Show the changelog section the pending fragments will produce
+    cmds:
+      - julia scripts/changelog.jl
+
+  changelog-release:
+    desc: Fold the fragments into CHANGELOG.md under a version, e.g. task changelog-release -- 0.2.0
+    cmds:
+      - julia scripts/changelog.jl {{.CLI_ARGS}}
+
   # === R VALIDATION ===
   validate:
     desc: Run R validation scripts against reference implementations
