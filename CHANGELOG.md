@@ -12,12 +12,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
-- `proportion_cases_individual` and `proportion_cases_offspring` give the
-  proportion of cases responsible for a given share of transmission, the
-  inverse of `proportion_transmission`. The two use different rankings —
-  continuous individual reproduction numbers versus realised, integer
-  offspring counts — and can differ substantially for the same offspring
-  distribution, so they are provided as two separate functions.
 - `Isolation`'s `onset_to_isolation_delay` accepts a `Real`, a `Distribution`,
   or a function `(rng, ind) -> Real`, matching `test_sensitivity`. The function
   form can read state that another intervention recorded on the individual,
