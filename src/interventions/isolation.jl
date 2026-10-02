@@ -30,6 +30,31 @@ abstract type IsolationEligibility end
 """
 is_eligible_for_isolation(::IsolationEligibility, individual, state) = true
 
+"""
+    records_isolation(eligibility, individual, state, isolation_time) -> Bool
+
+Whether a case is recorded as isolated at `isolation_time`, once a pathway has
+produced one. The default declines a time at or after the case's own outcome:
+isolating a case that has already recovered or died has no effect on
+transmission, and recording it would report a detection that did not happen to
+tracing, line lists and containment counts.
+
+Override it to record a detection that arrives late anyway. Post-mortem
+detection is the case that wants it, as with an Ebola death found at burial,
+which triggers tracing and safe burial although it changes no onward
+transmission:
+
+```julia
+struct DetectAfterOutcome <: EpiBranch.IsolationEligibility end
+EpiBranch.is_eligible_for_isolation(::DetectAfterOutcome, ind, state) =
+    !is_asymptomatic(ind)
+EpiBranch.records_isolation(::DetectAfterOutcome, ind, state, t) = true
+```
+"""
+function records_isolation(::IsolationEligibility, individual, state, isolation_time)
+    return isolation_time < outcome_time(individual)
+end
+
 """Symptomatic cases only. Reproduces the original `Isolation` gate."""
 struct SymptomaticOnly <: IsolationEligibility end
 is_eligible_for_isolation(::SymptomaticOnly, ind, state) = !is_asymptomatic(ind)
@@ -174,11 +199,11 @@ function resolve_individual!(iso::Isolation, individual, state)
         is_test_positive(individual) || return nothing
         self_t = onset_time(individual) +
             _sample_value(iso.onset_to_isolation_delay, state.rng, individual)
-        # A self-report reaching past the case's own outcome (recovery, death,
-        # ...) would isolate it after it has already left the infectious
-        # period, which has no effect on transmission and would misreport
-        # detection downstream (tracing, line lists, containment counts).
-        self_t < isolation_time(individual) && self_t < outcome_time(individual) ||
+        # Whether a self-report reaching past the case's own outcome counts as
+        # a detection is the eligibility's call (`records_isolation`); the
+        # default declines it.
+        self_t < isolation_time(individual) || return nothing
+        records_isolation(iso.eligibility, individual, state, self_t) ||
             return nothing
         # Remember what we are overwriting. Claiming provenance below tells a
         # `Scheduled` reset that this isolation is Isolation's to undo, but the
@@ -212,11 +237,10 @@ function resolve_individual!(iso::Isolation, individual, state)
         Inf
     end
     final = min(test_time, traced_time)
-    # A case whose only isolation pathways fire at or after its own outcome
-    # (recovery, death, ...) has already left the infectious period by then,
-    # so it is left unisolated rather than recorded as isolated too late to
-    # have mattered.
-    final < outcome_time(individual) || return nothing
+    # Whether an isolation reaching past the case's own outcome counts as a
+    # detection is the eligibility's call (`records_isolation`); the default
+    # declines it, since by then the case has left the infectious period.
+    records_isolation(iso.eligibility, individual, state, final) || return nothing
     set_isolated!(individual, final)
     # Mark provenance so a Scheduled reset undoes only Isolation's own effect.
     individual.state[:isolated_by_isolation] = true

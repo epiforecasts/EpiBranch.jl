@@ -5,6 +5,13 @@ struct _PolicyEnabled
 end
 (p::_PolicyEnabled)(state) = p.enabled
 
+# An isolation eligibility that records a detection arriving after the case's
+# outcome, which the default declines.
+struct _DetectAfterOutcome <: EpiBranch.IsolationEligibility end
+EpiBranch.is_eligible_for_isolation(::_DetectAfterOutcome, ind, state) =
+    !is_asymptomatic(ind)
+EpiBranch.records_isolation(::_DetectAfterOutcome, ind, state, t) = true
+
 @testset "Callable isolation and scheduling parameters" begin
     for enabled in (false, true)
         iso = Isolation(
@@ -283,6 +290,47 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         set_isolated!(negative, 50.0)
         EpiBranch.resolve_individual!(iso, negative, state)
         @test isolation_time(negative) == 50.0
+    end
+
+    @testset "An eligibility can record a detection after the outcome" begin
+        # The bound is the eligibility's, not the engine's: a policy that wants
+        # post-mortem detection, as an Ebola death found at burial does, says so
+        # by overriding `records_isolation`. The default declines it.
+        iso_default = Isolation(onset_to_isolation_delay = Dirac(5.0))
+        iso_late = Isolation(
+            onset_to_isolation_delay = Dirac(5.0), eligibility = _DetectAfterOutcome()
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(31)
+        )
+        function after_outcome(iso)
+            ind = Individual(id = 1)
+            ind.state[:onset_time] = 1.0
+            ind.state[:test_positive] = true
+            ind.state[:outcome_time] = 2.0
+            EpiBranch.resolve_individual!(iso, ind, state)
+            return ind
+        end
+
+        @test !is_isolated(after_outcome(iso_default))
+        recorded = after_outcome(iso_late)
+        @test is_isolated(recorded)
+        @test isolation_time(recorded) ≈ 6.0 atol = 1.0e-6
+
+        # The same choice applies to the self-report that revises a standing
+        # quarantine, so one override covers both pathways.
+        function quarantined(iso)
+            ind = Individual(id = 2)
+            ind.state[:onset_time] = 1.0
+            ind.state[:test_positive] = true
+            ind.state[:outcome_time] = 2.0
+            set_isolated!(ind, 20.0)
+            EpiBranch.resolve_individual!(iso, ind, state)
+            return ind
+        end
+        @test isolation_time(quarantined(iso_default)) ≈ 20.0 atol = 1.0e-6
+        @test isolation_time(quarantined(iso_late)) ≈ 6.0 atol = 1.0e-6
     end
 
     @testset "Isolation does not record a case as isolated after its outcome" begin

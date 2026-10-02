@@ -111,6 +111,7 @@ IsolationEligibility
 SymptomaticOnly
 AllCases
 EpiBranch.is_eligible_for_isolation
+EpiBranch.records_isolation
 ContactTracing
 TraceEligibility
 OnSymptomOnset
