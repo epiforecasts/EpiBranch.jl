@@ -351,13 +351,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
-- A `RoutedNetwork` route's `kernel` now accepts a covariate callable, a
-  `ContextualKernel`, a `StatefulKernel` and a per-edge vector, each resolved
-  per pair exactly as `NetworkProcess` resolves its edge kernel, in both the
-  route's targets and the continuation drawn after a blocked contact.
-  Previously every such form other than a shared distribution was passed
-  unresolved to the race and raised a `MethodError`, so frequency-dependent
-  transmission and covariate kernels were unusable on a route.
 - `initial_cases` can now be combined with an active `external_hazard` on
   `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess`: the chosen cases are
   seeded at time zero, and the hazard still acts on everyone else from the
