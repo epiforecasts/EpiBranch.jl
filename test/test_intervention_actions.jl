@@ -255,3 +255,58 @@ end
     @test contacts[3].state[:visits] == 2
     @test capacity_usage(cc, state) == (used = 2, available = 2.0)
 end
+
+@testset "A dose recorded while pending is reconsidered once infection settles" begin
+    # The continuous-time race calls this straight after stamping an infection
+    # time, for a dose that arrived while the member was still uninfected. The
+    # household and network suites run the whole path; here each way out of the
+    # loop is driven directly, so the root suite covers its own source.
+    rv = RingVaccination(
+        efficacy = 0.0, post_exposure_efficacy = 1.0, delay_to_immunity = 1.0
+    )
+    function pending(; vaccinated = true, incubation = 5.0)
+        ind = Individual(
+            id = 1,
+            state = Dict{Symbol, Any}(
+                :vaccinated => vaccinated,
+                :vaccination_time => 2.0,
+                :incubation_period => incubation
+            )
+        )
+        ind.infection_time = 2.0
+        return ind
+    end
+
+    # Immunity at 3.0 falls between the exposure at 2.0 and the onset at 7.0,
+    # and an efficacy of 1 covers everyone, so the infection ends at 3.0 and
+    # never reaches onset.
+    aborted = pending()
+    EpiBranch._resolve_pending_dose_abort!([rv], aborted, StableRNG(1))
+    @test aborted.state[:infection_aborted_time] == 3.0
+    @test isnan(onset_time(aborted))
+
+    # Immunity at 3.0 falls after an onset at 2.5, too late to abort anything.
+    late = pending(incubation = 0.5)
+    EpiBranch._resolve_pending_dose_abort!([rv], late, StableRNG(1))
+    @test !haskey(late.state, :infection_aborted_time)
+
+    # No dose on the member: nothing to reconsider.
+    undosed = pending(vaccinated = false)
+    EpiBranch._resolve_pending_dose_abort!([rv], undosed, StableRNG(1))
+    @test !haskey(undosed.state, :infection_aborted_time)
+
+    # A dose with no post-exposure efficacy is passed over before its time is
+    # read, and an intervention that is not a vaccination before that.
+    for iv in (RingVaccination(efficacy = 0.8), Isolation(onset_to_isolation_delay = Dirac(0.0)))
+        untouched = pending()
+        EpiBranch._resolve_pending_dose_abort!([iv], untouched, StableRNG(1))
+        @test !haskey(untouched.state, :infection_aborted_time)
+    end
+
+    # A `Scheduled` wrapper is unwrapped, so a scheduled dose aborts too.
+    wrapped = pending()
+    EpiBranch._resolve_pending_dose_abort!(
+        [Scheduled(rv; start_time = 0.0)], wrapped, StableRNG(1)
+    )
+    @test wrapped.state[:infection_aborted_time] == 3.0
+end
