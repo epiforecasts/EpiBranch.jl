@@ -10,8 +10,15 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 Development versions target 0.2.0. Both companion packages require EpiBranch 0.2;
 EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
+<!-- releases go below this line -->
+
 ### Added
 
+- `pairwise_surv_loglik_by_component` splits the pairwise survival
+  log-likelihood by connected component of the contact structure (households,
+  under a household partition), reusing one compiled `ContactPairsLayout` so
+  a sampler updating the latent infection layer component by component can
+  accept or reject each move on its own share of the likelihood.
 - `Isolation`'s `onset_to_isolation_delay` accepts a `Real`, a `Distribution`,
   or a function `(rng, ind) -> Real`, matching `test_sensitivity`. The function
   form can read state that another intervention recorded on the individual,
