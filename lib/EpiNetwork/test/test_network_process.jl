@@ -1177,33 +1177,49 @@ end
         @test !is_traced(st1.individuals[3])
     end
 
-    @testset "A ring member is not re-traced once it is itself infected" begin
-        # Same path graph, but with a kernel fast enough that node 2
-        # sometimes becomes infected itself. Node 2's contact (node 3) is
-        # then reached twice by the naive walk: once through ring
-        # propagation, while node 2 is still an uninfected ring member, and
-        # again when the race later processes node 2 as an infected,
-        # eligible case and calls `_trace_from!` for it directly.
+    @testset "Whether a ring member is interviewed again is the policy's call" begin
+        # Same path graph, but with a kernel fast enough that node 2 sometimes
+        # becomes infected itself. Node 2's contact (node 3) can then be reached
+        # twice: once through ring propagation while node 2 is still an
+        # uninfected ring member, and again when the race settles node 2 as an
+        # infected, eligible case and traces from it directly.
+        #
+        # The second attempt is the default, because a ring member that turns
+        # out to be a case is a case like any other and the documented contract
+        # gives it a fresh ring. Excluding a case that was already traced is an
+        # eligibility question, so `!PreviouslyTraced()` expresses the
+        # interview-once policy and the engine holds no opinion either way.
         proc = NetworkProcess([[2], [1, 3], [2]], Exponential(1.0))
-        for seed in 1:200
-            action = _CountingAction()
-            model = ModelSpec(
-                proc;
-                attributes = clinical_presentation(incubation_period = Dirac(2.0)),
-                progression = [
-                    Transition(
-                        :recovered; from = :infection, delay = 10.0,
-                        terminal = true
-                    ),
-                ],
-                interventions = [
-                    Isolation(onset_to_isolation_delay = Dirac(1.0)),
-                    ContactTracing(OnIsolation(), 1.0, Dirac(0.0), action; depth = 2),
-                ]
-            )
-            simulate(model; initial_cases = [1], rng = StableRNG(seed))
-            @test all(<=(1), values(action.counts))
+        function counts(eligibility)
+            seen = Int[]
+            for seed in 1:200
+                action = _CountingAction()
+                model = ModelSpec(
+                    proc;
+                    attributes = clinical_presentation(incubation_period = Dirac(2.0)),
+                    progression = [
+                        Transition(
+                            :recovered; from = :infection, delay = 10.0,
+                            terminal = true
+                        ),
+                    ],
+                    interventions = [
+                        Isolation(onset_to_isolation_delay = Dirac(1.0)),
+                        ContactTracing(eligibility, 1.0, Dirac(0.0), action; depth = 2),
+                    ]
+                )
+                simulate(model; initial_cases = [1], rng = StableRNG(seed))
+                append!(seen, values(action.counts))
+            end
+            return seen
         end
+
+        # Interview once: no contact is ever acted on twice.
+        @test all(<=(1), counts(OnIsolation() & !PreviouslyTraced()))
+
+        # Re-interviewing, the default: a contact reached as a ring member and
+        # then traced again from the same node once it is a case of its own.
+        @test any(>(1), counts(OnIsolation()))
     end
 end
 

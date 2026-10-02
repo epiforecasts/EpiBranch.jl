@@ -51,6 +51,15 @@ is_eligible(::TraceEveryone, infector, contact, state) = true
 struct TraceNobody <: TraceEligibility end
 is_eligible(::TraceNobody, infector, contact, state) = false
 
+"""Trace only from a case that has not been traced as someone else's contact
+already. Negate it to stop a case that was reached as a ring member from being
+interviewed again once it becomes a case itself:
+`SymptomaticParent() & !PreviouslyTraced()`. Re-interviewing is the default,
+since a ring member that turns out to be a case is a case like any other and
+the engine agrees with the generation-based one about that."""
+struct PreviouslyTraced <: TraceEligibility end
+is_eligible(::PreviouslyTraced, infector, contact, state) = is_traced(infector)
+
 """Original default gate: infector symptomatic *and* isolated. Equivalent
 to `OnSymptomOnset() & OnIsolation()`; kept as a named type for
 backwards compatibility (it is the default `eligibility`)."""
@@ -493,8 +502,14 @@ infected, eligible case seeds a fresh ring of radius `depth`; uninfected
 ring members stay active for one more generation so the ring can grow
 past them (see [`keep_active`](@ref EpiBranch.keep_active)), without
 infecting their contacts (the [`InfectiousSource`](@ref
-EpiBranch.InfectiousSource) default). Pair with [`RingVaccination`](@ref)
-to vaccinate the whole ring:
+EpiBranch.InfectiousSource) default).
+
+A case first reached as someone else's contact seeds its own fresh ring once it
+becomes an infected, eligible case: it is a case like any other, so the two
+engines agree about it. `!PreviouslyTraced()` in the eligibility asks instead
+that each case be interviewed only once.
+
+Pair with [`RingVaccination`](@ref) to vaccinate the whole ring:
 
 ```julia
 [ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0); depth = 2),
@@ -505,7 +520,10 @@ Needs `:asymptomatic`, `:onset_time` from `clinical_presentation()` and optional
 `:isolated`, `:isolation_time`, `:test_positive` depending on eligibility type.
 Sets `:traced`, `:quarantined` and `:trace_time`, the time the contact was
 reached, from which interventions acting on traced contacts are timed. With
-`depth > 1` it also sets `:ring_remaining`, which lets the ring grow outward.
+`depth > 1` it also sets `:ring_remaining`, which lets the ring grow outward,
+and `:ring_propagated` once a member has spent that budget on its own
+contacts, so a later walk reaching the same member widens the ring rather
+than retracing it.
 """
 struct ContactTracing{
         E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction,
@@ -639,7 +657,13 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # clinical state, from re-seeding a fresh full-radius ring and
     # letting the fringe grow without bound.
     seed = is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state)
+    # A ring grows past a member once. The first walk that reaches it spends
+    # its budget on its contacts; a later one would trace the same pairs again,
+    # which is a second attempt at the same relationship rather than a wider
+    # ring. Seeding is unaffected: a member that becomes an eligible case in
+    # its own right starts a fresh full-radius ring, through the branch above.
     propagate = ct.depth > 1 && !seed && is_traced(infector) &&
+        !get(infector.state, :ring_propagated, false)::Bool &&
         get(infector.state, :ring_remaining, 0)::Int > 0
     (seed || propagate) || return nothing
     traces(ct.trace_rate, infector, ind, state, rng) || return nothing
@@ -710,6 +734,11 @@ function trace_contacts!(
         ct::ContactTracing, state, infector, contacts, not_before = nothing
     )
     rng = state.rng
+    # Whether this batch spends `infector`'s ring budget is decided per pair in
+    # `_trace_pair!`, and the same answer holds for every pair in the batch, so
+    # the budget is marked spent once the batch is done rather than part way
+    # through it.
+    propagating = ct.depth > 1 && !is_infected(infector) && is_traced(infector)
     for (i, ind) in enumerate(contacts)
         ind.id == infector.id && continue
         _trace_pair!(
@@ -717,6 +746,7 @@ function trace_contacts!(
             not_before = not_before === nothing ? -Inf : not_before[i]
         )
     end
+    propagating && (infector.state[:ring_propagated] = true)
     return nothing
 end
 

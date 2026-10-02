@@ -395,10 +395,13 @@ end
 
 #
 # What has no continuous-time representation is a *generation-shaped* hook.
-# `apply_post_transmission!` and `keep_active` act on a batch of freshly created
-# contact objects, and a race that settles one pre-existing node at a time never
-# builds those. So an intervention with a method of its own for either hook is
-# taken to reach its targets that way, and reported as unhonoured, unless it
+# `apply_post_transmission!` acts on a batch of freshly created contact objects,
+# and a race that settles one pre-existing node at a time never builds those.
+# `keep_active` is read, but only from inside a tracing walk (`_trace_from!`
+# asks it which contacts the ring grows from), so an intervention that answers
+# it and does not trace has nothing to call it. So an intervention with a method
+# of its own for either hook is taken to reach its targets that way, and
+# reported as unhonoured, unless it
 # also traces contacts: `trace_contacts!` is then its continuous-time
 # counterpart, which needs a model that can name a case's contacts. The check
 # reads the methods themselves, so an intervention written outside the package
@@ -444,29 +447,29 @@ supplies_contacts(::TransmissionModel) = false
 # to an already-final infector is a separate capability neither engine has.
 #
 # A ring (`ContactTracing(depth = 2)` and beyond) grows through uninfected
-# contacts too. On the generation engine `keep_active` keeps such a contact
-# exposing for one more generation so `apply_post_transmission!` reaches its
-# own contacts in turn. The race never revisits an uninfected node that way —
-# it is settled once, here, when its infector is processed, and nothing calls
-# `_trace_from!` for it again — so the same growth is done directly below,
-# breadth-first over the model's own contact structure: a traced contact left
-# with ring budget (`:ring_remaining`, written by `ContactTracing`) becomes the
-# next hop's infector. `visited` stops a node being traced twice from two
-# branches of the ring reaching it at once, and `traced_from` (indexed as
-# `processed` is, one entry per race member) stops a node's contacts being
-# traced twice more broadly: once here, prematurely, while it is still an
-# uninfected ring member, and again when the race later processes it and calls
-# `_trace_from!` with it as the (now infected) top-level infector.
-function _trace_from!(state, infector, interventions, contacts, pos, processed, traced_from)
+# contacts too. On the generation engine an intervention asks for that through
+# `keep_active`, which keeps such a contact exposing for one more generation so
+# `apply_post_transmission!` reaches its own contacts in turn. The race has no
+# generations to keep a node alive for, so it walks the model's own contact
+# structure breadth-first instead, and asks the same hook which contacts the
+# next hop starts from. The depth semantics and the `:ring_remaining` budget
+# behind them stay with `ContactTracing`, so a ring of another shape takes part
+# by answering `keep_active` rather than by writing a state key this loop would
+# have to recognise.
+#
+# `visited` stops a node being traced twice by two branches of one walk
+# reaching it at once. Across walks nothing is suppressed: a node reached as an
+# uninfected ring member, which later becomes an infected and eligible case in
+# its own right, seeds its own fresh full-radius ring when the race settles it,
+# which is the contract `ContactTracing` documents. Whether that second attempt
+# happens at all is the eligibility policy's call, not this loop's.
+function _trace_from!(state, infector, interventions, contacts, pos, processed)
     contacts === nothing && return nothing
     any(traces_contacts, interventions) || return nothing
     visited = Set{Int}((infector.id,))
     frontier = Individual[infector]
     while !isempty(frontier)
         src = popfirst!(frontier)
-        sk = pos[src.id]
-        traced_from[sk] && continue
-        traced_from[sk] = true
         pending = Individual[]
         not_before = typeof(infector.infection_time)[]
         timed = false
@@ -488,8 +491,17 @@ function _trace_from!(state, infector, interventions, contacts, pos, processed, 
         end
         for ind in pending
             push!(visited, ind.id)
-            is_traced(ind) && get(ind.state, :ring_remaining, 0)::Int > 0 &&
-                push!(frontier, ind)
+        end
+        # Which of them the ring grows from is the intervention's call. Nothing
+        # here is freshly created, so `is_new` is all false; the race settles
+        # pre-existing members rather than creating contacts as it goes.
+        is_new = falses(length(pending))
+        for iv in interventions
+            for id in keep_active(iv, state, pending, is_new)
+                k = get(pos, id, 0)
+                (k == 0 || processed[k]) && continue
+                push!(frontier, state.individuals[id])
+            end
         end
     end
     return nothing
@@ -613,7 +625,6 @@ function _sellke_race!(
     m = length(members)
     best = fill(Inf, m)
     processed = falses(m)
-    traced_from = falses(m)
     pos = Dict{Int, Int}(id => k for (k, id) in enumerate(members))
     # A route the interventions cannot cut is not cut by the per-contact risks
     # that stand in for a removal either: a household route runs on through an
@@ -787,7 +798,7 @@ function _sellke_race!(
         _set_onset_from_incubation!(ind)
         resolve_transitions!(state, ind)
         _resolve_interventions!(state, ind, interventions)
-        _trace_from!(state, ind, interventions, contacts, pos, processed, traced_from)
+        _trace_from!(state, ind, interventions, contacts, pos, processed)
         contacts === nothing ||
             _apply_continuous_actions!(state, ind, interventions, members, processed)
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1
