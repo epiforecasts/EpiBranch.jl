@@ -96,6 +96,14 @@ jobs:
     needs: [test, epinetwork, epihouseholds]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Every run pushes its preview to the same `gh-pages` branch, so two
+    # running at once race and the loser reports `failed to push some refs`
+    # after building successfully. One docs run at a time across the whole
+    # repository, and a queued one is not cancelled, since each pull request
+    # needs its own preview published.
+    concurrency:
+      group: docs-gh-pages
+      cancel-in-progress: false
     permissions:
       contents: write
       pages: write
