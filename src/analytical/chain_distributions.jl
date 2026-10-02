@@ -407,7 +407,7 @@ Distributions.insupport(d::TruncatedChainSize, n::Integer) = n >= d.min_size
 Distributions.logpdf(d::TruncatedChainSize, n::Integer) = _chain_size_logpdf(d, n, 1)
 
 function _chain_size_logpdf(d::TruncatedChainSize, x::Integer, s::Integer)
-    x >= d.min_size || return oftype(_chain_size_logpdf(d.base, max(x, 1), s), -Inf)
+    x >= d.min_size || return oftype(_chain_size_logpdf(d.base, max(x, 1), 1), -Inf)
     return _chain_size_logpdf(d.base, x, s) -
         _chain_size_right_tail_logprob(d.base, d.min_size, s)
 end
