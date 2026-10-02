@@ -93,6 +93,20 @@
         @test f.loglikelihood ≈ loglikelihood(data, Poisson(f.estimate.R))
     end
 
+    @testset "ChainLengths upper R bound is the model's domain edge, not Inf" begin
+        # R close to 1 is the common case for chain-length data; the profile
+        # search runs off the end of the search domain here rather than
+        # crossing the chi-square threshold, and that end is the real
+        # subcritical boundary (R < 1), not a numerical stand-in for infinity.
+        data = ChainLengths([2, 2, 3, 3, 4, 5, 6, 4])
+        f = fit(data, Poisson)
+
+        lo, hi = f.ci.R
+        @test isfinite(hi)
+        @test hi < 1
+        @test hi == EpiBranch._r_search_bound(data)
+    end
+
     @testset "Parametric bootstrap" begin
         rng = StableRNG(6)
         true_R = 1.0

@@ -25,7 +25,10 @@ maximised log-likelihood, and a profile-likelihood confidence interval
 per parameter. A side of an interval that the search never bounds — most
 often the upper side of `k`, where the Negative Binomial likelihood keeps
 improving towards the Poisson limit as `k → ∞` — is reported as `Inf`
-rather than a value the search had to give up on.
+rather than a value the search had to give up on, except for the upper
+side of `R` for [`ChainLengths`](@ref), which is instead capped at the
+model's own subcritical domain edge (just below 1), since that side is a
+real boundary rather than a numerical stand-in for infinity.
 
 Fields:
 
@@ -144,14 +147,15 @@ end
 """
 One side (`direction = ±1`) of a profile-likelihood interval: expand
 outward from the MLE `θ̂` until the profile `f(θ)` drops below `target`,
-then bisect for the crossing. A side that reaches `bound` (the search's
-numerical stand-in for infinity, or the model's own domain edge for
-`lo_bound`) without crossing is reported as `Inf` on the upper side, or
-`lo_bound` on the lower.
+then bisect for the crossing. A side that reaches `bound` without crossing
+is reported as `lo_bound` on the lower side, or `hi_report` on the upper —
+`Inf` where `hi_bound` is the search's own numerical stand-in for infinity
+(the default), or `hi_bound` itself where that is instead a genuine domain
+edge the parameter cannot reach.
 """
 function _profile_bound(
         f, θ̂::Float64, target::Float64, direction::Int;
-        lo_bound::Float64, hi_bound::Float64,
+        lo_bound::Float64, hi_bound::Float64, hi_report::Float64 = Inf,
         factor::Float64 = 1.5, max_expand::Int = 80, tol::Float64 = 1.0e-6
     )
     prev = θ̂
@@ -163,18 +167,19 @@ function _profile_bound(
             lo, hi = direction == 1 ? (prev, cand) : (cand, prev)
             return _bisect(θ -> f(θ) - target, lo, hi; tol)
         end
-        at_bound && return direction == 1 ? Inf : lo_bound
+        at_bound && return direction == 1 ? hi_report : lo_bound
         prev = cand
     end
-    return direction == 1 ? Inf : lo_bound
+    return direction == 1 ? hi_report : lo_bound
 end
 
 """Two-sided profile-likelihood interval around the MLE `θ̂`."""
 function _profile_interval(
-        f, θ̂::Float64, target::Float64; lo_bound::Float64 = 0.0, hi_bound::Float64
+        f, θ̂::Float64, target::Float64;
+        lo_bound::Float64 = 0.0, hi_bound::Float64, hi_report::Float64 = Inf
     )
     lower = _profile_bound(f, θ̂, target, -1; lo_bound, hi_bound)
-    upper = _profile_bound(f, θ̂, target, 1; lo_bound, hi_bound)
+    upper = _profile_bound(f, θ̂, target, 1; lo_bound, hi_bound, hi_report)
     return (lower, upper)
 end
 
@@ -183,6 +188,11 @@ end
 # cap rather than a true bound.
 _r_search_bound(::Union{OffspringCounts, ChainSizes}) = 1.0e6
 _r_search_bound(::ChainLengths) = 1.0 - 1.0e-9
+
+# For `ChainLengths`, `_r_search_bound` is the model's own domain edge, not a
+# stand-in for infinity: an unbounded upper profile should report that edge,
+# not `Inf`.
+_r_hi_report(data, r_bound::Float64) = data isa ChainLengths ? r_bound : Inf
 
 const _K_SEARCH_BOUND = 1.0e6
 
@@ -311,7 +321,11 @@ function fit(
     ll(R) = loglikelihood(data, Poisson(R))
     R̂, ll_max = _point_estimate(data, Poisson)
     target = ll_max - quantile(Chisq(1), level) / 2
-    ci = (R = _profile_interval(ll, R̂, target; hi_bound = r_bound),)
+    ci = (
+        R = _profile_interval(
+            ll, R̂, target; hi_bound = r_bound, hi_report = _r_hi_report(data, r_bound)
+        ),
+    )
     boot = bootstrap > 0 ?
         _bootstrap_ci(data, Poisson, (R = R̂,), bootstrap, level, rng) : nothing
     return MLEFit((R = R̂,), ll_max, ci, Float64(level), boot)
@@ -331,7 +345,10 @@ function fit(
     profile_over_k(R) = _golden_max(_fix_R(ll, R), 1.0e-8, _K_SEARCH_BOUND)[2]
     profile_over_r(k) = _golden_max(_fix_k(ll, k), 1.0e-8, r_bound)[2]
     ci = (
-        R = _profile_interval(profile_over_k, R̂, target; lo_bound = 1.0e-8, hi_bound = r_bound),
+        R = _profile_interval(
+            profile_over_k, R̂, target;
+            lo_bound = 1.0e-8, hi_bound = r_bound, hi_report = _r_hi_report(data, r_bound)
+        ),
         k = _profile_interval(
             profile_over_r, k̂, target; lo_bound = 1.0e-8, hi_bound = _K_SEARCH_BOUND
         ),
