@@ -12,10 +12,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
-- A case infected through a named `RouteWindow` (as on `RoutedNetwork`) has the
-  route's name in `:infection_route`; a community introduction has `:external`.
-  Both appear in `linelist`, so cases can be broken down by setting without
-  reconstructing it from population structure and timing.
 - `Isolation`'s `onset_to_isolation_delay` accepts a `Real`, a `Distribution`,
   or a function `(rng, ind) -> Real`, matching `test_sensitivity`. The function
   form can read state that another intervention recorded on the individual,
