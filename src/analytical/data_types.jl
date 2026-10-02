@@ -21,6 +21,59 @@ struct OffspringCounts
 end
 
 """
+    OffspringCounts(infector, infectee; unlinked = 0)
+
+Build offspring counts from a table of infector–infectee pairs:
+`infector[i]` transmitted to `infectee[i]`. Only confirmed transmissions
+belong here: from [`contacts`](@ref), that means rows filtered to
+`infected == true`, since `contacts` also reports exposure events that did
+not result in infection. Every case appearing in either vector gets one
+count, the number of times it appears in `infector` (zero for a case
+identified only as an infectee). `unlinked` adds that many extra cases
+with no identified transmission link at all, each with an offspring count
+of zero.
+
+# Examples
+
+```julia
+# 1 infected 2 and 3; 2 infected 4; two further cases have no known links.
+data = OffspringCounts([1, 1, 2], [2, 3, 4]; unlinked = 2)
+```
+"""
+function OffspringCounts(
+        infector::AbstractVector{<:Integer}, infectee::AbstractVector{<:Integer};
+        unlinked::Integer = 0
+    )
+    length(infector) == length(infectee) ||
+        throw(ArgumentError("infector and infectee must have the same length"))
+    unlinked >= 0 || throw(ArgumentError("unlinked must be non-negative"))
+    any(infector .== infectee) &&
+        throw(ArgumentError("a case cannot be its own infector"))
+    allunique(zip(infector, infectee)) ||
+        throw(ArgumentError("infector-infectee pairs must be unique"))
+    allunique(infectee) ||
+        throw(ArgumentError("a case cannot have more than one infector"))
+
+    infector_of = Dict(infectee[i] => infector[i] for i in eachindex(infectee))
+    for start in keys(infector_of)
+        visited = Set{eltype(infector)}()
+        current = start
+        while haskey(infector_of, current)
+            current in visited &&
+                throw(ArgumentError("infector-infectee pairs must not form a transmission cycle"))
+            push!(visited, current)
+            current = infector_of[current]
+        end
+    end
+
+    counts = Dict{eltype(infector), Int}(c => 0 for c in union(infector, infectee))
+    for i in infector
+        counts[i] += 1
+    end
+    return OffspringCounts(vcat(collect(values(counts)), zeros(Int, unlinked)))
+end
+
+"""
 Observed transmission chain sizes (total number of cases per chain).
 Used with `loglikelihood` and `fit`.
 
@@ -69,6 +122,39 @@ struct ChainSizes
             throw(ArgumentError("chain size must be ≥ number of seeds"))
         return new(convert(Vector{Int}, data), convert(Vector{Int}, seeds))
     end
+end
+
+"""
+    ChainSizes(; membership, singletons = 0)
+
+Build chain sizes from a vector of cluster memberships, the inverse of
+grouping by `chain_id` in [`linelist`](@ref): cases sharing a label in
+`membership` belong to the same chain, and the size recorded for that
+chain is how many cases share it. `singletons` adds that many extra
+chains of size 1, for cases identified as having no cluster at all.
+
+`membership` is keyword-only: it has the same `AbstractVector{<:Integer}`
+shape as the already-tallied sizes taken by `ChainSizes(data; seeds)`
+above, and Julia dispatches on positional argument types rather than on
+which keyword is supplied, so a positional `membership` vector of
+integers would be ambiguous with `data`.
+
+# Examples
+
+```julia
+# Chain 1 has 2 cases, chain 2 has 1, chain 3 has 3; two further cases
+# were not linked to any cluster.
+data = ChainSizes(; membership = [1, 1, 2, 3, 3, 3], singletons = 2)
+```
+"""
+function ChainSizes(; membership::AbstractVector{<:Integer}, singletons::Integer = 0)
+    singletons >= 0 || throw(ArgumentError("singletons must be non-negative"))
+    counts = Dict{eltype(membership), Int}()
+    for m in membership
+        counts[m] = get(counts, m, 0) + 1
+    end
+    sizes = vcat(collect(values(counts)), ones(Int, singletons))
+    return ChainSizes(sizes)
 end
 
 """
