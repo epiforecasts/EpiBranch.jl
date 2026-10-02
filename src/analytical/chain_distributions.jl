@@ -415,10 +415,10 @@ end
 
 # `log P(X ≥ x | X ≥ min_size)`: the base's survival at whichever of the two
 # bounds binds, against the survival the conditioning divides by. When the
-# denominator itself has underflowed to 0 (`-Inf` on the log scale, per
+# denominator has underflowed to 0 (`-Inf` on the log scale, following
 # `_chain_size_right_tail_logprob`'s own underflow convention), the
-# conditioning event is numerically indistinguishable from impossible, so
-# fall back to `-Inf` rather than letting `-Inf - (-Inf)` produce `NaN`.
+# conditioning event has effectively zero probability, so return `-Inf`
+# directly rather than let `-Inf - (-Inf)` give `NaN`.
 function _chain_size_right_tail_logprob(d::TruncatedChainSize, x::Integer, s::Integer)
     denom = _chain_size_right_tail_logprob(d.base, d.min_size, s)
     x <= d.min_size && return zero(denom)
