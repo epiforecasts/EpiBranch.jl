@@ -12,11 +12,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
-- `OffspringCounts(infector, infectee; unlinked = 0)` builds offspring counts
-  from a table of infector-infectee pairs, and `ChainSizes(; membership,
-  singletons = 0)` builds chain sizes from a vector of cluster memberships.
-  Both are the analytical-data counterparts of `linelist` and `contacts`,
-  for real-world contact-tracing records.
 - `Isolation`'s `onset_to_isolation_delay` accepts a `Real`, a `Distribution`,
   or a function `(rng, ind) -> Real`, matching `test_sensitivity`. The function
   form can read state that another intervention recorded on the individual,
