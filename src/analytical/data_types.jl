@@ -36,6 +36,10 @@ per-cluster `prob_concluded` vector of "is finished" probabilities to
 `loglikelihood`; see the `prob_concluded` kwarg on
 `loglikelihood(::ChainSizes, ::Distribution)`.
 
+Data recorded only once a cluster reaches a given size (for example, only
+groups of two or more cases) are scored against a [`MinimumSize`](@ref)
+observation, which conditions the likelihood on `N ≥ min_size`.
+
 # Examples
 
 ```julia
@@ -44,6 +48,10 @@ data = ChainSizes([1, 1, 3, 1, 5])
 
 # Multi-seed clusters.
 data = ChainSizes([3, 5, 10, 2]; seeds = [1, 2, 1, 1])
+
+# Only clusters of two or more cases are recorded.
+data = ChainSizes([2, 3, 5, 2])
+loglikelihood(data, observe(chain_size_distribution(off), MinimumSize(2)))
 ```
 """
 struct ChainSizes
@@ -56,7 +64,6 @@ struct ChainSizes
         isempty(data) && throw(ArgumentError("data must be non-empty"))
         length(seeds) == length(data) ||
             throw(ArgumentError("seeds must have the same length as data"))
-        all(x -> x >= 1, data) || throw(ArgumentError("chain sizes must be ≥ 1"))
         all(s -> s >= 1, seeds) || throw(ArgumentError("seeds must be ≥ 1"))
         all(i -> data[i] >= seeds[i], eachindex(data)) ||
             throw(ArgumentError("chain size must be ≥ number of seeds"))
