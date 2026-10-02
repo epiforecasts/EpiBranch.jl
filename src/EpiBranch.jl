@@ -201,6 +201,6 @@ export end_of_outbreak_probability
 export ContextualKernel, PairContext, CalendarKernel, StatefulKernel, record_kernel,
     LayerHost
 export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout
-export compile_contact_pairs, pairwise_surv_loglik
+export compile_contact_pairs, pairwise_surv_loglik, pairwise_surv_loglik_by_component
 
 end # module
