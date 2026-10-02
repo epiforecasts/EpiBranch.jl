@@ -136,7 +136,7 @@ function _bisect(g, lo::Float64, hi::Float64; tol::Float64 = 1.0e-6, maxiter::In
         else
             hi = mid
         end
-        (hi - lo) < tol * max(1.0, abs(mid)) && break
+        (hi - lo) < tol * max(abs(mid), eps()) && break
     end
     return (lo + hi) / 2
 end
