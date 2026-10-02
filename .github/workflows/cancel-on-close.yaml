@@ -22,4 +22,4 @@ permissions:
 
 jobs:
   cancel-on-close:
-    uses: EpiAware/.github/.github/workflows/cancel-on-close.yml@6d4e35e2515f947acbf7d2a683cbf02b341005c7
+    uses: EpiAware/.github/.github/workflows/cancel-on-close.yml@2c7ce73459772f11dad46ac7f456e35f0d296faf
