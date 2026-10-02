@@ -82,6 +82,26 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test_throws ArgumentError progression_loglik(spec, state)
     end
 
+    @testset "a death is scored by whether it happened and when" begin
+        death = Death(delay = Exponential(2.0), probability = 0.25)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.0));
+            progression = [death], attributes = clinical
+        )
+        function scored(candidate_time)
+            ind = Individual(id = 1, infection_time = 0.0)
+            ind.state[:infected] = true
+            ind.state[:onset_time] = 1.0
+            ind.state[:death_candidate_time] = candidate_time
+            return progression_loglik(spec, [ind])
+        end
+
+        # Died at 4.0, three days after the onset the delay is measured from.
+        @test scored(4.0) ≈ log(0.25) + logpdf(Exponential(2.0), 3.0)
+        # Survived: the gate alone, with no delay to score.
+        @test scored(Inf) ≈ log(1 - 0.25)
+    end
+
     @testset "a shared-draw probability gate cannot be scored on a hand-built individual" begin
         death_p, _ = exclusive_probabilities([0.64, 0.36])
         death = Death(delay = Exponential(2.0), probability = death_p)
