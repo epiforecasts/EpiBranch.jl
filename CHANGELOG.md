@@ -269,16 +269,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   on a race, or finite removal times for active pool sources; unsupported
   continuations raise `ArgumentError`. Static protection can instead be
   composed into the kernel or host traits.
-- On a race between two standing nodes (a household clique, a network edge),
-  a certain, permanent block — a constant `block_probability` of 1 past its
-  `event_time`, given neither as a `Distribution` nor a function that could
-  read differently later, as an aborted infector's onward risk already is —
-  now ends the pair instead of redrawing towards a foregone conclusion: the
-  race stops proposing along that edge, avoiding the unbounded window that
-  would otherwise raise the `ArgumentError` above. The pair remains in each
-  other's standing contacts for tracing and ring construction, which read
-  that relationship rather than the proposals; an output logging every
-  contact event still needs the draws this skips.
 - On a model with several routes, the routes an intervention's risks reach are
   selected by `EpiBranch.risk_applies(intervention, route)`: `Isolation` and
   `ContactTracing`
