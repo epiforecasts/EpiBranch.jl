@@ -925,6 +925,8 @@
             @test_throws ArgumentError OffspringCounts([1, 2], [1, 3])  # self-loop
             @test_throws ArgumentError OffspringCounts([1, 1], [2, 2])  # duplicated pair
             @test_throws ArgumentError OffspringCounts([1, 3], [2, 2])  # two infectors for case 2
+            @test_throws ArgumentError OffspringCounts([1, 2], [2, 1])  # mutual cycle
+            @test_throws ArgumentError OffspringCounts([1, 2, 3], [2, 3, 1])  # three-case cycle
             @test_throws ArgumentError OffspringCounts([1, 1], [2, 3, 4])  # length mismatch
             @test_throws ArgumentError OffspringCounts([1], [2]; unlinked = -1)
         end

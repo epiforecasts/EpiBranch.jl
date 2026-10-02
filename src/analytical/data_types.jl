@@ -54,6 +54,18 @@ function OffspringCounts(
     allunique(infectee) ||
         throw(ArgumentError("a case cannot have more than one infector"))
 
+    infector_of = Dict(infectee[i] => infector[i] for i in eachindex(infectee))
+    for start in keys(infector_of)
+        visited = Set{eltype(infector)}()
+        current = start
+        while haskey(infector_of, current)
+            current in visited &&
+                throw(ArgumentError("infector-infectee pairs must not form a transmission cycle"))
+            push!(visited, current)
+            current = infector_of[current]
+        end
+    end
+
     counts = Dict{eltype(infector), Int}(c => 0 for c in union(infector, infectee))
     for i in infector
         counts[i] += 1
