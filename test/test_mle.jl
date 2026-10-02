@@ -107,6 +107,32 @@
         @test lo < f.estimate.R < hi
     end
 
+    @testset "Parametric bootstrap over both Negative Binomial parameters" begin
+        rng = StableRNG(11)
+        data = OffspringCounts(rand(rng, NegativeBinomial(0.5, 0.5 / (0.5 + 2.0)), 400))
+
+        f = fit(data, NegativeBinomial; bootstrap = 100, rng = StableRNG(12))
+        @test f.bootstrap_ci !== nothing
+        for (par, est) in ((:R, f.estimate.R), (:k, f.estimate.k))
+            lo, hi = getproperty(f.bootstrap_ci, par)
+            @test lo <= est <= hi
+            @test isfinite(lo) && isfinite(hi)
+        end
+    end
+
+    @testset "A profile side that never crosses is reported as unbounded" begin
+        # `_profile_bound` walks outward by a fixed factor and gives up at
+        # `hi_bound`. With no bound to reach and a profile that never drops, the
+        # expansion runs out instead, which is the other way out of the search.
+        flat = _ -> 0.0
+        @test EpiBranch._profile_bound(
+            flat, 1.0, -1.0, 1; lo_bound = 1.0e-8, hi_bound = Inf
+        ) == Inf
+        @test EpiBranch._profile_bound(
+            flat, 1.0, -1.0, -1; lo_bound = 0.0, hi_bound = Inf
+        ) == 0.0
+    end
+
     @testset "MLEFit show method" begin
         data = OffspringCounts([0, 1, 2, 0, 3, 1, 0])
         f = fit(data, Poisson)
