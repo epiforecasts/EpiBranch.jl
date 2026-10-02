@@ -38,12 +38,15 @@ makedocs(;
     ]
 )
 
-# A pull request's preview is published to the same `gh-pages` branch every
-# other open pull request's docs job pushes to, so two overlapping runs race and
-# one loses the push. The build is what this job gates on, and a lost preview
-# says nothing about the documentation, so on a pull request the deploy is
-# best-effort and a failure is reported as a warning. A deploy of the released
-# or development documentation still fails the job.
+# A pull request's preview goes to the same `gh-pages` branch that every other
+# open pull request's docs job writes to, and the preview cleanup workflow
+# force-pushes there as well, so overlapping runs lose a push. Each attempt
+# re-fetches the branch in a fresh temporary clone, so retrying lands the
+# preview against whatever is there by then. Only after both attempts does the
+# run give up and warn, because the build is what this job reports on and the
+# published documentation is unaffected by a missing preview. On `main` the
+# deploy is the published documentation, so it gets one attempt and any failure
+# ends the job.
 function deploy()
     return DocumenterVitepress.deploydocs(;
         repo = "github.com/epiforecasts/EpiBranch.jl",
@@ -53,12 +56,19 @@ function deploy()
 end
 
 if get(ENV, "EPIBRANCH_DOCS_PREVIEW_BEST_EFFORT", "false") == "true"
-    try
-        deploy()
-    catch e
-        @warn "Publishing the documentation preview failed; the build itself " *
-            "succeeded. Another pull request's docs job most likely pushed to " *
-            "`gh-pages` first." exception = (e, catch_backtrace())
+    for attempt in 1:2
+        try
+            deploy()
+            break
+        catch e
+            if attempt == 2
+                @warn "Publishing the documentation preview failed twice. The " *
+                    "build succeeded; something else writing to `gh-pages` " *
+                    "most likely won both pushes." exception = (e, catch_backtrace())
+            else
+                @info "Publishing the documentation preview failed; retrying."
+            end
+        end
     end
 else
     deploy()

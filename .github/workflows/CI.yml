@@ -113,9 +113,5 @@ jobs:
       - run: julia --project=docs docs/make.jl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # On a pull request the deploy publishes a preview to `gh-pages`,
-          # which every other open pull request's docs job pushes to as well,
-          # so one of two overlapping runs loses the push. A lost preview is
-          # not a documentation problem and must not read as one: the build
-          # itself is what this job gates on. Read by `docs/make.jl`.
+          # Read by `docs/make.jl`, which explains what it does.
           EPIBRANCH_DOCS_PREVIEW_BEST_EFFORT: ${{ github.event_name == 'pull_request' }}

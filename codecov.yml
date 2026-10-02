@@ -13,12 +13,10 @@ flag_management:
 # covered even slightly less well than the project average, which most pull
 # requests are, and `project` fails on a drop of a hundredth of a point.
 #
-# `patch` carries no `threshold`, so 90% is the bar a diff actually has to
-# clear. A target and a threshold on the same explicit number would mean
-# neither figure in this file is the gate: codecov rescues a failing patch when
-# `coverage >= target - threshold`, so `80%` with `threshold: 5%` would pass at
-# 75%, and a run of such diffs would settle the project at that figure rather
-# than the 96% it sits at now.
+# `patch` has no `threshold`, so 90% is the bar. Note what that means for a
+# small diff: with nine coverable lines, eight covered is 88.9% and fails, so a
+# diff of a few lines effectively needs all of them covered. That is intended;
+# override such a one by hand rather than lowering the bar for every diff.
 coverage:
   status:
     project:
