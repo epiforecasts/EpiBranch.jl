@@ -23,6 +23,8 @@ end
 function EpiBranch.competing_risk(p::ProtectTo, parent, contact, state)
     return contact.id == p.id ? Risk(block_probability = 1.0) : nothing
 end
+# The protected contact is fixed at construction, so the block never lifts.
+EpiBranch.standing_block(::ProtectTo) = true
 
 # A custom route predicate can select a route independently of removal.
 struct ProtectOnRoute <: EpiBranch.AbstractIntervention
@@ -55,6 +57,8 @@ end
 function EpiBranch.competing_risk(b::FlatBlock, parent, contact, state)
     return parent === contact ? nothing : Risk(block_probability = b.p)
 end
+# The block reads nothing that changes, so a certain one never lifts.
+EpiBranch.standing_block(::FlatBlock) = true
 
 # The same risk with its arguments typed, as the style guide asks for. The race
 # has to find this method as readily as the untyped one above.

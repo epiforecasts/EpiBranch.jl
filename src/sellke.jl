@@ -319,22 +319,46 @@ function _intervention_removal_time(ind, interventions)
     return t
 end
 
-# Whether a fired risk stands for every later proposal on the same edge too:
-# its `event_time`, given as a plain number rather than resampled on each ask,
-# does not move and has already passed; its `block_probability`, also a plain
-# number rather than a waning closure that could give a smaller value to a
-# later exposure, is 1. A `Distribution` or function for either field could
-# read differently next time, so only the fixed-number case counts.
+"""
+    standing_block(source) -> Bool
+
+Whether a certain block `source` composes stands for every later proposal on
+the same pair, so a continuous-time race can stop proposing for that pair
+instead of redrawing towards an answer it already has. `false` by default.
+
+A source is asked this because the `Risk` it returns cannot answer it.
+`competing_risk` reads the state, so a block that is certain at one proposal
+may have lifted by the next — a ward that reopens, a campaign that ends, a
+quarantine that expires — and a `Risk` holding plain numbers looks identical in
+both cases. Declare `true` only for a source whose certain block, once in
+force for a pair, is in force for good. A race over an unbounded window needs
+that declaration to terminate; without it a certain block raises
+`ArgumentError` rather than silently dropping transmission that could still
+happen.
+"""
+standing_block(source) = false
+standing_block(w::InterventionWrapper) = standing_block(w.intervention)
+# An abort is recorded on the infector and never withdrawn, so the block it
+# composes lasts as long as the infector does.
+standing_block(::AbortedInfection) = true
+
+# Whether a resolved risk is certain and already in force at this proposal: its
+# `event_time`, a plain number rather than one resampled on each ask, has
+# passed, and its `block_probability`, also a plain number rather than a waning
+# closure that could give a smaller value to a later exposure, is 1. Necessary
+# for a standing block but not sufficient, which is what `standing_block` adds.
 function _standing_risk(risk::Risk, transmission_time)
     return risk.event_time isa Real && risk.event_time <= transmission_time &&
         risk.block_probability isa Real && risk.block_probability >= 1.0
 end
 
-# Whether `source` contributes a standing risk (see `_standing_risk`) against
-# this pair. Building its `Risk`(s) again reads only stored state and draws
-# nothing from the rng, so asking costs nothing beyond the one already-blocked
-# proposal it is asked for.
+# Whether `source` contributes a standing risk against this pair: it declares
+# its certain blocks permanent, and the risk it composes here is such a block.
+# Building its `Risk`(s) again reads only stored state and draws nothing from
+# the rng, so asking costs nothing beyond the one already-blocked proposal it is
+# asked for.
 function _any_standing_risk(source, parent, contact, state, transmission_time)
+    standing_block(source) || return false
     for risk in _iter_risks(competing_risk(source, parent, contact, state))
         _standing_risk(risk, transmission_time) && return true
     end
