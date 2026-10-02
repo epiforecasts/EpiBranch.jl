@@ -32,10 +32,9 @@ where `π_i = prob_concluded[i]` is the probability that cluster `i` is
 finished (observed size = final size). See `end_of_outbreak_probability` for a
 principled `prob_concluded` based on the generation-time distribution.
 
-With `data.min_size > 1` (see [`ChainSizes`](@ref)), every cluster's
-contribution above is additionally normalised by `P(X ≥ min_size |
-seeds_i)`, conditioning the likelihood on the data only being recorded
-once a chain reaches that size.
+Data recorded only once a chain reaches a given size are scored by passing a
+law [`observe`](@ref) has conditioned, as
+`observe(chain_size_distribution(offspring), MinimumSize(k))`.
 """
 function loglikelihood(
         data::ChainSizes, offspring::Distribution;
@@ -52,7 +51,7 @@ function loglikelihood(
         prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
     ) where {T}
     μ = mean(offspring)
-    if prob_concluded === nothing && data.min_size == 1 && all(==(1), data.seeds)
+    if prob_concluded === nothing && all(==(1), data.seeds)
         return sum(n -> _borel_logpdf(μ, n), data.data)
     end
     return _chain_size_loglik(Borel(μ), data; prob_concluded)
@@ -62,7 +61,7 @@ function loglikelihood(
         data::ChainSizes, offspring::NegativeBinomial{T};
         prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
     ) where {T}
-    if prob_concluded === nothing && data.min_size == 1 && all(==(1), data.seeds)
+    if prob_concluded === nothing && all(==(1), data.seeds)
         return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
     end
     return _chain_size_loglik(GammaBorel(offspring.r, mean(offspring)), data; prob_concluded)
@@ -78,6 +77,20 @@ rather than through `chain_size_distribution`.
 """
 function loglikelihood(
         data::ChainSizes, d::IndexChainSize;
+        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
+    )
+    return _chain_size_loglik(d, data; prob_concluded)
+end
+
+"""
+    loglikelihood(data::ChainSizes, d::TruncatedChainSize; prob_concluded = nothing)
+
+Log-likelihood of chain sizes recorded only at or above a minimum size, under
+the law a [`MinimumSize`](@ref) observation produces. `d` is already the
+chain-size law, so this routes directly to [`_chain_size_loglik`](@ref).
+"""
+function loglikelihood(
+        data::ChainSizes, d::TruncatedChainSize;
         prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
     )
     return _chain_size_loglik(d, data; prob_concluded)
@@ -121,9 +134,6 @@ function _chain_size_loglik(
                 lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
                 _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
             end
-        end
-        if data.min_size > 1
-            term -= _chain_size_right_tail_logprob(dist, data.min_size, data.seeds[i])
         end
         total += term
     end
@@ -190,6 +200,14 @@ end
 # observation: with `NoObservation` every infected case counts;
 # otherwise only the cases the observation marked `:reported`.
 _sim_chain_sizes(state, ::NoObservation) = chain_statistics(state).size
+function _sim_chain_sizes(state, o::MinimumSize)
+    return filter(>=(o.min_size), chain_statistics(state).size)
+end
+
+# The smallest size an observation could have recorded, which the empirical
+# score bins from.
+_observed_min_size(::ObservationModel) = 1
+_observed_min_size(o::MinimumSize) = o.min_size
 function _sim_chain_sizes(state, ::ObservationModel)
     counts = Dict{Int, Int}()
     for ind in state.individuals
@@ -265,15 +283,13 @@ function _chain_size_model_loglik(
     for state in states
         hit_cap = !state.extinct && state.cumulative_cases >= cap
         for v in _sim_chain_sizes(state, obs)
-            # `data.min_size` conditions the data on N ≥ min_size; dropping
-            # smaller simulated chains here scores against that same
-            # conditional distribution empirically.
-            v >= data.min_size || continue
             push!(sim_values, v)
             push!(censored, hit_cap)
         end
     end
-    return _empirical_ll(data.data, sim_values; min_val = data.min_size, censored, cap)
+    return _empirical_ll(
+        data.data, sim_values; min_val = _observed_min_size(obs), censored, cap
+    )
 end
 
 """

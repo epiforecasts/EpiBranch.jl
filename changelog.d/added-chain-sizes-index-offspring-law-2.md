@@ -1,3 +1,5 @@
-`ChainSizes` takes a `min_size`, conditioning the chain-size likelihood on
-the chain having reached at least that size, matching data that only
-records clusters once they reach it.
+`MinimumSize(k)` is an observation model for chain sizes recorded only once a
+cluster reaches `k` cases. `observe` turns a chain-size law into the
+conditional `P(N = n | N >= k)` through `TruncatedChainSize`, and the
+simulation path drops simulated clusters below `k`, so both score against the
+same distribution.

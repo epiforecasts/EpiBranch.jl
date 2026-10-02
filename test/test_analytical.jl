@@ -588,13 +588,14 @@
             @test isfinite(ll)
         end
 
-        @testset "min_size truncation" begin
+        @testset "MinimumSize conditions the chain-size law" begin
             off = NegBin(0.8, 0.5)
             dist = chain_size_distribution(off)
+            data = ChainSizes([2, 3, 5])
+            truncated = observe(dist, MinimumSize(2))
 
-            # Conditioning formula: L_i = log P(X = x_i) - log P(X ≥ min_size).
-            data = ChainSizes([2, 3, 5]; min_size = 2)
-            ll = loglikelihood(data, off)
+            # Conditioning formula: L_i = log P(X = x_i) - log P(X >= min_size).
+            ll = loglikelihood(data, truncated)
             manual = sum(
                 EpiBranch._chain_size_logpdf(dist, x, 1) -
                     EpiBranch._chain_size_right_tail_logprob(dist, 2, 1)
@@ -602,34 +603,39 @@
             )
             @test ll ≈ manual atol = 1.0e-10
 
-            # min_size = 1 (the default) is the unconditioned likelihood.
-            @test loglikelihood(ChainSizes([2, 3, 5]; min_size = 1), off) ≈
-                loglikelihood(ChainSizes([2, 3, 5]), off)
+            # `MinimumSize(1)` records everything, so it is the unconditioned law.
+            @test loglikelihood(data, observe(dist, MinimumSize(1))) ≈
+                loglikelihood(data, off)
 
-            # Conditioning on N ≥ min_size raises the log-likelihood relative
-            # to the unconditioned one (dividing by P(X ≥ min_size) < 1).
+            # Conditioning raises the log-likelihood relative to the
+            # unconditioned one, dividing by P(X >= min_size) < 1.
             unconditioned = sum(EpiBranch._chain_size_logpdf(dist, x, 1) for x in data.data)
             @test ll > unconditioned
 
-            # The Poisson AD fast path agrees with the generic path.
-            data_p = ChainSizes([2, 3, 4]; min_size = 2)
-            ll_fast = loglikelihood(data_p, Poisson(0.5))
-            d_borel = Borel(0.5)
-            manual_p = sum(
-                EpiBranch._borel_logpdf(0.5, x) -
-                    EpiBranch._chain_size_right_tail_logprob(d_borel, 2, 1)
-                    for x in data_p.data
-            )
-            @test ll_fast ≈ manual_p atol = 1.0e-10
+            # A cluster below the recorded minimum has no density under the law.
+            @test logpdf(truncated, 1) == -Inf
+            @test loglikelihood(ChainSizes([1, 3]), truncated) == -Inf
+            @test minimum(truncated) == 2
+            @test !insupport(truncated, 1)
+            @test insupport(truncated, 2)
+
+            # The conditioning follows each cluster's own seed count.
+            multi = ChainSizes([4, 5]; seeds = [1, 2])
+            @test loglikelihood(multi, observe(chain_size_distribution(Poisson(0.5)), MinimumSize(3))) ≈
+                sum(
+                EpiBranch._chain_size_logpdf(Borel(0.5), multi.data[i], multi.seeds[i]) -
+                    EpiBranch._chain_size_right_tail_logprob(Borel(0.5), 3, multi.seeds[i])
+                    for i in eachindex(multi.data)
+            ) atol = 1.0e-10
 
             # Composes with prob_concluded.
-            data_pc = ChainSizes([2, 3]; min_size = 2)
-            ll_pc = loglikelihood(data_pc, off; prob_concluded = [0.5, 0.5])
+            ll_pc = loglikelihood(
+                ChainSizes([2, 3]), observe(dist, MinimumSize(2));
+                prob_concluded = [0.5, 0.5]
+            )
             @test isfinite(ll_pc)
 
-            # Constructor validation.
-            @test_throws ArgumentError ChainSizes([1]; min_size = 2)
-            @test_throws ArgumentError ChainSizes([2]; min_size = 0)
+            @test_throws ArgumentError MinimumSize(0)
         end
 
         @testset "Per-case observation: simulation decoration" begin
@@ -890,15 +896,17 @@
             @test isfinite(ll)
         end
 
-        @testset "min_size truncation falls through to the simulation path" begin
-            # With interventions present, min_size must also apply on the
-            # simulation-based branch, not just the analytical one.
+        @testset "MinimumSize falls through to the simulation path" begin
+            # With interventions present the score is empirical, and the
+            # observation has to drop the simulated clusters below its minimum
+            # there as well, so both paths condition the same way.
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             ll = loglikelihood(
-                ChainSizes([2, 3, 2]; min_size = 2),
+                ChainSizes([2, 3, 2]),
                 ModelSpec(
                     BranchingProcess(Poisson(1.5), Exponential(5.0));
                     interventions = [iso],
+                    observation = MinimumSize(2),
                     attributes = clinical_presentation(
                         incubation_period = LogNormal(1.5, 0.5)
                     )

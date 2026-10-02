@@ -385,3 +385,36 @@ function Base.rand(rng::AbstractRNG, d::IndexChainSize)
     j == 0 && return 1
     return 1 + sum(rand(rng, d.dist) for _ in 1:j)
 end
+
+"""
+    TruncatedChainSize(base, min_size)
+
+Chain-size law of a cluster recorded only once it reaches `min_size` cases:
+`P(N = n | N ≥ min_size) = P(N = n) / P(N ≥ min_size)` under `base`, and zero
+density below `min_size`. [`observe`](@ref) builds it from a
+[`MinimumSize`](@ref) observation, and the conditioning follows each cluster's
+own seed count through the multi-seed helpers.
+"""
+struct TruncatedChainSize{D <: DiscreteUnivariateDistribution} <:
+    DiscreteUnivariateDistribution
+    base::D
+    min_size::Int
+end
+
+Distributions.minimum(d::TruncatedChainSize) = d.min_size
+Distributions.maximum(::TruncatedChainSize) = Inf
+Distributions.insupport(d::TruncatedChainSize, n::Integer) = n >= d.min_size
+Distributions.logpdf(d::TruncatedChainSize, n::Integer) = _chain_size_logpdf(d, n, 1)
+
+function _chain_size_logpdf(d::TruncatedChainSize, x::Integer, s::Integer)
+    x >= d.min_size || return oftype(_chain_size_logpdf(d.base, max(x, 1), s), -Inf)
+    return _chain_size_logpdf(d.base, x, s) -
+        _chain_size_right_tail_logprob(d.base, d.min_size, s)
+end
+
+# `log P(X ≥ x | X ≥ min_size)`: the base's survival at whichever of the two
+# bounds binds, against the survival the conditioning divides by.
+function _chain_size_right_tail_logprob(d::TruncatedChainSize, x::Integer, s::Integer)
+    return _chain_size_right_tail_logprob(d.base, max(x, d.min_size), s) -
+        _chain_size_right_tail_logprob(d.base, d.min_size, s)
+end

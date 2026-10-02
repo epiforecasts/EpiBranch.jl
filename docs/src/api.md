@@ -321,9 +321,11 @@ for simulation.
 ObservationModel
 NoObservation
 PerCaseObservation
+MinimumSize
 observe
 EpiBranch.apply_observation!
 ThinnedChainSize
+TruncatedChainSize
 ```
 
 ### Cluster-level heterogeneity
