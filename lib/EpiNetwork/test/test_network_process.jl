@@ -1139,14 +1139,22 @@ end
         # traced from node 1 but never becomes infected itself, so the race
         # never revisits it. A depth-2 ring must still grow through it to
         # reach node 3.
-        proc = NetworkProcess([[2], [1, 3], [2]], Exponential(1e9))
-        model = ModelSpec(proc;
+        proc = NetworkProcess([[2], [1, 3], [2]], Exponential(1.0e9))
+        model = ModelSpec(
+            proc;
             attributes = clinical_presentation(incubation_period = Dirac(2.0)),
-            progression = [Transition(:recovered; from = :infection, delay = 10.0,
-                terminal = true)],
-            interventions = [Isolation(onset_to_isolation_delay = Dirac(1.0)),
+            progression = [
+                Transition(
+                    :recovered; from = :infection, delay = 10.0,
+                    terminal = true
+                ),
+            ],
+            interventions = [
+                Isolation(onset_to_isolation_delay = Dirac(1.0)),
                 ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 2),
-                RingVaccination(efficacy = 0.9)])
+                RingVaccination(efficacy = 0.9),
+            ]
+        )
         st = simulate(model; initial_cases = [1], rng = StableRNG(1))
         @test !is_infected(st.individuals[2])
         @test !is_infected(st.individuals[3])
@@ -1155,11 +1163,15 @@ end
         @test is_vaccinated(st.individuals[3])
 
         # depth 1 stops at the direct contact: node 3 is never reached.
-        depth1 = ModelSpec(proc;
+        depth1 = ModelSpec(
+            proc;
             attributes = model.attributes, progression = model.progression,
-            interventions = [Isolation(onset_to_isolation_delay = Dirac(1.0)),
+            interventions = [
+                Isolation(onset_to_isolation_delay = Dirac(1.0)),
                 ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 1),
-                RingVaccination(efficacy = 0.9)])
+                RingVaccination(efficacy = 0.9),
+            ]
+        )
         st1 = simulate(depth1; initial_cases = [1], rng = StableRNG(1))
         @test is_traced(st1.individuals[2])
         @test !is_traced(st1.individuals[3])
@@ -1175,12 +1187,20 @@ end
         proc = NetworkProcess([[2], [1, 3], [2]], Exponential(1.0))
         for seed in 1:200
             action = _CountingAction()
-            model = ModelSpec(proc;
+            model = ModelSpec(
+                proc;
                 attributes = clinical_presentation(incubation_period = Dirac(2.0)),
-                progression = [Transition(:recovered; from = :infection, delay = 10.0,
-                    terminal = true)],
-                interventions = [Isolation(onset_to_isolation_delay = Dirac(1.0)),
-                    ContactTracing(OnIsolation(), 1.0, Dirac(0.0), action; depth = 2)])
+                progression = [
+                    Transition(
+                        :recovered; from = :infection, delay = 10.0,
+                        terminal = true
+                    ),
+                ],
+                interventions = [
+                    Isolation(onset_to_isolation_delay = Dirac(1.0)),
+                    ContactTracing(OnIsolation(), 1.0, Dirac(0.0), action; depth = 2),
+                ]
+            )
             simulate(model; initial_cases = [1], rng = StableRNG(seed))
             @test all(<=(1), values(action.counts))
         end
