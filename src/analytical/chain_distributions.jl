@@ -408,13 +408,20 @@ Distributions.logpdf(d::TruncatedChainSize, n::Integer) = _chain_size_logpdf(d, 
 
 function _chain_size_logpdf(d::TruncatedChainSize, x::Integer, s::Integer)
     x >= d.min_size || return oftype(_chain_size_logpdf(d.base, max(x, 1), 1), -Inf)
-    return _chain_size_logpdf(d.base, x, s) -
-        _chain_size_right_tail_logprob(d.base, d.min_size, s)
+    denom = _chain_size_right_tail_logprob(d.base, d.min_size, s)
+    isfinite(denom) || return oftype(denom, -Inf)
+    return _chain_size_logpdf(d.base, x, s) - denom
 end
 
 # `log P(X ≥ x | X ≥ min_size)`: the base's survival at whichever of the two
-# bounds binds, against the survival the conditioning divides by.
+# bounds binds, against the survival the conditioning divides by. When the
+# denominator itself has underflowed to 0 (`-Inf` on the log scale, per
+# `_chain_size_right_tail_logprob`'s own underflow convention), the
+# conditioning event is numerically indistinguishable from impossible, so
+# fall back to `-Inf` rather than letting `-Inf - (-Inf)` produce `NaN`.
 function _chain_size_right_tail_logprob(d::TruncatedChainSize, x::Integer, s::Integer)
-    return _chain_size_right_tail_logprob(d.base, max(x, d.min_size), s) -
-        _chain_size_right_tail_logprob(d.base, d.min_size, s)
+    denom = _chain_size_right_tail_logprob(d.base, d.min_size, s)
+    x <= d.min_size && return zero(denom)
+    isfinite(denom) || return oftype(denom, -Inf)
+    return _chain_size_right_tail_logprob(d.base, max(x, d.min_size), s) - denom
 end
