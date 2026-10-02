@@ -12,12 +12,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
-- `IndexChainSize` gives a chain-size law where the index case has its own
-  offspring distribution, for chains started by an introduced case whose
-  opportunity to transmit differs from that of a locally infected case.
-- `ChainSizes` takes a `min_size`, conditioning the chain-size likelihood on
-  the chain having reached at least that size, matching data that only
-  records clusters once they reach it.
 - `Isolation`'s `onset_to_isolation_delay` accepts a `Real`, a `Distribution`,
   or a function `(rng, ind) -> Real`, matching `test_sensitivity`. The function
   form can read state that another intervention recorded on the individual,
