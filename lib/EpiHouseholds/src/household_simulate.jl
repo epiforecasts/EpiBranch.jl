@@ -25,7 +25,9 @@ state is derived from the composed `progression`. Returns an EpiBranch
 With no external hazard each household is seeded with one index at time 0 and
 spreads only within the household. With an `external_hazard` — a positive scalar
 or a calendar-time distribution — community introductions emerge over
-`[0, model.obs_end]`; give the process a finite `obs_end` in that case.
+`[0, model.obs_end]`; give the process a finite `obs_end` in that case. Chosen
+`initial_cases` are seeded at time 0 regardless; any external hazard still acts
+on the rest of the population from time 0.
 """
 function _simulate(
         model::HouseholdProcess, sim_opts::SimOpts;
@@ -103,23 +105,35 @@ function _simulate(
     return state
 end
 
-# Seed one household's candidate table: community introductions under the
-# external hazard (each member drawn, kept if it lands within `[0, Tobs]`), or a
-# single seeded index at time 0 when there is no external source.
+# Seed one household's candidate table: chosen `initial_cases` at time 0, each
+# remaining member drawn from the external hazard and kept if it lands within
+# `[0, Tobs]`, or a single seeded index at time 0 when there is neither.
 function _seed_clique!(
         best, members, state, extsrc, Tobs, rng;
         initial_cases = nothing
     )
-    initial_cases === nothing ||
-        return EpiBranch._seed_initial_cases!(best, members, initial_cases)
+    if initial_cases !== nothing
+        EpiBranch._seed_initial_cases!(best, members, initial_cases)
+        _ext_active(extsrc) &&
+            _seed_external!(best, members, state, extsrc, Tobs, rng, initial_cases)
+        return nothing
+    end
     m = length(members)
     if _ext_active(extsrc)
-        for k in 1:m
-            t = _ext_draw(rng, extsrc, state.individuals[members[k]].susceptibility)
-            t <= Tobs && (best[k] = t)
-        end
+        _seed_external!(best, members, state, extsrc, Tobs, rng)
     else
         best[rand(rng, 1:m)] = 0.0
+    end
+    return nothing
+end
+
+# Draw an external-hazard introduction time for each member not in `skip`
+# (e.g. already-seeded chosen cases), keeping those landing within `[0, Tobs]`.
+function _seed_external!(best, members, state, extsrc, Tobs, rng, skip = ())
+    for k in eachindex(members)
+        members[k] in skip && continue
+        t = _ext_draw(rng, extsrc, state.individuals[members[k]].susceptibility)
+        t <= Tobs && (best[k] = t)
     end
     return nothing
 end
@@ -134,7 +148,7 @@ function _pairkernel(k, i, j, state, from)
 end
 
 function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpts)
-    return EpiBranch._validate_initial_case_ids(opts, length(model.household_of), model.external_hazard)
+    return EpiBranch._validate_initial_case_ids(opts, length(model.household_of))
 end
 
 # Separate household races revisit earlier times. Periodic shared budgets need
