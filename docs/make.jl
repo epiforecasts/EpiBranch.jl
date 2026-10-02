@@ -38,8 +38,28 @@ makedocs(;
     ]
 )
 
-DocumenterVitepress.deploydocs(;
-    repo = "github.com/epiforecasts/EpiBranch.jl",
-    devbranch = "main",
-    push_preview = true
-)
+# A pull request's preview is published to the same `gh-pages` branch every
+# other open pull request's docs job pushes to, so two overlapping runs race and
+# one loses the push. The build is what this job gates on, and a lost preview
+# says nothing about the documentation, so on a pull request the deploy is
+# best-effort and a failure is reported as a warning. A deploy of the released
+# or development documentation still fails the job.
+function deploy()
+    return DocumenterVitepress.deploydocs(;
+        repo = "github.com/epiforecasts/EpiBranch.jl",
+        devbranch = "main",
+        push_preview = true
+    )
+end
+
+if get(ENV, "EPIBRANCH_DOCS_PREVIEW_BEST_EFFORT", "false") == "true"
+    try
+        deploy()
+    catch e
+        @warn "Publishing the documentation preview failed; the build itself " *
+            "succeeded. Another pull request's docs job most likely pushed to " *
+            "`gh-pages` first." exception = (e, catch_backtrace())
+    end
+else
+    deploy()
+end
