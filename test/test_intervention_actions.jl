@@ -257,10 +257,15 @@ end
 end
 
 @testset "A dose recorded while pending is reconsidered once infection settles" begin
-    # The continuous-time race calls this straight after stamping an infection
-    # time, for a dose that arrived while the member was still uninfected. The
-    # household and network suites run the whole path; here each way out of the
-    # loop is driven directly, so the root suite covers its own source.
+    # `on_infection_settled!` is what the continuous-time race calls on every
+    # intervention straight after stamping an infection time. The household and
+    # network suites run the whole path; here each way out of
+    # `RingVaccination`'s method is driven directly, and the default is checked
+    # to be a no-op so the seam carries the dispatch.
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(5)
+    )
     rv = RingVaccination(
         efficacy = 0.0, post_exposure_efficacy = 1.0, delay_to_immunity = 1.0
     )
@@ -281,32 +286,45 @@ end
     # and an efficacy of 1 covers everyone, so the infection ends at 3.0 and
     # never reaches onset.
     aborted = pending()
-    EpiBranch._resolve_pending_dose_abort!([rv], aborted, StableRNG(1))
+    EpiBranch.on_infection_settled!(rv, aborted, state, StableRNG(1))
     @test aborted.state[:infection_aborted_time] == 3.0
     @test isnan(onset_time(aborted))
 
     # Immunity at 3.0 falls after an onset at 2.5, too late to abort anything.
     late = pending(incubation = 0.5)
-    EpiBranch._resolve_pending_dose_abort!([rv], late, StableRNG(1))
+    EpiBranch.on_infection_settled!(rv, late, state, StableRNG(1))
     @test !haskey(late.state, :infection_aborted_time)
 
     # No dose on the member: nothing to reconsider.
     undosed = pending(vaccinated = false)
-    EpiBranch._resolve_pending_dose_abort!([rv], undosed, StableRNG(1))
+    EpiBranch.on_infection_settled!(rv, undosed, state, StableRNG(1))
     @test !haskey(undosed.state, :infection_aborted_time)
 
-    # A dose with no post-exposure efficacy is passed over before its time is
-    # read, and an intervention that is not a vaccination before that.
-    for iv in (RingVaccination(efficacy = 0.8), Isolation(onset_to_isolation_delay = Dirac(0.0)))
+    # A dose with no post-exposure efficacy returns before its time is read.
+    plain = pending()
+    EpiBranch.on_infection_settled!(
+        RingVaccination(efficacy = 0.8), plain, state, StableRNG(1)
+    )
+    @test !haskey(plain.state, :infection_aborted_time)
+
+    # An intervention with no method of its own gets the no-op default, so the
+    # engine needs no knowledge of which types take part.
+    for iv in (
+            Isolation(onset_to_isolation_delay = Dirac(0.0)),
+            ContactTracing(OnIsolation(), 1.0, Dirac(0.0)),
+            AppointmentAction(),
+        )
         untouched = pending()
-        EpiBranch._resolve_pending_dose_abort!([iv], untouched, StableRNG(1))
+        @test EpiBranch.on_infection_settled!(iv, untouched, state, StableRNG(1)) ===
+            nothing
         @test !haskey(untouched.state, :infection_aborted_time)
     end
 
-    # A `Scheduled` wrapper is unwrapped, so a scheduled dose aborts too.
+    # A wrapper delegates, so a scheduled dose aborts too. The protection comes
+    # from the recorded dose, so a window that has closed does not withdraw it.
     wrapped = pending()
-    EpiBranch._resolve_pending_dose_abort!(
-        [Scheduled(rv; start_time = 0.0)], wrapped, StableRNG(1)
+    EpiBranch.on_infection_settled!(
+        Scheduled(rv; end_time = 0.0), wrapped, state, StableRNG(1)
     )
     @test wrapped.state[:infection_aborted_time] == 3.0
 end

@@ -173,6 +173,24 @@ model proposes. Not read by the generation-based engine.
 infectious_removal_time(::AbstractIntervention, ::Individual) = Inf
 
 """
+    on_infection_settled!(intervention, individual, state, rng)
+
+Continuous-time models only: called on each case the moment the race fixes its
+infection time, before the onset derived from it, the clinical transitions, or
+the other intervention hooks read it.
+
+The place for an effect that has to be reconsidered against the exposure the
+race has just chosen, rather than the one standing when the intervention acted.
+A dose given to a still-uninfected member of the race is the worked example:
+when it was given the member had no infection time to abort, and
+[`RingVaccination`](@ref) uses this hook to decide the abort once it does.
+
+The race's own `rng` is passed rather than taken from `state`, so a draw here
+stays in the stream the race threads. Default: no-op.
+"""
+on_infection_settled!(::AbstractIntervention, individual, state, rng) = nothing
+
+"""
     reset!(intervention, individual)
 
 Undo the effect of an intervention on an individual. Called by

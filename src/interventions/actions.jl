@@ -272,7 +272,7 @@ continuous_actions(::GroupVaccination) = true
 # A finite `eligibility_window` needs the candidate's own exposure to check
 # against, which a pending, still-uninfected member of a continuous-time race
 # does not have yet (see `_within_window`). `post_exposure_efficacy` has no
-# such requirement: `_resolve_pending_dose_abort!` reconsiders it once that
+# such requirement: `on_infection_settled!` reconsiders it once that
 # member's own infection settles, against the exposure the race then knows.
 function continuous_actions(rv::RingVaccination)
     return rv.eligibility_window isa Real && rv.eligibility_window == Inf

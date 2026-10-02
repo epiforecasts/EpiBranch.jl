@@ -863,25 +863,22 @@ function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     return nothing
 end
 
-# A dose given to a pending, still-uninfected member of a continuous-time
-# race (household, network, routed network) is recorded on it before its own
+# A dose given to a pending, still-uninfected member of a continuous-time race
+# (household, network, routed network) is recorded on it before its own
 # infection is settled, so `_abort_infection!` finds nothing to check against
 # yet (`contact.infection_time` is still `NaN`) and does not draw. Once the
-# race settles that member's infection, this reconsiders any dose already on
-# it against the now-final exposure. The continuous-time loop calls it right
-# after stamping the infection time, before onset and the clinical
-# transitions it feeds, so an abort found here suppresses them exactly as one
-# found when the dose is given after the exposure does on the generation
-# engine.
-function _resolve_pending_dose_abort!(interventions, ind, rng)
-    for iv in interventions
-        rv = _unwrap_scheduled(iv)
-        rv isa RingVaccination || continue
-        _maybe_positive(rv.post_exposure_efficacy) || continue
-        vacc_t = _dose_time(dose_label(rv), ind)
-        vacc_t === nothing && continue
-        _abort_infection!(rv, ind, vacc_t, rng)
-    end
+# race settles that member's infection, this reconsiders the dose against the
+# now-final exposure, which suppresses onset and the clinical transitions
+# exactly as a dose given after the exposure does on the generation engine.
+#
+# The protection derives from the recorded dose rather than from a schedule's
+# clock, as `persistent_competing_risks` says, so a `Scheduled` wrapper that
+# has since switched off does not withdraw it.
+function on_infection_settled!(rv::RingVaccination, ind, state, rng)
+    _maybe_positive(rv.post_exposure_efficacy) || return nothing
+    vacc_t = _dose_time(dose_label(rv), ind)
+    vacc_t === nothing && return nothing
+    _abort_infection!(rv, ind, vacc_t, rng)
     return nothing
 end
 

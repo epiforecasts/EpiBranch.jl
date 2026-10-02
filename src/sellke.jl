@@ -758,12 +758,13 @@ function _sellke_race!(
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
         end
-        # A dose given while `ind` was still a pending, uninfected member (see
-        # `continuous_actions(::RingVaccination)`) is already on its state; now
-        # that its own infection has settled, reconsider that dose against the
-        # exposure the race has just fixed, before onset or a transition reads
-        # it.
-        _resolve_pending_dose_abort!(interventions, ind, rng)
+        # The infection time is now fixed, so an intervention whose effect
+        # depends on the exposure the race chose can settle it (see
+        # `on_infection_settled!`), before the onset derived from it or any
+        # transition reads it.
+        for iv in interventions
+            on_infection_settled!(iv, ind, state, rng)
+        end
         # A pre-created node has no infection time, and so no onset, until now.
         # Derive the onset from the infection time before transitions and
         # interventions, such as onset-triggered isolation, read it.
