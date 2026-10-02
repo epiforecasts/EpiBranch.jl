@@ -145,6 +145,18 @@
         end
     end
 
+    @testset "Bootstrap interval for k reflects an unidentified point estimate" begin
+        # Every cluster the same size, with no seed variation, carries no
+        # information about dispersion: each bootstrap replicate's k is itself
+        # unidentified, so the percentile interval should say so rather than
+        # bracket the search cap as if it were a precise estimate.
+        data = ChainSizes(fill(500, 50))
+        f = fit(data, NegativeBinomial; bootstrap = 5, rng = StableRNG(1))
+
+        @test f.estimate.k == Inf
+        @test f.bootstrap_ci.k == (Inf, Inf)
+    end
+
     @testset "fit validates level" begin
         data = OffspringCounts([0, 1, 2, 0, 3, 1, 0, 2, 1, 4])
         for level in (1.0, 1.5, -0.1, 0.0)

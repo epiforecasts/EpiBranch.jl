@@ -284,9 +284,10 @@ function _bootstrap_ci(
         data, family::Type{NegativeBinomial}, θ̂::NamedTuple,
         n_boot::Int, level::Real, rng::AbstractRNG
     )
-    ests = [_point_estimate(_resample(data, rng, NegBin(θ̂.R, θ̂.k)), family) for _ in 1:n_boot]
+    resamples = [_resample(data, rng, NegBin(θ̂.R, θ̂.k)) for _ in 1:n_boot]
+    ests = [_point_estimate(d, family) for d in resamples]
     Rs = [e[1] for e in ests]
-    ks = [e[2] for e in ests]
+    ks = [_report_k(d, e[1], e[2]) for (d, e) in zip(resamples, ests)]
     return (R = _percentile_interval(Rs, level), k = _percentile_interval(ks, level))
 end
 
