@@ -80,12 +80,60 @@ end
 """Whether the individual is asymptomatic."""
 is_asymptomatic(ind::Individual) = get(ind.state, :asymptomatic, false)::Bool
 
-"""Whether the individual's infection was aborted before symptom onset, as a
-post-exposure dose of [`RingVaccination`](@ref) can do. The infection lasts
-until `:infection_aborted_time` and ends there, before any onset. The abort is
-recorded against the contact's exposure at the time the dose is given, or at a
-later exposure of a contact already given it. It is removed when infection is
-resolved if that exposure does not infect the contact before the abort time."""
+"""
+    infection_aborted_time(ind)
+
+Time at which the individual's infection was aborted before symptom onset
+(`Inf` if it was not); a dual under AD. Recorded by
+[`abort_infection!`](@ref EpiBranch.abort_infection!).
+"""
+function infection_aborted_time(ind::Individual{T}) where {T}
+    return convert(T, get(ind.state, :infection_aborted_time, T(Inf)))::T
+end
+
+"""
+    abort_infection!(ind, time)
+
+End the individual's infection at `time`, before symptom onset, as a
+post-exposure treatment would. For intervention authors: call it from any hook
+once the individual has an infection time. Several aborts keep the earliest.
+
+The engine then treats the infection as ended at `time` on every transmission
+model: the individual stays a case but transmits nothing from `time` on, whether
+or not the intervention that aborted it is still active, and every route window
+closes there. It has no onset (`:onset_time` is `NaN` while `:asymptomatic`
+stays `false`), so nothing triggered by onset happens, and any clinical
+transition that would take effect at or after `time` is undone (see
+[`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)).
+
+On the generation-based engine an intervention acting before infection is
+resolved, in `apply_post_transmission!`, sees each contact's provisional
+infection time, its earliest exposure. If resolution leaves the contact
+uninfected, or infected at or after `time`, the abort did not end that
+infection and the engine discards it, restoring the onset.
+
+Throws an `ArgumentError` unless `time` falls after the infection time and,
+for an individual with a finite `:incubation_period`, before its onset.
+"""
+function abort_infection!(ind::Individual, time::Real)
+    ind.infection_time < time || throw(
+        ArgumentError(
+            "an infection can only be aborted after it starts (infection time " *
+                "$(ind.infection_time), abort time $time)"
+        )
+    )
+    incubation = get(ind.state, :incubation_period, NaN)
+    isnan(incubation) || time < ind.infection_time + incubation || throw(
+        ArgumentError(
+            "an infection can only be aborted before symptom onset (onset " *
+                "$(ind.infection_time + incubation), abort time $time)"
+        )
+    )
+    ind.state[:infection_aborted_time] = min(infection_aborted_time(ind), time)
+    _set_onset_from_incubation!(ind)
+    return nothing
+end
+
 _infection_aborted(ind::Individual) = haskey(ind.state, :infection_aborted_time)
 
 """Whether the individual develops symptoms: it is not asymptomatic and its

@@ -17,6 +17,9 @@ public reset!
 public required_fields
 public infectious_removal_time
 public risk_applies
+# End an infection early from any intervention hook, and read when it ended.
+public abort_infection!
+public infection_aborted_time
 
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:

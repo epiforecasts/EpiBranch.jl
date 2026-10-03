@@ -375,7 +375,7 @@ function _route_close(ind, w::RouteWindow, interventions)
     if INTERVENTION_REMOVAL in w.until
         t = min(t, _intervention_removal_time(ind, interventions))
     end
-    return min(t, get(ind.state, :infection_aborted_time, Inf))
+    return min(t, infection_aborted_time(ind))
 end
 
 # The one window of `_sellke_race!`'s `from`/`until`/`targets` shorthand. Reading
