@@ -222,6 +222,21 @@ end
         end
     end
 
+    @testset "a waning effect on a bounded contact interval past its support" begin
+        # Follow-up runs past the end of the kernel's support, where the
+        # cumulative hazard is infinite and escape is impossible.
+        bounded = Uniform(0.0, 4.0)
+        waned = VaccineEffect(efficacy = 0.5, mode = LeakyMode(), waning = dt -> exp(-dt))
+        escaped = data(NaN; followup_end = 6.0)
+        @test pairwise_surv_loglik(bounded, escaped; susceptibility = waned) == -Inf
+        calendar = PairKernel(ctx -> bounded; calendar = Steps([2.0], [1.0, 0.5]))
+        @test pairwise_surv_loglik(calendar, escaped; susceptibility = waned) == -Inf
+        # Within the support the waning integral is finite.
+        inside = data(NaN; followup_end = 3.0)
+        @test isfinite(pairwise_surv_loglik(bounded, inside; susceptibility = waned))
+        @test isfinite(pairwise_surv_loglik(calendar, inside; susceptibility = waned))
+    end
+
     @testset "efficacy must be a fixed value" begin
         drawn = VaccineEffect(efficacy = Beta(2.0, 2.0), mode = LeakyMode())
         @test_throws ArgumentError pairwise_surv_loglik(k, data(NaN); susceptibility = drawn)

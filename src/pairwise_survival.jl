@@ -1208,10 +1208,15 @@ function _scaled_cumhazard(m::HazardScaling{<:Real, <:Real}, kernel, origin, sto
 end
 function _scaled_cumhazard(m::HazardScaling, kernel, origin, stop)
     boundary = clamp(m.start - origin, zero(stop), stop)
+    before = cumhazard(kernel, boundary)
+    # A bounded profile's survival reaches zero at the top of its support, past
+    # which its hazard is undefined, so the cumulative hazard is infinite there,
+    # as the kernel's own `cumhazard` has it.
+    stop < maximum(kernel) || return oftype(float(before), Inf)
     after, _ = quadgk(
         s -> hazard(kernel, s) * _scaling_at(m.factor, origin + s - m.start), boundary, stop
     )
-    return cumhazard(kernel, boundary) + after
+    return before + after
 end
 
 # The log-hazard `lh` at calendar time `t` under a modifier.

@@ -424,6 +424,7 @@ end
 
 Base.rand(rng::AbstractRNG, k::_CalendarScaledKernel) = _time_at_log_survival(k, log(rand(rng)))
 Base.minimum(k::_CalendarScaledKernel) = minimum(k.profile)
+Base.maximum(k::_CalendarScaledKernel) = maximum(k.profile)
 Distributions.partype(k::_CalendarScaledKernel) = Distributions.partype(k.profile)
 
 # The segment starting at time-since-opening `t_lo`: its multiplier and the
