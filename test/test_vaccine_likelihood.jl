@@ -143,6 +143,16 @@ end
         ) +
             (logh(3.0) + log1p(-0.4 * decay(3.0 - τ)))
         @test pairwise_surv_loglik(k, infected; susceptibility = waned) ≈ expected_event rtol = 1.0e-6
+
+        # a calendar schedule halving the rate from day 3 multiplies the waning
+        # discount under the same integral.
+        calendar = PairKernel(ctx -> k; calendar = Steps([3.0], [1.0, 0.5]))
+        m(s) = s < 3.0 ? 1.0 : 0.5
+        on_calendar, _ = EpiBranch.quadgk(
+            s -> 0.5 * m(s) * (s < τ ? 1.0 : 1 - 0.4 * decay(s - τ)), 0.0, τ, 3.0, 5.0
+        )
+        @test pairwise_surv_loglik(calendar, escaped; susceptibility = waned) ≈
+            -on_calendar rtol = 1.0e-6
     end
 
     @testset "differentiable in efficacy" begin

@@ -412,6 +412,8 @@ function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
     return loghazard(k.profile, τ) + log(calendar_multiplier(k.calendar, k.opening + τ))
 end
 
+SurvivalDistributions.hazard(k::_CalendarScaledKernel, τ::Real) = _calendar_hazard(k, τ)
+
 Distributions.logccdf(k::_CalendarScaledKernel, τ::Real) = -cumhazard(k, τ)
 
 function Distributions.invlogccdf(k::_CalendarScaledKernel, lp::Real)
