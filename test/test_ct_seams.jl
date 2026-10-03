@@ -369,10 +369,12 @@ end
         ind.state[:traced] = true
         ind.state[:traced_by] = 7
         ind.state[:trace_level] = 2
+        ind.state[:ring_propagated] = true
         EpiBranch.reset!(ct, ind)
         @test ind.state[:traced] == false
         @test !haskey(ind.state, :traced_by)
         @test !haskey(ind.state, :trace_level)
+        @test !haskey(ind.state, :ring_propagated)
     end
 
     @testset "trace_level lines up with the ring on a tree sim" begin
