@@ -183,6 +183,7 @@ EpiBranch.competing_risk
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.risk_depends_on_infector
+EpiBranch.standing_block
 EpiBranch.intervention_time
 EpiBranch.reset!
 is_active

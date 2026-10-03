@@ -233,6 +233,7 @@ ones your intervention needs (all default to no-ops).
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
 | `on_infection_settled!(iv, individual, state, rng)` | Continuous-time models only: once the race fixes a case's infection time, before its onset or transitions read it | The case, and the race's own `rng` | `nothing` (mutate the case's `state` in place; default no-op) |
 | `risk_applies(iv, route)` | Continuous-time models selecting risks for a route (`nothing` for an external introduction) | Nothing | `Bool`; defaults to `true` |
+| `standing_block(iv)` | Continuous-time models deciding whether a certain block has settled a pair for good | Nothing | `Bool`; defaults to `false` |
 | `risk_depends_on_infector(iv)` | Before a fixed-size pool with more than one mixing group runs | Nothing | `Bool`: whether `competing_risk` can block a contact differently depending on its infector (default `true` when the type has its own `competing_risk`) |
 
 ### Which hooks fire on which engine
@@ -323,6 +324,20 @@ What this means in practice:
   `EpiBranch.INTERVENTION_REMOVAL` in `until`. Wrappers forward the predicate.
   The generation engine applies every risk to every contact; model-provided
   risks and host multipliers also apply on every route.
+- [`EpiBranch.standing_block`](@ref) tells a continuous-time race that a
+  certain block of yours, once in force for a pair, never lifts, so the race
+  can stop proposing along that pair rather than redraw towards an answer it
+  already has. The `Risk` you return cannot carry this, because
+  `competing_risk` reads the state: a block that is certain at one proposal may
+  have lifted by the next, and both cases return the same plain numbers.
+  Declare it only when the block is permanent; a race over an unbounded window
+  needs the declaration to terminate, and without it a certain block raises
+  `ArgumentError` rather than quietly dropping transmission that could still
+  happen.
+
+  ```julia
+  EpiBranch.standing_block(::MyClosedWard) = true
+  ```
 - An external intervention can choose any subset of routes without adding a
   scope type. For example, a removal effect can follow the window's censoring:
 
