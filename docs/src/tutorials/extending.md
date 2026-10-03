@@ -74,6 +74,7 @@ downstream packages should pick names that do not collide.
 | `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff; may precede onset, so hold it back to onset |
 | `:trace_time` | `Float64` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` / `trace_contacts!` |
+| `:ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!` |
 | `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | Post-simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |

@@ -250,6 +250,118 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         ) === nothing
     end
 
+    @testset "The race's tracing walk grows a ring through uninfected contacts" begin
+        # The structure-driven processes that call this walk live in the
+        # companion packages, so it is driven directly here on a path graph
+        # 1-2-3-4 in which only node 1 is a case.
+        function walk(depth; timed = false, wrap = identity)
+            ct = wrap(ContactTracing(TraceEveryone(), 1.0, Dirac(0.0); depth))
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(1.0), Exponential(5.0)),
+                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+            )
+            EpiBranch.add_individuals!(state, 4, [ct])
+            case = state.individuals[1]
+            case.state[:infected] = true
+            case.infection_time = 0.0
+            set_isolated!(case, 2.0)
+            neighbours = [[2], [1, 3], [2, 4], [3]]
+            # Node 3 cannot be reached before time 50, as on a route that
+            # opens late.
+            opens = Dict(3 => 50.0)
+            contacts = timed ?
+                (i, st) -> ((j, get(opens, j, -Inf)) for j in neighbours[i]) :
+                (i, st) -> neighbours[i]
+            pos = Dict(i => i for i in 1:4)
+            processed = [true, false, false, false]
+            reached = EpiBranch._trace_from!(
+                state, case, [ct], contacts, pos, processed
+            )
+            return state.individuals, reached
+        end
+
+        inds, reached = walk(3)
+        @test all(is_traced, inds[2:4])
+        @test [inds[i].state[:ring_remaining] for i in 2:4] == [2, 1, 0]
+        @test [inds[i].state[:traced_by] for i in 2:4] == [1, 2, 3]
+        @test !any(is_infected, inds[2:4])
+        # The walk reports who it reached, which is what the action layer is
+        # offered: a ring past the case's own neighbours included.
+        @test reached == Set([2, 3, 4])
+
+        # The ring stops at its radius.
+        inds, reached = walk(2)
+        @test is_traced(inds[3])
+        @test !is_traced(inds[4])
+        @test reached == Set([2, 3])
+
+        # A contact reached late on its route is traced no earlier than that,
+        # and the ring past it is timed from its trace.
+        inds, _ = walk(3; timed = true)
+        @test isolation_time(inds[2]) == 2.0
+        @test isolation_time(inds[3]) == 50.0
+        @test isolation_time(inds[4]) == 50.0
+
+        # A schedule gates the walk: inside its window the ring grows as it
+        # ever did, and outside it nothing is kept active, so the frontier
+        # stops at the case's own contacts.
+        inds, reached = walk(3; wrap = ct -> Scheduled(ct; start_time = 0.0))
+        @test all(is_traced, inds[2:4])
+        @test reached == Set([2, 3, 4])
+        inds, reached = walk(3; wrap = ct -> Scheduled(ct; start_time = 1000.0))
+        @test !any(is_traced, inds[2:4])
+        # The case's own contacts were still offered; nothing beyond them was,
+        # because an inactive schedule keeps nobody active.
+        @test reached == Set([2])
+    end
+
+    @testset "Scheduled resetting a ring member lets a later trace grow the ring" begin
+        # A ring member that has already grown the ring, and whose trace a
+        # `Scheduled` start time then undoes, must behave as never traced: a
+        # later trace that the schedule keeps grows the ring through it again.
+        ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 2)
+        sched = Scheduled(ct; start_time = 10.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+        state.max_infection_time = 20.0
+        function case(id, isolated_at)
+            ind = Individual(id = id)
+            EpiBranch.initialise_individual!(ct, ind, state)
+            ind.state[:infected] = true
+            set_isolated!(ind, isolated_at)
+            return ind
+        end
+        function contact(id)
+            ind = Individual(id = id)
+            EpiBranch.initialise_individual!(ct, ind, state)
+            ind.state[:infected] = false
+            return ind
+        end
+        member, first_out, second_out = contact(10), contact(11), contact(12)
+
+        # Traced after the start, so kept, and grows the ring.
+        EpiBranch.trace_contacts!(sched, state, case(1, 12.0), [member])
+        EpiBranch.trace_contacts!(sched, state, member, [first_out])
+        @test is_traced(first_out)
+        @test member.state[:ring_propagated]
+
+        # A second case traces the member earlier, before the start: the
+        # schedule undoes the trace altogether.
+        EpiBranch.trace_contacts!(sched, state, case(2, 5.0), [member])
+        @test !is_traced(member)
+        @test !haskey(member.state, :ring_remaining)
+        @test !haskey(member.state, :ring_propagated)
+
+        # A third case traces it after the start, and the ring grows through
+        # it once more.
+        EpiBranch.trace_contacts!(sched, state, case(3, 15.0), [member])
+        @test is_traced(member)
+        EpiBranch.trace_contacts!(sched, state, member, [second_out])
+        @test is_traced(second_out)
+    end
+
     @testset "Isolation keeps the earliest pathway when already isolated" begin
         # A quarantine written by ContactTracing leaves `:isolated` set before
         # Isolation resolves the individual. That is the ordering the
