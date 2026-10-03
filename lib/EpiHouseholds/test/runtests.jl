@@ -1082,12 +1082,9 @@ end
     include("test_offspring.jl")
 end
 
-include("test_contextual_kernels.jl")
 include("test_likelihood_composition.jl")
 include("test_initial_cases.jl")
 include("test_actions.jl")
 include("test_vaccine_mode.jl")
 
-include("test_calendar_kernels.jl")
-
-include("test_stateful_kernels.jl")
+include("test_pair_kernels.jl")

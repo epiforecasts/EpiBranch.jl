@@ -26,9 +26,13 @@ household_final_size
 ## Pairwise survival likelihood
 
 ```@docs
-ContextualKernel
-CalendarKernel
-StatefulKernel
+PairKernel
+Steps
+EpiBranch.calendar_multiplier
+EpiBranch.next_calendar_break
+EpiBranch.calendar_shape
+EpiBranch.PiecewiseConstantCalendar
+EpiBranch.SmoothCalendar
 record_kernel
 PairContext
 LayerHost

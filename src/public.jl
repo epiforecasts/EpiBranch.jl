@@ -72,6 +72,11 @@ public contact_structure
 public followup_end
 
 public pair_kernel
+# A calendar schedule for a `PairKernel` implements `calendar_multiplier`, and
+# either `next_calendar_break` (piecewise constant, the default shape) or a
+# `calendar_shape` method returning `SmoothCalendar()`.
+public calendar_multiplier, next_calendar_break, calendar_shape,
+    PiecewiseConstantCalendar, SmoothCalendar
 public infection_likelihood_compatible
 public InterventionAction, intervention_actions, action_draw!, apply_actions!,
     continuous_actions
