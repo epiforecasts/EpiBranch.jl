@@ -475,6 +475,14 @@ supplies_contacts(::TransmissionModel) = false
 function _trace_from!(state, infector, interventions, contacts, pos, processed)
     contacts === nothing && return nothing
     any(traces_contacts, interventions) || return nothing
+    return _walk_ring!(state, infector, interventions, contacts, pos, processed)
+end
+
+# The walk itself, which reports the members it offered to tracing. A ring
+# wider than one hop reaches people the settled case does not neighbour, and
+# the action layer has to be offered those too; which of them a tracing policy
+# actually reached is its own business, and the layer reads that from them.
+function _walk_ring!(state, infector, interventions, contacts, pos, processed)
     visited = Set{Int}((infector.id,))
     frontier = Individual[infector]
     while !isempty(frontier)
@@ -513,7 +521,8 @@ function _trace_from!(state, infector, interventions, contacts, pos, processed)
             end
         end
     end
-    return nothing
+    delete!(visited, infector.id)
+    return visited
 end
 
 # Warn once (per `simulate` call) when a continuous-time model is handed
@@ -824,10 +833,10 @@ function _sellke_race!(
         _set_onset_from_incubation!(ind)
         resolve_transitions!(state, ind)
         _resolve_interventions!(state, ind, interventions)
-        _trace_from!(state, ind, interventions, contacts, pos, processed)
+        traced = _trace_from!(state, ind, interventions, contacts, pos, processed)
         contacts === nothing ||
             _apply_continuous_actions!(
-            state, ind, interventions, members, processed, contacts, pos
+            state, ind, interventions, members, processed, contacts, pos, traced
         )
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1
 
