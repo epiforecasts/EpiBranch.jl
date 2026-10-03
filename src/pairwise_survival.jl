@@ -419,7 +419,20 @@ end
 # The likelihood scores one population-level efficacy. A `Distribution` or
 # function draws a value per vaccinated individual in simulation, and the
 # likelihood has no per-host draw to read it from.
-_fitted_efficacy(efficacy::Real) = efficacy
+function _fitted_efficacy(efficacy::Union{AbstractFloat, Integer, Rational})
+    0 <= efficacy <= 1 || _efficacy_out_of_range(efficacy)
+    return efficacy
+end
+# An AD number at a bound compares by the sign of its derivative, as for a
+# scaling factor, so thresholds just outside [0, 1] test the value alone.
+function _fitted_efficacy(efficacy::Real)
+    (efficacy < -floatmin(Float64) || efficacy > 1 + eps(Float64)) &&
+        _efficacy_out_of_range(efficacy)
+    return efficacy
+end
+function _efficacy_out_of_range(efficacy)
+    throw(ArgumentError("a vaccine's efficacy must lie in [0, 1], got $efficacy"))
+end
 function _fitted_efficacy(efficacy)
     throw(
         ArgumentError(

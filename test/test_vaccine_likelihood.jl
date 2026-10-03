@@ -185,6 +185,22 @@ end
         )
         @test_throws ArgumentError f([1.5])
         @test_throws ArgumentError ForwardDiff.gradient(f, [1.5])
+        for vaccine in (
+                VaccineEffect(efficacy = 1.5, mode = LeakyMode(), waning = dt -> 1.0),
+                VaccineEffect(efficacy = 1.5, mode = AllOrNothingMode()),
+                VaccineEffect(efficacy = -0.5, mode = LeakyMode()),
+            )
+            @test_throws ArgumentError pairwise_surv_loglik(
+                k, escaped; susceptibility = vaccine
+            )
+        end
+        waned(θ) = pairwise_surv_loglik(
+            k, escaped;
+            susceptibility = VaccineEffect(
+                efficacy = θ[1], mode = LeakyMode(), waning = dt -> 1.0
+            )
+        )
+        @test_throws ArgumentError ForwardDiff.gradient(waned, [1.5])
     end
 
     @testset "efficacy must be a fixed value" begin
