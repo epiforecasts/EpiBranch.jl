@@ -90,9 +90,9 @@ time reliably precedes any competing recovery/removal — otherwise the realised
 case-fatality is lower (with equal delays and a competing `Recovery`, roughly
 halved). Gating `Death` and a second terminal transition independently — say
 at `CFR` and `1 - CFR` — does not fix this either: each draws its own
-Bernoulli, so about `CFR * (1 - CFR)` of cases have both occur (resolved by
-whichever candidate time is earlier) and another `CFR * (1 - CFR)` have
-neither, leaving `:outcome` unset. `Recovery` has no `probability` of its own
+Bernoulli, so both occur (resolved by whichever candidate time is earlier) on
+about `CFR * (1 - CFR)` of cases, and neither occurs — leaving `:outcome`
+unset — on another `CFR * (1 - CFR)`. `Recovery` has no `probability` of its own
 to gate this way in any case — it always occurs once its anchor is reached.
 For an exact CFR, replace the competing `Recovery` with a `Transition`
 carrying its own `probability`, and build both probabilities with
