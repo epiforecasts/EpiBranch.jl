@@ -29,7 +29,7 @@ should_stop(r::MaxChainLength, state) =
 
 The structure-driven (Sellke) models run to extinction or a time bound
 rather than stepping through `should_stop` each generation; a rule that
-should be able to end such a run as well also overrides
+should also be able to end such a run overrides
 [`time_bound`](@ref EpiBranch.time_bound), as [`MaxTime`](@ref) does.
 """
 abstract type AbstractStoppingRule end

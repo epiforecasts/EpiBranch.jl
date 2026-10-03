@@ -18,7 +18,7 @@ function EpiBranch.apply_post_transmission!(
 end
 
 # A third effect mode defined outside the package, as all-or-nothing as
-# `AllOrNothingMode` and so equally unable to combine with `waning`. Used
+# `AllOrNothingMode` and so unable to combine with `waning`. Used
 # below to check that `VaccineEffect` rejects the combination through the
 # `supports_waning` trait rather than a hard-coded `AllOrNothingMode` check.
 struct _TestBlockedMode <: AbstractEffectMode end
