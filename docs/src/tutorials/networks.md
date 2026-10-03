@@ -390,7 +390,7 @@ println("Cases: ", size(df, 1),
 A `NetworkProcess` model can be fitted as well as simulated. The continuous-time
 race that simulates it is the generative model of the pairwise survival
 likelihood (Kenah 2011), which the [household models](households.md) also use.
-The likelihood scores the **infection layer**: who was infected, when, and when
+The likelihood covers the **infection layer**: who was infected, when, and when
 each case's infectious window opened and closed. Who infected whom is not needed.
 Each node accrues hazard from every infectious in-neighbour over the time they
 overlapped, and each infected node adds the hazard summed over all its possible
@@ -430,7 +430,7 @@ households tutorial shows.
 With an `external_hazard`, pass it to `pairwise_surv_loglik` and compile the
 layout with `external = true`. As in the simulation, the community hazard
 introduces cases up to the data's `obs_end` and spread along the edges continues
-after it. To score data that stop at a date, pass that date as `followup_end` to
+after it. To evaluate data that stop at a date, pass that date as `followup_end` to
 `NetworkInfections` (or `network_infections`): infections and exposure after it
 are ignored, and a node still infectious at the end of follow-up keeps a removal
 time of `Inf`.
@@ -451,7 +451,7 @@ whether a configuration is possible at all depends on the times alone.
 
 Fitting the community hazard itself has the same caveat as for households: a
 positive `external_hazard` and no community hazard are different conditionings,
-and the density jumps between them at `α = 0`. Score the two models separately;
+and the density jumps between them at `α = 0`. Evaluate the two models separately;
 [Fitting a community hazard](@ref) explains why and shows the log-density near
 zero. The same automatic-differentiation limit also applies: fit a `Gamma` kernel
 or community hazard with a reverse-mode backend such as Mooncake.

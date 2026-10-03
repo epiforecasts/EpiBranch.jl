@@ -463,7 +463,7 @@ function _sellke_pool!(
                             "The likely cause is a case whose infectious window never " *
                             "closes — either the progression has no terminal transition " *
                             "reaching one of `until`'s states, or one is reachable but " *
-                            "gated so that some cases fire none of them (see " *
+                            "gated so that some cases reach none of them (see " *
                             "`exclusive_probabilities` for terminal transitions meant " *
                             "to partition the population exactly)."
                     )

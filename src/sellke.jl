@@ -22,7 +22,7 @@ end
 
 # ── Interventions on the continuous-time (Sellke) models ─────────────
 # These models run their own event loop rather than the generation engine, so
-# the engine's per-generation hook passes never fire. Two seams carry an
+# the engine's per-generation hook passes never run. Two seams carry an
 # intervention's effect instead. The first is the infectious window: an
 # intervention that removes a case from onward transmission (isolation)
 # shortens it. After a case's natural history is stamped, run each
@@ -305,7 +305,7 @@ function _next_contact(rng::AbstractRNG, kernel, m::Real, dt, end_dt)
                 "contact kernel or host traits. The likely cause is a case whose " *
                 "infectious window never closes — either the progression has no " *
                 "terminal transition reaching one of `until`'s states, or one is " *
-                "reachable but gated so that some cases fire none of them (see " *
+                "reachable but gated so that some cases reach none of them (see " *
                 "`exclusive_probabilities` for terminal transitions meant to " *
                 "partition the population exactly)."
         )
@@ -507,7 +507,7 @@ end
 # is reported without declaring anything. `MassVaccination`'s rollout, for one,
 # doses each new contact as the generation engine creates it, so on the
 # continuous-time path nobody is ever dosed and the efficacy risk it contributes
-# never fires; `GroupVaccination` doses whole groups as their members are
+# never blocks; `GroupVaccination` doses whole groups as their members are
 # created, and goes the same way.
 #
 # Tracing needs one thing more: the model has to be able to name the contacts a
@@ -903,7 +903,7 @@ function _sellke_race!(
 
         # Only a live kernel whose host records actually moved needs its pending
         # contacts redrawn. Resolving a case usually leaves every record alone —
-        # a policy fires on one case out of hundreds — and then the contacts
+        # a policy applies to one case out of hundreds — and then the contacts
         # already drawn still come from the hazards in force, so the race takes
         # the ordinary path. Either way this case's own openings are drawn
         # inline below, from the records as they now stand.

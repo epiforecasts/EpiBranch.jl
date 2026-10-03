@@ -365,7 +365,7 @@ loglikelihood(ChainLengths(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), model)   # interventions/observation read from model
 ```
 
-The vector form of `loglikelihood(::OffspringCounts, ...)` scores each count
+The vector form of `loglikelihood(::OffspringCounts, ...)` evaluates each count
 against its own distribution, for case-level covariates such as `NegBin.(exp.(X * β), k)`.
 Pass `truncated.(offspring, 1, Inf)` for the zero-truncated case (data listing
 only cases with at least one secondary case); `Distributions.truncated`
