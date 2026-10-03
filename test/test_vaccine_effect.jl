@@ -17,6 +17,13 @@ function EpiBranch.apply_post_transmission!(
     return nothing
 end
 
+# A third effect mode defined outside the package, as all-or-nothing as
+# `AllOrNothingMode` and so equally unable to combine with `waning`. Used
+# below to check that `VaccineEffect` rejects the combination through the
+# `supports_waning` trait rather than a hard-coded `AllOrNothingMode` check.
+struct _TestBlockedMode <: AbstractEffectMode end
+EpiBranch.supports_waning(::_TestBlockedMode) = false
+
 @testset "VaccineEffect" begin
     @testset "Waning is shared by built-in and custom vaccinations" begin
         decay = dt -> exp(-dt / 30)
@@ -261,6 +268,18 @@ end
         @test VaccineEffect(efficacy = 0.5, waning = decay, mode = LeakyMode()) isa
             VaccineEffect
         @test VaccineEffect(efficacy = 0.5, mode = AllOrNothingMode()) isa VaccineEffect
+    end
+
+    @testset "supports_waning is dispatched, not matched against AllOrNothingMode" begin
+        @test EpiBranch.supports_waning(LeakyMode())
+        @test !EpiBranch.supports_waning(AllOrNothingMode())
+        decay = dt -> exp(-dt / 30)
+        # A third-party mode rejects `waning` the same way, by declaring
+        # itself through the trait rather than requiring a core-level edit.
+        @test_throws ArgumentError VaccineEffect(
+            efficacy = 0.5, waning = decay, mode = _TestBlockedMode()
+        )
+        @test VaccineEffect(efficacy = 0.5, mode = _TestBlockedMode()) isa VaccineEffect
     end
 
     @testset "Branching process: the two modes agree in distribution" begin
