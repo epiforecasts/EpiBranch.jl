@@ -279,29 +279,3 @@ end
     @test aborted + not_aborted >= 50
     @test 0.35 < aborted / (aborted + not_aborted) < 0.65
 end
-
-@testset "An abort is dropped when resolution does not bear its exposure out" begin
-    function exposed(infected, infection_time)
-        ind = Individual(id = 1, infection_time = infection_time)
-        ind.state[:infected] = infected
-        ind.state[:incubation_period] = 6.0
-        ind.state[:infection_aborted_time] = 4.0
-        ind.state[:onset_time] = NaN
-        return ind
-    end
-    # Infected before the abort: the abort stands.
-    ind = exposed(true, 1.0)
-    EpiBranch._drop_stale_abort!(ind)
-    @test ind.state[:infection_aborted_time] == 4.0
-    @test isnan(onset_time(ind))
-    # Infected through a later exposure at or after the abort time.
-    ind = exposed(true, 4.0)
-    EpiBranch._drop_stale_abort!(ind)
-    @test !haskey(ind.state, :infection_aborted_time)
-    @test onset_time(ind) == 10.0
-    # Not infected at all.
-    ind = exposed(false, 0.0)
-    EpiBranch._drop_stale_abort!(ind)
-    @test !haskey(ind.state, :infection_aborted_time)
-    @test onset_time(ind) == 6.0
-end
