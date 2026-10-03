@@ -42,6 +42,22 @@ function terminal_event(::Recovery, individual::Individual{T}) where {T}
     return isfinite(t) ? (t, :recovered) : nothing
 end
 
+# Recovery has no `probability` gate: once its anchor is reached, a candidate
+# time is drawn unconditionally, so a non-finite candidate there is
+# impossible under the model.
+function transition_loglik(r::Recovery, individual::Individual)
+    anchor = _resolve_anchor(r.from, individual)
+    _anchor_ok(anchor) || return 0.0
+    t = individual.state[:recovery_candidate_time]
+    if !isfinite(t)
+        # No gate of its own, so a candidate is missing only where an abort
+        # undid it; anything else rules the individual out.
+        isinf(infection_aborted_time(individual)) && return -Inf
+        return _transition_term(1.0, r.delay, individual, anchor, false)
+    end
+    return _delay_loglik(r.delay, t - anchor)
+end
+
 """
 Terminal transition: the case dies. When death is drawn, a candidate
 death time is produced by adding a sample from `delay` to the value of
@@ -128,4 +144,14 @@ end
 function terminal_event(::Death, individual::Individual{T}) where {T}
     t = convert(T, get(individual.state, :death_candidate_time, T(Inf)))
     return isfinite(t) ? (t, :died) : nothing
+end
+
+function transition_loglik(d::Death, individual::Individual)
+    anchor = _resolve_anchor(d.from, individual)
+    _anchor_ok(anchor) || return 0.0
+    t = individual.state[:death_candidate_time]
+    candidate = isfinite(t)
+    ll = _transition_term(d.probability, d.delay, individual, anchor, candidate)
+    candidate || return ll
+    return ll + _delay_loglik(d.delay, t - anchor)
 end

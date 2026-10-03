@@ -88,8 +88,148 @@ _resolve_delay(d::Distribution, rng, ind) = float(rand(rng, d))
 _resolve_delay(x::Real, rng, ind) = float(x)         # a fixed, deterministic delay
 _resolve_delay(f, rng, ind) = float(f(rng, ind))
 
+# ── Evaluating ──────────────────────────────────────────────────────
+#
+# The reverse of `_resolve_delay`/`_resolve_probability`: given a resolved
+# outcome, the log-density of having drawn it. A `Function` delay has no
+# density family to evaluate, so it is rejected rather than silently ignored.
+_delay_loglik(d::Distribution, dt) = logpdf(d, dt)
+_delay_loglik(x::Real, dt) = isapprox(dt, x) ? 0.0 : -Inf
+function _delay_loglik(f, dt)
+    throw(
+        ArgumentError(
+            "a `Function` delay has no density to evaluate; `progression_loglik` " *
+                "needs a `Distribution` (or a fixed `Real`) for every delay it evaluates"
+        )
+    )
+end
+
+# Used only to evaluate a `probability` gate: it deliberately implements no
+# generation methods, so a callable that actually draws from its `rng`
+# argument (rather than merely accepting it, as every deterministic
+# per-individual gate does) fails loudly here instead of drawing a fresh,
+# uncontrolled value and silently caching it on the individual — which is
+# what `exclusive_probabilities`' shared-draw gate does when evaluated against
+# an individual that lacks the cached draw from a prior `resolve_individual!`
+# call.
+struct _NoRandRNG <: Random.AbstractRNG end
+
+# One bucket of a shared draw: the transition is selected when `lo <= u < hi`.
+# Returning 0.0/1.0 (rather than deciding directly) keeps this a `probability`
+# like any other, so it composes with `_transition_selected`'s own
+# `rand(rng) < p` unchanged — that draw is now deterministic, since `u` alone
+# decided the outcome. A type rather than a closure, so the likelihood can read
+# the bucket's width: the probability the shared draw selects it, which a run's
+# 0 or 1 hides.
+struct _ExclusiveGate{T <: Real}
+    key::Symbol
+    lo::T
+    hi::T
+    total::T
+    owns_shortfall::Bool   # the one bucket that scores the group's shortfall
+end
+function (g::_ExclusiveGate)(rng, ind)
+    u = get!(() -> rand(rng), ind.state, g.key)
+    return (g.lo <= u < g.hi) ? 1.0 : 0.0
+end
+
+# A gate's own probability. `probability` resolves with `_NoRandRNG()`: a
+# callable gate is expected to be a deterministic function of the individual
+# (as every built-in and documented example is), not of the RNG draw that also
+# consumes it during simulation; one that does draw is rejected rather than
+# evaluated with an arbitrary, non-reproducible value.
+function _probability_value(probability, ind)
+    return try
+        _resolve_probability(probability, _NoRandRNG(), ind)
+    catch e
+        e isa MethodError && parentmodule(e.f) === Random || rethrow()
+        throw(
+            ArgumentError(
+                "a `probability` callable drew from its `rng` argument while being " *
+                    "evaluated; `progression_loglik` needs `probability` to be a " *
+                    "deterministic function of the individual alone. A callable " *
+                    "gate has to replay from the individual alone; evaluate " *
+                    "simulated individuals, not hand-built ones, with one that " *
+                    "reads state a simulation wrote"
+            )
+        )
+    end
+end
+
+# The log-likelihood contribution of a probability gate, given whether it
+# passed.
+function _probability_loglik(probability, passed, ind)
+    p = _probability_value(probability, ind)
+    return passed ? log(p) : log1p(-p)
+end
+
+# A transition's own term, given whether it happened: the gate either way, plus
+# the delay density at the time it did. An abort is the exception, and every
+# built-in routes through here so the exception is written once.
+function _transition_term(probability, delay, ind, anchor, occurred)
+    occurred && return _probability_loglik(probability, true, ind)
+    abort = infection_aborted_time(ind)
+    isinf(abort) && return _probability_loglik(probability, false, ind)
+    return _censored_loglik(probability, delay, ind, anchor, abort)
+end
+
+# A transition an abort undid: `_resolve_before_abort!` restored its flag and
+# cleared its time, so what the individual records is that the transition would
+# have taken effect at or after the abort. Its contribution is the probability
+# of exactly that — the gate failing, or the gate passing and the delay landing
+# no earlier than the abort — which censors the transition at the abort instead
+# of reading an undone transition as a gate that failed.
+function _censored_loglik(probability, delay, ind, anchor, abort)
+    p = _probability_value(probability, ind)
+    elapsed = abort - anchor
+    isone(p) && return _delay_logccdf(delay, elapsed)
+    return log1p(-p * _delay_cdf(delay, elapsed))
+end
+
+# A shared draw decides the group once, so the censored term reads the draw
+# rather than the gate's own 0 or 1: the bucket it selected keeps its width and
+# censors its delay at the abort, and a bucket it passed over says what it says
+# in any other case.
+function _censored_loglik(g::_ExclusiveGate, delay, ind, anchor, abort)
+    _exclusive_selected(g, ind) || return _probability_loglik(g, false, ind)
+    return log(g.hi - g.lo) + _delay_logccdf(delay, abort - anchor)
+end
+
+_delay_cdf(d::Distribution, t) = cdf(d, t)
+_delay_cdf(x::Real, t) = x < t ? 1.0 : 0.0
+_delay_cdf(f, t) = _delay_loglik(f, t)             # a `Function` delay throws
+_delay_logccdf(d::Distribution, t) = logccdf(d, t)
+_delay_logccdf(x::Real, t) = x < t ? -Inf : 0.0
+_delay_logccdf(f, t) = _delay_loglik(f, t)
+
 """
-    exclusive_probabilities(ps::AbstractVector{<:Real}) -> Vector{Function}
+    transition_loglik(t::AbstractClinicalTransition, individual) -> Float64
+
+The log-likelihood contribution of `individual`'s outcome under transition
+`t`: the probability of the gate it passed or failed, plus the delay density
+at the time the transition occurred. Called by [`progression_loglik`](@ref) once per
+transition per individual; `0.0` when the transition's anchor was never
+reached (it took no part in the individual's history).
+
+Implemented for the built-in transitions ([`Transition`](@ref),
+[`Reporting`](@ref), [`Hospitalisation`](@ref), [`Death`](@ref),
+[`Recovery`](@ref)). A custom `<: AbstractClinicalTransition` used with
+[`progression_loglik`](@ref) needs its own method, reading back the state
+keys its `resolve_individual!` writes; `delay` must be a `Distribution` or a
+fixed `Real` — a raw `Function` delay has no density.
+"""
+function transition_loglik(t::AbstractClinicalTransition, individual)
+    throw(
+        ArgumentError(
+            "$(nameof(typeof(t))) needs a method for `EpiBranch.transition_loglik` " *
+                "evaluating the outcome its `resolve_individual!` writes to " *
+                "`individual.state`; see `progression_loglik`"
+        )
+    )
+end
+
+"""
+    exclusive_probabilities(ps::AbstractVector{<:Real}) -> Vector
 
 Build matched `probability` callables for `length(ps)` sibling transitions
 whose outcomes are meant to be mutually exclusive — an exact case-fatality
@@ -102,17 +242,22 @@ consumes its own `rand(rng)`): two terminal transitions gated at `p` and
 about `p(1 - p)` of cases, and neither fires — leaving `:outcome` unset — on
 another `p(1 - p)`.
 
-This function closes over a single shared uniform draw per case instead: the
-first sibling to resolve draws it and caches it on the individual, and every
-sibling reads the same value. The case's draw lands in exactly one of the
+Each gate this returns reads a single shared uniform draw per case instead:
+the first sibling to resolve draws it and caches it on the individual, and
+every sibling reads the same value. The case's draw lands in exactly one of the
 `ps`-sized buckets, so the outcomes partition the population in the given
 proportions, with no case counted twice and none dropped except by design
 (see below).
 
 `ps` must be non-negative and sum to at most `1`; a shortfall between
 `sum(ps)` and `1` is the (intentional) probability that none of the siblings
-fires — pair it with an unconditional terminal transition, or expect some
+occurs — pair it with an unconditional terminal transition, or expect some
 cases to reach no terminal state.
+
+[`progression_loglik`](@ref) treats such a group as one event: the bucket the
+draw selected contributes the log of its own width, and the siblings it passed
+over contribute nothing. A group with a shortfall also needs the draw a
+simulation cached, so keep every one of its gates in the `progression`.
 
 # Examples
 
@@ -132,30 +277,52 @@ function exclusive_probabilities(ps::AbstractVector{<:Real})
         )
     )
     total = sum(ps)
-    total <= 1 + sqrt(eps(float(total))) || throw(
+    slack = sqrt(eps(float(total)))
+    total <= 1 + slack || throw(
         ArgumentError(
             "exclusive_probabilities needs probabilities summing to at most 1, got $total"
         )
     )
+    # A sum that reaches 1 up to its own rounding leaves no shortfall to score.
+    shortfall = total < 1 - slack
     key = gensym(:exclusive_draw)
     bounds = cumsum(ps)
     return [
-        _exclusive_gate(key, i == 1 ? zero(total) : bounds[i - 1], bounds[i])
+        _ExclusiveGate(
+            key, i == 1 ? zero(total) : bounds[i - 1], bounds[i], total,
+            shortfall && i == lastindex(ps)
+        )
             for i in eachindex(ps)
     ]
 end
 
-# One bucket of a shared draw: `lo <= u < hi` fires, everything else doesn't.
-# Returning 0.0/1.0 (rather than deciding directly) keeps this a `probability`
-# callable like any other, so it composes with `_transition_selected`'s own
-# `rand(rng) < p` unchanged — that draw is now deterministic, since `u` alone
-# decided the outcome.
-function _exclusive_gate(key::Symbol, lo::Real, hi::Real)
-    return (rng, ind) -> begin
-        u = get!(() -> rand(rng), ind.state, key)
-        return (lo <= u < hi) ? 1.0 : 0.0
-    end
+
+# A shared draw is one event, so the bucket it selected holds the whole gate
+# term and the siblings it passed over say nothing more. The group's shortfall
+# — the probability that it selected none of them, when `sum(ps) < 1` — belongs
+# to the group once, so the last bucket is the one that owns it, reading the
+# draw a simulation cached.
+function _probability_loglik(g::_ExclusiveGate, passed, ind)
+    passed && return log(g.hi - g.lo)
+    g.owns_shortfall || return 0.0
+    return _exclusive_draw(g, ind) >= g.total ? log1p(-g.total) : 0.0
 end
+
+# The draw the group shared, which only a simulation can have cached.
+function _exclusive_draw(g::_ExclusiveGate, ind)
+    u = get(ind.state, g.key, nothing)
+    u === nothing && throw(
+        ArgumentError(
+            "a shared-draw gate needs the draw `resolve_individual!` cached " *
+                "under `:$(g.key)`, which this individual does not hold; a " *
+                "group whose probabilities leave a shortfall, or one censored " *
+                "by an aborted infection, can only be evaluated on simulated " *
+                "individuals"
+        )
+    )
+    return u
+end
+_exclusive_selected(g::_ExclusiveGate, ind) = g.lo <= _exclusive_draw(g, ind) < g.hi
 
 """
     transition_time(rng, individual, start_time, delay; probability = nothing)
