@@ -147,7 +147,7 @@ export RouteWindow, window_open, window_close
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event, exclusive_probabilities
-export ObservationModel, PerCaseObservation, NoObservation, observe
+export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, observe
 export single_type_offspring
 
 # Exports — sentinel types
@@ -166,8 +166,10 @@ export NegBin, scale_distribution, incubation_linked_generation_time
 # Reach `GammaBorel`/`PoissonGammaChainSize` via `chain_size_distribution`;
 # only the standalone `Borel` and the dispatch entry point are exported.
 export Borel, chain_size_distribution
+# Chain-size law with a separate offspring distribution for the index case.
+export IndexChainSize
 # Observation-side chain-size distribution (binomial thinning of any base)
-export ThinnedChainSize
+export ThinnedChainSize, TruncatedChainSize
 
 # Exports — attributes functions
 export clinical_presentation, demographics, transmission_traits, groups,
@@ -186,6 +188,7 @@ export containment_probability, is_extinct, generation_R, weekly_incidence, scen
 export reproduction_number
 export extinction_probability, epidemic_probability
 export proportion_transmission, proportion_cluster_size, heterogeneous_contact_R
+export proportion_cases_individual, proportion_cases_offspring
 export probability_contain
 
 # Exports — unified inference interface
