@@ -328,15 +328,21 @@ struct HazardScaling{S <: Real, F}
     end
 end
 
-# Only plain numbers are checked. An AD number at zero compares by the sign of
-# its derivative, so a factor of exactly zero that is being differentiated, such
-# as `1 - efficacy` at efficacy 1, would otherwise be rejected.
 function _check_scaling_factor(factor::Union{AbstractFloat, Integer, Rational})
-    factor >= 0 ||
-        throw(ArgumentError("a hazard scaling factor must be non-negative, got $factor"))
+    factor >= 0 || _negative_scaling_factor(factor)
+    return nothing
+end
+# An AD number at zero compares by the sign of its derivative, so `factor < 0`
+# would reject a factor of exactly zero that is being differentiated, such as
+# `1 - efficacy` at efficacy 1. A threshold just below zero tests the value alone.
+function _check_scaling_factor(factor::Real)
+    factor < -floatmin(Float64) && _negative_scaling_factor(factor)
     return nothing
 end
 _check_scaling_factor(factor) = nothing
+function _negative_scaling_factor(factor)
+    throw(ArgumentError("a hazard scaling factor must be non-negative, got $factor"))
+end
 
 _scaling_at(factor::Real, dt) = factor
 _scaling_at(factor, dt) = factor(dt)

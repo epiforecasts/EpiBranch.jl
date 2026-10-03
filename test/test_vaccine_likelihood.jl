@@ -177,6 +177,16 @@ end
         end
     end
 
+    @testset "an efficacy above 1 is rejected under AD as well" begin
+        escaped = data(NaN; followup_end = 5.0)
+        f(θ) = pairwise_surv_loglik(
+            k, escaped;
+            susceptibility = VaccineEffect(efficacy = θ[1], mode = LeakyMode())
+        )
+        @test_throws ArgumentError f([1.5])
+        @test_throws ArgumentError ForwardDiff.gradient(f, [1.5])
+    end
+
     @testset "efficacy must be a fixed value" begin
         drawn = VaccineEffect(efficacy = Beta(2.0, 2.0), mode = LeakyMode())
         @test_throws ArgumentError pairwise_surv_loglik(k, data(NaN); susceptibility = drawn)
