@@ -115,10 +115,7 @@ function transition_loglik(t::Transition, individual::Individual)
     anchor = _state_time(individual, t.from)
     _anchor_ok(anchor) || return 0.0
     occurred = individual.state[t.state]::Bool
-    abort = _infection_aborted_time(individual)
-    occurred || isinf(abort) ||
-        return _censored_loglik(t.probability, t.delay, individual, anchor, abort)
-    ll = _probability_loglik(t.probability, occurred, individual)
+    ll = _transition_term(t.probability, t.delay, individual, anchor, occurred)
     occurred || return ll
     return ll + _delay_loglik(t.delay, individual.state[t.time_key] - anchor)
 end
