@@ -269,10 +269,13 @@ function continuous_actions(w::Union{Scheduled, CapacityConstrained})
     return continuous_actions(w.intervention)
 end
 continuous_actions(::GroupVaccination) = true
+# A finite `eligibility_window` needs the candidate's own exposure to check
+# against, which a pending, still-uninfected member of a continuous-time race
+# does not have yet (see `_within_window`). `post_exposure_efficacy` has no
+# such requirement: `on_infection_settled!` reconsiders it once that
+# member's own infection settles, against the exposure the race then knows.
 function continuous_actions(rv::RingVaccination)
-    return rv.eligibility_window isa Real &&
-        rv.eligibility_window == Inf && rv.post_exposure_efficacy isa Real &&
-        rv.post_exposure_efficacy == 0
+    return rv.eligibility_window isa Real && rv.eligibility_window == Inf
 end
 
 function _apply_continuous_actions!(state, current, interventions, members, processed)
