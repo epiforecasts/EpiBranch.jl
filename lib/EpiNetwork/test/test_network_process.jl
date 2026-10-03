@@ -24,6 +24,17 @@ function EpiBranch.resolve_individual!(::_TickHosts, ind, state)
     return nothing
 end
 
+# Sets one record on every host at the second case, which only the route
+# declaring it should follow.
+struct _FlagHosts <: EpiBranch.AbstractIntervention end
+function EpiBranch.resolve_individual!(::_FlagHosts, ind, state)
+    state.cumulative_cases == 2 || return nothing
+    for person in state.individuals
+        person.state[:flag] = 1
+    end
+    return nothing
+end
+
 # Number of infected nodes in a finished simulation.
 n_infected(state) = count(is_infected, state.individuals)
 
@@ -946,9 +957,45 @@ end
                 [i.infection_time for i in silent.individuals]
             )
         end
-        # Both routes reach cases, so the comparison has something in it.
-        run = simulate(two_routes((:quiet,)); n_initial = 2, rng = StableRNG(1))
-        routes = [get(i.state, :infection_route, nothing) for i in run.individuals]
+        # The other direction: a record only the second route reads redraws
+        # that route's contacts and leaves the first alone. With atoms the
+        # effect is exact — host 3's contact moves from 5.0 to 1.0 once the
+        # flag is set, and nothing else does.
+        two_atoms(declared) = ModelSpec(
+            RoutedNetwork(
+                [
+                    RouteWindow(
+                        :early; until = (:recovered,),
+                        kernel = PairKernel(c -> Dirac(0.5)),
+                        reach = [[2], [1], Int[], Int[]]
+                    ),
+                    RouteWindow(
+                        :late; until = (:recovered,),
+                        kernel = PairKernel(
+                            (c, a, b) -> Dirac(b.flag == 0 ? 5.0 : 1.0);
+                            state = ind -> (flag = get(ind.state, :flag, 0)::Int,),
+                            watches = declared
+                        ),
+                        reach = [[3], Int[], [1], Int[]]
+                    ),
+                ]
+            );
+            progression = _sir(6.0), interventions = [_FlagHosts()]
+        )
+        atom_times(declared) = [
+            i.infection_time
+                for i in simulate(
+                    two_atoms(declared); initial_cases = [1], rng = StableRNG(7)
+                ).individuals
+        ]
+        declared_times, stale_times = atom_times((:flag,)), atom_times(())
+        @test declared_times[3] == 1.0
+        @test stale_times[3] == 5.0
+        @test isequal(declared_times[1:2], stale_times[1:2])
+
+        # Both routes reach cases, so the first comparison has something in it.
+        reached = simulate(two_routes((:quiet,)); n_initial = 2, rng = StableRNG(1))
+        routes = [get(i.state, :infection_route, nothing) for i in reached.individuals]
         @test :moving in routes
         @test :quiet in routes
     end

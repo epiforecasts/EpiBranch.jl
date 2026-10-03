@@ -914,11 +914,11 @@ function _route_watch_keys(watches, nroutes::Int)
 end
 
 function _watched_union(route_keys)
-    union = Symbol[]
+    declared = Symbol[]
     for ks in route_keys, key in ks
-        key in union || push!(union, key)
+        key in declared || push!(declared, key)
     end
-    return union
+    return declared
 end
 
 # The hosts whose records a pending or future draw of a live kernel reads: the

@@ -310,8 +310,8 @@ end
 
 # One route's susceptible targets, each with that route's kernel resolved for
 # the pair: a shared distribution, a per-edge vector, a covariate callable or a
-# `PairKernel` without `state`, exactly as `NetworkProcess` resolves its edge kernel (see
-# `_resolve_kernel`). A record-reading kernel is refused at construction.
+# `PairKernel`, exactly as `NetworkProcess` resolves its edge kernel (see
+# `_resolve_kernel`).
 function _route_targets(w::RouteWindow)
     adjacency, kernel = w.reach, w.kernel
     return (inf, st) -> (
