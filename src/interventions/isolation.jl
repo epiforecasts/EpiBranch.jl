@@ -173,7 +173,10 @@ function reset!(::Isolation, ind::Individual)
     previous = get(ind.state, :isolation_time_before_isolation, Inf)
     if isfinite(previous)
         set_isolated!(ind, previous)
+        get(ind.state, :isolation_unrecorded_before_isolation, false) &&
+            (ind.state[:isolation_unrecorded] = true)
         delete!(ind.state, :isolation_time_before_isolation)
+        delete!(ind.state, :isolation_unrecorded_before_isolation)
     else
         clear_isolated!(ind)
     end
@@ -211,8 +214,14 @@ function resolve_individual!(iso::Isolation, individual, state)
         # Remember what we are overwriting. Claiming provenance below tells a
         # `Scheduled` reset that this isolation is Isolation's to undo, but the
         # standing quarantine underneath it belongs to ContactTracing and must
-        # survive that reset, so stash it for `reset!` to restore.
+        # survive that reset, so stash it, and whether it was recorded, for
+        # `reset!` to restore.
         individual.state[:isolation_time_before_isolation] = isolation_time(individual)
+        if _isolation_unrecorded(individual)
+            individual.state[:isolation_unrecorded_before_isolation] = true
+        else
+            delete!(individual.state, :isolation_unrecorded_before_isolation)
+        end
         _isolate!(iso, individual, state, self_t)
         return nothing
     end

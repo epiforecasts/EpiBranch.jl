@@ -401,7 +401,7 @@ function resolve_individual!(iso::Isolation, individual, state)
 end
 ```
 
-**`apply_post_transmission!`** — `ContactTracing` walks the new contacts, looks up each contact's parent, and applies the configured trace action (`Quarantine` or `FlagOnly`) when the eligibility and rate traits both pass:
+**`apply_post_transmission!`** — `ContactTracing` walks the new contacts, looks up each contact's parent, and applies the configured trace action (`Quarantine` or `FlagOnly`) when the eligibility and rate traits both pass. The trace is timed from [`trigger_time`](@ref EpiBranch.trigger_time), which for an isolation-based policy is the recorded isolation, so an isolation that counts as no detection starts no trace:
 
 ```julia
 function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
@@ -412,7 +412,7 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
         is_eligible(ct.eligibility, parent, ind, state) || continue
         traces(ct.trace_rate, parent, ind, state, rng) || continue
         trace_delay = draw_trace_delay(ct.isolation_to_trace_delay, parent, ind, state, rng)
-        trace_time = isolation_time(parent) + trace_delay
+        trace_time = trigger_time(ct.eligibility, parent, ind, state) + trace_delay
         apply_trace!(ct.action, ind, state, trace_time, rng)
     end
     return nothing

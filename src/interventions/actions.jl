@@ -144,7 +144,7 @@ function intervention_actions(rv::RingVaccination, state, candidates)
             continue
         end
         trace_t = haskey(ind.state, :trace_time) ? ind.state[:trace_time] :
-            min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
+            min(_recorded_isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
         isfinite(trace_t) || continue
         delay = action_draw!(ind, (rv, :delay)) do
             _sample_value(rv.dose_delay, state.rng, ind)
