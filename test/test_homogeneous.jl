@@ -54,6 +54,16 @@ function EpiBranch.competing_risk(
     return Risk(event_time = v.from_time, block_probability = v.efficacy)
 end
 
+# A prophylaxis written outside the package whose risk reads only the contact,
+# and which says so.
+struct ContactOnlyBlock <: EpiBranch.AbstractIntervention
+    efficacy::Float64
+end
+function EpiBranch.competing_risk(b::ContactOnlyBlock, parent, contact, state)
+    return Risk(block_probability = b.efficacy)
+end
+EpiBranch.risk_depends_on_infector(::ContactOnlyBlock) = false
+
 struct ResolveInfectiousness <: EpiBranch.AbstractIntervention
     include_seeds::Bool
 end
@@ -936,10 +946,45 @@ end
             1;
             interventions = [LeakyVaccineTyped(0.5, 0.0)]
         )
-        # Perfect isolation closes the window, so it never blocks a drawn contact.
-        @test !EpiBranch._blocks_by_infector(
-            Isolation(onset_to_isolation_delay = Exponential(1.0))
+        @test_throws r"LeakyVaccine" band1_attack(
+            1;
+            interventions = [CapacityConstrained(LeakyVaccine(0.5, 0.0); budget_per_period = 5.0)]
         )
+        # One written outside the package that declares its risk reads only the
+        # contact is accepted, and blocking every contact leaves only the seeds.
+        @test band1_attack(1; interventions = [ContactOnlyBlock(1.0)]) <= 20 / half
+        @test band1_attack(
+            1;
+            interventions = [Scheduled(ContactOnlyBlock(1.0); start_time = 0.0)]
+        ) <= 20 / half
+
+        depends = EpiBranch.risk_depends_on_infector
+        # Perfect isolation closes the window, so it never blocks a drawn contact.
+        perfect = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        @test !depends(perfect)
+        @test depends(leaky)
+        @test !depends(Scheduled(perfect; start_time = 5.0))
+        @test depends(Scheduled(leaky; start_time = 5.0))
+        # Without a risk of its own an intervention cannot read the infector.
+        @test !depends(DoseNewContacts())
+        @test depends(LeakyVaccine(0.5, 0.0))
+        @test depends(LeakyVaccineTyped(0.5, 0.0))
+        @test !depends(ContactOnlyBlock(0.5))
+        # Wrappers answer for the intervention they wrap.
+        @test !depends(RingVaccination(efficacy = 0.8))
+        @test !depends(
+            CapacityConstrained(RingVaccination(efficacy = 0.8); budget_per_period = 5.0)
+        )
+        @test depends(
+            CapacityConstrained(
+                RingVaccination(efficacy = 0.8, onward_efficacy = 0.5);
+                budget_per_period = 5.0
+            )
+        )
+        @test !depends(
+            CapacityConstrained(GroupVaccination(efficacy = 0.8); budget_per_period = 200.0)
+        )
+        @test !depends(MassVaccination(efficacy = 0.8, eligibility_time = 0.0))
 
         # Band 2's susceptibility acts on its own contacts only, and its
         # infectiousness is a weight in its own band's force, so band 1's attack

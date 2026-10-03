@@ -25,6 +25,9 @@ Simulation side of the observation protocol: apply `obs` to a finished
 [`NoObservation`](@ref) leaves the latent cases untouched.
 """
 apply_observation!(::NoObservation, state, rng) = state
+# A minimum recorded size selects whole clusters, which the analytical and
+# simulation chain-size paths each apply where they see sizes.
+apply_observation!(::MinimumSize, state, rng) = state
 
 function apply_observation!(o::PerCaseObservation, state, rng)
     for ind in state.individuals
@@ -116,9 +119,11 @@ distribution of the *observed* quantity under `obs`, returning a
 into the same likelihood machinery as the latent law (see the design
 notes on why observation models return distributions). The default
 [`NoObservation`](@ref) returns the base unchanged;
-[`PerCaseObservation`](@ref) thins it with [`ThinnedChainSize`](@ref).
+[`PerCaseObservation`](@ref) thins it with [`ThinnedChainSize`](@ref), and
+[`MinimumSize`](@ref) conditions it with [`TruncatedChainSize`](@ref).
 """
 observe(base, ::NoObservation) = base
+observe(base, o::MinimumSize) = TruncatedChainSize(base, o.min_size)
 function observe(base, o::PerCaseObservation)
     p = scalar_detection_prob(o)
     # ρ = 1 is a no-op; skip the wrap so multi-seed likelihoods route

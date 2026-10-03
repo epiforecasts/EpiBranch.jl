@@ -172,6 +172,7 @@ EpiBranch.keep_active
 EpiBranch.competing_risk
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
+EpiBranch.risk_depends_on_infector
 EpiBranch.intervention_time
 EpiBranch.reset!
 is_active
@@ -280,6 +281,15 @@ EpiBranch.GammaBorel
 EpiBranch.PoissonGammaChainSize
 ```
 
+### Index-case heterogeneity
+
+A chain whose index case has its own offspring distribution — for example a
+chain seeded by an introduced case — uses [`IndexChainSize`](@ref).
+
+```@docs
+IndexChainSize
+```
+
 ## Inference
 
 ### Data types
@@ -314,9 +324,11 @@ for simulation.
 ObservationModel
 NoObservation
 PerCaseObservation
+MinimumSize
 observe
 EpiBranch.apply_observation!
 ThinnedChainSize
+TruncatedChainSize
 ```
 
 ### Cluster-level heterogeneity
