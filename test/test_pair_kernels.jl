@@ -142,6 +142,116 @@ end
 
 include("testutils/pair_kernels.jl")
 
+# A multiplier that is zero until calendar day 3 and then rises linearly, so
+# quadrature meets exact zeros and a kink.
+struct RampSchedule end
+EpiBranch.calendar_multiplier(::RampSchedule, t) = max(zero(t), t - 3)
+EpiBranch.calendar_shape(::RampSchedule) = EpiBranch.SmoothCalendar()
+
+# A multiplier whose integral over all time is finite.
+struct DecayingSchedule end
+EpiBranch.calendar_multiplier(::DecayingSchedule, t) = exp(-t)
+EpiBranch.calendar_shape(::DecayingSchedule) = EpiBranch.SmoothCalendar()
+
+struct BreaklessSchedule end
+EpiBranch.calendar_multiplier(::BreaklessSchedule, t) = 1.0
+
+@testset "Smooth calendar schedules" begin
+    seasonal = SeasonalSchedule(0.5, 0.8, 10.0)
+    @test EpiBranch.calendar_shape(seasonal) === EpiBranch.SmoothCalendar()
+    @test EpiBranch.calendar_shape(Steps([1.0], [1.0, 2.0])) ===
+        EpiBranch.PiecewiseConstantCalendar()
+    @test EpiBranch.calendar_multiplier(Steps([1.0], [1.0, 2.0]), 1.0) == 2.0
+    @test EpiBranch.next_calendar_break(Steps([1.0, 2.0], [1.0, 2.0, 3.0]), 1.0) == 2.0
+    @test EpiBranch.next_calendar_break(Steps([1.0], [1.0, 2.0]), 1.0) == Inf
+    # A piecewise-constant schedule must say where it breaks.
+    breakless = PairKernel(ctx -> Exponential(1.0); calendar = BreaklessSchedule())
+    @test_throws MethodError EpiBranch.cumhazard(
+        EpiBranch.pair_kernel(breakless, 1, 2, 0.0, 1.0), 1.0
+    )
+
+    kernel = PairKernel(ctx -> Exponential(2.0); calendar = seasonal)
+    profile_rate = 0.5
+    integrated(o, τ) = profile_rate *
+        (seasonal_integral(seasonal, o + τ) - seasonal_integral(seasonal, o))
+    for opening in (0.0, 2.0, 7.5)
+        interval = EpiBranch.pair_kernel(kernel, 1, 2, 0.0, opening)
+        @test EpiBranch.cumhazard(interval, 0.0) == 0
+        for τ in (0.3, 4.0, 17.0)
+            @test EpiBranch.cumhazard(interval, τ) ≈ integrated(opening, τ)
+            @test exp(EpiBranch.loghazard(interval, τ)) ≈
+                profile_rate * EpiBranch.calendar_multiplier(seasonal, opening + τ)
+        end
+        for lp in (-0.01, -1.0, -4.0)
+            @test logccdf(interval, invlogccdf(interval, lp)) ≈ lp
+        end
+    end
+    interval = EpiBranch.pair_kernel(kernel, 1, 2, 0.0, 2.0)
+    @test EpiBranch.cumhazard(interval, Inf) == Inf
+    @test invlogccdf(interval, -Inf) == Inf
+    @test invlogccdf(interval, 0.0) == 0
+    @test_throws ArgumentError EpiBranch.cumhazard(interval, -1.0)
+    @test_throws ArgumentError invlogccdf(interval, 0.5)
+    @test minimum(interval) == 0
+    @test Distributions.partype(interval) == Float64
+
+    # Simulated contact intervals follow the integrated hazard: the largest gap
+    # between their empirical and exact distribution functions is within a
+    # Kolmogorov–Smirnov bound.
+    rng = StableRNG(233)
+    n = 4000
+    draws = sort([rand(rng, interval) for _ in 1:n])
+    exact = [1 - exp(-integrated(2.0, t)) for t in draws]
+    @test maximum(abs.(exact .- (1:n) ./ n)) < 1.63 / sqrt(n)
+
+    # The ramp is zero before its kink, so nothing happens there.
+    ramp = EpiBranch.pair_kernel(
+        PairKernel(ctx -> Exponential(1.0); calendar = RampSchedule()), 1, 2, 0.0, 1.0
+    )
+    @test EpiBranch.cumhazard(ramp, 2.0) == 0
+    @test EpiBranch.cumhazard(ramp, 4.0) ≈ 2.0
+    @test invlogccdf(ramp, -2.0) ≈ 4.0
+    @test exp(EpiBranch.loghazard(ramp, 1.0)) == 0
+
+    # A survival that never falls below the target has no contact time.
+    decaying = EpiBranch.pair_kernel(
+        PairKernel(ctx -> Exponential(1.0); calendar = DecayingSchedule()), 1, 2, 0.0, 0.0
+    )
+    @test EpiBranch.cumhazard(decaying, 30.0) ≈ 1 - exp(-30.0)
+    @test invlogccdf(decaying, -0.5) ≈ log(2)
+    @test invlogccdf(decaying, -2.0) == Inf
+
+    # A bounded profile has no survival past its support, and every contact
+    # falls inside it.
+    bounded = EpiBranch.pair_kernel(
+        PairKernel(ctx -> Uniform(0.0, 3.0); calendar = seasonal), 1, 2, 0.0, 2.0
+    )
+    @test EpiBranch.cumhazard(bounded, 3.0) == Inf
+    flat = EpiBranch.pair_kernel(
+        PairKernel(ctx -> Uniform(0.0, 3.0); calendar = SeasonalSchedule(1.0, 0.0, 10.0)),
+        1, 2, 0.0, 2.0
+    )
+    @test EpiBranch.cumhazard(flat, 1.0) ≈ -logccdf(Uniform(0.0, 3.0), 1.0)
+    @test 0 < invlogccdf(bounded, -50.0) <= 3.0
+    @test 0 < invlogccdf(bounded, -0.5) < 3.0
+
+    # The schedule's parameters are differentiable through the quadrature.
+    data = calendar_data(1.0, 2.0)
+    layout = compile_contact_pairs(data)
+    f(x) = pairwise_surv_loglik(
+        PairKernel(ctx -> Exponential(1.0); calendar = SeasonalSchedule(x[1], x[2], 10.0)),
+        data, layout
+    )
+    reference(x) = begin
+        s = SeasonalSchedule(x[1], x[2], 10.0)
+        log(EpiBranch.calendar_multiplier(s, 4.0)) -
+            (seasonal_integral(s, 4.0) - seasonal_integral(s, 2.0))
+    end
+    x = [0.5, 0.8]
+    @test f(x) ≈ reference(x)
+    @test ForwardDiff.gradient(f, x) ≈ ForwardDiff.gradient(reference, x)
+end
+
 struct StateKernelInfections{T} <: InfectionLayer
     infection_time::Vector{T}
     infectious_time::Vector{T}

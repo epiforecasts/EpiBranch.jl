@@ -49,48 +49,72 @@ function test_contextual_simulation(make_process, extract)
     end
 end
 
+# A smooth seasonal calendar schedule, `rate * (1 + amplitude * sin(2πt / period))`,
+# integrated by quadrature where `Steps` is integrated segment by segment.
+struct SeasonalSchedule{T <: Real}
+    rate::T
+    amplitude::T
+    period::Float64
+end
+function EpiBranch.calendar_multiplier(s::SeasonalSchedule, t)
+    return s.rate * (1 + s.amplitude * sin(2π * t / s.period))
+end
+EpiBranch.calendar_shape(::SeasonalSchedule) = EpiBranch.SmoothCalendar()
+# The antiderivative of the multiplier, for analytical cumulative hazards.
+function seasonal_integral(s::SeasonalSchedule, t)
+    return s.rate * (t - s.amplitude * s.period / 2π * cos(2π * t / s.period))
+end
+
 function test_calendar_simulation(make_process, extract)
-    return @testset "Calendar-time step kernels with sampled infectious openings" begin
+    return @testset "Calendar-time kernels with sampled infectious openings" begin
         progression = [
             Transition(:infectious; delay = Uniform(0.4, 0.8)),
             Transition(:recovered; from = :infectious, delay = 4.0, terminal = true),
         ]
         before, after, date = 0.4, 0.1, 2.0
-        calendar_kernel = PairKernel(
-            ctx -> Exponential(1.0);
-            calendar = Steps([date], [before, after])
+        seasonal = SeasonalSchedule(0.3, 0.8, 3.0)
+        schedules = (
+            (
+                Steps([date], [before, after]), t -> t < date ? before : after,
+                t -> before * min(t, date) + after * max(t - date, 0.0),
+            ),
+            (
+                seasonal, t -> EpiBranch.calendar_multiplier(seasonal, t),
+                t -> seasonal_integral(seasonal, t),
+            ),
         )
-        spec = ModelSpec(make_process(calendar_kernel); progression)
-        state = simulate(spec; rng = StableRNG(234))
-        data = extract(state, spec)
-        @test any(isfinite, data.infectious_time)
-        @test all(
-            i -> !isfinite(data.infectious_time[i]) ||
-                0.4 <= data.infectious_time[i] - data.infection_time[i] <= 0.8,
-            eachindex(data.infection_time)
-        )
+        for (schedule, rate_at, integrated) in schedules
+            calendar_kernel = PairKernel(ctx -> Exponential(1.0); calendar = schedule)
+            spec = ModelSpec(make_process(calendar_kernel); progression)
+            state = simulate(spec; rng = StableRNG(234))
+            data = extract(state, spec)
+            @test any(isfinite, data.infectious_time)
+            @test all(
+                i -> !isfinite(data.infectious_time[i]) ||
+                    0.4 <= data.infectious_time[i] - data.infection_time[i] <= 0.8,
+                eachindex(data.infection_time)
+            )
 
-        rate_at(t) = t < date ? before : after
-        integrated(t) = before * min(t, date) + after * max(t - date, 0.0)
-        expected = 0.0
-        for j in eachindex(data.infection_time)
-            tj = isnan(data.infection_time[j]) ? Inf : data.infection_time[j]
-            event_hazard = 0.0
-            for i in eachindex(data.infection_time)
-                i == j && continue
-                opening = data.infectious_time[i]
-                isfinite(opening) || continue
-                stop = min(tj, data.removal_time[i])
-                stop > opening && (expected -= integrated(stop) - integrated(opening))
-                opening < tj <= data.removal_time[i] && (event_hazard += rate_at(tj))
+            expected = 0.0
+            for j in eachindex(data.infection_time)
+                tj = isnan(data.infection_time[j]) ? Inf : data.infection_time[j]
+                event_hazard = 0.0
+                for i in eachindex(data.infection_time)
+                    i == j && continue
+                    opening = data.infectious_time[i]
+                    isfinite(opening) || continue
+                    stop = min(tj, data.removal_time[i])
+                    stop > opening && (expected -= integrated(stop) - integrated(opening))
+                    opening < tj <= data.removal_time[i] && (event_hazard += rate_at(tj))
+                end
+                isfinite(tj) && !data.is_index[j] && (expected += log(event_hazard))
             end
-            isfinite(tj) && !data.is_index[j] && (expected += log(event_hazard))
+            @test loglikelihood(data, spec) ≈ expected rtol = 1.0e-6
+            @test pairwise_surv_loglik(
+                calendar_kernel, data,
+                compile_contact_pairs(data)
+            ) ≈ expected rtol = 1.0e-6
         end
-        @test loglikelihood(data, spec) ≈ expected
-        @test pairwise_surv_loglik(
-            calendar_kernel, data,
-            compile_contact_pairs(data)
-        ) ≈ expected
     end
 end
 

@@ -26,6 +26,9 @@ off from that point on.
 
 Used as the `calendar` a [`PairKernel`](@ref) multiplies its contact-interval
 hazard by, on the calendar-time axis rather than time since infectious opening.
+It is the piecewise-constant implementation of the calendar schedule interface,
+[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) and
+[`next_calendar_break`](@ref EpiBranch.next_calendar_break).
 """
 struct Steps{T <: Real}
     breaks::Vector{T}
@@ -50,15 +53,85 @@ function Steps(breaks, values)
 end
 
 # The multiplier in force at calendar time `t`.
-function (s::Steps)(t::Real)
-    return s.values[searchsortedlast(s.breaks, t) + 1]
+(s::Steps)(t::Real) = calendar_multiplier(s, t)
+
+"""
+    calendar_multiplier(schedule, t)
+
+The non-negative multiplier a calendar `schedule` applies to a
+[`PairKernel`](@ref)'s contact-interval hazard at calendar time `t`.
+
+Every schedule implements this. A new schedule is a type with this method and,
+depending on its [`calendar_shape`](@ref EpiBranch.calendar_shape), either
+[`next_calendar_break`](@ref EpiBranch.next_calendar_break) (piecewise
+constant, the default) or a `calendar_shape` method declaring it smooth.
+[`Steps`](@ref) is the piecewise-constant schedule the package provides.
+"""
+calendar_multiplier(s::Steps, t::Real) = s.values[searchsortedlast(s.breaks, t) + 1]
+
+"""
+    next_calendar_break(schedule, t)
+
+The first calendar time strictly after `t` at which a piecewise-constant
+`schedule` changes value, or `Inf` if it stays constant from `t` onwards.
+
+Simulation and the likelihood integrate a piecewise-constant schedule exactly,
+one constant segment at a time, so they rely on this to find where each segment
+ends. A smooth schedule has no breaks and does not implement it.
+"""
+function next_calendar_break(s::Steps, t::Real)
+    idx = searchsortedlast(s.breaks, t) + 1
+    return idx <= length(s.breaks) ? s.breaks[idx] : oftype(float(t), Inf)
 end
+
+"""
+    PiecewiseConstantCalendar()
+
+The [`calendar_shape`](@ref EpiBranch.calendar_shape) of a schedule that is
+constant between the breaks [`next_calendar_break`](@ref
+EpiBranch.next_calendar_break) reports. Its cumulative hazard is the exact sum
+of scaled differences of the profile's own, one per segment.
+"""
+struct PiecewiseConstantCalendar end
+
+"""
+    SmoothCalendar()
+
+The [`calendar_shape`](@ref EpiBranch.calendar_shape) of a schedule with no
+breaks, whose multiplier may change continuously. Its cumulative hazard is the
+integral of the multiplier times the profile's hazard, computed by adaptive
+Gauss–Kronrod quadrature, and a contact interval is drawn by bisecting that
+integral for the target log-survival. The schedule's multiplier should be
+smooth enough to integrate accurately and is evaluated many times per draw.
+The cumulative hazard over an unbounded horizon is taken to be infinite, so a
+smooth multiplier is assumed not to switch transmission off for good.
+"""
+struct SmoothCalendar end
+
+"""
+    calendar_shape(schedule)
+
+How a calendar `schedule` is integrated: [`PiecewiseConstantCalendar`](@ref
+EpiBranch.PiecewiseConstantCalendar), the default, which needs
+[`next_calendar_break`](@ref EpiBranch.next_calendar_break), or
+[`SmoothCalendar`](@ref EpiBranch.SmoothCalendar), which a smooth schedule
+declares for its own type:
+
+```julia
+struct Seasonal{T <: Real}
+    amplitude::T
+end
+EpiBranch.calendar_multiplier(s::Seasonal, t) = 1 + s.amplitude * sin(2π * t / 365)
+EpiBranch.calendar_shape(::Seasonal) = EpiBranch.SmoothCalendar()
+```
+"""
+calendar_shape(schedule) = PiecewiseConstantCalendar()
 
 """
     PairKernel(callback; state = nothing, calendar = nothing)
 
 A pair kernel: `callback` returns the contact-interval profile, measured from
-the infector's infectious opening, and optionally a step schedule that
+the infector's infectious opening, and optionally a calendar schedule that
 multiplies the rate on the calendar. Supported by `NetworkProcess`,
 `HouseholdProcess`, and the `InfectionLayer` forms of
 [`pairwise_surv_loglik`](@ref).
@@ -78,8 +151,9 @@ host's record: `state(individual)` selects it in simulation, from an
 indexed by population ID as `state`, or use [`record_kernel`](@ref) to extract
 them after simulation; the callback is identical in both paths.
 
-`calendar`, a [`Steps`](@ref) schedule, multiplies the returned profile's
-hazard by the schedule's value at the calendar date (the infector's infectious
+`calendar`, a [`Steps`](@ref) schedule or any type implementing
+[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier), multiplies the
+returned profile's hazard by the schedule's value at the calendar date (the infector's infectious
 opening plus time elapsed). A pair whose schedule differs from the shared one —
 because it depends on a host's record — returns it instead from the callback,
 as `(profile = ..., calendar = ...)`; that overrides the kernel's own
@@ -98,9 +172,11 @@ PairKernel((ctx, source, target) ->
 ```
 
 The pair's hazard is the profile's hazard at time since opening, multiplied by
-the schedule's value on the calendar day. Simulation and the likelihood both
-score this exactly, splitting the cumulative hazard into segments at the
-schedule's breakpoints.
+the schedule's value on the calendar day. For a piecewise-constant schedule
+such as `Steps`, simulation and the likelihood both score this exactly,
+splitting the cumulative hazard into segments at the schedule's breakpoints. A
+schedule declaring [`SmoothCalendar`](@ref EpiBranch.SmoothCalendar) is
+integrated by quadrature in both.
 
 Callbacks must describe a predictable hazard: adding an event at time `t` must
 not change the hazard before `t`. A final vaccinated flag alone is insufficient;
@@ -314,31 +390,51 @@ end
 # ── Calendar-scaled kernels ───────────────────────────────────────────
 #
 # The contact interval since `opening` under a `profile` hazard multiplied by a
-# `Steps` schedule on the calendar-time axis. The multiplier is constant on
-# each step, so the cumulative hazard over any interval splits into segments,
-# each a scaled difference of the profile's cumulative hazard, and inverting a
-# target log-survival walks the same segments. This keeps simulation and the
-# likelihood exact wherever the profile's own hazard is.
+# calendar schedule on the calendar-time axis. How the cumulative hazard is
+# integrated and inverted depends on the schedule's `calendar_shape`. A
+# piecewise-constant schedule splits it into segments, each a scaled difference
+# of the profile's cumulative hazard, which keeps simulation and the likelihood
+# exact wherever the profile's own hazard is. A smooth schedule integrates the
+# scaled hazard by quadrature and inverts it by bisection.
 
-struct _CalendarScaledKernel{P, S <: Steps, T <: Real}
+struct _CalendarScaledKernel{P, S, T <: Real}
     profile::P
     calendar::S
     opening::T
 end
 
+function SurvivalDistributions.cumhazard(k::_CalendarScaledKernel, τ::Real)
+    τ >= 0 || throw(ArgumentError("τ must be non-negative"))
+    return _calendar_cumhazard(calendar_shape(k.calendar), k, τ)
+end
+
+function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
+    return loghazard(k.profile, τ) + log(calendar_multiplier(k.calendar, k.opening + τ))
+end
+
+Distributions.logccdf(k::_CalendarScaledKernel, τ::Real) = -cumhazard(k, τ)
+
+function Distributions.invlogccdf(k::_CalendarScaledKernel, lp::Real)
+    isfinite(lp) || return oftype(float(lp), Inf)
+    lp <= 0 || throw(ArgumentError("invlogccdf needs a non-positive log-survival"))
+    return _calendar_invlogccdf(calendar_shape(k.calendar), k, float(-lp))
+end
+
+Base.rand(rng::AbstractRNG, k::_CalendarScaledKernel) = _time_at_log_survival(k, log(rand(rng)))
+Base.minimum(k::_CalendarScaledKernel) = minimum(k.profile)
+Distributions.partype(k::_CalendarScaledKernel) = Distributions.partype(k.profile)
+
 # The segment starting at time-since-opening `t_lo`: its multiplier and the
 # time-since-opening its schedule step ends at (`Inf` for the last step).
 function _calendar_segment(k::_CalendarScaledKernel, t_lo)
     calendar_t = k.opening + t_lo
-    idx = searchsortedlast(k.calendar.breaks, calendar_t) + 1
-    m = k.calendar.values[idx]
-    seg_hi = idx <= length(k.calendar.breaks) ?
-        k.calendar.breaks[idx] - k.opening : oftype(float(t_lo), Inf)
+    m = calendar_multiplier(k.calendar, calendar_t)
+    next_break = next_calendar_break(k.calendar, calendar_t)
+    seg_hi = isfinite(next_break) ? next_break - k.opening : oftype(float(t_lo), Inf)
     return m, seg_hi
 end
 
-function SurvivalDistributions.cumhazard(k::_CalendarScaledKernel, τ::Real)
-    τ >= 0 || throw(ArgumentError("τ must be non-negative"))
+function _calendar_cumhazard(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, τ)
     total = zero(float(τ))
     t_lo = zero(float(τ))
     while t_lo < τ
@@ -351,21 +447,11 @@ function SurvivalDistributions.cumhazard(k::_CalendarScaledKernel, τ::Real)
     return total
 end
 
-function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
-    m, _ = _calendar_segment(k, τ)
-    return loghazard(k.profile, τ) + log(m)
-end
-
-Distributions.logccdf(k::_CalendarScaledKernel, τ::Real) = -cumhazard(k, τ)
-
-# Invert a target log-survival `lp` segment by segment: consume each step's
+# Invert a target cumulative hazard segment by segment: consume each step's
 # cumulative hazard budget until the remaining budget is met inside the
 # current step, then invert within the profile alone with the same machinery
 # used for a constant rate multiplier.
-function Distributions.invlogccdf(k::_CalendarScaledKernel, lp::Real)
-    isfinite(lp) || return oftype(float(lp), Inf)
-    lp <= 0 || throw(ArgumentError("invlogccdf needs a non-positive log-survival"))
-    target = float(-lp)
+function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, target)
     acc = zero(target)
     t_lo = zero(target)
     while true
@@ -386,6 +472,55 @@ function Distributions.invlogccdf(k::_CalendarScaledKernel, lp::Real)
     return
 end
 
-Base.rand(rng::AbstractRNG, k::_CalendarScaledKernel) = _time_at_log_survival(k, log(rand(rng)))
-Base.minimum(k::_CalendarScaledKernel) = minimum(k.profile)
-Distributions.partype(k::_CalendarScaledKernel) = Distributions.partype(k.profile)
+# The scaled hazard at time-since-opening `s`. A zero multiplier gives zero
+# even where the profile's hazard is infinite.
+function _calendar_hazard(k::_CalendarScaledKernel, s)
+    m = calendar_multiplier(k.calendar, k.opening + s)
+    return iszero(m) ? zero(m) * zero(s) : m * exp(loghazard(k.profile, s))
+end
+
+function _calendar_integral(k::_CalendarScaledKernel, lo, hi)
+    return first(quadgk(s -> _calendar_hazard(k, s), lo, hi))
+end
+
+# The profile's survival reaches zero at the top of a bounded support, beyond
+# which its hazard is undefined, so the contact interval ends there. Quadrature
+# cannot settle an integral over an unbounded horizon for a multiplier that
+# keeps oscillating, so that integral is taken to be infinite.
+function _calendar_cumhazard(::SmoothCalendar, k::_CalendarScaledKernel, τ)
+    (isfinite(τ) && τ < maximum(k.profile)) || return oftype(float(τ), Inf)
+    iszero(τ) && return zero(float(τ))
+    return _calendar_integral(k, zero(float(τ)), float(τ))
+end
+
+# Find the time at which the integrated hazard reaches `target`: grow a bracket
+# by doubling until it does, then bisect the last interval to adjacent floats.
+# Each step integrates only the new interval and adds it to the running total,
+# which is monotone because the scaled hazard is non-negative.
+function _calendar_invlogccdf(::SmoothCalendar, k::_CalendarScaledKernel, target)
+    iszero(target) && return target
+    upper = float(maximum(k.profile))
+    lo = zero(target)
+    acc = zero(target)
+    width = one(target)
+    while true
+        hi = lo + width
+        hi >= upper && (hi = oftype(lo, upper))
+        isfinite(hi) || return oftype(target, Inf)
+        hi_acc = hi == upper ? oftype(target, Inf) : acc + _calendar_integral(k, lo, hi)
+        hi_acc >= target && return _bisect_calendar(k, lo, hi, acc, target)
+        lo, acc = hi, hi_acc
+        width *= 2
+    end
+    return
+end
+
+function _bisect_calendar(k::_CalendarScaledKernel, lo, hi, acc, target)
+    while true
+        mid = lo + (hi - lo) / 2
+        (lo < mid < hi) || return hi
+        mid_acc = acc + _calendar_integral(k, lo, mid)
+        mid_acc >= target ? (hi = mid) : ((lo, acc) = (mid, mid_acc))
+    end
+    return
+end
