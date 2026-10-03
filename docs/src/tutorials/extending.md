@@ -214,6 +214,7 @@ ones your intervention needs (all default to no-ops).
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
 | `on_infection_settled!(iv, individual, state, rng)` | Continuous-time models only: once the race fixes a case's infection time, before its onset or transitions read it | The case, and the race's own `rng` | `nothing` (mutate the case's `state` in place; default no-op) |
 | `risk_applies(iv, route)` | Continuous-time models selecting risks for a route (`nothing` for an external introduction) | Nothing | `Bool`; defaults to `true` |
+| `risk_depends_on_infector(iv)` | Before a fixed-size pool with more than one mixing group runs | Nothing | `Bool`: whether `competing_risk` can block a contact differently depending on its infector (default `true` when the type has its own `competing_risk`) |
 
 ### Which hooks fire on which engine
 
@@ -1486,8 +1487,21 @@ draw while every infective is at the default, because `force` does not say how
 much each infective contributes to it. With more than one mixing group that
 attribution is not weighted by the contact matrix, so a risk that depends on who
 the infector is would be applied against the wrong infectors. The pool therefore
-refuses, with an error, a leaky `Isolation` and any intervention with its own
-`competing_risk` other than the vaccinations' protection of the contact.
+refuses, with an error, any intervention for which
+[`EpiBranch.risk_depends_on_infector`](@ref) is `true`: a leaky `Isolation`, a
+`RingVaccination` with an onward effect, and by default any intervention with
+its own `competing_risk`. An intervention whose risk reads only the contact
+declares so and is then accepted:
+
+```julia
+struct MyProphylaxis <: AbstractIntervention
+    efficacy::Float64
+end
+EpiBranch.competing_risk(p::MyProphylaxis, parent, contact, state) =
+    Risk(block_probability = p.efficacy)
+EpiBranch.risk_depends_on_infector(::MyProphylaxis) = false
+```
+
 Per-individual infectiousness is not refused: it reaches the force through the
 weighted counts, so it needs no attribution to be exact. Risks on the contact
 alone, such as a per-individual susceptibility, apply exactly. Differences in infectiousness

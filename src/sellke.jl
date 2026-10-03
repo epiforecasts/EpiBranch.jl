@@ -103,8 +103,12 @@ function _has_own_method(f, T::Type, base::Type)
     # `methods` rather than `which`, which finds only a method whose parameters
     # accept `Any`: an intervention that types its hook's arguments, as the style
     # guide asks, has one `which` looks straight past.
+    # Julia 1.10 also lists the less specific methods `T` falls back on, so only
+    # a method narrower than `base` counts.
     return any(methods(f, Tuple{T, Vararg{Any}})) do mm
-        Base.unwrap_unionall(mm.sig).parameters[2] !== base
+        p = Base.unwrap_unionall(mm.sig).parameters[2]
+        p isa TypeVar && (p = p.ub)
+        p !== base && p <: base
     end
 end
 
@@ -425,7 +429,6 @@ function _sellke_honours(model, iv::AbstractIntervention)
     _has_generation_hook(iv) || return true
     return traces_contacts(iv) && supplies_contacts(model)
 end
-_sellke_honours(model, ::ContactTracing) = supplies_contacts(model)
 _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
 
 """
