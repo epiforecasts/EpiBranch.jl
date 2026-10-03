@@ -8,6 +8,6 @@ inferring this from whether any interventions are present.
 `HouseholdProcess` likewise decides whether households race on one shared
 clock through a `race_groups(model, kernel)` method dispatched on the
 kernel, in place of a flag the engine used to infer the same way. The
-per-host times an `InfectionLayer` subtype carries beyond its infectious
+per-host times an `InfectionLayer` subtype holds beyond its infectious
 windows are now read through `EpiBranch.host_times`, a dispatched accessor
 matching `EpiBranch.followup_end`.
