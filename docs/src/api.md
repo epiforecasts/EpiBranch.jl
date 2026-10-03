@@ -220,6 +220,8 @@ is_infected
 individual_type
 set_isolated!
 clear_isolated!
+EpiBranch.abort_infection!
+EpiBranch.infection_aborted_time
 ```
 
 ## Output
