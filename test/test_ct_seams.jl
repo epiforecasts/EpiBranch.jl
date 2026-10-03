@@ -370,11 +370,38 @@ end
         ind.state[:traced_by] = 7
         ind.state[:trace_level] = 2
         ind.state[:ring_propagated] = true
+        # An isolation in force but never recorded as a detection is still an
+        # isolation this trace brought about, so the reset lifts it.
+        set_isolated!(ind, 6.0)
+        ind.state[:isolation_unrecorded] = true
         EpiBranch.reset!(ct, ind)
         @test ind.state[:traced] == false
         @test !haskey(ind.state, :traced_by)
         @test !haskey(ind.state, :trace_level)
         @test !haskey(ind.state, :ring_propagated)
+        @test isolation_time(ind) == Inf
+        @test !EpiBranch._isolation_in_force(ind)
+    end
+
+    @testset "a trace that never arrives reaches nobody" begin
+        # `trigger_time` gives `Inf` for an infector whose isolation was never
+        # recorded, and quarantining a contact at `Inf` would remove it from
+        # transmission and report it as detected.
+        ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.0); action = Quarantine())
+        infector = Individual(id = 1)
+        infector.state[:infected] = true
+        infector.state[:isolated] = true
+        infector.state[:isolation_time] = 3.0
+        infector.state[:isolation_unrecorded] = true
+        contact = Individual(id = 2)
+        state = SimulationState(
+            [infector, contact], Int[], 1, StableRNG(1), 0, false, nothing, Inf,
+            nothing, AbstractClinicalTransition[]
+        )
+        EpiBranch._trace_pair!(ct, state, infector, contact, StableRNG(1))
+        @test !is_traced(contact)
+        @test !EpiBranch._isolation_in_force(contact)
+        @test !haskey(contact.state, :trace_time)
     end
 
     @testset "trace_level lines up with the ring on a tree sim" begin
