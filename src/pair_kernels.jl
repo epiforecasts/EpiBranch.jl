@@ -508,11 +508,24 @@ function _calendar_invlogccdf(::SmoothCalendar, k::_CalendarScaledKernel, target
         hi >= upper && (hi = oftype(lo, upper))
         isfinite(hi) || return oftype(target, Inf)
         hi_acc = hi == upper ? oftype(target, Inf) : acc + _calendar_integral(k, lo, hi)
-        hi_acc >= target && return _bisect_calendar(k, lo, hi, acc, target)
+        if hi_acc >= target
+            return _implicit_step(k, _bisect_calendar(k, lo, hi, acc, target), target)
+        end
         lo, acc = hi, hi_acc
         width *= 2
     end
     return
+end
+
+# The bisection compares values only, so the time it finds carries no
+# derivative in the schedule's parameters. One implicit-function step
+# `t + (target - Λ(t)) / λ(t)`, with `Λ` and `λ` read through the schedule,
+# leaves the value where the bisection put it and gives it the derivative
+# `-(∂Λ/∂θ) / λ` that the drawn time has.
+function _implicit_step(k::_CalendarScaledKernel, t, target)
+    rate = _calendar_hazard(k, t)
+    (iszero(rate) || !isfinite(rate)) && return t
+    return t + (target - _calendar_integral(k, zero(t), t)) / rate
 end
 
 function _bisect_calendar(k::_CalendarScaledKernel, lo, hi, acc, target)

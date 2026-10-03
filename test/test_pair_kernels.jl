@@ -250,6 +250,28 @@ EpiBranch.calendar_multiplier(::BreaklessSchedule, t) = 1.0
     x = [0.5, 0.8]
     @test f(x) ≈ reference(x)
     @test ForwardDiff.gradient(f, x) ≈ ForwardDiff.gradient(reference, x)
+
+    # A drawn interval is differentiable in the schedule's parameters too:
+    # with Λ(t) = target, dt/dθ = -(∂Λ/∂θ) / λ(t).
+    opening = 2.0
+    target = 0.7
+    draw(x) = invlogccdf(
+        EpiBranch.pair_kernel(
+            PairKernel(ctx -> Exponential(1.0); calendar = SeasonalSchedule(x[1], x[2], 10.0)),
+            1, 2, 0.0, opening
+        ),
+        -target
+    )
+    t = draw(x)
+    s = SeasonalSchedule(x[1], x[2], 10.0)
+    @test seasonal_integral(s, opening + t) - seasonal_integral(s, opening) ≈ target
+    implicit = -ForwardDiff.gradient(
+        y -> begin
+            sy = SeasonalSchedule(y[1], y[2], 10.0)
+            seasonal_integral(sy, opening + t) - seasonal_integral(sy, opening)
+        end, x
+    ) ./ EpiBranch.calendar_multiplier(s, opening + t)
+    @test ForwardDiff.gradient(draw, x) ≈ implicit rtol = 1.0e-6
 end
 
 struct StateKernelInfections{T} <: InfectionLayer
