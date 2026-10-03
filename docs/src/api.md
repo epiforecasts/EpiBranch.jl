@@ -26,9 +26,13 @@ household_final_size
 ## Pairwise survival likelihood
 
 ```@docs
-ContextualKernel
-CalendarKernel
-StatefulKernel
+PairKernel
+Steps
+EpiBranch.calendar_multiplier
+EpiBranch.next_calendar_break
+EpiBranch.calendar_shape
+EpiBranch.PiecewiseConstantCalendar
+EpiBranch.SmoothCalendar
 record_kernel
 PairContext
 LayerHost
@@ -51,6 +55,10 @@ household_infections
 HouseholdInfections
 HouseholdPairsLayout
 compile_household_pairs
+ConditionOn
+RecruitedIndex
+EarliestInfected
+EpiHouseholds.condition_mask
 ```
 
 ### Network likelihood
@@ -111,6 +119,7 @@ IsolationEligibility
 SymptomaticOnly
 AllCases
 EpiBranch.is_eligible_for_isolation
+EpiBranch.records_isolation
 ContactTracing
 TraceEligibility
 OnSymptomOnset
@@ -165,6 +174,7 @@ EpiBranch.AbortedInfection
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
+EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
 EpiBranch.traces_contacts
 EpiBranch.supplies_contacts
@@ -212,6 +222,7 @@ onset_time
 incubation_period
 is_isolated
 isolation_time
+outcome_time
 is_traced
 is_quarantined
 is_vaccinated
@@ -223,6 +234,8 @@ is_infected
 individual_type
 set_isolated!
 clear_isolated!
+EpiBranch.abort_infection!
+EpiBranch.infection_aborted_time
 ```
 
 ## Output

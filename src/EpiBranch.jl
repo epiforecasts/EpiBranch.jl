@@ -7,7 +7,7 @@ using LinearAlgebra: LinearAlgebra, eigvals
 using QuadGK
 using Random
 using SpecialFunctions
-using SurvivalDistributions: cumhazard, loghazard
+using SurvivalDistributions: SurvivalDistributions, cumhazard, loghazard
 
 # Docstring templates (must come before any docstrings)
 include("docstrings.jl")
@@ -158,7 +158,8 @@ export NoPopulation, NoAttributes, NoTypeLabels
 export NoAgeDistribution, NoCases
 
 # Exports — accessors
-export onset_time, incubation_period, is_isolated, isolation_time, is_traced, is_quarantined
+export onset_time, incubation_period, outcome_time, is_isolated, isolation_time, is_traced,
+    is_quarantined
 export is_vaccinated, immunity_time, severity_efficacy, is_asymptomatic, is_test_positive,
     is_infected
 export individual_type, set_isolated!, clear_isolated!
@@ -203,8 +204,7 @@ export ClusterMixed, ChainSizeMixture
 # Real-time mixture: per-cluster "is finished?" weight
 export end_of_outbreak_probability
 # Pairwise survival likelihood over a contact structure
-export ContextualKernel, PairContext, CalendarKernel, StatefulKernel, record_kernel,
-    LayerHost
+export PairKernel, PairContext, Steps, record_kernel, LayerHost
 export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout
 export compile_contact_pairs, pairwise_surv_loglik, pairwise_surv_loglik_by_component
 # Progression (natural-history) likelihood

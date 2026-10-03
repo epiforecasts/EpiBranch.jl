@@ -65,6 +65,8 @@ are infected are kept: `date_trace`, `date_vaccination`, `date_immunity`, and
 `date_isolation` when the isolation is a quarantine on tracing. Where
 [`Isolation`](@ref) derived the isolation from a provisional onset, the column
 reports the quarantine it replaced, if there was one, and `missing` otherwise.
+The `isolated` and `date_isolation` columns report an isolation only when it
+is recorded as a detection (see [`is_isolated`](@ref)).
 Use [`event_time_metadata`](@ref) to declare additional event dates.
 Columns that are not dates are reported as stored.
 
@@ -93,6 +95,8 @@ function linelist(
     end
     delete!(state_keys, :_intervention_actions)
     delete!(state_keys, :infected)  # encoded by the row's existence, or the column above
+    delete!(state_keys, :isolation_unrecorded)  # read through `:isolated`
+    delete!(state_keys, :isolation_unrecorded_before_isolation)
 
     for key in state_keys
         _add_state_column!(cols, cases, key, reference_date)
@@ -160,7 +164,7 @@ function _add_state_column!(cols, cases, key::Symbol, reference_date)
         values = Vector{Union{Date, Missing}}(undef, length(cases))
         any_finite = false
         for (i, ind) in pairs(cases)
-            t = is_infected(ind) ? get(ind.state, key, missing) :
+            t = is_infected(ind) ? _reported_state(ind, key) :
                 _uninfected_event_time(ind, key, metadata)
             d = t isa Real ? _to_date(reference_date, t) : missing
             values[i] = d
@@ -170,7 +174,7 @@ function _add_state_column!(cols, cases, key::Symbol, reference_date)
         cols[col_name] = values
     else
         key in keys(cols) && return nothing
-        raw = [get(ind.state, key, missing) for ind in cases]
+        raw = [_reported_state(ind, key) for ind in cases]
         all(ismissing, raw) && return nothing
         cols[key] = _normalise_column(raw)
     end
@@ -192,15 +196,26 @@ vaccination read them during the run. Those times describe an infection that
 never happened, so the reported events are only the ones that act on a person
 regardless of infection: being traced, vaccinated, gaining vaccine immunity, or
 being quarantined. An isolation written by `Isolation` came from the
-provisional onset; where one replaced a quarantine, that quarantine's time is
+provisional onset; where one replaced a recorded quarantine, that quarantine's time is
 reported in its place."""
 function _uninfected_event_time(ind, key::Symbol, metadata)
     if key === :isolation_time
         get(ind.state, :isolated_by_isolation, false) ||
-            return get(ind.state, key, missing)
+            return _reported_state(ind, key)
+        get(ind.state, :isolation_unrecorded_before_isolation, false) && return missing
         return get(ind.state, :isolation_time_before_isolation, missing)
     end
-    return metadata.requires_infection ? missing : get(ind.state, key, missing)
+    return metadata.requires_infection ? missing : _reported_state(ind, key)
+end
+
+# The value a state key reports in the line list. The isolation columns report
+# detections, so an isolation that removes the case from transmission without
+# being recorded (see `records_isolation`) reads as no isolation.
+function _reported_state(ind, key::Symbol)
+    haskey(ind.state, key) || return missing
+    key === :isolated && return is_isolated(ind)
+    key === :isolation_time && _isolation_unrecorded(ind) && return missing
+    return ind.state[key]
 end
 
 """Convert `Symbol` entries to `String` so DataFrames serialises cleanly;

@@ -216,7 +216,7 @@ proportions, with no case counted twice and none dropped except by design
 occurs — pair it with an unconditional terminal transition, or expect some
 cases to reach no terminal state.
 
-[`progression_loglik`](@ref) scores such a group as one event: the bucket the
+[`progression_loglik`](@ref) treats such a group as one event: the bucket the
 draw selected contributes the log of its own width, and the siblings it passed
 over contribute nothing. A group with a shortfall also needs the draw a
 simulation cached, so keep every one of its gates in the `progression`.
@@ -277,7 +277,7 @@ end
 # A shared draw is one event, so the bucket it selected holds the whole gate
 # term and the siblings it passed over say nothing more. The group's shortfall
 # — the probability that it selected none of them, when `sum(ps) < 1` — belongs
-# to the group once, so the last bucket is the one that scores it, from the
+# to the group once, so the last bucket is the one that owns it, reading the
 # draw a simulation cached.
 function _probability_loglik(g::_ExclusiveGate, passed, ind)
     passed && return log(g.hi - g.lo)

@@ -1,0 +1,24 @@
+# PACKAGE-OWNED — scaffold writes this once and never overwrites it.
+# The benchmark environment, so `julia --project=benchmark benchmark/run.jl`
+# resolves. Seeded with BenchmarkTools, the package, and the shared
+# EpiAwarePackageTools benchmark harness; add AD-backend deps when the
+# suite benchmarks gradients.
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+EpiAwarePackageTools = "7aaea248-0d11-4a0d-a7dc-86da30abb951"
+EpiBranch = "d1aa5d78-c683-4158-9743-7109392647a5"
+EpiHouseholds = "8b7e9a81-fac4-48f6-84d3-5750de169a00"
+EpiNetwork = "6a3f08e3-1d24-409d-b706-3344905be32e"
+StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
+
+[sources]
+EpiBranch = {path = ".."}
+EpiHouseholds = {path = "../lib/EpiHouseholds"}
+EpiNetwork = {path = "../lib/EpiNetwork"}
+
+[compat]
+BenchmarkTools = "1"
+Distributions = "0.25"
+EpiAwarePackageTools = "0.3, 0.4"
+StableRNGs = "1"
