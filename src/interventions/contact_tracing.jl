@@ -684,6 +684,10 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # A contact cannot be sought before it exists, such as a funeral contact
     # before the funeral, so the delay runs from whichever comes later.
     trace_time = max(base, not_before) + trace_delay
+    # A trace that never arrives reaches nobody: quarantining a contact at
+    # `Inf` would remove it from transmission and report it as detected, and
+    # leaving `:ring_remaining` unset keeps the ring from growing past it.
+    isfinite(trace_time) || return nothing
     apply_trace!(ct.action, ind, state, trace_time, rng)
 
     # Record the source this contact was traced from. The engine makes
@@ -702,11 +706,9 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # interventions in the stack, a contact is reached when the first of
     # them gets there.
     #
-    # An infinite trace time is recorded: it says the contact is never
-    # reached, which stops a ring from growing past it. A `NaN` says nothing
-    # about when the contact was reached, and `min` propagates it, so it would
-    # overwrite a good time another tracing system had already written. A
-    # custom `trigger_time` can return one.
+    # A `NaN` says nothing about when the contact was reached, and `min`
+    # propagates it, so it would overwrite a good time another tracing system
+    # had already written. A custom `trigger_time` can return one.
     if !isnan(trace_time)
         ind.state[:trace_time] = min(get(ind.state, :trace_time, Inf), trace_time)
     end
