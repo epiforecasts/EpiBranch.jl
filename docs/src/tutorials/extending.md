@@ -129,12 +129,11 @@ outcome it would affect confers no protection.
 `:infection_aborted_time` marks an infection that ended before symptom onset,
 as a post-exposure dose of `RingVaccination` or an antiviral can end it. Any
 intervention records it by calling [`EpiBranch.abort_infection!`](@ref), which
-keeps the earliest abort, and reads it through
-[`EpiBranch.infection_aborted_time`](@ref). The
-individual is still infected but transmits nothing from that time, and the
+keeps the earliest abort, and [`EpiBranch.infection_aborted_time`](@ref) reads
+it. The individual is still infected but transmits nothing from that time. The
 engine applies this block for as long as the key is present. It has no onset:
-`:onset_time` is `NaN` while `:asymptomatic` stays `false`, so isolation,
-tracing and clinical transitions triggered by onset never happen.
+`:onset_time` is `NaN` while `:asymptomatic` stays `false`. Isolation, tracing
+and clinical transitions triggered by onset never happen.
 
 Its clinical course ends at the abort time. When transitions are resolved, any
 transition that would take effect at or after that time, whatever its `from`,
@@ -144,16 +143,16 @@ the `_time` keys a transition writes, so it covers a custom transition that
 records when it happens under a `_time` key, as the built-ins do.
 
 On the generation-based engine `apply_post_transmission!` runs before infection
-is resolved, so an abort recorded there is set against a contact's provisional
+is resolved. An abort recorded there is set against a contact's provisional
 infection time, its earliest exposure. The engine removes the key and restores
 the onset when resolution does not confirm an infection that started before the
 abort: on a contact the exposure did not infect, and on one infected through a
 later exposure at or after the abort time. The key is therefore only present on an
 infected individual whose infection it ended. `RingVaccination` draws again
-each time a contact that already has the dose is exposed, so a pre-created node
+each time a contact that already has the dose is exposed: a pre-created node
 that escapes one exposure gets a fresh draw against the exposure that later
 infects it. On the continuous-time models the infection time is final by the
-time `on_infection_settled!` runs, so an abort recorded there needs no such
+time `on_infection_settled!` runs, and an abort recorded there needs no such
 check.
 
 `:reported` is shared between the `Reporting` clinical transition (which
@@ -506,8 +505,8 @@ Four defaults ship, each contributing a block probability:
   where every active node is infected.
 - [`EpiBranch.AbortedInfection`](@ref) blocks every transmission an
   infector makes from its `:infection_aborted_time`, so an infection
-  ended by [`EpiBranch.abort_infection!`](@ref) stays ended whether or not
-  the intervention that aborted it is still active.
+  ended by [`EpiBranch.abort_infection!`](@ref) stays ended after the
+  intervention that aborted it stops being active.
 
 A trait of `1.0` contributes no risk, so the defaults are silent unless
 an attributes function sets a susceptibility or infectiousness below one.

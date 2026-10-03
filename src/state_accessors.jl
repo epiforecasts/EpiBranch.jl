@@ -99,11 +99,11 @@ post-exposure treatment would. For intervention authors: call it from any hook
 once the individual has an infection time. Several aborts keep the earliest.
 
 The engine then treats the infection as ended at `time` on every transmission
-model: the individual stays a case but transmits nothing from `time` on, whether
-or not the intervention that aborted it is still active, and every route window
-closes there. It has no onset (`:onset_time` is `NaN` while `:asymptomatic`
-stays `false`), so nothing triggered by onset happens, and any clinical
-transition that would take effect at or after `time` is undone (see
+model: the individual stays a case but transmits nothing from `time` on, also
+after the intervention that aborted it stops being active, and every route
+window closes there. It has no onset (`:onset_time` is `NaN` while
+`:asymptomatic` stays `false`), and nothing triggered by onset happens. Any
+clinical transition that would take effect at or after `time` is undone (see
 [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)).
 
 On the generation-based engine an intervention acting before infection is
