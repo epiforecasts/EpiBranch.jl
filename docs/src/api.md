@@ -29,6 +29,7 @@ household_final_size
 ContextualKernel
 CalendarKernel
 StatefulKernel
+EpiBranch.watched_records
 record_kernel
 PairContext
 LayerHost

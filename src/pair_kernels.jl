@@ -93,12 +93,20 @@ function _calendar_interval(distribution, opening)
 end
 
 """
-    StatefulKernel(state, callback)
+    StatefulKernel(state, callback; watches)
 
 A pair kernel with explicit host state. In simulation, `state(individual)` selects
 an immutable record (for example a named tuple of attributes and event dates).
 `callback(context::PairContext, source, target)` returns the contact-interval
 law from those records. Wrap in [`CalendarKernel`](@ref) for calendar-time laws.
+
+`watches` names the `individual.state` keys the projection reads, as a tuple of
+`Symbol`s, and is what [`EpiBranch.watched_records`](@ref) reports. A race
+redraws a case's pending contacts when one of these keys moves on a host it
+reads, so a key left out is a hazard that changes without the contacts
+following it. Pass `()` for a projection that reads only state fixed for the
+run, such as an age group. Supplying a vector of records needs no declaration:
+a likelihood reads the records it is given.
 
 For likelihood evaluation, supply a vector of records indexed by population ID
 as `state`, or use [`record_kernel`](@ref) to extract them after simulation.
@@ -124,13 +132,41 @@ since that record is all the likelihood is given.
 
 Simulation keeps contacts consistent with the hazards in force as records
 change, and a run whose records never change follows the same distribution as
-an ordinary kernel. With interventions, a household model races every household
-together so that a policy can read cases in other households, which draws the
-same outbreak from a different random stream.
+an ordinary kernel. A kernel that declares watched records makes a household
+model race every household together, so that a policy can read cases in other
+households, which draws the same outbreak from a different random stream.
 """
-struct StatefulKernel{S, F}
+struct StatefulKernel{S, F, W <: Tuple}
     state::S
     callback::F
+    watches::W
+end
+
+# A recorded vector needs no declaration: the likelihood reads the records it
+# is handed, and nothing moves while it does.
+function StatefulKernel(records::AbstractVector, callback; watches = ())
+    return StatefulKernel(records, callback, _watch_keys(watches))
+end
+# A projection has to say what it reads. There is no safe default: inferring
+# "nothing moves" would silently draw a run's contacts from stale hazards, and
+# inferring "everything moves" would compare the whole population at every case.
+function StatefulKernel(project, callback; watches = nothing)
+    watches === nothing && throw(
+        ArgumentError(
+            "a `StatefulKernel` with a projection must declare the host state " *
+                "its callback reads: `StatefulKernel(project, callback; " *
+                "watches = (:vaccinated_at,))`. Pass `watches = ()` for a " *
+                "projection that reads only state fixed for the run."
+        )
+    )
+    return StatefulKernel(project, callback, _watch_keys(watches))
+end
+_watch_keys(key::Symbol) = (key,)
+function _watch_keys(keys)
+    all(k -> k isa Symbol, keys) || throw(
+        ArgumentError("`watches` must name `individual.state` keys as `Symbol`s")
+    )
+    return Tuple(keys)
 end
 
 """
@@ -197,13 +233,33 @@ _kernel_projection(k::StatefulKernel{<:AbstractVector}) = nothing
 _kernel_projection(k::CalendarKernel) = _kernel_projection(k.kernel)
 _live_kernel(k) = _kernel_projection(k) !== nothing
 
-# The projection a race has to watch for changes. Resolving a case writes only to
-# that case's own record, and no contact already drawn depends on it: contacts to
-# the case are settled, and its own contacts are drawn afterwards. So records that
-# pending contacts depend on can move only through an intervention, and without
-# one a live kernel races exactly as an ordinary kernel does.
-function _watched_projection(kernel, interventions)
-    return isempty(interventions) ? nothing : _kernel_projection(kernel)
+"""
+    watched_records(kernel)
+
+The `individual.state` keys `kernel`'s hazards depend on, as a tuple of
+`Symbol`s. `()`, the default, is a kernel whose hazards are fixed for a run.
+
+A continuous-time race keeps drawn contacts consistent with the hazards in
+force: when one of these keys moves on a host, the contacts drawn from a kernel
+declaring that key are drawn again, conditioned on the exposure already
+elapsed. The race watches the union of the keys its routes declare and compares
+only the hosts a pending or future draw reads, so a key no kernel declares
+costs nothing and a route that declares nothing is never redrawn.
+
+Declare every key the kernel reads, whether directly or through a projection.
+A [`StatefulKernel`](@ref) reports its `watches`; any other kernel type
+declares its own method.
+"""
+watched_records(kernel) = ()
+watched_records(k::StatefulKernel) = k.watches
+watched_records(k::CalendarKernel) = watched_records(k.kernel)
+# A per-edge collection of kernels watches what any one of them watches.
+function watched_records(ks::AbstractVector)
+    keys = Symbol[]
+    for k in ks, key in watched_records(k)
+        key in keys || push!(keys, key)
+    end
+    return Tuple(keys)
 end
 
 # The extra argument is supplied only by simulation; ordinary kernels retain
@@ -253,7 +309,7 @@ record_kernel(k, state::SimulationState) = k
 function record_kernel(k::StatefulKernel, state::SimulationState)
     return StatefulKernel(
         [deepcopy(_pair_state(k.state, ind)) for ind in state.individuals],
-        k.callback
+        k.callback; watches = watched_records(k)
     )
 end
 function record_kernel(k::CalendarKernel, state::SimulationState)

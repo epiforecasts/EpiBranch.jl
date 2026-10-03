@@ -22,6 +22,9 @@ public risk_depends_on_infector
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation
 
+# Pair kernels: the host records a kernel's hazards depend on.
+public watched_records
+
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:
 #   - candidate generation: `generate_offspring` (offspring-driven) or

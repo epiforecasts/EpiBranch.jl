@@ -163,7 +163,7 @@ using EpiBranch, EpiNetwork, Distributions, Random
 attributes = (rng, ind) -> (ind.state[:contact_scale] = rand(rng, Uniform(0.5, 1.5)))
 project(ind) = (scale = ind.state[:contact_scale]::Float64,)
 contact_law(context, source, target) = Exponential(source.scale + target.scale)
-kernel = StatefulKernel(project, contact_law)
+kernel = StatefulKernel(project, contact_law; watches = (:contact_scale,))
 adjacency = [[2, 3], [1, 3], [1, 2]]
 progression = [Transition(:recovered; delay = 5.0, terminal = true)]
 model = ModelSpec(NetworkProcess(adjacency, kernel); attributes, progression)
@@ -200,7 +200,7 @@ infection to onset:
 onset_state(ind) = (onset = get(ind.state, :onset_time, NaN),)
 after_onset(context, source, target) =
     (source.onset - context.infector_infection_time) + Exponential(1.0)
-onset_kernel = StatefulKernel(onset_state, after_onset)
+onset_kernel = StatefulKernel(onset_state, after_onset; watches = (:onset_time,))
 onset_model = ModelSpec(NetworkProcess(adjacency, onset_kernel);
     attributes = clinical_presentation(incubation_period = Gamma(2.0, 1.0)),
     progression)
@@ -248,7 +248,9 @@ end
 
 policy_state(ind) = (date = get(ind.state, :policy_time, Inf)::Float64,)
 policy_contact(context, source, target) = policy_law(0.4, 0.1, target.date)
-policy_kernel = CalendarKernel(StatefulKernel(policy_state, policy_contact))
+policy_kernel = CalendarKernel(
+    StatefulKernel(policy_state, policy_contact; watches = (:policy_time,))
+)
 policy_model = ModelSpec(NetworkProcess(adjacency, policy_kernel);
     progression, interventions = [TwoCasePolicy()])
 policy_run = simulate(policy_model; initial_cases = [1], rng = Xoshiro(236))

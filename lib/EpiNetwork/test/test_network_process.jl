@@ -14,6 +14,16 @@ function ring_adjacency(n, k = 1)
     return [vcat([mod1(i - d, n) for d in 1:k], [mod1(i + d, n) for d in 1:k]) for i in 1:n]
 end
 
+# Moves one host record on every case, so a route whose kernel declares that
+# record redraws its pending contacts at each step.
+struct _TickHosts <: EpiBranch.AbstractIntervention end
+function EpiBranch.resolve_individual!(::_TickHosts, ind, state)
+    for person in state.individuals
+        person.state[:tick] = state.cumulative_cases
+    end
+    return nothing
+end
+
 # Number of infected nodes in a finished simulation.
 n_infected(state) = count(is_infected, state.individuals)
 
@@ -840,27 +850,48 @@ end
             end
         end
 
-        # A kernel reading host records is refused rather than resolved. The
-        # race redraws pending contacts from one set of watched records, and
-        # several routes can carry several such kernels, so resolving per pair
-        # would draw a route's contacts from whatever the records held when
-        # they were proposed. `NetworkProcess` takes the same kernel.
+        # A kernel that reads host records is the one-route case of the same
+        # mechanism: the route declares the records it watches, and the race
+        # redraws its pending contacts as they move. A plain network over the
+        # same graph draws the same outbreak.
         live = StatefulKernel(
             ind -> (tick = get(ind.state, :tick, 0)::Int,),
-            (c, a, b) -> Exponential(1.0 + a.tick)
+            (c, a, b) -> Exponential(0.3 * (1 + a.tick)); watches = (:tick,)
         )
-        err = try
-            RoutedNetwork(
-                [RouteWindow(:all; until = (:recovered,), kernel = live, reach = adj)]
+        live_run(proc, s) = simulate(
+            ModelSpec(
+                proc; progression = _sir(6.0), interventions = [_TickHosts()]
+            );
+            n_initial = 2, rng = StableRNG(s)
+        )
+        routed_live = RoutedNetwork(
+            [RouteWindow(:all; until = (:recovered,), kernel = live, reach = adj)]
+        )
+        for s in 1:5
+            a = live_run(routed_live, s)
+            b = live_run(NetworkProcess(adj, live; until = (:recovered,)), s)
+            @test a.cumulative_cases == b.cumulative_cases
+            @test isequal(
+                [i.infection_time for i in a.individuals],
+                [i.infection_time for i in b.individuals]
             )
-            nothing
-        catch e
-            e
         end
-        @test err isa ArgumentError
-        @test occursin("reads host records", err.msg)
-        @test occursin(":all", err.msg)
-        @test NetworkProcess(adj, live; until = (:recovered,)) isa NetworkProcess
+
+        # The declaration is what makes the route follow the record: a kernel
+        # reading `:tick` without declaring it keeps the contacts it first drew.
+        undeclared = StatefulKernel(
+            ind -> (tick = get(ind.state, :tick, 0)::Int,),
+            (c, a, b) -> Exponential(0.3 * (1 + a.tick)); watches = ()
+        )
+        stale = RoutedNetwork(
+            [RouteWindow(:all; until = (:recovered,), kernel = undeclared, reach = adj)]
+        )
+        @test any(
+            !isequal(
+                [i.infection_time for i in live_run(routed_live, s).individuals],
+                [i.infection_time for i in live_run(stale, s).individuals]
+            ) for s in 1:5
+        )
 
         # A per-edge kernel of the wrong shape names the route it came from.
         bad = try
@@ -878,6 +909,51 @@ end
         end
         @test bad isa ArgumentError
         @test occursin("route :community", bad.msg)
+    end
+
+    @testset "RoutedNetwork: a record moves only the routes that read it" begin
+        # Each route declares the records its own kernel reads, so a record
+        # that moves reaches the pairs of the routes reading it and no others.
+        # Redrawing a route takes random numbers and moves its contacts, so a
+        # route watching a record nothing touches must give the same outbreak
+        # as one watching nothing at all.
+        adj = ring_adjacency(24)
+        far = [[mod1(i + 7, 24), mod1(i - 7, 24)] for i in 1:24]
+        moving = StatefulKernel(
+            ind -> (tick = get(ind.state, :tick, 0)::Int,),
+            (c, a, b) -> Exponential(0.4 * (1 + a.tick)); watches = (:tick,)
+        )
+        quiet(watches) = StatefulKernel(
+            ind -> (quiet = get(ind.state, :quiet, 0)::Int,),
+            (c, a, b) -> Exponential(0.6); watches
+        )
+        two_routes(watches) = ModelSpec(
+            RoutedNetwork(
+                [
+                    RouteWindow(
+                        :moving; until = (:recovered,), kernel = moving, reach = adj
+                    ),
+                    RouteWindow(
+                        :quiet; until = (:recovered,), kernel = quiet(watches),
+                        reach = far
+                    ),
+                ]
+            );
+            progression = _sir(6.0), interventions = [_TickHosts()]
+        )
+        for s in 1:5
+            declared = simulate(two_routes((:quiet,)); n_initial = 2, rng = StableRNG(s))
+            silent = simulate(two_routes(()); n_initial = 2, rng = StableRNG(s))
+            @test isequal(
+                [i.infection_time for i in declared.individuals],
+                [i.infection_time for i in silent.individuals]
+            )
+        end
+        # Both routes reach cases, so the comparison has something in it.
+        run = simulate(two_routes((:quiet,)); n_initial = 2, rng = StableRNG(1))
+        routes = [get(i.state, :infection_route, nothing) for i in run.individuals]
+        @test :moving in routes
+        @test :quiet in routes
     end
 
     @testset "RoutedNetwork: a route's infectiousness start does not delay tracing" begin

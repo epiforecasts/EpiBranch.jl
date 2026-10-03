@@ -25,7 +25,7 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
     kernel = StatefulKernel(records, callback)
     @test mean(EpiBranch.pair_kernel(kernel, 1, 2, 0.0)) ≈ exp(0.4)
     @test pairwise_surv_loglik(kernel, data, layout) ≈ -0.4 - 2exp(-0.4)
-    live = StatefulKernel(ind -> (log_scale = ind.state[:log_scale]::Float64,), callback)
+    live = StatefulKernel(ind -> (log_scale = ind.state[:log_scale]::Float64,), callback; watches = (:log_scale,))
     @test_throws ArgumentError pairwise_surv_loglik(live, data, layout)
     @test_throws ArgumentError pairwise_surv_loglik(
         kernel,
@@ -58,9 +58,10 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
     @test pairwise_surv_loglik(saved, data, layout) ≈ reference(x)
     @test record_kernel(CalendarKernel(live), state).kernel.state == records
     @test record_kernel(Exponential(), state) == Exponential()
-    history = record_kernel(StatefulKernel(ind -> ind.state[:history], callback), state)
+    history = record_kernel(StatefulKernel(ind -> ind.state[:history], callback; watches = (:history,)), state)
     push!(state.individuals[1].state[:history], 2.0)
     @test history.state[1] == [1.0]
+    @test EpiBranch.watched_records(saved) == EpiBranch.watched_records(live)
     @test !EpiBranch._live_kernel(saved)
     @test EpiBranch._live_kernel(CalendarKernel(live))
 end
@@ -119,7 +120,7 @@ function stateful_test_race(
         state, collect(1:n), rng;
         seed! = (best, members, r) -> copyto!(best, initial_times),
         targets, from = :infection, until = (:recovered,), interventions,
-        introduction, refresh_projection = EpiBranch._kernel_projection(kernel)
+        introduction, watches = (EpiBranch.watched_records(kernel),)
     )
     return state
 end
@@ -129,7 +130,7 @@ end
     for d in (Exponential(1.5), Weibull(2.0, 2.0), Gamma(3.0, 0.7))
         live = StatefulKernel(
             ind -> (tag = get(ind.state, :tag, 0.0)::Float64,),
-            (c, a, b) -> d
+            (c, a, b) -> d; watches = (:tag,)
         )
         @test isequal(
             [i.infection_time for i in stateful_test_race(d, seeds).individuals],
@@ -244,7 +245,7 @@ end
 end
 
 @testset "Shared race refreshes live pair kernels" begin
-    ties = StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0))
+    ties = StatefulKernel(tick_state, (c, a, b) -> Dirac(1.0); watches = (:tick,))
     state = stateful_test_race(ties, [0.0, Inf, Inf]; interventions = [TickEveryCase()])
     @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0]
 
@@ -255,7 +256,7 @@ end
             return state_policy_law(0.1, 1.0, b.date)
         return Dirac(20.0)
     end
-    kernel = StatefulKernel(project, callback)
+    kernel = StatefulKernel(project, callback; watches = (:policy_time,))
     changed = stateful_test_race(
         kernel, [0.0, Inf, Inf];
         interventions = [RecordKernelPolicy()]
@@ -268,7 +269,7 @@ end
     calendar = CalendarKernel(
         StatefulKernel(
             project,
-            (c, a, b) -> Exponential(2.0)
+            (c, a, b) -> Exponential(2.0); watches = (:policy_time,)
         )
     )
     @test mean(EpiBranch.pair_kernel(calendar, 1, 3, 0.0, 0.5, changed)) ≈ 2.0
@@ -285,7 +286,7 @@ end
 
     # Retried introductions must remain later than the admission boundary even
     # when another introduction settles and refreshes the remaining queue.
-    inactive = StatefulKernel(tick_state, (c, a, b) -> Dirac(20.0))
+    inactive = StatefulKernel(tick_state, (c, a, b) -> Dirac(20.0); watches = (:tick,))
     introduced = stateful_test_race(
         inactive, [0.1, 0.2, 0.3];
         interventions = [WaitForKernelDay(), TickEveryCase()],
@@ -302,7 +303,7 @@ end
     two_atoms = DiscreteNonParametric([1.0, 2.0], [0.5, 0.5])
     atoms = StatefulKernel(
         tick_state,
-        (c, a, b) -> c.susceptible == 2 ? two_atoms : Dirac(1.0)
+        (c, a, b) -> c.susceptible == 2 ? two_atoms : Dirac(1.0); watches = (:tick,)
     )
     at_one = count(1:2000) do seed
         state = stateful_test_race(
@@ -318,7 +319,7 @@ end
     # ordinary kernel does.
     seeds = [0.0; fill(Inf, 29)]
     law = Exponential(4.0)
-    live = StatefulKernel(tick_state, (c, a, b) -> law)
+    live = StatefulKernel(tick_state, (c, a, b) -> law; watches = (:tick,))
     early(state) = count(ind -> ind.infection_time < 1.0, state.individuals)
     redrawn = mean(
         early(
@@ -333,10 +334,11 @@ end
 end
 
 @testset "Live kernels outside a race" begin
-    live = StatefulKernel(tick_state, (c, a, b) -> Exponential(1.0))
-    @test EpiBranch._watched_projection(live, ()) === nothing
-    @test EpiBranch._watched_projection(live, [TickEveryCase()]) === tick_state
-    @test EpiBranch._watched_projection(Exponential(1.0), [TickEveryCase()]) === nothing
+    live = StatefulKernel(tick_state, (c, a, b) -> Exponential(1.0); watches = (:tick,))
+    @test EpiBranch.watched_records(live) == (:tick,)
+    @test EpiBranch.watched_records(CalendarKernel(live)) == (:tick,)
+    @test EpiBranch.watched_records(Exponential(1.0)) == ()
+    @test EpiBranch.watched_records([Exponential(1.0), live]) == (:tick,)
     @test_throws ArgumentError EpiBranch.pair_kernel(live, 1, 2, 0.0)
 
     state = EpiBranch.new_state(
