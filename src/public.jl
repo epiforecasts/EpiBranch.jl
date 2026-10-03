@@ -18,6 +18,7 @@ public required_fields
 public infectious_removal_time
 public risk_applies
 public risk_depends_on_infector
+public standing_block
 
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:
