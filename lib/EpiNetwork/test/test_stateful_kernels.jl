@@ -114,3 +114,48 @@ end
         @test state.individuals[4].parent_id == 2
     end
 end
+
+@testset "RoutedNetwork redraws a live route's pending contacts" begin
+    # RoutedNetwork never passed its routes' kernels to the race, so a live
+    # kernel's pending contacts were never redrawn when a later case moved the
+    # record they depend on: the race now derives this from each route's own
+    # kernel directly, rather than a projection the model had to compute itself.
+    project(ind) = (date = get(ind.state, :policy_time, Inf)::Float64,)
+    callback = function (c, a, b)
+        (c.infector, c.susceptible) == (1, 2) && return Dirac(1.0)
+        (c.infector, c.susceptible) == (1, 3) &&
+            return state_policy_law(0.1, 1.0, b.date)
+        return Dirac(20.0)
+    end
+    kernel = StatefulKernel(project, callback)
+    windows = [
+        RouteWindow(:only; until = (:recovered,), kernel, reach = [[2, 3], [1, 3], [1, 2]]),
+    ]
+    model = ModelSpec(
+        RoutedNetwork(windows);
+        progression = [Transition(:recovered; delay = 5.0, terminal = true)],
+        interventions = [RecordKernelPolicy()]
+    )
+    n = 1500
+    by_three = count(1:n) do seed
+        state = simulate(model; initial_cases = [1], rng = StableRNG(seed))
+        is_infected(state.individuals[3]) && state.individuals[3].infection_time <= 3.0
+    end
+    @test by_three / n ≈ 1 - exp(-0.1 * 1.5 - 1.0 * 1.5) atol = 0.04
+end
+
+@testset "A race cannot watch two distinct live kernels across routes" begin
+    project1(ind) = (p = 1,)
+    project2(ind) = (p = 2,)
+    live1 = StatefulKernel(project1, (c, a, b) -> Exponential(1.0))
+    live2 = StatefulKernel(project2, (c, a, b) -> Exponential(2.0))
+    windows = [
+        RouteWindow(:a; until = (:recovered,), kernel = live1, reach = [[2], [1]]),
+        RouteWindow(:b; until = (:recovered,), kernel = live2, reach = [[2], [1]]),
+    ]
+    model = ModelSpec(
+        RoutedNetwork(windows);
+        progression = [Transition(:recovered; delay = 5.0, terminal = true)]
+    )
+    @test_throws ArgumentError simulate(model; initial_cases = [1], rng = StableRNG(1))
+end

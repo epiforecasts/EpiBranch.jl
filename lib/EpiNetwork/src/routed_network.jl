@@ -286,11 +286,21 @@ function _simulate(
     return state
 end
 
-# One route's susceptible targets, each with that route's kernel.
+# One route's susceptible targets, each with that route's kernel resolved for
+# the pair: a shared distribution or callable is returned unchanged, and a live
+# StatefulKernel reads both hosts' current records, exactly as NetworkProcess
+# resolves its own edge kernel.
 function _route_targets(w::RouteWindow)
     adjacency, kernel = w.reach, w.kernel
     return (inf, st) -> (
-        (nb, kernel) for nb in adjacency[inf]
+        (
+            nb,
+            EpiBranch.pair_kernel(
+                kernel, inf, nb, st.individuals[inf].infection_time,
+                EpiBranch.window_open(st.individuals[inf], w), st
+            ),
+        )
+            for nb in adjacency[inf]
             if !is_infected(st.individuals[nb])
     )
 end
