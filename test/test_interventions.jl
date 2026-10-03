@@ -243,6 +243,53 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         ) === nothing
     end
 
+    @testset "The race's tracing walk grows a ring through uninfected contacts" begin
+        # The structure-driven processes that call this walk live in the
+        # companion packages, so it is driven directly here on a path graph
+        # 1-2-3-4 in which only node 1 is a case.
+        function walk(depth; timed = false)
+            ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0); depth)
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(1.0), Exponential(5.0)),
+                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+            )
+            EpiBranch.add_individuals!(state, 4, [ct])
+            case = state.individuals[1]
+            case.state[:infected] = true
+            case.infection_time = 0.0
+            set_isolated!(case, 2.0)
+            neighbours = [[2], [1, 3], [2, 4], [3]]
+            # Node 3 cannot be reached before time 50, as on a route that
+            # opens late.
+            opens = Dict(3 => 50.0)
+            contacts = timed ?
+                (i, st) -> ((j, get(opens, j, -Inf)) for j in neighbours[i]) :
+                (i, st) -> neighbours[i]
+            pos = Dict(i => i for i in 1:4)
+            processed = [true, false, false, false]
+            EpiBranch._trace_from!(state, case, [ct], contacts, pos, processed)
+            return state.individuals
+        end
+
+        inds = walk(3)
+        @test all(is_traced, inds[2:4])
+        @test [inds[i].state[:ring_remaining] for i in 2:4] == [2, 1, 0]
+        @test [inds[i].state[:traced_by] for i in 2:4] == [1, 2, 3]
+        @test !any(is_infected, inds[2:4])
+
+        # The ring stops at its radius.
+        inds = walk(2)
+        @test is_traced(inds[3])
+        @test !is_traced(inds[4])
+
+        # A contact reached late on its route is traced no earlier than that,
+        # and the ring past it is timed from its trace.
+        inds = walk(3; timed = true)
+        @test isolation_time(inds[2]) == 2.0
+        @test isolation_time(inds[3]) == 50.0
+        @test isolation_time(inds[4]) == 50.0
+    end
+
     @testset "Scheduled resetting a ring member lets a later trace grow the ring" begin
         # A ring member that has already grown the ring, and whose trace a
         # `Scheduled` start time then undoes, must behave as never traced: a
