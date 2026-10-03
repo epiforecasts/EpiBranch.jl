@@ -737,7 +737,7 @@ each possible infector's whole infectious window.
 
 Everything is cut at [`followup_end(data)`](@ref EpiBranch.followup_end): a host
 infected after it is treated as escaped until then, and no exposure accrues past
-it. Scoring data with an end of follow-up gives the same value as first
+it. Evaluating data with an end of follow-up gives the same value as first
 truncating the data there: later infections unobserved, and removal times and
 `obs_end` capped at it.
 

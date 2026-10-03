@@ -451,7 +451,7 @@ whether a configuration is possible at all depends on the times alone.
 
 Fitting the community hazard itself has the same caveat as for households: a
 positive `external_hazard` and no community hazard are different conditionings,
-and the density jumps between them at `α = 0`. Score the two models separately;
+and the density jumps between them at `α = 0`. Evaluate the two models separately;
 [Fitting a community hazard](@ref) explains why and shows the log-density near
 zero. The same automatic-differentiation limit also applies: fit a `Gamma` kernel
 or community hazard with a reverse-mode backend such as Mooncake.
