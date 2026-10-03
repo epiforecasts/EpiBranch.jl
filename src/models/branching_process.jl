@@ -116,7 +116,7 @@ end
 # gives the state label without needing an individual to resolve a time from —
 # `Transition` reads it off `.state`, `Death`/`Recovery` are hardcoded to
 # :died/:recovered. A terminal transition that does not implement it stays at
-# the default `nothing` and so is not checkable here and stays silently
+# the default `nothing`, so it is not checkable here and stays silently
 # exempt — documented on `terminal_target`'s own docstring, since a custom
 # terminal transition must opt in to be covered. `from`, when it names a
 # terminal state itself (e.g. a funeral `RouteWindow` with `from = :died`),

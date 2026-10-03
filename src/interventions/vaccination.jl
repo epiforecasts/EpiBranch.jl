@@ -411,8 +411,8 @@ end
     realise_prior_dose!(mode::AbstractEffectMode, individual, label, state)
 
 Re-apply [`realised_efficacy`](@ref) to a dose an `attributes` function
-recorded on `individual` before the simulation started, so it was never
-seen by `_record_vaccination!`. Mutates `individual.state` in place.
+recorded on `individual` before the simulation started, never seen by
+`_record_vaccination!`. Mutates `individual.state` in place.
 [`LeakyMode`](@ref) does nothing, since the raw efficacy it was given is
 already the value it stores; [`AllOrNothingMode`](@ref) turns that raw
 value into a one-time responder/non-responder draw, so a dose recorded
