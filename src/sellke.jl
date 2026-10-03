@@ -103,8 +103,12 @@ function _has_own_method(f, T::Type, base::Type)
     # `methods` rather than `which`, which finds only a method whose parameters
     # accept `Any`: an intervention that types its hook's arguments, as the style
     # guide asks, has one `which` looks straight past.
+    # Julia 1.10 also lists the less specific methods `T` falls back on, so only
+    # a method narrower than `base` counts.
     return any(methods(f, Tuple{T, Vararg{Any}})) do mm
-        Base.unwrap_unionall(mm.sig).parameters[2] !== base
+        p = Base.unwrap_unionall(mm.sig).parameters[2]
+        p isa TypeVar && (p = p.ub)
+        p !== base && p <: base
     end
 end
 
@@ -362,14 +366,20 @@ EpiBranch.risk_applies).
 """
 const INTERVENTION_REMOVAL = :intervention_removal
 
-# Close a window: the earliest of its `until` states' times, plus the
-# intervention removal when the window opted into it.
+# Close a window: the earliest of its `until` states' times, the intervention
+# removal when the window opted into it, and a post-exposure abort, which ends
+# the infection outright and so closes every route, opted in or not — the same
+# reach as the `AbortedInfection` risk that blocks each route's transmission
+# from that time on. Without this, a route whose only removal state is one an
+# abort undoes (see `resolve_transitions!`) never closes, and the rejection
+# sampler that redraws a blocked pair's next contact has no bound to redraw
+# within.
 function _route_close(ind, w::RouteWindow, interventions)
     t = _window_close(ind, w.until)
     if INTERVENTION_REMOVAL in w.until
         t = min(t, _intervention_removal_time(ind, interventions))
     end
-    return t
+    return min(t, get(ind.state, :infection_aborted_time, Inf))
 end
 
 # The one window of `_sellke_race!`'s `from`/`until`/`targets` shorthand. Reading
@@ -419,7 +429,6 @@ function _sellke_honours(model, iv::AbstractIntervention)
     _has_generation_hook(iv) || return true
     return traces_contacts(iv) && supplies_contacts(model)
 end
-_sellke_honours(model, ::ContactTracing) = supplies_contacts(model)
 _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
 
 """
@@ -518,7 +527,9 @@ A model with several transmission routes passes `routes`, a collection of
 opens and closes on its own window, and only a route listing
 `INTERVENTION_REMOVAL` in its `until` is cut by the interventions' removals and
 blocked by removal risks such as isolation. Other risks select their routes
-through [`risk_applies`](@ref).
+through [`risk_applies`](@ref). A case infected along one of these routes has
+the route's `name` in its `:infection_route`, which `linelist` reports. The
+single-window shorthand has no named route and writes nothing.
 
 `introduction`, when given, is the `(kernel, until)` of the community hazard the
 model seeded its members from: the contact-interval distribution of an
@@ -530,7 +541,8 @@ blocked introduction is followed by the next one from the same hazard. The risks
 of isolation and quarantine are not: they
 stand in for removing an infector, and an introduction's source is outside the
 population. Omit `introduction` for a model whose seeds are index cases, which
-are put to no risk at all.
+are put to no risk at all. An introduced case's `:infection_route` is
+`:external`, including on a model that also names routes.
 
 `max_time` ends the race at that time: individuals whose infection would fall
 later are left uninfected, and the state is exactly the full run's state
@@ -751,6 +763,20 @@ function _sellke_race!(
             ind.parent_id = infector.id
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
+            # Only a model with named routes reports one. The single-window
+            # shorthand has one window covering the whole model, so its name
+            # identifies the model, where `:infection_route` is meant to
+            # identify the setting a case was infected in.
+            routes === nothing || (ind.state[:infection_route] = rts[opening.route][1].name)
+        elseif introduction !== nothing
+            ind.state[:infection_route] = :external
+        end
+        # The infection time is now fixed, so an intervention whose effect
+        # depends on the exposure the race chose can settle it (see
+        # `on_infection_settled!`), before the onset derived from it or any
+        # transition reads it.
+        for iv in interventions
+            on_infection_settled!(iv, ind, state, rng)
         end
         # A pre-created node has no infection time, and so no onset, until now.
         # Derive the onset from the infection time before transitions and

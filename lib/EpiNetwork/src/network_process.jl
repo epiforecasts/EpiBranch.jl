@@ -149,36 +149,45 @@ end
 # Distribution`, or a per-edge vector parallel to the adjacency list — and
 # resolved per contact by `_edge_kernel(model, infector, position, state, from)`, where
 # `position` is the index of the neighbour within `adjacency[infector]`.
+# These take the adjacency list, so a `RoutedNetwork` route can pass its own
+# `reach`. `route` names that route in an error message; a model with one
+# kernel leaves it off.
 
 # A shared distribution is used as-is; a per-edge vector is validated to line
 # up with the adjacency list; anything else is taken to be a callable.
-_validate_kernel(k::ContinuousUnivariateDistribution, adj) = k
-function _validate_kernel(k::AbstractVector{<:AbstractVector}, adj)
+_validate_kernel(k::ContinuousUnivariateDistribution, adj; route = nothing) = k
+function _validate_kernel(k::AbstractVector{<:AbstractVector}, adj; route = nothing)
+    where_ = route === nothing ? "" : "route :$route: "
     length(k) == length(adj) || throw(
         ArgumentError(
-            "per-edge kernel and adjacency must have the same number of nodes"
+            "$(where_)per-edge kernel and adjacency must have the same number " *
+                "of nodes"
         )
     )
     for i in eachindex(adj)
         length(k[i]) == length(adj[i]) || throw(
             ArgumentError(
-                "node $i: per-edge kernel and adjacency have different lengths"
+                "$(where_)node $i: per-edge kernel and adjacency have " *
+                    "different lengths"
             )
         )
     end
     return [collect(row) for row in k]
 end
-_validate_kernel(k, adj) = k   # callable (infector, susceptible) -> Distribution
+# A callable `(infector, susceptible) -> Distribution`.
+_validate_kernel(k, adj; route = nothing) = k
 
 # The contact-interval distribution for the `pos`-th neighbour of node `i`.
+# Takes the adjacency list rather than the model so `RoutedNetwork` can resolve
+# a route's own kernel against its own `reach` the same way.
 function _edge_kernel(m::NetworkProcess, i::Int, pos::Int, state, from)
-    return _resolve_kernel(m.edge_kernel, m, i, pos, state, from)
+    return _resolve_kernel(m.edge_kernel, m.adjacency, i, pos, state, from)
 end
-_resolve_kernel(k::ContinuousUnivariateDistribution, m, i, pos, state, from) = k
-_resolve_kernel(k::AbstractVector, m, i, pos, state, from) = k[i][pos]
-function _resolve_kernel(k, m, i, pos, state, from)
+_resolve_kernel(k::ContinuousUnivariateDistribution, adjacency, i, pos, state, from) = k
+_resolve_kernel(k::AbstractVector, adjacency, i, pos, state, from) = k[i][pos]
+function _resolve_kernel(k, adjacency, i, pos, state, from)
     return EpiBranch.pair_kernel(
-        k, i, m.adjacency[i][pos], state.individuals[i].infection_time,
+        k, i, adjacency[i][pos], state.individuals[i].infection_time,
         EpiBranch._window_open(state.individuals[i], from), state
     )
 end

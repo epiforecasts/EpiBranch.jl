@@ -72,11 +72,16 @@ pair goes on meeting, so blocking a fraction of the contacts thins that pair's
 hazard by the same fraction. Per-individual susceptibility and infectiousness
 reach the same thinning through the contact-interval draw, which turns a pair's
 survival `S(t)` into `S(t)^m`. Ring and group vaccination use candidate actions,
-including scheduling and capacity admission. With several households, capacity
-requires `period = Inf`: each household runs on its own clock, which prevents
-chronological accounting of a shared periodic budget. Ring delivery requires an infinite
-eligibility window and zero post-exposure efficacy. Mass vaccination remains
-unsupported on this path. Existing protection can also use host traits,
+including scheduling and capacity admission, and a ring dose's
+`post_exposure_efficacy` can abort a household member's own latent infection on
+this path, exactly as it does on the generation engine: a dose given while the
+member was still pending is reconsidered once its infection settles. With
+several households, capacity requires `period = Inf`: each household runs on
+its own clock, which prevents chronological accounting of a shared periodic
+budget. Ring delivery requires an infinite eligibility window: exposure-dependent
+eligibility needs a member's own infection time, which is not yet known while
+it is still pending. Mass vaccination remains unsupported on this path.
+Existing protection can also use host traits,
 a composed kernel or a user-defined competing risk. Non-pharmaceutical control expressed as a removal
 `Transition` in the progression always applies.
 

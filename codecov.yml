@@ -8,3 +8,21 @@
 flag_management:
   default_rules:
     carryforward: true
+
+# Thresholds. Without them a pull request fails whenever its own new lines are
+# covered even slightly less well than the project average, which most pull
+# requests are, and `project` fails on a drop of a hundredth of a point.
+#
+# `patch` has no `threshold`, so 90% is the bar. Note what that means for a
+# small diff: with nine coverable lines, eight covered is 88.9% and fails, so a
+# diff of a few lines effectively needs all of them covered. That is intended;
+# override such a one by hand rather than lowering the bar for every diff.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 90%

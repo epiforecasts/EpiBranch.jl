@@ -20,7 +20,16 @@ Network transmission over several routes at once.
 
 - `reach`: an adjacency list giving that route's edges, so different routes can
   connect different pairs of the same nodes;
-- `kernel`: the contact-interval distribution along those edges;
+- `kernel`: the contact-interval distribution along those edges — a shared
+  `Distributions.jl` distribution, a callable `(infector, susceptible) ->
+  Distribution` for covariate models, a [`PairKernel`](@ref) without `state`,
+  which also reads the infector's infection time and may carry a calendar
+  schedule, or a per-edge vector parallel to
+  `reach`, resolved per pair exactly as on [`NetworkProcess`](@ref). A kernel
+  that reads host records is refused: several routes can carry several of them
+  and the race is given one set of records to watch, so there is no way to keep
+  a route's pending contacts current. Use [`NetworkProcess`](@ref) for a single
+  such route;
 - `until`: the states that end this route, which is what lets one route be cut
   and another left alone. Include `EpiBranch.INTERVENTION_REMOVAL` for a route
   that a composed `Isolation` should end;
@@ -53,6 +62,11 @@ left at the default use no random numbers for naming.
 
 All routes run over the same node set, so every adjacency must have the same
 length.
+
+A case infected on one of these routes records the route's `name` in its
+`:infection_route`. A community introduction records `:external`. Both appear
+in [`linelist`](@ref), so a run's cases break down by setting with no need to
+reconstruct one from the population structure and the timing.
 
 # Example
 
@@ -113,6 +127,10 @@ function RoutedNetwork(
                 "$(join([length(w.reach) for w in windows], ", ")))"
         )
     )
+    # A route's kernel accepts the same forms as `NetworkProcess`'s edge
+    # kernel; a per-edge vector is validated and normalised against this
+    # route's own adjacency.
+    windows = [_validate_route_kernel(w) for w in windows]
     _valid_external(external_hazard) ||
         throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
     obs_end_value = Float64(obs_end)
@@ -139,6 +157,30 @@ function _start_unset(w::RouteWindow, from)
     return RouteWindow(
         w.name, from, w.until, w.kernel, w.reach, w.contacts_from,
         w.traceable
+    )
+end
+
+# Validate and normalise a route's kernel against its own adjacency, exactly
+# as `NetworkProcess` does for its edge kernel.
+function _validate_route_kernel(w::RouteWindow)
+    # A kernel that reads host records has to be refreshed when a record moves,
+    # which the race does from the single `refresh_projection` a one-kernel
+    # model gives it. Several routes can carry several such kernels, so there is
+    # no one projection to hand it, and a route's contacts would be drawn from
+    # whatever the records held when they were proposed. Refused rather than
+    # simulated from stale hazards.
+    EpiBranch._kernel_projection(w.kernel) === nothing || throw(
+        ArgumentError(
+            "route :$(w.name) carries a kernel that reads host records, which " *
+                "`RoutedNetwork` cannot keep up to date. Use `NetworkProcess` " *
+                "for a single such route, or a kernel that reads only the pair " *
+                "and the calendar."
+        )
+    )
+    return RouteWindow(
+        w.name, w.from, w.until,
+        _validate_kernel(w.kernel, w.reach; route = w.name), w.reach,
+        w.contacts_from, w.traceable
     )
 end
 
@@ -281,11 +323,15 @@ function _simulate(
     return state
 end
 
-# One route's susceptible targets, each with that route's kernel.
+# One route's susceptible targets, each with that route's kernel resolved for
+# the pair: a shared distribution, a per-edge vector, a covariate callable or a
+# `PairKernel` without `state`, exactly as `NetworkProcess` resolves its edge kernel (see
+# `_resolve_kernel`). A record-reading kernel is refused at construction.
 function _route_targets(w::RouteWindow)
     adjacency, kernel = w.reach, w.kernel
     return (inf, st) -> (
-        (nb, kernel) for nb in adjacency[inf]
+        (nb, _resolve_kernel(kernel, adjacency, inf, pos, st, w.from))
+            for (pos, nb) in enumerate(adjacency[inf])
             if !is_infected(st.individuals[nb])
     )
 end

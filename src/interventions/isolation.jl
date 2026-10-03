@@ -117,6 +117,10 @@ function competing_risk(iso::Isolation, parent, contact, state)
     )
 end
 
+# Perfect isolation's block starts when the infector's window closes, so a
+# contact drawn from that infector never meets it; only a leaky residual can.
+risk_depends_on_infector(iso::Isolation) = iso.post_isolation_transmission > 0
+
 # Leaky isolation's residual block stands in for the removal perfect isolation
 # makes, so it reaches the same routes: those the case is isolated from.
 risk_applies(::Isolation, route) = route !== nothing && INTERVENTION_REMOVAL in route.until
