@@ -96,6 +96,7 @@ function linelist(
     delete!(state_keys, :_intervention_actions)
     delete!(state_keys, :infected)  # encoded by the row's existence, or the column above
     delete!(state_keys, :isolation_unrecorded)  # read through `:isolated`
+    delete!(state_keys, :isolation_unrecorded_before_isolation)
     delete!(state_keys, :ring_remaining)         # the ring's own bookkeeping
     delete!(state_keys, :ring_propagated)
 
@@ -197,12 +198,13 @@ vaccination read them during the run. Those times describe an infection that
 never happened, so the reported events are only the ones that act on a person
 regardless of infection: being traced, vaccinated, gaining vaccine immunity, or
 being quarantined. An isolation written by `Isolation` came from the
-provisional onset; where one replaced a quarantine, that quarantine's time is
+provisional onset; where one replaced a recorded quarantine, that quarantine's time is
 reported in its place."""
 function _uninfected_event_time(ind, key::Symbol, metadata)
     if key === :isolation_time
         get(ind.state, :isolated_by_isolation, false) ||
             return _reported_state(ind, key)
+        get(ind.state, :isolation_unrecorded_before_isolation, false) && return missing
         return get(ind.state, :isolation_time_before_isolation, missing)
     end
     return metadata.requires_infection ? missing : _reported_state(ind, key)

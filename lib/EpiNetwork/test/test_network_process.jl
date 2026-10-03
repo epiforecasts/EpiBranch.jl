@@ -826,12 +826,17 @@ end
     @testset "RoutedNetwork: route kernel resolves per pair, matching NetworkProcess" begin
         # A route's kernel must be resolved for the pair exactly as
         # `NetworkProcess` resolves its edge kernel, so a covariate callable, a
-        # `ContextualKernel` and a per-edge vector all behave the same on a
-        # route as on a plain network over the same graph.
+        # `PairKernel` with or without a calendar schedule and a per-edge vector
+        # all behave the same on a route as on a plain network over the same
+        # graph.
         adj = ring_adjacency(30)
         covariates = 0.5 .+ rand(StableRNG(7), 30)
         callable(i, j) = Exponential(0.3 * covariates[j])
-        contextual = ContextualKernel(c -> Exponential(0.3 * covariates[c.susceptible]))
+        contextual = PairKernel(c -> Exponential(0.3 * covariates[c.susceptible]))
+        calendar = PairKernel(
+            c -> Exponential(0.3 * covariates[c.susceptible]);
+            calendar = Steps([3.0], [1.0, 0.5])
+        )
         per_edge = [
             [Exponential(0.2 + 0.1 * mod1(i + k, 5)) for k in eachindex(adj[i])]
                 for i in eachindex(adj)
@@ -840,7 +845,7 @@ end
         run(proc, s) = simulate(
             ModelSpec(proc; progression = _sir(6.0)); n_initial = 2, rng = StableRNG(s)
         )
-        for k in (callable, contextual, per_edge)
+        for k in (callable, contextual, calendar, per_edge)
             routed = RoutedNetwork(
                 [RouteWindow(:all; until = (:recovered,), kernel = k, reach = adj)]
             )
@@ -858,9 +863,9 @@ end
         # several routes can carry several such kernels, so resolving per pair
         # would draw a route's contacts from whatever the records held when
         # they were proposed. `NetworkProcess` takes the same kernel.
-        live = StatefulKernel(
-            ind -> (tick = get(ind.state, :tick, 0)::Int,),
-            (c, a, b) -> Exponential(1.0 + a.tick)
+        live = PairKernel(
+            (c, a, b) -> Exponential(1.0 + a.tick);
+            state = ind -> (tick = get(ind.state, :tick, 0)::Int,)
         )
         err = try
             RoutedNetwork(
