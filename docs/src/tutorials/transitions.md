@@ -399,7 +399,7 @@ outbreak or a rejection-sampling error on a structure-driven model.
 
 ## Evaluating the progression's likelihood
 
-[`progression_loglik`](@ref) gives the log density of a case's clinical
+[`progression_loglik`](@ref) gives the log-density of a case's clinical
 timeline under the `progression` that produced it: the log-density of each
 transition's delay when it occurred, and the log-probability of its gate
 either way. It reads the state each transition wrote in
@@ -419,7 +419,7 @@ progression_loglik(model, state)
 ```
 
 This is the natural-history counterpart to [`pairwise_surv_loglik`](@ref),
-which gives the log density of the infection layer. Added together, the two
+which gives the log-density of the infection layer. Added together, the two
 give the full log-likelihood of an outbreak's augmented data — infection
 times, order and clinical timelines — under `model`.
 

@@ -4,9 +4,8 @@
 # log-likelihood of a case's clinical timeline (onset given infection,
 # reporting given onset, and so on) under a `ModelSpec`'s `progression`,
 # rather than the infection layer the pairwise likelihood evaluates. Together
-# they give the log density of the full augmented data of a simulated or
-# hand-built outbreak;
-# see the design notes in `docs/src/design.md`.
+# they give the log-density of the full augmented data for a simulated or
+# hand-built outbreak; see the design notes in `docs/src/design.md`.
 
 """
     progression_loglik(spec::ModelSpec, individuals) -> Float64
