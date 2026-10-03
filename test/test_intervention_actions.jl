@@ -89,6 +89,30 @@ end
     )
 end
 
+@testset "Ring vaccination times a dose only from a recorded isolation" begin
+    # A traced contact with no `:trace_time` falls back to its isolation, which
+    # counts only when the isolation was recorded as a detection.
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18)
+    )
+    rv = RingVaccination(efficacy = 0.8, dose_delay = 2.0)
+    function traced_contact(id, unrecorded)
+        ind = Individual(id = id, state = Dict{Symbol, Any}(:traced => true))
+        EpiBranch.initialise_individual!(rv, ind, state)
+        set_isolated!(ind, 5.0)
+        unrecorded && (ind.state[:isolation_unrecorded] = true)
+        push!(state.individuals, ind)
+        return ind
+    end
+
+    unrecorded = traced_contact(1, true)
+    @test isempty(EpiBranch.intervention_actions(rv, state, [unrecorded]))
+
+    recorded = traced_contact(2, false)
+    @test only(EpiBranch.intervention_actions(rv, state, [recorded])).time == 7.0
+end
+
 EpiBranch.continuous_actions(::AppointmentAction) = true
 @testset "Continuous action boundaries" begin
     state = EpiBranch.new_state(
