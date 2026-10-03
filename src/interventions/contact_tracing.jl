@@ -156,7 +156,8 @@ Base.:!(a::TraceEligibility) = NoneOf(a)
 The time tracing from `infector` starts under this eligibility policy,
 for `contact` in the four-argument form; [`ContactTracing`](@ref) adds
 its delay to it.
-Defaults to the infector's isolation time (the historical default).
+Defaults to the infector's isolation time, or `Inf` for an isolation that
+is not recorded as a detection (see [`is_isolated`](@ref)).
 [`OnSymptomOnset`](@ref) overrides this to onset time, so suspicion-based
 tracing starts at symptom onset instead of waiting for isolation or
 confirmation.
@@ -234,7 +235,7 @@ is met and whose own trigger time is not `NaN`. A combinator that wraps
 a policy whose `is_eligible` reads the contact therefore cannot be
 evaluated through the three-argument form; use the four-argument form.
 """
-trigger_time(::TraceEligibility, infector, state) = isolation_time(infector)
+trigger_time(::TraceEligibility, infector, state) = _recorded_isolation_time(infector)
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
 function trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, state)
     return _combined_time(_WithoutContact(), e, infector, nothing, state)
@@ -401,8 +402,13 @@ struct Quarantine <: TraceAction end
 function apply_trace!(::Quarantine, contact, state, trace_time, rng)
     contact.state[:traced] = true
     contact.state[:quarantined] = true
-    if is_isolated(contact)
-        set_isolated!(contact, min(isolation_time(contact), trace_time))
+    if _isolation_in_force(contact)
+        standing = isolation_time(contact)
+        # A trace no earlier than an isolation that was not recorded leaves that
+        # isolation, and its time, as the one in force, so it stays unrecorded.
+        unrecorded = _isolation_unrecorded(contact) && !(trace_time < standing)
+        set_isolated!(contact, min(standing, trace_time))
+        unrecorded && (contact.state[:isolation_unrecorded] = true)
     else
         set_isolated!(contact, trace_time)
     end
@@ -631,7 +637,7 @@ function reset!(::ContactTracing, ind::Individual)
     haskey(ind.state, :trace_time) && delete!(ind.state, :trace_time)
     haskey(ind.state, :ring_remaining) && delete!(ind.state, :ring_remaining)
     haskey(ind.state, :ring_propagated) && delete!(ind.state, :ring_propagated)
-    is_isolated(ind) && clear_isolated!(ind)
+    _isolation_in_force(ind) && clear_isolated!(ind)
     return nothing
 end
 
@@ -674,7 +680,7 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
         ct.isolation_to_trace_delay, infector, ind, state, rng
     )
     base = seed ? trigger_time(ct.eligibility, infector, ind, state) :
-        get(infector.state, :trace_time, isolation_time(infector))
+        get(infector.state, :trace_time, _recorded_isolation_time(infector))
     # A contact cannot be sought before it exists, such as a funeral contact
     # before the funeral, so the delay runs from whichever comes later.
     trace_time = max(base, not_before) + trace_delay

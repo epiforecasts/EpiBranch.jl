@@ -111,6 +111,7 @@ IsolationEligibility
 SymptomaticOnly
 AllCases
 EpiBranch.is_eligible_for_isolation
+EpiBranch.records_isolation
 ContactTracing
 TraceEligibility
 OnSymptomOnset
@@ -210,6 +211,7 @@ onset_time
 incubation_period
 is_isolated
 isolation_time
+outcome_time
 is_traced
 is_quarantined
 is_vaccinated
