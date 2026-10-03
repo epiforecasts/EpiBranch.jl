@@ -129,6 +129,15 @@ end
     contextual = PairKernel(c -> (profile = Exponential(1.0), calendar = Steps([date], [before, after])))
     @test pairwise_surv_loglik(contextual, data, layout) ≈
         pairwise_surv_loglik(kernel, data, layout)
+    # A named tuple without a calendar keeps the kernel's own schedule.
+    profile_only = PairKernel(
+        c -> (profile = Exponential(1.0),);
+        calendar = Steps([date], [before, after])
+    )
+    @test pairwise_surv_loglik(profile_only, data, layout) ==
+        pairwise_surv_loglik(kernel, data, layout)
+    @test EpiBranch.pair_kernel(PairKernel(c -> (profile = Exponential(2.0),)), 1, 2, 0.0) ==
+        Exponential(2.0)
 end
 
 include("testutils/pair_kernels.jl")

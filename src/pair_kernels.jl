@@ -225,18 +225,24 @@ function _pair_result(::PairKernel, ctx, i, j)
     )
 end
 
-# Turn a callback's result — a profile, or a `(profile, calendar)` named tuple —
-# into the usable contact-interval kernel: the profile unchanged with no
-# calendar in force, or a hazard scaled by the calendar schedule from `opening`.
-function _finish_kernel(k::PairKernel, result, opening)
-    profile, sched = result isa NamedTuple ?
-        (result.profile, get(result, :calendar, k.calendar)) : (result, k.calendar)
-    sched === nothing && return profile
-    opening === nothing && throw(
+# Turn a callback's result into the usable contact-interval kernel. A bare
+# profile is scaled by the kernel's own calendar; a `(profile, calendar)` named
+# tuple names the pair's schedule, falling back to the kernel's when it omits one.
+_finish_kernel(k::PairKernel, result, opening) = _calendar_scaled(result, k.calendar, opening)
+function _finish_kernel(k::PairKernel, result::NamedTuple, opening)
+    return _calendar_scaled(result.profile, get(result, :calendar, k.calendar), opening)
+end
+
+# The profile unchanged with no calendar in force, or its hazard scaled by the
+# calendar schedule from the infector's infectious `opening`.
+_calendar_scaled(profile, ::Nothing, opening) = profile
+_calendar_scaled(profile, ::Nothing, ::Nothing) = profile
+function _calendar_scaled(profile, sched, ::Nothing)
+    throw(
         ArgumentError("PairKernel's calendar schedule needs the infector's infectious opening time")
     )
-    return _CalendarScaledKernel(profile, sched, opening)
 end
+_calendar_scaled(profile, sched, opening) = _CalendarScaledKernel(profile, sched, opening)
 
 pair_kernel(k::PairKernel, i, j, infection_time) =
     _finish_kernel(k, _pair_result(k, PairContext(i, j, infection_time), i, j), nothing)
