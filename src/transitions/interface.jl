@@ -115,12 +115,12 @@ end
 struct _NoRandRNG <: Random.AbstractRNG end
 
 # The log-likelihood contribution of a probability gate, given whether it
-# occurred. `probability` resolves with `_NoRandRNG()`: a callable gate is
+# passed. `probability` resolves with `_NoRandRNG()`: a callable gate is
 # expected to be a deterministic function of the individual (as every
 # built-in and documented example is), not of the RNG draw that also
 # consumes it during simulation; one that does draw is rejected rather than
 # evaluated with an arbitrary, non-reproducible value.
-function _probability_loglik(probability, occurred, ind)
+function _probability_loglik(probability, passed, ind)
     p = try
         _resolve_probability(probability, _NoRandRNG(), ind)
     catch e
@@ -137,7 +137,7 @@ function _probability_loglik(probability, occurred, ind)
             )
         )
     end
-    return occurred ? log(p) : log1p(-p)
+    return passed ? log(p) : log1p(-p)
 end
 
 """

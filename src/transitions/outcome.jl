@@ -145,8 +145,8 @@ function transition_loglik(d::Death, individual::Individual)
     anchor = _resolve_anchor(d.from, individual)
     _anchor_ok(anchor) || return 0.0
     t = individual.state[:death_candidate_time]
-    occurred = isfinite(t)
-    ll = _probability_loglik(d.probability, occurred, individual)
-    occurred || return ll
+    candidate = isfinite(t)
+    ll = _probability_loglik(d.probability, candidate, individual)
+    candidate || return ll
     return ll + _delay_loglik(d.delay, t - anchor)
 end
