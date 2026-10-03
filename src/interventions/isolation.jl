@@ -221,7 +221,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     #   - test_isolation_time:  onset + delay, occurs iff test_positive
     #   - traced_isolation_time: set by ContactTracing's FlagOnly action
     #     for traced contacts, occurs iff contact was traced and has an onset
-    # Isolation happens at the earlier of any active pathway. A
+    # Isolation occurs at the earlier of any active pathway. A
     # test-negative-but-traced contact is still isolated via tracing.
     #
     # The traced pathway isolates a flagged contact once it has symptoms, so a
