@@ -611,6 +611,90 @@ end
         @test count(p -> hh_of(p[1]) == hh_of(p[2]), pairs) > length(pairs) ÷ 2
     end
 
+    @testset "RoutedNetwork: infection route recorded on the case" begin
+        # Households of 4 as cliques, plus a community ring over the same
+        # people, plus a community-wide external hazard: every route a case
+        # can be infected through, seen from the case's own state.
+        nh, hs = 20, 4
+        n = nh * hs
+        hh = [Int[] for _ in 1:n]
+        for h in 0:(nh - 1), i in (h * hs + 1):(h * hs + hs),
+                j in (h * hs + 1):(h * hs + hs)
+            i != j && push!(hh[i], j)
+        end
+        comm = ring_adjacency(n)
+        routes = [
+            RouteWindow(:household; until = (:recovered,), kernel = Weibull(1.5, 4.0), reach = hh),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(20.0), reach = comm),
+        ]
+
+        # With no external hazard, a seed is a true index case rather than a
+        # community introduction, and carries no route at all.
+        no_hazard = simulate(
+            ModelSpec(RoutedNetwork(routes); progression = _sir(10.0));
+            n_initial = 2, rng = StableRNG(7)
+        )
+        index_df = linelist(no_hazard)
+        @test all(ismissing, index_df.infection_route[index_df.index])
+
+        m = ModelSpec(
+            RoutedNetwork(routes; external_hazard = 0.02, obs_end = 30.0);
+            progression = _sir(10.0)
+        )
+        state = simulate(m; n_initial = 2, rng = StableRNG(7))
+        df = linelist(state)
+
+        @test :infection_route in propertynames(df)
+        @test Set(skipmissing(df.infection_route)) ⊆ Set(["household", "community", "external"])
+        @test "household" in df.infection_route
+        @test "community" in df.infection_route
+        @test "external" in df.infection_route
+
+        # A case's recorded route matches the route its infector actually
+        # reached it on: a household neighbour's route is :household, and vice
+        # versa.
+        by_id = Dict(ind.id => ind for ind in state.individuals)
+        for ind in state.individuals
+            is_infected(ind) && ind.parent_id != 0 || continue
+            infector = by_id[ind.parent_id]
+            route = ind.state[:infection_route]
+            if route == :household
+                @test ind.id in hh[infector.id]
+            elseif route == :community
+                @test ind.id in comm[infector.id]
+            end
+        end
+
+        # With the external hazard active, every seed is a community
+        # introduction rather than a true index case, so all of them are
+        # `:external` too.
+        @test all(==("external"), df.infection_route[df.index])
+    end
+
+    @testset "NetworkProcess: introductions marked external, no route otherwise" begin
+        # A plain NetworkProcess has one implicit route, not a named one, so
+        # onward transmission along the graph carries no `:infection_route`;
+        # only introductions from outside the population are distinguishable,
+        # and those are `:external`.
+        n = 50
+        m = ModelSpec(
+            NetworkProcess(
+                ring_adjacency(n), Exponential(2.0);
+                external_hazard = 0.05, obs_end = 30.0
+            );
+            progression = _sir(6.0)
+        )
+        state = simulate(m; rng = StableRNG(5))
+        df = linelist(state)
+        @test count(df.index) >= 1                        # community introductions happened
+        @test :infection_route in propertynames(df)
+        @test all(==("external"), df.infection_route[df.index])
+        @test all(
+            !haskey(ind.state, :infection_route)
+                for ind in state.individuals if is_infected(ind) && !ind.state[:index]
+        )
+    end
+
     @testset "RoutedNetwork: route start under a latent period" begin
         # Two nodes, a fixed 5-day latent period and near-immediate contact. A
         # route left at the default opens when the case becomes infectious; an
@@ -724,6 +808,76 @@ end
             @test count(is_traced, a.individuals) == count(is_traced, b.individuals)
         end
         @test sum(count(is_traced, run(routed, s).individuals) for s in 1:10) > 0
+    end
+
+    @testset "RoutedNetwork: route kernel resolves per pair, matching NetworkProcess" begin
+        # A route's kernel must be resolved for the pair exactly as
+        # `NetworkProcess` resolves its edge kernel, so a covariate callable, a
+        # `ContextualKernel` and a per-edge vector all behave the same on a
+        # route as on a plain network over the same graph.
+        adj = ring_adjacency(30)
+        covariates = 0.5 .+ rand(StableRNG(7), 30)
+        callable(i, j) = Exponential(0.3 * covariates[j])
+        contextual = ContextualKernel(c -> Exponential(0.3 * covariates[c.susceptible]))
+        per_edge = [
+            [Exponential(0.2 + 0.1 * mod1(i + k, 5)) for k in eachindex(adj[i])]
+                for i in eachindex(adj)
+        ]
+
+        run(proc, s) = simulate(
+            ModelSpec(proc; progression = _sir(6.0)); n_initial = 2, rng = StableRNG(s)
+        )
+        for k in (callable, contextual, per_edge)
+            routed = RoutedNetwork(
+                [RouteWindow(:all; until = (:recovered,), kernel = k, reach = adj)]
+            )
+            plain = NetworkProcess(adj, k; until = (:recovered,))
+            for s in 1:5
+                a, b = run(routed, s), run(plain, s)
+                @test a.cumulative_cases == b.cumulative_cases
+                @test [i.infection_time for i in a.individuals] ==
+                    [i.infection_time for i in b.individuals]
+            end
+        end
+
+        # A kernel reading host records is refused rather than resolved. The
+        # race redraws pending contacts from one set of watched records, and
+        # several routes can carry several such kernels, so resolving per pair
+        # would draw a route's contacts from whatever the records held when
+        # they were proposed. `NetworkProcess` takes the same kernel.
+        live = StatefulKernel(
+            ind -> (tick = get(ind.state, :tick, 0)::Int,),
+            (c, a, b) -> Exponential(1.0 + a.tick)
+        )
+        err = try
+            RoutedNetwork(
+                [RouteWindow(:all; until = (:recovered,), kernel = live, reach = adj)]
+            )
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin("reads host records", err.msg)
+        @test occursin(":all", err.msg)
+        @test NetworkProcess(adj, live; until = (:recovered,)) isa NetworkProcess
+
+        # A per-edge kernel of the wrong shape names the route it came from.
+        bad = try
+            RoutedNetwork(
+                [
+                    RouteWindow(
+                        :community; until = (:recovered,),
+                        kernel = [[Exponential(1.0)] for _ in adj], reach = adj
+                    ),
+                ]
+            )
+            nothing
+        catch e
+            e
+        end
+        @test bad isa ArgumentError
+        @test occursin("route :community", bad.msg)
     end
 
     @testset "RoutedNetwork: a route's infectiousness start does not delay tracing" begin
@@ -1089,12 +1243,11 @@ end
         )
         @test meansize([iso, late]) <= meansize([iso]) * 1.05
 
-        # Exposure-dependent eligibility and PEP require a known infection time.
+        # Exposure-dependent eligibility requires a known infection time; PEP
+        # does not, since a dose given to a still-pending member is
+        # reconsidered once the race settles that member's own infection.
         model = build([iso]).process
-        for rv in (
-                RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8),
-                RingVaccination(efficacy = 0.8, eligibility_window = 21.0),
-            )
+        for rv in (RingVaccination(efficacy = 0.8, eligibility_window = 21.0),)
             @test !EpiBranch._sellke_honours(model, rv)
             warning_name = rv isa Scheduled ? r"Scheduled" : r"RingVaccination"
             undosed = @test_logs (:warn, warning_name) match_mode = :any simulate(
@@ -1112,7 +1265,17 @@ end
             n_initial = 1, rng = StableRNG(4)
         )
 
-        # Tracing and actions share the continuous-time candidate state.
+        # Tracing and actions share the continuous-time candidate state. A
+        # post-exposure dose is honoured too: a contact traced while still
+        # pending is dosed, and the dose is reconsidered against its own
+        # exposure once its infection settles.
+        pep = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8)
+        @test EpiBranch._sellke_honours(model, pep)
+        dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
+            build([iso, ct, pep]); n_initial = 1, rng = StableRNG(4)
+        )
+        @test any(is_vaccinated, dosed.individuals)
+
         honoured = [iso, ct, RingVaccination(efficacy = 0.8)]
         @test all(iv -> EpiBranch._sellke_honours(model, iv), honoured)
         @test_logs min_level = Base.CoreLogging.Warn simulate(

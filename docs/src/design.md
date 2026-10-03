@@ -200,6 +200,29 @@ This holds on every axis:
 - **Output, observation, and outcome rules** follow the same shape:
   mortality, hospitalisation, reporting, stopping conditions, and line-list
   columns are typed objects with methods, not closed sets of fields.
+- **Engine loops** should ask the composed layers and never decide for them. A
+  stepping loop or continuous-time race that decides what a named intervention
+  does to whom, reads a state key an intervention owns (see
+  [Individual state](@ref)), or keeps its own record of what has already been
+  done to whom has taken a policy decision into core, where nothing a user
+  writes can reach it. The varying part belongs behind the hook the layer
+  already implements, and the loop's own bookkeeping should be about running
+  the simulation.
+
+  A loop does sometimes need a fact about an intervention: whether it can be
+  honoured at all, whether its effects are exact enough for a fast path. The
+  shape for that is a documented trait with a conservative default, which an
+  intervention opts out of for itself, as
+  [`infection_likelihood_compatible`](@ref EpiBranch.infection_likelihood_compatible)
+  is asked of a composed component. A method on a concrete type is then that
+  type's author declaring something about it, available to anyone who writes a
+  type, where a method the engine keeps on its own built-ins is reachable only
+  from inside the package.
+
+  This axis is the one the engine has not finished moving onto. Several loops
+  still dispatch on a built-in intervention type or read a key a layer owns,
+  which is why the rule above is written as the target rather than as a
+  description of the current code.
 
 The test of correctness for any component: can a plausible new variant be
 added without editing the component's source? If not, the component is

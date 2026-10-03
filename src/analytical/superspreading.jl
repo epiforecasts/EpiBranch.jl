@@ -78,6 +78,146 @@ function proportion_transmission(
     return proportion_transmission(single_type_offspring(model); prop_cases)
 end
 
+# ── Proportion of cases responsible for a share of transmission ──────
+
+"""
+    proportion_cases_individual(R::Real, k::Real; prop_transmission::Real=0.8)
+
+Inverse of [`proportion_transmission`](@ref): the proportion of cases
+responsible for a given proportion `prop_transmission` of transmission,
+under the continuous Gamma approximation to individual reproduction
+numbers.
+
+As with `proportion_transmission`, the result depends only on the
+dispersion `k`; `R` is accepted for interface consistency but does not
+affect it.
+
+This is not the same question as [`proportion_cases_offspring`](@ref),
+which ranks realised, integer offspring counts rather than continuous
+individual reproduction numbers, and can give a substantially different
+answer for the same `R` and `k`.
+"""
+function proportion_cases_individual(R::Real, k::Real; prop_transmission::Real = 0.8)
+    R > 0 || throw(ArgumentError("R must be positive, got $R"))
+    k > 0 || throw(ArgumentError("k must be positive, got $k"))
+    0.0 < prop_transmission < 1.0 ||
+        throw(ArgumentError("prop_transmission must be in (0, 1), got $prop_transmission"))
+
+    # Invert the Lorenz curve used by `proportion_transmission`: find the
+    # top-`prop_transmission` share of transmission first, then read off the
+    # proportion of cases that produced it.
+    g1 = Gamma(k + 1.0, 1.0)
+    x = quantile(g1, 1.0 - prop_transmission)
+    g = Gamma(k, 1.0)
+    return 1.0 - cdf(g, x)
+end
+
+"""
+    proportion_cases_individual(d::NegativeBinomial; prop_transmission=0.8)
+
+Proportion of cases responsible for `prop_transmission` of transmission,
+extracted from a Negative Binomial offspring distribution.
+"""
+function proportion_cases_individual(d::NegativeBinomial; prop_transmission::Real = 0.8)
+    return proportion_cases_individual(mean(d), d.r; prop_transmission)
+end
+
+function proportion_cases_individual(d::Poisson; prop_transmission::Real = 0.8)
+    return proportion_cases_individual(mean(d), 1.0e6; prop_transmission)
+end
+
+function proportion_cases_individual(d::Distribution; prop_transmission::Real = 0.8)
+    throw(ArgumentError("proportion_cases_individual not defined for $(typeof(d)). Use NegativeBinomial or Poisson."))
+end
+
+"""
+    proportion_cases_individual(model::BranchingProcess; prop_transmission=0.8)
+
+Proportion of cases responsible for `prop_transmission` of transmission,
+extracted from the model's offspring distribution (must be NegativeBinomial
+or Poisson).
+"""
+function proportion_cases_individual(
+        model::Union{TransmissionModel, ModelSpec};
+        prop_transmission::Real = 0.8
+    )
+    return proportion_cases_individual(single_type_offspring(model); prop_transmission)
+end
+
+"""
+    proportion_cases_offspring(d::DiscreteUnivariateDistribution; prop_transmission::Real=0.8)
+
+The proportion of cases responsible for a given proportion `prop_transmission`
+of transmission, computed from the realised, integer offspring counts of any
+discrete offspring distribution `d` with finite mean — the version usually
+reported alongside the "80/20 rule".
+
+Cases are ranked by their actual number of secondary cases, from the most
+infectious downwards; the count at the crossing threshold is split
+fractionally between the responsible and non-responsible groups so the
+target share of transmission is met exactly, rather than rounded to a whole
+count.
+
+This is not the same question as [`proportion_cases_individual`](@ref),
+which uses a continuous Gamma approximation to individual reproduction
+numbers rather than realised offspring counts, and the two can differ
+substantially for the same offspring distribution — report both, clearly
+labelled, rather than picking one.
+"""
+function proportion_cases_offspring(d::DiscreteUnivariateDistribution; prop_transmission::Real = 0.8)
+    0.0 < prop_transmission < 1.0 ||
+        throw(ArgumentError("prop_transmission must be in (0, 1), got $prop_transmission"))
+
+    μ = _law_mean(d)
+    isfinite(μ) || throw(ArgumentError("offspring distribution must have a finite mean"))
+    μ > 0 || throw(
+        ArgumentError("offspring distribution must have a positive mean to define a transmission share")
+    )
+
+    lo, hi = _series_range(d)
+
+    cum_cases = 0.0
+    cum_transmission = 0.0
+    for x in hi:-1:lo
+        p_x = pdf(d, x)
+        transmission_x = x * p_x / μ
+        if cum_transmission + transmission_x >= prop_transmission
+            remaining = prop_transmission - cum_transmission
+            frac = transmission_x > 0 ? remaining / transmission_x : 0.0
+            return cum_cases + frac * p_x
+        end
+        cum_cases += p_x
+        cum_transmission += transmission_x
+    end
+    return cum_cases
+end
+
+"""
+    proportion_cases_offspring(R::Real, k::Real; prop_transmission::Real=0.8)
+
+Proportion of cases responsible for `prop_transmission` of transmission,
+computed from the realised offspring counts of a Negative Binomial
+distribution with mean `R` and dispersion `k`.
+"""
+function proportion_cases_offspring(R::Real, k::Real; prop_transmission::Real = 0.8)
+    R > 0 || throw(ArgumentError("R must be positive, got $R"))
+    k > 0 || throw(ArgumentError("k must be positive, got $k"))
+    return proportion_cases_offspring(NegBin(R, k); prop_transmission)
+end
+
+"""
+    proportion_cases_offspring(model::BranchingProcess; prop_transmission=0.8)
+
+Proportion of cases responsible for `prop_transmission` of transmission,
+computed from the model's realised offspring distribution.
+"""
+function proportion_cases_offspring(
+        model::Union{TransmissionModel, ModelSpec};
+        prop_transmission::Real = 0.8
+    )
+    return proportion_cases_offspring(single_type_offspring(model); prop_transmission)
+end
+
 # ── Proportion of cases from large clusters ──────────────────────────
 
 """
