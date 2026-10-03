@@ -151,14 +151,17 @@ host's record: `state(individual)` selects it in simulation, from an
 indexed by population ID as `state`, or use [`record_kernel`](@ref) to extract
 them after simulation; the callback is identical in both paths.
 
-`watches` names the `individual.state` keys a projection reads, as a tuple of
-`Symbol`s, and is what [`EpiBranch.watched_records`](@ref) reports. A race
+`watches` names every `individual.state` key the projection reads, as a tuple
+of `Symbol`s, and is what [`EpiBranch.watched_records`](@ref) reports. A race
 redraws a case's pending contacts when one of these keys moves on a host it
 reads, so a key left out is a hazard that changes without the contacts
-following it. It is required with a projection, since no default is safe, and
-`()` says the projection reads only state fixed for the run, such as an age
-group. A vector of records needs no declaration: a likelihood reads the records
-it is given.
+following it — declare each one the projection reads, whether or not anything
+in today's model writes it. It is required with a projection, since no default
+is safe; `()` is for a projection that reads no state key, such as one indexing
+a table by `ind.id`. Only `individual.state` is followed, so anything that can
+move has to be read from there rather than from a field such as
+`ind.susceptibility`. A vector of records needs no declaration: a likelihood
+reads the records it is given.
 
 `calendar`, a [`Steps`](@ref) schedule or any type implementing
 [`calendar_multiplier`](@ref EpiBranch.calendar_multiplier), multiplies the
@@ -196,9 +199,10 @@ since that record is all the likelihood is given.
 
 Simulation keeps contacts consistent with the hazards in force as records
 change, and a run whose records never change follows the same distribution as
-an ordinary kernel. With interventions, a household model races every household
-together so that a policy can read cases in other households, which draws the
-same outbreak from a different random stream.
+an ordinary kernel. A kernel that declares watched records puts every
+household of a household model on one clock, so that a policy can read cases in
+other households, which draws the same outbreak from a different random
+stream.
 
 A plain distribution remains the simplest kernel and needs no `PairKernel`
 wrapper.
@@ -223,10 +227,11 @@ _kernel_watches(::AbstractVector, watches) = _watch_keys(watches === nothing ? (
 function _kernel_watches(state, watches)
     watches === nothing && throw(
         ArgumentError(
-            "a `PairKernel` whose `state` is a projection must declare the host " *
-                "state its callback reads: `PairKernel(callback; state = project, " *
-                "watches = (:vaccinated_at,))`. Pass `watches = ()` for a " *
-                "projection that reads only state fixed for the run."
+            "a `PairKernel` whose `state` is a projection must declare every " *
+                "`individual.state` key that projection reads: " *
+                "`PairKernel(callback; state = project, " *
+                "watches = (:vaccination_time,))`. Pass `watches = ()` for a " *
+                "projection that reads no state key."
         )
     )
     return _watch_keys(watches)
@@ -315,12 +320,17 @@ elapsed. The race watches the union of the keys its routes declare and compares
 only the hosts a pending or future draw reads, so a key no kernel declares
 costs nothing and a route that declares nothing is never redrawn.
 
-Declare every key the kernel reads, whether directly or through a projection.
-A [`PairKernel`](@ref) reports its `watches`; any other kernel type declares
-its own method.
+Declare every key the kernel reads, whether or not anything in a given model
+writes it, and read anything that can move from `individual.state` rather than
+from a field of the individual, which this cannot name. A [`PairKernel`](@ref)
+reports its `watches`, and `()` once its records are extracted; any other
+kernel type declares its own method.
 """
 watched_records(kernel) = ()
 watched_records(k::PairKernel) = k.watches
+# A vector of records cannot move while a likelihood reads it, and a race given
+# one has nothing to watch.
+watched_records(::PairKernel{F, <:AbstractVector}) where {F} = ()
 # A per-edge collection of kernels watches what any one of them watches.
 function watched_records(ks::AbstractVector)
     keys = Symbol[]
@@ -440,7 +450,7 @@ function record_kernel(k::PairKernel, state::SimulationState)
     return PairKernel(
         k.callback,
         [deepcopy(_pair_state(k.state, ind)) for ind in state.individuals],
-        k.calendar, k.watches
+        k.calendar, ()
     )
 end
 

@@ -346,6 +346,10 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
     push!(state.individuals[1].state[:history], 2.0)
     @test history.state[1] == [1.0]
     @test !EpiBranch._live_kernel(saved)
+    # Extracted records cannot move, so the recorded kernel watches nothing and
+    # a race given it keeps the ordinary path.
+    @test EpiBranch.watched_records(saved) == ()
+    @test EpiBranch.watched_records(history) == ()
 
     # A calendar schedule is carried through recording unchanged, and a kernel
     # with one is live exactly when its host state is.
