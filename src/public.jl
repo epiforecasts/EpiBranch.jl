@@ -8,6 +8,7 @@
 public initialise_individual!
 public resolve_individual!
 public apply_post_transmission!
+public on_infection_settled!
 public trace_contacts!
 public traces_contacts
 public supplies_contacts
