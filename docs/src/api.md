@@ -51,6 +51,10 @@ household_infections
 HouseholdInfections
 HouseholdPairsLayout
 compile_household_pairs
+ConditionOn
+RecruitedIndex
+EarliestInfected
+EpiHouseholds.condition_mask
 ```
 
 ### Network likelihood
