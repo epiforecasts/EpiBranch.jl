@@ -509,7 +509,8 @@ function _calendar_invlogccdf(::SmoothCalendar, k::_CalendarScaledKernel, target
         isfinite(hi) || return oftype(target, Inf)
         hi_acc = hi == upper ? oftype(target, Inf) : acc + _calendar_integral(k, lo, hi)
         if hi_acc >= target
-            return _implicit_step(k, _bisect_calendar(k, lo, hi, acc, target), target)
+            t, t_acc = _bisect_calendar(k, lo, hi, acc, hi_acc, target)
+            return _implicit_step(k, t, t_acc, target)
         end
         lo, acc = hi, hi_acc
         width *= 2
@@ -519,21 +520,31 @@ end
 
 # The bisection compares values only, so the time it finds carries no
 # derivative in the schedule's parameters. One implicit-function step
-# `t + (target - Λ(t)) / λ(t)`, with `Λ` and `λ` read through the schedule,
-# leaves the value where the bisection put it and gives it the derivative
-# `-(∂Λ/∂θ) / λ` that the drawn time has.
-function _implicit_step(k::_CalendarScaledKernel, t, target)
+# `t + (target - Λ(t)) / λ(t)` gives it the derivative `-(∂Λ/∂θ) / λ` that the
+# drawn time has. `Λ(t)` is the bisection's own running integral, which
+# brackets `target` within one bisection step, so the step moves the value by
+# no more than that step even where the hazard is small; a separately computed
+# integral would carry a different quadrature error, which a small hazard
+# would magnify into the drawn time.
+function _implicit_step(k::_CalendarScaledKernel, t, t_acc, target)
+    isfinite(t_acc) || return t
     rate = _calendar_hazard(k, t)
     (iszero(rate) || !isfinite(rate)) && return t
-    return t + (target - _calendar_integral(k, zero(t), t)) / rate
+    return t + (target - t_acc) / rate
 end
 
-function _bisect_calendar(k::_CalendarScaledKernel, lo, hi, acc, target)
+# Bisect `[lo, hi]`, whose running integrals `acc` and `hi_acc` bracket
+# `target`, down to adjacent floats; return the upper end and its integral.
+function _bisect_calendar(k::_CalendarScaledKernel, lo, hi, acc, hi_acc, target)
     while true
         mid = lo + (hi - lo) / 2
-        (lo < mid < hi) || return hi
+        (lo < mid < hi) || return hi, hi_acc
         mid_acc = acc + _calendar_integral(k, lo, mid)
-        mid_acc >= target ? (hi = mid) : ((lo, acc) = (mid, mid_acc))
+        if mid_acc >= target
+            hi, hi_acc = mid, mid_acc
+        else
+            lo, acc = mid, mid_acc
+        end
     end
     return
 end

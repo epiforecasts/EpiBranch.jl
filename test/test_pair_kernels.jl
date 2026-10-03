@@ -272,6 +272,22 @@ EpiBranch.calendar_multiplier(::BreaklessSchedule, t) = 1.0
         end, x
     ) ./ EpiBranch.calendar_multiplier(s, opening + t)
     @test ForwardDiff.gradient(draw, x) ≈ implicit rtol = 1.0e-6
+
+    # Near a trough of the schedule the hazard is tiny. The draw must still
+    # solve its own cumulative hazard, so the step cannot move it by more than
+    # the bisection's last interval.
+    deep(y) = PairKernel(
+        ctx -> Exponential(1.0); calendar = SeasonalSchedule(y[1], y[2], 10.0)
+    )
+    y = [1.0, 1.0 - 1.0e-9]
+    trough = seasonal_integral(SeasonalSchedule(y[1], y[2], 10.0), 7.5) -
+        seasonal_integral(SeasonalSchedule(y[1], y[2], 10.0), 0.0)
+    near = EpiBranch.pair_kernel(deep(y), 1, 2, 0.0, 0.0)
+    t_near = invlogccdf(near, -trough)
+    @test EpiBranch.cumhazard(near, t_near) ≈ trough rtol = 1.0e-8
+    drawn(y) = invlogccdf(EpiBranch.pair_kernel(deep(y), 1, 2, 0.0, 0.0), -trough)
+    @test drawn(y) == t_near
+    @test all(isfinite, ForwardDiff.gradient(drawn, y))
 end
 
 struct StateKernelInfections{T} <: InfectionLayer
