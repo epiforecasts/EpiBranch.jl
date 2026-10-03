@@ -72,7 +72,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test progression_loglik(spec, [ind]) == -Inf
     end
 
-    @testset "a Function delay cannot be scored" begin
+    @testset "a Function delay cannot be evaluated" begin
         latent = Transition(:infectious, from = :infection, delay = (rng, ind) -> 2.0)
         spec = ModelSpec(
             BranchingProcess(Poisson(0.0));
@@ -82,13 +82,13 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test_throws ArgumentError progression_loglik(spec, state)
     end
 
-    @testset "a death is scored by whether it happened and when" begin
+    @testset "a death contributes its gate and, when it happened, its delay" begin
         death = Death(delay = Exponential(2.0), probability = 0.25)
         spec = ModelSpec(
             BranchingProcess(Poisson(0.0));
             progression = [death], attributes = clinical
         )
-        function scored(candidate_time)
+        function loglik(candidate_time)
             ind = Individual(id = 1, infection_time = 0.0)
             ind.state[:infected] = true
             ind.state[:onset_time] = 1.0
@@ -97,19 +97,19 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         end
 
         # Died at 4.0, three days after the onset the delay is measured from.
-        @test scored(4.0) ≈ log(0.25) + logpdf(Exponential(2.0), 3.0)
-        # Survived: the gate alone, with no delay to score.
-        @test scored(Inf) ≈ log(1 - 0.25)
+        @test loglik(4.0) ≈ log(0.25) + logpdf(Exponential(2.0), 3.0)
+        # Survived: the gate alone, with no delay to evaluate.
+        @test loglik(Inf) ≈ log(1 - 0.25)
     end
 
-    @testset "a hospitalisation is scored by whether it happened and when" begin
+    @testset "a hospitalisation contributes its gate and, when it happened, its delay" begin
         admission_delay = LogNormal(1.0, 0.4)
         hospitalisation = Hospitalisation(delay = admission_delay, probability = 0.2)
         spec = ModelSpec(
             BranchingProcess(Poisson(0.0));
             progression = [hospitalisation], attributes = clinical
         )
-        function scored(admitted, admission_time)
+        function loglik(admitted, admission_time)
             ind = Individual(id = 1, infection_time = 0.0)
             ind.state[:infected] = true
             ind.state[:onset_time] = 1.0
@@ -119,18 +119,18 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         end
 
         # Admitted at 3.5, two and a half days after onset.
-        @test scored(true, 3.5) ≈ log(0.2) + logpdf(admission_delay, 2.5)
-        # Not admitted: the gate alone, with no delay to score.
-        @test scored(false, Inf) ≈ log(1 - 0.2)
+        @test loglik(true, 3.5) ≈ log(0.2) + logpdf(admission_delay, 2.5)
+        # Not admitted: the gate alone, with no delay to evaluate.
+        @test loglik(false, Inf) ≈ log(1 - 0.2)
     end
 
-    @testset "a fixed numeric delay scores zero at its value and rules out any other" begin
+    @testset "a fixed numeric delay has zero log-density at its value and rules out any other" begin
         reporting = Reporting(delay = 2.0, probability = 0.6)
         spec = ModelSpec(
             BranchingProcess(Poisson(0.0));
             progression = [reporting], attributes = clinical
         )
-        function scored(onset, reporting_time)
+        function loglik(onset, reporting_time)
             ind = Individual(id = 1, infection_time = 0.0)
             ind.state[:infected] = true
             ind.state[:onset_time] = onset
@@ -140,14 +140,14 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         end
 
         # Only the gate contributes when the delay matches exactly.
-        @test scored(1.0, 3.0) ≈ log(0.6)
+        @test loglik(1.0, 3.0) ≈ log(0.6)
         # Floating-point subtraction leaves 3.3 - 1.3 just off 2.0; still a match.
         @test 3.3 - 1.3 != 2.0
-        @test scored(1.3, 3.3) ≈ log(0.6)
-        @test scored(1.0, 3.5) == -Inf
+        @test loglik(1.3, 3.3) ≈ log(0.6)
+        @test loglik(1.0, 3.5) == -Inf
     end
 
-    @testset "a shared-draw probability gate cannot be scored on a hand-built individual" begin
+    @testset "a shared-draw probability gate cannot be evaluated on a hand-built individual" begin
         death_p, _ = exclusive_probabilities([0.64, 0.36])
         death = Death(delay = Exponential(2.0), probability = death_p)
         spec = ModelSpec(
@@ -165,7 +165,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test length(ind.state) == n_keys
     end
 
-    @testset "a transition without its own method needs one to be scored" begin
+    @testset "a transition without its own method needs one to be evaluated" begin
         spec = ModelSpec(
             BranchingProcess(Poisson(0.0));
             progression = [_UntrackedTransition()], attributes = clinical

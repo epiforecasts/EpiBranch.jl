@@ -397,14 +397,14 @@ below certainty and none is unconditional, the same gap this section
 describes, so the mistake surfaces before a run rather than as an implausible
 outbreak or a rejection-sampling error on a structure-driven model.
 
-## Scoring the progression's likelihood
+## Evaluating the progression's likelihood
 
-[`progression_loglik`](@ref) scores a case's clinical timeline against the
-`progression` that produced it: the log-density of each transition's delay
-where it fired, and the log-probability of its gate either way. It reads the
-state each transition wrote in `resolve_individual!`, so it takes the same
-individuals (or the [`SimulationState`](@ref) holding them) that `simulate`
-returned:
+[`progression_loglik`](@ref) gives the log density of a case's clinical
+timeline under the `progression` that produced it: the log-density of each
+transition's delay when it occurred, and the log-probability of its gate
+either way. It reads the state each transition wrote in
+`resolve_individual!`, so it takes the same individuals (or the
+[`SimulationState`](@ref) holding them) that `simulate` returned:
 
 ```@example transitions
 progression = [
@@ -419,15 +419,15 @@ progression_loglik(model, state)
 ```
 
 This is the natural-history counterpart to [`pairwise_surv_loglik`](@ref),
-which scores the infection layer instead. Added together, the two give the
-full log-likelihood of an outbreak's augmented data — infection times, order
-and clinical timelines — under `model`.
+which gives the log density of the infection layer. Added together, the two
+give the full log-likelihood of an outbreak's augmented data — infection
+times, order and clinical timelines — under `model`.
 
 Only the individuals `resolve_transitions!` actually ran on contribute: a host
 never infected, or one whose onset (or other anchor) was never reached,
 adds `0.0`. A transition's `delay` must be a `Distribution` or a fixed `Real`
-to be scored this way — a raw `Function (rng, ind) -> Real` delay has no
-density, and scoring one throws.
+to be evaluated this way — a raw `Function (rng, ind) -> Real` delay has no
+density, and evaluating one throws.
 
 ## Writing a non-terminal custom transition
 
@@ -481,9 +481,9 @@ function EpiBranch.transition_loglik(t::AntiviralTreatment, ind)
     ot = onset_time(ind)
     isnan(ot) && return 0.0
     get(ind.state, :reported, false) || return 0.0
-    fired = ind.state[:treated]
-    ll = fired ? log(t.probability) : log1p(-t.probability)
-    fired || return ll
+    occurred = ind.state[:treated]
+    ll = occurred ? log(t.probability) : log1p(-t.probability)
+    occurred || return ll
     return ll + logpdf(t.delay, ind.state[:treatment_time] - ot)
 end
 ```

@@ -88,39 +88,39 @@ _resolve_delay(d::Distribution, rng, ind) = float(rand(rng, d))
 _resolve_delay(x::Real, rng, ind) = float(x)         # a fixed, deterministic delay
 _resolve_delay(f, rng, ind) = float(f(rng, ind))
 
-# ── Scoring ─────────────────────────────────────────────────────────
+# ── Evaluating ──────────────────────────────────────────────────────
 #
 # The reverse of `_resolve_delay`/`_resolve_probability`: given a resolved
 # outcome, the log-density of having drawn it. A `Function` delay has no
-# family to score against, so it is rejected rather than silently ignored.
+# family to evaluate against, so it is rejected rather than silently ignored.
 _delay_loglik(d::Distribution, dt) = logpdf(d, dt)
 _delay_loglik(x::Real, dt) = isapprox(dt, x) ? 0.0 : -Inf
 function _delay_loglik(f, dt)
     throw(
         ArgumentError(
-            "a `Function` delay has no density to score; `progression_loglik` " *
-                "needs a `Distribution` (or a fixed `Real`) for every delay it scores"
+            "a `Function` delay has no density to evaluate; `progression_loglik` " *
+                "needs a `Distribution` (or a fixed `Real`) for every delay it evaluates"
         )
     )
 end
 
-# Used only to score a `probability` gate: it deliberately implements no
+# Used only to evaluate a `probability` gate: it deliberately implements no
 # generation methods, so a callable that actually draws from its `rng`
 # argument (rather than merely accepting it, as every deterministic
 # per-individual gate does) fails loudly here instead of drawing a fresh,
 # uncontrolled value and silently caching it on the individual — which is
-# what `exclusive_probabilities`' shared-draw gate does when scored against
+# what `exclusive_probabilities`' shared-draw gate does when evaluated against
 # an individual that lacks the cached draw from a prior `resolve_individual!`
 # call.
 struct _NoRandRNG <: Random.AbstractRNG end
 
 # The log-likelihood contribution of a probability gate, given whether it
-# fired. `probability` resolves with `_NoRandRNG()`: a callable gate is
+# occurred. `probability` resolves with `_NoRandRNG()`: a callable gate is
 # expected to be a deterministic function of the individual (as every
 # built-in and documented example is), not of the RNG draw that also
 # consumes it during simulation; one that does draw is rejected rather than
-# scored with an arbitrary, non-reproducible value.
-function _probability_loglik(probability, fired, ind)
+# evaluated with an arbitrary, non-reproducible value.
+function _probability_loglik(probability, occurred, ind)
     p = try
         _resolve_probability(probability, _NoRandRNG(), ind)
     catch e
@@ -128,16 +128,16 @@ function _probability_loglik(probability, fired, ind)
         throw(
             ArgumentError(
                 "a `probability` callable drew from its `rng` argument while being " *
-                    "scored; `progression_loglik` needs `probability` to be a " *
+                    "evaluated; `progression_loglik` needs `probability` to be a " *
                     "deterministic function of the individual alone. A shared-draw " *
                     "gate built by `exclusive_probabilities` only replays " *
                     "deterministically for an individual already resolved by " *
-                    "`resolve_individual!`, which caches the draw it reads; score " *
+                    "`resolve_individual!`, which caches the draw it reads; evaluate " *
                     "simulated individuals, not hand-built ones, with such a gate"
             )
         )
     end
-    return fired ? log(p) : log1p(-p)
+    return occurred ? log(p) : log1p(-p)
 end
 
 """
@@ -145,7 +145,7 @@ end
 
 The log-likelihood contribution of `individual`'s outcome under transition
 `t`: the probability of the gate it passed or failed, plus the delay density
-at the time it fired. Called by [`progression_loglik`](@ref) once per
+at the time it occurred. Called by [`progression_loglik`](@ref) once per
 transition per individual; `0.0` when the transition's anchor was never
 reached (it took no part in the individual's history).
 
@@ -160,7 +160,7 @@ function transition_loglik(t::AbstractClinicalTransition, individual)
     throw(
         ArgumentError(
             "$(nameof(typeof(t))) needs a method for `EpiBranch.transition_loglik` " *
-                "scoring the outcome its `resolve_individual!` writes to " *
+                "evaluating the outcome its `resolve_individual!` writes to " *
                 "`individual.state`; see `progression_loglik`"
         )
     )

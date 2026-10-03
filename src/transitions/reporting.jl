@@ -52,8 +52,8 @@ end
 function transition_loglik(r::Reporting, individual::Individual)
     anchor = _resolve_anchor(r.from, individual)
     _anchor_ok(anchor) || return 0.0
-    fired = individual.state[:reported]::Bool
-    ll = _probability_loglik(r.probability, fired, individual)
-    fired || return ll
+    occurred = individual.state[:reported]::Bool
+    ll = _probability_loglik(r.probability, occurred, individual)
+    occurred || return ll
     return ll + _delay_loglik(r.delay, individual.state[:reporting_time] - anchor)
 end

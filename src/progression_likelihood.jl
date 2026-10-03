@@ -3,8 +3,9 @@
 # The natural-history counterpart to `pairwise_surv_loglik`: the
 # log-likelihood of a case's clinical timeline (onset given infection,
 # reporting given onset, and so on) under a `ModelSpec`'s `progression`,
-# rather than the infection layer the pairwise likelihood scores. Together
-# they score the full augmented data of a simulated or hand-built outbreak;
+# rather than the infection layer the pairwise likelihood evaluates. Together
+# they give the log density of the full augmented data of a simulated or
+# hand-built outbreak;
 # see the design notes in `docs/src/design.md`.
 
 """
@@ -22,7 +23,7 @@ never infected (`get(ind.state, :infected, false) == false`) contributes
 nothing, matching the transitions engine, which never resolves one.
 
 This is a natural-history term only: it excludes the infection layer, which
-[`pairwise_surv_loglik`](@ref) scores, and any observation model. Added to
+[`pairwise_surv_loglik`](@ref) evaluates, and any observation model. Added to
 that pairwise likelihood, it gives the full log-likelihood of an outbreak's
 augmented data — infection times, order and clinical timelines together —
 under `spec`.

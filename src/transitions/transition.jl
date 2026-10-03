@@ -114,8 +114,8 @@ end
 function transition_loglik(t::Transition, individual::Individual)
     anchor = _state_time(individual, t.from)
     _anchor_ok(anchor) || return 0.0
-    fired = individual.state[t.state]::Bool
-    ll = _probability_loglik(t.probability, fired, individual)
-    fired || return ll
+    occurred = individual.state[t.state]::Bool
+    ll = _probability_loglik(t.probability, occurred, individual)
+    occurred || return ll
     return ll + _delay_loglik(t.delay, individual.state[t.time_key] - anchor)
 end
