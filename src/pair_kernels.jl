@@ -128,7 +128,7 @@ EpiBranch.calendar_shape(::Seasonal) = EpiBranch.SmoothCalendar()
 calendar_shape(schedule) = PiecewiseConstantCalendar()
 
 """
-    PairKernel(callback; state = nothing, calendar = nothing)
+    PairKernel(callback; state = nothing, calendar = nothing, watches = nothing)
 
 A pair kernel: `callback` returns the contact-interval profile, measured from
 the infector's infectious opening, and optionally a calendar schedule that
@@ -150,6 +150,18 @@ host's record: `state(individual)` selects it in simulation, from an
 `EpiBranch.Individual`. For likelihood evaluation, supply a vector of records
 indexed by population ID as `state`, or use [`record_kernel`](@ref) to extract
 them after simulation; the callback is identical in both paths.
+
+`watches` names every `individual.state` key the projection reads, as a tuple
+of `Symbol`s, and is what [`EpiBranch.watched_records`](@ref) reports. A race
+redraws a case's pending contacts when one of these keys moves on a host it
+reads, so a key left out is a hazard that changes without the contacts
+following it — declare each one the projection reads, whether or not anything
+in today's model writes it. It is required with a projection, since no default
+is safe; `()` is for a projection that reads no state key, such as one indexing
+a table by `ind.id`. Only `individual.state` is followed, so anything that can
+move has to be read from there rather than from a field such as
+`ind.susceptibility`. A vector of records needs no declaration: a likelihood
+reads the records it is given.
 
 `calendar`, a [`Steps`](@ref) schedule or any type implementing
 [`calendar_multiplier`](@ref EpiBranch.calendar_multiplier), multiplies the
@@ -187,19 +199,50 @@ since that record is all the likelihood is given.
 
 Simulation keeps contacts consistent with the hazards in force as records
 change, and a run whose records never change follows the same distribution as
-an ordinary kernel. With interventions, a household model races every household
-together so that a policy can read cases in other households, which draws the
-same outbreak from a different random stream.
+an ordinary kernel. A kernel that declares watched records puts every
+household of a household model on one clock, so that a policy can read cases in
+other households, which draws the same outbreak from a different random
+stream.
 
 A plain distribution remains the simplest kernel and needs no `PairKernel`
 wrapper.
 """
-struct PairKernel{F, S, C}
+struct PairKernel{F, S, C, W <: Tuple}
     callback::F
     state::S
     calendar::C
+    watches::W
 end
-PairKernel(callback; state = nothing, calendar = nothing) = PairKernel(callback, state, calendar)
+function PairKernel(callback; state = nothing, calendar = nothing, watches = nothing)
+    return PairKernel(callback, state, calendar, _kernel_watches(state, watches))
+end
+
+# A kernel with no `state` reads no host state, and a vector of records is
+# fixed while a likelihood reads it, so neither needs a declaration. A
+# projection has to say what it reads: there is no safe default, since
+# inferring "nothing moves" would draw a run's contacts from stale hazards and
+# inferring "everything moves" would compare the whole population at every case.
+_kernel_watches(::Nothing, watches) = _watch_keys(watches === nothing ? () : watches)
+_kernel_watches(::AbstractVector, watches) = _watch_keys(watches === nothing ? () : watches)
+function _kernel_watches(state, watches)
+    watches === nothing && throw(
+        ArgumentError(
+            "a `PairKernel` whose `state` is a projection must declare every " *
+                "`individual.state` key that projection reads: " *
+                "`PairKernel(callback; state = project, " *
+                "watches = (:vaccination_time,))`. Pass `watches = ()` for a " *
+                "projection that reads no state key."
+        )
+    )
+    return _watch_keys(watches)
+end
+_watch_keys(key::Symbol) = (key,)
+function _watch_keys(keys)
+    all(k -> k isa Symbol, keys) || throw(
+        ArgumentError("`watches` must name `individual.state` keys as `Symbol`s")
+    )
+    return Tuple(keys)
+end
 
 """
     LayerHost
@@ -264,13 +307,37 @@ _kernel_projection(k::PairKernel) = k.state
 _kernel_projection(k::PairKernel{F, <:AbstractVector}) where {F} = nothing
 _live_kernel(k) = _kernel_projection(k) !== nothing
 
-# The projection a race has to watch for changes. Resolving a case writes only to
-# that case's own record, and no contact already drawn depends on it: contacts to
-# the case are settled, and its own contacts are drawn afterwards. So records that
-# pending contacts depend on can move only through an intervention, and without
-# one a live kernel races exactly as an ordinary kernel does.
-function _watched_projection(kernel, interventions)
-    return isempty(interventions) ? nothing : _kernel_projection(kernel)
+"""
+    watched_records(kernel)
+
+The `individual.state` keys `kernel`'s hazards depend on, as a tuple of
+`Symbol`s. `()`, the default, is a kernel whose hazards are fixed for a run.
+
+A continuous-time race keeps drawn contacts consistent with the hazards in
+force: when one of these keys moves on a host, the contacts drawn from a kernel
+declaring that key are drawn again, conditioned on the exposure already
+elapsed. The race watches the union of the keys its routes declare and compares
+only the hosts a pending or future draw reads, so a key no kernel declares
+costs nothing and a route that declares nothing is never redrawn.
+
+Declare every key the kernel reads, whether or not anything in a given model
+writes it, and read anything that can move from `individual.state` rather than
+from a field of the individual, which this cannot name. A [`PairKernel`](@ref)
+reports its `watches`, and `()` once its records are extracted; any other
+kernel type declares its own method.
+"""
+watched_records(kernel) = ()
+watched_records(k::PairKernel) = k.watches
+# A vector of records cannot move while a likelihood reads it, and a race given
+# one has nothing to watch.
+watched_records(::PairKernel{F, <:AbstractVector}) where {F} = ()
+# A per-edge collection of kernels watches what any one of them watches.
+function watched_records(ks::AbstractVector)
+    keys = Symbol[]
+    for k in ks, key in watched_records(k)
+        key in keys || push!(keys, key)
+    end
+    return Tuple(keys)
 end
 
 # Evaluate a PairKernel's callback for an ordered pair, given whatever host
@@ -383,7 +450,7 @@ function record_kernel(k::PairKernel, state::SimulationState)
     return PairKernel(
         k.callback,
         [deepcopy(_pair_state(k.state, ind)) for ind in state.individuals],
-        k.calendar
+        k.calendar, ()
     )
 end
 

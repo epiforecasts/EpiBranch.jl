@@ -27,6 +27,7 @@ household_final_size
 
 ```@docs
 PairKernel
+EpiBranch.watched_records
 Steps
 EpiBranch.calendar_multiplier
 EpiBranch.next_calendar_break

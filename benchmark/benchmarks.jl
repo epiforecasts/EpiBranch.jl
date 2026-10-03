@@ -54,11 +54,12 @@ SUITE["simulation: households"] = @benchmarkable simulate(
     ); rng = StableRNG(1)
 )
 
-# A live `StatefulKernel` re-reads host records as the outbreak runs. Its cost
-# depends on how often a record moves, so it is benchmarked with and without an
-# intervention that moves one.
-const LIVE_KERNEL = StatefulKernel(
-    ind -> (tag = get(ind.state, :tag, 0.0)::Float64,), (c, a, b) -> Exponential(1.2)
+# A `PairKernel` with a projection re-reads host records as the outbreak runs.
+# Its cost depends on how often a record moves, so it is benchmarked with and
+# without an intervention that moves one.
+const LIVE_KERNEL = PairKernel(
+    (c, a, b) -> Exponential(1.2);
+    state = ind -> (tag = get(ind.state, :tag, 0.0)::Float64,), watches = (:tag,)
 )
 
 SUITE["simulation: network, live kernel"] = @benchmarkable simulate(

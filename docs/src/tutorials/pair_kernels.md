@@ -197,8 +197,13 @@ differentiated through them, as with `Steps`.
 
 `state` lets a `PairKernel` choose which parts of an individual it reads. Given
 `state`, the callback also takes the pair's two host records, built from the
-usual `PairContext`. Here, each person receives a sampled contact-scale
-attribute:
+usual `PairContext`. A projection also declares the `individual.state` keys it
+reads, as `watches`: a continuous-time race redraws a case's pending contacts
+when one of those keys moves on a host it reads, which is how a hazard that
+changes mid-run keeps its contacts honest. Declare every key the projection
+reads, whether or not anything in the model writes it; `()` is for a
+projection that reads none, such as one indexing a table by `ind.id`. Here,
+each person receives a sampled contact-scale attribute:
 
 ```@example stateful
 using EpiBranch, EpiNetwork, Distributions, Random
@@ -206,7 +211,7 @@ using EpiBranch, EpiNetwork, Distributions, Random
 attributes = (rng, ind) -> (ind.state[:contact_scale] = rand(rng, Uniform(0.5, 1.5)))
 project(ind) = (scale = ind.state[:contact_scale]::Float64,)
 contact_law(context, source, target) = Exponential(source.scale + target.scale)
-kernel = PairKernel(contact_law; state = project)
+kernel = PairKernel(contact_law; state = project, watches = (:contact_scale,))
 adjacency = [[2, 3], [1, 3], [1, 2]]
 progression = [Transition(:recovered; delay = 5.0, terminal = true)]
 model = ModelSpec(NetworkProcess(adjacency, kernel); attributes, progression)
@@ -244,7 +249,7 @@ infection to onset:
 onset_state(ind) = (onset = get(ind.state, :onset_time, NaN),)
 after_onset(context, source, target) =
     (source.onset - context.infector_infection_time) + Exponential(1.0)
-onset_kernel = PairKernel(after_onset; state = onset_state)
+onset_kernel = PairKernel(after_onset; state = onset_state, watches = (:onset_time,))
 onset_model = ModelSpec(NetworkProcess(adjacency, onset_kernel);
     attributes = clinical_presentation(incubation_period = Gamma(2.0, 1.0)),
     progression)
@@ -288,7 +293,7 @@ function policy_contact(context, source, target)
     isfinite(target.date) || return Exponential(1 / 0.4)
     return (profile = Exponential(1.0), calendar = Steps([target.date], [0.4, 0.1]))
 end
-policy_kernel = PairKernel(policy_contact; state = policy_state)
+policy_kernel = PairKernel(policy_contact; state = policy_state, watches = (:policy_time,))
 policy_model = ModelSpec(NetworkProcess(adjacency, policy_kernel);
     progression, interventions = [TwoCasePolicy()])
 policy_run = simulate(policy_model; initial_cases = [1], rng = Xoshiro(236))

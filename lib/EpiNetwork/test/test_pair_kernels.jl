@@ -11,7 +11,7 @@ test_stateful_simulation(
     # rounds below 0.8; settling one moves the other's record.
     kernel = PairKernel(
         (c, a, b) -> c.infector == 1 ? Dirac(0.7) : Dirac(0.1);
-        state = tick_state
+        state = tick_state, watches = (:tick,)
     )
     model = ModelSpec(
         NetworkProcess([[2], [1, 3, 4], [2], [2]], kernel);
@@ -33,7 +33,7 @@ end
         return DiscreteNonParametric([0.1, 0.3], [0.5, 0.5])
     end
     model = ModelSpec(
-        NetworkProcess([[2, 3], [1, 4], [1], [2]], PairKernel(callback; state = tick_state));
+        NetworkProcess([[2, 3], [1, 4], [1], [2]], PairKernel(callback; state = tick_state, watches = (:tick,)));
         progression = [Transition(:recovered; delay = 5.0, terminal = true)],
         interventions = [TickEveryCase()]
     )
@@ -56,7 +56,7 @@ end
     # has been resolved by then and must not be offered again.
     kernel = PairKernel(
         (c, a, b) -> c.infector == 5 ? Dirac(0.0) : Dirac(1.0);
-        state = tick_state
+        state = tick_state, watches = (:tick,)
     )
     model = ModelSpec(
         NetworkProcess([[4, 5], [5], Int[], [1], [1, 2]], kernel);
@@ -77,7 +77,7 @@ end
     # contact to host 3 has not been resolved yet and must still happen.
     kernel = PairKernel(
         (c, a, b) -> c.infector == 5 ? Dirac(0.0) : Dirac(1.0);
-        state = tick_state
+        state = tick_state, watches = (:tick,)
     )
     model = ModelSpec(
         NetworkProcess([[4, 5], [5], [5], [1], [1, 2, 3]], kernel);
@@ -95,7 +95,7 @@ end
         i == 1 || return i == 2 ? Dirac(2.0) : Dirac(1.0)
         return Dirac(j == 2 ? 1.0 : j == 3 ? 2.0 : j == 5 ? 2.5 : 0.5)
     end
-    kernel = PairKernel((c, a, b) -> law(c.infector, c.susceptible); state = tick_state)
+    kernel = PairKernel((c, a, b) -> law(c.infector, c.susceptible); state = tick_state, watches = (:tick,))
     for leaves in 0:8
         adjacency = [Int[] for _ in 1:(5 + leaves)]
         for (x, y) in [(1, 2), (1, 3), (1, 5), (2, 4), (3, 4)]
