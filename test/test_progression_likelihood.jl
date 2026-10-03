@@ -102,6 +102,51 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test scored(Inf) ≈ log(1 - 0.25)
     end
 
+    @testset "a hospitalisation is scored by whether it happened and when" begin
+        admission_delay = LogNormal(1.0, 0.4)
+        hospitalisation = Hospitalisation(delay = admission_delay, probability = 0.2)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.0));
+            progression = [hospitalisation], attributes = clinical
+        )
+        function scored(admitted, admission_time)
+            ind = Individual(id = 1, infection_time = 0.0)
+            ind.state[:infected] = true
+            ind.state[:onset_time] = 1.0
+            ind.state[:admitted] = admitted
+            ind.state[:admission_time] = admission_time
+            return progression_loglik(spec, [ind])
+        end
+
+        # Admitted at 3.5, two and a half days after onset.
+        @test scored(true, 3.5) ≈ log(0.2) + logpdf(admission_delay, 2.5)
+        # Not admitted: the gate alone, with no delay to score.
+        @test scored(false, Inf) ≈ log(1 - 0.2)
+    end
+
+    @testset "a fixed numeric delay scores zero at its value and rules out any other" begin
+        reporting = Reporting(delay = 2.0, probability = 0.6)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.0));
+            progression = [reporting], attributes = clinical
+        )
+        function scored(onset, reporting_time)
+            ind = Individual(id = 1, infection_time = 0.0)
+            ind.state[:infected] = true
+            ind.state[:onset_time] = onset
+            ind.state[:reported] = true
+            ind.state[:reporting_time] = reporting_time
+            return progression_loglik(spec, [ind])
+        end
+
+        # Only the gate contributes when the delay matches exactly.
+        @test scored(1.0, 3.0) ≈ log(0.6)
+        # Floating-point subtraction leaves 3.3 - 1.3 just off 2.0; still a match.
+        @test 3.3 - 1.3 != 2.0
+        @test scored(1.3, 3.3) ≈ log(0.6)
+        @test scored(1.0, 3.5) == -Inf
+    end
+
     @testset "a shared-draw probability gate cannot be scored on a hand-built individual" begin
         death_p, _ = exclusive_probabilities([0.64, 0.36])
         death = Death(delay = Exponential(2.0), probability = death_p)
