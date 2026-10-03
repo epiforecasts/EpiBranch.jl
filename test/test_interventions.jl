@@ -243,6 +243,53 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         ) === nothing
     end
 
+    @testset "Scheduled resetting a ring member lets a later trace grow the ring" begin
+        # A ring member that has already grown the ring, and whose trace a
+        # `Scheduled` start time then undoes, must behave as never traced: a
+        # later trace that the schedule keeps grows the ring through it again.
+        ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 2)
+        sched = Scheduled(ct; start_time = 10.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+        state.max_infection_time = 20.0
+        function case(id, isolated_at)
+            ind = Individual(id = id)
+            EpiBranch.initialise_individual!(ct, ind, state)
+            ind.state[:infected] = true
+            set_isolated!(ind, isolated_at)
+            return ind
+        end
+        function contact(id)
+            ind = Individual(id = id)
+            EpiBranch.initialise_individual!(ct, ind, state)
+            ind.state[:infected] = false
+            return ind
+        end
+        member, first_out, second_out = contact(10), contact(11), contact(12)
+
+        # Traced after the start, so kept, and grows the ring.
+        EpiBranch.trace_contacts!(sched, state, case(1, 12.0), [member])
+        EpiBranch.trace_contacts!(sched, state, member, [first_out])
+        @test is_traced(first_out)
+        @test member.state[:ring_propagated]
+
+        # A second case traces the member earlier, before the start: the
+        # schedule undoes the trace altogether.
+        EpiBranch.trace_contacts!(sched, state, case(2, 5.0), [member])
+        @test !is_traced(member)
+        @test !haskey(member.state, :ring_remaining)
+        @test !haskey(member.state, :ring_propagated)
+
+        # A third case traces it after the start, and the ring grows through
+        # it once more.
+        EpiBranch.trace_contacts!(sched, state, case(3, 15.0), [member])
+        @test is_traced(member)
+        EpiBranch.trace_contacts!(sched, state, member, [second_out])
+        @test is_traced(second_out)
+    end
+
     @testset "Isolation keeps the earliest pathway when already isolated" begin
         # A quarantine written by ContactTracing leaves `:isolated` set before
         # Isolation resolves the individual. That is the ordering the
