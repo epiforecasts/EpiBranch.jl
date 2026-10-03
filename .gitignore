@@ -4,3 +4,5 @@ docs/Manifest.toml
 docs/node_modules/
 docs/package-lock.json
 .claude/
+*.cov
+lcov.info

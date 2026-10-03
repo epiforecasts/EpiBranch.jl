@@ -102,30 +102,12 @@ end
 # carried by the force itself, as each infective's weight in the counts, so it
 # needs no attribution to be exact.
 
-# Whether a risk source can block a contact differently depending on its
-# infector. A model's own risk source is opaque, so it is assumed to; an
-# intervention without a `competing_risk` method of its own contributes no risk.
-_blocks_by_infector(source) = true
-function _blocks_by_infector(iv::AbstractIntervention)
-    return _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
-end
-# Perfect isolation's block starts when the infector's window closes, so the
-# infector is never drawn once it could apply; only a leaky residual can bite.
-_blocks_by_infector(iso::Isolation) = iso.post_isolation_transmission > 0
-# A vaccination's own risk protects the contact and reads the infector only for
-# a ring's onward effect — but that holds for the ones this package writes. A
-# subtype of its own is taken to read the infector, as any other intervention is.
-function _blocks_by_infector(v::AbstractVaccination)
-    return _has_own_method(competing_risk, typeof(v), AbstractVaccination)
-end
-_blocks_by_infector(rv::RingVaccination) = rv.onward_efficacy > 0
-_blocks_by_infector(s::Scheduled) = _blocks_by_infector(s.intervention)
-
 function _refuse_infector_side_risks(state, members, risks, interventions)
-    culprits = String[]
-    for source in (risks..., interventions...)
-        _blocks_by_infector(source) || continue
-        push!(culprits, string(nameof(typeof(_unwrap_scheduled(source)))))
+    # A model's own risk source is opaque, so it is taken to read the infector.
+    culprits = String[string(nameof(typeof(source))) for source in risks]
+    for iv in interventions
+        risk_depends_on_infector(iv) || continue
+        push!(culprits, string(nameof(typeof(_unwrap_scheduled(iv)))))
     end
     isempty(culprits) && return nothing
     throw(
@@ -137,7 +119,8 @@ function _refuse_infector_side_risks(state, members, risks, interventions)
                 "transmits. These can: $(join(unique(culprits), ", ")). Fold differences " *
                 "in infectiousness between types into `force`, or run a single mixing " *
                 "type (`mixing_by = ()`). Risks that act on the contact alone, such as " *
-                "susceptibility, are supported."
+                "susceptibility, are supported; an intervention whose `competing_risk` " *
+                "reads only the contact says so with `EpiBranch.risk_depends_on_infector`."
         )
     )
 end

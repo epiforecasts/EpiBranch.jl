@@ -13,6 +13,36 @@ function loglikelihood(data::OffspringCounts, offspring::Distribution)
 end
 
 """
+    loglikelihood(data::OffspringCounts, offspring::AbstractVector{<:Distribution})
+
+Log-likelihood of observed secondary case counts under a per-case offspring
+distribution, e.g. `NegBin.(exp.(X * β), k)` for a case-level covariate
+matrix `X`. `offspring` must have one distribution per observation in
+`data`.
+
+For data that list only cases with at least one secondary case, pass
+`truncated.(offspring, 1, Inf)`, or a scalar `truncated(dist, 1, Inf)` to the
+single-distribution method.
+
+# Examples
+
+```julia
+counts = OffspringCounts([0, 1, 4, 0, 2])
+μ = [0.5, 0.8, 3.0, 0.5, 1.2]
+loglikelihood(counts, NegBin.(μ, 0.5))
+```
+"""
+function loglikelihood(data::OffspringCounts, offspring::AbstractVector{<:Distribution})
+    length(offspring) == length(data.data) || throw(
+        ArgumentError(
+            "offspring must have the same length as data " *
+                "($(length(data.data))); got $(length(offspring))"
+        )
+    )
+    return sum(logpdf(d, x) for (d, x) in zip(offspring, data.data))
+end
+
+"""
     loglikelihood(data::ChainSizes, offspring::Distribution; prob_concluded = nothing)
 
 Log-likelihood of observed chain sizes under the analytical chain size
@@ -31,6 +61,10 @@ With `prob_concluded::AbstractVector` (length `length(data.data)`, values in
 where `π_i = prob_concluded[i]` is the probability that cluster `i` is
 finished (observed size = final size). See `end_of_outbreak_probability` for a
 principled `prob_concluded` based on the generation-time distribution.
+
+Data recorded only once a chain reaches a given size are scored by passing a
+law [`observe`](@ref) has conditioned, as
+`observe(chain_size_distribution(offspring), MinimumSize(k))`.
 """
 function loglikelihood(
         data::ChainSizes, offspring::Distribution;
@@ -64,6 +98,35 @@ function loglikelihood(
 end
 
 """
+    loglikelihood(data::ChainSizes, d::IndexChainSize; prob_concluded = nothing)
+
+Log-likelihood of observed chain sizes under an [`IndexChainSize`](@ref)
+law, i.e. an index case with its own offspring distribution. `d` is already
+the chain-size law, so this routes directly to [`_chain_size_loglik`](@ref)
+rather than through `chain_size_distribution`.
+"""
+function loglikelihood(
+        data::ChainSizes, d::IndexChainSize;
+        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
+    )
+    return _chain_size_loglik(d, data; prob_concluded)
+end
+
+"""
+    loglikelihood(data::ChainSizes, d::TruncatedChainSize; prob_concluded = nothing)
+
+Log-likelihood of chain sizes recorded only at or above a minimum size, under
+the law a [`MinimumSize`](@ref) observation produces. `d` is already the
+chain-size law, so this routes directly to [`_chain_size_loglik`](@ref).
+"""
+function loglikelihood(
+        data::ChainSizes, d::TruncatedChainSize;
+        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
+    )
+    return _chain_size_loglik(d, data; prob_concluded)
+end
+
+"""
     _chain_size_loglik(dist, data::ChainSizes; prob_concluded = nothing)
 
 Per-cluster chain-size log-likelihood. With `prob_concluded === nothing` every
@@ -87,21 +150,22 @@ function _chain_size_loglik(
     total = zero(first_val)
     for i in eachindex(data.data)
         lc = _chain_size_logpdf(dist, data.data[i], data.seeds[i])
-        if prob_concluded === nothing
-            total += lc
-            continue
-        end
-        π_i = prob_concluded[i]
-        (0 <= π_i <= 1) ||
-            throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
-        if π_i >= one(π_i)
-            total += lc
-        elseif π_i <= zero(π_i)
-            total += _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+        term = if prob_concluded === nothing
+            lc
         else
-            lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
-            total += _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
+            π_i = prob_concluded[i]
+            (0 <= π_i <= 1) ||
+                throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
+            if π_i >= one(π_i)
+                lc
+            elseif π_i <= zero(π_i)
+                _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+            else
+                lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+                _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
+            end
         end
+        total += term
     end
     return total
 end
@@ -166,6 +230,14 @@ end
 # observation: with `NoObservation` every infected case counts;
 # otherwise only the cases the observation marked `:reported`.
 _sim_chain_sizes(state, ::NoObservation) = chain_statistics(state).size
+function _sim_chain_sizes(state, o::MinimumSize)
+    return filter(>=(o.min_size), chain_statistics(state).size)
+end
+
+# The smallest size an observation could have recorded, which the empirical
+# score bins from.
+_observed_min_size(::ObservationModel) = 1
+_observed_min_size(o::MinimumSize) = o.min_size
 function _sim_chain_sizes(state, ::ObservationModel)
     counts = Dict{Int, Int}()
     for ind in state.individuals
@@ -241,12 +313,13 @@ function _chain_size_model_loglik(
     for state in states
         hit_cap = !state.extinct && state.cumulative_cases >= cap
         for v in _sim_chain_sizes(state, obs)
-            v >= 1 || continue
             push!(sim_values, v)
             push!(censored, hit_cap)
         end
     end
-    return _empirical_ll(data.data, sim_values; min_val = 1, censored, cap)
+    return _empirical_ll(
+        data.data, sim_values; min_val = _observed_min_size(obs), censored, cap
+    )
 end
 
 """
