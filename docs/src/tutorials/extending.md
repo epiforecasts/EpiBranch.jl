@@ -176,7 +176,7 @@ The tracing keys name two hooks because the two engines reach them
 differently: `apply_post_transmission!` on the generation-based engine, and
 `trace_contacts!` on the continuous-time models. Both funnel through the same
 per-pair policy, so the keys and their meanings are identical either way; see
-[Which hooks fire on which engine](#which-hooks-fire-on-which-engine).
+[Which hooks run on which engine](#which-hooks-run-on-which-engine).
 
 `:traced_by` is the source a node was traced from — the *first*,
 earliest-exposure tracer, since the engine makes one trace attempt per node.
@@ -222,7 +222,7 @@ ones your intervention needs (all default to no-ops).
 | `risk_applies(iv, route)` | Continuous-time models selecting risks for a route (`nothing` for an external introduction) | Nothing | `Bool`; defaults to `true` |
 | `risk_depends_on_infector(iv)` | Before a fixed-size pool with more than one mixing group runs | Nothing | `Bool`: whether `competing_risk` can block a contact differently depending on its infector (default `true` when the type has its own `competing_risk`) |
 
-### Which hooks fire on which engine
+### Which hooks run on which engine
 
 The hooks above are not all available everywhere, because the engines are
 built differently. The generation-based engine creates a fresh `Individual`
@@ -295,7 +295,7 @@ What this means in practice:
   is still representable wherever that family is closed under proportional
   hazards, as an exponential contact interval is. A risk that arrives partway
   through the window — an isolation, or a dose a trace gives — is not, so
-  simulating with those and scoring the result with `loglikelihood` will
+  simulating with those and evaluating the result with `loglikelihood` will
   disagree.
 - A community introduction, on a model with an `external_hazard`, is put to the
   risks that act on the person being introduced: their susceptibility, a

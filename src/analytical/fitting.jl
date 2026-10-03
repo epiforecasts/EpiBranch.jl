@@ -62,7 +62,7 @@ where `π_i = prob_concluded[i]` is the probability that cluster `i` is
 finished (observed size = final size). See `end_of_outbreak_probability` for a
 principled `prob_concluded` based on the generation-time distribution.
 
-Data recorded only once a chain reaches a given size are scored by passing a
+Data recorded only once a chain reaches a given size are evaluated by passing a
 law [`observe`](@ref) has conditioned, as
 `observe(chain_size_distribution(offspring), MinimumSize(k))`.
 """
@@ -235,7 +235,7 @@ function _sim_chain_sizes(state, o::MinimumSize)
 end
 
 # The smallest size an observation could have recorded, which the empirical
-# score bins from.
+# evaluate bins from.
 _observed_min_size(::ObservationModel) = 1
 _observed_min_size(o::MinimumSize) = o.min_size
 function _sim_chain_sizes(state, ::ObservationModel)
@@ -271,7 +271,7 @@ function loglikelihood(data::ChainSizes, spec::ModelSpec; kwargs...)
     )
 end
 
-# Shared core: score `data` against `process` with the modelling layers passed
+# Shared core: evaluate `data` against `process` with the modelling layers passed
 # explicitly, so a bare process supplies its own and a `ModelSpec` supplies the
 # spec's.
 function _chain_size_model_loglik(
@@ -289,7 +289,7 @@ function _chain_size_model_loglik(
     # nothing thins transmission. Interventions thin it, hence the `ivs` check;
     # progression and attributes don't touch the offspring, so they need none.
     # Structured/depleting models have no single-type offspring, so
-    # `single_type_offspring` throws and the score falls through to simulation.
+    # `single_type_offspring` throws and the evaluation falls through to simulation.
     if isempty(ivs)
         try
             d = observe(chain_size_distribution(single_type_offspring(process)), obs)

@@ -138,12 +138,12 @@ A companion package reads a simulated outbreak back into its layer
 opens at the process's `from` state and closes at the earliest of its `until`
 states and the time the model's interventions take the host out of transmission,
 such as by isolation or quarantine after tracing. These are the windows the
-simulation used. Exact scoring also requires the kernel to include every hazard
+simulation used. Exact evaluation also requires the kernel to include every hazard
 modification; the layer contains no host multipliers or partial blocking effects.
 Structured `loglikelihood(data, spec)` methods check the composed components using
 [`infection_likelihood_compatible`](@ref). Use `pairwise_surv_loglik` with an
 explicit effective kernel when additional effects must be represented. Passing a reader the `followup_end`
-keyword scores the outbreak as if observation had stopped at that time.
+keyword evaluates the outbreak as if observation had stopped at that time.
 """
 abstract type InfectionLayer end
 
@@ -169,7 +169,7 @@ end
     followup_end(data::InfectionLayer)
 
 The end of follow-up of `data`, the time its observation stops. The pairwise
-likelihood scores the infection layer up to it and ignores infections and
+likelihood covers the infection layer up to it and ignores infections and
 exposure after it. The default reads a `followup_end` field when the
 [`InfectionLayer`](@ref) subtype has one, and is `Inf` otherwise; a subtype that
 stores it elsewhere defines a method.
@@ -221,7 +221,7 @@ end
 # The named per-host times of a simulated `state`, read from each individual's
 # state under the given keys, `missing` where a host has none. A key no
 # individual holds gives an all-`missing` column, since a run in which a policy
-# never triggered still has to be scored.
+# never triggered still has to be evaluated.
 function _host_time_columns(state::SimulationState, keys)
     names = Tuple(Symbol(key) for key in keys)
     columns = map(names) do key
@@ -446,7 +446,7 @@ infectors are then its group-mates or its in-neighbours. An edge listed twice is
 two contact processes and contributes two rows.
 
 `infected` is the static at-risk mask: true for a host that is infected in every
-configuration the layout will score (its infection time may still be augmented).
+configuration the layout will evaluate (its infection time may still be augmented).
 Only infected hosts can be infectors. `is_index` marks hosts introduced from
 outside; without a community hazard they are conditioned on and appear only as
 infectors. With `external = true` every host is explained, and each gets an
@@ -736,7 +736,7 @@ continues after `obs_end`: a host that is never infected accrues hazard over
 each possible infector's whole infectious window.
 
 Everything is cut at [`followup_end(data)`](@ref EpiBranch.followup_end): a host
-infected after it is scored as escaped until then, and no exposure accrues past
+infected after it is treated as escaped until then, and no exposure accrues past
 it. Scoring data with an end of follow-up gives the same value as first
 truncating the data there: later infections unobserved, and removal times and
 `obs_end` capped at it.
@@ -758,7 +758,7 @@ and `Exponential` differentiate under either mode.
     that admits community introductions has to explain the ones it saw. At exactly `external_hazard = 0` index cases are instead
     conditioned on and contribute nothing, leaving a finite value. A likelihood
     ratio between "some community transmission" and "none" therefore cannot be
-    read off by letting `α` approach zero: score the two models separately.
+    read off by letting `α` approach zero: evaluate the two models separately.
 
     The discontinuity is at that one point. Approaching it, the log-density is
     `k log α − αT` up to terms free of `α`, where `k` counts the cases the
@@ -828,7 +828,7 @@ function _pairwise_surv_loglik(
     end
 
     # A covariate or per-edge kernel may hold the fitted parameters on only some
-    # pairs, and the probe behind `T` can miss them. Every row pass 2 scores has a
+    # pairs, and the probe behind `T` can miss them. Every row pass 2 evaluates has a
     # positive at-risk time in pass 1. Pass 1's sum has therefore seen every
     # kernel pass 2 will use, and its type sets pass 2's accumulator.
     ll = _pairwise_cumhazard(kernel, extdist, data, layout, tfollow, T)

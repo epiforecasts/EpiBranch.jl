@@ -27,8 +27,8 @@ incubation_period(ind::Individual) = onset_time(ind) - ind.infection_time
 
 """
 Time of the individual's terminal outcome — the earliest terminal
-[`Transition`](@ref) to fire, e.g. recovery or death (`Inf` if none has
-fired, whether because the case is still ongoing or the progression has no
+[`Transition`](@ref) to occur, e.g. recovery or death (`Inf` if none has
+occurred, whether because the case is still ongoing or the progression has no
 terminal transition); a dual under AD.
 """
 function outcome_time(ind::Individual{T}) where {T}

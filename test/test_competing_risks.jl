@@ -86,7 +86,7 @@ end
         # Same outcome as a t=0 MassVaccination rollout, but the dose is
         # recorded by `attributes` before the individual is created rather
         # than administered by the intervention's own campaign
-        # (`eligibility_time = Inf` never fires).
+        # (`eligibility_time = Inf` never occurs).
         prior_dose = (rng, ind) -> begin
             ind.state[:vaccinated] = true
             ind.state[:vaccination_time] = -500.0
@@ -198,7 +198,7 @@ end
         )
         @test state.cumulative_cases >= 50
         # Every contact was marked vaccinated (eligibility was finite)
-        # but none had immunity in time, so the risk never fires.
+        # but none had immunity in time, so the risk never occurs.
         @test all(
             ind.state[:vaccination_time] ≈ 1.0e6
                 for ind in state.individuals if ind.parent_id != 0

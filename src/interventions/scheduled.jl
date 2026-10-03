@@ -18,7 +18,7 @@ scheduling. It enforces start times at two levels:
 - **Population-level gate** — `is_active(::Scheduled, state)` skips
   `resolve_individual!` and `apply_post_transmission!` until the
   condition returns `true`.
-- **Individual-level reset** — after each per-individual hook fires,
+- **Individual-level reset** — after each per-individual hook runs,
   `Scheduled` checks whether the individual's `intervention_time` falls
   before `start_time` and, if so, calls `reset!` to undo the effect.
   This handles the case where the population gate has opened but a

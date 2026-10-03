@@ -54,7 +54,7 @@ end
 
         EpiBranch.apply_post_transmission!(gv, state, new_contacts)
 
-        # The trigger fires at the confirmed case's isolation time (the
+        # The trigger occurs at the confirmed case's isolation time (the
         # default trigger time for a policy that does not override it), so
         # the dose lands 3 days after that.
         @test member.state[:vaccination_time] == 9.0
@@ -163,7 +163,7 @@ end
         @test is_vaccinated(confirmed)
 
         # A member of the same group appearing only in a later generation
-        # (the trigger already fired) must still be vaccinated, at the same
+        # (the trigger already occurred) must still be vaccinated, at the same
         # group trigger time.
         latecomer = _group_member(gv, 2, :A, test_positive = false)
         second_gen = [latecomer]

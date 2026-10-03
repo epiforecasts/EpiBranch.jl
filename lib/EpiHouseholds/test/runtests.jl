@@ -169,7 +169,7 @@ end
 
     @testset "Isolation intervention reduces household spread" begin
         # The Isolation *intervention* runs on the continuous-time household
-        # path: its resolve_individual! fires in the Sellke race and its
+        # path: its resolve_individual! runs in the Sellke race and its
         # isolation time closes the infectious window, cutting secondary cases.
         # Onset comes from a progression transition, anchored on infection time.
         sizes = fill(6, 300)
@@ -607,7 +607,7 @@ end
         @test layout isa HouseholdPairsLayout
         @test !layout.external
         @test length(layout) == length(layout.sus)
-        @test length(layout) > 0                          # there is real spread to score
+        @test length(layout) > 0                          # there is real spread to evaluate
 
         for s in 1.5:0.5:6.0
             @test pairwise_surv_loglik(Exponential(s), data, layout) ≈
@@ -886,8 +886,8 @@ end
         )
     end
 
-    @testset "simulated index cases at time 0 scored with a community hazard" begin
-        # index cases simulated at 0 without a community hazard, scored with one
+    @testset "simulated index cases at time 0 evaluated with a community hazard" begin
+        # index cases simulated at 0 without a community hazard, evaluated with one
         m = ModelSpec(
             HouseholdProcess(fill(4, 300), Exponential(3.0));
             progression = _sir(5.0)

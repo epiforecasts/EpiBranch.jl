@@ -125,7 +125,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         @test tt(OnSymptomOnset(), infector) == 4.0
         @test tt(OnIsolation(), infector) == 9.0
         @test tt(SymptomaticParent(), infector) == 9.0
-        # Combinators: AnyOf fires at the earliest trigger, AllOf at the latest.
+        # Combinators: AnyOf resolves at the earliest trigger, AllOf at the latest.
         @test tt(OnSymptomOnset() | OnIsolation(), infector) == 4.0
         @test tt(OnSymptomOnset() & OnIsolation(), infector) == 9.0
     end

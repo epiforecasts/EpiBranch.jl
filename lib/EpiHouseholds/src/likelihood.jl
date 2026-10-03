@@ -51,7 +51,7 @@ EpiBranch.contact_structure(d::HouseholdInfections) = d.household_of
 Read the [`InfectionLayer`](@ref) out of a `state` simulated from `model`, with
 each member's household as the contact structure. The infectious windows are
 read as described for `InfectionLayer`. Additional hazard modifications require
-an effective kernel when scoring; extraction records the windows only. A bare `HouseholdProcess` is
+an effective kernel when evaluating; extraction records the windows only. A bare `HouseholdProcess` is
 accepted too (its window opens at `:infection`, and it has no interventions).
 `host_times` names further per-member times to record, such as `(:onset_time,)`,
 read from each member's state (`missing` where a member has none) for a live
@@ -104,7 +104,7 @@ end
 The compiled pair layout for a household population. It is another name for
 EpiBranch's [`ContactPairsLayout`](@ref), used when the layout is built from a
 household partition. Each row is one ordered (susceptible, household-mate) pair
-that the likelihood scores.
+that the likelihood covers.
 
 Build it with [`compile_household_pairs`](@ref).
 """

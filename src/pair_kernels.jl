@@ -111,7 +111,7 @@ infectiousness is timed from. The likelihood then applies the projection to
 each host as a [`LayerHost`](@ref), which has the `id` and `infection_time` of
 an individual and a `state` holding the layer's `host_times` under their keys.
 A projection that reads `ind.id`, `ind.infection_time` and the recorded times
-through `ind.state` works in both paths, so the same kernel scores an augmented
+through `ind.state` works in both paths, so the same kernel evaluates an augmented
 infection layer, whose onsets change during inference. Reading a key the layer
 did not record raises an error; record every time the projection reads.
 

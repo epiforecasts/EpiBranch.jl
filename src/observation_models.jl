@@ -105,7 +105,7 @@ Observation model for chain sizes recorded only once a cluster reaches
 `min_size` cases, as when only groups of two or more are investigated. The
 analytical side conditions each cluster's density on `N ≥ min_size`
 ([`observe`](@ref) returns a truncated chain-size law); the simulation side
-drops simulated clusters below it, so both score against the same conditional
+drops simulated clusters below it, so both evaluate against the same conditional
 distribution.
 
 It selects whole clusters rather than individual cases, so it leaves the

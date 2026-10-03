@@ -103,7 +103,7 @@ mean infectious period. The composition is what gives each layer access to the
 others it needs, resolving those couplings where both sides are in hand rather
 than by fusing the tiers. A structure-driven process, for one, derives its
 infectious window — and, where transmission is given as a reproduction number,
-its rate — from the composed disease when the model is simulated or scored, so
+its rate — from the composed disease when the model is simulated or evaluated, so
 the process stays purely the transmission and the disease stays a single,
 separately specified layer.
 
@@ -193,7 +193,7 @@ This holds on every axis:
   branching process.
 - **Interventions** are orchestrators of smaller dispatched pieces. An
   intervention struct is a thin shell wiring together independently
-  dispatched components (eligibility, fire-rate, delay, effect), each a
+  dispatched components (eligibility, rate, delay, effect), each a
   type with a method. The intervention body holds no hardcoded policy
   branching. Composition then works at two levels: between interventions
   (the stack the model carries) and within each intervention (its pieces).

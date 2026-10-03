@@ -57,7 +57,7 @@ EpiBranch.contact_structure(d::NetworkInfections) = d.contacts
 Read the [`InfectionLayer`](@ref) out of a `state` simulated from `model`, with
 the model's adjacency as the contact structure. The infectious windows are read
 as described for `InfectionLayer`. Additional hazard modifications require an
-effective kernel when scoring; extraction records the windows only. A bare `NetworkProcess` is accepted too (its window opens at
+effective kernel when evaluating; extraction records the windows only. A bare `NetworkProcess` is accepted too (its window opens at
 `:infection`, and it has no interventions). `host_times` names further per-node
 times to record, such as `(:onset_time,)`, read from each node's state (`missing`
 where a node has none) for a live [`StatefulKernel`](@ref) to read.
