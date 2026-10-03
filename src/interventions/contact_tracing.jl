@@ -51,8 +51,8 @@ is_eligible(::TraceEveryone, infector, contact, state) = true
 struct TraceNobody <: TraceEligibility end
 is_eligible(::TraceNobody, infector, contact, state) = false
 
-"""Trace only from a case that has not been traced as someone else's contact
-already. Negate it to stop a case that was reached as a ring member from being
+"""Trace only from a case that was itself traced as someone else's contact.
+Negate it to stop a case that was reached as a ring member from being
 interviewed again once it becomes a case itself:
 `SymptomaticParent() & !PreviouslyTraced()`. Re-interviewing is the default,
 since a ring member that turns out to be a case is a case like any other and
@@ -397,11 +397,19 @@ apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
 
 """Quarantine the traced contact: set `:traced`, `:quarantined`, and
 isolate them at the trace time (or the earlier of the trace time and
-any pre-existing self-reporting isolation time)."""
+any pre-existing self-reporting isolation time). A trace with no arrival time
+reaches the contact without isolating it, so the contact is recorded as traced
+and quarantined while any standing isolation is left as it was."""
 struct Quarantine <: TraceAction end
 function apply_trace!(::Quarantine, contact, state, trace_time, rng)
     contact.state[:traced] = true
     contact.state[:quarantined] = true
+    # A trace with no arrival time quarantines nobody: an isolation at `Inf`
+    # removes the contact from nothing while reporting it as isolated and
+    # detected, and `min` would carry a `NaN` into a standing isolation and
+    # from there into the case's infectious window. `!OnIsolation()` reaches a
+    # contact this way, no earlier than an isolation its infector has not had.
+    isfinite(trace_time) || return nothing
     if _isolation_in_force(contact)
         standing = isolation_time(contact)
         # A trace no earlier than an isolation that was not recorded leaves that
@@ -409,13 +417,9 @@ function apply_trace!(::Quarantine, contact, state, trace_time, rng)
         unrecorded = _isolation_unrecorded(contact) && !(trace_time < standing)
         set_isolated!(contact, min(standing, trace_time))
         unrecorded && (contact.state[:isolation_unrecorded] = true)
-    elseif isfinite(trace_time)
+    else
         set_isolated!(contact, trace_time)
     end
-    # A trace with no arrival time quarantines nobody: an isolation at `Inf`
-    # removes the contact from nothing, while reporting it as isolated and
-    # detected. `!OnIsolation()` reaches a contact this way, no earlier than an
-    # isolation its infector has not had.
     return nothing
 end
 
