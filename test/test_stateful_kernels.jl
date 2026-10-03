@@ -148,20 +148,24 @@ end
     for ind in state.individuals
         ind.state[:history] = Float64[]
     end
-    project = ind -> ind.state[:history]
     members = [1, 2, 3]
-    records = [deepcopy(project(state.individuals[i])) for i in members]
+    watched_keys = [:history]
+    key_routes = [[1]]            # the one route reads `:history`
+    snapshot = Any[
+        EpiBranch._remember(EpiBranch._watched_value(state.individuals[i], key))
+            for key in watched_keys, i in members
+    ]
     # Case 1 has an open opening that reaches member 2; member 3 is out of reach.
     openings = [
         EpiBranch._RouteOpening(0, 0, 0.0, Inf),
         EpiBranch._RouteOpening(1, 1, 0.0, 5.0),
     ]
-    watch = EpiBranch._LiveWatch(3)
-    EpiBranch._watch_opening!(watch, 1)
+    watch = EpiBranch._LiveWatch(3, 1)
+    EpiBranch._watch_opening!(watch, 1, true)
     EpiBranch._watch_target!(watch, 2, 2)
     processed = [true, false, false]
     changed!(case, now = 1.0) = EpiBranch._records_changed!(
-        records, project, state,
+        snapshot, watched_keys, key_routes, state,
         members, case, now, watch, openings, processed
     )
     @test !changed!(1)
@@ -176,11 +180,11 @@ end
     @test !changed!(1)
     push!(state.individuals[1].state[:history], 1.0)
     @test !changed!(1)
-    @test records[1] == [1.0]
+    @test snapshot[1, 1] == [1.0]
     # Member 2 is compared once however many open openings reach it, and leaves
     # the watch once they have all closed.
     push!(openings, EpiBranch._RouteOpening(1, 1, 0.0, 8.0))
-    EpiBranch._watch_opening!(watch, 1)
+    EpiBranch._watch_opening!(watch, 1, true)
     EpiBranch._watch_target!(watch, 3, 2)
     @test sort(watch.tracked) == [1, 2]
     @test !changed!(1, 6.0)
