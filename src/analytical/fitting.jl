@@ -235,7 +235,7 @@ function _sim_chain_sizes(state, o::MinimumSize)
 end
 
 # The smallest size an observation could have recorded, which the empirical
-# evaluate bins from.
+# likelihood bins from.
 _observed_min_size(::ObservationModel) = 1
 _observed_min_size(o::MinimumSize) = o.min_size
 function _sim_chain_sizes(state, ::ObservationModel)
