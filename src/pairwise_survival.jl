@@ -886,13 +886,13 @@ ngroups(r::_ByComponent) = r.ncomponents
 group(r::_ByComponent, host) = r.component[host]
 
 # The running state of a reduction: one number per group, and which groups
-# are already known impossible, so their rows are skipped and their number
+# are already known impossible; their rows are then skipped and their number
 # stays -Inf regardless of what else would be added. A group's number widens
-# if a row adds a wider type than it currently holds — a covariate kernel may
+# if a row adds a wider type than it currently holds: a covariate kernel may
 # hold its fitted parameters on only some rows, and the type probe behind the
 # initial `T` can miss them. `pairwise_surv_loglik`'s single running total
 # used to be a bare local and widened the same way for free; a vector element
-# cannot, so `_add!` below checks and widens explicitly instead.
+# cannot, which is why `_add!` below checks and widens explicitly instead.
 struct _GroupTotals{T}
     ll::Vector{T}
     infeasible::Vector{Bool}
@@ -993,7 +993,7 @@ end
 
 # Pass 2: per-susceptible log-sum-exp over event rows, added into (or dooming)
 # its susceptible's group. A single accumulator is reused across susceptibles
-# (reset per susceptible) so the reduction stays allocation-free on the AD
+# (reset per susceptible), keeping the reduction allocation-free on the AD
 # tape. Every host in the layout is explained: an infected one with no
 # positive hazard at its infection time has density zero, and its group is
 # impossible: mark it rather than adding it, so that the derivative is zero
