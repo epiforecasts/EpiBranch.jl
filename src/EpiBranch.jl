@@ -199,8 +199,8 @@ export ClusterMixed, ChainSizeMixture
 # Real-time mixture: per-cluster "is finished?" weight
 export end_of_outbreak_probability
 # Pairwise survival likelihood over a contact structure
-export ContextualKernel, PairContext, CalendarKernel, StatefulKernel, record_kernel,
-    LayerHost
+export ContextualKernel, PairContext, CalendarKernel, StatefulKernel, RecordedKernel,
+    record_kernel, LayerHost
 export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout
 export compile_contact_pairs, pairwise_surv_loglik, pairwise_surv_loglik_by_component
 

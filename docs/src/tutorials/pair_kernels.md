@@ -182,7 +182,7 @@ layout = compile_contact_pairs(data)
 pairwise_surv_loglik(recorded, data, layout)
 ```
 
-For observed data, build `StatefulKernel(records, contact_law)` directly from
+For observed data, build `RecordedKernel(records, contact_law)` directly from
 measured covariates. When attributes are latent or contain fitted parameters,
 build that kernel from the current records on each likelihood evaluation. The
 compiled layout can be reused. Records retain their numeric types, including AD

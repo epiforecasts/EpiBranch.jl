@@ -29,6 +29,8 @@ household_final_size
 ContextualKernel
 CalendarKernel
 StatefulKernel
+RecordedKernel
+EpiBranch.watched_records
 record_kernel
 PairContext
 LayerHost
@@ -40,6 +42,7 @@ InfectionLayer
 EpiBranch.infection_likelihood_compatible
 EpiBranch.contact_structure
 EpiBranch.followup_end
+EpiBranch.host_times
 ContactPairsLayout
 compile_contact_pairs
 ```

@@ -50,8 +50,9 @@ extensions can use this method to share kernel semantics with the likelihood.
 The five-argument form supplies the infectious opening required by `CalendarKernel`.
 The six-argument form also passes the `SimulationState`, from which a live
 [`StatefulKernel`](@ref) reads both hosts' records; simulation must use it, since
-the shorter forms are for likelihoods and throw for a live kernel. Every other
-kernel returns what the five-argument form does.
+a live kernel has no method for the shorter forms, which are for likelihoods
+evaluated against a [`RecordedKernel`](@ref). Every other kernel returns what the
+five-argument form does.
 """
 pair_kernel(k::ContinuousUnivariateDistribution, i, j, infection_time) = k
 pair_kernel(k, i, j, infection_time) = k(i, j)
@@ -62,8 +63,8 @@ end
 """
     CalendarKernel(kernel)
 
-Interpret a shared distribution, pair callback, `ContextualKernel` or
-`StatefulKernel` on the
+Interpret a shared distribution, pair callback, `ContextualKernel`, `StatefulKernel`
+or `RecordedKernel` on the
 simulation's calendar-time axis. In network and household models, condition the
 returned distribution on surviving to the infector's infectious opening, then
 subtract that opening to obtain a contact interval. Network per-edge distribution
@@ -93,17 +94,13 @@ function _calendar_interval(distribution, opening)
 end
 
 """
-    StatefulKernel(state, callback)
+    StatefulKernel(projection, callback)
 
-A pair kernel with explicit host state. In simulation, `state(individual)` selects
-an immutable record (for example a named tuple of attributes and event dates).
-`callback(context::PairContext, source, target)` returns the contact-interval
-law from those records. Wrap in [`CalendarKernel`](@ref) for calendar-time laws.
-
-For likelihood evaluation, supply a vector of records indexed by population ID
-as `state`, or use [`record_kernel`](@ref) to extract them after simulation.
-The callback is identical in both paths. Records may contain typed covariates
-and dated histories.
+A pair kernel whose hazard can change during simulation. `projection(individual)`
+selects an immutable record (for example a named tuple of attributes and event
+dates) from a live `Individual`. `callback(context::PairContext, source, target)`
+returns the contact-interval law from those records. Wrap in [`CalendarKernel`](@ref)
+for calendar-time laws.
 
 A projection can also serve the likelihood directly when the infection layer
 holds the per-host times it reads, such as an onset time an infector's
@@ -111,9 +108,12 @@ infectiousness is timed from. The likelihood then applies the projection to
 each host as a [`LayerHost`](@ref), which has the `id` and `infection_time` of
 an individual and a `state` holding the layer's `host_times` under their keys.
 A projection that reads `ind.id`, `ind.infection_time` and the recorded times
-through `ind.state` works in both paths, so the same kernel scores an augmented
-infection layer, whose onsets change during inference. Reading a key the layer
-did not record raises an error; record every time the projection reads.
+through `ind.state` works for both a live `Individual` and a `LayerHost`, so the
+same kernel scores an augmented infection layer, whose onsets change during
+inference. Reading a key the layer did not record raises an error; record every
+time the projection reads. For a likelihood evaluated against an ordinary vector
+of records, build a [`RecordedKernel`](@ref) instead, or use [`record_kernel`](@ref)
+to extract one after simulation.
 
 Callbacks must describe a predictable hazard: adding an event at time `t` must
 not change the hazard before `t`. A final vaccinated flag alone is insufficient;
@@ -124,11 +124,27 @@ since that record is all the likelihood is given.
 
 Simulation keeps contacts consistent with the hazards in force as records
 change, and a run whose records never change follows the same distribution as
-an ordinary kernel. With interventions, a household model races every household
-together so that a policy can read cases in other households, which draws the
-same outbreak from a different random stream.
+an ordinary kernel. A race that can read several households or several routes at
+once (see [`watched_records`](@ref)) races them together so that a policy can
+read cases outside the one it is resolving, which draws the same outbreak from a
+different random stream.
 """
 struct StatefulKernel{S, F}
+    state::S
+    callback::F
+end
+
+"""
+    RecordedKernel(records, callback)
+
+A pair kernel whose host records are already known: `records` is a vector of
+immutable per-host records indexed by population ID, and `callback` is as for
+[`StatefulKernel`](@ref). Its hazard cannot change during a run, so it is the
+likelihood counterpart of a live `StatefulKernel`: build one directly from
+measured covariates, or call [`record_kernel`](@ref) on a `StatefulKernel` after
+simulation to extract one from the records it read.
+"""
+struct RecordedKernel{S <: AbstractVector, F}
     state::S
     callback::F
 end
@@ -181,30 +197,38 @@ end
 Base.haskey(s::_LayerHostState, key::Symbol) = !ismissing(_layer_time(s, key))
 
 function _layer_host(data, i)
-    return LayerHost(i, data.infection_time[i], _LayerHostState(_host_times(data), i))
+    return LayerHost(i, data.infection_time[i], _LayerHostState(host_times(data), i))
 end
 
 _pair_state(project, individual) = project(individual)
 _pair_state(records::AbstractVector, individual) = records[individual.id]
-# The projection a live kernel reads host state through, or `nothing` for a
-# kernel whose hazards cannot change during a run. A race compares successive
-# projections to decide whether pending contacts need redrawing, so a kernel may
-# depend on host state only through this record — the restriction `record_kernel`
-# already relies on to reproduce a run's hazards from recorded records alone.
-_kernel_projection(k) = nothing
+# The projection a live kernel reads host state through. Used only on a
+# `StatefulKernel`, whose `state` field is always this projection; a
+# `RecordedKernel`'s hazard cannot change during a run and so has none.
 _kernel_projection(k::StatefulKernel) = k.state
-_kernel_projection(k::StatefulKernel{<:AbstractVector}) = nothing
 _kernel_projection(k::CalendarKernel) = _kernel_projection(k.kernel)
-_live_kernel(k) = _kernel_projection(k) !== nothing
 
-# The projection a race has to watch for changes. Resolving a case writes only to
-# that case's own record, and no contact already drawn depends on it: contacts to
-# the case are settled, and its own contacts are drawn afterwards. So records that
-# pending contacts depend on can move only through an intervention, and without
-# one a live kernel races exactly as an ordinary kernel does.
-function _watched_projection(kernel, interventions)
-    return isempty(interventions) ? nothing : _kernel_projection(kernel)
-end
+"""
+    watched_records(kernel) -> Tuple
+
+The host records `kernel`'s hazard depends on, as the projections a race
+compares to decide whether a pending contact needs redrawing. Defaults to `()`,
+which marks a kernel whose hazard cannot change during a run — true of every
+built-in kernel except a live [`StatefulKernel`](@ref), which reports its own
+projection, and a [`CalendarKernel`](@ref), which delegates to the kernel it
+wraps. A kernel may depend on host state only through a record this reports:
+that restriction is what lets [`record_kernel`](@ref) reproduce a run's hazards
+from recorded records alone.
+
+A race holds the union of every route's kernel's watched records, keyed by
+record rather than by route, so a changed record redraws only the proposals
+whose route-kernel declared it; a route whose kernel reports `()` is never
+redrawn.
+"""
+watched_records(k) = ()
+watched_records(k::StatefulKernel) = (_kernel_projection(k),)
+watched_records(k::CalendarKernel) = watched_records(k.kernel)
+_live_kernel(k) = !isempty(watched_records(k))
 
 # The extra argument is supplied only by simulation; ordinary kernels retain
 # their existing extension methods and compiled likelihood fast paths.
@@ -218,16 +242,8 @@ function pair_kernel(k::StatefulKernel, i, j, infection_time, opening, state)
         _pair_state(k.state, state.individuals[j])
     )
 end
-function pair_kernel(k::StatefulKernel{<:AbstractVector}, i, j, infection_time)
+function pair_kernel(k::RecordedKernel, i, j, infection_time)
     return k.callback(PairContext(i, j, infection_time), k.state[i], k.state[j])
-end
-function pair_kernel(::StatefulKernel, i, j, infection_time)
-    throw(
-        ArgumentError(
-            "a live StatefulKernel needs simulation state; " *
-                "supply recorded host states for likelihood evaluation with record_kernel"
-        )
-    )
 end
 function pair_kernel(k::CalendarKernel, i, j, infection_time, opening, state)
     return _calendar_interval(pair_kernel(k.kernel, i, j, infection_time, opening, state), opening)
@@ -236,22 +252,22 @@ end
 """
     record_kernel(kernel, state::SimulationState)
 
-Return a kernel with the same callback and a vector of host records extracted
-from a finished simulation. For a `StatefulKernel`, apply its projection to each
-individual and copy the results so later simulation mutations cannot change the
-record. A `CalendarKernel` preserves its calendar-time conversion. Other kernels
-are returned unchanged.
+Return a [`RecordedKernel`](@ref) with the same callback and a vector of host
+records extracted from a finished simulation. For a `StatefulKernel`, apply its
+projection to each individual and copy the results so later simulation
+mutations cannot change the record. A `CalendarKernel` preserves its
+calendar-time conversion. Other kernels are returned unchanged.
 
 The projection must retain event dates or full histories when hazards change.
 This is extraction, not automatic history logging: overwritten past values cannot
 be recovered. The resulting likelihood evaluates the transmission contribution along these
 histories. Include separate attribute/intervention models when their probabilities
 also belong in the joint likelihood. During inference, construct
-`StatefulKernel(records, callback)` with the current latent records on each call.
+`RecordedKernel(records, callback)` with the current latent records on each call.
 """
 record_kernel(k, state::SimulationState) = k
 function record_kernel(k::StatefulKernel, state::SimulationState)
-    return StatefulKernel(
+    return RecordedKernel(
         [deepcopy(_pair_state(k.state, ind)) for ind in state.individuals],
         k.callback
     )

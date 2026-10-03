@@ -62,8 +62,10 @@ public NoGenerationTime
 # pairwise likelihood enumerate its (susceptible, possible infector) pairs.
 public contact_structure
 public followup_end
+public host_times
 
 public pair_kernel
+public watched_records
 public infection_likelihood_compatible
 public InterventionAction, intervention_actions, action_draw!, apply_actions!,
     continuous_actions

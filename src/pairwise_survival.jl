@@ -49,11 +49,14 @@ Base.length(d::PairwiseSurvivalData) = length(d.sus)
 # callable `r -> Distribution` through which covariates enter.
 _rowkernel(k::ContinuousUnivariateDistribution, r) = k
 _rowkernel(k, r) = k(r)
-function _rowkernel(::Union{ContextualKernel, CalendarKernel, StatefulKernel}, r)
+function _rowkernel(
+        ::Union{ContextualKernel, CalendarKernel, StatefulKernel, RecordedKernel}, r
+    )
     throw(
         ArgumentError(
-            "ContextualKernel, CalendarKernel and StatefulKernel require an InfectionLayer with source times; " *
-                "for counting-process rows, supply a row-indexed kernel with those data"
+            "ContextualKernel, CalendarKernel, StatefulKernel and RecordedKernel require " *
+                "an InfectionLayer with source times; for counting-process rows, supply a " *
+                "row-indexed kernel with those data"
         )
     )
 end
@@ -179,9 +182,18 @@ function followup_end(data::InfectionLayer)
         data.followup_end : Inf
 end
 
-# The per-host times of an infection layer beyond its infectious windows, as a
-# named tuple of vectors; empty when the subtype holds none.
-_host_times(data) = hasproperty(data, :host_times) ? data.host_times : (;)
+"""
+    host_times(data::InfectionLayer)
+
+The per-host times `data` holds beyond its infectious windows, as a named tuple
+of vectors keyed by the names passed as `host_times` when `data` was built. The
+default reads a `host_times` field when the [`InfectionLayer`](@ref) subtype has
+one, and is empty otherwise; a subtype that stores it elsewhere defines a
+method, as for [`followup_end`](@ref).
+"""
+function host_times(data::InfectionLayer)
+    return hasproperty(data, :host_times) ? data.host_times : (;)
+end
 
 # The per-host fields of an `InfectionLayer` subtype over `n` hosts, in field
 # order after the contact structure: the three time vectors, `is_index`,
@@ -643,10 +655,7 @@ function _pair_kernel(k::StatefulKernel, layout::ContactPairsLayout, r, data)
         k.state(_layer_host(data, i)), k.state(_layer_host(data, j))
     )
 end
-function _pair_kernel(
-        k::StatefulKernel{<:AbstractVector}, layout::ContactPairsLayout,
-        r, data
-    )
+function _pair_kernel(k::RecordedKernel, layout::ContactPairsLayout, r, data)
     i = layout.infector[r]
     return pair_kernel(k, i, layout.sus[r], data.infection_time[i], data.infectious_time[i])
 end

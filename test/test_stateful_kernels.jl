@@ -22,7 +22,7 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
         )
     )
     records = [(log_scale = 0.1,), (log_scale = 0.3,)]
-    kernel = StatefulKernel(records, callback)
+    kernel = RecordedKernel(records, callback)
     @test mean(EpiBranch.pair_kernel(kernel, 1, 2, 0.0)) ≈ exp(0.4)
     @test pairwise_surv_loglik(kernel, data, layout) ≈ -0.4 - 2exp(-0.4)
     live = StatefulKernel(ind -> (log_scale = ind.state[:log_scale]::Float64,), callback)
@@ -32,7 +32,7 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
         PairwiseSurvivalData([2], [0.0], [1.0], [true])
     )
     f(x) = pairwise_surv_loglik(
-        StatefulKernel(
+        RecordedKernel(
             [
                 (log_scale = x[1],),
                 (log_scale = x[2],),
@@ -80,7 +80,7 @@ end
                 [1 - survival, survival]
             )
         end
-        pairwise_surv_loglik(CalendarKernel(StatefulKernel(records, callback)), data, layout)
+        pairwise_surv_loglik(CalendarKernel(RecordedKernel(records, callback)), data, layout)
     end
     reference(x) = log(x[2]) - x[1] * (x[3] - 1) - x[2] * (3 - x[3])
     x = [0.4, 0.1, 2.0]
@@ -119,7 +119,7 @@ function stateful_test_race(
         state, collect(1:n), rng;
         seed! = (best, members, r) -> copyto!(best, initial_times),
         targets, from = :infection, until = (:recovered,), interventions,
-        introduction, refresh_projection = EpiBranch._kernel_projection(kernel)
+        introduction, kernel
     )
     return state
 end
@@ -275,7 +275,7 @@ end
     @test mean(EpiBranch.pair_kernel(Exponential(2.0), 1, 3, 0.0, 0.5, changed)) == 2.0
     @test logccdf(EpiBranch.pair_kernel(recorded, 1, 3, 0.0, 0.0, changed), 2.0) ≈
         logccdf(EpiBranch.pair_kernel(recorded, 1, 3, 0.0), 2.0)
-    fixed = StatefulKernel([nothing, nothing], (c, a, b) -> Exponential(1.0))
+    fixed = RecordedKernel([nothing, nothing], (c, a, b) -> Exponential(1.0))
     replay = stateful_test_race(fixed, [0.0, Inf])
     ordinary = stateful_test_race(Exponential(1.0), [0.0, Inf])
     @test isequal(
@@ -334,10 +334,11 @@ end
 
 @testset "Live kernels outside a race" begin
     live = StatefulKernel(tick_state, (c, a, b) -> Exponential(1.0))
-    @test EpiBranch._watched_projection(live, ()) === nothing
-    @test EpiBranch._watched_projection(live, [TickEveryCase()]) === tick_state
-    @test EpiBranch._watched_projection(Exponential(1.0), [TickEveryCase()]) === nothing
-    @test_throws ArgumentError EpiBranch.pair_kernel(live, 1, 2, 0.0)
+    # Watching is a property of the kernel, not of whatever interventions happen
+    # to be in play: it no longer depends on them at all.
+    @test EpiBranch.watched_records(live) === (tick_state,)
+    @test isempty(EpiBranch.watched_records(Exponential(1.0)))
+    @test_throws MethodError EpiBranch.pair_kernel(live, 1, 2, 0.0)
 
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(0.0)), [], NoAttributes(),
