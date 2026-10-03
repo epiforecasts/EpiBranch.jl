@@ -180,6 +180,14 @@ those names are reserved. If you add keys from another package, prefix them
 with a short tag for your package so they do not collide with built-ins or
 with keys other packages might add.
 
+State that belongs to a whole run, such as an index an intervention builds once
+and reuses, goes in `state.scratch`, a `Dict` on the
+[`SimulationState`](@ref) that the engine never reads
+and discards with the state. Its keys follow the same rule. Built-in
+interventions use a tuple whose first element names what the entry holds, as
+`GroupVaccination` keeps each group's members under `(:group_members, key)`,
+and a key added from another package starts with that package's tag.
+
 State times follow a convention. A generic `Transition(:state; …)` writes the
 flag `:state` and the time `:state_time` (that is, `Symbol(state, :_time)`).
 Infectiousness windows read the same convention: `from = :infectious` reads
