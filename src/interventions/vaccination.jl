@@ -828,8 +828,8 @@ end
 # exposure and onset, so a dose that cannot abort anything leaves the random
 # stream untouched. The exposure is the contact's provisional infection time,
 # its earliest exposure when several infectors reach it. If that exposure turns
-# out not to be the infection, the engine removes the abort
-# (`_drop_stale_abort!`), and a contact that escaped it gets a fresh draw at its
+# out not to be the infection, the engine discards the abort (see
+# `abort_infection!`), and a contact that escaped it gets a fresh draw at its
 # next exposure. `action_draw!` caches the draw against this exposure, so a
 # continuous-time race, which settles a contact's infection before checking a
 # dose already recorded against it and can then reconsider the same contact at
@@ -860,12 +860,7 @@ function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
         _covers(post, contact, rng)
     end
     covered || return nothing
-    # An earlier dose may already have aborted it; the infection ends at the
-    # first abort.
-    contact.state[:infection_aborted_time] = min(
-        get(contact.state, :infection_aborted_time, Inf), immunity
-    )
-    _set_onset_from_incubation!(contact)
+    abort_infection!(contact, immunity)
     return nothing
 end
 

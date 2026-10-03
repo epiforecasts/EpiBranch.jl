@@ -166,6 +166,7 @@ EpiBranch.AbortedInfection
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
+EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
 EpiBranch.traces_contacts
 EpiBranch.supplies_contacts
@@ -223,6 +224,8 @@ is_infected
 individual_type
 set_isolated!
 clear_isolated!
+EpiBranch.abort_infection!
+EpiBranch.infection_aborted_time
 ```
 
 ## Output
