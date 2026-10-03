@@ -189,7 +189,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             if ind.state[:outcome] == :died
                 @test ind.state[:outcome_time] ==
                     ind.state[:death_candidate_time]
-                # And the death candidate resolves before any recovery candidate.
+                # And the death candidate's time comes before any recovery candidate's.
                 @test ind.state[:death_candidate_time] <=
                     ind.state[:recovery_candidate_time]
             else
