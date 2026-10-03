@@ -415,7 +415,7 @@ end
 # is reported without declaring anything. `MassVaccination`'s rollout, for one,
 # doses each new contact as the generation engine creates it, so on the
 # continuous-time path nobody is ever dosed and the efficacy risk it contributes
-# never occurs; `GroupVaccination` doses whole groups as their members are
+# never blocks; `GroupVaccination` doses whole groups as their members are
 # created, and goes the same way.
 #
 # Tracing needs one thing more: the model has to be able to name the contacts a
