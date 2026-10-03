@@ -33,13 +33,15 @@ end
 end
 
 @testset "A kernel watching no record keeps separate household races" begin
-    # Its hazards cannot move, so neither redrawing nor a shared clock is
-    # needed and the run must match an ordinary kernel exactly.
-    project(ind) = (tag = get(ind.state, :tag, 0.0)::Float64,)
+    # A projection reading no state key has nothing that can move, so neither
+    # redrawing nor a shared clock is needed and the run must match an ordinary
+    # kernel exactly.
+    scales = fill(2.0, 7)
+    by_id(ind) = (scale = scales[ind.id],)
     progression = [Transition(:recovered; delay = 4.0, terminal = true)]
     kernels = (
         Exponential(2.0),
-        PairKernel((c, a, b) -> Exponential(2.0); state = project, watches = ()),
+        PairKernel((c, a, b) -> Exponential(a.scale); state = by_id, watches = ()),
     )
     for seed in 1:25
         runs = map(kernels) do kernel
@@ -57,24 +59,30 @@ end
 @testset "A watched record puts every household on one clock" begin
     # Declaring a record is what asks for the shared clock, whether or not an
     # intervention is the thing that moves it: an attribute builder or a
-    # transition can move one too. The outbreak is the same distribution drawn
-    # from a different stream, so the two agree in the mean rather than run by
-    # run.
+    # transition can move one too. One clock seeds and races the households
+    # together, so the stream differs run by run while the outbreak stays the
+    # same distribution.
     project(ind) = (tag = get(ind.state, :tag, 0.0)::Float64,)
     progression = [Transition(:recovered; delay = 4.0, terminal = true)]
-    kernels = (
-        Exponential(2.0),
-        PairKernel((c, a, b) -> Exponential(2.0); state = project, watches = (:tag,)),
+    household_run(watches, seed) = simulate(
+        ModelSpec(
+            HouseholdProcess(
+                [2, 3, 2],
+                PairKernel(
+                    (c, a, b) -> Exponential(2.0); state = project, watches = watches
+                ); external_hazard = 0.1, obs_end = 10.0
+            );
+            progression = progression
+        );
+        rng = StableRNG(seed)
     )
-    means = map(kernels) do kernel
-        process = HouseholdProcess(
-            [2, 3, 2], kernel; external_hazard = 0.1, obs_end = 10.0
-        )
-        model = ModelSpec(process; progression)
-        mean(
-            simulate(model; rng = StableRNG(seed)).cumulative_cases
-                for seed in 1:400
-        )
+    times(state) = [i.infection_time for i in state.individuals]
+    @test any(
+        !isequal(times(household_run((:tag,), seed)), times(household_run((), seed)))
+            for seed in 1:5
+    )
+    means = map(((:tag,), ())) do watches
+        mean(household_run(watches, seed).cumulative_cases for seed in 1:400)
     end
     @test isapprox(means[1], means[2]; atol = 0.25)
 end
