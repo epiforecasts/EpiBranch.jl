@@ -145,7 +145,7 @@ function exclusive_probabilities(ps::AbstractVector{<:Real})
     ]
 end
 
-# One bucket of a shared draw: `lo <= u < hi` selects it, everything else doesn't.
+# One bucket of a shared draw: the transition is selected when `lo <= u < hi`.
 # Returning 0.0/1.0 (rather than deciding directly) keeps this a `probability`
 # callable like any other, so it composes with `_transition_selected`'s own
 # `rand(rng) < p` unchanged — that draw is now deterministic, since `u` alone
@@ -195,7 +195,7 @@ _resolve_anchor(f, ind) = float(f(ind))
 
 # A transition occurs only from a finite anchor. An anchor is missing (`NaN`)
 # when the `from` key was never written, and non-finite (`Inf`) when the
-# upstream transition initialised the key but never resolved it — both mean "the
+# upstream transition initialised the key but never occurred — both mean "the
 # `from` state was not reached", so the transition must be skipped. Guarding
 # on `isfinite` (not `isnan`) keeps the two subsystems in step; the generic
 # `Transition` uses the same check.
