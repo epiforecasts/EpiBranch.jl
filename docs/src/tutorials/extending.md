@@ -1793,6 +1793,17 @@ either way, and `0.0` when the starting event was never reached — see the
 [`AntiviralTreatment` example](@ref "Writing a non-terminal custom transition")
 in the transitions tutorial.
 
+One case needs more than reading the keys back. An infection aborted by a
+post-exposure dose has every transition undone that would have taken effect at
+or after [`infection_aborted_time`](@ref EpiBranch.infection_aborted_time),
+with its flag restored and its time cleared — a record a failed gate leaves
+too. Reading it as a failed gate gives `-Inf` for a certain gate, so censor it
+instead: for a finite abort and a transition that did not happen, the
+contribution is the probability that it would have landed no earlier than the
+abort, `log1p(-p * cdf(delay, aborted - anchor))`, which is `logccdf` when `p`
+is 1. The built-in transitions all do this, and a transition anchored before
+onset is where it bites, since an aborted case has no onset to anchor from.
+
 ### Event dates for uninfected people
 
 Line lists normally suppress event dates derived from an infection that did not
