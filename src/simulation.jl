@@ -185,13 +185,10 @@ end
 # to `false`.
 _honours_termination_controls(::TransmissionModel) = true
 
-# The time at which a structure-driven run ends: the earliest `MaxTime` among
-# the stopping rules, or `Inf`.
+# The time at which a structure-driven run ends: the earliest `time_bound`
+# among the stopping rules, or `Inf`.
 function _max_time(sim_opts)
-    return minimum(
-        (r.t for r in sim_opts.stopping_rules if r isa MaxTime);
-        init = Inf
-    )
+    return minimum(time_bound(r) for r in sim_opts.stopping_rules; init = Inf)
 end
 
 # Warn when a termination control is set on a model that ignores it, so the
@@ -205,10 +202,12 @@ function _warn_ignored_termination(
     ignored = String[]
     max_cases != _DEFAULT_MAX_CASES && push!(ignored, "max_cases")
     max_generations != _DEFAULT_MAX_GENERATIONS && push!(ignored, "max_generations")
-    # Extinction and MaxTime are the two ways these runs end, so both hold.
+    # Extinction and a finite `time_bound` are the two ways these runs end, so
+    # both hold; any other rule is read through the same trait, not matched by
+    # concrete type.
     stopping_rules !== nothing &&
-        any(r -> !(r isa MaxTime || r isa Extinction), stopping_rules) &&
-        push!(ignored, "stopping_rules other than MaxTime and Extinction")
+        any(r -> !(r isa Extinction) && !isfinite(time_bound(r)), stopping_rules) &&
+        push!(ignored, "stopping_rules other than Extinction and those bounding time")
     isempty(ignored) && return nothing
     @warn "$(nameof(typeof(model))) runs to extinction or `max_time` over its " *
         "fixed population and ignores the other termination controls; " *
