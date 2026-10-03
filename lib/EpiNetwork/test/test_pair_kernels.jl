@@ -1,4 +1,6 @@
-include(joinpath(@__DIR__, "..", "..", "..", "test", "testutils", "stateful_kernels.jl"))
+include(joinpath(@__DIR__, "..", "..", "..", "test", "testutils", "pair_kernels.jl"))
+test_contextual_simulation(k -> NetworkProcess([[2, 3], [1, 3], [1, 2]], k), network_infections)
+test_calendar_simulation(k -> NetworkProcess([[2, 3], [1, 3], [1, 2]], k), network_infections)
 test_stateful_simulation(
     (k; kwargs...) -> NetworkProcess([[2, 3], [1, 3], [1, 2]], k; kwargs...),
     network_infections
@@ -7,9 +9,9 @@ test_stateful_simulation(
 @testset "Simultaneous contacts survive refresh at an inexact opening" begin
     # Host 2 opens at 0.7, so its two contacts are stored at 0.7 + 0.1, which
     # rounds below 0.8; settling one moves the other's record.
-    kernel = StatefulKernel(
-        tick_state,
-        (c, a, b) -> c.infector == 1 ? Dirac(0.7) : Dirac(0.1); watches = (:tick,)
+    kernel = PairKernel(
+        (c, a, b) -> c.infector == 1 ? Dirac(0.7) : Dirac(0.1);
+        state = tick_state, watches = (:tick,)
     )
     model = ModelSpec(
         NetworkProcess([[2], [1, 3, 4], [2], [2]], kernel);
@@ -31,7 +33,7 @@ end
         return DiscreteNonParametric([0.1, 0.3], [0.5, 0.5])
     end
     model = ModelSpec(
-        NetworkProcess([[2, 3], [1, 4], [1], [2]], StatefulKernel(tick_state, callback; watches = (:tick,)));
+        NetworkProcess([[2, 3], [1, 4], [1], [2]], PairKernel(callback; state = tick_state, watches = (:tick,)));
         progression = [Transition(:recovered; delay = 5.0, terminal = true)],
         interventions = [TickEveryCase()]
     )
@@ -52,9 +54,9 @@ end
     # At t = 1 the race blocks or settles host 4, settles host 5, and then host
     # 5's zero-length contact sends it back to host 2. Host 4's contact at t = 1
     # has been resolved by then and must not be offered again.
-    kernel = StatefulKernel(
-        tick_state, (c, a, b) -> c.infector == 5 ? Dirac(0.0) :
-            Dirac(1.0); watches = (:tick,)
+    kernel = PairKernel(
+        (c, a, b) -> c.infector == 5 ? Dirac(0.0) : Dirac(1.0);
+        state = tick_state, watches = (:tick,)
     )
     model = ModelSpec(
         NetworkProcess([[4, 5], [5], Int[], [1], [1, 2]], kernel);
@@ -73,9 +75,9 @@ end
     # At t = 1 the race passes hosts 4 and 5; host 5 then makes zero-length
     # contacts to hosts 2 and 3. When host 2 settles and records move, the
     # contact to host 3 has not been resolved yet and must still happen.
-    kernel = StatefulKernel(
-        tick_state, (c, a, b) -> c.infector == 5 ? Dirac(0.0) :
-            Dirac(1.0); watches = (:tick,)
+    kernel = PairKernel(
+        (c, a, b) -> c.infector == 5 ? Dirac(0.0) : Dirac(1.0);
+        state = tick_state, watches = (:tick,)
     )
     model = ModelSpec(
         NetworkProcess([[4, 5], [5], [5], [1], [1, 2, 3]], kernel);
@@ -93,7 +95,7 @@ end
         i == 1 || return i == 2 ? Dirac(2.0) : Dirac(1.0)
         return Dirac(j == 2 ? 1.0 : j == 3 ? 2.0 : j == 5 ? 2.5 : 0.5)
     end
-    kernel = StatefulKernel(tick_state, (c, a, b) -> law(c.infector, c.susceptible); watches = (:tick,))
+    kernel = PairKernel((c, a, b) -> law(c.infector, c.susceptible); state = tick_state, watches = (:tick,))
     for leaves in 0:8
         adjacency = [Int[] for _ in 1:(5 + leaves)]
         for (x, y) in [(1, 2), (1, 3), (1, 5), (2, 4), (3, 4)]

@@ -379,7 +379,7 @@ function _route_close(ind, w::RouteWindow, interventions)
     if INTERVENTION_REMOVAL in w.until
         t = min(t, _intervention_removal_time(ind, interventions))
     end
-    return min(t, get(ind.state, :infection_aborted_time, Inf))
+    return min(t, infection_aborted_time(ind))
 end
 
 # The one window of `_sellke_race!`'s `from`/`until`/`targets` shorthand. Reading
@@ -805,7 +805,9 @@ function _sellke_race!(
         _resolve_interventions!(state, ind, interventions)
         _trace_from!(state, ind, interventions, contacts, pos, processed)
         contacts === nothing ||
-            _apply_continuous_actions!(state, ind, interventions, members, processed)
+            _apply_continuous_actions!(
+            state, ind, interventions, members, processed, contacts, pos
+        )
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1
 
         # Only a live kernel whose host records actually moved needs its pending

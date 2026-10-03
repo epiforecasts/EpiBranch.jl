@@ -1,4 +1,6 @@
-include(joinpath(@__DIR__, "..", "..", "..", "test", "testutils", "stateful_kernels.jl"))
+include(joinpath(@__DIR__, "..", "..", "..", "test", "testutils", "pair_kernels.jl"))
+test_contextual_simulation((k; kwargs...) -> HouseholdProcess([3], k; kwargs...), household_infections)
+test_calendar_simulation((k; kwargs...) -> HouseholdProcess([3], k; kwargs...), household_infections)
 test_stateful_simulation((k; kwargs...) -> HouseholdProcess([3], k; kwargs...), household_infections)
 
 struct RecordKernelClock <: AbstractIntervention end
@@ -9,9 +11,9 @@ function EpiBranch.resolve_individual!(::RecordKernelClock, ind, state)
 end
 
 @testset "Live kernels share one household clock" begin
-    kernel = StatefulKernel(
-        ind -> (tick = get(ind.state, :tick, 0)::Int,),
-        (c, a, b) -> Exponential(1.0); watches = (:tick,)
+    kernel = PairKernel(
+        (c, a, b) -> Exponential(1.0);
+        state = ind -> (tick = get(ind.state, :tick, 0)::Int,), watches = (:tick,)
     )
     model = ModelSpec(
         HouseholdProcess([2, 2], kernel);
@@ -37,7 +39,7 @@ end
     progression = [Transition(:recovered; delay = 4.0, terminal = true)]
     kernels = (
         Exponential(2.0),
-        StatefulKernel(project, (c, a, b) -> Exponential(2.0); watches = ()),
+        PairKernel((c, a, b) -> Exponential(2.0); state = project, watches = ()),
     )
     for seed in 1:25
         runs = map(kernels) do kernel
@@ -62,7 +64,7 @@ end
     progression = [Transition(:recovered; delay = 4.0, terminal = true)]
     kernels = (
         Exponential(2.0),
-        StatefulKernel(project, (c, a, b) -> Exponential(2.0); watches = (:tag,)),
+        PairKernel((c, a, b) -> Exponential(2.0); state = project, watches = (:tag,)),
     )
     means = map(kernels) do kernel
         process = HouseholdProcess(

@@ -450,3 +450,35 @@ end
     @test all(ind -> is_vaccinated(ind; dose_label = :boost), refused)
     @test isequal(outcomes(state), original)
 end
+
+@testset "The group-to-members index tracks new individuals without rescanning old ones" begin
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+    )
+    append!(
+        state.individuals,
+        [Individual(id = i, state = Dict{Symbol, Any}(:group => (i <= 2 ? :A : :B))) for i in 1:3]
+    )
+    @test Set(EpiBranch._group_members(state, :group, :A)) == Set([1, 2])
+    @test Set(EpiBranch._group_members(state, :group, :B)) == Set([3])
+    @test EpiBranch._group_members(state, :group, :C) == Int[]
+
+    # A member of an already-queried group, created after that query, is
+    # still found: the cache only skips ids it has already seen, not groups.
+    push!(state.individuals, Individual(id = 4, state = Dict{Symbol, Any}(:group => :A)))
+    @test Set(EpiBranch._group_members(state, :group, :A)) == Set([1, 2, 4])
+
+    # A different `group_key` gets its own cache.
+    state.individuals[1].state[:household] = :H1
+    state.individuals[2].state[:household] = :H1
+    @test Set(EpiBranch._group_members(state, :household, :H1)) == Set([1, 2])
+    @test Set(EpiBranch._group_members(state, :group, :A)) == Set([1, 2, 4])
+
+    # The index lives in the run's `scratch`, which an intervention keys
+    # however it likes, so nothing on the state is specific to this one.
+    @test haskey(state.scratch, (:group_members, :group))
+    @test haskey(state.scratch, (:group_members, :household))
+    state.scratch[:anything_else] = 42
+    @test Set(EpiBranch._group_members(state, :group, :A)) == Set([1, 2, 4])
+end

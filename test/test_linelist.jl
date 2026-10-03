@@ -236,6 +236,23 @@ using Dates
         @test isequal(df[df.infected, shared], cases[:, shared])
     end
 
+    @testset "an uninfected contact reports a replaced quarantine only if recorded" begin
+        # An isolation written by `Isolation` on an uninfected contact came from
+        # its provisional onset; the line list reports the quarantine it
+        # replaced, unless that quarantine was itself no detection.
+        metadata = EpiBranch.event_time_metadata(Val(:isolation_time))
+        function replaced(unrecorded)
+            ind = Individual(id = 1)
+            ind.state[:isolated_by_isolation] = true
+            ind.state[:isolation_time] = 3.0
+            ind.state[:isolation_time_before_isolation] = 5.0
+            unrecorded && (ind.state[:isolation_unrecorded_before_isolation] = true)
+            return EpiBranch._uninfected_event_time(ind, :isolation_time, metadata)
+        end
+        @test replaced(false) == 5.0
+        @test ismissing(replaced(true))
+    end
+
     @testset "linelist picks up custom state fields generically" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))

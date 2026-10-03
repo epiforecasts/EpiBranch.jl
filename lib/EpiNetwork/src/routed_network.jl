@@ -22,12 +22,12 @@ Network transmission over several routes at once.
   connect different pairs of the same nodes;
 - `kernel`: the contact-interval distribution along those edges — a shared
   `Distributions.jl` distribution, a callable `(infector, susceptible) ->
-  Distribution` for covariate models, a [`ContextualKernel`](@ref) that also
-  reads the infector's infection time, a [`StatefulKernel`](@ref), or a
-  per-edge vector parallel to `reach`, resolved per pair exactly as on
-  [`NetworkProcess`](@ref). Each route declares the host records its own kernel
-  reads, so a record that moves redraws the pending contacts of the routes
-  reading it and leaves the others alone;
+  Distribution` for covariate models, a [`PairKernel`](@ref), which also reads
+  the infector's infection time, may hold a calendar schedule and may read host
+  records through a projection, or a per-edge vector parallel to `reach`,
+  resolved per pair exactly as on [`NetworkProcess`](@ref). Each route declares
+  the host records its own kernel reads, so a record that moves redraws the
+  pending contacts of the routes reading it and leaves the others alone;
 - `until`: the states that end this route, which is what lets one route be cut
   and another left alone. Include `EpiBranch.INTERVENTION_REMOVAL` for a route
   that a composed `Isolation` should end;
@@ -310,7 +310,7 @@ end
 
 # One route's susceptible targets, each with that route's kernel resolved for
 # the pair: a shared distribution, a per-edge vector, a covariate callable or a
-# `ContextualKernel`, exactly as `NetworkProcess` resolves its edge kernel (see
+# `PairKernel` without `state`, exactly as `NetworkProcess` resolves its edge kernel (see
 # `_resolve_kernel`). A record-reading kernel is refused at construction.
 function _route_targets(w::RouteWindow)
     adjacency, kernel = w.reach, w.kernel
