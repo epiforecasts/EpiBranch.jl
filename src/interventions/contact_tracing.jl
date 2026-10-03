@@ -629,6 +629,7 @@ function reset!(::ContactTracing, ind::Individual)
     haskey(ind.state, :traced_by) && delete!(ind.state, :traced_by)
     haskey(ind.state, :trace_level) && delete!(ind.state, :trace_level)
     haskey(ind.state, :trace_time) && delete!(ind.state, :trace_time)
+    haskey(ind.state, :ring_propagated) && delete!(ind.state, :ring_propagated)
     is_isolated(ind) && clear_isolated!(ind)
     return nothing
 end
