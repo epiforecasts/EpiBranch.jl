@@ -181,10 +181,10 @@ apply transitions without threading a parameter through every signature.
 
 `scratch` is per-run working space an intervention can keep its own
 derived state in, as `Individual.state` is for per-individual state, with
-keys named as the extending guide describes for both. It holds nothing the engine reads, so the engine needs
-no knowledge of what an intervention puts there, and it is discarded with the
-state. `GroupVaccination`'s group-to-members index is the worked example (see
-`EpiBranch._group_members`).
+keys named as the extending guide describes for both. It holds nothing the
+engine reads, so the engine needs no knowledge of what an intervention puts
+there, and it is discarded with the state. `GroupVaccination`'s
+group-to-members index is the worked example (see `EpiBranch._group_members`).
 """
 mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     individuals::Vector{Individual{T}}

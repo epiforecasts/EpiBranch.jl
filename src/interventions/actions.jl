@@ -278,19 +278,6 @@ function continuous_actions(rv::RingVaccination)
     return rv.eligibility_window isa Real && rv.eligibility_window == Inf
 end
 
-"""
-    _continuous_candidates(intervention, state, current, members, processed, contacts, pos)
-
-The individuals to offer `intervention`'s [`intervention_actions`](@ref) once
-`current` has just settled. The default is every other still-pending member
-together with `current` itself — safe for any intervention, but a full scan
-of the population on every settled case. [`RingVaccination`](@ref) and
-[`GroupVaccination`](@ref) need far less: only `current`'s newly traced
-contacts, or the members of `current`'s own group found through the
-group-to-members index (see `EpiBranch._group_members`), so they override
-this with a candidate list bounded by ring or group size rather than
-population size.
-"""
 # Whether `id` belongs to this race and the race has not finalised it yet, so
 # that an action may still reach it. `pos` is the race's id-to-index map into
 # `members`; a caller with no map walks the members instead, which is what the
@@ -304,6 +291,19 @@ function _pending(id, members, processed, pos)
     return k != 0 && !processed[k]
 end
 
+"""
+    _continuous_candidates(intervention, state, current, members, processed, contacts, pos)
+
+The individuals to offer `intervention`'s [`intervention_actions`](@ref) once
+`current` has just settled. The default is every other still-pending member
+together with `current` itself — safe for any intervention, but a full scan
+of the population on every settled case. [`RingVaccination`](@ref) and
+[`GroupVaccination`](@ref) need far less: only `current`'s newly traced
+contacts, or the members of `current`'s own group found through the
+group-to-members index (see `EpiBranch._group_members`), so they override
+this with a candidate list bounded by ring or group size rather than
+population size.
+"""
 function _continuous_candidates(
         ::AbstractIntervention, state, current, members, processed, contacts, pos
     )
