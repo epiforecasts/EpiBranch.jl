@@ -412,6 +412,8 @@ function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
     return loghazard(k.profile, τ) + log(calendar_multiplier(k.calendar, k.opening + τ))
 end
 
+SurvivalDistributions.hazard(k::_CalendarScaledKernel, τ::Real) = _calendar_hazard(k, τ)
+
 Distributions.logccdf(k::_CalendarScaledKernel, τ::Real) = -cumhazard(k, τ)
 
 function Distributions.invlogccdf(k::_CalendarScaledKernel, lp::Real)
@@ -422,6 +424,7 @@ end
 
 Base.rand(rng::AbstractRNG, k::_CalendarScaledKernel) = _time_at_log_survival(k, log(rand(rng)))
 Base.minimum(k::_CalendarScaledKernel) = minimum(k.profile)
+Base.maximum(k::_CalendarScaledKernel) = maximum(k.profile)
 Distributions.partype(k::_CalendarScaledKernel) = Distributions.partype(k.profile)
 
 # The segment starting at time-since-opening `t_lo`: its multiplier and the

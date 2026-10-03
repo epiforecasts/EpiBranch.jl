@@ -22,7 +22,7 @@ import EpiBranch: new_state, add_individuals!, apply_observation!,
 # The infection layer is built and read out of a simulation by EpiBranch's
 # helpers, which close each case's window where the simulator's race does.
 import EpiBranch: _infection_layer_columns, _infection_layer_fields,
-    _host_time_columns
+    _host_time_columns, _layer_host_time_keys
 # The pairwise survival likelihood works for any contact structure and lives in
 # EpiBranch, which scores a household population through `contact_structure`.
 # The simulator and the likelihood share EpiBranch's community-hazard helpers

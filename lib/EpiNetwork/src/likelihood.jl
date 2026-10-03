@@ -60,7 +60,10 @@ as described for `InfectionLayer`. Additional hazard modifications require an
 effective kernel when scoring; extraction records the windows only. A bare `NetworkProcess` is accepted too (its window opens at
 `:infection`, and it has no interventions). `host_times` names further per-node
 times to record, such as `(:onset_time,)`, read from each node's state (`missing`
-where a node has none) for a live [`PairKernel`](@ref) to read.
+where a node has none) for a live [`PairKernel`](@ref) to read. The times the
+model's interventions read through
+[`susceptibility_host_times`](@ref EpiBranch.susceptibility_host_times), such as a
+vaccination's `:immunity_time`, are recorded as well.
 """
 function network_infections(
         state::SimulationState,
@@ -78,7 +81,7 @@ function network_infections(
     columns = _infection_layer_columns(state, model)
     return NetworkInfections(
         adjacency, columns...; obs_end, followup_end,
-        host_times = _host_time_columns(state, host_times)
+        host_times = _host_time_columns(state, _layer_host_time_keys(model, host_times))
     )
 end
 
@@ -87,16 +90,24 @@ function network_infections(state::SimulationState, process::NetworkProcess; kwa
 end
 
 """
-    loglikelihood(data::NetworkInfections, model::NetworkProcess) -> Real
+    loglikelihood(data::NetworkInfections, model::NetworkProcess;
+                  susceptibility = nothing) -> Real
+    loglikelihood(data::NetworkInfections, model::ModelSpec{<:NetworkProcess}) -> Real
 
 The contact-process log-density of `model`'s kernel given the infection layer
 `data`: `pairwise_surv_loglik(model.edge_kernel, data; external_hazard =
-model.external_hazard)`. A per-edge kernel must be parallel to `data.contacts`.
+model.external_hazard, susceptibility)`. A per-edge kernel must be parallel to
+`data.contacts`. For a `ModelSpec`, `susceptibility` is the model's
+interventions, so a composed vaccination is scored from the immunity times
+[`network_infections`](@ref) recorded.
 """
-function Distributions.loglikelihood(data::NetworkInfections, model::NetworkProcess)
+function Distributions.loglikelihood(
+        data::NetworkInfections, model::NetworkProcess;
+        susceptibility = nothing
+    )
     return pairwise_surv_loglik(
         model.edge_kernel, data;
-        external_hazard = model.external_hazard
+        external_hazard = model.external_hazard, susceptibility
     )
 end
 
@@ -105,5 +116,5 @@ function Distributions.loglikelihood(
         model::ModelSpec{<:NetworkProcess}
     )
     EpiBranch._validate_infection_likelihood(model)
-    return loglikelihood(data, model.process)
+    return loglikelihood(data, model.process; susceptibility = model.interventions)
 end

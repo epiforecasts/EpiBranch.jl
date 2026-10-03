@@ -55,7 +55,9 @@ an effective kernel when scoring; extraction records the windows only. A bare `H
 accepted too (its window opens at `:infection`, and it has no interventions).
 `host_times` names further per-member times to record, such as `(:onset_time,)`,
 read from each member's state (`missing` where a member has none) for a live
-[`PairKernel`](@ref) to read.
+[`PairKernel`](@ref) to read. The times the model's interventions read
+through [`susceptibility_host_times`](@ref EpiBranch.susceptibility_host_times),
+such as a vaccination's `:immunity_time`, are recorded as well.
 """
 function household_infections(
         state::SimulationState,
@@ -66,7 +68,7 @@ function household_infections(
     columns = _infection_layer_columns(state, model)
     return HouseholdInfections(
         household_of, columns...; obs_end, followup_end,
-        host_times = _host_time_columns(state, host_times)
+        host_times = _host_time_columns(state, _layer_host_time_keys(model, host_times))
     )
 end
 
@@ -117,22 +119,27 @@ function condition_mask(::EarliestInfected, data::HouseholdInfections)
 end
 
 """
-    loglikelihood(data::HouseholdInfections, model::HouseholdProcess; condition_on = RecruitedIndex()) -> Float64
+    loglikelihood(data::HouseholdInfections, model::HouseholdProcess;
+                  condition_on = RecruitedIndex(), susceptibility = nothing) -> Float64
+    loglikelihood(data::HouseholdInfections, model::ModelSpec{<:HouseholdProcess};
+                  condition_on = RecruitedIndex()) -> Float64
 
 The contact-process log-density of `model`'s kernel given the infection layer
 `data`, on the layout [`compile_household_pairs`](@ref) builds for
 `condition_on` (see there): `pairwise_surv_loglik(model.kernel, data, layout;
-external_hazard = model.external_hazard)`.
+external_hazard = model.external_hazard, susceptibility)`. For a `ModelSpec`,
+`susceptibility` is the model's interventions, so a composed vaccination is
+scored from the immunity times [`household_infections`](@ref) recorded.
 """
 function Distributions.loglikelihood(
         data::HouseholdInfections, model::HouseholdProcess;
-        condition_on::ConditionOn = RecruitedIndex()
+        condition_on::ConditionOn = RecruitedIndex(), susceptibility = nothing
     )
     layout = compile_household_pairs(
         data; external = _ext_active(model.external_hazard), condition_on
     )
     return pairwise_surv_loglik(
-        model.kernel, data, layout; external_hazard = model.external_hazard
+        model.kernel, data, layout; external_hazard = model.external_hazard, susceptibility
     )
 end
 
@@ -142,7 +149,9 @@ function Distributions.loglikelihood(
         condition_on::ConditionOn = RecruitedIndex()
     )
     EpiBranch._validate_infection_likelihood(model)
-    return loglikelihood(data, model.process; condition_on)
+    return loglikelihood(
+        data, model.process; condition_on, susceptibility = model.interventions
+    )
 end
 
 # ── Compiled pair layout ─────────────────────────────────────────────
