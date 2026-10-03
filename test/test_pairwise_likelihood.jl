@@ -469,8 +469,8 @@ end
 
         # Cliques and a graph with latent periods, ongoing windows, infections
         # after follow-up (including one nobody could explain then, and an index
-        # case) and a window opening after it: evaluating up to 6 matches evaluating
-        # the data truncated at 6.
+        # case) and a window opening after it: evaluating up to 6 matches
+        # evaluating the data truncated at 6.
         membership, adjacency = _cliques([3, 4, 2, 4])
         inf = [0.0, 1.2, NaN, 0.0, 2.1, 5.5, 8.0, 0.0, 7.0, 0.0, 0.7, NaN, 9.0]
         infectious = inf .+ [0.5, 0.3, 0, 0.4, 0.2, 0.1, 0.3, 0.6, 0.2, 0.1, 0.2, 0, 0.3]

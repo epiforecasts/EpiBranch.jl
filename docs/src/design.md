@@ -103,8 +103,8 @@ mean infectious period. The composition is what gives each layer access to the
 others it needs, resolving those couplings where both sides are in hand rather
 than by fusing the tiers. A structure-driven process, for one, derives its
 infectious window — and, where transmission is given as a reproduction number,
-its rate — from the composed disease when the model is simulated or evaluated, so
-the process stays purely the transmission and the disease stays a single,
+its rate — from the composed disease when the model is simulated or evaluated,
+so the process stays purely the transmission and the disease stays a single,
 separately specified layer.
 
 ## Three separated stages

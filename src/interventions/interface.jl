@@ -92,8 +92,8 @@ is_active(::AbstractIntervention, ::SimulationState) = true
     Risk(event_time, block_probability)
 
 A competing risk contributed by an intervention against a single
-contact's transmission. The risk's event has occurred by transmission time `T` if
-`event_time <= T`; when it has occurred, transmission is blocked with
+contact's transmission. The risk's event has occurred by transmission time `T`
+if `event_time <= T`; when it has occurred, transmission is blocked with
 probability `block_probability`. A contact is infected iff no
 intervention's risk blocks it.
 

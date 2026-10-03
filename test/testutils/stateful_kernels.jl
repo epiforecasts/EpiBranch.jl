@@ -78,8 +78,8 @@ function test_stateful_simulation(make_process, extract)
     @testset "An unchanging live kernel races as an ordinary one" begin
         # Redrawing exists for hazards that move. A kernel whose records never
         # move must leave the race exactly where an ordinary kernel leaves it,
-        # random stream included: a refresh that happens anyway is both wasted and
-        # free to change the answer without any test noticing.
+        # random stream included: a refresh that happens anyway is both wasted
+        # and free to change the answer without any test noticing.
         project(ind) = (tag = get(ind.state, :tag, 0.0)::Float64,)
         progression = [Transition(:recovered; delay = 3.0, terminal = true)]
         for d in (Exponential(1.5), Weibull(2.0, 2.0), Gamma(3.0, 0.7))

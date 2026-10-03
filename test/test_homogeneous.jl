@@ -1020,9 +1020,9 @@ end
 
     @testset "positive force with empty infectious pool is index-labelled" begin
         # A custom force with a count-independent positive hazard (external
-        # importation) keeps generating infections even when no one is infectious. The
-        # first infection draws its source from an empty pool: without a guard that
-        # throws; with the guard it falls back to the index-case label 0.
+        # importation) keeps generating infections even when no one is infectious.
+        # The first infection draws its source from an empty pool: without a
+        # guard that throws; with the guard it falls back to the index-case label 0.
         N = 50
         process = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
         prog = [

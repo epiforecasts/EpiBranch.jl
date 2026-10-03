@@ -271,9 +271,9 @@ function loglikelihood(data::ChainSizes, spec::ModelSpec; kwargs...)
     )
 end
 
-# Shared core: evaluate `data` against `process` with the modelling layers passed
-# explicitly, so a bare process supplies its own and a `ModelSpec` supplies the
-# spec's.
+# Shared core: evaluate `data` against `process` with the modelling layers
+# passed explicitly, so a bare process supplies its own and a `ModelSpec`
+# supplies the spec's.
 function _chain_size_model_loglik(
         data::ChainSizes, process, ivs, attrs, prog, obs;
         n_initial::Int = 1,
