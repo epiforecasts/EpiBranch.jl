@@ -1,3 +1,5 @@
+using ForwardDiff
+
 # A transition with no `transition_loglik` method of its own, as one
 # written before `progression_loglik` existed.
 struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
@@ -227,28 +229,110 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         # or after the abort, so what the individual records is that it would
         # have happened no earlier than then. Read as a failed gate instead, an
         # unconditional transition would take the whole outbreak to `-Inf`.
+        # An abort leaves the onset `NaN`, so both transitions are anchored
+        # before it: a latent period from infection, and a second step from
+        # the state that one writes.
         latent = Transition(:infectious, from = :infection, delay = Exponential(2.0))
-        reporting = Reporting(delay = Exponential(1.0), probability = 0.6)
+        treated = Transition(
+            :treated, from = :infectious, delay = Exponential(1.0),
+            probability = 0.6
+        )
         spec = ModelSpec(
             BranchingProcess(Poisson(0.0));
-            progression = [latent, reporting], attributes = clinical
+            progression = [latent, treated], attributes = clinical
         )
         ind = Individual(id = 1, infection_time = 0.0)
         ind.state[:infected] = true
-        ind.state[:onset_time] = 1.0
+        ind.state[:onset_time] = NaN
         ind.state[:infectious] = false
         ind.state[:infectious_time] = Inf
-        ind.state[:reported] = false
+        ind.state[:treated] = false
         ind.state[:infection_aborted_time] = 1.5
-        @test progression_loglik(spec, [ind]) ≈
-            logccdf(Exponential(2.0), 1.5) +
-            log1p(-0.6 * cdf(Exponential(1.0), 0.5))
-        # A transition that stood is scored as it ever was.
+        # The latent step is censored at the abort; the second step's own
+        # anchor was never reached, so it contributes nothing.
+        @test progression_loglik(spec, [ind]) ≈ logccdf(Exponential(2.0), 1.5)
+        # With the latent step standing, it scores as it ever did and the
+        # second step is censored from its own anchor.
         ind.state[:infectious] = true
         ind.state[:infectious_time] = 1.2
         @test progression_loglik(spec, [ind]) ≈
             logpdf(Exponential(2.0), 1.2) +
-            log1p(-0.6 * cdf(Exponential(1.0), 0.5))
+            log1p(-0.6 * cdf(Exponential(1.0), 0.3))
+    end
+
+    @testset "an aborted case differentiates" begin
+        # `abort_infection!` stores the abort in the individual's own number
+        # type, so a dual pool must reach a finite value and gradient rather
+        # than a type error.
+        function censored(scale)
+            ind = Individual(id = 1, infection_time = zero(scale))
+            ind.state[:infected] = true
+            ind.state[:infectious] = false
+            ind.state[:infectious_time] = oftype(scale, Inf)
+            EpiBranch.abort_infection!(ind, 1.5 * scale)
+            spec = ModelSpec(
+                BranchingProcess(Poisson(0.0));
+                progression = [
+                    Transition(:infectious, from = :infection, delay = Exponential(2.0)),
+                ]
+            )
+            return progression_loglik(spec, [ind])
+        end
+        @test censored(1.0) ≈ logccdf(Exponential(2.0), 1.5)
+        @test ForwardDiff.derivative(censored, 1.0) ≈ -0.75
+    end
+
+    @testset "a shared-draw group censored at an abort keeps its bucket" begin
+        # The censored term has to read the draw rather than the gate's own 0
+        # or 1, or the case-fatality ratio drops out for every aborted case.
+        death_p, recovered_p = exclusive_probabilities([0.64, 0.36])
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.0));
+            progression = [
+                Death(
+                    from = ind -> ind.infection_time, delay = Exponential(2.0),
+                    probability = death_p
+                ),
+                Transition(
+                    :recovered, from = :infection, delay = Exponential(3.0),
+                    probability = recovered_p, terminal = true
+                ),
+            ]
+        )
+        ind = Individual(id = 1, infection_time = 0.0)
+        ind.state[:infected] = true
+        ind.state[:death_candidate_time] = Inf
+        ind.state[:recovered] = false
+        ind.state[:infection_aborted_time] = 1.0
+        # The draw selected death, whose candidate the abort then undid.
+        ind.state[death_p.key] = 0.3
+        @test progression_loglik(spec, [ind]) ≈
+            log(0.64) + logccdf(Exponential(2.0), 1.0)
+        # The draw selected recovery instead, so death says nothing.
+        ind.state[death_p.key] = 0.9
+        @test progression_loglik(spec, [ind]) ≈
+            log(0.36) + logccdf(Exponential(3.0), 1.0)
+    end
+
+    @testset "a group summing to 1 up to rounding owns no shortfall" begin
+        # `sum([0.7, 0.2, 0.1])` is a hair below 1, which must not leave the
+        # last bucket demanding a draw a hand-built individual cannot have.
+        gates = exclusive_probabilities([0.7, 0.2, 0.1])
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.0));
+            progression = [
+                Transition(
+                    Symbol(:step, i), from = :infection, delay = Exponential(1.0),
+                    probability = g
+                ) for (i, g) in enumerate(gates)
+            ]
+        )
+        ind = Individual(id = 1, infection_time = 0.0)
+        ind.state[:infected] = true
+        for i in eachindex(gates)
+            ind.state[Symbol(:step, i)] = false
+        end
+        @test progression_loglik(spec, [ind]) == 0.0
     end
 
     @testset "an aborted run has a finite likelihood" begin
