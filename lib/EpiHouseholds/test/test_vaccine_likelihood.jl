@@ -12,8 +12,10 @@
     @testset "the structured likelihood matches an explicit vaccine argument" begin
         rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
         process = HouseholdProcess(fill(6, 200), Exponential(0.3))
-        m = ModelSpec(process; progression, attributes = clinical,
-            interventions = [ct, rv])
+        m = ModelSpec(
+            process; progression, attributes = clinical,
+            interventions = [ct, rv]
+        )
         state = simulate(m; rng = StableRNG(31))
         data = household_infections(state, m)
 
@@ -21,28 +23,36 @@
         @test data.immunity_time == EpiBranch.immunity_time.(state.individuals)
         @test any(isfinite, data.immunity_time)
 
-        explicit = pairwise_surv_loglik(m.process.kernel, data;
+        explicit = pairwise_surv_loglik(
+            m.process.kernel, data;
             external_hazard = m.process.external_hazard,
-            vaccine = EpiBranch.vaccine_effect(rv))
+            vaccine = EpiBranch.vaccine_effect(rv)
+        )
         @test loglikelihood(data, m) ≈ explicit
 
         # scoring the same data as if nobody were vaccinated gives a
         # different value: the fix changes the number, not just the plumbing.
-        unvaccinated = ModelSpec(process; progression, attributes = clinical,
-            interventions = [ct])
+        unvaccinated = ModelSpec(
+            process; progression, attributes = clinical,
+            interventions = [ct]
+        )
         @test loglikelihood(data, m) != loglikelihood(data, unvaccinated)
     end
 
     @testset "AllOrNothingMode round-trips through the structured likelihood too" begin
         rv = RingVaccination(efficacy = 0.4, mode = AllOrNothingMode())
         process = HouseholdProcess(fill(6, 200), Exponential(0.3))
-        m = ModelSpec(process; progression, attributes = clinical,
-            interventions = [ct, rv])
+        m = ModelSpec(
+            process; progression, attributes = clinical,
+            interventions = [ct, rv]
+        )
         state = simulate(m; rng = StableRNG(32))
         data = household_infections(state, m)
-        explicit = pairwise_surv_loglik(m.process.kernel, data;
+        explicit = pairwise_surv_loglik(
+            m.process.kernel, data;
             external_hazard = m.process.external_hazard,
-            vaccine = EpiBranch.vaccine_effect(rv))
+            vaccine = EpiBranch.vaccine_effect(rv)
+        )
         @test loglikelihood(data, m) ≈ explicit
         @test isfinite(loglikelihood(data, m))
     end
@@ -50,8 +60,10 @@
     @testset "a vaccination with an onward or post-exposure effect is rejected" begin
         rv = RingVaccination(efficacy = 0.5, onward_efficacy = 0.3)
         process = HouseholdProcess(fill(6, 20), Exponential(0.3))
-        m = ModelSpec(process; progression, attributes = clinical,
-            interventions = [ct, rv])
+        m = ModelSpec(
+            process; progression, attributes = clinical,
+            interventions = [ct, rv]
+        )
         state = simulate(m; rng = StableRNG(33))
         data = household_infections(state, m)
         @test_throws ArgumentError loglikelihood(data, m)

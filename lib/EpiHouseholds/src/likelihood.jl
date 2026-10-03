@@ -9,18 +9,19 @@
 
 """
     HouseholdInfections(household_of, infection_time, infectious_time, removal_time, is_index;
-                        obs_end = Inf, followup_end = Inf, immunity_time = nothing)
+                        obs_end = Inf, followup_end = Inf, host_times = (;),
+                        immunity_time = nothing)
 
 The [`InfectionLayer`](@ref) of a household outbreak. Its contact structure is
 `household_of`, the household of each individual: household-mates are each
-other's possible infectors. The per-individual vectors, `obs_end` and
-`followup_end` are as described for `InfectionLayer`. `immunity_time` is the
+other's possible infectors. The per-individual vectors, `obs_end`, `followup_end`
+and `host_times` are as described for `InfectionLayer`. `immunity_time` is the
 per-individual vaccine-induced immunity time
 [`pairwise_surv_loglik`](@ref)'s `vaccine` argument reads (`Inf` for every
 individual, meaning none, when omitted). Read one out of a simulation with
 [`household_infections`](@ref), or augment it in inference.
 """
-struct HouseholdInfections{T <: Real} <: InfectionLayer
+struct HouseholdInfections{T <: Real, H <: NamedTuple} <: InfectionLayer
     household_of::Vector{Int}
     infection_time::Vector{T}
     infectious_time::Vector{T}
@@ -28,14 +29,20 @@ struct HouseholdInfections{T <: Real} <: InfectionLayer
     is_index::Vector{Bool}
     obs_end::T
     followup_end::T
+    host_times::H
     immunity_time::Vector{T}
 end
 
-function HouseholdInfections(household_of, infection_time, infectious_time,
-        removal_time, is_index; obs_end = Inf, followup_end = Inf,
-        immunity_time = nothing)
-    fields = _infection_layer_fields(length(household_of), infection_time,
-        infectious_time, removal_time, is_index; obs_end, followup_end, immunity_time)
+function HouseholdInfections(
+        household_of, infection_time, infectious_time,
+        removal_time, is_index; obs_end = Inf, followup_end = Inf, host_times = (;),
+        immunity_time = nothing
+    )
+    fields = _infection_layer_fields(
+        length(household_of), infection_time,
+        infectious_time, removal_time, is_index; obs_end, followup_end, host_times,
+        immunity_time
+    )
     return HouseholdInfections(collect(Int, household_of), fields...)
 end
 
@@ -46,26 +53,36 @@ EpiBranch.contact_structure(d::HouseholdInfections) = d.household_of
 
 """
     household_infections(state, model::ModelSpec; obs_end = model.process.obs_end,
-                         followup_end = Inf) -> HouseholdInfections
+                         followup_end = Inf, host_times = ()) -> HouseholdInfections
 
 Read the [`InfectionLayer`](@ref) out of a `state` simulated from `model`, with
 each member's household as the contact structure. The infectious windows are
 read as described for `InfectionLayer`. Additional hazard modifications require
 an effective kernel when scoring; extraction records the windows only. A bare `HouseholdProcess` is
 accepted too (its window opens at `:infection`, and it has no interventions).
+`host_times` names further per-member times to record, such as `(:onset_time,)`,
+read from each member's state (`missing` where a member has none) for a live
+[`StatefulKernel`](@ref) to read.
 """
-function household_infections(state::SimulationState,
+function household_infections(
+        state::SimulationState,
         model::ModelSpec{<:HouseholdProcess}; obs_end = model.process.obs_end,
-        followup_end = Inf)
+        followup_end = Inf, host_times = ()
+    )
     household_of = [ind.state[:household]::Int for ind in state.individuals]
     columns = _infection_layer_columns(state, model)
-    return HouseholdInfections(household_of, columns.infection_time,
+    return HouseholdInfections(
+        household_of, columns.infection_time,
         columns.infectious_time, columns.removal_time, columns.is_index; obs_end,
-        followup_end, immunity_time = columns.immunity_time)
+        followup_end, host_times = _host_time_columns(state, host_times),
+        immunity_time = columns.immunity_time
+    )
 end
 
-function household_infections(state::SimulationState, process::HouseholdProcess;
-        kwargs...)
+function household_infections(
+        state::SimulationState, process::HouseholdProcess;
+        kwargs...
+    )
     return household_infections(state, ModelSpec(process); kwargs...)
 end
 
@@ -77,10 +94,14 @@ The contact-process log-density of `model`'s kernel given the infection layer
 model.external_hazard, vaccine)`. `vaccine` is a candidate [`VaccineEffect`](@ref)
 scoring `data.immunity_time`, as [`pairwise_surv_loglik`](@ref) describes.
 """
-function Distributions.loglikelihood(data::HouseholdInfections, model::HouseholdProcess;
-        vaccine = nothing)
-    pairwise_surv_loglik(model.kernel, data; external_hazard = model.external_hazard,
-        vaccine)
+function Distributions.loglikelihood(
+        data::HouseholdInfections, model::HouseholdProcess;
+        vaccine = nothing
+    )
+    return pairwise_surv_loglik(
+        model.kernel, data; external_hazard = model.external_hazard,
+        vaccine
+    )
 end
 
 """
@@ -93,10 +114,12 @@ already restricts a vaccination reaching this point to the default dose label an
 the basic susceptibility risk, so this is always the effect `data.immunity_time`
 was extracted against.
 """
-function Distributions.loglikelihood(data::HouseholdInfections,
-        model::ModelSpec{<:HouseholdProcess})
+function Distributions.loglikelihood(
+        data::HouseholdInfections,
+        model::ModelSpec{<:HouseholdProcess}
+    )
     EpiBranch._validate_infection_likelihood(model)
-    loglikelihood(data, model.process; vaccine = _model_vaccine(model.interventions))
+    return loglikelihood(data, model.process; vaccine = _model_vaccine(model.interventions))
 end
 
 # ── Compiled pair layout ─────────────────────────────────────────────
@@ -122,10 +145,12 @@ are each other's possible infectors. The arguments and the layout are as
 described there. Evaluate the result with
 `pairwise_surv_loglik(kernel, data, layout; external_hazard)`.
 """
-function compile_household_pairs(household_of::AbstractVector{<:Integer},
+function compile_household_pairs(
+        household_of::AbstractVector{<:Integer},
         is_index::AbstractVector{Bool},
         infected::AbstractVector{Bool};
-        external::Bool = false)
+        external::Bool = false
+    )
     return compile_contact_pairs(household_of, is_index, infected; external)
 end
 

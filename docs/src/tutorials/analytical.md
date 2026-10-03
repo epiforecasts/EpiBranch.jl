@@ -76,6 +76,29 @@ end
 
 As k → ∞ (no overdispersion), the top 20% cause ≈ 20% of transmission.
 
+The inverse question — what proportion of cases are responsible for a
+given share of transmission, e.g. the commonly reported "proportion of
+cases responsible for 80% of transmission" — has two answers that differ
+substantially, because they rank cases by two different things:
+
+- [`proportion_cases_individual`](@ref) ranks cases by their continuous
+  individual reproduction number, under the same Gamma approximation as
+  `proportion_transmission`.
+- [`proportion_cases_offspring`](@ref) ranks cases by their realised,
+  integer number of secondary cases — the version usually reported
+  alongside the "80/20 rule" — and works for any discrete offspring
+  distribution with a finite mean, not only Negative Binomial.
+
+```@example analytical
+R, k = 1.0, 0.4
+individual = proportion_cases_individual(R, k; prop_transmission = 0.8)
+offspring = proportion_cases_offspring(R, k; prop_transmission = 0.8)
+println("Individual-R version:       $(round(individual * 100, digits=1))% of cases cause 80% of transmission")
+println("Realised-offspring version: $(round(offspring * 100, digits=1))% of cases cause 80% of transmission")
+```
+
+Report both, clearly labelled, rather than picking one.
+
 ## Chain size distributions
 
 Analytical chain size distributions for specific offspring families:

@@ -19,13 +19,15 @@ _var(v) = (m = sum(v) / length(v); sum((x - m)^2 for x in v) / (length(v) - 1))
 # transmission it is asked about.
 struct BlockEverything <: EpiBranch.AbstractIntervention end
 function EpiBranch.competing_risk(::BlockEverything, parent, contact, state)
-    Risk(block_probability = 1.0)
+    return Risk(block_probability = 1.0)
 end
 
 @testset "EpiHouseholds.jl" begin
     @testset "max_time ends each household race at that time" begin
-        spec = ModelSpec(HouseholdProcess(fill(6, 40), Exponential(2.0));
-            progression = _sir(4.0))
+        spec = ModelSpec(
+            HouseholdProcess(fill(6, 40), Exponential(2.0));
+            progression = _sir(4.0)
+        )
         full = simulate(spec; rng = StableRNG(5))
         cut = @test_logs simulate(spec; max_time = 1.5, rng = StableRNG(5))
         by(state, t) = [is_infected(i) && i.infection_time <= t for i in state.individuals]
@@ -55,21 +57,27 @@ end
         @test EpiBranch._resolve_infectious_from(m.from, _sir(6.0)) === :infection
 
         # a latent transition anchors the window at :infectious
-        seir = [Transition(:infectious; from = :infection, delay = LogNormal(1.0, 0.4)),
-            Transition(:recovered; from = :infectious, delay = Gamma(6, 1),
-                terminal = true)]
+        seir = [
+            Transition(:infectious; from = :infection, delay = LogNormal(1.0, 0.4)),
+            Transition(
+                :recovered; from = :infectious, delay = Gamma(6, 1),
+                terminal = true
+            ),
+        ]
         @test EpiBranch._resolve_infectious_from(nothing, seir) === :infectious
 
         # a scalar and a distribution external hazard are both accepted
         @test HouseholdProcess([2], Exponential(1.0); external_hazard = 0.05) isa
-              HouseholdProcess
+            HouseholdProcess
         @test HouseholdProcess(
-            [2], Exponential(1.0); external_hazard = Exponential(20.0)) isa
-              HouseholdProcess
+            [2], Exponential(1.0); external_hazard = Exponential(20.0)
+        ) isa
+            HouseholdProcess
 
         @test_throws ArgumentError HouseholdProcess([0, 2], Exponential(1.0))
         @test_throws ArgumentError HouseholdProcess(
-            [2], Exponential(1.0); external_hazard = -1.0)
+            [2], Exponential(1.0); external_hazard = -1.0
+        )
     end
 
     @testset "uncovered terminal state warns" begin
@@ -79,19 +87,24 @@ end
         censored = [
             Transition(:infectious; from = :infection, delay = 1.0),
             Transition(:recovered; from = :infectious, delay = 1.0, terminal = true),
-            Transition(:censored; from = :infection, delay = 5.0, terminal = true)
+            Transition(:censored; from = :infection, delay = 5.0, terminal = true),
         ]
-        @test_logs (:warn, r":censored") match_mode=:any ModelSpec(
-            process; progression = censored)
-        matched = HouseholdProcess([2, 2], Exponential(1.0);
-            until = (:recovered, :died, :isolated, :censored))
+        @test_logs (:warn, r":censored") match_mode = :any ModelSpec(
+            process; progression = censored
+        )
+        matched = HouseholdProcess(
+            [2, 2], Exponential(1.0);
+            until = (:recovered, :died, :isolated, :censored)
+        )
         @test_logs ModelSpec(matched; progression = censored)
         @test_logs ModelSpec(process; progression = _sir(1.0))
     end
 
     @testset "simulation seeds one index per household and spreads within it" begin
-        m = ModelSpec(HouseholdProcess(fill(4, 100), Weibull(1.3, 2.0));
-            progression = _sir(6.0))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 100), Weibull(1.3, 2.0));
+            progression = _sir(6.0)
+        )
         state = simulate(m; rng = StableRNG(1))
         df = linelist(state)
         @test count(df.index) == 100              # one index per household
@@ -101,11 +114,16 @@ end
 
     @testset "the timeline is stamped through the progression (line-list columns)" begin
         # a latent period and an infectious period give onset and recovery dates
-        m = ModelSpec(HouseholdProcess(fill(4, 50), Exponential(2.0));
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 50), Exponential(2.0));
             progression = [
                 Transition(:infectious; from = :infection, delay = LogNormal(1.0, 0.3)),
-                Transition(:recovered; from = :infectious, delay = Gamma(6, 1),
-                    terminal = true)])
+                Transition(
+                    :recovered; from = :infectious, delay = Gamma(6, 1),
+                    terminal = true
+                ),
+            ]
+        )
         df = linelist(simulate(m; rng = StableRNG(2)))
         @test :date_infectious in propertynames(df)   # :infectious_time → date_infectious
         @test :date_recovered in propertynames(df)     # the removal transition
@@ -115,20 +133,27 @@ end
         # The race draws from the RNG stream in settling order, so this test pins
         # the order in which each household's members settle.
         st = simulate(
-            ModelSpec(HouseholdProcess([3, 4], Exponential(2.0));
-                progression = _sir(4.0));
-            rng = StableRNG(7))
+            ModelSpec(
+                HouseholdProcess([3, 4], Exponential(2.0));
+                progression = _sir(4.0)
+            );
+            rng = StableRNG(7)
+        )
         @test [ind.infection_time for ind in st.individuals] ≈
-              [1.1701609052240476, 0.0, 1.2332841100671945, 0.0, 0.3297017722468899,
-            1.4196539602204872, 1.0835818339525922]
+            [
+            1.1701609052240476, 0.0, 1.2332841100671945, 0.0, 0.3297017722468899,
+            1.4196539602204872, 1.0835818339525922,
+        ]
         @test [ind.parent_id for ind in st.individuals] == [2, 0, 2, 0, 4, 7, 5]
     end
 
     @testset "no within-household spread when the kernel is far out of the period" begin
         # contact intervals almost never fall within a tiny infectious period,
         # so only the index cases are infected.
-        m = ModelSpec(HouseholdProcess(fill(5, 200), Exponential(50.0));
-            progression = _sir(0.001))
+        m = ModelSpec(
+            HouseholdProcess(fill(5, 200), Exponential(50.0));
+            progression = _sir(0.001)
+        )
         df = linelist(simulate(m; rng = StableRNG(3)))
         @test 200 <= size(df, 1) <= 205
     end
@@ -150,11 +175,16 @@ end
         sizes = fill(6, 300)
         prog = [
             Transition(:onset; from = :infection, delay = 0.3),
-            Transition(:recovered; from = :infection,
-                delay = Exponential(6.0), terminal = true)]
+            Transition(
+                :recovered; from = :infection,
+                delay = Exponential(6.0), terminal = true
+            ),
+        ]
         base = ModelSpec(HouseholdProcess(sizes, Exponential(1.0)); progression = prog)
-        iso = ModelSpec(HouseholdProcess(sizes, Exponential(1.0)); progression = prog,
-            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.2))])
+        iso = ModelSpec(
+            HouseholdProcess(sizes, Exponential(1.0)); progression = prog,
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.2))]
+        )
 
         base_cases = sum(simulate(base; rng = StableRNG(s)).cumulative_cases for s in 1:10)
         iso_cases = sum(simulate(iso; rng = StableRNG(s)).cumulative_cases for s in 1:10)
@@ -168,10 +198,16 @@ end
         # interval of six days and a two-day infectious period are far enough
         # from saturation for that to show in the outbreak size.
         sizes = fill(6, 200)
-        build(attrs) = ModelSpec(HouseholdProcess(sizes, Exponential(6.0));
-            progression = _sir(2.0), attributes = attrs)
-        meansize(attrs) = sum(simulate(build(attrs);
-                                  rng = StableRNG(s)).cumulative_cases for s in 1:10) / 10
+        build(attrs) = ModelSpec(
+            HouseholdProcess(sizes, Exponential(6.0));
+            progression = _sir(2.0), attributes = attrs
+        )
+        meansize(attrs) = sum(
+            simulate(
+                build(attrs);
+                rng = StableRNG(s)
+            ).cumulative_cases for s in 1:10
+        ) / 10
 
         full = meansize(transmission_traits(susceptibility = 1.0))
         half = meansize(transmission_traits(susceptibility = 0.5))
@@ -180,14 +216,18 @@ end
 
         # Susceptibility 0 blocks every contact, however many the pair makes:
         # only the one index case per household is ever infected.
-        blocked = simulate(build(transmission_traits(susceptibility = 0.0));
-            rng = StableRNG(1))
+        blocked = simulate(
+            build(transmission_traits(susceptibility = 0.0));
+            rng = StableRNG(1)
+        )
         @test blocked.cumulative_cases == length(sizes)
 
         # Infectiousness acts on the other side of the same pair.
         @test meansize(transmission_traits(infectiousness = 0.5)) < full
-        silent = simulate(build(transmission_traits(infectiousness = 0.0));
-            rng = StableRNG(1))
+        silent = simulate(
+            build(transmission_traits(infectiousness = 0.0));
+            rng = StableRNG(1)
+        )
         @test silent.cumulative_cases == length(sizes)
     end
 
@@ -198,9 +238,11 @@ end
         # the two agree with a susceptibility as well as without one.
         prog = [Transition(:recovered; from = :infection, delay = 2.0, terminal = true)]
         function race_sizes(size, sus)
-            spec = ModelSpec(HouseholdProcess(fill(size, 400), Exponential(1.0));
+            spec = ModelSpec(
+                HouseholdProcess(fill(size, 400), Exponential(1.0));
                 progression = prog,
-                attributes = transmission_traits(susceptibility = sus))
+                attributes = transmission_traits(susceptibility = sus)
+            )
             sizes = Float64[]
             for s in 1:5
                 st = simulate(spec; rng = StableRNG(s))
@@ -214,12 +256,17 @@ end
         end
         function pool_sizes(size, sus)
             spec = ModelSpec(
-                HomogeneousProcess(; transmission_rate = float(size),
-                    population_size = size);
+                HomogeneousProcess(;
+                    transmission_rate = float(size),
+                    population_size = size
+                );
                 progression = prog,
-                attributes = transmission_traits(susceptibility = sus))
-            return [Float64(simulate(spec; rng = StableRNG(s), n_initial = 1).cumulative_cases)
-                    for s in 1:2000]
+                attributes = transmission_traits(susceptibility = sus)
+            )
+            return [
+                Float64(simulate(spec; rng = StableRNG(s), n_initial = 1).cumulative_cases)
+                    for s in 1:2000
+            ]
         end
         # A two-person clique at susceptibility 0.5: the secondary case is
         # infected with probability 1 - exp(-0.5 * 2), where blocking the
@@ -236,7 +283,7 @@ end
             # race showed (4.07 against 4.82 for households of five) fails.
             se = sqrt(_var(race) / length(race) + _var(pool) / length(pool))
             @test abs(sum(race) / length(race) - sum(pool) / length(pool)) <
-                  max(3 * se, 0.05)
+                max(3 * se, 0.05)
         end
     end
 
@@ -245,18 +292,26 @@ end
         # race sets their infection times. Isolation depends on onset, so onset
         # must be counted from the time each case was infected.
         clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
-            test_sensitivity = 1.0)
-        m = ModelSpec(HouseholdProcess(fill(6, 50), Exponential(3.0));
-            progression = _sir(10.0), attributes = clinical, interventions = [iso])
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0
+        )
+        m = ModelSpec(
+            HouseholdProcess(fill(6, 50), Exponential(3.0));
+            progression = _sir(10.0), attributes = clinical, interventions = [iso]
+        )
         state = simulate(m; rng = StableRNG(3))
-        secondary = [ind
-                     for ind in state.individuals
-                     if is_infected(ind) && ind.parent_id != 0]
+        secondary = [
+            ind
+                for ind in state.individuals
+                if is_infected(ind) && ind.parent_id != 0
+        ]
         @test !isempty(secondary)
         @test all(onset_time(ind) >= ind.infection_time for ind in secondary)
-        @test all(onset_time(ind) - ind.infection_time ≈ ind.state[:incubation_period]
-        for ind in secondary)
+        @test all(
+            onset_time(ind) - ind.infection_time ≈ ind.state[:incubation_period]
+                for ind in secondary
+        )
         @test all(isolation_time(ind) >= onset_time(ind) for ind in secondary)
     end
 
@@ -265,15 +320,21 @@ end
         # member is traced before the race has settled its onset, so this
         # checks that the trace is still recorded and turned into isolation.
         clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
-            test_sensitivity = 0.0)
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 0.0
+        )
         flag = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), FlagOnly())
-        m = ModelSpec(HouseholdProcess(fill(6, 50), Exponential(3.0));
-            progression = _sir(10.0), attributes = clinical, interventions = [iso, flag])
-        isolated = [ind
-                    for s in 1:20
-                    for ind in simulate(m; rng = StableRNG(s)).individuals
-                    if is_infected(ind) && isfinite(isolation_time(ind))]
+        m = ModelSpec(
+            HouseholdProcess(fill(6, 50), Exponential(3.0));
+            progression = _sir(10.0), attributes = clinical, interventions = [iso, flag]
+        )
+        isolated = [
+            ind
+                for s in 1:20
+                for ind in simulate(m; rng = StableRNG(s)).individuals
+                if is_infected(ind) && isfinite(isolation_time(ind))
+        ]
         @test !isempty(isolated)
         @test all(is_traced, isolated)
         @test all(isolation_time(ind) >= onset_time(ind) for ind in isolated)
@@ -281,9 +342,12 @@ end
 
     @testset "external force of infection introduces community cases" begin
         m = ModelSpec(
-            HouseholdProcess(fill(4, 300), Exponential(3.0);
-                external_hazard = 0.05, obs_end = 30.0);
-            progression = _sir(6.0))
+            HouseholdProcess(
+                fill(4, 300), Exponential(3.0);
+                external_hazard = 0.05, obs_end = 30.0
+            );
+            progression = _sir(6.0)
+        )
         df = linelist(simulate(m; rng = StableRNG(5)))
         @test count(df.index) >= 1                 # community introductions happened
         @test size(df, 1) > count(df.index)        # plus within-household spread
@@ -293,17 +357,29 @@ end
         # with no susceptibility is never introduced from the community, and
         # neither is anyone while a risk blocks every transmission.
         build(attrs, ivs) = ModelSpec(
-            HouseholdProcess(fill(4, 300), Exponential(3.0);
-                external_hazard = 0.05, obs_end = 30.0);
-            progression = _sir(6.0), attributes = attrs, interventions = ivs)
-        @test !any(is_infected,
+            HouseholdProcess(
+                fill(4, 300), Exponential(3.0);
+                external_hazard = 0.05, obs_end = 30.0
+            );
+            progression = _sir(6.0), attributes = attrs, interventions = ivs
+        )
+        @test !any(
+            is_infected,
             simulate(
-                build(transmission_traits(susceptibility = 0.0),
-                    AbstractIntervention[]);
-                rng = StableRNG(5)).individuals)
-        @test !any(is_infected,
-            simulate(build(EpiBranch.NoAttributes(), [BlockEverything()]);
-                rng = StableRNG(5)).individuals)
+                build(
+                    transmission_traits(susceptibility = 0.0),
+                    AbstractIntervention[]
+                );
+                rng = StableRNG(5)
+            ).individuals
+        )
+        @test !any(
+            is_infected,
+            simulate(
+                build(EpiBranch.NoAttributes(), [BlockEverything()]);
+                rng = StableRNG(5)
+            ).individuals
+        )
     end
 
     @testset "simulate → loglikelihood round trip recovers the kernel" begin
@@ -311,8 +387,10 @@ end
         # assumes, so the simulated infection layer recovers the kernel scale.
         true_scale = 4.0
         L = 6.0
-        m = ModelSpec(HouseholdProcess(fill(4, 1500), Exponential(true_scale));
-            progression = _sir(L))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 1500), Exponential(true_scale));
+            progression = _sir(L)
+        )
         state = simulate(m; rng = StableRNG(20260615))
         data = household_infections(state, m)
         @test count(data.is_index) == 1500            # one index per household
@@ -332,21 +410,31 @@ end
         # the race closes a case's window when it is isolated and the data must
         # too; otherwise the likelihood sees cases infectious after isolation and
         # overestimates the kernel scale
-        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
-            prob_asymptomatic = 0.0)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
-            test_sensitivity = 1.0)
-        m = ModelSpec(HouseholdProcess(fill(4, 1500), Exponential(4.0));
-            progression = _sir(8.0), interventions = [iso], attributes = clinical)
+        clinical = clinical_presentation(
+            incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0
+        )
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0
+        )
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 1500), Exponential(4.0));
+            progression = _sir(8.0), interventions = [iso], attributes = clinical
+        )
         state = simulate(m; rng = StableRNG(201))
         data = household_infections(state, m)
 
         infected = findall(!isnan, data.infection_time)
-        expected = [min(data.infection_time[i] + 8.0,
-                        EpiBranch.isolation_time(state.individuals[i])) for i in infected]
+        expected = [
+            min(
+                data.infection_time[i] + 8.0,
+                EpiBranch.isolation_time(state.individuals[i])
+            ) for i in infected
+        ]
         @test data.removal_time[infected] == expected
         @test count(data.removal_time[infected] .< data.infection_time[infected] .+ 8.0) >
-              length(infected) / 2
+            length(infected) / 2
 
         layout = compile_household_pairs(data)
         f(θ) = pairwise_surv_loglik(Exponential(exp(θ)), data, layout)
@@ -366,9 +454,12 @@ end
         L = 6.0
         Tobs = 30.0
         m = ModelSpec(
-            HouseholdProcess(fill(4, 1500), Exponential(true_scale);
-                external_hazard = 0.05, obs_end = Tobs);
-            progression = _sir(L))
+            HouseholdProcess(
+                fill(4, 1500), Exponential(true_scale);
+                external_hazard = 0.05, obs_end = Tobs
+            );
+            progression = _sir(L)
+        )
         state = simulate(m; rng = StableRNG(7))
         data = household_infections(state, m)
         @test count(data.is_index) >= 1
@@ -386,19 +477,26 @@ end
         # members exposed over their household-mates' whole windows
         Tobs = 2.0
         m = ModelSpec(
-            HouseholdProcess(fill(6, 1500), Exponential(10.0);
-                external_hazard = 0.1, obs_end = Tobs);
-            progression = _sir(12.0))
+            HouseholdProcess(
+                fill(6, 1500), Exponential(10.0);
+                external_hazard = 0.1, obs_end = Tobs
+            );
+            progression = _sir(12.0)
+        )
         data = household_infections(simulate(m; rng = StableRNG(71)), m)
         inf = filter(!isnan, data.infection_time)
         @test count(>(Tobs), inf) > length(inf) / 2
 
         layout = compile_household_pairs(data; external = true)
         @test loglikelihood(data, m) ≈
-              pairwise_surv_loglik(Exponential(10.0), data, layout;
-            external_hazard = 0.1)
-        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), data, layout;
-            external_hazard = exp(θ[2]))
+            pairwise_surv_loglik(
+            Exponential(10.0), data, layout;
+            external_hazard = 0.1
+        )
+        g(θ) = pairwise_surv_loglik(
+            Exponential(exp(θ[1])), data, layout;
+            external_hazard = exp(θ[2])
+        )
         θ = [log(10.0), log(0.1)]
         θhat = copy(θ)
         for _ in 1:20
@@ -411,18 +509,23 @@ end
 
     @testset "an outbreak still going at the end of follow-up" begin
         m = ModelSpec(
-            HouseholdProcess(fill(6, 1500), Exponential(10.0);
-                external_hazard = 0.1, obs_end = 2.0);
-            progression = _sir(12.0))
+            HouseholdProcess(
+                fill(6, 1500), Exponential(10.0);
+                external_hazard = 0.1, obs_end = 2.0
+            );
+            progression = _sir(12.0)
+        )
         state = simulate(m; rng = StableRNG(71))
         tf = 6.0
         full = household_infections(state, m)
         late = .!(full.infection_time .<= tf)
         nan_late(x) = [l ? NaN : v for (v, l) in zip(x, late)]
-        ongoing = HouseholdInfections(full.household_of, nan_late(full.infection_time),
+        ongoing = HouseholdInfections(
+            full.household_of, nan_late(full.infection_time),
             nan_late(full.infectious_time),
             [l ? NaN : (r > tf ? Inf : r) for (r, l) in zip(full.removal_time, late)],
-            full.is_index .& .!late; obs_end = 2.0, followup_end = tf)
+            full.is_index .& .!late; obs_end = 2.0, followup_end = tf
+        )
         @test any(isinf, ongoing.removal_time)
         @test count(!isnan, ongoing.infection_time) < count(!isnan, full.infection_time)
 
@@ -433,21 +536,25 @@ end
         @test isfinite(v)
         @test v ≈ loglikelihood(read, m)
         layout = compile_household_pairs(ongoing; external = true)
-        g(θ) = pairwise_surv_loglik(Exponential(exp(θ[1])), ongoing, layout;
-            external_hazard = exp(θ[2]))
+        g(θ) = pairwise_surv_loglik(
+            Exponential(exp(θ[1])), ongoing, layout;
+            external_hazard = exp(θ[2])
+        )
         θ = [log(10.0), log(0.1)]
         @test g(θ) ≈ v
         grad = ForwardDiff.gradient(g, θ)
-        h = 1e-4
+        h = 1.0e-4
         fd = [(g(θ .+ h .* e) - g(θ .- h .* e)) / 2h for e in ([1.0, 0.0], [0.0, 1.0])]
-        @test grad ≈ fd rtol = 1e-5
+        @test grad ≈ fd rtol = 1.0e-5
     end
 
     @testset "inference-friendly likelihood: kernel varies over a fixed infection layer" begin
         # the form a household @model evaluates each iteration: the kernel carries
         # the fitted parameter, the infection layer is the augmented latent state.
-        m = ModelSpec(HouseholdProcess(fill(4, 400), Exponential(3.0));
-            progression = _sir(6.0))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 400), Exponential(3.0));
+            progression = _sir(6.0)
+        )
         data = household_infections(simulate(m; rng = StableRNG(8)), m)
 
         f(logβ) = pairwise_surv_loglik(Exponential(1 / exp(logβ)), data)
@@ -462,8 +569,10 @@ end
         obs = findall(!isnan, data.infection_time)
         onset = copy(data.infection_time)
         onset[obs] .+= rand(StableRNG(9), incubation, length(obs))
-        joint(logβ) = f(logβ) + sum(logpdf(incubation, onset[i] - data.infection_time[i])
-        for i in obs)
+        joint(logβ) = f(logβ) + sum(
+            logpdf(incubation, onset[i] - data.infection_time[i])
+                for i in obs
+        )
         @test isfinite(joint(log(1 / 3)))
     end
 
@@ -471,8 +580,10 @@ end
         # an observation model composed onto the process reports cases through the
         # shared observation protocol, like core simulate.
         obs = PerCaseObservation(; detection_prob = 0.5, delay = Exponential(2.0))
-        m = ModelSpec(HouseholdProcess(fill(4, 200), Exponential(3.0));
-            progression = _sir(6.0), observation = obs)
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 200), Exponential(3.0));
+            progression = _sir(6.0), observation = obs
+        )
         df = linelist(simulate(m; rng = StableRNG(11)))
         @test :reported in propertynames(df)            # observation ran
         @test 0 < count(df.reported) < size(df, 1)       # ~half detected, not all
@@ -486,8 +597,10 @@ end
         # test checks that evaluating a layout leaves it unchanged: one object
         # reused across a grid of kernel scales keeps agreeing with a fresh one,
         # which inference relies on.
-        m = ModelSpec(HouseholdProcess(fill(4, 500), Exponential(3.0));
-            progression = _sir(6.0))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 500), Exponential(3.0));
+            progression = _sir(6.0)
+        )
         data = household_infections(simulate(m; rng = StableRNG(101)), m)
         layout = compile_household_pairs(data)
 
@@ -498,16 +611,18 @@ end
 
         for s in 1.5:0.5:6.0
             @test pairwise_surv_loglik(Exponential(s), data, layout) ≈
-                  pairwise_surv_loglik(Exponential(s), data)
+                pairwise_surv_loglik(Exponential(s), data)
         end
 
         # the single-argument constructor derives the at-risk mask from the data,
         # and must land on the same layout as passing that mask explicitly
-        layout1 = compile_household_pairs(data.household_of, data.is_index,
-            .!isnan.(data.infection_time))
+        layout1 = compile_household_pairs(
+            data.household_of, data.is_index,
+            .!isnan.(data.infection_time)
+        )
         @test length(layout1) == length(layout)
         @test pairwise_surv_loglik(Exponential(3.0), data, layout1) ≈
-              pairwise_surv_loglik(Exponential(3.0), data, layout)
+            pairwise_surv_loglik(Exponential(3.0), data, layout)
     end
 
     @testset "a reused layout matches a freshly compiled one (community hazard)" begin
@@ -516,40 +631,51 @@ end
         # kernel scales must keep agreeing with a layout compiled per call.
         Tobs = 30.0
         m = ModelSpec(
-            HouseholdProcess(fill(4, 500), Exponential(3.0);
-                external_hazard = 0.05, obs_end = Tobs);
-            progression = _sir(6.0))
+            HouseholdProcess(
+                fill(4, 500), Exponential(3.0);
+                external_hazard = 0.05, obs_end = Tobs
+            );
+            progression = _sir(6.0)
+        )
         state = simulate(m; rng = StableRNG(102))
         data = household_infections(state, m)
         layout = compile_household_pairs(data; external = true)
 
         @test layout.external
         for s in 1.5:0.5:5.0
-            @test pairwise_surv_loglik(Exponential(s), data, layout;
-                external_hazard = 0.05) ≈
-                  pairwise_surv_loglik(Exponential(s), data; external_hazard = 0.05)
+            @test pairwise_surv_loglik(
+                Exponential(s), data, layout;
+                external_hazard = 0.05
+            ) ≈
+                pairwise_surv_loglik(Exponential(s), data; external_hazard = 0.05)
         end
 
         # a distribution-valued community hazard routes the same way
-        @test pairwise_surv_loglik(Exponential(3.0), data, layout;
-            external_hazard = Exponential(20.0)) ≈
-              pairwise_surv_loglik(Exponential(3.0), data;
-            external_hazard = Exponential(20.0))
+        @test pairwise_surv_loglik(
+            Exponential(3.0), data, layout;
+            external_hazard = Exponential(20.0)
+        ) ≈
+            pairwise_surv_loglik(
+            Exponential(3.0), data;
+            external_hazard = Exponential(20.0)
+        )
     end
 
     @testset "compiled pair layout: covariate (per-pair) kernel" begin
         # a two-argument (infector, susceptible) -> Distribution kernel is
         # resolved per row on both paths, and a reused layout agrees with one
         # compiled per call.
-        m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
-            progression = _sir(6.0))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 300), Exponential(3.0));
+            progression = _sir(6.0)
+        )
         data = household_infections(simulate(m; rng = StableRNG(103)), m)
         layout = compile_household_pairs(data)
 
         # a mild dependence on the pair ids exercises the routing, not the physics
         kern(i, j) = Exponential(3.0 + 0.01 * (i + j))
         @test pairwise_surv_loglik(kern, data, layout) ≈
-              pairwise_surv_loglik(kern, data)
+            pairwise_surv_loglik(kern, data)
     end
 
     @testset "covariate kernel: simulate → likelihood round trip recovers both scales" begin
@@ -566,11 +692,14 @@ end
         function kernel(adult_scale, child_scale; by_infector = true)
             return (infector, susceptible) -> Exponential(
                 is_adult(by_infector ? infector : susceptible) ?
-                adult_scale : child_scale)
+                    adult_scale : child_scale
+            )
         end
         truth = [3.0, 12.0]
-        m = ModelSpec(HouseholdProcess(fill(4, 600), kernel(truth...));
-            progression = _sir(6.0))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 600), kernel(truth...));
+            progression = _sir(6.0)
+        )
         data = household_infections(simulate(m; rng = StableRNG(230)), m)
         layout = compile_household_pairs(data)
 
@@ -580,12 +709,14 @@ end
         # reverse this.
         final_size(adult_index) = mean(
             count(i -> !isnan(data.infection_time[i]), mem)
-        for mem in (findall(==(h), data.household_of) for h in 1:600)
-        if is_adult(only(filter(i -> data.is_index[i], mem))) == adult_index)
+                for mem in (findall(==(h), data.household_of) for h in 1:600)
+                if is_adult(only(filter(i -> data.is_index[i], mem))) == adult_index
+        )
         @test final_size(true) > final_size(false) + 0.3
 
         ll(θ; by_infector = true) = pairwise_surv_loglik(
-            kernel(exp.(θ)...; by_infector), data, layout)
+            kernel(exp.(θ)...; by_infector), data, layout
+        )
         # a reused layout and one compiled per call agree for the covariate
         # kernel, and `loglikelihood` on the model passes its own kernel the
         # same way
@@ -603,7 +734,7 @@ end
             return θ
         end
         θ̂ = newton(ll, log.([4.0, 4.0]))
-        @test all(abs.(ForwardDiff.gradient(ll, θ̂)) .< 1e-6)
+        @test all(abs.(ForwardDiff.gradient(ll, θ̂)) .< 1.0e-6)
 
         # With about 2,000 cases the observed information gives standard errors of
         # roughly 0.03 (adult) and 0.06 (child) on the log scales. Both estimates
@@ -627,8 +758,10 @@ end
         # carry the AD duals through both the cumulative-hazard pass and the
         # per-susceptible log-sum-exp, and must still do so after being
         # evaluated. Checked in all three kernel modes.
-        m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
-            progression = _sir(6.0))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 300), Exponential(3.0));
+            progression = _sir(6.0)
+        )
         data = household_infections(simulate(m; rng = StableRNG(104)), m)
         layout = compile_household_pairs(data)
 
@@ -647,24 +780,31 @@ end
         h_fast(β) = pairwise_surv_loglik(kern(β), data, layout)
         h_dyn(β) = pairwise_surv_loglik(kern(β), data)
         @test ForwardDiff.derivative(h_fast, log(1 / 3)) ≈
-              ForwardDiff.derivative(h_dyn, log(1 / 3))
+            ForwardDiff.derivative(h_dyn, log(1 / 3))
 
         # external mode: differentiate the within-household kernel while a fixed
         # community hazard also contributes rows.
         Tobs = 30.0
         me = ModelSpec(
-            HouseholdProcess(fill(4, 300), Exponential(3.0);
-                external_hazard = 0.05, obs_end = Tobs);
-            progression = _sir(6.0))
+            HouseholdProcess(
+                fill(4, 300), Exponential(3.0);
+                external_hazard = 0.05, obs_end = Tobs
+            );
+            progression = _sir(6.0)
+        )
         de = household_infections(simulate(me; rng = StableRNG(106)), me)
         le = compile_household_pairs(de; external = true)
-        e_fast(logβ) = pairwise_surv_loglik(Exponential(1 / exp(logβ)), de, le;
-            external_hazard = 0.05)
-        e_dyn(logβ) = pairwise_surv_loglik(Exponential(1 / exp(logβ)), de;
-            external_hazard = 0.05)
+        e_fast(logβ) = pairwise_surv_loglik(
+            Exponential(1 / exp(logβ)), de, le;
+            external_hazard = 0.05
+        )
+        e_dyn(logβ) = pairwise_surv_loglik(
+            Exponential(1 / exp(logβ)), de;
+            external_hazard = 0.05
+        )
         @test e_fast(log(1 / 3)) ≈ e_dyn(log(1 / 3))
         @test ForwardDiff.derivative(e_fast, log(1 / 3)) ≈
-              ForwardDiff.derivative(e_dyn, log(1 / 3))
+            ForwardDiff.derivative(e_dyn, log(1 / 3))
     end
 
     @testset "compiled pair layout: hand-built multi-infector household" begin
@@ -672,8 +812,10 @@ end
         # (members 1 and 2) — exercises the per-susceptible log-sum-exp over more
         # than one event row, plus a single-infector susceptible and a conditioned
         # index case.
-        data = HouseholdInfections([1, 1, 1], [0.0, 0.5, 2.0], [0.0, 0.5, 2.0],
-            [Inf, Inf, Inf], [true, false, false])
+        data = HouseholdInfections(
+            [1, 1, 1], [0.0, 0.5, 2.0], [0.0, 0.5, 2.0],
+            [Inf, Inf, Inf], [true, false, false]
+        )
         layout = compile_household_pairs(data)
 
         # the layout enumerates every ordered (susceptible, infector) structural
@@ -687,7 +829,7 @@ end
         # and the reused layout keeps agreeing with one compiled per call
         for s in 1.0:1.0:5.0
             @test pairwise_surv_loglik(Exponential(s), data, layout) ≈
-                  pairwise_surv_loglik(Exponential(s), data)
+                pairwise_surv_loglik(Exponential(s), data)
         end
     end
 
@@ -704,8 +846,10 @@ end
         # (member 2 at risk from the index), whose only contribution is the
         # escaped cumulative hazard, which is finite and the same however the
         # layout was obtained.
-        lone = HouseholdInfections([1, 1], [0.0, NaN], [0.0, NaN], [3.0, Inf],
-            [true, false])
+        lone = HouseholdInfections(
+            [1, 1], [0.0, NaN], [0.0, NaN], [3.0, Inf],
+            [true, false]
+        )
         llayout = compile_household_pairs(lone)
         @test length(llayout) == 1
         ll_lone = pairwise_surv_loglik(Exponential(3.0), lone, llayout)
@@ -715,56 +859,83 @@ end
 
         # calling the external-built layout without an external hazard (and vice
         # versa) is a mismatch and must raise
-        m = ModelSpec(HouseholdProcess(fill(4, 50), Exponential(3.0));
-            progression = _sir(6.0))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 50), Exponential(3.0));
+            progression = _sir(6.0)
+        )
         data = household_infections(simulate(m; rng = StableRNG(105)), m)
         ext_layout = compile_household_pairs(data; external = true)
         int_layout = compile_household_pairs(data; external = false)
-        @test_throws ArgumentError pairwise_surv_loglik(Exponential(3.0), data,
-            ext_layout)                                   # no external_hazard given
-        @test_throws ArgumentError pairwise_surv_loglik(Exponential(3.0), data,
-            int_layout; external_hazard = 0.05)
+        @test_throws ArgumentError pairwise_surv_loglik(
+            Exponential(3.0), data,
+            ext_layout
+        )                                   # no external_hazard given
+        @test_throws ArgumentError pairwise_surv_loglik(
+            Exponential(3.0), data,
+            int_layout; external_hazard = 0.05
+        )
 
         # mismatched input lengths are rejected at compile time
-        @test_throws ArgumentError compile_household_pairs([1, 1], [true],
-            [true, false])
-        @test_throws ArgumentError HouseholdInfections([1, 1], [0.0], [0.0], [1.0],
-            [true])
+        @test_throws ArgumentError compile_household_pairs(
+            [1, 1], [true],
+            [true, false]
+        )
+        @test_throws ArgumentError HouseholdInfections(
+            [1, 1], [0.0], [0.0], [1.0],
+            [true]
+        )
     end
 
     @testset "simulated index cases at time 0 scored with a community hazard" begin
         # index cases simulated at 0 without a community hazard, scored with one
-        m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
-            progression = _sir(5.0))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 300), Exponential(3.0));
+            progression = _sir(5.0)
+        )
         sim = household_infections(simulate(m; rng = StableRNG(1)), m)
-        d = HouseholdInfections(sim.household_of, sim.infection_time,
-            sim.infectious_time, sim.removal_time, sim.is_index; obs_end = 20.0)
+        d = HouseholdInfections(
+            sim.household_of, sim.infection_time,
+            sim.infectious_time, sim.removal_time, sim.is_index; obs_end = 20.0
+        )
         @test count(==(0.0), filter(!isnan, d.infection_time)) == 300
         ld = compile_household_pairs(d; external = true)
         for α in (0.001, 0.01, 0.1, 1.0)
             @test pairwise_surv_loglik(Exponential(3.0), d, ld; external_hazard = α) ≈
-                  pairwise_surv_loglik(Exponential(3.0), d; external_hazard = α)
+                pairwise_surv_loglik(Exponential(3.0), d; external_hazard = α)
         end
     end
 
     @testset "simulated infection layers never have zero density" begin
-        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
-            prob_asymptomatic = 0.0)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0),
-            test_sensitivity = 1.0)
-        latent = [Transition(:infectious; from = :infection, delay = LogNormal(0.3, 0.3)),
-            Transition(:recovered; from = :infectious, delay = 5.0, terminal = true)]
+        clinical = clinical_presentation(
+            incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0
+        )
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            test_sensitivity = 1.0
+        )
+        latent = [
+            Transition(:infectious; from = :infection, delay = LogNormal(0.3, 0.3)),
+            Transition(:recovered; from = :infectious, delay = 5.0, terminal = true),
+        ]
         for seed in 1:4, (ext, Tobs) in ((0.0, Inf), (0.03, 10.0)),
-            interventions in ([], [iso])
+                interventions in ([], [iso])
             m = ModelSpec(
-                HouseholdProcess(rand(StableRNG(seed), 1:6, 200), Weibull(1.5, 4.0);
-                    external_hazard = ext, obs_end = Tobs);
-                progression = latent, interventions, attributes = clinical)
+                HouseholdProcess(
+                    rand(StableRNG(seed), 1:6, 200), Weibull(1.5, 4.0);
+                    external_hazard = ext, obs_end = Tobs
+                );
+                progression = latent, interventions, attributes = clinical
+            )
             d = household_infections(simulate(m; n_initial = 2, rng = StableRNG(seed)), m)
             layout = compile_household_pairs(d; external = ext > 0)
             @test isfinite(loglikelihood(d, m))
-            @test isfinite(pairwise_surv_loglik(Weibull(1.5, 4.0), d, layout;
-                external_hazard = ext))
+            @test isfinite(
+                pairwise_surv_loglik(
+                    Weibull(1.5, 4.0), d, layout;
+                    external_hazard = ext
+                )
+            )
         end
     end
 
@@ -775,8 +946,10 @@ end
         # step must land on the same optimum as compiling a layout per call, and
         # near the truth.
         true_scale = 4.0
-        m = ModelSpec(HouseholdProcess(fill(4, 800), Exponential(true_scale));
-            progression = _sir(6.0))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 800), Exponential(true_scale));
+            progression = _sir(6.0)
+        )
         data = household_infections(simulate(m; rng = StableRNG(202)), m)
         layout = compile_household_pairs(data)
 
@@ -809,43 +982,62 @@ end
         # compiled path matches ForwardDiff — shared kernel and external mode.
         backend = AutoMooncake(; config = nothing)
 
-        m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
-            progression = _sir(6.0))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 300), Exponential(3.0));
+            progression = _sir(6.0)
+        )
         data = household_infections(simulate(m; rng = StableRNG(104)), m)
         layout = compile_household_pairs(data)
         f_fast(θ) = pairwise_surv_loglik(Exponential(1 / exp(θ[1])), data, layout)
         x = [log(1 / 3)]
         @test DifferentiationInterface.gradient(f_fast, backend, x) ≈
-              ForwardDiff.gradient(f_fast, x)
+            ForwardDiff.gradient(f_fast, x)
 
         Tobs = 30.0
         me = ModelSpec(
-            HouseholdProcess(fill(4, 300), Exponential(3.0);
-                external_hazard = 0.05, obs_end = Tobs);
-            progression = _sir(6.0))
+            HouseholdProcess(
+                fill(4, 300), Exponential(3.0);
+                external_hazard = 0.05, obs_end = Tobs
+            );
+            progression = _sir(6.0)
+        )
         de = household_infections(simulate(me; rng = StableRNG(106)), me)
         le = compile_household_pairs(de; external = true)
-        e_fast(θ) = pairwise_surv_loglik(Exponential(1 / exp(θ[1])), de, le;
-            external_hazard = 0.05)
+        e_fast(θ) = pairwise_surv_loglik(
+            Exponential(1 / exp(θ[1])), de, le;
+            external_hazard = 0.05
+        )
         xe = [log(1 / 3)]
         @test DifferentiationInterface.gradient(e_fast, backend, xe) ≈
-              ForwardDiff.gradient(e_fast, xe)
+            ForwardDiff.gradient(e_fast, xe)
     end
 
     @testset "contact tracing" begin
         # A case's contacts are its household-mates, so tracing reaches them and
         # quarantine closes their own infectious window.
-        clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
-            prob_asymptomatic = 0.0)
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0),
-            test_sensitivity = 1.0)
-        ct = ContactTracing(probability = 1.0,
-            isolation_to_trace_delay = Exponential(0.5))
+        clinical = clinical_presentation(
+            incubation_period = LogNormal(1.0, 0.3),
+            prob_asymptomatic = 0.0
+        )
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(2.0),
+            test_sensitivity = 1.0
+        )
+        ct = ContactTracing(
+            probability = 1.0,
+            isolation_to_trace_delay = Exponential(0.5)
+        )
 
-        build(ivs) = ModelSpec(HouseholdProcess(fill(6, 200), Weibull(1.5, 6.0));
-            progression = _sir(7.0), interventions = ivs, attributes = clinical)
-        meansize(ivs) = sum(simulate(build(ivs);
-                                rng = StableRNG(s)).cumulative_cases for s in 1:15) / 15
+        build(ivs) = ModelSpec(
+            HouseholdProcess(fill(6, 200), Weibull(1.5, 6.0));
+            progression = _sir(7.0), interventions = ivs, attributes = clinical
+        )
+        meansize(ivs) = sum(
+            simulate(
+                build(ivs);
+                rng = StableRNG(s)
+            ).cumulative_cases for s in 1:15
+        ) / 15
 
         @test meansize([iso, ct]) < meansize([iso])
 
@@ -861,14 +1053,18 @@ end
 
         # A trace too late to help must not make things worse (see the network
         # suite for the isolation-pathway interaction this guards).
-        late = ContactTracing(probability = 1.0,
-            isolation_to_trace_delay = Exponential(500.0))
+        late = ContactTracing(
+            probability = 1.0,
+            isolation_to_trace_delay = Exponential(500.0)
+        )
         @test meansize([iso, late]) <= meansize([iso]) * 1.05
     end
 
     @testset "conditioned simulation and bare-process household_infections" begin
-        m = ModelSpec(HouseholdProcess(fill(4, 300), Exponential(3.0));
-            progression = _sir(6.0))
+        m = ModelSpec(
+            HouseholdProcess(fill(4, 300), Exponential(3.0));
+            progression = _sir(6.0)
+        )
         # `condition` retries until the outbreak size falls in the range
         state = simulate(m; condition = 300:1200, rng = StableRNG(1))
         @test state.cumulative_cases in 300:1200
@@ -878,7 +1074,8 @@ end
         # simulation above
         bare = HouseholdProcess(fill(4, 50), Exponential(3.0))
         data = household_infections(
-            simulate(ModelSpec(bare; progression = _sir(6.0)); rng = StableRNG(2)), bare)
+            simulate(ModelSpec(bare; progression = _sir(6.0)); rng = StableRNG(2)), bare
+        )
         @test length(data) == 200
     end
 
@@ -893,3 +1090,5 @@ include("test_vaccine_mode.jl")
 include("test_vaccine_likelihood.jl")
 
 include("test_calendar_kernels.jl")
+
+include("test_stateful_kernels.jl")

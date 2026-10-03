@@ -19,9 +19,15 @@
 
     # The graph is the population, and a fast kernel on a clique reaches every
     # node, so an outbreak saturates at the node count.
-    model = ModelSpec(NetworkProcess(complete_graph(6), Exponential(0.5));
-        progression = [Transition(:recovered; from = :infection, delay = 10.0,
-            terminal = true)])
+    model = ModelSpec(
+        NetworkProcess(complete_graph(6), Exponential(0.5));
+        progression = [
+            Transition(
+                :recovered; from = :infection, delay = 10.0,
+                terminal = true
+            ),
+        ]
+    )
     state = simulate(model; n_initial = 1, rng = StableRNG(1))
     @test state.cumulative_cases == 6
 

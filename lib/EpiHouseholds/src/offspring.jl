@@ -69,7 +69,7 @@ end
 function Base.show(io::IO, o::HouseholdOffspring)
     print(io, "HouseholdOffspring(sizes=", unique(o.sizes))
     length(o.sizes) > length(unique(o.sizes)) && print(io, ", types=", length(o.sizes))
-    print(io, ", R*=", round(reproduction_number(o); digits = 3), ")")
+    return print(io, ", R*=", round(reproduction_number(o); digits = 3), ")")
 end
 
 """
@@ -147,32 +147,42 @@ extinction_probability(offspring)     # one per household type
 household_offspring_law(offspring)    # the law a contacted household follows
 ```
 """
-function household_offspring(spec::ModelSpec{<:HouseholdProcess};
+function household_offspring(
+        spec::ModelSpec{<:HouseholdProcess};
         global_rate::Real,
         n_samples::Int = 10_000,
         rng::AbstractRNG = Random.default_rng(),
-        tol::Real = 1e-10,
-        max_offspring::Int = 10_000)
+        tol::Real = 1.0e-10,
+        max_offspring::Int = 10_000
+    )
     global_rate > 0 ||
         throw(ArgumentError("global_rate must be positive, got $global_rate"))
     n_samples >= 1 || throw(ArgumentError("n_samples must be ≥ 1"))
     process = spec.process
-    _ext_active(process.external_hazard) && throw(ArgumentError(
-        "the branching process over households starts each household from a single " *
-        "index case, as a newly infected household does; build the process without " *
-        "an `external_hazard`"))
+    _ext_active(process.external_hazard) && throw(
+        ArgumentError(
+            "the branching process over households starts each household from a single " *
+                "index case, as a newly infected household does; build the process without " *
+                "an `external_hazard`"
+        )
+    )
     # Every household in the branching process over households starts its own
     # epidemic at its own time, so a gate on the population's clock or case count
     # has no counterpart; in the pooled sample it would switch on at an
     # arbitrary point set by `n_samples`.
-    any(iv -> iv isa Scheduled, spec.interventions) && throw(ArgumentError(
-        "a `Scheduled` intervention gates on the population's clock or case count, " *
-        "which the branching process over households does not have. For R* before " *
-        "and after the policy starts, call `household_offspring` once without the " *
-        "intervention and once with it unwrapped"))
+    any(iv -> iv isa Scheduled, spec.interventions) && throw(
+        ArgumentError(
+            "a `Scheduled` intervention gates on the population's clock or case count, " *
+                "which the branching process over households does not have. For R* before " *
+                "and after the policy starts, call `household_offspring` once without the " *
+                "intervention and once with it unwrapped"
+        )
+    )
 
-    return _household_offspring(process.kernel, spec, Float64(global_rate);
-        n_samples, rng, tol = Float64(tol), max_offspring)
+    return _household_offspring(
+        process.kernel, spec, Float64(global_rate);
+        n_samples, rng, tol = Float64(tol), max_offspring
+    )
 end
 
 # A community contact reaches a person, so a type is reached in proportion to the
@@ -184,9 +194,11 @@ end
 
 # A shared kernel: the within-household epidemic depends on the household only
 # through its size, so size is the type.
-function _household_offspring(kernel::ContinuousUnivariateDistribution,
+function _household_offspring(
+        kernel::ContinuousUnivariateDistribution,
         spec::ModelSpec, global_rate::Float64; n_samples::Int, rng::AbstractRNG,
-        tol::Float64, max_offspring::Int)
+        tol::Float64, max_offspring::Int
+    )
     all_sizes = household_sizes(spec.process)
     sizes = sort(unique(all_sizes))
     households = [findall(==(n), all_sizes) for n in sizes]
@@ -195,21 +207,27 @@ function _household_offspring(kernel::ContinuousUnivariateDistribution,
     laws = _OffspringLaw[]
     means = Float64[]
     for n in sizes
-        law, μ = _size_offspring(n, kernel, window, global_rate;
-            spec, n_samples, rng, tol, max_offspring)
+        law, μ = _size_offspring(
+            n, kernel, window, global_rate;
+            spec, n_samples, rng, tol, max_offspring
+        )
         push!(laws, law)
         push!(means, μ)
     end
-    return HouseholdOffspring(sizes, households, _mixing(sizes, households), laws,
-        means, global_rate)
+    return HouseholdOffspring(
+        sizes, households, _mixing(sizes, households), laws,
+        means, global_rate
+    )
 end
 
 # A pair-varying kernel: the epidemic depends on who the members are, so the
 # model itself is simulated, often enough for `n_samples` households in all.
 # Every layer then sees the model's own individuals, whatever it reads from them,
 # and each type pools the person-time of all its households.
-function _household_offspring(kernel, spec::ModelSpec, global_rate::Float64;
-        n_samples::Int, rng::AbstractRNG, tol::Float64, max_offspring::Int)
+function _household_offspring(
+        kernel, spec::ModelSpec, global_rate::Float64;
+        n_samples::Int, rng::AbstractRNG, tol::Float64, max_offspring::Int
+    )
     members = spec.process.members
     households = _kernel_types(kernel, members)
     sizes = [length(members[first(h)]) for h in households]
@@ -223,11 +241,15 @@ function _household_offspring(kernel, spec::ModelSpec, global_rate::Float64;
         end
     end
 
-    laws = [_law(_compound_poisson_pmf(pt, global_rate, tol, max_offspring))
-            for pt in person_time]
+    laws = [
+        _law(_compound_poisson_pmf(pt, global_rate, tol, max_offspring))
+            for pt in person_time
+    ]
     means = [global_rate * mean(pt) for pt in person_time]
-    return HouseholdOffspring(sizes, households, _mixing(sizes, households), laws,
-        means, global_rate)
+    return HouseholdOffspring(
+        sizes, households, _mixing(sizes, households), laws,
+        means, global_rate
+    )
 end
 
 # Group households whose kernels agree for every ordered pair of members, in
@@ -283,8 +305,10 @@ probability generating function of the offspring law of type `n`. The answer
 for a household of type `n` is then `Gₙ(s)`, which differs across types only
 through how many households that first one infects.
 """
-function EpiBranch.extinction_probability(o::HouseholdOffspring;
-        tol::Real = 1e-10, max_iter::Int = 1000)
+function EpiBranch.extinction_probability(
+        o::HouseholdOffspring;
+        tol::Real = 1.0e-10, max_iter::Int = 1000
+    )
     reproduction_number(o) <= 1 && return ones(length(o.sizes))
     s = 0.0
     for _ in 1:max_iter
@@ -324,8 +348,11 @@ household_offspring_law(o::HouseholdOffspring) = _mixture(o.mixing, o.laws)
 
 function household_offspring_law(o::HouseholdOffspring, size::Integer)
     types = findall(==(size), o.sizes)
-    isempty(types) && throw(ArgumentError(
-        "no households of size $size in this model (sizes: $(unique(o.sizes)))"))
+    isempty(types) && throw(
+        ArgumentError(
+            "no households of size $size in this model (sizes: $(unique(o.sizes)))"
+        )
+    )
     length(types) == 1 && return o.laws[only(types)]
     return _mixture(o.mixing[types], o.laws[types])
 end
@@ -349,18 +376,26 @@ end
 # Markov chain and is resolved exactly. Everything else is simulated: a
 # non-exponential kernel or window, an interventions layer, or a window the
 # progression does not make a single delay (signalled by a `nothing` window).
-function _size_offspring(n::Int, kernel::Exponential, window::Exponential,
-        global_rate::Float64; tol::Float64, max_offspring::Int, kwargs...)
-    p = _markov_offspring_pmf(n, rate(kernel), rate(window), global_rate,
-        tol, max_offspring)
+function _size_offspring(
+        n::Int, kernel::Exponential, window::Exponential,
+        global_rate::Float64; tol::Float64, max_offspring::Int, kwargs...
+    )
+    p = _markov_offspring_pmf(
+        n, rate(kernel), rate(window), global_rate,
+        tol, max_offspring
+    )
     return _law(p), global_rate * _mean_person_time(n, kernel, window)
 end
 
-function _size_offspring(n::Int, kernel, window, global_rate::Float64;
+function _size_offspring(
+        n::Int, kernel, window, global_rate::Float64;
         spec::ModelSpec, n_samples::Int, rng::AbstractRNG, tol::Float64,
-        max_offspring::Int)
-    sample = HouseholdProcess(fill(n, n_samples), kernel;
-        from = spec.process.from, until = spec.process.until)
+        max_offspring::Int
+    )
+    sample = HouseholdProcess(
+        fill(n, n_samples), kernel;
+        from = spec.process.from, until = spec.process.until
+    )
     person_time = _simulated_person_time(spec, sample, rng)
     # Compounding the Poisson analytically over the simulated person-times, rather
     # than drawing a count per household, leaves Monte Carlo error only in the
@@ -377,7 +412,7 @@ function _law(p::Vector{Float64})
 end
 
 function _pgf(law::_OffspringLaw, s::Real)
-    sum(pk * s^k for (k, pk) in zip(support(law), probs(law)))
+    return sum(pk * s^k for (k, pk) in zip(support(law), probs(law)))
 end
 
 # ── The Markovian household, resolved exactly ────────────────────────
@@ -394,14 +429,17 @@ end
 # over states in increasing `s` and `i` and increasing `k`. The `i` in every rate
 # cancels, so the household's own clock never enters; only the competition
 # between the three events does.
-function _markov_offspring_pmf(n::Int, β::Real, γ::Real, global_rate::Real,
-        tol::Float64, max_offspring::Int)
+function _markov_offspring_pmf(
+        n::Int, β::Real, γ::Real, global_rate::Real,
+        tol::Float64, max_offspring::Int
+    )
     k_max = min(max(16, ceil(Int, 4 * global_rate * n / γ)), max_offspring)
     while true
         p = _markov_pmf_upto(n, β, γ, global_rate, k_max)
         (sum(p) > 1 - tol || k_max >= max_offspring) && return p
         k_max = min(2 * k_max, max_offspring)
     end
+    return
 end
 
 function _markov_pmf_upto(n::Int, β::Real, γ::Real, global_rate::Real, k_max::Int)
@@ -427,12 +465,16 @@ end
 # Total community-infectious person-time of each household of `sample`, a
 # household process simulated under the model's own layers. The households are
 # independent, so one run of the model's simulator gives them all.
-function _simulated_person_time(spec::ModelSpec, sample::HouseholdProcess,
-        rng::AbstractRNG)
+function _simulated_person_time(
+        spec::ModelSpec, sample::HouseholdProcess,
+        rng::AbstractRNG
+    )
     process = spec.process
-    sample_spec = ModelSpec(sample;
+    sample_spec = ModelSpec(
+        sample;
         progression = spec.progression, interventions = spec.interventions,
-        attributes = spec.attributes, observation = spec.observation)
+        attributes = spec.attributes, observation = spec.observation
+    )
     state = simulate(sample_spec; rng)
 
     from = _resolve_infectious_from(process.from, spec.progression)
@@ -440,15 +482,20 @@ function _simulated_person_time(spec::ModelSpec, sample::HouseholdProcess,
     for ind in state.individuals
         is_infected(ind) || continue
         opened = EpiBranch._window_open(ind, from)
-        closed = min(EpiBranch._window_close(ind, process.until),
-            EpiBranch._intervention_removal_time(ind, spec.interventions))
+        closed = min(
+            EpiBranch._window_close(ind, process.until),
+            EpiBranch._intervention_removal_time(ind, spec.interventions)
+        )
         # A case that never becomes infectious, or is removed before it does (a
         # recovery or isolation during a latent period), makes no contacts.
         (isfinite(opened) && closed > opened) || continue
-        isfinite(closed) || throw(ArgumentError(
-            "a case's infectious window has no finite length, so a household infects " *
-            "unboundedly many others; give the progression a terminal transition " *
-            "listed in the process's `until` states, reached by every case"))
+        isfinite(closed) || throw(
+            ArgumentError(
+                "a case's infectious window has no finite length, so a household infects " *
+                    "unboundedly many others; give the progression a terminal transition " *
+                    "listed in the process's `until` states, reached by every case"
+            )
+        )
         person_time[ind.state[:household]] += closed - opened
     end
     return person_time
@@ -457,11 +504,14 @@ end
 # The offspring law of a sample of households with the given total
 # community-infectious person-times: a Poisson count per household, averaged
 # over the sample.
-function _compound_poisson_pmf(person_time::Vector{Float64}, global_rate::Real,
-        tol::Float64, max_offspring::Int)
+function _compound_poisson_pmf(
+        person_time::Vector{Float64}, global_rate::Real,
+        tol::Float64, max_offspring::Int
+    )
     k_max = min(
         quantile(Poisson(global_rate * maximum(person_time)), 1 - tol) + 1,
-        max_offspring)
+        max_offspring
+    )
     p = zeros(k_max + 1)
     for a in person_time
         d = Poisson(global_rate * a)
@@ -510,15 +560,23 @@ mean(d)     # mean number infected, the index case included
 pdf(d, 4)   # probability the whole household is infected
 ```
 """
-function household_final_size(size::Integer, kernel, window;
-        initial_infectives::Integer = 1)
+function household_final_size(
+        size::Integer, kernel, window;
+        initial_infectives::Integer = 1
+    )
     size >= 1 || throw(ArgumentError("household size must be ≥ 1, got $size"))
-    1 <= initial_infectives <= size || throw(ArgumentError(
-        "initial_infectives must be between 1 and the household size, got $initial_infectives"))
+    1 <= initial_infectives <= size || throw(
+        ArgumentError(
+            "initial_infectives must be between 1 and the household size, got $initial_infectives"
+        )
+    )
     law = _final_size_law(size, kernel, window, initial_infectives)
-    law === nothing && throw(ErrorException(
-        "the final-size recursion lost accuracy for a household of $size, " *
-        "because it subtracts terms far larger than the probabilities they leave"))
+    law === nothing && throw(
+        ErrorException(
+            "the final-size recursion lost accuracy for a household of $size, " *
+                "because it subtracts terms far larger than the probabilities they leave"
+        )
+    )
     return law
 end
 
@@ -552,21 +610,24 @@ end
 
 # Rounding can leave a probability a hair below zero; anything worse is a real
 # loss of accuracy.
-_is_accurate(p) = all(>=(-1e-8), p)
+_is_accurate(p) = all(>=(-1.0e-8), p)
 
 # The recursion in number type `T`. Each equation is multiplied through by
 # `ψ^(j + a)`, because dividing by a power of a small escape probability
 # underflows to zero when transmission is strong. The coefficients are floating
 # point: integer ones overflow from a household of 68.
-function _final_size_recursion(T::Type{<:AbstractFloat}, kernel, window, n::Int,
-        a::Int)
+function _final_size_recursion(
+        T::Type{<:AbstractFloat}, kernel, window, n::Int,
+        a::Int
+    )
     p = zeros(T, n + 1)
     for j in 0:n
         ψj = _escape(T, kernel, window, n - j)
         p[j + 1] = binomial(T(n), j) * ψj^(j + a) -
-                   sum(
+            sum(
             binomial(T(n - k), j - k) * p[k + 1] * ψj^(j - k)
-            for k in 0:(j - 1); init = zero(T))
+                for k in 0:(j - 1); init = zero(T)
+        )
     end
     return p
 end
@@ -584,8 +645,14 @@ function _escape(T::Type, kernel, window::UnivariateDistribution, m::Int)
     # Integrating over the window's quantiles keeps the range bounded whatever
     # the window distribution is. The tolerance is as tight as Float64 allows,
     # because the recursion amplifies the quadrature error.
-    return T(first(quadgk(u -> ccdf(kernel, quantile(window, u))^m, 0.0, 1.0;
-        rtol = 1e-15, atol = 0.0)))
+    return T(
+        first(
+            quadgk(
+                u -> ccdf(kernel, quantile(window, u))^m, 0.0, 1.0;
+                rtol = 1.0e-15, atol = 0.0
+            )
+        )
+    )
 end
 # Both exponential, the escape probability is the window's Laplace transform at
 # `m` times the kernel's rate.
@@ -599,8 +666,10 @@ end
 # mean final size times the mean window. `nothing` when the model gives no window
 # law to average over, or the final-size recursion cannot give the mean
 # accurately; the mean is then taken from the simulated households.
-function _mean_person_time(n::Int, kernel::UnivariateDistribution,
-        window::Union{Real, UnivariateDistribution})
+function _mean_person_time(
+        n::Int, kernel::UnivariateDistribution,
+        window::Union{Real, UnivariateDistribution}
+    )
     law = _final_size_law(n, kernel, window, 1)
     return law === nothing ? nothing : mean(law) * mean(window)
 end

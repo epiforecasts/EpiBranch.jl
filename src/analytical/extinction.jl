@@ -9,12 +9,16 @@
 # The expansion drops the line numbers of this definition, which attributes its
 # code to the call site, where coverage tools look for it.
 macro warn_unconverged_extinction(max_iter, cause)
-    return esc(Base.remove_linenums!(quote
-        @warn "Fixed-point iteration for the extinction probability stopped " *
-              "after $($max_iter) iterations without converging, which happens " *
-              "when $($cause) is close to 1. The result may be inaccurate; " *
-              "raise `max_iter`." maxlog=1
-    end))
+    return esc(
+        Base.remove_linenums!(
+            quote
+                @warn "Fixed-point iteration for the extinction probability stopped " *
+                    "after $($max_iter) iterations without converging, which happens " *
+                    "when $($cause) is close to 1. The result may be inaccurate; " *
+                    "raise `max_iter`." maxlog = 1
+            end
+        )
+    )
 end
 
 """
@@ -27,7 +31,7 @@ and dispersion `k`.
 Fixed-point iteration on the probability generating function is used.
 For R ≤ 1, returns 1.0 (certain extinction).
 """
-function extinction_probability(R::Real, k::Real; tol::Real = 1e-10, max_iter::Int = 1000)
+function extinction_probability(R::Real, k::Real; tol::Real = 1.0e-10, max_iter::Int = 1000)
     R > 0 || throw(ArgumentError("R must be positive, got $R"))
     k > 0 || throw(ArgumentError("k must be positive, got $k"))
 
@@ -55,7 +59,7 @@ via fixed-point iteration on the PGF.
 For Poisson(λ): the PGF exp(λ(s-1)) is used.
 For NegativeBinomial: R and k are extracted and the closed-form PGF is applied.
 """
-function extinction_probability(d::Poisson; tol::Real = 1e-10, max_iter::Int = 1000)
+function extinction_probability(d::Poisson; tol::Real = 1.0e-10, max_iter::Int = 1000)
     mean(d) <= 1.0 && return 1.0
 
     q = 0.5
@@ -68,7 +72,7 @@ function extinction_probability(d::Poisson; tol::Real = 1e-10, max_iter::Int = 1
     return q
 end
 
-function extinction_probability(d::NegativeBinomial; tol::Real = 1e-10, max_iter::Int = 1000)
+function extinction_probability(d::NegativeBinomial; tol::Real = 1.0e-10, max_iter::Int = 1000)
     k = d.r
     R = mean(d)
     return extinction_probability(R, k; tol, max_iter)
@@ -81,7 +85,7 @@ Probability that a single introduction leads to a major epidemic.
 Complement of extinction probability.
 """
 function epidemic_probability(R::Real, k::Real; kwargs...)
-    1.0 - extinction_probability(R, k; kwargs...)
+    return 1.0 - extinction_probability(R, k; kwargs...)
 end
 
 """
@@ -94,7 +98,7 @@ function accepts. For a multi-type model the result has one entry per type of
 index case.
 """
 function epidemic_probability(offspring; kwargs...)
-    1.0 .- extinction_probability(offspring; kwargs...)
+    return 1.0 .- extinction_probability(offspring; kwargs...)
 end
 
 # ── BranchingProcess dispatch ────────────────────────────────────────
@@ -139,11 +143,13 @@ This is a port of `probability_contain` (and the `probability_extinct`
 self-consistency equation it builds on) in superspreading (Lambert et al.,
 https://github.com/epiverse-trace/superspreading, MIT).
 """
-function probability_contain(R::Real, k::Real;
+function probability_contain(
+        R::Real, k::Real;
         n_initial::Int = 1,
         ind_control::Real = 0.0,
         pop_control::Real = 0.0,
-        tol::Real = 1e-10, max_iter::Int = 1000)
+        tol::Real = 1.0e-10, max_iter::Int = 1000
+    )
     R > 0 || throw(ArgumentError("R must be positive, got $R"))
     k > 0 || throw(ArgumentError("k must be positive, got $k"))
     0.0 <= ind_control <= 1.0 || throw(ArgumentError("ind_control must be in [0, 1]"))
@@ -166,8 +172,10 @@ function probability_contain(R::Real, k::Real;
     # This iteration's rate at the fixed point is `(1 - ind_control)` times the
     # effective reproduction number, which includes `pop_control`. Convergence
     # slows when this product approaches 1.
-    @warn_unconverged_extinction(max_iter,
-        "the effective reproduction number times one minus `ind_control`")
+    @warn_unconverged_extinction(
+        max_iter,
+        "the effective reproduction number times one minus `ind_control`"
+    )
     return q^n_initial
 end
 
@@ -180,10 +188,12 @@ function probability_contain(d::NegativeBinomial; kwargs...)
     return probability_contain(mean(d), d.r; kwargs...)
 end
 
-function probability_contain(d::Poisson; n_initial::Int = 1,
-        ind_control::Real = 0.0, pop_control::Real = 0.0, kwargs...)
+function probability_contain(
+        d::Poisson; n_initial::Int = 1,
+        ind_control::Real = 0.0, pop_control::Real = 0.0, kwargs...
+    )
     # Poisson is NegBin with k→∞; use large k
-    return probability_contain(mean(d), 1e6; n_initial, ind_control, pop_control, kwargs...)
+    return probability_contain(mean(d), 1.0e6; n_initial, ind_control, pop_control, kwargs...)
 end
 
 """

@@ -36,7 +36,7 @@ is_eligible(::OnSymptomOnset, infector, contact, state) = _develops_symptoms(inf
 """Trace when the infector has tested positive (lab confirmation)."""
 struct OnLabConfirmation <: TraceEligibility end
 function is_eligible(::OnLabConfirmation, infector, contact, state)
-    get(infector.state, :test_positive, false)
+    return get(infector.state, :test_positive, false)
 end
 
 """Trace when the infector has been isolated."""
@@ -56,7 +56,7 @@ to `OnSymptomOnset() & OnIsolation()`; kept as a named type for
 backwards compatibility (it is the default `eligibility`)."""
 struct SymptomaticParent <: TraceEligibility end
 function is_eligible(::SymptomaticParent, infector, contact, state)
-    _develops_symptoms(infector) && is_isolated(infector)
+    return _develops_symptoms(infector) && is_isolated(infector)
 end
 
 # `AlwaysEligible` and `NoTracing` were the previous names for tracing
@@ -228,15 +228,15 @@ evaluated through the three-argument form; use the four-argument form.
 trigger_time(::TraceEligibility, infector, state) = isolation_time(infector)
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
 function trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, state)
-    _combined_time(_WithoutContact(), e, infector, nothing, state)
+    return _combined_time(_WithoutContact(), e, infector, nothing, state)
 end
 
 function trigger_time(e::TraceEligibility, infector, contact, state)
-    trigger_time(e, infector, state)
+    return trigger_time(e, infector, state)
 end
 
 function trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, contact, state)
-    _combined_time(_WithContact(), e, infector, contact, state)
+    return _combined_time(_WithContact(), e, infector, contact, state)
 end
 
 # Which `trigger_time` method times the policies inside a combinator: the
@@ -245,10 +245,10 @@ end
 struct _WithContact end
 struct _WithoutContact end
 function _single_time(::_WithContact, e, infector, contact, state)
-    trigger_time(e, infector, contact, state)
+    return trigger_time(e, infector, contact, state)
 end
 function _single_time(::_WithoutContact, e, infector, contact, state)
-    trigger_time(e, infector, state)
+    return trigger_time(e, infector, state)
 end
 
 # What every node of a combinator is evaluated against. `never` is `Inf` in
@@ -288,16 +288,16 @@ function _met_time(cx::_TimingContext, condition::TraceEligibility, negated::Boo
 end
 
 function _met_time(cx::_TimingContext, e::AnyOf, negated::Bool)
-    negated ? _all_met(cx, e.conditions, true) : _any_met(cx, e.conditions, false)
+    return negated ? _all_met(cx, e.conditions, true) : _any_met(cx, e.conditions, false)
 end
 
 function _met_time(cx::_TimingContext, e::AllOf, negated::Bool)
-    negated ? _any_met(cx, e.conditions, true) : _all_met(cx, e.conditions, false)
+    return negated ? _any_met(cx, e.conditions, true) : _all_met(cx, e.conditions, false)
 end
 
 # `NoneOf(a, b)` is `!a & !b`, and its negation is `a | b`.
 function _met_time(cx::_TimingContext, e::NoneOf, negated::Bool)
-    negated ? _any_met(cx, e.conditions, false) : _all_met(cx, e.conditions, true)
+    return negated ? _any_met(cx, e.conditions, false) : _all_met(cx, e.conditions, true)
 end
 
 # The reductions below walk the conditions tuple one element at a time, so
@@ -319,10 +319,10 @@ end
 # the earliest of their timed branches: `(a | !b) & !c` is met at `a`'s
 # time through `a & !c`.
 function _all_met(cx, conditions, negated)
-    _all_met(cx, conditions, negated, oftype(cx.never, -Inf), cx.never, false)
+    return _all_met(cx, conditions, negated, oftype(cx.never, -Inf), cx.never, false)
 end
 function _all_met(cx, ::Tuple{}, negated, latest, earliest, timed)
-    timed ? (latest, false) : (earliest, true)
+    return timed ? (latest, false) : (earliest, true)
 end
 function _all_met(cx, conditions::Tuple, negated, latest, earliest, timed)
     tc, uc = _met_time(cx, first(conditions), negated)
@@ -419,7 +419,8 @@ function apply_trace!(::FlagOnly, contact, state, trace_time, rng)
     ind_onset = onset_time(contact)
     traced_iso = isnan(ind_onset) ? trace_time : max(ind_onset, trace_time)
     contact.state[:traced_isolation_time] = min(
-        get(contact.state, :traced_isolation_time, Inf), traced_iso)
+        get(contact.state, :traced_isolation_time, Inf), traced_iso
+    )
     return nothing
 end
 
@@ -507,8 +508,9 @@ reached, from which interventions acting on traced contacts are timed. With
 `depth > 1` it also sets `:ring_remaining`, which lets the ring grow outward.
 """
 struct ContactTracing{
-    E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction} <:
-       AbstractIntervention
+        E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction,
+    } <:
+    AbstractIntervention
     eligibility::E
     trace_rate::F
     isolation_to_trace_delay::D
@@ -518,24 +520,31 @@ struct ContactTracing{
     # Validate the ring radius once, here, so every construction path
     # (all the convenience constructors below funnel through this) rejects
     # depth < 1 rather than silently behaving as depth 1.
-    function ContactTracing(eligibility::E, trace_rate::F,
+    function ContactTracing(
+            eligibility::E, trace_rate::F,
             isolation_to_trace_delay::D, action::A,
-            depth::Integer) where {
-            E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction}
+            depth::Integer
+        ) where {
+            E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction,
+        }
         depth >= 1 ||
             throw(ArgumentError("ContactTracing depth must be at least 1, got $depth"))
         return new{E, F, D, A}(
-            eligibility, trace_rate, isolation_to_trace_delay, action, Int(depth))
+            eligibility, trace_rate, isolation_to_trace_delay, action, Int(depth)
+        )
     end
 end
 
 # Fully-typed form (eligibility + trait objects) with a default depth, so
 # callers that build the traits directly need not pass `depth`.
-function ContactTracing(eligibility::TraceEligibility, trace_rate::TraceRate,
+function ContactTracing(
+        eligibility::TraceEligibility, trace_rate::TraceRate,
         isolation_to_trace_delay::TraceDelay, action::TraceAction;
-        depth::Integer = 1)
+        depth::Integer = 1
+    )
     return ContactTracing(
-        eligibility, trace_rate, isolation_to_trace_delay, action, Int(depth))
+        eligibility, trace_rate, isolation_to_trace_delay, action, Int(depth)
+    )
 end
 
 function ContactTracing(;
@@ -543,7 +552,8 @@ function ContactTracing(;
         isolation_to_trace_delay::Distribution,
         quarantine_on_trace::Bool = true,
         eligibility::TraceEligibility = SymptomaticParent(),
-        depth::Integer = 1)
+        depth::Integer = 1
+    )
     return ContactTracing(
         eligibility,
         ConstantRate(probability),
@@ -557,9 +567,11 @@ end
 # probability and a constant delay distribution. The fully-typed inner
 # constructor (taking `TraceRate`/`TraceDelay` objects) is unaffected —
 # `probability::Real` and `delay::Distribution` do not match those.
-function ContactTracing(eligibility::TraceEligibility, probability::Real,
+function ContactTracing(
+        eligibility::TraceEligibility, probability::Real,
         isolation_to_trace_delay::Distribution, action::TraceAction = Quarantine();
-        depth::Integer = 1)
+        depth::Integer = 1
+    )
     return ContactTracing(
         eligibility,
         ConstantRate(probability),
@@ -584,13 +596,13 @@ required_fields(::TraceEligibility) = Symbol[]  # Default for custom types
 
 # Combinators inherit requirements from the policies they wrap.
 function required_fields(e::AnyOf)
-    reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
+    return reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
 end
 function required_fields(e::AllOf)
-    reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
+    return reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
 end
 function required_fields(e::NoneOf)
-    reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
+    return reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
 end
 
 function reset!(::ContactTracing, ind::Individual)
@@ -628,14 +640,15 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # letting the fringe grow without bound.
     seed = is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state)
     propagate = ct.depth > 1 && !seed && is_traced(infector) &&
-                get(infector.state, :ring_remaining, 0)::Int > 0
+        get(infector.state, :ring_remaining, 0)::Int > 0
     (seed || propagate) || return nothing
     traces(ct.trace_rate, infector, ind, state, rng) || return nothing
 
     trace_delay = draw_trace_delay(
-        ct.isolation_to_trace_delay, infector, ind, state, rng)
+        ct.isolation_to_trace_delay, infector, ind, state, rng
+    )
     base = seed ? trigger_time(ct.eligibility, infector, ind, state) :
-           get(infector.state, :trace_time, isolation_time(infector))
+        get(infector.state, :trace_time, isolation_time(infector))
     # A contact cannot be sought before it exists, such as a funeral contact
     # before the funeral, so the delay runs from whichever comes later.
     trace_time = max(base, not_before) + trace_delay
@@ -671,7 +684,7 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # here. Only `depth > 1` rings expand.
     if ct.depth > 1
         ind.state[:ring_remaining] = seed ? ct.depth - 1 :
-                                     get(infector.state, :ring_remaining, 0)::Int - 1
+            get(infector.state, :ring_remaining, 0)::Int - 1
     end
     return nothing
 end
@@ -694,12 +707,15 @@ nodes pre-exist and the infector is the case the race has just finalised, so it
 is passed in and the same per-pair policy applied, with each contact traced no
 earlier than its `not_before` time when one is given."""
 function trace_contacts!(
-        ct::ContactTracing, state, infector, contacts, not_before = nothing)
+        ct::ContactTracing, state, infector, contacts, not_before = nothing
+    )
     rng = state.rng
     for (i, ind) in enumerate(contacts)
         ind.id == infector.id && continue
-        _trace_pair!(ct, state, infector, ind, rng;
-            not_before = not_before === nothing ? -Inf : not_before[i])
+        _trace_pair!(
+            ct, state, infector, ind, rng;
+            not_before = not_before === nothing ? -Inf : not_before[i]
+        )
     end
     return nothing
 end
@@ -710,12 +726,12 @@ models. Contacts merely flagged (`FlagOnly`) write `:traced_isolation_time`
 instead, and [`Isolation`](@ref) turns that into the removal, exactly as on the
 generation-based path."""
 function infectious_removal_time(::ContactTracing, ind::Individual)
-    get(ind.state, :quarantined, false) ? isolation_time(ind) : Inf
+    return get(ind.state, :quarantined, false) ? isolation_time(ind) : Inf
 end
 
 # A quarantine is a removal, so it reaches only the routes a removal can cut.
 function risk_applies(::ContactTracing, route)
-    route !== nothing && INTERVENTION_REMOVAL in route.until
+    return route !== nothing && INTERVENTION_REMOVAL in route.until
 end
 
 """Keep uninfected ring members generating contacts so the ring can

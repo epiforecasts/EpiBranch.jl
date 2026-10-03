@@ -60,17 +60,25 @@ end
 
 # ── Keyword convenience constructor ──────────────────────────────────
 
-function Scheduled(intervention::AbstractIntervention;
+function Scheduled(
+        intervention::AbstractIntervention;
         start_time::Union{Float64, Nothing} = nothing,
         end_time::Union{Float64, Nothing} = nothing,
-        start_after_cases::Union{Int, Nothing} = nothing)
+        start_after_cases::Union{Int, Nothing} = nothing
+    )
     conditions = Function[]
-    start_time !== nothing && push!(conditions,
-        s -> s.max_infection_time >= start_time)
-    end_time !== nothing && push!(conditions,
-        s -> s.max_infection_time <= end_time)
-    start_after_cases !== nothing && push!(conditions,
-        s -> s.cumulative_cases >= start_after_cases)
+    start_time !== nothing && push!(
+        conditions,
+        s -> s.max_infection_time >= start_time
+    )
+    end_time !== nothing && push!(
+        conditions,
+        s -> s.max_infection_time <= end_time
+    )
+    start_after_cases !== nothing && push!(
+        conditions,
+        s -> s.cumulative_cases >= start_after_cases
+    )
 
     isempty(conditions) && error("Scheduled requires at least one condition")
 
@@ -85,7 +93,7 @@ end
 
 # Predicate constructor: no individual-level reset
 function Scheduled(intervention::AbstractIntervention, condition)
-    Scheduled(intervention, condition, 0.0)
+    return Scheduled(intervention, condition, 0.0)
 end
 
 # ── Protocol delegation ──────────────────────────────────────────────
@@ -142,7 +150,7 @@ effect has been recorded. `Scheduled` still controls delivery and other hooks.
 persistent_competing_risks(::AbstractIntervention) = false
 persistent_competing_risks(::AbstractVaccination) = true
 function persistent_competing_risks(w::InterventionWrapper)
-    persistent_competing_risks(w.intervention)
+    return persistent_competing_risks(w.intervention)
 end
 
 function competing_risk(s::Scheduled, parent, contact, state)

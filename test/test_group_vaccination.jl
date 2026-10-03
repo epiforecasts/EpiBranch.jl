@@ -9,10 +9,14 @@ end
 
 @testset "Group vaccination" begin
     @testset "Reaches every member of a triggered group and nobody outside it" begin
-        gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation(),
-            dose_delay = 2.0)
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+        gv = GroupVaccination(
+            efficacy = 0.9, eligibility = OnLabConfirmation(),
+            dose_delay = 2.0
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 5.0)
@@ -33,10 +37,14 @@ end
     end
 
     @testset "Vaccination time is the trigger time plus the delay" begin
-        gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation(),
-            dose_delay = 3.0)
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+        gv = GroupVaccination(
+            efficacy = 0.9, eligibility = OnLabConfirmation(),
+            dose_delay = 3.0
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 6.0)
@@ -54,10 +62,14 @@ end
     end
 
     @testset "A distributional delay is drawn once per member" begin
-        gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation(),
-            dose_delay = Uniform(1.0, 4.0), delay_to_immunity = Uniform(5.0, 10.0))
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+        gv = GroupVaccination(
+            efficacy = 0.9, eligibility = OnLabConfirmation(),
+            dose_delay = Uniform(1.0, 4.0), delay_to_immunity = Uniform(5.0, 10.0)
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 6.0)
@@ -77,10 +89,14 @@ end
     end
 
     @testset "Records severity efficacy and immunity time on every member" begin
-        gv = GroupVaccination(efficacy = 0.0, severity_efficacy = 0.4,
-            delay_to_immunity = 5.0, dose_delay = 1.0)
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+        gv = GroupVaccination(
+            efficacy = 0.0, severity_efficacy = 0.4,
+            delay_to_immunity = 5.0, dose_delay = 1.0
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 2.0)
@@ -99,10 +115,14 @@ end
 
     @testset "Waning decays protection against infection but not severity efficacy" begin
         decay(dt) = exp(-dt / 10.0)
-        gv = GroupVaccination(efficacy = 0.9, severity_efficacy = 0.4,
-            delay_to_immunity = 5.0, dose_delay = 1.0, waning = decay)
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+        gv = GroupVaccination(
+            efficacy = 0.9, severity_efficacy = 0.4,
+            delay_to_immunity = 5.0, dose_delay = 1.0, waning = decay
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 2.0)
@@ -118,17 +138,22 @@ end
         for exposure in (8.0, 18.0, 58.0)
             member.infection_time = exposure
             block = EpiBranch._sample_value(
-                risk.block_probability, StableRNG(1), nothing, member, nothing)
+                risk.block_probability, StableRNG(1), nothing, member, nothing
+            )
             @test block ≈ 0.9 * decay(exposure - 8.0)
             @test severity_efficacy(member) == 0.4
         end
     end
 
     @testset "Members created after the trigger are still reached" begin
-        gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation(),
-            dose_delay = 1.0)
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+        gv = GroupVaccination(
+            efficacy = 0.9, eligibility = OnLabConfirmation(),
+            dose_delay = 1.0
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 4.0)
@@ -149,10 +174,61 @@ end
         @test latecomer.state[:vaccination_time] == confirmed.state[:vaccination_time]
     end
 
+    @testset "A pending member's dose moves earlier when the group's trigger moves earlier" begin
+        # On a continuous-time race, cases settle in order of infection, not
+        # in order of eligibility: a secondary case can be lab-confirmed
+        # before the case that infected it. A dose already given from the
+        # first trigger found must still move earlier for a member that has
+        # not yet settled, once the group's true earliest trigger is known.
+        gv = GroupVaccination(
+            efficacy = 0.9, eligibility = OnLabConfirmation(),
+            dose_delay = 1.0, delay_to_immunity = 3.0
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+
+        a = _group_member(gv, 1, :A, test_positive = false)
+        b = _group_member(gv, 2, :A, test_positive = false)
+        c = _group_member(gv, 3, :A, test_positive = false)
+        append!(state.individuals, [a, b, c])
+        members = [1, 2, 3]
+        processed = falses(3)
+
+        # `a` settles first, with a late trigger (isolated at 20).
+        a.state[:test_positive] = true
+        set_isolated!(a, 20.0)
+        processed[1] = true
+        state.max_infection_time = 5.0
+        EpiBranch._apply_continuous_actions!(state, a, [gv], members, processed)
+        @test b.state[:vaccination_time] == 21.0
+        @test c.state[:vaccination_time] == 21.0
+
+        # `b` settles next, with an earlier trigger (isolated at 8) than
+        # `a`'s, despite settling later.
+        b.state[:test_positive] = true
+        set_isolated!(b, 8.0)
+        processed[2] = true
+        state.max_infection_time = 6.0
+        EpiBranch._apply_continuous_actions!(state, b, [gv], members, processed)
+
+        # `c` is still pending and had not yet been evaluated against the
+        # stale dose, so it moves to the true, earlier trigger.
+        @test c.state[:vaccination_time] == 9.0
+        @test immunity_time(c) == 12.0
+        # `b` had not settled its own dose against the old trigger either.
+        @test b.state[:vaccination_time] == 9.0
+        # `a` is already processed: its completed action keeps its date.
+        @test a.state[:vaccination_time] == 21.0
+    end
+
     @testset "No triggering case leaves the group unvaccinated" begin
         gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation())
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
 
         members = [_group_member(gv, i, :A, test_positive = false) for i in 1:3]
         append!(state.individuals, members)
@@ -166,10 +242,14 @@ end
         # susceptibility risk, so the event time it reports is what actually
         # gates transmission: an exposure timed before it goes unblocked, one
         # timed after (or at) it is blocked with probability `efficacy`.
-        gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation(),
-            dose_delay = 2.0, delay_to_immunity = 5.0)
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1))
+        gv = GroupVaccination(
+            efficacy = 0.9, eligibility = OnLabConfirmation(),
+            dose_delay = 2.0, delay_to_immunity = 5.0
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 10.0)
@@ -190,8 +270,10 @@ end
         @test :group in fields
         @test :test_positive in fields
 
-        custom = GroupVaccination(efficacy = 0.9, eligibility = OnSymptomOnset(),
-            group_key = :community)
+        custom = GroupVaccination(
+            efficacy = 0.9, eligibility = OnSymptomOnset(),
+            group_key = :community
+        )
         fields2 = EpiBranch.required_fields(custom)
         @test :community in fields2
         @test :onset_time in fields2
@@ -199,7 +281,8 @@ end
 
     @testset "Doses scale with group size, ring doses with ring size" begin
         clinical = clinical_presentation(
-            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+        )
         iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
         ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
 
@@ -209,16 +292,22 @@ end
             attrs = [clinical, groups(3)]
             gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation())
             state_group = simulate(
-                ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                    interventions = [iso, gv], attributes = attrs);
-                max_cases = 60, rng = StableRNG(seed))
+                ModelSpec(
+                    BranchingProcess(Poisson(2.0), Exponential(5.0));
+                    interventions = [iso, gv], attributes = attrs
+                );
+                max_cases = 60, rng = StableRNG(seed)
+            )
             n_group_doses += count(is_vaccinated, state_group.individuals)
 
             rv = RingVaccination(efficacy = 0.9)
             state_ring = simulate(
-                ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                    interventions = [iso, ct, rv], attributes = clinical);
-                max_cases = 60, rng = StableRNG(seed))
+                ModelSpec(
+                    BranchingProcess(Poisson(2.0), Exponential(5.0));
+                    interventions = [iso, ct, rv], attributes = clinical
+                );
+                max_cases = 60, rng = StableRNG(seed)
+            )
             n_ring_doses += count(is_vaccinated, state_ring.individuals)
         end
 
@@ -230,7 +319,8 @@ end
 
     @testset "Fallback composition: ring vaccination first leaves group vaccination to fill the rest" begin
         clinical = clinical_presentation(
-            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0)
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+        )
         iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
         ct = ContactTracing(probability = 0.3, isolation_to_trace_delay = Exponential(0.5))
         rv = RingVaccination(efficacy = 0.9)
@@ -240,9 +330,12 @@ end
         n_vaccinated = 0
         for seed in 1:10
             state = simulate(
-                ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
-                    interventions = [iso, ct, rv, gv], attributes = attrs);
-                max_cases = 60, rng = StableRNG(seed))
+                ModelSpec(
+                    BranchingProcess(Poisson(2.0), Exponential(5.0));
+                    interventions = [iso, ct, rv, gv], attributes = attrs
+                );
+                max_cases = 60, rng = StableRNG(seed)
+            )
 
             # A dose recorded by the ring is not overwritten by the group pass:
             # every vaccinated individual has a single, well-defined vaccination
@@ -258,10 +351,14 @@ end
     end
 
     @testset "Coverage is drawn once per member, however often the group returns" begin
-        gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation(),
-            coverage = 0.5)
-        state = EpiBranch.new_state(BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(2))
+        gv = GroupVaccination(
+            efficacy = 0.9, eligibility = OnLabConfirmation(),
+            coverage = 0.5
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(2)
+        )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 5.0)
@@ -289,16 +386,21 @@ end
     campaign_reach = sum(first_reached)
     delay = DiscreteNonParametric(visit_times, first_reached ./ campaign_reach)
     willingness = (rng, ind) -> (ind.state[:willing] = rand(rng) < 0.9)
-    gv = GroupVaccination(efficacy = 0.8, delay_to_immunity = 2.0,
+    gv = GroupVaccination(
+        efficacy = 0.8, delay_to_immunity = 2.0,
         coverage = (rng, ind) -> ind.state[:willing] ? campaign_reach : 0.0,
-        dose_delay = delay)
+        dose_delay = delay
+    )
 
     function campaign(seed)
         campaign_state = EpiBranch.new_state(
             BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], willingness, StableRNG(seed))
-        EpiBranch.add_individuals!(campaign_state, 4000, [gv];
-            setup = (ind, i) -> (ind.state[:group] = :A))
+            EpiBranch.AbstractClinicalTransition[], willingness, StableRNG(seed)
+        )
+        EpiBranch.add_individuals!(
+            campaign_state, 4000, [gv];
+            setup = (ind, i) -> (ind.state[:group] = :A)
+        )
         campaign_state.individuals[1].state[:test_positive] = true
         set_isolated!(campaign_state.individuals[1], 5.0)
         EpiBranch.apply_post_transmission!(gv, campaign_state, campaign_state.individuals)
@@ -309,22 +411,29 @@ end
     for (i, time) in enumerate(visit_times)
         share = count(
             ind -> is_vaccinated(ind) &&
-                   ind.state[:vaccination_time] == 5.0 + time,
-            state.individuals) / length(state.individuals)
+                ind.state[:vaccination_time] == 5.0 + time,
+            state.individuals
+        ) / length(state.individuals)
         @test isapprox(share, 0.9 * first_reached[i]; atol = 0.025)
     end
     refused = filter(ind -> !ind.state[:willing], state.individuals)
     absent = filter(ind -> ind.state[:willing] && !is_vaccinated(ind), state.individuals)
-    later = filter(ind -> is_vaccinated(ind) && ind.state[:vaccination_time] > 5.0,
-        state.individuals)
+    later = filter(
+        ind -> is_vaccinated(ind) && ind.state[:vaccination_time] > 5.0,
+        state.individuals
+    )
     @test !isempty(refused)
     @test !isempty(absent)
     @test !isempty(later)
     @test all(ind -> !is_vaccinated(ind), refused)
     @test all(ind -> immunity_time(ind) == ind.state[:vaccination_time] + 2.0, later)
 
-    outcomes(st) = [(ind.state[:willing], is_vaccinated(ind),
-                        ind.state[:vaccination_time]) for ind in st.individuals]
+    outcomes(st) = [
+        (
+            ind.state[:willing], is_vaccinated(ind),
+            ind.state[:vaccination_time],
+        ) for ind in st.individuals
+    ]
     original = outcomes(state)
     @test isequal(outcomes(campaign(19)), original)
     for _ in 1:5

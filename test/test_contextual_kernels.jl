@@ -12,15 +12,17 @@ struct ContextInfections{T} <: InfectionLayer
 end
 EpiBranch.contact_structure(::ContextInfections) = [[2], [1]]
 function context_data(t)
-    ContextInfections([t, oftype(t, 4)], [t + 1, oftype(t, 5)],
-        [t + 6, oftype(t, 10)], [true, false], 0.0)
+    return ContextInfections(
+        [t, oftype(t, 4)], [t + 1, oftype(t, 5)],
+        [t + 6, oftype(t, 10)], [true, false], 0.0
+    )
 end
 
 struct ContextRule{T}
     slope::T
 end
 function (rule::ContextRule)(context::PairContext)
-    Exponential(exp(rule.slope * context.infector_infection_time))
+    return Exponential(exp(rule.slope * context.infector_infection_time))
 end
 
 @testset "Contextual pair kernels" begin
@@ -36,14 +38,19 @@ end
     covariates = [0.5, 1.5]
     data = context_data(2.0)
     layout = compile_contact_pairs(data)
-    kernel(a, b) = ContextualKernel(context -> Exponential(
-        exp(a + b * context.infector_infection_time +
-            0.1 * covariates[context.susceptible])))
+    kernel(a, b) = ContextualKernel(
+        context -> Exponential(
+            exp(
+                a + b * context.infector_infection_time +
+                    0.1 * covariates[context.susceptible]
+            )
+        )
+    )
     expected(a, b, t) = -(a + b * t + 0.15) - (3 - t) * exp(-(a + b * t + 0.15))
     for t in (1.8, 2.0, 2.2)
         current = context_data(t)
         @test pairwise_surv_loglik(kernel(0.3, 0.2), current, layout) ≈
-              expected(0.3, 0.2, t)
+            expected(0.3, 0.2, t)
         @test pairwise_surv_loglik(kernel(0.3, 0.2), current) ≈ expected(0.3, 0.2, t)
     end
     f(x) = pairwise_surv_loglik(kernel(x[1], x[2]), context_data(x[3]), layout)
@@ -51,5 +58,5 @@ end
     x = [0.3, 0.2, 2.0]
     @test ForwardDiff.gradient(f, x) ≈ ForwardDiff.gradient(reference, x)
     @test DifferentiationInterface.gradient(f, AutoMooncake(), x) ≈
-          ForwardDiff.gradient(reference, x)
+        ForwardDiff.gradient(reference, x)
 end

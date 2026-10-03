@@ -10,14 +10,14 @@
 # When the infector becomes infectious: the `from` state's time (the infection
 # time itself when the kernel times from :infection, otherwise a state key).
 function _window_open(ind::Individual{T}, from::Symbol) where {T}
-    from === :infection ? ind.infection_time :
-    convert(T, get(ind.state, Symbol(from, :_time), T(Inf)))
+    return from === :infection ? ind.infection_time :
+        convert(T, get(ind.state, Symbol(from, :_time), T(Inf)))
 end
 
 # Earliest of the `until` removal states' times (Inf if none reached).
 function _window_close(ind::Individual{T}, until::Tuple) where {T}
-    isempty(until) ? T(Inf) :
-    minimum(convert(T, get(ind.state, Symbol(s, :_time), T(Inf))) for s in until)
+    return isempty(until) ? T(Inf) :
+        minimum(convert(T, get(ind.state, Symbol(s, :_time), T(Inf))) for s in until)
 end
 
 # ── Interventions on the continuous-time (Sellke) models ─────────────
@@ -103,15 +103,19 @@ function _has_own_method(f, T::Type, base::Type)
     # `methods` rather than `which`, which finds only a method whose parameters
     # accept `Any`: an intervention that types its hook's arguments, as the style
     # guide asks, has one `which` looks straight past.
+    # Julia 1.10 also lists the less specific methods `T` falls back on, so only
+    # a method narrower than `base` counts.
     return any(methods(f, Tuple{T, Vararg{Any}})) do mm
-        Base.unwrap_unionall(mm.sig).parameters[2] !== base
+        p = Base.unwrap_unionall(mm.sig).parameters[2]
+        p isa TypeVar && (p = p.ub)
+        p !== base && p <: base
     end
 end
 
 # Whether an intervention implements a hook that only the generation engine calls.
 function _has_generation_hook(iv::AbstractIntervention)
     T = typeof(iv)
-    _has_own_method(apply_post_transmission!, T, AbstractIntervention) ||
+    return _has_own_method(apply_post_transmission!, T, AbstractIntervention) ||
         _has_own_method(keep_active, T, AbstractIntervention)
 end
 
@@ -146,16 +150,21 @@ function _propose!(pending, proposals, head, best, represents, k, w, t, may_bloc
     return nothing
 end
 
-# After a member's earliest contact was blocked, hand its place to the next
-# earliest. That one may still have an entry in the heap, from before a later
-# proposal overtook it, in which case there is nothing to push.
+# After a member's earliest contact was blocked, or its proposals were redrawn,
+# hand its place to the earliest remaining. Contacts at the same time go to the
+# opening made first, as `_propose!` orders them, so the infector does not
+# depend on the order the chain was built in. The chosen proposal may still have
+# an entry in the heap, from before a later proposal overtook it, in which case
+# there is nothing to push.
 function _requeue!(pending, proposals, head, best, represents, k)
     pid = 0
     t = oftype(best[k], Inf)
     q = Int(head[k])
     while q != 0
-        if proposals[q].time < t
-            t = proposals[q].time
+        time = proposals[q].time
+        if time < t ||
+                (time == t && pid != 0 && proposals[q].opening < proposals[pid].opening)
+            t = time
             pid = q
         end
         q = proposals[q].chain
@@ -229,7 +238,7 @@ end
 function _time_at_log_survival(kernel, lp)
     isfinite(lp) || return oftype(float(lp), Inf)
     t = invlogccdf(kernel, lp)
-    isfinite(t) && isapprox(logccdf(kernel, t), lp; rtol = 1e-6, atol = 1e-12) && return t
+    isfinite(t) && isapprox(logccdf(kernel, t), lp; rtol = 1.0e-6, atol = 1.0e-12) && return t
     return _bisect_log_survival(kernel, lp)
 end
 
@@ -258,6 +267,7 @@ function _bisect_log_survival(kernel, lp)
         (lo < mid < hi) || return hi
         logccdf(kernel, mid) > lp ? (lo = mid) : (hi = mid)
     end
+    return
 end
 
 # The pair's next contact after the one at `dt`, as a time from the window
@@ -276,16 +286,19 @@ function _next_contact(rng::AbstractRNG, kernel, m::Real, dt, end_dt)
     # An opaque risk may block forever. Rejection sampling is supported only
     # when the remaining integrated hazard is finite; a finite time alone is
     # insufficient for a continuous kernel whose support ends in the window.
-    isfinite(logccdf(kernel, end_dt)) || throw(ArgumentError(
-        "repeated contacts after a blocked proposal require finite remaining " *
-        "integrated hazard. Close the infectious or introduction window before " *
-        "the kernel survival reaches zero, or encode static protection in the " *
-        "contact kernel or host traits. The likely cause is a case whose " *
-        "infectious window never closes — either the progression has no " *
-        "terminal transition reaching one of `until`'s states, or one is " *
-        "reachable but gated so that some cases fire none of them (see " *
-        "`exclusive_probabilities` for terminal transitions meant to " *
-        "partition the population exactly)."))
+    isfinite(logccdf(kernel, end_dt)) || throw(
+        ArgumentError(
+            "repeated contacts after a blocked proposal require finite remaining " *
+                "integrated hazard. Close the infectious or introduction window before " *
+                "the kernel survival reaches zero, or encode static protection in the " *
+                "contact kernel or host traits. The likely cause is a case whose " *
+                "infectious window never closes — either the progression has no " *
+                "terminal transition reaching one of `until`'s states, or one is " *
+                "reachable but gated so that some cases fire none of them (see " *
+                "`exclusive_probabilities` for terminal transitions meant to " *
+                "partition the population exactly)."
+        )
+    )
     nxt = _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
     return nxt > dt ? nxt : Inf
 end
@@ -306,8 +319,10 @@ end
 # models propose is still susceptible, so its `infection_time` holds nothing
 # yet: set it to the proposed time for the resolution, and put it back if the
 # contact is blocked, leaving it as it was.
-function _proposal_blocked(state::SimulationState, parent, contact, transmission_time,
-        model_risks, interventions)
+function _proposal_blocked(
+        state::SimulationState, parent, contact, transmission_time,
+        model_risks, interventions
+    )
     previous = contact.infection_time
     previous_clock = state.max_infection_time
     contact.infection_time = transmission_time
@@ -316,8 +331,10 @@ function _proposal_blocked(state::SimulationState, parent, contact, transmission
     state.max_infection_time = transmission_time
     blocked = true
     try
-        blocked = _composed_risks_block(state, parent, contact, transmission_time,
-            model_risks, interventions, _sellke_builtin_risk_blocks)
+        blocked = _composed_risks_block(
+            state, parent, contact, transmission_time,
+            model_risks, interventions, _sellke_builtin_risk_blocks
+        )
         return blocked
     finally
         state.max_infection_time = previous_clock
@@ -349,14 +366,20 @@ EpiBranch.risk_applies).
 """
 const INTERVENTION_REMOVAL = :intervention_removal
 
-# Close a window: the earliest of its `until` states' times, plus the
-# intervention removal when the window opted into it.
+# Close a window: the earliest of its `until` states' times, the intervention
+# removal when the window opted into it, and a post-exposure abort, which ends
+# the infection outright and so closes every route, opted in or not — the same
+# reach as the `AbortedInfection` risk that blocks each route's transmission
+# from that time on. Without this, a route whose only removal state is one an
+# abort undoes (see `resolve_transitions!`) never closes, and the rejection
+# sampler that redraws a blocked pair's next contact has no bound to redraw
+# within.
 function _route_close(ind, w::RouteWindow, interventions)
     t = _window_close(ind, w.until)
     if INTERVENTION_REMOVAL in w.until
         t = min(t, _intervention_removal_time(ind, interventions))
     end
-    return t
+    return min(t, get(ind.state, :infection_aborted_time, Inf))
 end
 
 # The one window of `_sellke_race!`'s `from`/`until`/`targets` shorthand. Reading
@@ -364,8 +387,10 @@ end
 # likelihood uses the same window, and the simulator and the likelihood then
 # close each case's window at the same time.
 function _shorthand_window(from, until)
-    return RouteWindow(:transmission; from = something(from, :infection),
-        until = (something(until, ())..., INTERVENTION_REMOVAL), kernel = nothing)
+    return RouteWindow(
+        :transmission; from = something(from, :infection),
+        until = (something(until, ())..., INTERVENTION_REMOVAL), kernel = nothing
+    )
 end
 
 # Whether a continuous-time model honours an intervention. Between the two seams
@@ -404,7 +429,6 @@ function _sellke_honours(model, iv::AbstractIntervention)
     _has_generation_hook(iv) || return true
     return traces_contacts(iv) && supplies_contacts(model)
 end
-_sellke_honours(model, ::ContactTracing) = supplies_contacts(model)
 _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
 
 """
@@ -458,16 +482,20 @@ end
 # structure-driven models that run their own Sellke loop.
 function _warn_unhonoured_interventions(model, interventions)
     _honours_termination_controls(model) && return nothing
-    unhonoured = unique(String[string(nameof(typeof(iv)))
-                               for iv in interventions if !_sellke_honours(model, iv)])
+    unhonoured = unique(
+        String[
+            string(nameof(typeof(iv)))
+                for iv in interventions if !_sellke_honours(model, iv)
+        ]
+    )
     isempty(unhonoured) && return nothing
     @warn "$(nameof(typeof(model))) is a continuous-time model that settles one " *
-          "pre-existing case at a time, so it never creates the batches of new " *
-          "contacts the generation engine's post-transmission hooks act on; it " *
-          "does not honour these, which will have no effect: " *
-          "$(join(unhonoured, ", ")). Express such control as a removal " *
-          "`Transition` in the progression, or through an intervention that acts " *
-          "when each individual is initialised, resolved, or traced."
+        "pre-existing case at a time, so it never creates the batches of new " *
+        "contacts the generation engine's post-transmission hooks act on; it " *
+        "does not honour these, which will have no effect: " *
+        "$(join(unhonoured, ", ")). Express such control as a removal " *
+        "`Transition` in the progression, or through an intervention that acts " *
+        "when each individual is initialised, resolved, or traced."
     return nothing
 end
 
@@ -499,7 +527,9 @@ A model with several transmission routes passes `routes`, a collection of
 opens and closes on its own window, and only a route listing
 `INTERVENTION_REMOVAL` in its `until` is cut by the interventions' removals and
 blocked by removal risks such as isolation. Other risks select their routes
-through [`risk_applies`](@ref).
+through [`risk_applies`](@ref). A case infected along one of these routes has
+the route's `name` in its `:infection_route`, which `linelist` reports. The
+single-window shorthand has no named route and writes nothing.
 
 `introduction`, when given, is the `(kernel, until)` of the community hazard the
 model seeded its members from: the contact-interval distribution of an
@@ -511,7 +541,8 @@ blocked introduction is followed by the next one from the same hazard. The risks
 of isolation and quarantine are not: they
 stand in for removing an infector, and an introduction's source is outside the
 population. Omit `introduction` for a model whose seeds are index cases, which
-are put to no risk at all.
+are put to no risk at all. An introduced case's `:infection_route` is
+`:external`, including on a model that also names routes.
 
 `max_time` ends the race at that time: individuals whose infection would fall
 later are left uninfected, and the state is exactly the full run's state
@@ -533,11 +564,13 @@ The contact-interval `kernel` must be a **non-negative** distribution: the
 preceding the infector's own window-open (`dt ≥ 0`). A kernel with support on
 the negatives would break the shortest-path race with no error.
 """
-function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
+function _sellke_race!(
+        state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; seed!, targets = nothing,
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
         routes = nothing, interventions = (), contacts = nothing, risks = (),
-        introduction = nothing, max_time = Inf)
+        introduction = nothing, refresh_projection = nothing, max_time = Inf
+    )
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
     # shorthand's one window opts into intervention removal, which is what a
@@ -545,14 +578,20 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
     # is an error, because a routed model's windows would silently drop the
     # shorthand's censoring, including intervention removal.
     if routes === nothing
-        targets === nothing && throw(ArgumentError(
-            "_sellke_race! needs either `routes` or the `targets` shorthand"))
+        targets === nothing && throw(
+            ArgumentError(
+                "_sellke_race! needs either `routes` or the `targets` shorthand"
+            )
+        )
         rts = ((_shorthand_window(from, until), targets),)
     else
         (targets === nothing && from === nothing && until === nothing) ||
-            throw(ArgumentError(
+            throw(
+            ArgumentError(
                 "_sellke_race! takes either `routes` or `from`/`until`/`targets`, " *
-                "not both; list the censoring states in each route's `until`"))
+                    "not both; list the censoring states in each route's `until`"
+            )
+        )
         rts = routes
     end
     m = length(members)
@@ -567,10 +606,21 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
     # model's own risks and the per-individual multipliers always apply, since
     # they belong to the people and the edge.
     introduction_interventions = filter(iv -> risk_applies(iv, nothing), interventions)
-    route_interventions = [filter(iv -> risk_applies(iv, w), interventions)
-                           for (w, _) in rts]
+    route_interventions = [
+        filter(iv -> risk_applies(iv, w), interventions)
+            for (w, _) in rts
+    ]
 
     seed!(best, members, rng)
+    live = refresh_projection !== nothing
+    # What each member's host record held when contacts were last drawn from it.
+    # An intervention can change a record's type as well as its value (a date
+    # that was `nothing` until a dose), so the store takes any record.
+    records = live ?
+        Any[
+            deepcopy(_pair_state(refresh_projection, state.individuals[id]))
+            for id in members
+        ] : nothing
 
     T = eltype(best)
     # A popped entry is final unless the risks block it: every other pending
@@ -599,13 +649,19 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
     # is a pointer chase per proposal. A trait an intervention writes as a case
     # is resolved turns it on from there.
     traits = any(
-        id -> (ind = state.individuals[id];
-            ind.susceptibility != 1 || ind.infectiousness != 1),
-        members)
-    may_block = !isempty(risks) ||
-                any(
-        iv -> _has_own_method(competing_risk, typeof(iv),
-            AbstractIntervention), interventions)
+        id -> (
+            ind = state.individuals[id];
+            ind.susceptibility != 1 || ind.infectiousness != 1
+        ),
+        members
+    )
+    may_block = live || !isempty(risks) ||
+        any(
+        iv -> _has_own_method(
+            competing_risk, typeof(iv),
+            AbstractIntervention
+        ), interventions
+    )
     openings = _RouteOpening{T}[] # one per case and route it transmits along
     proposals = _Pending{T}[]  # every proposal made, when something can block
     head = zeros(Int, may_block ? m : 0)  # first proposal to each member
@@ -614,6 +670,19 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
 
     # The seeds' own opening: no infector, so nothing about it is ever read.
     push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
+    # Proposals a redraw has unlinked, which stay in `proposals` and the heap
+    # until they are compacted away.
+    orphans = 0
+    # The clock of the last pop, each pop at it as how many openings existed
+    # then and the member position popped, and the largest such position. The
+    # heap orders ties by position, so a pop at `clock` resolves every contact
+    # at `clock` to that position or below from the openings existing then.
+    clock = T(-Inf)
+    pops = Tuple{Int, Int}[]
+    passed = 0
+    # For a live kernel, which hosts' records a pending or future draw reads.
+    # Empty and unused otherwise.
+    watch = _LiveWatch(live ? m : 0)
     for k in 1:m
         best[k] < Inf || continue
         seeded = best[k]
@@ -627,6 +696,13 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         # after `max_time`: those individuals stay uninfected, and the race
         # was cut off rather than reaching extinction on its own.
         bt > max_time && return false
+        if bt != clock
+            clock = bt
+            empty!(pops)
+            passed = 0
+        end
+        push!(pops, (length(openings), j))
+        passed = max(passed, j)
         may_block && (proposals[p] = _dequeue(proposals[p]))
         (processed[j] || represents[j] != p) && continue
         opening = openings[may_block ? proposals[p].opening : p]
@@ -647,9 +723,11 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
         # defined to start, and is put to no risk at all.
         source = infector_id == 0 ? ind : state.individuals[infector_id]
         if may_block && (infector_id != 0 || introduction !== nothing) &&
-           _proposal_blocked(state, source, ind, bt, risks,
-               opening.route == 0 ? introduction_interventions :
-               route_interventions[opening.route])
+                _proposal_blocked(
+                state, source, ind, bt, risks,
+                opening.route == 0 ? introduction_interventions :
+                    route_interventions[opening.route]
+            )
             # The contact did not transmit, and the source goes on meeting the
             # person: the next contact is a draw from the same hazard conditioned
             # on falling later, kept while the window is still open for it.
@@ -662,8 +740,10 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
                 # routes are walked rather than indexed: indexing a tuple of
                 # routes with a running value would put the whole tuple on the
                 # heap, once per race.
-                kernel = _route_pair_kernel(rts, opening.route, infector_id,
-                    members[j], state)
+                kernel = _route_pair_kernel(
+                    rts, opening.route, infector_id,
+                    members[j], state
+                )
                 open_t = opening.open_t
                 close_t = opening.close_t
                 mult = source.infectiousness * ind.susceptibility
@@ -683,6 +763,20 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             ind.parent_id = infector.id
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
+            # Only a model with named routes reports one. The single-window
+            # shorthand has one window covering the whole model, so its name
+            # identifies the model, where `:infection_route` is meant to
+            # identify the setting a case was infected in.
+            routes === nothing || (ind.state[:infection_route] = rts[opening.route][1].name)
+        elseif introduction !== nothing
+            ind.state[:infection_route] = :external
+        end
+        # The infection time is now fixed, so an intervention whose effect
+        # depends on the exposure the race chose can settle it (see
+        # `on_infection_settled!`), before the onset derived from it or any
+        # transition reads it.
+        for iv in interventions
+            on_infection_settled!(iv, ind, state, rng)
         end
         # A pre-created node has no infection time, and so no onset, until now.
         # Derive the onset from the infection time before transitions and
@@ -695,6 +789,26 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             _apply_continuous_actions!(state, ind, interventions, members, processed)
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1
 
+        # Only a live kernel whose host records actually moved needs its pending
+        # contacts redrawn. Resolving a case usually leaves every record alone —
+        # a policy fires on one case out of hundreds — and then the contacts
+        # already drawn still come from the hazards in force, so the race takes
+        # the ordinary path. Either way this case's own openings are drawn
+        # inline below, from the records as they now stand.
+        if live && _records_changed!(
+                records, refresh_projection, state, members,
+                j, bt, watch, openings, processed
+            )
+            orphans += _redraw_moved!(
+                pending, proposals, head, best, represents,
+                watch, openings, processed, pos, rts, state, bt, pops, passed, rng
+            )
+            if orphans > max(m, length(proposals) ÷ 2)
+                _compact_proposals!(pending, proposals, head, best, represents, processed)
+                orphans = 0
+            end
+        end
+
         # Each route opens and closes on its own states, so a case can still be
         # transmitting on one while another has been cut. A route whose `from`
         # state was never reached contributes nothing, which is how a survivor
@@ -705,25 +819,309 @@ function _sellke_race!(state::SimulationState, members::AbstractVector{Int},
             close_t = _route_close(ind, w, interventions)
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
+            live && _watch_opening!(watch, j)
 
             for (target_id, kernel) in route_targets(members[j], state)
                 k = get(pos, target_id, 0)
                 (k == 0 || processed[k]) && continue
+                if live
+                    # This opening's draws come from the target's record as it
+                    # stands now, which is what later comparisons start from.
+                    _watch_target!(watch, opening_id, k)
+                    records[k] = _remember(
+                        _pair_state(
+                            refresh_projection, state.individuals[target_id]
+                        )
+                    )
+                end
                 # Both per-individual traits are rate multipliers on this
                 # pair's contact interval, folded into the draw rather than
                 # resolved contact by contact. A pair at the default 1 draws
                 # exactly as it did before they were honoured here.
                 dt = traits ?
-                     _traits_scaled_draw(rng, kernel,
-                    ind.infectiousness *
-                    state.individuals[target_id].susceptibility) :
-                     rand(rng, kernel)
+                    _traits_scaled_draw(
+                        rng, kernel,
+                        ind.infectiousness *
+                        state.individuals[target_id].susceptibility
+                    ) :
+                    rand(rng, kernel)
                 cand = open_t + dt
                 cand <= close_t || continue
-                _propose!(pending, proposals, head, best, represents, k, opening_id,
-                    cand, may_block)
+                _propose!(
+                    pending, proposals, head, best, represents, k, opening_id,
+                    cand, may_block
+                )
             end
         end
     end
     return true
+end
+
+# Keep a record to compare against later. A projection may hand back a mutable
+# history that an intervention appends to in place, which would then compare
+# equal to itself and hide the change, so anything that is not plain bits is
+# copied. The usual named tuple of numbers is bits and is kept as it stands.
+_remember(record) = isbits(record) ? record : deepcopy(record)
+
+# The hosts whose records a pending or future draw of a live kernel reads: the
+# infectors of openings still open and the unsettled members those openings
+# reach. Only these are compared after a case settles, each once however many
+# openings read it, so the check costs what is in play rather than the whole
+# population.
+struct _LiveWatch
+    open::Vector{Int}              # openings still open
+    source::Vector{Int}            # each opening's infector, by position
+    reach::Vector{Vector{Int}}     # the members each opening reached when drawn
+    as_infector::Vector{Int}       # open openings each member is the infector of
+    as_target::Vector{Int}         # open openings that reached each member
+    tracked::Vector{Int}           # members any open opening reads
+    slot::Vector{Int}              # each member's place in `tracked`, or 0
+    opened_by::Vector{Vector{Int}} # the openings each member made
+    reached_by::Vector{Vector{Int}} # the openings that reached each member
+    moved::Vector{Int}             # members whose records moved at this case
+end
+# The seeds' opening has no infector and a fixed kernel, so it is never watched.
+function _LiveWatch(m::Int)
+    return _LiveWatch(
+        Int[], [0], [Int[]], zeros(Int, m), zeros(Int, m), Int[], zeros(Int, m),
+        [Int[] for _ in 1:m], [Int[] for _ in 1:m], Int[]
+    )
+end
+
+function _track!(w::_LiveWatch, k)
+    w.slot[k] == 0 || return nothing
+    push!(w.tracked, k)
+    w.slot[k] = length(w.tracked)
+    return nothing
+end
+
+function _untrack_at!(w::_LiveWatch, idx)
+    k = w.tracked[idx]
+    moved = pop!(w.tracked)
+    if idx <= length(w.tracked)
+        w.tracked[idx] = moved
+        w.slot[moved] = idx
+    end
+    w.slot[k] = 0
+    return nothing
+end
+
+function _watch_opening!(w::_LiveWatch, infector)
+    push!(w.source, infector)
+    push!(w.reach, Int[])
+    push!(w.open, length(w.reach))
+    push!(w.opened_by[infector], length(w.reach))
+    w.as_infector[infector] += 1
+    return _track!(w, infector)
+end
+
+function _watch_target!(w::_LiveWatch, opening, k)
+    push!(w.reach[opening], k)
+    push!(w.reached_by[k], opening)
+    w.as_target[k] += 1
+    return _track!(w, k)
+end
+
+# Whether a host record that a pending or future draw reads has moved since
+# contacts were last drawn from it, updating the remembered records as it goes
+# and listing the members that moved in `w.moved`.
+# The settled case's own record is brought up to date without counting as a
+# move: contacts to it are settled, and its own contacts are drawn after this
+# check.
+function _records_changed!(
+        records, project, state, members, case, now,
+        w::_LiveWatch, openings, processed
+    )
+    records[case] = _remember(_pair_state(project, state.individuals[members[case]]))
+    kept = 0
+    for oi in w.open
+        if openings[oi].close_t >= now
+            kept += 1
+            w.open[kept] = oi
+        else
+            w.as_infector[w.source[oi]] -= 1
+            for k in w.reach[oi]
+                w.as_target[k] -= 1
+            end
+            empty!(w.reach[oi])
+        end
+    end
+    resize!(w.open, kept)
+    empty!(w.moved)
+    idx = 1
+    while idx <= length(w.tracked)
+        k = w.tracked[idx]
+        if w.as_infector[k] == 0 && (processed[k] || w.as_target[k] == 0)
+            _untrack_at!(w, idx)
+            continue
+        end
+        _record_moved!(records, project, state, members, k) && push!(w.moved, k)
+        idx += 1
+    end
+    return !isempty(w.moved)
+end
+
+function _record_moved!(records, project, state, members, k)
+    current = _pair_state(project, state.individuals[members[k]])
+    isequal(records[k], current) && return false
+    records[k] = _remember(current)
+    return true
+end
+
+_link(p::_Pending, chain) = _Pending(p.opening, chain, p.time, p.queued)
+
+# The largest member position popped at the current clock since opening `oi`
+# was made. The number of openings only grows, so the pops since then are the
+# last ones in `pops`.
+function _passed_since(pops, passed, oi)
+    isempty(pops) && return 0
+    first(pops[1]) >= oi && return passed
+    since = 0
+    for k in length(pops):-1:1
+        made, position = pops[k]
+        made < oi && break
+        since = max(since, position)
+    end
+    return since
+end
+
+# A pair's contact interval under its kernel scaled by the multiplier `m`, given
+# that it exceeds `after`; infinite when no mass lies beyond.
+function _draw_beyond(rng::AbstractRNG, kernel, m::Real, after)
+    ls = logccdf(kernel, after)
+    isfinite(ls) || return oftype(float(after), Inf)
+    return _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
+end
+
+# A record that moved changes only the pairs it enters: those of an open opening
+# whose infector moved, and those reaching a moved member that has not settled.
+# Their contacts are drawn again from the hazards now in force, conditioned on
+# the exposure already elapsed, and every other proposal stands, external
+# introductions included. A pair with no pending proposal is drawn again too:
+# its earlier draw may have fallen past the window, which a new record can
+# change. Fixed kernels never take this path. Returns how many proposals it
+# unlinked.
+function _redraw_moved!(
+        pending, proposals, head, best, represents, w::_LiveWatch,
+        openings, processed, pos, rts, state, now, pops, passed, rng
+    )
+    # Opening => the members whose pairs with it are drawn again, or `nothing`
+    # for all of them.
+    redo = Dict{Int, Union{Nothing, Set{Int}}}()
+    for k in w.moved
+        for oi in w.opened_by[k]
+            openings[oi].close_t >= now && (redo[oi] = nothing)
+        end
+        processed[k] && continue
+        for oi in w.reached_by[k]
+            openings[oi].close_t >= now || continue
+            members_hit = get!(Set{Int}, redo, oi)
+            members_hit === nothing || push!(members_hit, k)
+        end
+    end
+    redoes(oi, j) = haskey(redo, oi) && (redo[oi] === nothing || j in redo[oi])
+    hit = Set{Int}()
+    for (oi, members_hit) in redo
+        for j in (members_hit === nothing ? w.reach[oi] : members_hit)
+            processed[j] || push!(hit, j)
+        end
+    end
+    # Unlink the proposals drawn again, keeping the rest in order.
+    unlinked = 0
+    for j in hit
+        q = head[j]
+        head[j] = 0
+        last = 0
+        while q != 0
+            proposal = proposals[q]
+            next_q = proposal.chain
+            if !redoes(proposal.opening, j)
+                last == 0 ? (head[j] = q) : (proposals[last] = _link(proposals[last], q))
+                last = q
+            else
+                unlinked += 1
+            end
+            q = next_q
+        end
+        last == 0 || (proposals[last] = _link(proposals[last], 0))
+        best[j] = oftype(best[j], Inf)
+        represents[j] = 0
+    end
+    # A record change at this clock governs contacts at this clock too, so a
+    # pair is drawn again given no contact strictly before `now`, and a contact
+    # due at `now` under the new hazard, an atom there, stays due. That holds
+    # only for pairs the race has not yet resolved at this clock: a pair whose
+    # member sits at or below a position popped at `now` since its opening was
+    # made has had its contact at `now` resolved, and is drawn given no contact
+    # up to and including `now`. Contact times are stored as `open_t + dt`, and the exposure recomputed as `now - open_t`
+    # can be off by the clock's resolution, so the draw starts `slack` early and
+    # is then carried past any contact whose stored time falls before `now`.
+    slack = 2 * eps(float(now))
+    for (oi, members_hit) in redo
+        opening = openings[oi]
+        source = state.individuals[opening.infector]
+        passed_since = _passed_since(pops, passed, oi)
+        for (ri, (_, targets)) in enumerate(rts)
+            ri == opening.route || continue
+            for (id, kernel) in targets(opening.infector, state)
+                j = get(pos, id, 0)
+                (j == 0 || processed[j]) && continue
+                members_hit === nothing || j in members_hit || continue
+                m = source.infectiousness * state.individuals[id].susceptibility
+                m <= 0 && continue
+                lower = now - opening.open_t - slack
+                dt = lower <= 0 ? _traits_scaled_draw(rng, kernel, m) :
+                    _draw_beyond(rng, kernel, m, lower)
+                # The next contact after one in the past is the same hazard
+                # conditioned on falling later, so this draws exactly given no
+                # contact before `now`, or none up to it once `now` is resolved.
+                resolved = j <= passed_since
+                while opening.open_t + dt < now || (resolved && opening.open_t + dt == now)
+                    dt = _draw_beyond(rng, kernel, m, dt)
+                end
+                candidate = opening.open_t + dt
+                candidate <= opening.close_t || continue
+                _propose!(
+                    pending, proposals, head, best, represents, j, oi, candidate, true
+                )
+            end
+        end
+    end
+    # Each member's earliest proposal, kept or new, takes its place in the heap.
+    for j in hit
+        _requeue!(pending, proposals, head, best, represents, j)
+    end
+    return unlinked
+end
+
+# Rebuild `proposals` and the heap from the proposals still linked to members
+# that have not settled, dropping those a redraw unlinked and those to members
+# already settled. Each member keeps its proposals in order, and only its
+# earliest goes back in the heap: an entry for any other is skipped when popped,
+# and a blocked contact requeues the next earliest.
+function _compact_proposals!(pending, proposals, head, best, represents, processed)
+    kept = empty(proposals)
+    empty!(pending)
+    for j in eachindex(head)
+        q = head[j]
+        head[j] = 0
+        representative = 0
+        last = 0
+        while !processed[j] && q != 0
+            proposal = proposals[q]
+            push!(kept, _Pending(proposal.opening, 0, proposal.time, false))
+            id = length(kept)
+            last == 0 ? (head[j] = id) : (kept[last] = _link(kept[last], id))
+            q == represents[j] && (representative = id)
+            last = id
+            q = proposal.chain
+        end
+        represents[j] = representative
+        if representative != 0
+            kept[representative] = _queue(kept[representative])
+            _heap_push!(pending, (best[j], j, representative))
+        end
+    end
+    copy!(proposals, kept)
+    return nothing
 end

@@ -105,30 +105,40 @@ struct RouteWindow{K, R}
     contacts_from::Symbol
     traceable::Float64
 
-    function RouteWindow(name::Symbol, from::Union{Symbol, Nothing}, until::Tuple,
+    function RouteWindow(
+            name::Symbol, from::Union{Symbol, Nothing}, until::Tuple,
             kernel::K, reach::R, contacts_from::Symbol,
-            traceable::Real) where {K, R}
-        0 <= traceable <= 1 || throw(ArgumentError(
-            "route :$name has traceable = $traceable; it is a probability and " *
-            "must lie in [0, 1]"))
-        return new{K, R}(name, from, until, kernel, reach, contacts_from,
-            Float64(traceable))
+            traceable::Real
+        ) where {K, R}
+        0 <= traceable <= 1 || throw(
+            ArgumentError(
+                "route :$name has traceable = $traceable; it is a probability and " *
+                    "must lie in [0, 1]"
+            )
+        )
+        return new{K, R}(
+            name, from, until, kernel, reach, contacts_from,
+            Float64(traceable)
+        )
     end
 end
 
 function RouteWindow(
         name::Symbol; from::Union{Symbol, Nothing} = nothing, until::Tuple = (),
         kernel, reach = name, contacts_from::Symbol = :infection,
-        traceable::Real = 1.0)
+        traceable::Real = 1.0
+    )
     return RouteWindow(name, from, until, kernel, reach, contacts_from, traceable)
 end
 
 function Base.show(io::IO, w::RouteWindow)
-    print(io, "RouteWindow(:", w.name, ", from=", repr(w.from),
-        ", until=", w.until, ", kernel=", nameof(typeof(w.kernel)))
+    print(
+        io, "RouteWindow(:", w.name, ", from=", repr(w.from),
+        ", until=", w.until, ", kernel=", nameof(typeof(w.kernel))
+    )
     w.contacts_from === :infection || print(io, ", contacts_from=:", w.contacts_from)
     w.traceable == 1 || print(io, ", traceable=", w.traceable)
-    print(io, ")")
+    return print(io, ")")
 end
 
 """
@@ -145,7 +155,7 @@ window_open(ind::Individual, w::RouteWindow) = _window_open(ind, _open_state(ind
 
 _open_state(ind::Individual, from::Symbol) = from
 function _open_state(ind::Individual, ::Nothing)
-    haskey(ind.state, :infectious_time) ? :infectious : :infection
+    return haskey(ind.state, :infectious_time) ? :infectious : :infection
 end
 
 """

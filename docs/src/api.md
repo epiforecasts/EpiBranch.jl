@@ -28,9 +28,13 @@ household_final_size
 ```@docs
 ContextualKernel
 CalendarKernel
+StatefulKernel
+record_kernel
 PairContext
+LayerHost
 EpiBranch.pair_kernel
 pairwise_surv_loglik
+pairwise_surv_loglik_by_component
 PairwiseSurvivalData
 InfectionLayer
 EpiBranch.infection_likelihood_compatible
@@ -168,6 +172,7 @@ EpiBranch.keep_active
 EpiBranch.competing_risk
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
+EpiBranch.risk_depends_on_infector
 EpiBranch.intervention_time
 EpiBranch.reset!
 is_active
@@ -244,6 +249,8 @@ extinction_probability
 epidemic_probability
 probability_contain
 proportion_transmission
+proportion_cases_individual
+proportion_cases_offspring
 proportion_cluster_size
 heterogeneous_contact_R
 ```
@@ -272,6 +279,15 @@ is the size law for Poisson offspring with a chain-level Gamma rate.
 ```@docs
 EpiBranch.GammaBorel
 EpiBranch.PoissonGammaChainSize
+```
+
+### Index-case heterogeneity
+
+A chain whose index case has its own offspring distribution — for example a
+chain seeded by an introduced case — uses [`IndexChainSize`](@ref).
+
+```@docs
+IndexChainSize
 ```
 
 ## Inference
@@ -308,9 +324,11 @@ for simulation.
 ObservationModel
 NoObservation
 PerCaseObservation
+MinimumSize
 observe
 EpiBranch.apply_observation!
 ThinnedChainSize
+TruncatedChainSize
 ```
 
 ### Cluster-level heterogeneity
@@ -327,10 +345,17 @@ data wrapper:
 
 ```julia
 loglikelihood(OffspringCounts(data), Poisson(0.5))
+loglikelihood(OffspringCounts(data), NegBin.(μ, 0.5))  # one distribution per case
 loglikelihood(ChainSizes(data), NegBin(0.8, 0.5))
 loglikelihood(ChainLengths(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), model)   # interventions/observation read from model
 ```
+
+The vector form of `loglikelihood(::OffspringCounts, ...)` scores each count
+against its own distribution, for case-level covariates such as `NegBin.(exp.(X * β), k)`.
+Pass `truncated.(offspring, 1, Inf)` for the zero-truncated case (data listing
+only cases with at least one secondary case); `Distributions.truncated`
+composes with either the scalar or the vector method.
 
 For maximum-likelihood estimation, pair the `loglikelihood` interface
 with Optim.jl, or use Turing's `maximum_likelihood` — the same model that

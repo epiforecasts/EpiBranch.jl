@@ -15,19 +15,20 @@ using Random
 # imported below) and the community-hazard helpers. Reusing them keeps the
 # household simulator and pairwise likelihood consistent with the shared engine.
 import EpiBranch: new_state, add_individuals!, apply_observation!,
-                  _simulate, SimOpts, _resolve_infectious_from,
-                  _retry_for_condition, _reconcile_sellke_bookkeeping!,
-                  _honours_termination_controls, _validate_process_windows,
-                  _warn_uncovered_terminal_states
+    _simulate, SimOpts, _resolve_infectious_from,
+    _retry_for_condition, _reconcile_sellke_bookkeeping!,
+    _honours_termination_controls, _validate_process_windows,
+    _warn_uncovered_terminal_states
 # The infection layer is built and read out of a simulation by EpiBranch's
 # helpers, which close each case's window where the simulator's race does.
-import EpiBranch: _infection_layer_columns, _infection_layer_fields
+import EpiBranch: _infection_layer_columns, _infection_layer_fields,
+    _host_time_columns
 # The pairwise survival likelihood works for any contact structure and lives in
 # EpiBranch, which scores a household population through `contact_structure`.
 # The simulator and the likelihood share EpiBranch's community-hazard helpers
 # and agree on when that term applies and what it is.
 import EpiBranch: pairwise_surv_loglik, _ext_active, _ext_draw, _valid_external,
-                  _normalise_external
+    _normalise_external
 # A vaccination's candidate effect for the likelihood, read off
 # `ModelSpec.interventions` by the structured `loglikelihood(data, spec)`
 # entry point.

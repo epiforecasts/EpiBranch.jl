@@ -22,31 +22,26 @@ tasks:
 
   # === FORMATTING ===
   format:
-    desc: Format code with JuliaFormatter
+    desc: Format code with Runic
     cmds:
-      - julia --project=. --quiet -e '
-          using Pkg;
-          Pkg.activate(temp=true);
-          Pkg.add("JuliaFormatter");
-          using JuliaFormatter;
-          format("src", verbose=true, overwrite=true);
-          format("test", verbose=true, overwrite=true);
-          format("docs", verbose=true, overwrite=true);
-          format("benchmarks", verbose=true, overwrite=true);
-          format("examples", verbose=true, overwrite=true)'
+      - >-
+        julia --project=. --quiet -e '
+        using Pkg;
+        Pkg.activate(temp=true);
+        Pkg.add(name="Runic", version="1");
+        using Runic;
+        exit(Runic.main(["--inplace", "."]))'
 
   format-check:
     desc: Check formatting without modifying files
     cmds:
-      - julia --project=. --quiet -e '
-          using Pkg;
-          Pkg.activate(temp=true);
-          Pkg.add("JuliaFormatter");
-          using JuliaFormatter;
-          ok = format("src", verbose=true, overwrite=false) &&
-               format("test", verbose=true, overwrite=false) &&
-               format("docs", verbose=true, overwrite=false);
-          ok || exit(1)'
+      - >-
+        julia --project=. --quiet -e '
+        using Pkg;
+        Pkg.activate(temp=true);
+        Pkg.add(name="Runic", version="1");
+        using Runic;
+        exit(Runic.main(["--check", "--diff", "."]))'
 
   # === LINTING / QUALITY ===
   lint:
@@ -65,6 +60,16 @@ tasks:
     desc: Run Julia benchmarks
     cmds:
       - julia --project=. benchmarks/benchmark_julia.jl
+
+  changelog:
+    desc: Show the changelog section the pending fragments will produce
+    cmds:
+      - julia scripts/changelog.jl
+
+  changelog-release:
+    desc: Fold the fragments into CHANGELOG.md under a version, e.g. task changelog-release -- 0.2.0
+    cmds:
+      - julia scripts/changelog.jl {{.CLI_ARGS}}
 
   # === R VALIDATION ===
   validate:
@@ -120,11 +125,12 @@ tasks:
   info:
     desc: Show project and environment information
     cmds:
-      - julia --project=. --quiet -e '
-          using Pkg;
-          pkg = Pkg.project();
-          println("Package: ", pkg.name, " v", pkg.version);
-          println("Julia:   ", VERSION)'
+      - >-
+        julia --project=. --quiet -e '
+        using Pkg;
+        pkg = Pkg.project();
+        println("Package: ", pkg.name, " v", pkg.version);
+        println("Julia:   ", VERSION)'
       - echo ""
       - julia --project=. --quiet -e 'using Pkg; Pkg.status()'
 

@@ -25,6 +25,9 @@ Simulation side of the observation protocol: apply `obs` to a finished
 [`NoObservation`](@ref) leaves the latent cases untouched.
 """
 apply_observation!(::NoObservation, state, rng) = state
+# A minimum recorded size selects whole clusters, which the analytical and
+# simulation chain-size paths each apply where they see sizes.
+apply_observation!(::MinimumSize, state, rng) = state
 
 function apply_observation!(o::PerCaseObservation, state, rng)
     for ind in state.individuals
@@ -42,13 +45,13 @@ function apply_observation!(o::PerCaseObservation, state, rng)
 end
 
 _percase_anchor(s::Symbol, ind) =
-    let v = get(ind.state, s, NaN)
-        isnan(v) ? ind.infection_time : v
-    end
+let v = get(ind.state, s, NaN)
+    isnan(v) ? ind.infection_time : v
+end
 _percase_anchor(f, ind) =
-    let v = float(f(ind))
-        isnan(v) ? ind.infection_time : v
-    end
+let v = float(f(ind))
+    isnan(v) ? ind.infection_time : v
+end
 
 """
     ThinnedChainSize(base, detection_prob)
@@ -62,7 +65,7 @@ needs `logpdf` on the base, so this composes without specialised
 methods.
 """
 struct ThinnedChainSize{D <: DiscreteUnivariateDistribution} <:
-       DiscreteUnivariateDistribution
+    DiscreteUnivariateDistribution
     base::D
     detection_prob::Float64
 end
@@ -78,7 +81,7 @@ function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
     # Stop when the accumulated value stops changing (within `tol`) and at
     # least 20 further terms have been added, to avoid false early
     # convergence on heavy-tailed bases (e.g. GammaBorel with low k).
-    tol = 1e-12
+    tol = 1.0e-12
     max_n = 100_000
     first = logpdf(d.base, obs) + logpdf(Binomial(obs, p), obs)
     m = first
@@ -95,7 +98,7 @@ function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
         end
         cur = m + log(S)
         if isfinite(cur) && isfinite(prev) && abs(cur - prev) < tol &&
-           n - obs >= 20
+                n - obs >= 20
             return cur
         end
         prev = cur
@@ -116,9 +119,11 @@ distribution of the *observed* quantity under `obs`, returning a
 into the same likelihood machinery as the latent law (see the design
 notes on why observation models return distributions). The default
 [`NoObservation`](@ref) returns the base unchanged;
-[`PerCaseObservation`](@ref) thins it with [`ThinnedChainSize`](@ref).
+[`PerCaseObservation`](@ref) thins it with [`ThinnedChainSize`](@ref), and
+[`MinimumSize`](@ref) conditions it with [`TruncatedChainSize`](@ref).
 """
 observe(base, ::NoObservation) = base
+observe(base, o::MinimumSize) = TruncatedChainSize(base, o.min_size)
 function observe(base, o::PerCaseObservation)
     p = scalar_detection_prob(o)
     # ρ = 1 is a no-op; skip the wrap so multi-seed likelihoods route

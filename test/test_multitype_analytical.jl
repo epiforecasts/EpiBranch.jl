@@ -8,16 +8,20 @@ end
 EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
 
 @testset "Multi-type analytics" begin
-    M = [1.5 0.6;
-         0.5 0.9]
+    M = [
+        1.5 0.6;
+        0.5 0.9
+    ]
     # Dominant eigenvalue of a 2×2 matrix in closed form.
     trace_M = M[1, 1] + M[2, 2]
     det_M = M[1, 1] * M[2, 2] - M[1, 2] * M[2, 1]
     ρ = (trace_M + sqrt(trace_M^2 - 4det_M)) / 2
 
     # A model whose type-`j` cases draw a Poisson total with mean the sum of column `j`.
-    poisson_types(offspring_matrix) = BranchingProcess(offspring_matrix,
-        R -> Poisson(R), Exponential(1.0))
+    poisson_types(offspring_matrix) = BranchingProcess(
+        offspring_matrix,
+        R -> Poisson(R), Exponential(1.0)
+    )
 
     # Fraction of runs seeded by each type that die out before `max_cases`.
     function simulated_extinction(model, n; rng)
@@ -37,9 +41,11 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         @test reproduction_number(model) ≈ ρ
         @test reproduction_number(ModelSpec(model)) ≈ ρ
 
-        M3 = [2.0 0.5 0.1;
-              0.5 1.5 0.3;
-              0.1 0.3 0.8]
+        M3 = [
+            2.0 0.5 0.1;
+            0.5 1.5 0.3;
+            0.1 0.3 0.8
+        ]
         model3 = poisson_types(M3)
         @test reproduction_number(model3) ≈ maximum(abs, eigvals(M3))
 
@@ -54,8 +60,8 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
             @test reproduction_number(model) ≈ reproduction_number(d)
             q = extinction_probability(model)
             @test q isa Vector
-            @test only(q) ≈ extinction_probability(d) atol = 1e-8
-            @test only(epidemic_probability(model)) ≈ epidemic_probability(d) atol = 1e-8
+            @test only(q) ≈ extinction_probability(d) atol = 1.0e-8
+            @test only(epidemic_probability(model)) ≈ epidemic_probability(d) atol = 1.0e-8
         end
         @test reproduction_number(BranchingProcess(NegBin(2.5, 0.16))) ≈ 2.5
         # Subcritical: certain extinction for every type.
@@ -64,19 +70,22 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         # Geometric has no `_pgf` method of its own, so it uses the truncated
         # series; it is NegBin with k = 1.
         geom = BranchingProcess([2.0;;], R -> Geometric(1 / (1 + R)), Exponential(5.0))
-        @test only(extinction_probability(geom)) ≈ extinction_probability(2.0, 1.0) atol = 1e-8
+        @test only(extinction_probability(geom)) ≈ extinction_probability(2.0, 1.0) atol = 1.0e-8
     end
 
     @testset "Extinction iteration warns when it does not converge" begin
         # Near R = 1 the fixed point moves by less than the tolerance each step,
         # so the iteration runs out before it arrives.
         near_critical = poisson_types([1.005 0.0; 0.0 0.5])
-        @test_logs (:warn, r"without converging") match_mode=:any extinction_probability(
-            near_critical)
-        @test_logs (:warn, r"without converging") match_mode=:any extinction_probability(
-            Poisson(1.005))
+        @test_logs (:warn, r"without converging") match_mode = :any extinction_probability(
+            near_critical
+        )
+        @test_logs (:warn, r"without converging") match_mode = :any extinction_probability(
+            Poisson(1.005)
+        )
         @test_logs extinction_probability(
-            poisson_types([1.5 0.2; 0.3 1.2]))
+            poisson_types([1.5 0.2; 0.3 1.2])
+        )
     end
 
     @testset "A distribution family can rescale the matrix" begin
@@ -84,13 +93,15 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         # mean, so the process runs at a reproduction number the matrix does not
         # show. `reproduction_number` reports the one the model draws from.
         balanced = [0.8 0.2; 0.2 0.8]
-        rescaled = BranchingProcess(balanced, R -> NegativeBinomial(R, 0.3),
-            Exponential(5.0))
+        rescaled = BranchingProcess(
+            balanced, R -> NegativeBinomial(R, 0.3),
+            Exponential(5.0)
+        )
         factor = mean(NegativeBinomial(1.0, 0.3))
-        @test reproduction_number(rescaled)≈factor atol=1e-8
+        @test reproduction_number(rescaled) ≈ factor atol = 1.0e-8
         # The mean-and-dispersion parameterisation leaves the matrix as written.
         intended = BranchingProcess(balanced, R -> NegBin(R, 0.5), Exponential(5.0))
-        @test reproduction_number(intended)≈1.0 atol=1e-8
+        @test reproduction_number(intended) ≈ 1.0 atol = 1.0e-8
     end
 
     @testset "A law with no mean method still works" begin
@@ -103,26 +114,27 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         # walks out until the mass left is negligible.
         from_one = R -> truncated(Poisson(R); lower = 1)
         unbounded = BranchingProcess([1.3 0.4; 0.5 1.1], from_one, Exponential(1.0))
-        @test EpiBranch._law_mean(from_one(1.8))≈2.156460527727 atol=1e-9
+        @test EpiBranch._law_mean(from_one(1.8)) ≈ 2.156460527727 atol = 1.0e-9
         @test reproduction_number(unbounded) > reproduction_number(model)
         # Every case infects at least one, so no outbreak dies out.
         @test extinction_probability(unbounded) == [0.0, 0.0]
         series_mean(d) = sum(x * pdf(d, x) for x in 0:5)
         expected = [1.3 0.4; 0.5 1.1] ./ [1.8 1.5]
         expected = expected .* [series_mean(capped(1.8)) series_mean(capped(1.5))]
-        @test reproduction_number(model)≈maximum(abs, eigvals(expected)) atol=1e-10
+        @test reproduction_number(model) ≈ maximum(abs, eigvals(expected)) atol = 1.0e-10
         @test all(0 .< extinction_probability(model) .< 1)
         # One type reduces to the single-type model with the same law.
         @test reproduction_number(BranchingProcess(capped(2.0), Exponential(1.0))) ≈
-              reproduction_number(BranchingProcess(fill(2.0, 1, 1), capped, Exponential(1.0)))
+            reproduction_number(BranchingProcess(fill(2.0, 1, 1), capped, Exponential(1.0)))
     end
 
     @testset "Power iteration warns when it does not converge" begin
         # Nearly equal top eigenvalues slow the iteration used for number types
         # without `eigvals`; stopping early is reported.
         near_tie = BigFloat[2 0; 1 1.99999]
-        @test_logs (:warn, r"without converging") match_mode=:any EpiBranch._spectral_radius(
-            near_tie; max_iter = 10)
+        @test_logs (:warn, r"without converging") match_mode = :any EpiBranch._spectral_radius(
+            near_tie; max_iter = 10
+        )
         @test_logs EpiBranch._spectral_radius(BigFloat[1.5 0.6; 0.5 0.9])
     end
 
@@ -150,20 +162,22 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
             closed = poisson_types([2.0 0.0; 0.0 r])
             q = extinction_probability(closed)
             @test q[2] == 1.0
-            @test q[1] ≈ extinction_probability(Poisson(2.0)) atol = 1e-8
+            @test q[1] ≈ extinction_probability(Poisson(2.0)) atol = 1.0e-8
         end
 
         # Type 1 also infects type 2, which is critical on its own.
         feeds_critical = poisson_types([2.0 0.0; 1.0 1.0])
         q = extinction_probability(feeds_critical)
         @test q[2] == 1.0
-        @test q[1] ≈ EpiBranch._pgf(Poisson(3.0), (2q[1] + 1) / 3) atol = 1e-9
+        @test q[1] ≈ EpiBranch._pgf(Poisson(3.0), (2q[1] + 1) / 3) atol = 1.0e-9
 
         # Type 3 infects type 2, which infects type 1; only type 1 infects
         # its own type with R > 1, and every type can reach it.
-        chain = [2.0 0.5 0.0;
-                 0.0 0.3 0.4;
-                 0.0 0.0 0.2]
+        chain = [
+            2.0 0.5 0.0;
+            0.0 0.3 0.4;
+            0.0 0.0 0.2
+        ]
         q = extinction_probability(poisson_types(chain))
         q1 = extinction_probability(Poisson(2.0))
         q2 = q1
@@ -175,7 +189,7 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
             q3 = exp(0.4 * (q2 - 1) + 0.2 * (q3 - 1))
         end
         @test all(q .< 1)
-        @test q ≈ [q1, q2, q3] atol = 1e-8
+        @test q ≈ [q1, q2, q3] atol = 1.0e-8
     end
 
     @testset "Poisson totals: analytic matches simulation" begin
@@ -194,8 +208,10 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         # checks the multinomial split.
         q_indep = zeros(2)
         for _ in 1:2000
-            q_indep = [prod(EpiBranch._pgf(NegBin(M[i, j], k), q_indep[i]) for i in 1:2)
-                       for j in 1:2]
+            q_indep = [
+                prod(EpiBranch._pgf(NegBin(M[i, j], k), q_indep[i]) for i in 1:2)
+                    for j in 1:2
+            ]
         end
         @test all(abs.(q .- q_indep) .> 0.08)
         @test simulated_extinction(model, 3000; rng = StableRNG(2)) ≈ q atol = 0.05
@@ -207,8 +223,11 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         matrix_model = poisson_types(M)
         @test occursin("MultiTypeOffspring(2 types)", sprint(show, matrix_model))
         fn_model = BranchingProcess(
-            Infectiousness((rng, ind) -> [1, 0];
-                kernel = Exponential(1.0)); n_types = 2)
+            Infectiousness(
+                (rng, ind) -> [1, 0];
+                kernel = Exponential(1.0)
+            ); n_types = 2
+        )
         @test occursin("Function", sprint(show, fn_model))
         @test_throws ArgumentError EpiBranch._analytic_offspring(fn_model)
         single = BranchingProcess(NegBin(2.0, 0.5), Exponential(1.0))
@@ -219,10 +238,12 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
 
     @testset "The unconverged warning reaches every iteration" begin
         # One call site each, so none of them silences another.
-        @test_logs (:warn, r"without converging") match_mode=:any extinction_probability(
-            1.002, 5.0)
-        @test_logs (:warn, r"one minus `ind_control`") match_mode=:any probability_contain(
-            4.0, 0.5; pop_control = 0.7499999, max_iter = 5)
+        @test_logs (:warn, r"without converging") match_mode = :any extinction_probability(
+            1.002, 5.0
+        )
+        @test_logs (:warn, r"one minus `ind_control`") match_mode = :any probability_contain(
+            4.0, 0.5; pop_control = 0.7499999, max_iter = 5
+        )
     end
 
     @testset "A heavy tail stops where the mass runs out" begin
@@ -232,8 +253,9 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         @test EpiBranch._series_range(truncated(Poisson(150.0); lower = 0)) == (0, 253)
         # A law whose tail runs past the cap says so rather than truncating it
         # silently.
-        @test_logs (:warn, r"understated") match_mode=:any EpiBranch._series_range(
-            truncated(Poisson(500.0); lower = 0), 1e-14, 50)
+        @test_logs (:warn, r"understated") match_mode = :any EpiBranch._series_range(
+            truncated(Poisson(500.0); lower = 0), 1.0e-14, 50
+        )
     end
 
     @testset "Single-type-only helpers throw for a multi-type model" begin
@@ -246,13 +268,15 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         @test EpiBranch._pgf(Dirac(3), 0.5) == 0.125
         # Every type-1 case infects exactly three others, two of type 1 and one
         # of type 2, which infects no one.
-        fixed = BranchingProcess([2.0 0.0; 1.0 0.0], R -> Dirac(round(Int, R)),
-            Exponential(1.0))
+        fixed = BranchingProcess(
+            [2.0 0.0; 1.0 0.0], R -> Dirac(round(Int, R)),
+            Exponential(1.0)
+        )
         @test reproduction_number(fixed) ≈ 2.0
         q = extinction_probability(fixed)
         @test q[2] == 1.0
         @test 0 < q[1] < 1
-        @test q[1] ≈ ((2q[1] + 1) / 3)^3 atol = 1e-9
+        @test q[1] ≈ ((2q[1] + 1) / 3)^3 atol = 1.0e-9
     end
 
     @testset "A custom model reaches the analytics through its offspring law" begin

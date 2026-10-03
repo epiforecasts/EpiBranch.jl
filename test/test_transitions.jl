@@ -30,14 +30,18 @@ struct SingleSpawnModel{A, O} <: EpiBranch.TransmissionModel
     attributes::A
     observation::O
 end
-function SingleSpawnModel(; progression = EpiBranch.AbstractClinicalTransition[],
+function SingleSpawnModel(;
+        progression = EpiBranch.AbstractClinicalTransition[],
         interventions = EpiBranch.AbstractIntervention[],
         attributes = EpiBranch.NoAttributes(),
-        observation::EpiBranch.ObservationModel = EpiBranch.NoObservation())
-    SingleSpawnModel(Exponential(1.0),
+        observation::EpiBranch.ObservationModel = EpiBranch.NoObservation()
+    )
+    return SingleSpawnModel(
+        Exponential(1.0),
         convert(Vector{EpiBranch.AbstractClinicalTransition}, progression),
         convert(Vector{EpiBranch.AbstractIntervention}, interventions),
-        attributes, observation)
+        attributes, observation
+    )
 end
 EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
 EpiBranch._progression(m::SingleSpawnModel) = m.progression
@@ -56,8 +60,10 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         # Backwards-compat: no transitions kwarg = old behaviour. No new
         # state keys appear on individuals.
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = tsim(model; attributes = clinical,
-            max_cases = 20, rng = StableRNG(1))
+        state = tsim(
+            model; attributes = clinical,
+            max_cases = 20, rng = StableRNG(1)
+        )
         for ind in state.individuals
             @test !haskey(ind.state, :reported)
             @test !haskey(ind.state, :admitted)
@@ -73,8 +79,10 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             prob_asymptomatic = 0.3
         )
         rep = Reporting(delay = LogNormal(1.0, 0.3))
-        state = tsim(model; attributes = clin_30, transitions = [rep],
-            max_cases = 100, rng = rng)
+        state = tsim(
+            model; attributes = clin_30, transitions = [rep],
+            max_cases = 100, rng = rng
+        )
 
         for ind in state.individuals
             @test haskey(ind.state, :reported)
@@ -94,10 +102,12 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         rng = StableRNG(3)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         rep = Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5)
-        state = tsim(model; attributes = clinical, transitions = [rep],
-            max_cases = 400, rng = rng)
+        state = tsim(
+            model; attributes = clinical, transitions = [rep],
+            max_cases = 400, rng = rng
+        )
         frac_reported = count(ind -> ind.state[:reported], state.individuals) /
-                        length(state.individuals)
+            length(state.individuals)
         @test 0.35 <= frac_reported <= 0.65
     end
 
@@ -105,13 +115,17 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
 
         h0 = Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.0)
-        state0 = tsim(model; attributes = clinical, transitions = [h0],
-            max_cases = 50, rng = StableRNG(4))
+        state0 = tsim(
+            model; attributes = clinical, transitions = [h0],
+            max_cases = 50, rng = StableRNG(4)
+        )
         @test all(!ind.state[:admitted] for ind in state0.individuals)
 
         h1 = Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 1.0)
-        state1 = tsim(model; attributes = clinical, transitions = [h1],
-            max_cases = 50, rng = StableRNG(5))
+        state1 = tsim(
+            model; attributes = clinical, transitions = [h1],
+            max_cases = 50, rng = StableRNG(5)
+        )
         @test all(ind.state[:admitted] for ind in state1.individuals)
     end
 
@@ -125,11 +139,13 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         hosp = Hospitalisation(
             delay = LogNormal(2.0, 0.5),
             probability = (rng, ind) -> get(ind.state, :reported, false) ? 1.0 :
-                                        0.0
+                0.0
         )
-        state = tsim(model; attributes = clinical,
+        state = tsim(
+            model; attributes = clinical,
             transitions = [rep, hosp],
-            max_cases = 200, rng = rng)
+            max_cases = 200, rng = rng
+        )
         for ind in state.individuals
             ind.state[:admitted] && @test ind.state[:reported]
         end
@@ -143,10 +159,14 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         # case at time Inf.)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         hosp = Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.0)
-        rep = Reporting(delay = LogNormal(1.0, 0.3), probability = 1.0,
-            from = :admission_time)
-        state = tsim(model; attributes = clinical, transitions = [hosp, rep],
-            max_cases = 200, rng = StableRNG(11))
+        rep = Reporting(
+            delay = LogNormal(1.0, 0.3), probability = 1.0,
+            from = :admission_time
+        )
+        state = tsim(
+            model; attributes = clinical, transitions = [hosp, rep],
+            max_cases = 200, rng = StableRNG(11)
+        )
         @test all(!ind.state[:admitted] for ind in state.individuals)
         @test all(!ind.state[:reported] for ind in state.individuals)
         @test all(!isfinite(ind.state[:reporting_time]) for ind in state.individuals)
@@ -157,8 +177,10 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         d = Death(delay = LogNormal(2.5, 0.4), probability = 0.3)
         r = Recovery(delay = LogNormal(2.0, 0.4))
-        state = tsim(model; attributes = clinical, transitions = [d, r],
-            max_cases = 200, rng = rng)
+        state = tsim(
+            model; attributes = clinical, transitions = [d, r],
+            max_cases = 200, rng = rng
+        )
         for ind in state.individuals
             @test haskey(ind.state, :outcome)
             @test ind.state[:outcome] in (:died, :recovered)
@@ -166,13 +188,13 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             # Outcome time matches the candidate of the chosen label.
             if ind.state[:outcome] == :died
                 @test ind.state[:outcome_time] ==
-                      ind.state[:death_candidate_time]
+                    ind.state[:death_candidate_time]
                 # And the death candidate fires before any recovery candidate.
                 @test ind.state[:death_candidate_time] <=
-                      ind.state[:recovery_candidate_time]
+                    ind.state[:recovery_candidate_time]
             else
                 @test ind.state[:outcome_time] ==
-                      ind.state[:recovery_candidate_time]
+                    ind.state[:recovery_candidate_time]
             end
         end
     end
@@ -182,8 +204,10 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         d = Death(delay = LogNormal(2.5, 0.4), probability = 0.0)
         r = Recovery(delay = LogNormal(2.0, 0.4))
-        state = tsim(model; attributes = clinical, transitions = [d, r],
-            max_cases = 50, rng = rng)
+        state = tsim(
+            model; attributes = clinical, transitions = [d, r],
+            max_cases = 50, rng = rng
+        )
         @test all(ind.state[:outcome] == :recovered for ind in state.individuals)
     end
 
@@ -194,12 +218,16 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             prob_asymptomatic = 1.0
         )
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        ts = [Reporting(delay = LogNormal(1.0, 0.3)),
+        ts = [
+            Reporting(delay = LogNormal(1.0, 0.3)),
             Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 1.0),
             Death(delay = LogNormal(2.5, 0.4), probability = 1.0),
-            Recovery(delay = LogNormal(2.0, 0.4))]
-        state = tsim(model; attributes = all_asymp, transitions = ts,
-            max_cases = 50, rng = rng)
+            Recovery(delay = LogNormal(2.0, 0.4)),
+        ]
+        state = tsim(
+            model; attributes = all_asymp, transitions = ts,
+            max_cases = 50, rng = rng
+        )
         for ind in state.individuals
             @test ind.state[:reported] == false
             @test ind.state[:admitted] == false
@@ -211,8 +239,10 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         model = BranchingProcess(Poisson(1.0), Exponential(5.0))
         rep = Reporting(delay = LogNormal(1.0, 0.3))
         # No attributes function → no :onset_time → error.
-        @test_throws ErrorException tsim(model; transitions = [rep],
-            max_cases = 5, rng = StableRNG(10))
+        @test_throws ErrorException tsim(
+            model; transitions = [rep],
+            max_cases = 5, rng = StableRNG(10)
+        )
     end
 
     @testset "Heterogeneous probability via function" begin
@@ -220,7 +250,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         # Demographics + clinical so :age and :onset_time are both set.
         attrs = [
             clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-            demographics(age_distribution = Uniform(0, 90))
+            demographics(age_distribution = Uniform(0, 90)),
         ]
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         # Closure CFR: 0% below 80, 100% at 80 and above. Expect deaths
@@ -228,12 +258,16 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         # arbitration deterministically picks death whenever its
         # probability is 1.0, without seed-sensitivity in Recovery's
         # sample.
-        d = Death(delay = LogNormal(0.5, 0.1),
-            probability = (rng, ind) -> ind.state[:age] >= 80 ? 1.0 : 0.0)
+        d = Death(
+            delay = LogNormal(0.5, 0.1),
+            probability = (rng, ind) -> ind.state[:age] >= 80 ? 1.0 : 0.0
+        )
         r = Recovery(delay = LogNormal(2.0, 0.4))
-        state = tsim(model; condition = 100:500, attributes = attrs,
+        state = tsim(
+            model; condition = 100:500, attributes = attrs,
             transitions = [d, r],
-            max_cases = 500, rng = rng)
+            max_cases = 500, rng = rng
+        )
         n_died_80plus = 0
         n_died_under80 = 0
         for ind in state.individuals
@@ -251,17 +285,20 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         rng = StableRNG(13)
         attrs = [
             clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
-            demographics(age_distribution = Uniform(0, 90))
+            demographics(age_distribution = Uniform(0, 90)),
         ]
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         # Under-30: fixed 1-day delay. 30+: fixed 5-day delay. Comparing
         # admission_time - onset_time recovers the right band.
         hosp = Hospitalisation(
             delay = (rng, ind) -> ind.state[:age] < 30 ? 1.0 : 5.0,
-            probability = 1.0)
-        state = tsim(model; attributes = attrs,
+            probability = 1.0
+        )
+        state = tsim(
+            model; attributes = attrs,
             transitions = [hosp],
-            max_cases = 100, rng = rng)
+            max_cases = 100, rng = rng
+        )
         for ind in state.individuals
             ind.state[:admitted] || continue
             d = ind.state[:admission_time] - onset_time(ind)
@@ -285,11 +322,13 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             DummyTest(LogNormal(0.0, 0.5)),
             # Deterministic 1-day reporting delay so we can assert the
             # anchor relation exactly.
-            Reporting(delay = (rng, ind) -> 1.0, from = :test_time)
+            Reporting(delay = (rng, ind) -> 1.0, from = :test_time),
         ]
-        state = tsim(model; attributes = clinical,
+        state = tsim(
+            model; attributes = clinical,
             transitions = test_then_report,
-            max_cases = 50, rng = rng)
+            max_cases = 50, rng = rng
+        )
         for ind in state.individuals
             @test ind.state[:reported]
             @test ind.state[:reporting_time] ≈ ind.state[:test_time] + 1.0
@@ -303,10 +342,14 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         # validator does not require :onset_time.
         rng = StableRNG(15)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        rep = Reporting(delay = (rng, ind) -> 1.0,
-            from = ind -> ind.infection_time)
-        state = tsim(model; transitions = [rep],
-            max_cases = 30, rng = rng)
+        rep = Reporting(
+            delay = (rng, ind) -> 1.0,
+            from = ind -> ind.infection_time
+        )
+        state = tsim(
+            model; transitions = [rep],
+            max_cases = 30, rng = rng
+        )
         for ind in state.individuals
             @test ind.state[:reported]
             @test ind.state[:reporting_time] ≈ ind.infection_time + 1.0
@@ -319,9 +362,11 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         # struct definitions can't live inside @testset).
         rng = StableRNG(12)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = tsim(model; attributes = clinical,
+        state = tsim(
+            model; attributes = clinical,
             transitions = [DummyTest(LogNormal(0.5, 0.2))],
-            max_cases = 30, rng = rng)
+            max_cases = 30, rng = rng
+        )
         @test all(ind.state[:tested] for ind in state.individuals)
         @test all(isfinite(ind.state[:test_time]) for ind in state.individuals)
     end
@@ -334,7 +379,8 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         state = simulate(
             SingleSpawnModel(; progression = [DummyTest(LogNormal(0.5, 0.2))], attributes = clinical);
             max_cases = 5,
-            rng = rng)
+            rng = rng
+        )
         @test all(ind.state[:tested] for ind in state.individuals)
         @test all(isfinite(ind.state[:test_time]) for ind in state.individuals)
     end
@@ -342,8 +388,10 @@ end
 
 struct FollowupVisit <: AbstractClinicalTransition end
 function EpiBranch.resolve_individual!(::FollowupVisit, ind, state)
-    time = EpiBranch.transition_time(state.rng, ind, ind.infection_time, 2.0;
-        probability = 1.0)
+    time = EpiBranch.transition_time(
+        state.rng, ind, ind.infection_time, 2.0;
+        probability = 1.0
+    )
     time === nothing || (ind.state[:followup_time] = time)
     return nothing
 end
@@ -352,9 +400,11 @@ end
     ind = Individual(id = 1, infection_time = 3.0)
     for start in (NaN, Inf, -Inf)
         rng = StableRNG(14)
-        @test EpiBranch.transition_time(rng, ind, start,
+        @test EpiBranch.transition_time(
+            rng, ind, start,
             (rng, ind) -> error("unreached delay");
-            probability = (rng, ind) -> error("unreached probability")) === nothing
+            probability = (rng, ind) -> error("unreached probability")
+        ) === nothing
         @test rand(rng) == rand(StableRNG(14))
     end
     for delay in (2.0, Exponential(2.0), (rng, ind) -> rand(rng) + 1)
@@ -363,8 +413,10 @@ end
         p = rand(expected)
         accepted = rand(expected) < p
         wait = accepted ? EpiBranch._resolve_delay(delay, expected, ind) : nothing
-        result = EpiBranch.transition_time(rng, ind, 3.0, delay;
-            probability = (rng, ind) -> rand(rng))
+        result = EpiBranch.transition_time(
+            rng, ind, 3.0, delay;
+            probability = (rng, ind) -> rand(rng)
+        )
         @test result === nothing ? !accepted : result == 3.0 + wait
         @test rand(rng) == rand(expected)
     end
@@ -374,12 +426,18 @@ end
 
     # Generic and named transitions preserve what delay callbacks can observe.
     generic = Transition(:arrived; delay = (rng, ind) -> ind.state[:arrived] ? 2.0 : 9.0)
-    reporting = Reporting(from = ind -> ind.infection_time,
-        delay = (rng, ind) -> ind.state[:reported] ? 9.0 : 2.0)
-    admission = Hospitalisation(from = ind -> ind.infection_time, probability = 1.0,
-        delay = (rng, ind) -> ind.state[:admitted] ? 9.0 : 2.0)
-    model = ModelSpec(BranchingProcess(Poisson(0.0));
-        progression = [generic, reporting, admission, FollowupVisit()])
+    reporting = Reporting(
+        from = ind -> ind.infection_time,
+        delay = (rng, ind) -> ind.state[:reported] ? 9.0 : 2.0
+    )
+    admission = Hospitalisation(
+        from = ind -> ind.infection_time, probability = 1.0,
+        delay = (rng, ind) -> ind.state[:admitted] ? 9.0 : 2.0
+    )
+    model = ModelSpec(
+        BranchingProcess(Poisson(0.0));
+        progression = [generic, reporting, admission, FollowupVisit()]
+    )
     state = simulate(model; rng = StableRNG(17))
     for key in (:arrived_time, :reporting_time, :admission_time, :followup_time)
         @test only(state.individuals).state[key] == 2.0
@@ -447,12 +505,18 @@ end
         rng = StableRNG(21)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         died_p, recovered_p = exclusive_probabilities([0.36, 0.64])
-        died = Transition(:died; from = :onset, delay = LogNormal(2.5, 0.4),
-            probability = died_p, terminal = true)
-        recovered = Transition(:recovered; from = :onset, delay = LogNormal(2.0, 0.4),
-            probability = recovered_p, terminal = true)
-        state = tsim(model; attributes = clinical, transitions = [died, recovered],
-            condition = 500:1000, max_cases = 1000, rng = rng)
+        died = Transition(
+            :died; from = :onset, delay = LogNormal(2.5, 0.4),
+            probability = died_p, terminal = true
+        )
+        recovered = Transition(
+            :recovered; from = :onset, delay = LogNormal(2.0, 0.4),
+            probability = recovered_p, terminal = true
+        )
+        state = tsim(
+            model; attributes = clinical, transitions = [died, recovered],
+            condition = 500:1000, max_cases = 1000, rng = rng
+        )
         @test all(ind -> haskey(ind.state, :outcome), state.individuals)
         n_died = count(ind -> ind.state[:outcome] == :died, state.individuals)
         @test isapprox(n_died / length(state.individuals), 0.36; atol = 0.05)

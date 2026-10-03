@@ -13,9 +13,9 @@
     #   0.36787944 0.13533528 0.07468060 0.04884170 0.03509347
     @testset "Borel density matches R dborel" begin
         d = Borel(1.0)
-        r_values = [0.36787944, 0.13533528, 0.07468060, 0.04884170, 0.03509347]
+        r_values = [0.36787944, 0.13533528, 0.0746806, 0.0488417, 0.03509347]
         for (n, r_ref) in zip(1:5, r_values)
-            @test pdf(d, n) ≈ r_ref atol = 1e-6
+            @test pdf(d, n) ≈ r_ref atol = 1.0e-6
         end
     end
 
@@ -24,7 +24,7 @@
         d = Borel(0.5)
         r_values = [0.60653066, 0.18393972, 0.08367381, 0.04511176, 0.02672038]
         for (n, r_ref) in zip(1:5, r_values)
-            @test pdf(d, n) ≈ r_ref atol = 1e-6
+            @test pdf(d, n) ≈ r_ref atol = 1.0e-6
         end
     end
 
@@ -46,7 +46,7 @@
     @testset "Extinction probability matches R probability_extinct" begin
         q = extinction_probability(1.5, 0.1)
         p = q^10
-        @test p ≈ 0.4963112 atol = 1e-5
+        @test p ≈ 0.4963112 atol = 1.0e-5
     end
 
     # ── Epidemic probability ────────────────────────────────────────────
@@ -55,7 +55,7 @@
     @testset "Epidemic probability matches R probability_epidemic" begin
         q = extinction_probability(1.5, 0.1)
         pe = 1 - q^10
-        @test pe ≈ 0.5036888 atol = 1e-5
+        @test pe ≈ 0.5036888 atol = 1.0e-5
     end
 
     # ── Extinction probability for various k (R=3) ─────────────────────
@@ -69,7 +69,7 @@
             4.0 => 0.1354
         )
         for (k, r_ref) in r_vals
-            @test extinction_probability(3.0, k) ≈ r_ref atol = 1e-3
+            @test extinction_probability(3.0, k) ≈ r_ref atol = 1.0e-3
         end
     end
 
@@ -78,7 +78,7 @@
     @testset "Epidemic probability varying k, R=1.5" begin
         r_vals = Dict(1.0 => 0.3333333, 0.5 => 0.2324081, 0.1 => 0.06765766)
         for (k, r_ref) in r_vals
-            @test epidemic_probability(1.5, k) ≈ r_ref atol = 1e-5
+            @test epidemic_probability(1.5, k) ≈ r_ref atol = 1.0e-5
         end
     end
 
@@ -87,7 +87,7 @@
     @testset "Epidemic probability varying R, k=1" begin
         r_vals = Dict(0.5 => 0.0, 1.0 => 0.0, 1.5 => 0.3333333, 5.0 => 0.8)
         for (R, r_ref) in r_vals
-            @test epidemic_probability(R, 1.0) ≈ r_ref atol = 1e-5
+            @test epidemic_probability(R, 1.0) ≈ r_ref atol = 1.0e-5
         end
     end
 
@@ -97,27 +97,27 @@
         @testset "pop_control=0.1" begin
             # R: probability_contain(R=1.5, k=0.5, theta=0.1)
             # Expected: 0.8213172
-            @test probability_contain(1.5, 0.5; pop_control = 0.1) ≈ 0.8213172 atol = 1e-5
+            @test probability_contain(1.5, 0.5; pop_control = 0.1) ≈ 0.8213172 atol = 1.0e-5
         end
 
         @testset "ind_control=0.1" begin
             # R: probability_contain(R=1.5, k=0.5, theta_ind=0.1)
             # Expected: 0.8391855
-            @test probability_contain(1.5, 0.5; ind_control = 0.1) ≈ 0.8391855 atol = 1e-5
+            @test probability_contain(1.5, 0.5; ind_control = 0.1) ≈ 0.8391855 atol = 1.0e-5
         end
 
         @testset "both controls" begin
             # R: probability_contain(R=1.5, k=0.5, theta=0.1, theta_ind=0.1)
             # Expected: 0.8915076
             @test probability_contain(1.5, 0.5; ind_control = 0.1, pop_control = 0.1) ≈
-                  0.8915076 atol = 1e-5
+                0.8915076 atol = 1.0e-5
         end
 
         @testset "5 introductions with pop_control" begin
             # R: probability_contain(R=1.5, k=0.5, num_init_infect=5, theta=0.1)
             # Expected: 0.3737271
             @test probability_contain(1.5, 0.5; n_initial = 5, pop_control = 0.1) ≈
-                  0.3737271 atol = 1e-5
+                0.3737271 atol = 1.0e-5
         end
 
         @testset "R=1.2, pop_control=0.25 (subcritical effective R)" begin
@@ -138,11 +138,11 @@
             (0.5, 0.75, 0.999),
             (1.0, 0.25, 0.4444),
             (1.0, 0.5, 0.6667),
-            (1.0, 0.75, 0.999)
+            (1.0, 0.75, 0.999),
         ]
         for (k, ctrl, r_ref) in r_vals
             jl = probability_contain(3.0, k; pop_control = ctrl)
-            @test jl ≈ r_ref atol = 2e-3
+            @test jl ≈ r_ref atol = 2.0e-3
         end
     end
 
@@ -163,7 +163,7 @@
         mean_c = 14.1 / (74 - 16)
         sd_c = 69.6 / (74 - 16)
         res = heterogeneous_contact_R(mean_c, sd_c, 1.0, 1.0)
-        @test res.R ≈ 0.2431034 atol = 1e-3
-        @test res.R_net ≈ 6.166508 atol = 1e-2
+        @test res.R ≈ 0.2431034 atol = 1.0e-3
+        @test res.R_net ≈ 6.166508 atol = 1.0e-2
     end
 end

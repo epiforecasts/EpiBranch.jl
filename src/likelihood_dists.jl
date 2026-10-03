@@ -10,7 +10,7 @@
 # from the underlying model and projects to the relevant data type.
 
 struct _ChainSizeLaw{M, S, P, K} <:
-       Distributions.Distribution{Multivariate, Discrete}
+    Distributions.Distribution{Multivariate, Discrete}
     model::M
     seeds::S
     prob_concluded::P
@@ -23,7 +23,8 @@ function _chain_sizes(data, seeds)
 end
 
 function Distributions.logpdf(
-        d::_ChainSizeLaw, data::AbstractVector{<:Integer})
+        d::_ChainSizeLaw, data::AbstractVector{<:Integer}
+    )
     cs = _chain_sizes(data, d.seeds)
     # The real-time `prob_concluded` mixture is only defined against the
     # analytical chain-size distribution. If we were handed a transmission
@@ -37,20 +38,24 @@ function Distributions.logpdf(
     # bare offspring would silently ignore the interventions. Refuse rather
     # than compute a wrong likelihood.
     if d.model isa Union{TransmissionModel, ModelSpec} &&
-       !isempty(interventions(d.model))
-        throw(ArgumentError(
-            "prob_concluded (the real-time per-cluster finished weight) has no " *
-            "closed form when the model carries interventions; the simulation-" *
-            "based likelihood has no prob_concluded path. Remove the interventions " *
-            "or omit prob_concluded."))
+            !isempty(interventions(d.model))
+        throw(
+            ArgumentError(
+                "prob_concluded (the real-time per-cluster finished weight) has no " *
+                    "closed form when the model carries interventions; the simulation-" *
+                    "based likelihood has no prob_concluded path. Remove the interventions " *
+                    "or omit prob_concluded."
+            )
+        )
     end
     target = d.model isa Union{TransmissionModel, ModelSpec} ?
-             single_type_offspring(d.model) : d.model
+        single_type_offspring(d.model) : d.model
     return loglikelihood(cs, target; prob_concluded = d.prob_concluded, d.kwargs...)
 end
 
 function Distributions.loglikelihood(
-        d::_ChainSizeLaw, data::AbstractVector{<:Integer})
+        d::_ChainSizeLaw, data::AbstractVector{<:Integer}
+    )
     return logpdf(d, data)
 end
 
@@ -69,18 +74,20 @@ end
 _underlying_model(d::_ChainSizeLaw) = d.model
 
 struct _ChainLengthLaw{M, K} <:
-       Distributions.Distribution{Multivariate, Discrete}
+    Distributions.Distribution{Multivariate, Discrete}
     model::M
     kwargs::K
 end
 
 function Distributions.logpdf(
-        d::_ChainLengthLaw, data::AbstractVector{<:Integer})
+        d::_ChainLengthLaw, data::AbstractVector{<:Integer}
+    )
     return loglikelihood(ChainLengths(data), d.model; d.kwargs...)
 end
 
 function Distributions.loglikelihood(
-        d::_ChainLengthLaw, data::AbstractVector{<:Integer})
+        d::_ChainLengthLaw, data::AbstractVector{<:Integer}
+    )
     return logpdf(d, data)
 end
 
@@ -128,29 +135,35 @@ arguments:
 - `n_sim`, `interventions`, …: forwarded to the underlying simulation-based
   `loglikelihood` when the analytical fast path does not apply.
 """
-function chain_size_distribution(model::TransmissionModel;
-        seeds = nothing, prob_concluded = nothing, kwargs...)
+function chain_size_distribution(
+        model::TransmissionModel;
+        seeds = nothing, prob_concluded = nothing, kwargs...
+    )
     # The analytical fast path is only valid when nothing perturbs the
     # bare offspring law. A model that carries interventions must route
     # through the simulation-based wrapper, even with no explicit kwargs,
     # or its interventions would be silently dropped. The model's
     # observation is applied analytically via `observe`.
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
-       isempty(interventions(model))
+            isempty(interventions(model))
         return observe(
             chain_size_distribution(single_type_offspring(model)),
-            observation(model))
+            observation(model)
+        )
     end
     return _ChainSizeLaw(model, seeds, prob_concluded, NamedTuple(kwargs))
 end
 
-function chain_size_distribution(spec::ModelSpec; seeds = nothing,
-        prob_concluded = nothing, kwargs...)
+function chain_size_distribution(
+        spec::ModelSpec; seeds = nothing,
+        prob_concluded = nothing, kwargs...
+    )
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
-       isempty(interventions(spec))
+            isempty(interventions(spec))
         return observe(
             chain_size_distribution(single_type_offspring(spec.process)),
-            observation(spec))
+            observation(spec)
+        )
     end
     return _ChainSizeLaw(spec, seeds, prob_concluded, NamedTuple(kwargs))
 end
@@ -199,11 +212,14 @@ function offspring_distribution(model::TransmissionModel)
     # but no per-individual offspring `Distribution` (e.g. `ClusterMixed`,
     # whose θ is shared within a chain, so the counts are not iid). Refuse
     # clearly rather than handing back something `logpdf(·, count)` can't use.
-    off isa Distribution || throw(ArgumentError(
-        "offspring_distribution needs a per-case offspring Distribution, but " *
-        "$(typeof(model)) carries a $(typeof(off)) offspring spec with no single " *
-        "per-individual law (e.g. ClusterMixed shares θ within a chain). Use " *
-        "chain_size_distribution for such models."))
+    off isa Distribution || throw(
+        ArgumentError(
+            "offspring_distribution needs a per-case offspring Distribution, but " *
+                "$(typeof(model)) carries a $(typeof(off)) offspring spec with no single " *
+                "per-individual law (e.g. ClusterMixed shares θ within a chain). Use " *
+                "chain_size_distribution for such models."
+        )
+    )
     return off
 end
 

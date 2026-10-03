@@ -175,18 +175,24 @@ struct VaccineEffect{E, SV, D, W, M <: AbstractEffectMode}
     dose_label::Symbol
 end
 
-function VaccineEffect(; efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
-        waning = nothing, mode = LeakyMode(), dose_label = :default)
+function VaccineEffect(;
+        efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
+        waning = nothing, mode = LeakyMode(), dose_label = :default
+    )
     # `waning` decays a per-exposure block, which `AllOrNothingMode` has none
     # of: a responder is blocked with certainty from immunity onward, not at a
     # strength that fades. Reject the combination rather than silently
     # ignoring `waning`.
     waning === nothing || !(mode isa AllOrNothingMode) ||
-        throw(ArgumentError(
+        throw(
+        ArgumentError(
             "`waning` is not yet supported together with `mode = AllOrNothingMode()`. " *
-            "Use `LeakyMode` with `waning`, or drop `waning` under `AllOrNothingMode`."))
+                "Use `LeakyMode` with `waning`, or drop `waning` under `AllOrNothingMode`."
+        )
+    )
     return VaccineEffect(
-        efficacy, severity_efficacy, delay_to_immunity, waning, mode, dose_label)
+        efficacy, severity_efficacy, delay_to_immunity, waning, mode, dose_label
+    )
 end
 
 """
@@ -259,7 +265,7 @@ function _show_keywords(io::IO, v)
         print(io, name, " = ")
         show(io, getproperty(v, name))
     end
-    print(io, ")")
+    return print(io, ")")
 end
 
 # The effect keywords a vaccination's own constructor does not name are passed
@@ -269,36 +275,42 @@ end
 function _check_effect_keywords(T, own, effect)
     for name in keys(effect)
         name in _VACCINE_EFFECT_FIELDS && continue
-        throw(ArgumentError("$T has no keyword argument `$name`. It takes " *
-                            join(string.("`", (own..., _VACCINE_EFFECT_FIELDS...), "`"),
-                                ", ") * "."))
+        throw(
+            ArgumentError(
+                "$T has no keyword argument `$name`. It takes " *
+                    join(
+                    string.("`", (own..., _VACCINE_EFFECT_FIELDS...), "`"),
+                    ", "
+                ) * "."
+            )
+        )
     end
     return nothing
 end
 
 function _vaccinated_key(label::Symbol)
-    label === :default ? :vaccinated : Symbol("vaccinated_", label)
+    return label === :default ? :vaccinated : Symbol("vaccinated_", label)
 end
 function _vaccination_time_key(label::Symbol)
-    label === :default ? :vaccination_time : Symbol("vaccination_time_", label)
+    return label === :default ? :vaccination_time : Symbol("vaccination_time_", label)
 end
 function _vaccine_efficacy_key(label::Symbol)
-    label === :default ? :vaccine_efficacy : Symbol("vaccine_efficacy_", label)
+    return label === :default ? :vaccine_efficacy : Symbol("vaccine_efficacy_", label)
 end
 function _post_exposure_efficacy_key(label::Symbol)
-    label === :default ? :post_exposure_efficacy : Symbol("post_exposure_efficacy_", label)
+    return label === :default ? :post_exposure_efficacy : Symbol("post_exposure_efficacy_", label)
 end
 function _onward_efficacy_key(label::Symbol)
-    label === :default ? :onward_efficacy : Symbol("onward_efficacy_", label)
+    return label === :default ? :onward_efficacy : Symbol("onward_efficacy_", label)
 end
 function _coverage_declined_key(label::Symbol)
-    label === :default ? :coverage_declined : Symbol("coverage_declined_", label)
+    return label === :default ? :coverage_declined : Symbol("coverage_declined_", label)
 end
 function _immunity_time_key(label::Symbol)
-    label === :default ? :immunity_time : Symbol("immunity_time_", label)
+    return label === :default ? :immunity_time : Symbol("immunity_time_", label)
 end
 function _severity_efficacy_key(label::Symbol)
-    label === :default ? :severity_efficacy : Symbol("severity_efficacy_", label)
+    return label === :default ? :severity_efficacy : Symbol("severity_efficacy_", label)
 end
 
 # Time dose `label` was given to `ind`, or `nothing` if it has not been.
@@ -311,7 +323,7 @@ end
 """Full-strength efficacy of dose `v` against infection of `ind`, as sampled
 when the dose was given, or `nothing` if none was recorded."""
 function _vaccine_efficacy(v::AbstractVaccination, ind)
-    get(ind.state, _vaccine_efficacy_key(dose_label(v)), nothing)
+    return get(ind.state, _vaccine_efficacy_key(dose_label(v)), nothing)
 end
 
 # Fraction of a dose's efficacy still in force `dt` after immunity develops.
@@ -326,7 +338,7 @@ _retained(w, dt) = w(dt)
 # risks (`_resolve!`), so the closure reads it fresh for every edge.
 _waned_block(block, ::Nothing, imm_t) = block(1.0)
 function _waned_block(block, w, imm_t)
-    (rng, parent, contact, state) -> block(w(contact.infection_time - imm_t))
+    return (rng, parent, contact, state) -> block(w(contact.infection_time - imm_t))
 end
 
 """Time at which `ind`'s immunity from dose `v`, given at `vacc_t`, develops.
@@ -334,11 +346,11 @@ A scalar `delay_to_immunity` is the same for everyone and is added to
 `vacc_t` directly; a varying one was drawn when the dose was given and is
 read back from the stored `:immunity_time`, or `Inf` if nothing was stored."""
 function _immunity_time(v::AbstractVaccination, ind, vacc_t)
-    _immunity_time(delay_to_immunity(v), dose_label(v), ind, vacc_t)
+    return _immunity_time(delay_to_immunity(v), dose_label(v), ind, vacc_t)
 end
 _immunity_time(delay::Real, label, ind, vacc_t) = vacc_t + delay
 function _immunity_time(delay, label, ind, vacc_t)
-    get(ind.state, _immunity_time_key(label), Inf)
+    return get(ind.state, _immunity_time_key(label), Inf)
 end
 
 # A scalar per-dose parameter is the same for every individual, so it is read
@@ -420,12 +432,20 @@ function _susceptibility_risk(v::AbstractVaccination, contact)
     # risk for every contact.
     eff <= 0 && return nothing
     imm_t = _immunity_time(v, contact, vacc_t)
-    return Risk(event_time = imm_t,
-        block_probability = _waned_block(retained -> eff * retained, waning(v), imm_t))
+    return Risk(
+        event_time = imm_t,
+        block_probability = _waned_block(retained -> eff * retained, waning(v), imm_t)
+    )
 end
 
 function competing_risk(v::AbstractVaccination, parent, contact, state)
-    _susceptibility_risk(v, contact)
+    return _susceptibility_risk(v, contact)
+end
+
+# The protection above reads only the contact. A subtype with a risk of its own
+# is taken to read the infector, as any other intervention is.
+function risk_depends_on_infector(v::AbstractVaccination)
+    return _has_own_method(competing_risk, typeof(v), AbstractVaccination)
 end
 
 # The efficacy stored on the contact by `_record_vaccination!`, given the
@@ -458,12 +478,15 @@ function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     contact.state[_vaccinated_key(label)] = true
     contact.state[_vaccination_time_key(label)] = vacc_t
     contact.state[_vaccine_efficacy_key(label)] = _realised_efficacy(
-        effect_mode(v), _sample_value(efficacy(v), rng, contact), rng)
+        effect_mode(v), _sample_value(efficacy(v), rng, contact), rng
+    )
     contact.state[_immunity_time_key(label)] = vacc_t +
-                                               _sample_value(
-        delay_to_immunity(v), rng, contact)
+        _sample_value(
+        delay_to_immunity(v), rng, contact
+    )
     contact.state[_severity_efficacy_key(label)] = _sample_value(
-        severity_efficacy(v), rng, contact)
+        severity_efficacy(v), rng, contact
+    )
     _record_effect_draws!(v, contact, label, rng)
     return nothing
 end
@@ -698,14 +721,22 @@ struct RingVaccination{V <: VaccineEffect, C, DD, W, PE, OE} <: AbstractVaccinat
     onward_efficacy::OE
 end
 
-function RingVaccination(; coverage = 1.0, dose_delay = 0.0, requires_dose = nothing,
+function RingVaccination(;
+        coverage = 1.0, dose_delay = 0.0, requires_dose = nothing,
         eligibility_window = Inf, post_exposure_efficacy = 0.0, onward_efficacy = 0.0,
-        effect...)
-    _check_effect_keywords(RingVaccination,
-        (:coverage, :dose_delay, :requires_dose, :eligibility_window,
-            :post_exposure_efficacy, :onward_efficacy), effect)
-    return RingVaccination(VaccineEffect(; effect...), coverage, dose_delay,
-        requires_dose, eligibility_window, post_exposure_efficacy, onward_efficacy)
+        effect...
+    )
+    _check_effect_keywords(
+        RingVaccination,
+        (
+            :coverage, :dose_delay, :requires_dose, :eligibility_window,
+            :post_exposure_efficacy, :onward_efficacy,
+        ), effect
+    )
+    return RingVaccination(
+        VaccineEffect(; effect...), coverage, dose_delay,
+        requires_dose, eligibility_window, post_exposure_efficacy, onward_efficacy
+    )
 end
 
 vaccine_effect(rv::RingVaccination) = getfield(rv, :effect)
@@ -714,7 +745,7 @@ Base.propertynames(rv::RingVaccination, ::Bool = false) = _effect_propertynames(
 Base.show(io::IO, rv::RingVaccination) = _show_keywords(io, rv)
 
 function required_fields(rv::RingVaccination)
-    _maybe_positive(rv.post_exposure_efficacy) ? [:traced, :incubation_period] : [:traced]
+    return _maybe_positive(rv.post_exposure_efficacy) ? [:traced, :incubation_period] : [:traced]
 end
 required_dose(rv::RingVaccination) = rv.requires_dose
 
@@ -722,16 +753,20 @@ required_dose(rv::RingVaccination) = rv.requires_dose
 # scalar off the intervention, or the draw stored when the dose was given. A
 # contact with no dose of this vaccination has no draw stored and reads zero.
 function _post_exposure_efficacy(rv::RingVaccination, ind)
-    _dose_value(rv.post_exposure_efficacy, _post_exposure_efficacy_key,
-        dose_label(rv), ind)
+    return _dose_value(
+        rv.post_exposure_efficacy, _post_exposure_efficacy_key,
+        dose_label(rv), ind
+    )
 end
 function _onward_efficacy(rv::RingVaccination, ind)
-    _dose_value(rv.onward_efficacy, _onward_efficacy_key, dose_label(rv), ind)
+    return _dose_value(rv.onward_efficacy, _onward_efficacy_key, dose_label(rv), ind)
 end
 
 function _record_effect_draws!(rv::RingVaccination, contact, label, rng)
-    _store_draw!(rv.post_exposure_efficacy, _post_exposure_efficacy_key, label, contact,
-        rng)
+    _store_draw!(
+        rv.post_exposure_efficacy, _post_exposure_efficacy_key, label, contact,
+        rng
+    )
     _store_draw!(rv.onward_efficacy, _onward_efficacy_key, label, contact, rng)
     return nothing
 end
@@ -753,8 +788,10 @@ function _onward_risk(rv::RingVaccination, parent, contact)
     vacc_t = _dose_time(dose_label(rv), parent)
     vacc_t === nothing && return nothing
     imm_t = _immunity_time(rv, parent, vacc_t)
-    return Risk(event_time = imm_t,
-        block_probability = _waned_block(retained -> onward * retained, waning(rv), imm_t))
+    return Risk(
+        event_time = imm_t,
+        block_probability = _waned_block(retained -> onward * retained, waning(rv), imm_t)
+    )
 end
 
 # Contact-side risk. `efficacy` blocks an exposure that comes after immunity,
@@ -772,8 +809,10 @@ function _contact_risk(rv::RingVaccination, contact)
     eff = something(_vaccine_efficacy(rv, contact), 0.0)
     imm_t = _immunity_time(rv, contact, vacc_t)
     block(retained) = 1 - (1 - eff * retained) * (1 - post * retained)
-    return Risk(event_time = imm_t,
-        block_probability = _waned_block(block, waning(rv), imm_t))
+    return Risk(
+        event_time = imm_t,
+        block_probability = _waned_block(block, waning(rv), imm_t)
+    )
 end
 
 # A dose given after the exposure can still abort the infection, so long as
@@ -791,7 +830,11 @@ end
 # its earliest exposure when several infectors reach it. If that exposure turns
 # out not to be the infection, the engine removes the abort
 # (`_drop_stale_abort!`), and a contact that escaped it gets a fresh draw at its
-# next exposure.
+# next exposure. `action_draw!` caches the draw against this exposure, so a
+# continuous-time race, which settles a contact's infection before checking a
+# dose already recorded against it and can then reconsider the same contact at
+# the same exposure through its usual candidate discovery, does not draw twice
+# for one exposure.
 #
 # Callers check `_maybe_positive(rv.post_exposure_efficacy)` first: the
 # vaccination time comes untyped from the contact's state, so an
@@ -813,12 +856,35 @@ function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     # abort anything must not draw: the draw would never succeed and would still
     # move every later draw in the run.
     post > 0.0 || return nothing
-    _covers(post, contact, rng) || return nothing
+    covered = action_draw!(contact, (rv, :abort, exposure)) do
+        _covers(post, contact, rng)
+    end
+    covered || return nothing
     # An earlier dose may already have aborted it; the infection ends at the
     # first abort.
     contact.state[:infection_aborted_time] = min(
-        get(contact.state, :infection_aborted_time, Inf), immunity)
+        get(contact.state, :infection_aborted_time, Inf), immunity
+    )
     _set_onset_from_incubation!(contact)
+    return nothing
+end
+
+# A dose given to a pending, still-uninfected member of a continuous-time race
+# (household, network, routed network) is recorded on it before its own
+# infection is settled, so `_abort_infection!` finds nothing to check against
+# yet (`contact.infection_time` is still `NaN`) and does not draw. Once the
+# race settles that member's infection, this reconsiders the dose against the
+# now-final exposure, which suppresses onset and the clinical transitions
+# exactly as a dose given after the exposure does on the generation engine.
+#
+# The protection derives from the recorded dose rather than from a schedule's
+# clock, as `persistent_competing_risks` says, so a `Scheduled` wrapper that
+# has since switched off does not withdraw it.
+function on_infection_settled!(rv::RingVaccination, ind, state, rng)
+    _maybe_positive(rv.post_exposure_efficacy) || return nothing
+    vacc_t = _dose_time(dose_label(rv), ind)
+    vacc_t === nothing && return nothing
+    _abort_infection!(rv, ind, vacc_t, rng)
     return nothing
 end
 
@@ -836,18 +902,21 @@ function competing_risk(rv::RingVaccination, parent, contact, state)
     return (exposure, onward)
 end
 
+# Only the onward risk reads the infector.
+risk_depends_on_infector(rv::RingVaccination) = rv.onward_efficacy > 0
+
 # Scalar defaults short-circuit without drawing from the rng so that
 # coverage = 1.0 and eligibility_window = Inf reproduce the previous
 # deterministic behaviour exactly.
 _within_eligibility_window(w::Real, ind, vacc_t, rng) = _within_window(w, ind, vacc_t)
 function _within_eligibility_window(w, ind, vacc_t, rng)
-    _within_window(_sample_value(w, rng, ind), ind, vacc_t)
+    return _within_window(_sample_value(w, rng, ind), ind, vacc_t)
 end
 
 # A contact with no exposure yet (a `NaN` infection time) has not exceeded any
 # window, so a pre-exposure dose is always within it.
 function _within_window(w, ind, vacc_t)
-    isnan(ind.infection_time) || vacc_t - ind.infection_time <= w
+    return isnan(ind.infection_time) || vacc_t - ind.infection_time <= w
 end
 
 _covers(p::Real, ind, rng) = p >= 1.0 || rand(rng) < p
@@ -860,7 +929,7 @@ _covers(p, ind, rng) = rand(rng) < _sample_value(p, rng, ind)
 # `MassVaccination` records a dose as soon as it draws a time, and that
 # time can fall after the later dose.
 function _has_required_dose(v::AbstractVaccination, ind, vacc_t)
-    _has_required_dose(required_dose(v), ind, vacc_t)
+    return _has_required_dose(required_dose(v), ind, vacc_t)
 end
 _has_required_dose(::Nothing, ind, vacc_t) = true
 function _has_required_dose(label::Symbol, ind, vacc_t)
@@ -890,10 +959,13 @@ function _validate_dose_schedule(interventions)
         req = required_dose(vacc)
         offset = _dose_offset(vacc)
         if req !== nothing
-            haskey(given, req) || throw(ArgumentError(
-                "vaccination with dose_label = :$label requires dose :$req, " *
-                "which is not given earlier in the intervention stack. " *
-                "List a dose after the dose it requires."))
+            haskey(given, req) || throw(
+                ArgumentError(
+                    "vaccination with dose_label = :$label requires dose :$req, " *
+                        "which is not given earlier in the intervention stack. " *
+                        "List a dose after the dose it requires."
+                )
+            )
             _check_dose_order(label, req, offset, given[req])
         end
         given[label] = offset
@@ -915,22 +987,25 @@ function _check_dose_order(label, req, offset, req_offset)
     (bounds === nothing || req_bounds === nothing) && return nothing
     lo, hi = bounds
     req_lo, req_hi = req_bounds
-    hi < req_lo && throw(ArgumentError(
-        "vaccination with dose_label = :$label requires dose :$req but is " *
-        "scheduled earlier than it (a dose_delay of at most $hi days after the " *
-        "trace, against at least $req_lo for dose :$req). A dose cannot be " *
-        "given before the dose it requires."))
+    hi < req_lo && throw(
+        ArgumentError(
+            "vaccination with dose_label = :$label requires dose :$req but is " *
+                "scheduled earlier than it (a dose_delay of at most $hi days after the " *
+                "trace, against at least $req_lo for dose :$req). A dose cannot be " *
+                "given before the dose it requires."
+        )
+    )
     lo < req_hi && @warn "This dose's dose_delay $(_reaches_below(lo)), so it can " *
-          "fall before dose :$req, which it requires and whose own dose_delay " *
-          "$(_reaches_above(req_hi)). Contacts whose draws come out in that " *
-          "order go without this dose." dose_label=label
+        "fall before dose :$req, which it requires and whose own dose_delay " *
+        "$(_reaches_above(req_hi)). Contacts whose draws come out in that " *
+        "order go without this dose." dose_label = label
     return nothing
 end
 
 # An unbounded support has no number worth quoting, so the warning describes it
 # in words instead.
 function _reaches_below(lo)
-    isfinite(lo) ? "reaches $lo days after the trace" : "has no lower bound"
+    return isfinite(lo) ? "reaches $lo days after the trace" : "has no lower bound"
 end
 _reaches_above(hi) = isfinite(hi) ? "can reach $hi days" : "has no upper bound"
 
@@ -971,10 +1046,10 @@ _warn_double_counted_efficacy(::AbstractVaccination) = nothing
 function _warn_double_counted_efficacy(rv::RingVaccination)
     rv.post_exposure_efficacy isa Real && rv.post_exposure_efficacy > 0.0 || return nothing
     efficacy(rv) isa Real && efficacy(rv) > 0.0 || return nothing
-    @warn "RingVaccination sets both `efficacy` and `post_exposure_efficacy`, "*
-          "which compose as independent risks and so over-protect any contact "*
-          "vaccinated before its exposure. `post_exposure_efficacy` already "*
-          "covers those contacts; set one or the other." dose_label=dose_label(rv) maxlog=1
+    @warn "RingVaccination sets both `efficacy` and `post_exposure_efficacy`, " *
+        "which compose as independent risks and so over-protect any contact " *
+        "vaccinated before its exposure. `post_exposure_efficacy` already " *
+        "covers those contacts; set one or the other." dose_label = dose_label(rv) maxlog = 1
     return nothing
 end
 
@@ -988,7 +1063,7 @@ _dose_offset(rv::RingVaccination) = rv.dose_delay
 _unwrap_scheduled(iv) = iv
 
 function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
-    apply_actions!(rv, state, new_contacts)
+    return apply_actions!(rv, state, new_contacts)
 end
 
 # ── GroupVaccination ─────────────────────────────────────────────────
@@ -1062,7 +1137,12 @@ e.g. `:test_positive` for the default `OnLabConfirmation()`.
 
 On network and household races, group actions are discovered after each case is
 finalised, including seed cases. They can reach the current case and pending
-members, subject to scheduling and capacity admission.
+members, subject to scheduling and capacity admission. Cases settle in order
+of infection there, not in order of eligibility, so a member can be found
+eligible earlier than one that infected it. A member the race has not yet
+settled has its dose moved to a trigger discovered later that turns out to be
+earlier than the one it was first given; a settled member's dose keeps its
+date, as does a dose another vaccination already gave.
 
 For a campaign with repeat visits, `coverage` is the final probability of being
 reached, and `dose_delay` can describe the first successful visit. A failed
@@ -1080,7 +1160,7 @@ GroupVaccination(efficacy = 0.7, eligibility = OnLabConfirmation(), dose_delay =
 ```
 """
 struct GroupVaccination{V <: VaccineEffect, E <: TraceEligibility, C, DD} <:
-       AbstractVaccination
+    AbstractVaccination
     effect::V
     eligibility::E
     coverage::C
@@ -1088,12 +1168,18 @@ struct GroupVaccination{V <: VaccineEffect, E <: TraceEligibility, C, DD} <:
     group_key::Symbol
 end
 
-function GroupVaccination(; eligibility = OnLabConfirmation(), coverage = 1.0,
-        dose_delay = 0.0, group_key = :group, effect...)
-    _check_effect_keywords(GroupVaccination,
-        (:eligibility, :coverage, :dose_delay, :group_key), effect)
-    return GroupVaccination(VaccineEffect(; effect...), eligibility, coverage,
-        dose_delay, group_key)
+function GroupVaccination(;
+        eligibility = OnLabConfirmation(), coverage = 1.0,
+        dose_delay = 0.0, group_key = :group, effect...
+    )
+    _check_effect_keywords(
+        GroupVaccination,
+        (:eligibility, :coverage, :dose_delay, :group_key), effect
+    )
+    return GroupVaccination(
+        VaccineEffect(; effect...), eligibility, coverage,
+        dose_delay, group_key
+    )
 end
 
 vaccine_effect(gv::GroupVaccination) = getfield(gv, :effect)
@@ -1102,7 +1188,7 @@ Base.propertynames(gv::GroupVaccination, ::Bool = false) = _effect_propertynames
 Base.show(io::IO, gv::GroupVaccination) = _show_keywords(io, gv)
 
 function required_fields(gv::GroupVaccination)
-    union([gv.group_key], required_fields(gv.eligibility))
+    return union([gv.group_key], required_fields(gv.eligibility))
 end
 
 # The group's trigger time: the earliest time any of its members (found by
@@ -1132,7 +1218,7 @@ end
 # member only now created. Groups untouched this generation are left alone,
 # so nobody outside a triggered group is ever visited.
 function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
-    apply_actions!(gv, state, new_contacts)
+    return apply_actions!(gv, state, new_contacts)
 end
 
 # ── MassVaccination ──────────────────────────────────────────────────
@@ -1238,5 +1324,5 @@ Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)
 required_fields(::MassVaccination) = Symbol[]
 
 function apply_post_transmission!(mv::MassVaccination, state, new_contacts)
-    apply_actions!(mv, state, new_contacts)
+    return apply_actions!(mv, state, new_contacts)
 end

@@ -47,6 +47,8 @@ The realised forward generation intervals across several simulations,
 flattened into one `Vector{Float64}`.
 """
 function realised_generation_intervals(states::Vector{<:SimulationState})
-    reduce(vcat, (realised_generation_intervals(s) for s in states);
-        init = Float64[])
+    return reduce(
+        vcat, (realised_generation_intervals(s) for s in states);
+        init = Float64[]
+    )
 end

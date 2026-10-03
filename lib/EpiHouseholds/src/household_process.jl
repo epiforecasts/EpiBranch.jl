@@ -23,7 +23,8 @@ Household-structured transmission. `sizes` gives the size of each household (so
 within-household **contact interval** — the one required input — any continuous
 `Distributions.jl` distribution on the positive reals, or a callable
 `(infector, susceptible) -> Distribution` for covariate models, or a
-[`ContextualKernel`](@ref) that also reads the infector's infection time. The kernel times
+[`ContextualKernel`](@ref) that also reads the infector's infection time,
+or a [`StatefulKernel`](@ref) with sampled attributes and dated histories. The kernel times
 each infectious contact from the infector's `from` state.
 
 The process describes the transmission alone. The natural history is a `progression`
@@ -71,11 +72,16 @@ pair goes on meeting, so blocking a fraction of the contacts thins that pair's
 hazard by the same fraction. Per-individual susceptibility and infectiousness
 reach the same thinning through the contact-interval draw, which turns a pair's
 survival `S(t)` into `S(t)^m`. Ring and group vaccination use candidate actions,
-including scheduling and capacity admission. With several households, capacity
-requires `period = Inf`: each household runs on its own clock, which prevents
-chronological accounting of a shared periodic budget. Ring delivery requires an infinite
-eligibility window and zero post-exposure efficacy. Mass vaccination remains
-unsupported on this path. Existing protection can also use host traits,
+including scheduling and capacity admission, and a ring dose's
+`post_exposure_efficacy` can abort a household member's own latent infection on
+this path, exactly as it does on the generation engine: a dose given while the
+member was still pending is reconsidered once its infection settles. With
+several households, capacity requires `period = Inf`: each household runs on
+its own clock, which prevents chronological accounting of a shared periodic
+budget. Ring delivery requires an infinite eligibility window: exposure-dependent
+eligibility needs a member's own infection time, which is not yet known while
+it is still pending. Mass vaccination remains unsupported on this path.
+Existing protection can also use host traits,
 a composed kernel or a user-defined competing risk. Non-pharmaceutical control expressed as a removal
 `Transition` in the progression always applies.
 
@@ -97,11 +103,13 @@ struct HouseholdProcess{K, E} <: TransmissionModel
     obs_end::Float64                 # end of the community-importation window
 end
 
-function HouseholdProcess(sizes::AbstractVector{<:Integer}, kernel;
+function HouseholdProcess(
+        sizes::AbstractVector{<:Integer}, kernel;
         from = nothing,
         until = (:recovered, :died, :isolated),
         external_hazard = 0.0,
-        obs_end = Inf)
+        obs_end = Inf
+    )
     all(s -> s >= 1, sizes) || throw(ArgumentError("household sizes must be ≥ 1"))
     _valid_external(external_hazard) ||
         throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
@@ -119,8 +127,10 @@ function HouseholdProcess(sizes::AbstractVector{<:Integer}, kernel;
         push!(members, mem)
     end
 
-    return HouseholdProcess(household_of, members, kernel, from, Tuple(until),
-        _normalise_external(external_hazard), Float64(obs_end))
+    return HouseholdProcess(
+        household_of, members, kernel, from, Tuple(until),
+        _normalise_external(external_hazard), Float64(obs_end)
+    )
 end
 
 """
@@ -137,7 +147,7 @@ _honours_termination_controls(::HouseholdProcess) = false
 
 # See `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl.
 function _validate_process_windows(m::HouseholdProcess, progression)
-    _warn_uncovered_terminal_states(m.until, progression; from = m.from)
+    return _warn_uncovered_terminal_states(m.until, progression; from = m.from)
 end
 
 # A case's contacts are its household-mates, so contact tracing has a set to act
@@ -148,8 +158,10 @@ function Base.show(io::IO, m::HouseholdProcess)
     n = length(m.household_of)
     nh = length(m.members)
     from = m.from === nothing ? "" : ", from=:$(m.from)"
-    print(io, "HouseholdProcess($nh households, $n individuals, ",
+    return print(
+        io, "HouseholdProcess($nh households, $n individuals, ",
         "kernel=$(m.kernel isa Distribution ? nameof(typeof(m.kernel)) : "Function")",
         from,
-        _ext_active(m.external_hazard) ? ", external_hazard=$(m.external_hazard))" : ")")
+        _ext_active(m.external_hazard) ? ", external_hazard=$(m.external_hazard))" : ")"
+    )
 end
