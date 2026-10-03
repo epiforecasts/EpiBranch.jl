@@ -57,7 +57,13 @@ tasks:
 
   # === BENCHMARKS ===
   benchmark:
-    desc: Run Julia benchmarks
+    desc: Run the BenchmarkTools suite in benchmark/, the one CI compares
+    cmds:
+      - julia --project=benchmark -e 'using Pkg; Pkg.instantiate()'
+      - julia --project=benchmark benchmark/run.jl
+
+  benchmark-r:
+    desc: Run the Julia half of the R comparison in benchmarks/ (the .R scripts are run by hand)
     cmds:
       - julia --project=. benchmarks/benchmark_julia.jl
 
@@ -98,6 +104,7 @@ tasks:
     cmds:
       - julia --project=. -e 'using Pkg; Pkg.instantiate()'
       - julia --project=docs -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+      - julia --project=benchmark -e 'using Pkg; Pkg.instantiate()'
 
   # === DEVELOPMENT WORKFLOWS ===
   dev:
