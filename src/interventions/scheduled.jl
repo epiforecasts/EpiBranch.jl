@@ -158,6 +158,13 @@ function competing_risk(s::Scheduled, parent, contact, state)
     return competing_risk(s.intervention, parent, contact, state)
 end
 
+# Which contacts the ring grows from, gated by the schedule as the tracing
+# hooks are: outside its window the wrapped intervention keeps nobody active.
+function keep_active(s::Scheduled, state, targets, is_new)
+    is_active(s, state) || return ()
+    return keep_active(s.intervention, state, targets, is_new)
+end
+
 # Tracing on the continuous-time path, gated by the schedule exactly as
 # `apply_post_transmission!` is on the generation-based one.
 function trace_contacts!(s::Scheduled, state, infector, contacts, not_before = nothing)
