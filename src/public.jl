@@ -19,6 +19,9 @@ public infectious_removal_time
 public risk_applies
 public risk_depends_on_infector
 
+# Isolation eligibility: whether an isolation time counts as a detection.
+public records_isolation
+
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:
 #   - candidate generation: `generate_offspring` (offspring-driven) or

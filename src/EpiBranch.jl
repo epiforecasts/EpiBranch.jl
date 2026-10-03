@@ -130,7 +130,6 @@ export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
 export AbstractIntervention, Isolation, ContactTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
-public records_isolation
 export is_eligible_for_isolation
 export TraceEligibility, AlwaysEligible, SymptomaticParent
 export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody, NoTracing
