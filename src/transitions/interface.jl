@@ -92,7 +92,7 @@ _resolve_delay(f, rng, ind) = float(f(rng, ind))
 #
 # The reverse of `_resolve_delay`/`_resolve_probability`: given a resolved
 # outcome, the log-density of having drawn it. A `Function` delay has no
-# family to evaluate against, so it is rejected rather than silently ignored.
+# density family to evaluate, so it is rejected rather than silently ignored.
 _delay_loglik(d::Distribution, dt) = logpdf(d, dt)
 _delay_loglik(x::Real, dt) = isapprox(dt, x) ? 0.0 : -Inf
 function _delay_loglik(f, dt)
@@ -145,7 +145,7 @@ end
 
 The log-likelihood contribution of `individual`'s outcome under transition
 `t`: the probability of the gate it passed or failed, plus the delay density
-at the time it occurred. Called by [`progression_loglik`](@ref) once per
+at the time the transition occurred. Called by [`progression_loglik`](@ref) once per
 transition per individual; `0.0` when the transition's anchor was never
 reached (it took no part in the individual's history).
 
