@@ -13,6 +13,20 @@
 # and the result is an EpiBranch `SimulationState` that `linelist` renders.
 
 """
+    race_groups(model::HouseholdProcess, kernel)
+
+The groups `_simulate` races separately: each household on its own clock by
+default, since nothing then reads across a household boundary. A `kernel`
+whose [`EpiBranch.watched_records`](@ref) is non-empty can have its hazard
+change as the race runs, including from a case in another household, so every
+household then races together on one shared clock and random stream instead.
+"""
+function race_groups(model::HouseholdProcess, kernel)
+    return isempty(EpiBranch.watched_records(kernel)) ? model.members :
+        (collect(eachindex(model.household_of)),)
+end
+
+"""
     _simulate(model::HouseholdProcess, sim_opts; interventions, attributes,
               progression, observation, rng, condition, max_attempts)
 
@@ -67,11 +81,8 @@ function _simulate(
     # rather than being cut off at `max_time` with candidates still pending.
     initial_cases = sim_opts.initial_cases === nothing ? nothing :
         Set(sim_opts.initial_cases)
-    # Only a policy that can read cases in other households needs every household
-    # on one clock, and only an intervention can write such a policy.
-    watched = EpiBranch._watched_projection(model.kernel, interventions)
-    live = watched !== nothing
-    races = live ? (collect(eachindex(model.household_of)),) : model.members
+    races = race_groups(model, model.kernel)
+    live = !isempty(EpiBranch.watched_records(model.kernel))
     extinct = true
     for mem in races
         extinct &= EpiBranch._sellke_race!(
@@ -79,7 +90,7 @@ function _simulate(
             from = from, until = model.until, interventions = interventions,
             max_time = EpiBranch._max_time(sim_opts),
             risks = EpiBranch.transmission_risks(model),
-            refresh_projection = watched,
+            kernel = model.kernel,
             seed! = (best, members, r) -> _seed_household_race!(
                 best, members, model, state, Tobs, r, initial_cases, live
             ),

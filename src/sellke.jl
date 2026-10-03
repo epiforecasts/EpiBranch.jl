@@ -528,6 +528,14 @@ through [`risk_applies`](@ref). A case infected along one of these routes has
 the route's `name` in its `:infection_route`, which `linelist` reports. The
 single-window shorthand has no named route and writes nothing.
 
+The shorthand's one route gets its kernel from `kernel`, the model's own; a
+`routes` model reads each route's kernel off its `RouteWindow` instead, so
+`kernel` and `routes` are never both needed. A route whose kernel is a live
+[`StatefulKernel`](@ref) has its pending contacts redrawn whenever
+[`watched_records`](@ref) reports the record it reads has moved; a route whose
+kernel reports none is never redrawn. At most one distinct record may be live
+across every route in one race (see issue #348 for watching more than one).
+
 `introduction`, when given, is the `(kernel, until)` of the community hazard the
 model seeded its members from: the contact-interval distribution of an
 introduction from outside the population, and the time the introduction window
@@ -565,11 +573,11 @@ function _sellke_race!(
         state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; seed!, targets = nothing,
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
-        routes = nothing, interventions = (), contacts = nothing, risks = (),
-        introduction = nothing, refresh_projection = nothing, max_time = Inf
+        routes = nothing, kernel = nothing, interventions = (), contacts = nothing,
+        risks = (), introduction = nothing, max_time = Inf
     )
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
-    # pairs, or the single-route shorthand `from`/`until`/`targets`. The
+    # pairs, or the single-route shorthand `from`/`until`/`targets`/`kernel`. The
     # shorthand's one window opts into intervention removal, which is what a
     # model with no route structure of its own means by isolation. Passing both
     # is an error, because a routed model's windows would silently drop the
@@ -581,6 +589,7 @@ function _sellke_race!(
             )
         )
         rts = ((_shorthand_window(from, until), targets),)
+        route_kernels = (kernel,)
     else
         (targets === nothing && from === nothing && until === nothing) ||
             throw(
@@ -590,6 +599,7 @@ function _sellke_race!(
             )
         )
         rts = routes
+        route_kernels = Tuple(w.kernel for (w, _) in rts)
     end
     m = length(members)
     best = fill(Inf, m)
@@ -609,6 +619,21 @@ function _sellke_race!(
     ]
 
     seed!(best, members, rng)
+    # Each route's own declared records (see `watched_records`), and the race's
+    # single shared record store: at most one distinct record may be live at
+    # once, so every live route reads the same projection. A route whose kernel
+    # declares none is never watched, whatever the other routes do.
+    route_watched = [watched_records(k) for k in route_kernels]
+    live_records = unique(r for ws in route_watched for r in ws)
+    length(live_records) > 1 && throw(
+        ArgumentError(
+            "a race cannot watch more than one live kernel's records across its " *
+                "routes yet (see issue #348); give every live route the same kernel, " *
+                "or make the other routes' kernels fixed"
+        )
+    )
+    refresh_projection = isempty(live_records) ? nothing : only(live_records)
+    route_live = [!isempty(ws) for ws in route_watched]
     live = refresh_projection !== nothing
     # What each member's host record held when contacts were last drawn from it.
     # An intervention can change a record's type as well as its value (a date
@@ -816,12 +841,12 @@ function _sellke_race!(
             close_t = _route_close(ind, w, interventions)
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
-            live && _watch_opening!(watch, j)
+            route_live[ri] && _watch_opening!(watch, j)
 
             for (target_id, kernel) in route_targets(members[j], state)
                 k = get(pos, target_id, 0)
                 (k == 0 || processed[k]) && continue
-                if live
+                if route_live[ri]
                     # This opening's draws come from the target's record as it
                     # stands now, which is what later comparisons start from.
                     _watch_target!(watch, opening_id, k)

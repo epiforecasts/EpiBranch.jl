@@ -27,21 +27,17 @@ end
     @test count(i -> get(i.state, :index, false), default.individuals[3:4]) == 1
 end
 
-@testset "Without interventions live kernels keep separate household races" begin
-    # Nothing can move a record mid-run, so neither redrawing nor a shared
-    # clock is needed and the run must match an ordinary kernel exactly.
+@testset "race_groups dispatches on the kernel's own declaration, not on interventions" begin
+    # Whether a kernel can see other households is a property it declares
+    # itself (EpiBranch.watched_records), not something the engine infers from
+    # whether any interventions happen to be in play. A fixed kernel always
+    # races each household on its own; a live kernel always shares one clock,
+    # even here, where nothing ever writes the record it reads.
     project(ind) = (tag = get(ind.state, :tag, 0.0)::Float64,)
-    progression = [Transition(:recovered; delay = 4.0, terminal = true)]
-    kernels = (Exponential(2.0), StatefulKernel(project, (c, a, b) -> Exponential(2.0)))
-    for seed in 1:25
-        runs = map(kernels) do kernel
-            process = HouseholdProcess(
-                [2, 3, 2], kernel; external_hazard = 0.1,
-                obs_end = 10.0
-            )
-            state = simulate(ModelSpec(process; progression); rng = StableRNG(seed))
-            [i.infection_time for i in state.individuals]
-        end
-        @test isequal(runs...)
-    end
+    fixed = Exponential(2.0)
+    live = StatefulKernel(project, (c, a, b) -> Exponential(2.0))
+    process = HouseholdProcess([2, 3, 2], fixed)
+    @test EpiHouseholds.race_groups(process, fixed) == process.members
+    @test EpiHouseholds.race_groups(process, live) ==
+        (collect(eachindex(process.household_of)),)
 end
