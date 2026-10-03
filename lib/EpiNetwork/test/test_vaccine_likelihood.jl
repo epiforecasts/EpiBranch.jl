@@ -1,6 +1,6 @@
 # An undirected random graph on `n` nodes with `m` distinct edges, exposing a
 # susceptible to more than one possible infector — the setting the pairwise
-# likelihood's vaccine argument is for.
+# likelihood's susceptibility effect is for.
 function _vax_random_graph(n, m, rng)
     adj = [Int[] for _ in 1:n]
     edges = 0
@@ -20,7 +20,7 @@ end
     progression = [Transition(:recovered; delay = 15.0, terminal = true)]
     adj = _vax_random_graph(300, 900, StableRNG(41))
 
-    @testset "the structured likelihood matches an explicit vaccine argument" begin
+    @testset "the structured likelihood matches an explicit vaccine effect" begin
         rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
         process = NetworkProcess(adj, Exponential(3.0))
         m = ModelSpec(
@@ -30,13 +30,14 @@ end
         state = simulate(m; n_initial = 3, rng = StableRNG(42))
         data = network_infections(state, m)
 
-        @test data.immunity_time == EpiBranch.immunity_time.(state.individuals)
-        @test any(isfinite, data.immunity_time)
+        recorded = coalesce.(data.host_times.immunity_time, Inf)
+        @test recorded == EpiBranch.immunity_time.(state.individuals)
+        @test any(isfinite, recorded)
 
         explicit = pairwise_surv_loglik(
             m.process.edge_kernel, data;
             external_hazard = m.process.external_hazard,
-            vaccine = EpiBranch.vaccine_effect(rv)
+            susceptibility = EpiBranch.vaccine_effect(rv)
         )
         @test loglikelihood(data, m) ≈ explicit
 
@@ -59,7 +60,7 @@ end
         explicit = pairwise_surv_loglik(
             m.process.edge_kernel, data;
             external_hazard = m.process.external_hazard,
-            vaccine = EpiBranch.vaccine_effect(rv)
+            susceptibility = EpiBranch.vaccine_effect(rv)
         )
         @test loglikelihood(data, m) ≈ explicit
         @test isfinite(loglikelihood(data, m))

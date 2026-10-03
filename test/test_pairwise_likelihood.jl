@@ -133,13 +133,12 @@ end
             2, [0, 1], [0.0f0, 1.0f0],
             [2.0, Inf], [1, 0]; obs_end = 3, followup_end = Inf
         )
-        @test fields ==
-            ([0.0, 1.0], [0.0, 1.0], [2.0, Inf], [true, false], 3.0, Inf, (;), [Inf, Inf])
+        @test fields == ([0.0, 1.0], [0.0, 1.0], [2.0, Inf], [true, false], 3.0, Inf, (;))
         onsets = EpiBranch._infection_layer_fields(
             2, [0.0, 1.0], [0.0, 1.0],
             [2.0, Inf], [true, false]; obs_end = Inf, followup_end = Inf,
             host_times = (onset_time = [1, NaN], trace_time = [missing, 2])
-        )[7]
+        )[end]
         @test onsets.onset_time isa Vector{Float64}
         @test isequal(onsets.onset_time, [1.0, NaN])
         @test onsets.trace_time isa Vector{Union{Missing, Float64}}
@@ -164,17 +163,6 @@ end
             2, [0.0], [0.0],
             [1.0], [true]; obs_end = Inf, followup_end = Inf
         )
-        # a mismatched immunity_time is rejected like the other per-host vectors
-        @test_throws ArgumentError EpiBranch._infection_layer_fields(
-            2, [0.0, 1.0],
-            [0.0, 1.0], [2.0, Inf], [true, false]; obs_end = Inf, followup_end = Inf,
-            immunity_time = [Inf]
-        )
-        # unvaccinated by default
-        @test EpiBranch._infection_layer_fields(
-            2, [0.0, 1.0], [0.0, 1.0], [2.0, Inf],
-            [true, false]; obs_end = Inf, followup_end = Inf
-        )[8] == [Inf, Inf]
     end
 
     @testset "community hazard helpers" begin

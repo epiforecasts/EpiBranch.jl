@@ -39,12 +39,13 @@
     @test_throws ArgumentError EpiBranch._validate_infection_likelihood(bad)
 
     @testset "vaccination" begin
-        # the basic susceptibility risk is fully represented by
-        # `pairwise_surv_loglik`'s `vaccine` argument
+        # the susceptibility risk reaches the likelihood through
+        # `susceptibility_components`
         @test compatible(MassVaccination(efficacy = 0.6, eligibility_time = 10.0))
         @test compatible(GroupVaccination(efficacy = 0.6))
         @test compatible(RingVaccination(efficacy = 0.6))
-        # a non-default dose label has no immunity time to read
+        # a labelled dose belongs to a schedule whose doses compose as
+        # separate competing risks
         @test !compatible(
             MassVaccination(
                 efficacy = 0.6, eligibility_time = 10.0, dose_label = :boost
@@ -62,17 +63,39 @@
         )
     end
 
-    @testset "_model_vaccine" begin
+    @testset "susceptibility effects of composed components" begin
         mv = MassVaccination(efficacy = 0.7, eligibility_time = 10.0)
-        @test EpiBranch._model_vaccine([iso]) === nothing
-        @test EpiBranch._model_vaccine([iso, mv]) === EpiBranch.vaccine_effect(mv)
-        @test EpiBranch._model_vaccine([Scheduled(mv; start_time = 0.0)]) ===
-            EpiBranch.vaccine_effect(mv)
-        @test_throws ArgumentError EpiBranch._model_vaccine(
-            [
-                mv,
-                GroupVaccination(efficacy = 0.5),
-            ]
+        host(τ) = LayerHost(1, NaN, EpiBranch._LayerHostState((; immunity_time = [τ]), 1))
+        effect = EpiBranch.susceptibility_components(EpiBranch.vaccine_effect(mv), host(2.0))
+        @test EpiBranch.susceptibility_components(iso, host(2.0)) === nothing
+        @test EpiBranch.susceptibility_components(mv, host(2.0)) == effect
+        @test EpiBranch.susceptibility_components([iso, mv], host(2.0)) == effect
+        @test EpiBranch.susceptibility_components(
+            [Scheduled(mv; start_time = 0.0)], host(2.0)
+        ) == effect
+        # a host never vaccinated is left as it is
+        @test EpiBranch.susceptibility_components([iso, mv], host(Inf)) === nothing
+        # two components modifying one host are not combined silently
+        @test_throws ArgumentError EpiBranch.susceptibility_components(
+            [mv, GroupVaccination(efficacy = 0.5)], host(2.0)
         )
+        # a layer that never recorded the time a vaccination reads says so
+        no_times = LayerHost(1, NaN, EpiBranch._LayerHostState((;), 1))
+        @test_throws ArgumentError EpiBranch.susceptibility_components(mv, no_times)
+
+        @test EpiBranch.susceptibility_host_times(iso) == ()
+        @test EpiBranch.susceptibility_host_times(mv) == (:immunity_time,)
+        @test EpiBranch.susceptibility_host_times(
+            CapacityConstrained(RingVaccination(efficacy = 0.6); budget_per_period = 2)
+        ) == (:immunity_time,)
+        labelled = MassVaccination(
+            efficacy = 0.6, eligibility_time = 10.0, dose_label = :boost
+        )
+        @test EpiBranch.susceptibility_host_times(labelled) == (:immunity_time_boost,)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.0)); interventions = [iso, mv, labelled]
+        )
+        @test EpiBranch._layer_host_time_keys(spec, (:onset_time, :immunity_time)) ==
+            [:onset_time, :immunity_time, :immunity_time_boost]
     end
 end

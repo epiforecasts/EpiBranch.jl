@@ -9,17 +9,13 @@
 
 """
     HouseholdInfections(household_of, infection_time, infectious_time, removal_time, is_index;
-                        obs_end = Inf, followup_end = Inf, host_times = (;),
-                        immunity_time = nothing)
+                        obs_end = Inf, followup_end = Inf, host_times = (;))
 
 The [`InfectionLayer`](@ref) of a household outbreak. Its contact structure is
 `household_of`, the household of each individual: household-mates are each
 other's possible infectors. The per-individual vectors, `obs_end`, `followup_end`
-and `host_times` are as described for `InfectionLayer`. `immunity_time` is the
-per-individual vaccine-induced immunity time
-[`pairwise_surv_loglik`](@ref)'s `vaccine` argument reads (`Inf` for every
-individual, meaning none, when omitted). Read one out of a simulation with
-[`household_infections`](@ref), or augment it in inference.
+and `host_times` are as described for `InfectionLayer`. Read one out of a
+simulation with [`household_infections`](@ref), or augment it in inference.
 """
 struct HouseholdInfections{T <: Real, H <: NamedTuple} <: InfectionLayer
     household_of::Vector{Int}
@@ -30,18 +26,15 @@ struct HouseholdInfections{T <: Real, H <: NamedTuple} <: InfectionLayer
     obs_end::T
     followup_end::T
     host_times::H
-    immunity_time::Vector{T}
 end
 
 function HouseholdInfections(
         household_of, infection_time, infectious_time,
-        removal_time, is_index; obs_end = Inf, followup_end = Inf, host_times = (;),
-        immunity_time = nothing
+        removal_time, is_index; obs_end = Inf, followup_end = Inf, host_times = (;)
     )
     fields = _infection_layer_fields(
         length(household_of), infection_time,
-        infectious_time, removal_time, is_index; obs_end, followup_end, host_times,
-        immunity_time
+        infectious_time, removal_time, is_index; obs_end, followup_end, host_times
     )
     return HouseholdInfections(collect(Int, household_of), fields...)
 end
@@ -62,7 +55,9 @@ an effective kernel when scoring; extraction records the windows only. A bare `H
 accepted too (its window opens at `:infection`, and it has no interventions).
 `host_times` names further per-member times to record, such as `(:onset_time,)`,
 read from each member's state (`missing` where a member has none) for a live
-[`StatefulKernel`](@ref) to read.
+[`StatefulKernel`](@ref) to read. The times the model's interventions read
+through [`susceptibility_host_times`](@ref EpiBranch.susceptibility_host_times),
+such as a vaccination's `:immunity_time`, are recorded as well.
 """
 function household_infections(
         state::SimulationState,
@@ -72,10 +67,8 @@ function household_infections(
     household_of = [ind.state[:household]::Int for ind in state.individuals]
     columns = _infection_layer_columns(state, model)
     return HouseholdInfections(
-        household_of, columns.infection_time,
-        columns.infectious_time, columns.removal_time, columns.is_index; obs_end,
-        followup_end, host_times = _host_time_columns(state, host_times),
-        immunity_time = columns.immunity_time
+        household_of, columns...; obs_end, followup_end,
+        host_times = _host_time_columns(state, _layer_host_time_keys(model, host_times))
     )
 end
 
@@ -87,39 +80,31 @@ function household_infections(
 end
 
 """
-    loglikelihood(data::HouseholdInfections, model::HouseholdProcess; vaccine = nothing) -> Float64
+    loglikelihood(data::HouseholdInfections, model::HouseholdProcess;
+                  susceptibility = nothing) -> Float64
+    loglikelihood(data::HouseholdInfections, model::ModelSpec{<:HouseholdProcess}) -> Float64
 
 The contact-process log-density of `model`'s kernel given the infection layer
 `data`: `pairwise_surv_loglik(model.kernel, data; external_hazard =
-model.external_hazard, vaccine)`. `vaccine` is a candidate [`VaccineEffect`](@ref)
-scoring `data.immunity_time`, as [`pairwise_surv_loglik`](@ref) describes.
+model.external_hazard, susceptibility)`. For a `ModelSpec`, `susceptibility` is
+the model's interventions, so a composed vaccination is scored from the
+immunity times [`household_infections`](@ref) recorded.
 """
 function Distributions.loglikelihood(
         data::HouseholdInfections, model::HouseholdProcess;
-        vaccine = nothing
+        susceptibility = nothing
     )
     return pairwise_surv_loglik(
-        model.kernel, data; external_hazard = model.external_hazard,
-        vaccine
+        model.kernel, data; external_hazard = model.external_hazard, susceptibility
     )
 end
 
-"""
-    loglikelihood(data::HouseholdInfections, model::ModelSpec{<:HouseholdProcess}) -> Float64
-
-As above, with the candidate vaccine effect read off `model.interventions`: the
-single [`AbstractVaccination`](@ref) there, if any (`nothing` with none present).
-[`infection_likelihood_compatible`](@ref EpiBranch.infection_likelihood_compatible)
-already restricts a vaccination reaching this point to the default dose label and
-the basic susceptibility risk, so this is always the effect `data.immunity_time`
-was extracted against.
-"""
 function Distributions.loglikelihood(
         data::HouseholdInfections,
         model::ModelSpec{<:HouseholdProcess}
     )
     EpiBranch._validate_infection_likelihood(model)
-    return loglikelihood(data, model.process; vaccine = _model_vaccine(model.interventions))
+    return loglikelihood(data, model.process; susceptibility = model.interventions)
 end
 
 # ── Compiled pair layout ─────────────────────────────────────────────
