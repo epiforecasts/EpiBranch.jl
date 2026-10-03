@@ -145,6 +145,8 @@ GroupVaccination
 AbstractEffectMode
 LeakyMode
 AllOrNothingMode
+EpiBranch.realised_efficacy
+EpiBranch.realise_prior_dose!
 Scheduled
 CapacityConstrained
 capacity_usage
@@ -198,6 +200,7 @@ Death
 Recovery
 is_terminal
 terminal_event
+terminal_target
 exclusive_probabilities
 EpiBranch.resolve_transitions!
 EpiBranch.transition_time
