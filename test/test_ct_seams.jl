@@ -384,16 +384,14 @@ end
     end
 
     @testset "a trace with no arrival time quarantines nobody" begin
-        # `trigger_time` gives `Inf` for an infector whose isolation was never
-        # recorded. The trace still reaches the contact — it is pending, not
-        # refused — but an isolation at `Inf` would remove it from nothing
-        # while reporting it as isolated and detected.
-        ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.0), Quarantine())
+        # The default `trigger_time` is the infector's recorded isolation, so
+        # an infector eligible on other grounds and never isolated gives `Inf`.
+        # The trace still reaches the contact — it is pending, not refused —
+        # but an isolation at `Inf` would remove it from nothing while
+        # reporting it as isolated and detected.
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine())
         infector = Individual(id = 1)
         infector.state[:infected] = true
-        infector.state[:isolated] = true
-        infector.state[:isolation_time] = 3.0
-        infector.state[:isolation_unrecorded] = true
         contact = Individual(id = 2)
         state = SimulationState(
             [infector, contact], Int[], 1, StableRNG(1), 0, false, nothing, Inf,
