@@ -35,12 +35,32 @@ function outcome_time(ind::Individual{T}) where {T}
     return convert(T, get(ind.state, :outcome_time, T(Inf)))::T
 end
 
-"""Whether the individual is isolated."""
-is_isolated(ind::Individual) = get(ind.state, :isolated, false)::Bool
+"""Whether the individual is recorded as isolated, which is what tracing,
+group vaccination and the line list read as a detection. An isolation that
+[`Isolation`](@ref) does not record (see
+[`EpiBranch.records_isolation`](@ref)) still removes the case from
+transmission at [`isolation_time`](@ref) but leaves this `false`."""
+is_isolated(ind::Individual) = _isolation_in_force(ind) && !_isolation_unrecorded(ind)
 
-"""Time of isolation (Inf if not isolated); a dual under AD."""
+"""Time from which isolation or quarantine removes the individual from
+transmission (`Inf` if never), whether or not the isolation is recorded as a
+detection (see [`is_isolated`](@ref)); a dual under AD."""
 function isolation_time(ind::Individual{T}) where {T}
     return convert(T, get(ind.state, :isolation_time, T(Inf)))::T
+end
+
+# Whether an isolation or quarantine stands on the individual, recorded or not.
+# Interventions layering one isolation over another read this.
+_isolation_in_force(ind::Individual) = get(ind.state, :isolated, false)::Bool
+
+# Whether the standing isolation removes the case from transmission without
+# counting as a detection.
+_isolation_unrecorded(ind::Individual) = get(ind.state, :isolation_unrecorded, false)::Bool
+
+# The time a detection reader sees: the isolation time, or `Inf` for an
+# isolation that is not recorded.
+function _recorded_isolation_time(ind::Individual{T}) where {T}
+    return _isolation_unrecorded(ind) ? T(Inf) : isolation_time(ind)
 end
 
 """Whether the individual was traced via contact tracing."""
@@ -120,12 +140,14 @@ respects leaky isolation. `:isolated` in an `until` refers to a
 `Transition(:isolated, …)` in the natural history."""
 function set_isolated!(ind::Individual, time::Real)
     ind.state[:isolated] = true
+    delete!(ind.state, :isolation_unrecorded)
     return ind.state[:isolation_time] = time
 end
 
 """Clear an individual's isolation, the inverse of [`set_isolated!`](@ref)."""
 function clear_isolated!(ind::Individual)
     ind.state[:isolated] = false
+    delete!(ind.state, :isolation_unrecorded)
     ind.state[:isolation_time] = Inf
     return nothing
 end

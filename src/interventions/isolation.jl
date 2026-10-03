@@ -33,16 +33,18 @@ is_eligible_for_isolation(::IsolationEligibility, individual, state) = true
 """
     records_isolation(eligibility, individual, state, isolation_time) -> Bool
 
-Whether a case is recorded as isolated at `isolation_time`, once a pathway has
-reached one. The default declines a time at or after the case's own outcome:
-isolating a case that has already recovered or died has no effect on
-transmission, and recording it would report a detection that did not happen to
-tracing, line lists and containment counts.
+Whether an isolation at `isolation_time` is recorded as a detection, once a
+pathway has reached one. The case is removed from transmission from
+`isolation_time` either way; this decides only whether
+[`is_isolated`](@ref) reports it, and so whether tracing, group vaccination,
+line lists and detection counts see it. The default declines a time at or
+after the case's own [`outcome_time`](@ref), since a self-report or trace
+reaching a case that has already recovered or died describes a detection that
+did not happen.
 
 Override it to record a detection that arrives late anyway. Post-mortem
 detection is the case that wants it, as with an Ebola death found at burial,
-which triggers tracing and safe burial although it changes no onward
-transmission:
+which triggers tracing:
 
 ```julia
 struct DetectAfterOutcome <: EpiBranch.IsolationEligibility end
@@ -97,14 +99,16 @@ switching the delay once a household's first case has been detected.
 probability after isolation. The competing risk's `block_probability`
 is `1 - post_isolation_transmission`.
 
-A case whose only isolation pathways (self-report or tracing) would fire at
-or after its own outcome (recovery, death, or any other terminal
-[`Transition`](@ref)) is left unisolated: isolation after the infectious
-period has already ended has no effect on transmission, and recording it
-would misreport detection to `OnIsolation`, line lists and containment
-counts.
+An isolation time at or after the case's own outcome (recovery, death, or
+any other terminal [`Transition`](@ref)) still removes the case from
+transmission, so a route that opens at the outcome, such as a funeral, is cut
+as before. It is not recorded as a detection: [`is_isolated`](@ref) stays
+`false`, so `OnIsolation` tracing and the line list do not count it.
+[`EpiBranch.records_isolation`](@ref) makes that choice and can be overridden
+through the eligibility.
 
-Initialises: `:isolated`, `:isolation_time`, `:test_positive`.
+Initialises: `:isolated`, `:isolation_time`, `:test_positive`; sets
+`:isolation_unrecorded` for an isolation it does not record.
 """
 struct Isolation{E <: IsolationEligibility, D, S} <: AbstractIntervention
     eligibility::E
@@ -199,21 +203,17 @@ function resolve_individual!(iso::Isolation, individual, state)
     # without this the contact would keep a trace time later than the onset it
     # would have self-reported on, and tracing would delay isolation instead of
     # advancing it.
-    if is_isolated(individual)
+    if _isolation_in_force(individual)
         is_test_positive(individual) || return nothing
         self_t = onset_time(individual) +
             _sample_value(iso.onset_to_isolation_delay, state.rng, individual)
         self_t < isolation_time(individual) || return nothing
-        isfinite(self_t) || return nothing
-        records_isolation(iso.eligibility, individual, state, self_t) ||
-            return nothing
         # Remember what we are overwriting. Claiming provenance below tells a
         # `Scheduled` reset that this isolation is Isolation's to undo, but the
         # standing quarantine underneath it belongs to ContactTracing and must
         # survive that reset, so stash it for `reset!` to restore.
         individual.state[:isolation_time_before_isolation] = isolation_time(individual)
-        set_isolated!(individual, self_t)
-        individual.state[:isolated_by_isolation] = true
+        _isolate!(iso, individual, state, self_t)
         return nothing
     end
 
@@ -239,11 +239,18 @@ function resolve_individual!(iso::Isolation, individual, state)
         Inf
     end
     final = min(test_time, traced_time)
-    # No pathway produced a time, so there is nothing for a policy to judge.
     isfinite(final) || return nothing
-    records_isolation(iso.eligibility, individual, state, final) || return nothing
-    set_isolated!(individual, final)
-    # Mark provenance so a Scheduled reset undoes only Isolation's own effect.
+    _isolate!(iso, individual, state, final)
+    return nothing
+end
+
+# Remove the case from transmission at `time`, recording it as a detection only
+# if the eligibility does. The provenance mark lets a Scheduled reset undo only
+# Isolation's own effect.
+function _isolate!(iso::Isolation, individual, state, time)
+    set_isolated!(individual, time)
     individual.state[:isolated_by_isolation] = true
+    records_isolation(iso.eligibility, individual, state, time) ||
+        (individual.state[:isolation_unrecorded] = true)
     return nothing
 end

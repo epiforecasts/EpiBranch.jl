@@ -1,11 +1,13 @@
-`Isolation` no longer records a case as isolated when its self-report or traced
+`Isolation` no longer records a detection when a case's self-report or traced
 isolation time falls at or after the case's own outcome (recovery, death, or
-any other terminal `Transition`). It previously recorded
-`:isolated`/`:isolation_time` regardless, so a case could be flagged as
-isolated days after recovering, which `OnIsolation`, line lists and
-detection-based endpoints all read as a genuine detection.
+any other terminal `Transition`). Such a case is still removed from
+transmission at that time, exactly as before, but `is_isolated` is `false` for
+it: the line list's `isolated` and `date_isolation` columns no longer count it
+as detected, and tracing or group vaccination triggered by isolation no longer
+starts from it. The new reserved state key `:isolation_unrecorded` marks
+such a removal, and `outcome_time` reads the time of the outcome.
 
-Whether such a time counts as a detection is now the isolation eligibility's
+Whether such a time counts as a detection is the isolation eligibility's
 call, through `EpiBranch.records_isolation`. The default declines it; a policy
 that records a detection arriving after the outcome, as post-mortem detection
 does, overrides that method.

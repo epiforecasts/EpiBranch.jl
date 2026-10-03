@@ -67,6 +67,7 @@ downstream packages should pick names that do not collide.
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
 | `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
+| `:isolation_unrecorded` | `Bool` | `false` | `Isolation` | `resolve_individual!`; the isolation removes the case from transmission without counting as a detection |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
@@ -160,12 +161,16 @@ end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
 [Transmission routes](#Transmission-routes)), which respects leaky isolation.
 `:isolated` in an `until` refers to a `Transition(:isolated, …)` in the natural
 history. Set and undo isolation with `set_isolated!` and `clear_isolated!`.
-By default `Isolation` records a case as isolated only before
-[`outcome_time`](@ref), since a self-report or trace reaching the case only
-after it has recovered or died describes a detection that did not happen.
-Whether such a time counts is the eligibility's call, through
-[`EpiBranch.records_isolation`](@ref): override it for a policy that does
-record a late detection, such as a death found at burial.
+`:isolation_time` is when the case leaves transmission, which is what
+competing risks and `INTERVENTION_REMOVAL` read. Whether that isolation also
+counts as a detection is a separate question, answered by `is_isolated`, which
+`OnIsolation` tracing, group vaccination and the line list read. `Isolation`
+answers no for an isolation at or after [`outcome_time`](@ref), since a
+self-report or trace reaching a case that has already recovered or died
+describes a detection that did not happen; it then sets
+`:isolation_unrecorded` and leaves the removal in place. The eligibility makes
+that call through [`EpiBranch.records_isolation`](@ref): override it for a
+policy that does record a late detection, such as a death found at burial.
 
 The tracing keys name two hooks because the two engines reach them
 differently: `apply_post_transmission!` on the generation-based engine, and
