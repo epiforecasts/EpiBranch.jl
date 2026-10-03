@@ -1,3 +1,17 @@
+# A custom terminal transition with a `probability` field that means
+# something unrelated to its own firing (always fires; the field is read by
+# `terminal_event` only to label its outcome). Defined at module scope
+# because struct definitions can't live inside @testset. Used below to check
+# that `terminal_certainty` is read by dispatch rather than guessed from
+# field layout.
+struct AlwaysFiresRule <: AbstractClinicalTransition
+    probability::Float64
+end
+EpiBranch.is_terminal(::AlwaysFiresRule) = true
+function EpiBranch.terminal_event(r::AlwaysFiresRule, individual)
+    return (individual.infection_time + 1.0, r.probability > 0.5 ? :died : :recovered)
+end
+
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
     # attributes, observation) around a pure transmission process. The process
@@ -174,5 +188,13 @@
             bp;
             progression = [Transition(:onset; from = :infection, delay = 1.0)]
         )
+
+        # `terminal_certainty` is dispatched, not read off whether a
+        # `probability` field exists: `AlwaysFiresRule` has one, but it means
+        # something other than a firing gate, and the transition always
+        # fires. Left to the default (unknown), it is skipped rather than
+        # misjudged from its field layout.
+        @test ismissing(EpiBranch.terminal_certainty(AlwaysFiresRule(0.0)))
+        @test_logs ModelSpec(bp; progression = [AlwaysFiresRule(0.0)])
     end
 end

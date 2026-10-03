@@ -26,6 +26,11 @@ end
 should_stop(r::MaxChainLength, state) =
     maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
 ```
+
+The structure-driven (Sellke) models run to extinction or a time bound
+rather than stepping through `should_stop` each generation; a rule that
+should also be able to end such a run overrides
+[`time_bound`](@ref EpiBranch.time_bound), as [`MaxTime`](@ref) does.
 """
 abstract type AbstractStoppingRule end
 
@@ -64,6 +69,21 @@ should_stop(::Extinction, state::SimulationState) = state.extinct
 should_stop(r::MaxCases, state::SimulationState) = state.cumulative_cases >= r.n
 should_stop(r::MaxGenerations, state::SimulationState) = state.current_generation >= r.n
 should_stop(r::MaxTime, state::SimulationState) = state.max_infection_time >= r.t
+
+"""
+    time_bound(rule::AbstractStoppingRule) -> Real
+
+The latest infection time at which `rule` could still want the simulation to
+continue, or `Inf` if the rule places no bound on time. The continuous-time
+(Sellke) models run over a fixed population to extinction or this bound,
+rather than stepping through `should_stop` each generation, so they read this
+trait instead of enumerating the known stopping-rule subtypes. Override it
+alongside `should_stop` for a rule that, like [`MaxTime`](@ref), should be
+able to end such a run; the default `Inf` leaves it unaffected. Default:
+`Inf`.
+"""
+time_bound(::AbstractStoppingRule) = Inf
+time_bound(r::MaxTime) = r.t
 
 """
 Options controlling simulation termination and setup. Contains only
