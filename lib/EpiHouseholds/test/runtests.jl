@@ -22,6 +22,10 @@ function EpiBranch.competing_risk(::BlockEverything, parent, contact, state)
     return Risk(block_probability = 1.0)
 end
 
+# A `ConditionOn` with no `condition_mask` method, to check the seam is
+# reached by dispatch rather than by a branch.
+struct _MaskLessRule <: EpiHouseholds.ConditionOn end
+
 @testset "EpiHouseholds.jl" begin
     @testset "max_time ends each household race at that time" begin
         spec = ModelSpec(
@@ -833,6 +837,61 @@ end
         end
     end
 
+    @testset "EarliestInfected resolves the conditioned host from infection times" begin
+        # a household of 3 recruited on member 1, but with augmented times where
+        # member 2 turns out to be the first infected: conditioning on the fixed
+        # recruited index (the default) leaves member 2 with no possible infector,
+        # since neither household-mate is infectious before it is infected — the
+        # impossible configuration the issue describes. Conditioning on the
+        # earliest infection instead explains member 1 and member 3 from member 2
+        # and gives a finite density, the one scoring member 2 as the index by
+        # hand (the documented workaround) also gives.
+        data = HouseholdInfections(
+            [1, 1, 1], [1.0, 0.2, 2.0], [1.0, 0.2, 2.0],
+            [Inf, Inf, Inf], [true, false, false]
+        )
+        @test pairwise_surv_loglik(Exponential(3.0), data) == -Inf
+        index_layout = compile_household_pairs(data)
+        @test pairwise_surv_loglik(Exponential(3.0), data, index_layout) == -Inf
+
+        earliest_layout = compile_household_pairs(data; condition_on = EarliestInfected())
+        ll = pairwise_surv_loglik(Exponential(3.0), data, earliest_layout)
+        @test isfinite(ll)
+
+        relabelled = HouseholdInfections(
+            data.household_of, data.infection_time, data.infectious_time,
+            data.removal_time, [false, true, false]
+        )
+        @test ll ≈ pairwise_surv_loglik(Exponential(3.0), relabelled)
+
+        m = ModelSpec(HouseholdProcess([3], Exponential(3.0)); progression = _sir(6.0))
+        @test loglikelihood(data, m) == -Inf
+        @test loglikelihood(data, m; condition_on = EarliestInfected()) ≈ ll
+
+        # a rule with no `condition_mask` method of its own cannot be used
+        @test_throws MethodError compile_household_pairs(
+            data; condition_on = _MaskLessRule()
+        )
+
+        # a community hazard already explains every host, so which host
+        # `condition_on` names makes no difference to the layout
+        ext_index = compile_household_pairs(data; external = true, condition_on = RecruitedIndex())
+        ext_earliest = compile_household_pairs(
+            data; external = true, condition_on = EarliestInfected()
+        )
+        @test ext_index.sus == ext_earliest.sus
+        @test ext_index.infector == ext_earliest.infector
+
+        # a household with a single case has no household-mate to condition
+        # against either way, and both modes score it the same
+        solo = HouseholdInfections([1], [0.0], [0.0], [Inf], [true])
+        @test pairwise_surv_loglik(Exponential(3.0), solo) ≈
+            pairwise_surv_loglik(
+            Exponential(3.0), solo,
+            compile_household_pairs(solo; condition_on = EarliestInfected())
+        )
+    end
+
     @testset "compiled pair layout: edge cases" begin
         # empty population → empty layout, zero log-likelihood, consistent length
         empty = HouseholdInfections(Int[], Float64[], Float64[], Float64[], Bool[])
@@ -1082,13 +1141,10 @@ end
     include("test_offspring.jl")
 end
 
-include("test_contextual_kernels.jl")
 include("test_likelihood_composition.jl")
 include("test_initial_cases.jl")
 include("test_actions.jl")
 include("test_vaccine_mode.jl")
 include("test_vaccine_likelihood.jl")
 
-include("test_calendar_kernels.jl")
-
-include("test_stateful_kernels.jl")
+include("test_pair_kernels.jl")

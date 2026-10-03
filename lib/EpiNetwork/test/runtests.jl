@@ -10,11 +10,8 @@ using Graphs
     include("test_graphs_ext.jl")
     include("test_network_likelihood.jl")
     include("test_vaccine_likelihood.jl")
-    include("test_contextual_kernels.jl")
 end
 
 include("test_likelihood_composition.jl")
 include("test_actions.jl")
-include("test_calendar_kernels.jl")
-
-include("test_stateful_kernels.jl")
+include("test_pair_kernels.jl")

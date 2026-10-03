@@ -22,7 +22,7 @@ groups. Return `nothing` to use the legacy batch hook. An external producer can
 implement this method and call `apply_actions!` from its batch hook.
 """
 intervention_actions(::AbstractIntervention, state, candidates) = nothing
-function intervention_actions(w::Union{Scheduled, CapacityConstrained}, state, candidates)
+function intervention_actions(w::InterventionWrapper, state, candidates)
     return intervention_actions(w.intervention, state, candidates)
 end
 
@@ -144,7 +144,7 @@ function intervention_actions(rv::RingVaccination, state, candidates)
             continue
         end
         trace_t = haskey(ind.state, :trace_time) ? ind.state[:trace_time] :
-            min(isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
+            min(_recorded_isolation_time(ind), get(ind.state, :traced_isolation_time, Inf))
         isfinite(trace_t) || continue
         delay = action_draw!(ind, (rv, :delay)) do
             _sample_value(rv.dose_delay, state.rng, ind)
@@ -209,8 +209,8 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
     for group in groups_here
         trigger = _group_trigger_time(gv, state, group)
         isfinite(trigger) || continue
-        for ind in state.individuals
-            get(ind.state, gv.group_key, nothing) == group || continue
+        for id in _group_members(state, gv.group_key, group)
+            ind = state.individuals[id]
             if get(ind.state, _vaccinated_key(dose_label(gv)), false)
                 # A member not yet settled in a continuous-time race can still
                 # be reached by an earlier trigger this same action gave it;
@@ -265,7 +265,7 @@ not require a pending contact's unknown infection time or revise an already
 finalised case. The default is `false`.
 """
 continuous_actions(::AbstractIntervention) = false
-function continuous_actions(w::Union{Scheduled, CapacityConstrained})
+function continuous_actions(w::InterventionWrapper)
     return continuous_actions(w.intervention)
 end
 continuous_actions(::GroupVaccination) = true
@@ -278,18 +278,88 @@ function continuous_actions(rv::RingVaccination)
     return rv.eligibility_window isa Real && rv.eligibility_window == Inf
 end
 
-function _apply_continuous_actions!(state, current, interventions, members, processed)
-    any(continuous_actions, interventions) || return nothing
-    # Finalised cases have already generated proposals. A new action may affect
-    # the current case and pending people, but must not revise earlier cases.
-    candidates = [
+# Whether `id` belongs to this race and the race has not finalised it yet, so
+# that an action may still reach it. `pos` is the race's id-to-index map into
+# `members`; a caller with no map walks the members instead, which is what the
+# map exists to avoid on the race's own path.
+function _pending(id, members, processed, pos)
+    if pos === nothing
+        k = findfirst(==(id), members)
+        return k !== nothing && !processed[k]
+    end
+    k = get(pos, id, 0)
+    return k != 0 && !processed[k]
+end
+
+"""
+    _continuous_candidates(intervention, state, current, members, processed, contacts, pos)
+
+The individuals to offer `intervention`'s [`intervention_actions`](@ref) once
+`current` has just settled. The default is every other still-pending member
+together with `current` itself — safe for any intervention, but a full scan
+of the population on every settled case. [`RingVaccination`](@ref) and
+[`GroupVaccination`](@ref) need far less: only `current`'s newly traced
+contacts, or the members of `current`'s own group found through the
+group-to-members index (see `EpiBranch._group_members`), so they override
+this with a candidate list bounded by ring or group size rather than
+population size.
+"""
+function _continuous_candidates(
+        ::AbstractIntervention, state, current, members, processed, contacts, pos
+    )
+    return [
         state.individuals[id]
             for (k, id) in enumerate(members)
             if !processed[k] || id == current.id
     ]
-    allowed = Set(ind.id for ind in candidates)
+end
+function _continuous_candidates(
+        w::InterventionWrapper, state, current,
+        members, processed, contacts, pos
+    )
+    return _continuous_candidates(w.intervention, state, current, members, processed, contacts, pos)
+end
+
+function _continuous_candidates(
+        ::RingVaccination, state, current, members, processed, contacts, pos
+    )
+    candidates = [current]
+    contacts === nothing && return candidates
+    for c in contacts(current.id, state)
+        cid = c isa Tuple ? c[1] : c
+        _pending(cid, members, processed, pos) || continue
+        push!(candidates, state.individuals[cid])
+    end
+    return candidates
+end
+
+function _continuous_candidates(
+        gv::GroupVaccination, state, current, members, processed, contacts, pos
+    )
+    candidates = [current]
+    group = get(current.state, gv.group_key, nothing)
+    group === nothing && return candidates
+    for id in _group_members(state, gv.group_key, group)
+        id == current.id && continue
+        _pending(id, members, processed, pos) || continue
+        push!(candidates, state.individuals[id])
+    end
+    return candidates
+end
+
+function _apply_continuous_actions!(
+        state, current, interventions, members, processed,
+        contacts = nothing, pos = nothing
+    )
+    any(continuous_actions, interventions) || return nothing
+    # Finalised cases have already generated proposals. A new action may affect
+    # the current case and pending people, but must not revise earlier cases —
+    # `_continuous_candidates` is what keeps each intervention within that
+    # boundary while choosing its own, much smaller, set of people to visit.
     for iv in interventions
         continuous_actions(iv) || continue
+        candidates = _continuous_candidates(iv, state, current, members, processed, contacts, pos)
+        allowed = Set(ind.id for ind in candidates)
         actions = intervention_actions(iv, state, candidates)
         actions === nothing && continue
         selected = filter(

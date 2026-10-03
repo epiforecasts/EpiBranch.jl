@@ -60,7 +60,7 @@ as described for `InfectionLayer`. Additional hazard modifications require an
 effective kernel when scoring; extraction records the windows only. A bare `NetworkProcess` is accepted too (its window opens at
 `:infection`, and it has no interventions). `host_times` names further per-node
 times to record, such as `(:onset_time,)`, read from each node's state (`missing`
-where a node has none) for a live [`StatefulKernel`](@ref) to read. The times the
+where a node has none) for a live [`PairKernel`](@ref) to read. The times the
 model's interventions read through
 [`susceptibility_host_times`](@ref EpiBranch.susceptibility_host_times), such as a
 vaccination's `:immunity_time`, are recorded as well.

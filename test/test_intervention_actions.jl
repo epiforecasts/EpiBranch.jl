@@ -89,6 +89,30 @@ end
     )
 end
 
+@testset "Ring vaccination times a dose only from a recorded isolation" begin
+    # A traced contact with no `:trace_time` falls back to its isolation, which
+    # counts only when the isolation was recorded as a detection.
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18)
+    )
+    rv = RingVaccination(efficacy = 0.8, dose_delay = 2.0)
+    function traced_contact(id, unrecorded)
+        ind = Individual(id = id, state = Dict{Symbol, Any}(:traced => true))
+        EpiBranch.initialise_individual!(rv, ind, state)
+        set_isolated!(ind, 5.0)
+        unrecorded && (ind.state[:isolation_unrecorded] = true)
+        push!(state.individuals, ind)
+        return ind
+    end
+
+    unrecorded = traced_contact(1, true)
+    @test isempty(EpiBranch.intervention_actions(rv, state, [unrecorded]))
+
+    recorded = traced_contact(2, false)
+    @test only(EpiBranch.intervention_actions(rv, state, [recorded])).time == 7.0
+end
+
 EpiBranch.continuous_actions(::AppointmentAction) = true
 @testset "Continuous action boundaries" begin
     state = EpiBranch.new_state(
@@ -122,6 +146,51 @@ EpiBranch.continuous_actions(::AppointmentAction) = true
     broken = Scheduled(AppointmentAction(), state -> error("predicate failed"))
     @test_throws ErrorException EpiBranch.apply_actions!(broken, state, [state.individuals[3]])
     @test state.max_infection_time == 11.0
+end
+
+@testset "Continuous-time candidates scale with the ring or group, not the population" begin
+    # A settled case's own ring or group is tiny; most of the population is
+    # neither traced by it nor in its group, and must never be materialised
+    # as a candidate just because it is still pending.
+    n = 500
+    members = collect(1:n)
+    processed = falses(n)
+    pos = Dict(id => k for (k, id) in enumerate(members))
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+    )
+    append!(state.individuals, [Individual(id = i) for i in 1:n])
+    current = state.individuals[1]
+
+    rv = RingVaccination(efficacy = 0.8)
+    contacts = (id, st) -> id == 1 ? (2, 3) : ()
+    ring_candidates = EpiBranch._continuous_candidates(
+        rv, state, current, members, processed, contacts, pos
+    )
+    @test length(ring_candidates) == 3
+    @test Set(ind.id for ind in ring_candidates) == Set([1, 2, 3])
+
+    gv = GroupVaccination(efficacy = 0.8)
+    for i in 1:3
+        state.individuals[i].state[:group] = :A
+    end
+    for i in 4:n
+        state.individuals[i].state[:group] = i
+    end
+    group_candidates = EpiBranch._continuous_candidates(
+        gv, state, current, members, processed, contacts, pos
+    )
+    @test length(group_candidates) == 3
+    @test Set(ind.id for ind in group_candidates) == Set([1, 2, 3])
+
+    # The default candidate strategy, used by any other custom
+    # `continuous_actions` intervention, keeps the wider (expensive)
+    # contract every still-pending member.
+    generic_candidates = EpiBranch._continuous_candidates(
+        AppointmentAction(), state, current, members, processed, contacts, pos
+    )
+    @test length(generic_candidates) == n
 end
 
 @testset "Existing-dose effects require admission" begin
