@@ -38,6 +38,9 @@ pairwise_surv_loglik_by_component
 PairwiseSurvivalData
 InfectionLayer
 EpiBranch.infection_likelihood_compatible
+EpiBranch.susceptibility_components
+EpiBranch.susceptibility_host_times
+EpiBranch.HazardScaling
 EpiBranch.contact_structure
 EpiBranch.followup_end
 ContactPairsLayout
