@@ -294,7 +294,7 @@ function _next_contact(rng::AbstractRNG, kernel, m::Real, dt, end_dt)
                 "contact kernel or host traits. The likely cause is a case whose " *
                 "infectious window never closes — either the progression has no " *
                 "terminal transition reaching one of `until`'s states, or one is " *
-                "reachable but gated so that some cases resolve none of them (see " *
+                "reachable but gated so that some cases reach none of them (see " *
                 "`exclusive_probabilities` for terminal transitions meant to " *
                 "partition the population exactly)."
         )
