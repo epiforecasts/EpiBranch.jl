@@ -49,7 +49,11 @@ function transition_loglik(r::Recovery, individual::Individual)
     anchor = _resolve_anchor(r.from, individual)
     _anchor_ok(anchor) || return 0.0
     t = individual.state[:recovery_candidate_time]
-    isfinite(t) || return -Inf
+    if !isfinite(t)
+        abort = _infection_aborted_time(individual)
+        isinf(abort) && return -Inf
+        return _censored_loglik(1.0, r.delay, individual, anchor, abort)
+    end
     return _delay_loglik(r.delay, t - anchor)
 end
 
@@ -146,6 +150,9 @@ function transition_loglik(d::Death, individual::Individual)
     _anchor_ok(anchor) || return 0.0
     t = individual.state[:death_candidate_time]
     candidate = isfinite(t)
+    abort = _infection_aborted_time(individual)
+    candidate || isinf(abort) ||
+        return _censored_loglik(d.probability, d.delay, individual, anchor, abort)
     ll = _probability_loglik(d.probability, candidate, individual)
     candidate || return ll
     return ll + _delay_loglik(d.delay, t - anchor)

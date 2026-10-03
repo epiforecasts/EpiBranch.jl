@@ -88,6 +88,11 @@ later exposure of a contact already given it. It is removed when infection is
 resolved if that exposure does not infect the contact before the abort time."""
 _infection_aborted(ind::Individual) = haskey(ind.state, :infection_aborted_time)
 
+"""When the individual's infection was aborted, or `Inf` if it was not. The
+transitions an abort undid took effect at or after this time, which is what the
+progression likelihood censors them at."""
+_infection_aborted_time(ind::Individual) = get(ind.state, :infection_aborted_time, Inf)::Float64
+
 """Whether the individual develops symptoms: it is not asymptomatic and its
 infection was not aborted before onset."""
 _develops_symptoms(ind::Individual) = !is_asymptomatic(ind) && !_infection_aborted(ind)

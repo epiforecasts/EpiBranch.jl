@@ -56,6 +56,9 @@ function transition_loglik(h::Hospitalisation, individual::Individual)
     anchor = _resolve_anchor(h.from, individual)
     _anchor_ok(anchor) || return 0.0
     occurred = individual.state[:admitted]::Bool
+    abort = _infection_aborted_time(individual)
+    occurred || isinf(abort) ||
+        return _censored_loglik(h.probability, h.delay, individual, anchor, abort)
     ll = _probability_loglik(h.probability, occurred, individual)
     occurred || return ll
     return ll + _delay_loglik(h.delay, individual.state[:admission_time] - anchor)

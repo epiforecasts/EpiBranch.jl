@@ -79,7 +79,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
             progression = [latent], attributes = clinical
         )
         state = simulate(spec; max_cases = 5, rng = StableRNG(4))
-        @test_throws ArgumentError progression_loglik(spec, state)
+        @test_throws "has no density to evaluate" progression_loglik(spec, state)
     end
 
     @testset "a death contributes its gate and, when it happened, its delay" begin
@@ -147,22 +147,134 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test loglik(1.0, 3.5) == -Inf
     end
 
-    @testset "a shared-draw probability gate cannot be evaluated on a hand-built individual" begin
-        death_p, _ = exclusive_probabilities([0.64, 0.36])
+    @testset "a shared-draw group scores the bucket its draw selected" begin
+        # The bucket's width is the probability of selecting it, which a run's
+        # 0 or 1 hides: without it the case-fatality ratio would reach the
+        # likelihood only through the delays.
+        death_p, recovered_p = exclusive_probabilities([0.64, 0.36])
         death = Death(delay = Exponential(2.0), probability = death_p)
+        recovery = Transition(
+            :recovered, from = :onset, delay = Exponential(3.0),
+            probability = recovered_p, terminal = true
+        )
         spec = ModelSpec(
             BranchingProcess(Poisson(0.0));
-            progression = [death], attributes = clinical
+            progression = [death, recovery], attributes = clinical
+        )
+        died = Individual(id = 1, infection_time = 0.0)
+        died.state[:infected] = true
+        died.state[:onset_time] = 1.0
+        died.state[:death_candidate_time] = 3.0
+        died.state[:recovered] = false
+        n_keys = length(died.state)
+        @test progression_loglik(spec, [died]) ≈
+            log(0.64) + logpdf(Exponential(2.0), 2.0)
+        # The siblings it passed over say nothing more, and a hand-built
+        # individual needs no cached draw to be evaluated.
+        @test length(died.state) == n_keys
+
+        recovered = Individual(id = 2, infection_time = 0.0)
+        recovered.state[:infected] = true
+        recovered.state[:onset_time] = 1.0
+        recovered.state[:death_candidate_time] = Inf
+        recovered.state[:recovered] = true
+        recovered.state[:recovered_time] = 4.0
+        @test progression_loglik(spec, [recovered]) ≈
+            log(0.36) + logpdf(Exponential(3.0), 3.0)
+    end
+
+    @testset "a shared-draw group below 1 scores its shortfall once" begin
+        # A group whose probabilities leave room is the one case that needs the
+        # draw itself: nothing in the individual's own flags says whether the
+        # draw selected a sibling or fell past them all.
+        first_p, second_p = exclusive_probabilities([0.3, 0.3])
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.0));
+            progression = [
+                Transition(
+                    :hospitalised, from = :onset, delay = Exponential(2.0),
+                    probability = first_p
+                ),
+                Transition(
+                    :recovered, from = :onset, delay = Exponential(3.0),
+                    probability = second_p, terminal = true
+                ),
+            ],
+            attributes = clinical
+        )
+        neither = Individual(id = 1, infection_time = 0.0)
+        neither.state[:infected] = true
+        neither.state[:onset_time] = 1.0
+        neither.state[:hospitalised] = false
+        neither.state[:recovered] = false
+        @test_throws ArgumentError progression_loglik(spec, [neither])
+        neither.state[second_p.key] = 0.9
+        @test progression_loglik(spec, [neither]) ≈ log1p(-0.6)
+        # A draw that did select a sibling leaves the shortfall out of it.
+        selected = Individual(id = 2, infection_time = 0.0)
+        selected.state[:infected] = true
+        selected.state[:onset_time] = 1.0
+        selected.state[:hospitalised] = true
+        selected.state[:hospitalised_time] = 3.0
+        selected.state[:recovered] = false
+        selected.state[second_p.key] = 0.1
+        @test progression_loglik(spec, [selected]) ≈
+            log(0.3) + logpdf(Exponential(2.0), 2.0)
+    end
+
+    @testset "a transition an abort undid is censored at the abort" begin
+        # `resolve_transitions!` undoes a transition that would take effect at
+        # or after the abort, so what the individual records is that it would
+        # have happened no earlier than then. Read as a failed gate instead, an
+        # unconditional transition would take the whole outbreak to `-Inf`.
+        latent = Transition(:infectious, from = :infection, delay = Exponential(2.0))
+        reporting = Reporting(delay = Exponential(1.0), probability = 0.6)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.0));
+            progression = [latent, reporting], attributes = clinical
         )
         ind = Individual(id = 1, infection_time = 0.0)
         ind.state[:infected] = true
         ind.state[:onset_time] = 1.0
-        ind.state[:death_candidate_time] = Inf
-        n_keys = length(ind.state)
-        @test_throws ArgumentError progression_loglik(spec, [ind])
-        # deterministic, and does not cache a spurious draw on the individual
-        @test_throws ArgumentError progression_loglik(spec, [ind])
-        @test length(ind.state) == n_keys
+        ind.state[:infectious] = false
+        ind.state[:infectious_time] = Inf
+        ind.state[:reported] = false
+        ind.state[:infection_aborted_time] = 1.5
+        @test progression_loglik(spec, [ind]) ≈
+            logccdf(Exponential(2.0), 1.5) +
+            log1p(-0.6 * cdf(Exponential(1.0), 0.5))
+        # A transition that stood is scored as it ever was.
+        ind.state[:infectious] = true
+        ind.state[:infectious_time] = 1.2
+        @test progression_loglik(spec, [ind]) ≈
+            logpdf(Exponential(2.0), 1.2) +
+            log1p(-0.6 * cdf(Exponential(1.0), 0.5))
+    end
+
+    @testset "an aborted run has a finite likelihood" begin
+        spec = ModelSpec(
+            BranchingProcess(Poisson(2.0), Exponential(5.0));
+            interventions = [
+                Isolation(onset_to_isolation_delay = Exponential(1.0)),
+                ContactTracing(
+                    probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                    quarantine_on_trace = false
+                ),
+                RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0),
+            ],
+            progression = [
+                Transition(:infectious, from = :infection, delay = LogNormal(1.0, 0.3)),
+                Reporting(delay = LogNormal(1.0, 0.3), probability = 0.7),
+            ],
+            attributes = clinical
+        )
+        state = simulate(spec; n_initial = 3, max_cases = 300, rng = StableRNG(1))
+        aborted = count(
+            ind -> isfinite(get(ind.state, :infection_aborted_time, Inf)),
+            state.individuals
+        )
+        @test aborted > 0                     # otherwise the test is vacuous
+        @test isfinite(progression_loglik(spec, state))
     end
 
     @testset "a transition without its own method needs one to be evaluated" begin
@@ -171,6 +283,6 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
             progression = [_UntrackedTransition()], attributes = clinical
         )
         state = simulate(spec; max_cases = 5, rng = StableRNG(5))
-        @test_throws ArgumentError progression_loglik(spec, state)
+        @test_throws "needs a method for" progression_loglik(spec, state)
     end
 end
