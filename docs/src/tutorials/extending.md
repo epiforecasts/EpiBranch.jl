@@ -25,6 +25,8 @@ much you write:
   states of its natural history. Covered below.
 - **Add an observation or data type** — subtype `ObservationModel`, or define a
   `loglikelihood` method for a new data type. Covered below.
+- **Add a stopping rule** — subtype `AbstractStoppingRule` to end a run on a
+  condition none of the built-ins cover. Covered below.
 
 The two surfaces most people reach for are a **custom intervention** (a new risk
 on an existing model) and a **custom transmission model** (a new process); both
@@ -737,6 +739,52 @@ For a scalar, `_store_draw!` stores nothing and `EpiBranch._dose_value` reads
 the value straight off the vaccination; for a distribution or a function it
 stores the draw.
 
+### A custom effect mode
+
+`mode` is dispatched through [`AbstractEffectMode`](@ref): a third mode
+subtypes it and implements [`EpiBranch.realised_efficacy`](@ref) and
+[`EpiBranch.realise_prior_dose!`](@ref), the two methods [`LeakyMode`](@ref)
+and [`AllOrNothingMode`](@ref) themselves implement. Nothing else on the
+vaccination machinery needs to change: both methods are read only through
+`effect_mode(v)`.
+
+Here a "partial responder" mode gives a fraction `efficacy` of vaccinated
+individuals full protection, as `AllOrNothingMode` does, but gives the rest a
+fixed floor of leaky protection instead of none:
+
+```@example extending
+struct PartialResponseMode <: AbstractEffectMode
+    non_responder_efficacy::Float64
+end
+
+function EpiBranch.realised_efficacy(mode::PartialResponseMode, eff, rng)
+    rand(rng, Bernoulli(eff)) && return 1.0
+    return mode.non_responder_efficacy
+end
+
+# A dose recorded through `attributes`, before the run starts, needs the
+# same one-time realisation `_record_vaccination!` would otherwise give it.
+function EpiBranch.realise_prior_dose!(mode::PartialResponseMode, individual, label, state)
+    key = EpiBranch._vaccine_efficacy_key(label)
+    eff = get(individual.state, key, nothing)
+    (eff isa Real && 0 < eff < 1) || return nothing
+    individual.state[key] = EpiBranch.realised_efficacy(mode, eff, state.rng)
+    return nothing
+end
+
+partial = RingVaccination(efficacy = 0.6, mode = PartialResponseMode(0.2))
+draws = map(1:8) do i
+    contact = Individual(id = i, parent_id = 0, infection_time = 10.0)
+    EpiBranch._record_vaccination!(partial, contact, 0.0, StableRNG(i))
+    EpiBranch._vaccine_efficacy(partial, contact)
+end
+draws
+```
+
+Every stored value is `1.0` (a responder) or `0.2` (the non-responder floor) —
+never the raw `0.6` `LeakyMode` would keep, nor the certain `0.0`
+`AllOrNothingMode` gives a non-responder.
+
 ## Tree-shaping via the offspring distribution
 
 Some interventions don't filter individual transmissions — they change
@@ -783,6 +831,39 @@ Use `ind.infection_time` when R varies with each parent's own
 infection timing, or `state.max_infection_time` (via the
 three-argument form) when R varies with the population-level outbreak
 clock.
+
+## Custom stopping rules
+
+Termination is controlled by a vector of [`AbstractStoppingRule`](@ref)s —
+`stopping_rules`, or the `max_cases`/`max_generations`/`max_time` shortcuts
+that build them (see [`SimOpts`](@ref)). The engine stops at the first step
+where *any* rule's [`should_stop`](@ref) returns `true`. The built-ins —
+[`Extinction`](@ref), [`MaxCases`](@ref), [`MaxGenerations`](@ref),
+[`MaxTime`](@ref) — cover the common cases; a condition none of them express
+is a new subtype and one method.
+
+Here a rule stops a run once any chain reaches a given number of
+generations, regardless of case count:
+
+```@example extending
+struct MaxChainLength <: AbstractStoppingRule
+    n::Int
+end
+EpiBranch.should_stop(r::MaxChainLength, state::SimulationState) =
+    maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
+
+rng = StableRNG(3)
+chain_model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
+chain_state = simulate(
+    chain_model; stopping_rules = [Extinction(), MaxChainLength(5)], rng = rng
+)
+maximum(ind.generation for ind in chain_state.individuals; init = 0)
+```
+
+[`Extinction`](@ref) is prepended automatically unless your `stopping_rules`
+already has one, so a rule set that forgets it still terminates on a
+subcritical outbreak rather than hanging — `MaxChainLength` alone would never
+stop a chain that goes extinct below 5 generations.
 
 ## Custom attributes functions
 
@@ -1714,8 +1795,11 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom intervention | Struct `<: AbstractIntervention` + hook methods | Each generation |
 | Ending an infection early | `EpiBranch.abort_infection!(ind, time)` from an intervention hook | That hook |
 | Custom vaccination | Struct `<: AbstractVaccination` holding a `VaccineEffect` + `vaccine_effect` + `apply_post_transmission!` | Each generation |
+| Custom effect mode | Struct `<: AbstractEffectMode` + `realised_efficacy`, `realise_prior_dose!` | Dose recording |
 | Time-dependent intervention | `Scheduled(iv; start_time = ...)` + `intervention_time`, `reset!` on `iv` | After each hook |
 | Capacity-constrained intervention | `CapacityConstrained(iv; budget_per_period = ...)` + `capacity_key`, `capacity_time_key` on `iv` | `apply_post_transmission!` |
+| Custom stopping rule | Struct `<: AbstractStoppingRule` + `should_stop` | Each step |
+| Terminal clinical transition | Struct `<: AbstractClinicalTransition` + `is_terminal`, `terminal_event`, `terminal_target` | Case creation |
 | Custom attributes | Function `(rng, ind) -> nothing` | Individual creation |
 | Layered attributes | `[f1, f2, ...]` | Individual creation |
 | Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |
@@ -1783,6 +1867,54 @@ A supplied probability consumes an acceptance draw even at zero or one. Omit
 `probability` for an unconditional event without that draw, as `Recovery` does.
 Missing starting events consume no draws. `Transition` sets its flag before its
 delay callback; `Reporting` and `Hospitalisation` set their flags afterwards.
+
+A terminal transition also implements [`EpiBranch.terminal_target`](@ref): the
+state label it writes, known without an individual (unlike `terminal_event`,
+which needs one to resolve the *time*). A fixed-size process's `until`-coverage
+check — the warning it logs when its progression can reach a terminal state no
+window closes on — reads this to see the state at all; a terminal transition
+that skips it stays silently exempt from that check. `Death` and `Recovery`
+implement it; so does a terminal transition written outside the package:
+
+```@example extending
+struct LostToFollowUp <: AbstractClinicalTransition
+    probability::Float64
+    delay::Float64
+end
+EpiBranch.is_terminal(::LostToFollowUp) = true
+EpiBranch.terminal_target(::LostToFollowUp) = :lost
+function EpiBranch.resolve_individual!(t::LostToFollowUp, ind, state)
+    time = EpiBranch.transition_time(
+        state.rng, ind, ind.infection_time, t.delay; probability = t.probability
+    )
+    time === nothing || (ind.state[:lost_time] = time)
+    return nothing
+end
+function EpiBranch.terminal_event(::LostToFollowUp, individual)
+    t = get(individual.state, :lost_time, Inf)
+    return isfinite(t) ? (t, :lost) : nothing
+end
+
+lost_pool = HomogeneousProcess(;
+    transmission_rate = 0.0, population_size = 20,
+    until = (:recovered, :died, :isolated, :lost)
+)
+lost_model = ModelSpec(
+    lost_pool;
+    progression = [
+        Transition(:recovered; from = :infection, delay = 10.0, terminal = true),
+        LostToFollowUp(0.6, 5.0),
+    ]
+)
+lost_state = simulate(lost_model; n_initial = 20, rng = StableRNG(7))
+count(ind -> get(ind.state, :outcome, :none) == :lost, lost_state.individuals)
+```
+
+Dropping `:lost` from `lost_pool`'s `until` above would still run — a
+transition that does not implement `terminal_target` is not an error, only
+unchecked — but would also warn that a case reaching `:lost` never has its
+window closed, the same warning `Death`/`Recovery` would trigger if `until`
+left out `:died`/`:recovered`.
 
 ### Event dates for uninfected people
 

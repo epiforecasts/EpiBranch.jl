@@ -112,22 +112,23 @@ end
 # `state => true`/`state_time` pair regardless of whether `state` is in
 # `until`, so a state missing from `until` is simply never consulted: a case
 # reaching it keeps generating exposure proposals as if still infectious.
-# `_terminal_target` (defined per transition type, alongside `is_terminal`)
+# `terminal_target` (defined per transition type, alongside `is_terminal`)
 # gives the state label without needing an individual to resolve a time from —
 # `Transition` reads it off `.state`, `Death`/`Recovery` are hardcoded to
-# :died/:recovered. A terminal transition that does not implement it (any
-# custom one following only the documented `is_terminal`/`terminal_event`
-# contract) is not checkable here and stays silently exempt. `from`, when it
-# names a terminal state itself (e.g. a funeral `RouteWindow` with
-# `from = :died`), is excluded too: a window that only opens once a case
-# reaches that state cannot sensibly be asked to also close on it.
+# :died/:recovered. A terminal transition that does not implement it stays at
+# the default `nothing`, so it is not checkable here and stays silently
+# exempt — documented on `terminal_target`'s own docstring, since a custom
+# terminal transition must opt in to be covered. `from`, when it names a
+# terminal state itself (e.g. a funeral `RouteWindow` with `from = :died`),
+# is excluded too: a window that only opens once a case reaches that state
+# cannot sensibly be asked to also close on it.
 function _uncovered_terminal_states(until::Tuple, progression; from = nothing)
     covered = Set{Symbol}(until)
     from isa Symbol && push!(covered, from)
     states = Symbol[]
     for t in progression
         is_terminal(t) || continue
-        target = _terminal_target(t)
+        target = terminal_target(t)
         target === nothing && continue
         target in covered || push!(states, target)
     end

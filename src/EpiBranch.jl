@@ -145,7 +145,7 @@ export CapacityConstrained, capacity_usage, default_capacity_priority
 export RouteWindow, window_open, window_close
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
-export is_terminal, terminal_event, exclusive_probabilities
+export is_terminal, terminal_event, terminal_target, exclusive_probabilities
 export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, observe
 export single_type_offspring
 
