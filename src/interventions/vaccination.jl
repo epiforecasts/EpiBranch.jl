@@ -442,6 +442,12 @@ function competing_risk(v::AbstractVaccination, parent, contact, state)
     return _susceptibility_risk(v, contact)
 end
 
+# The protection above reads only the contact. A subtype with a risk of its own
+# is taken to read the infector, as any other intervention is.
+function risk_depends_on_infector(v::AbstractVaccination)
+    return _has_own_method(competing_risk, typeof(v), AbstractVaccination)
+end
+
 # The efficacy stored on the contact by `_record_vaccination!`, given the
 # sampled value `eff` (a `Real`, a draw from a `Distribution`, or a call to a
 # function — already resolved by `_sample_value`) and the vaccination's mode.
@@ -895,6 +901,9 @@ function competing_risk(rv::RingVaccination, parent, contact, state)
     onward === nothing && return exposure
     return (exposure, onward)
 end
+
+# Only the onward risk reads the infector.
+risk_depends_on_infector(rv::RingVaccination) = rv.onward_efficacy > 0
 
 # Scalar defaults short-circuit without drawing from the rng so that
 # coverage = 1.0 and eligibility_window = Inf reproduce the previous

@@ -32,3 +32,4 @@ end
 _unwrap_scheduled(w::InterventionWrapper) = _unwrap_scheduled(w.intervention)
 
 risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route)
+risk_depends_on_infector(w::InterventionWrapper) = risk_depends_on_infector(w.intervention)
