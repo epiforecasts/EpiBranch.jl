@@ -254,8 +254,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # The structure-driven processes that call this walk live in the
         # companion packages, so it is driven directly here on a path graph
         # 1-2-3-4 in which only node 1 is a case.
-        function walk(depth; timed = false)
-            ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0); depth)
+        function walk(depth; timed = false, wrap = identity)
+            ct = wrap(ContactTracing(TraceEveryone(), 1.0, Dirac(0.0); depth))
             state = EpiBranch.new_state(
                 BranchingProcess(Poisson(1.0), Exponential(5.0)),
                 EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
@@ -274,27 +274,45 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 (i, st) -> neighbours[i]
             pos = Dict(i => i for i in 1:4)
             processed = [true, false, false, false]
-            EpiBranch._trace_from!(state, case, [ct], contacts, pos, processed)
-            return state.individuals
+            reached = EpiBranch._trace_from!(
+                state, case, [ct], contacts, pos, processed
+            )
+            return state.individuals, reached
         end
 
-        inds = walk(3)
+        inds, reached = walk(3)
         @test all(is_traced, inds[2:4])
         @test [inds[i].state[:ring_remaining] for i in 2:4] == [2, 1, 0]
         @test [inds[i].state[:traced_by] for i in 2:4] == [1, 2, 3]
         @test !any(is_infected, inds[2:4])
+        # The walk reports who it reached, which is what the action layer is
+        # offered: a ring past the case's own neighbours included.
+        @test reached == Set([2, 3, 4])
 
         # The ring stops at its radius.
-        inds = walk(2)
+        inds, reached = walk(2)
         @test is_traced(inds[3])
         @test !is_traced(inds[4])
+        @test reached == Set([2, 3])
 
         # A contact reached late on its route is traced no earlier than that,
         # and the ring past it is timed from its trace.
-        inds = walk(3; timed = true)
+        inds, _ = walk(3; timed = true)
         @test isolation_time(inds[2]) == 2.0
         @test isolation_time(inds[3]) == 50.0
         @test isolation_time(inds[4]) == 50.0
+
+        # A schedule gates the walk: inside its window the ring grows as it
+        # ever did, and outside it nothing is kept active, so the frontier
+        # stops at the case's own contacts.
+        inds, reached = walk(3; wrap = ct -> Scheduled(ct; start_time = 0.0))
+        @test all(is_traced, inds[2:4])
+        @test reached == Set([2, 3, 4])
+        inds, reached = walk(3; wrap = ct -> Scheduled(ct; start_time = 1000.0))
+        @test !any(is_traced, inds[2:4])
+        # The case's own contacts were still offered; nothing beyond them was,
+        # because an inactive schedule keeps nobody active.
+        @test reached == Set([2])
     end
 
     @testset "Scheduled resetting a ring member lets a later trace grow the ring" begin
