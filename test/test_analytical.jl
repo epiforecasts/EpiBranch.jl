@@ -170,6 +170,84 @@
         end
     end
 
+    @testset "IndexChainSize" begin
+        @testset "PMF matches the mixture formula" begin
+            index = Poisson(0.4)
+            off = NegBin(0.6, 0.5)
+            d = IndexChainSize(index, off)
+            dist = chain_size_distribution(off)
+
+            for n in 1:8
+                manual = n == 1 ? pdf(index, 0) : 0.0
+                for j in 1:(n - 1)
+                    manual += pdf(index, j) *
+                        exp(EpiBranch._chain_size_logpdf(dist, n - 1, j))
+                end
+                @test pdf(d, n) ≈ manual atol = 1.0e-12
+            end
+
+            # n = 1 is exactly "the index case has no secondary cases".
+            @test pdf(d, 1) ≈ pdf(index, 0)
+            @test pdf(d, 0) == 0.0
+        end
+
+        @testset "Normalises to 1 for subcritical later-generation offspring" begin
+            d = IndexChainSize(Poisson(2.5), NegBin(0.6, 0.5))
+            @test sum(pdf(d, n) for n in 1:300) ≈ 1.0 atol = 1.0e-6
+        end
+
+        @testset "Mean" begin
+            index = Poisson(0.4)
+            off = NegBin(0.6, 0.5)
+            d = IndexChainSize(index, off)
+            @test mean(d) ≈ 1 + mean(index) * mean(chain_size_distribution(off))
+        end
+
+        @testset "Same offspring for index and later cases matches the base law" begin
+            # The mixture formula with index == offspring is the branching
+            # process's own total-progeny recursion, so it must reproduce the
+            # base chain-size law exactly.
+            off = NegBin(0.6, 0.5)
+            d = IndexChainSize(off, off)
+            base = chain_size_distribution(off)
+            for n in 1:8
+                @test pdf(d, n) ≈ pdf(base, n) atol = 1.0e-10
+            end
+        end
+
+        @testset "rand matches the analytical mean" begin
+            d = IndexChainSize(Poisson(0.4), NegBin(0.6, 0.5))
+            rng = StableRNG(1)
+            draws = [rand(rng, d) for _ in 1:20_000]
+            @test mean(draws) ≈ mean(d) atol = 0.05
+        end
+
+        @testset "Bounds" begin
+            d = IndexChainSize(Poisson(0.4), Poisson(0.5))
+            @test minimum(d) == 1
+            @test maximum(d) == Inf
+            @test insupport(d, 1)
+            @test !insupport(d, 0)
+        end
+
+        @testset "loglikelihood on ChainSizes" begin
+            index = Poisson(0.4)
+            off = NegBin(0.6, 0.5)
+            d = IndexChainSize(index, off)
+            data = ChainSizes([1, 2, 5, 1, 3])
+
+            ll = loglikelihood(data, d)
+            @test ll ≈ sum(logpdf(d, n) for n in data.data)
+
+            # A separate index-case offspring gives a different likelihood
+            # than assuming one shared offspring law throughout.
+            @test ll != loglikelihood(data, off)
+
+            # Multi-seed clusters are not defined for a mixed index offspring.
+            @test_throws ArgumentError loglikelihood(ChainSizes([5]; seeds = [2]), d)
+        end
+    end
+
     @testset "Chain size likelihood" begin
         @testset "Basic evaluation" begin
             ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3]), Poisson(0.5))
@@ -510,6 +588,56 @@
             @test isfinite(ll)
         end
 
+        @testset "MinimumSize conditions the chain-size law" begin
+            off = NegBin(0.8, 0.5)
+            dist = chain_size_distribution(off)
+            data = ChainSizes([2, 3, 5])
+            truncated = observe(dist, MinimumSize(2))
+
+            # Conditioning formula: L_i = log P(X = x_i) - log P(X >= min_size).
+            ll = loglikelihood(data, truncated)
+            manual = sum(
+                EpiBranch._chain_size_logpdf(dist, x, 1) -
+                    EpiBranch._chain_size_right_tail_logprob(dist, 2, 1)
+                    for x in data.data
+            )
+            @test ll ≈ manual atol = 1.0e-10
+
+            # `MinimumSize(1)` records everything, so it is the unconditioned law.
+            @test loglikelihood(data, observe(dist, MinimumSize(1))) ≈
+                loglikelihood(data, off)
+
+            # Conditioning raises the log-likelihood relative to the
+            # unconditioned one, dividing by P(X >= min_size) < 1.
+            unconditioned = sum(EpiBranch._chain_size_logpdf(dist, x, 1) for x in data.data)
+            @test ll > unconditioned
+
+            # A cluster below the recorded minimum has no density under the law.
+            @test logpdf(truncated, 1) == -Inf
+            @test loglikelihood(ChainSizes([1, 3]), truncated) == -Inf
+            @test minimum(truncated) == 2
+            @test !insupport(truncated, 1)
+            @test insupport(truncated, 2)
+
+            # The conditioning follows each cluster's own seed count.
+            multi = ChainSizes([4, 5]; seeds = [1, 2])
+            @test loglikelihood(multi, observe(chain_size_distribution(Poisson(0.5)), MinimumSize(3))) ≈
+                sum(
+                EpiBranch._chain_size_logpdf(Borel(0.5), multi.data[i], multi.seeds[i]) -
+                    EpiBranch._chain_size_right_tail_logprob(Borel(0.5), 3, multi.seeds[i])
+                    for i in eachindex(multi.data)
+            ) atol = 1.0e-10
+
+            # Composes with prob_concluded.
+            ll_pc = loglikelihood(
+                ChainSizes([2, 3]), observe(dist, MinimumSize(2));
+                prob_concluded = [0.5, 0.5]
+            )
+            @test isfinite(ll_pc)
+
+            @test_throws ArgumentError MinimumSize(0)
+        end
+
         @testset "Per-case observation: simulation decoration" begin
             R, k = 0.6, 0.3
             gt = Gamma(2.0, 2.5)
@@ -767,6 +895,28 @@
             )
             @test isfinite(ll)
         end
+
+        @testset "MinimumSize falls through to the simulation path" begin
+            # With interventions present the score is empirical, and the
+            # observation has to drop the simulated clusters below its minimum
+            # there as well, so both paths condition the same way.
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+            ll = loglikelihood(
+                ChainSizes([2, 3, 2]),
+                ModelSpec(
+                    BranchingProcess(Poisson(1.5), Exponential(5.0));
+                    interventions = [iso],
+                    observation = MinimumSize(2),
+                    attributes = clinical_presentation(
+                        incubation_period = LogNormal(1.5, 0.5)
+                    )
+                );
+                max_cases = 500,
+                n_sim = 2000,
+                rng = StableRNG(42)
+            )
+            @test isfinite(ll)
+        end
     end
 
     @testset "Simulation-based chain length likelihood" begin
@@ -813,6 +963,92 @@
             # Top 20% should cause ≈ 20% of transmission
             prop = proportion_transmission(2.0, 1000.0; prop_cases = 0.2)
             @test prop ≈ 0.2 atol = 0.05
+        end
+    end
+
+    @testset "Proportion of cases responsible for transmission" begin
+        @testset "Individual-R version inverts proportion_transmission" begin
+            R, k = 2.5, 0.4
+            q = proportion_cases_individual(R, k; prop_transmission = 0.8)
+            @test 0.0 < q < 1.0
+            @test proportion_transmission(R, k; prop_cases = q) ≈ 0.8 atol = 1.0e-8
+        end
+
+        @testset "Individual-R version depends only on k" begin
+            @test proportion_cases_individual(0.5, 0.3) ==
+                proportion_cases_individual(100.0, 0.3)
+        end
+
+        @testset "No overdispersion → proportion of cases ≈ proportion of transmission" begin
+            # For k → ∞ the Lorenz curve is the diagonal, so the top q
+            # fraction of cases causes ≈ q of transmission.
+            q = proportion_cases_individual(2.0, 1000.0; prop_transmission = 0.8)
+            @test q ≈ 0.8 atol = 0.05
+        end
+
+        @testset "Individual-R argument validation" begin
+            @test_throws ArgumentError proportion_cases_individual(-1.0, 0.5)
+            @test_throws ArgumentError proportion_cases_individual(2.0, -0.5)
+            @test_throws ArgumentError proportion_cases_individual(2.0, 0.5; prop_transmission = 0.0)
+            @test_throws ArgumentError proportion_cases_individual(2.0, 0.5; prop_transmission = 1.0)
+        end
+
+        @testset "Individual-R distribution and model dispatch" begin
+            d = NegBin(2.5, 0.16)
+            @test proportion_cases_individual(d) ≈ proportion_cases_individual(2.5, 0.16)
+            @test proportion_cases_individual(Poisson(2.0); prop_transmission = 0.8) ≈
+                proportion_cases_individual(2.0, 1.0e6; prop_transmission = 0.8)
+            @test_throws ArgumentError proportion_cases_individual(Gamma(2.0, 1.0))
+
+            model = BranchingProcess(NegBin(2.5, 0.16))
+            @test proportion_cases_individual(model) ≈ proportion_cases_individual(d)
+        end
+
+        @testset "Realised-offspring version: basic sanity" begin
+            q = proportion_cases_offspring(2.5, 0.4; prop_transmission = 0.8)
+            @test 0.0 < q < 1.0
+        end
+
+        @testset "Realised-offspring version: lower k concentrates transmission" begin
+            q_low_k = proportion_cases_offspring(2.0, 0.1; prop_transmission = 0.8)
+            q_high_k = proportion_cases_offspring(2.0, 10.0; prop_transmission = 0.8)
+            @test q_low_k < q_high_k
+        end
+
+        @testset "Realised-offspring version works for any discrete offspring law" begin
+            # Not restricted to NegativeBinomial/Poisson, unlike the
+            # individual-R version.
+            q_geom = proportion_cases_offspring(Geometric(0.4); prop_transmission = 0.8)
+            @test 0.0 < q_geom < 1.0
+
+            q_pois = proportion_cases_offspring(Poisson(2.0); prop_transmission = 0.8)
+            @test 0.0 < q_pois < 1.0
+        end
+
+        @testset "Realised-offspring version requires a finite mean" begin
+            @test_throws ArgumentError proportion_cases_offspring(PoissonGammaChainSize(0.5, 0.8))
+        end
+
+        @testset "Realised-offspring argument validation" begin
+            @test_throws ArgumentError proportion_cases_offspring(-1.0, 0.5)
+            @test_throws ArgumentError proportion_cases_offspring(2.0, -0.5)
+            @test_throws ArgumentError proportion_cases_offspring(2.0, 0.5; prop_transmission = 0.0)
+            @test_throws ArgumentError proportion_cases_offspring(2.0, 0.5; prop_transmission = 1.0)
+        end
+
+        @testset "Realised-offspring model dispatch" begin
+            model = BranchingProcess(NegBin(2.5, 0.16))
+            @test proportion_cases_offspring(model) ≈ proportion_cases_offspring(2.5, 0.16)
+        end
+
+        @testset "The two versions differ substantially" begin
+            # This is the point of the issue: the continuous individual-R
+            # approximation and the realised, integer offspring counts
+            # answer different questions and should not be conflated.
+            R, k = 2.5, 0.4
+            q_individual = proportion_cases_individual(R, k; prop_transmission = 0.8)
+            q_offspring = proportion_cases_offspring(R, k; prop_transmission = 0.8)
+            @test abs(q_individual - q_offspring) > 0.01
         end
     end
 
@@ -901,6 +1137,42 @@
             @test isfinite(ll)
             @test ll < 0.0
         end
+
+        @testset "Per-case covariate distributions" begin
+            counts = [0, 1, 4, 0, 2]
+            μ = [0.5, 0.8, 3.0, 0.5, 1.2]
+            dists = NegBin.(μ, 0.5)
+            ll = loglikelihood(OffspringCounts(counts), dists)
+            @test ll ≈ sum(logpdf(d, x) for (d, x) in zip(dists, counts))
+            # Same as scoring each count against its own distribution one at
+            # a time, matching the workaround the vectorised method replaces.
+            @test ll ≈
+                sum(loglikelihood(OffspringCounts([x]), d) for (d, x) in zip(dists, counts))
+
+            @test_throws ArgumentError loglikelihood(
+                OffspringCounts(counts), dists[1:(end - 1)]
+            )
+        end
+
+        @testset "Zero-truncated variant composes via Distributions.truncated" begin
+            counts = [1, 4, 2, 1, 3]
+            μ = [0.8, 3.0, 1.2, 0.8, 2.0]
+            dists = truncated.(NegBin.(μ, 0.5), 1, Inf)
+            ll = loglikelihood(OffspringCounts(counts), dists)
+            @test ll ≈ sum(logpdf(d, x) for (d, x) in zip(dists, counts))
+
+            # Scalar single-distribution method also composes with truncated.
+            ll_scalar = loglikelihood(OffspringCounts(counts), truncated(NegBin(1.0, 0.5), 1, Inf))
+            @test isfinite(ll_scalar)
+        end
+
+        @testset "Usable from Turing via product_distribution" begin
+            counts = [0, 1, 4, 0, 2]
+            μ = [0.5, 0.8, 3.0, 0.5, 1.2]
+            dists = NegBin.(μ, 0.5)
+            d = product_distribution(dists)
+            @test logpdf(d, counts) ≈ loglikelihood(OffspringCounts(counts), dists)
+        end
     end
 
     @testset "Data wrapper validation" begin
@@ -910,5 +1182,37 @@
         @test_throws ArgumentError ChainSizes([0, 1, 2])
         @test_throws ArgumentError ChainLengths(Int[])
         @test_throws ArgumentError ChainLengths([-1, 0])
+    end
+
+    @testset "Building data wrappers from contact-tracing records" begin
+        @testset "OffspringCounts from infector-infectee pairs" begin
+            # 1 infects 2; 2 infects 3 and 4; 3 and 4 are leaves.
+            data = OffspringCounts([1, 2, 2], [2, 3, 4])
+            @test sort(data.data) == [0, 0, 1, 2]
+
+            # Unlinked cases are recorded with zero offspring.
+            data = OffspringCounts([1, 2, 2], [2, 3, 4]; unlinked = 2)
+            @test sort(data.data) == [0, 0, 0, 0, 1, 2]
+
+            @test_throws ArgumentError OffspringCounts([1, 2], [1, 3])  # self-loop
+            @test_throws ArgumentError OffspringCounts([1, 1], [2, 2])  # duplicated pair
+            @test_throws ArgumentError OffspringCounts([1, 3], [2, 2])  # two infectors for case 2
+            @test_throws ArgumentError OffspringCounts([1, 2], [2, 1])  # mutual cycle
+            @test_throws ArgumentError OffspringCounts([1, 2, 3], [2, 3, 1])  # three-case cycle
+            @test_throws ArgumentError OffspringCounts([1, 1], [2, 3, 4])  # length mismatch
+            @test_throws ArgumentError OffspringCounts([1], [2]; unlinked = -1)
+        end
+
+        @testset "ChainSizes from cluster membership" begin
+            # Chain 1 has 2 cases, chain 2 has 1, chain 3 has 3.
+            data = ChainSizes(; membership = [1, 1, 2, 3, 3, 3])
+            @test sort(data.data) == [1, 2, 3]
+
+            # Singletons are recorded as extra chains of size 1.
+            data = ChainSizes(; membership = [1, 1, 2, 3, 3, 3], singletons = 2)
+            @test sort(data.data) == [1, 1, 1, 2, 3]
+
+            @test_throws ArgumentError ChainSizes(; membership = [1, 1, 2], singletons = -1)
+        end
     end
 end

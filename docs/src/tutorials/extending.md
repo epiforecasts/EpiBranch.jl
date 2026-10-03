@@ -56,6 +56,7 @@ downstream packages should pick names that do not collide.
 | Key | Type | Default | Owner | When set |
 |---|---|---|---|---|
 | `:infected` | `Bool` | `true` | Engine | Competing-risks resolution |
+| `:infection_route` | `Symbol` | — | Engine (routed models) | Competing-risks resolution |
 | `:type` | `Int` | `1` | Engine (multi-type) | Contact creation |
 | `:onset_time` | `Float64` | `NaN` | `clinical_presentation` | Init |
 | `:asymptomatic` | `Bool` | `false` | `clinical_presentation` | Init |
@@ -206,7 +207,9 @@ ones your intervention needs (all default to no-ops).
 | `trace_contacts!(iv, state, infector, contacts[, not_before])` | Continuous-time models only: once per case, when the race settles it | The case, the contacts it reached that are not yet settled, and, from a model whose contacts can come about after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing` (mutate the contacts' `state` in place) |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to gather contacts at all | Nothing | `true` if this intervention implements `trace_contacts!` (default `false`) |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
+| `on_infection_settled!(iv, individual, state, rng)` | Continuous-time models only: once the race fixes a case's infection time, before its onset or transitions read it | The case, and the race's own `rng` | `nothing` (mutate the case's `state` in place; default no-op) |
 | `risk_applies(iv, route)` | Continuous-time models selecting risks for a route (`nothing` for an external introduction) | Nothing | `Bool`; defaults to `true` |
+| `risk_depends_on_infector(iv)` | Before a fixed-size pool with more than one mixing group runs | Nothing | `Bool`: whether `competing_risk` can block a contact differently depending on its infector (default `true` when the type has its own `competing_risk`) |
 
 ### Which hooks fire on which engine
 
@@ -225,6 +228,7 @@ hang after all, alongside the infectious window.
 | `resolve_individual!` | yes | yes | yes |
 | `competing_risk` | yes | yes | yes |
 | `infectious_removal_time` | not read | yes | yes |
+| `on_infection_settled!` | not called | yes | not called |
 | `trace_contacts!` | not called | yes | no contact set |
 | `apply_post_transmission!` | yes | not called | not called |
 | `keep_active` | yes | not called | not called |
@@ -1444,8 +1448,21 @@ draw while every infective is at the default, because `force` does not say how
 much each infective contributes to it. With more than one mixing group that
 attribution is not weighted by the contact matrix, so a risk that depends on who
 the infector is would be applied against the wrong infectors. The pool therefore
-refuses, with an error, a leaky `Isolation` and any intervention with its own
-`competing_risk` other than the vaccinations' protection of the contact.
+refuses, with an error, any intervention for which
+[`EpiBranch.risk_depends_on_infector`](@ref) is `true`: a leaky `Isolation`, a
+`RingVaccination` with an onward effect, and by default any intervention with
+its own `competing_risk`. An intervention whose risk reads only the contact
+declares so and is then accepted:
+
+```julia
+struct MyProphylaxis <: AbstractIntervention
+    efficacy::Float64
+end
+EpiBranch.competing_risk(p::MyProphylaxis, parent, contact, state) =
+    Risk(block_probability = p.efficacy)
+EpiBranch.risk_depends_on_infector(::MyProphylaxis) = false
+```
+
 Per-individual infectiousness is not refused: it reaches the force through the
 weighted counts, so it needs no attribution to be exact. Risks on the contact
 alone, such as a per-individual susceptibility, apply exactly. Differences in infectiousness
@@ -1477,15 +1494,15 @@ struct CensoredAtSize <: ObservationModel
 end
 
 # 2. Transformed chain size distribution
-struct TruncatedChainSize{D} <: DiscreteUnivariateDistribution
+struct CappedChainSize{D} <: DiscreteUnivariateDistribution
     base::D
     cap::Int
 end
-Distributions.minimum(::TruncatedChainSize) = 1
-Distributions.maximum(d::TruncatedChainSize) = d.cap
-Distributions.insupport(d::TruncatedChainSize, n::Integer) = 1 <= n <= d.cap
+Distributions.minimum(::CappedChainSize) = 1
+Distributions.maximum(d::CappedChainSize) = d.cap
+Distributions.insupport(d::CappedChainSize, n::Integer) = 1 <= n <= d.cap
 
-function Distributions.logpdf(d::TruncatedChainSize, n::Integer)
+function Distributions.logpdf(d::CappedChainSize, n::Integer)
     1 <= n <= d.cap || return -Inf
     Z = sum(pdf(d.base, m) for m in 1:d.cap)
     return logpdf(d.base, n) - log(Z)
@@ -1493,12 +1510,15 @@ end
 
 # 3. The analytical side of the protocol: one method, dispatched on the
 #    observation. loglikelihood(data, model) routes through it.
-EpiBranch.observe(base, o::CensoredAtSize) = TruncatedChainSize(base, o.cap)
+EpiBranch.observe(base, o::CensoredAtSize) = CappedChainSize(base, o.cap)
 ```
 
 Usage: `ModelSpec(BranchingProcess(...); observation = CensoredAtSize(10))`. No
 per-observation `loglikelihood` method is needed — returning a distribution
 from `observe` means the shared machinery evaluates `logpdf` on it.
+
+For the common case of a lower bound instead of an upper cap, the built-in
+[`MinimumSize`](@ref)/[`TruncatedChainSize`](@ref) pair does this already.
 
 ### Sim ↔ analytical consistency test
 
