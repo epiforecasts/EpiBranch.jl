@@ -106,8 +106,8 @@ jobs:
         if: steps.suite.outputs.present == 'true'
         run: |
           rm -rf "${JULIA_DEPOT_PATH:-$HOME/.julia}/registries/EpiAwareScratch"
-          if ! grep -qE '^\[sources(\.|\])' Project.toml; then
-            echo "no [sources] section: nothing to register"
+          if ! grep -qE '^\[sources(\.|\])' benchmark/Project.toml; then
+            echo "benchmark/Project.toml has no [sources] section: nothing to register"
             exit 0
           fi
           julia -e '
@@ -118,7 +118,7 @@ jobs:
                 Pkg.PackageSpec(
                     name = "EpiAwarePackageTools", version = "0.4")])
             using EpiAwarePackageTools.Benchmarks: bootstrap_sources_registry
-            done = bootstrap_sources_registry(pwd())
+            done = bootstrap_sources_registry("benchmark")
             println(isempty(done) ? "no unregistered [sources] deps" :
                     "registered: " * join(done, ", "))'
       - name: Run benchmark suite
