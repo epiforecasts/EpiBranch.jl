@@ -685,7 +685,7 @@ end
     end
 
     @testset "removal before infectious onset never infects" begin
-        # A latent period opens the window at :infectious, but isolation happens
+        # A latent period opens the window at :infectious, but isolation comes
         # first (close_t <= open_t). Such a case is never infectious: it must be
         # skipped rather than pop a close event against an id never made infectious.
         N = 100

@@ -24,7 +24,7 @@ import EpiBranch: new_state, add_individuals!, apply_observation!,
 import EpiBranch: _infection_layer_columns, _infection_layer_fields,
     _host_time_columns
 # The pairwise survival likelihood works for any contact structure and lives in
-# EpiBranch, which handles a household population through `contact_structure`.
+# EpiBranch, which reaches a household population through `contact_structure`.
 # The simulator and the likelihood share EpiBranch's community-hazard helpers
 # and agree on when that term applies and what it is.
 import EpiBranch: pairwise_surv_loglik, _ext_active, _ext_draw, _valid_external,
