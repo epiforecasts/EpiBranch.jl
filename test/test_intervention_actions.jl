@@ -117,7 +117,7 @@ EpiBranch.continuous_actions(::AppointmentAction) = true
     @test EpiBranch.continuous_actions(GroupVaccination(efficacy = 0.8))
     @test EpiBranch.continuous_actions(RingVaccination(efficacy = 0.8))
     @test !EpiBranch.continuous_actions(RingVaccination(efficacy = 0.8, eligibility_window = 2.0))
-    @test !EpiBranch.continuous_actions(RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8))
+    @test EpiBranch.continuous_actions(RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8))
     @test EpiBranch.continuous_actions(Scheduled(RingVaccination(efficacy = 0.8); start_time = 1.0))
     broken = Scheduled(AppointmentAction(), state -> error("predicate failed"))
     @test_throws ErrorException EpiBranch.apply_actions!(broken, state, [state.individuals[3]])
@@ -254,4 +254,77 @@ end
     EpiBranch.apply_post_transmission!(cc, state, contacts[3:4])
     @test contacts[3].state[:visits] == 2
     @test capacity_usage(cc, state) == (used = 2, available = 2.0)
+end
+
+@testset "A dose recorded while pending is reconsidered once infection settles" begin
+    # `on_infection_settled!` is what the continuous-time race calls on every
+    # intervention straight after stamping an infection time. The household and
+    # network suites run the whole path; here each way out of
+    # `RingVaccination`'s method is driven directly, and the default is checked
+    # to be a no-op so the seam carries the dispatch.
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(5)
+    )
+    rv = RingVaccination(
+        efficacy = 0.0, post_exposure_efficacy = 1.0, delay_to_immunity = 1.0
+    )
+    function pending(; vaccinated = true, incubation = 5.0)
+        ind = Individual(
+            id = 1,
+            state = Dict{Symbol, Any}(
+                :vaccinated => vaccinated,
+                :vaccination_time => 2.0,
+                :incubation_period => incubation
+            )
+        )
+        ind.infection_time = 2.0
+        return ind
+    end
+
+    # Immunity at 3.0 falls between the exposure at 2.0 and the onset at 7.0,
+    # and an efficacy of 1 covers everyone, so the infection ends at 3.0 and
+    # never reaches onset.
+    aborted = pending()
+    EpiBranch.on_infection_settled!(rv, aborted, state, StableRNG(1))
+    @test aborted.state[:infection_aborted_time] == 3.0
+    @test isnan(onset_time(aborted))
+
+    # Immunity at 3.0 falls after an onset at 2.5, too late to abort anything.
+    late = pending(incubation = 0.5)
+    EpiBranch.on_infection_settled!(rv, late, state, StableRNG(1))
+    @test !haskey(late.state, :infection_aborted_time)
+
+    # No dose on the member: nothing to reconsider.
+    undosed = pending(vaccinated = false)
+    EpiBranch.on_infection_settled!(rv, undosed, state, StableRNG(1))
+    @test !haskey(undosed.state, :infection_aborted_time)
+
+    # A dose with no post-exposure efficacy returns before its time is read.
+    plain = pending()
+    EpiBranch.on_infection_settled!(
+        RingVaccination(efficacy = 0.8), plain, state, StableRNG(1)
+    )
+    @test !haskey(plain.state, :infection_aborted_time)
+
+    # An intervention with no method of its own gets the no-op default, so the
+    # engine needs no knowledge of which types take part.
+    for iv in (
+            Isolation(onset_to_isolation_delay = Dirac(0.0)),
+            ContactTracing(OnIsolation(), 1.0, Dirac(0.0)),
+            AppointmentAction(),
+        )
+        untouched = pending()
+        @test EpiBranch.on_infection_settled!(iv, untouched, state, StableRNG(1)) ===
+            nothing
+        @test !haskey(untouched.state, :infection_aborted_time)
+    end
+
+    # A wrapper delegates, so a scheduled dose aborts too. The protection comes
+    # from the recorded dose, so a window that has closed does not withdraw it.
+    wrapped = pending()
+    EpiBranch.on_infection_settled!(
+        Scheduled(rv; end_time = 0.0), wrapped, state, StableRNG(1)
+    )
+    @test wrapped.state[:infection_aborted_time] == 3.0
 end

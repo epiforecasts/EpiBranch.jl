@@ -442,6 +442,12 @@ function competing_risk(v::AbstractVaccination, parent, contact, state)
     return _susceptibility_risk(v, contact)
 end
 
+# The protection above reads only the contact. A subtype with a risk of its own
+# is taken to read the infector, as any other intervention is.
+function risk_depends_on_infector(v::AbstractVaccination)
+    return _has_own_method(competing_risk, typeof(v), AbstractVaccination)
+end
+
 # The efficacy stored on the contact by `_record_vaccination!`, given the
 # sampled value `eff` (a `Real`, a draw from a `Distribution`, or a call to a
 # function — already resolved by `_sample_value`) and the vaccination's mode.
@@ -824,7 +830,11 @@ end
 # its earliest exposure when several infectors reach it. If that exposure turns
 # out not to be the infection, the engine removes the abort
 # (`_drop_stale_abort!`), and a contact that escaped it gets a fresh draw at its
-# next exposure.
+# next exposure. `action_draw!` caches the draw against this exposure, so a
+# continuous-time race, which settles a contact's infection before checking a
+# dose already recorded against it and can then reconsider the same contact at
+# the same exposure through its usual candidate discovery, does not draw twice
+# for one exposure.
 #
 # Callers check `_maybe_positive(rv.post_exposure_efficacy)` first: the
 # vaccination time comes untyped from the contact's state, so an
@@ -846,13 +856,35 @@ function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     # abort anything must not draw: the draw would never succeed and would still
     # move every later draw in the run.
     post > 0.0 || return nothing
-    _covers(post, contact, rng) || return nothing
+    covered = action_draw!(contact, (rv, :abort, exposure)) do
+        _covers(post, contact, rng)
+    end
+    covered || return nothing
     # An earlier dose may already have aborted it; the infection ends at the
     # first abort.
     contact.state[:infection_aborted_time] = min(
         get(contact.state, :infection_aborted_time, Inf), immunity
     )
     _set_onset_from_incubation!(contact)
+    return nothing
+end
+
+# A dose given to a pending, still-uninfected member of a continuous-time race
+# (household, network, routed network) is recorded on it before its own
+# infection is settled, so `_abort_infection!` finds nothing to check against
+# yet (`contact.infection_time` is still `NaN`) and does not draw. Once the
+# race settles that member's infection, this reconsiders the dose against the
+# now-final exposure, which suppresses onset and the clinical transitions
+# exactly as a dose given after the exposure does on the generation engine.
+#
+# The protection derives from the recorded dose rather than from a schedule's
+# clock, as `persistent_competing_risks` says, so a `Scheduled` wrapper that
+# has since switched off does not withdraw it.
+function on_infection_settled!(rv::RingVaccination, ind, state, rng)
+    _maybe_positive(rv.post_exposure_efficacy) || return nothing
+    vacc_t = _dose_time(dose_label(rv), ind)
+    vacc_t === nothing && return nothing
+    _abort_infection!(rv, ind, vacc_t, rng)
     return nothing
 end
 
@@ -869,6 +901,9 @@ function competing_risk(rv::RingVaccination, parent, contact, state)
     onward === nothing && return exposure
     return (exposure, onward)
 end
+
+# Only the onward risk reads the infector.
+risk_depends_on_infector(rv::RingVaccination) = rv.onward_efficacy > 0
 
 # Scalar defaults short-circuit without drawing from the rng so that
 # coverage = 1.0 and eligibility_window = Inf reproduce the previous
