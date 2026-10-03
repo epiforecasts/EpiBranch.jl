@@ -140,6 +140,13 @@
         @test hi == EpiBranch._r_search_bound(data)
     end
 
+    @testset "Parametric bootstrap for ChainLengths" begin
+        data = ChainLengths([2, 2, 3, 3, 4, 5, 6, 4])
+        f = fit(data, Poisson; bootstrap = 50, rng = StableRNG(8))
+        lo, hi = f.bootstrap_ci.R
+        @test 0 < lo <= f.estimate.R <= hi < 1
+    end
+
     @testset "Parametric bootstrap" begin
         rng = StableRNG(6)
         true_R = 1.0

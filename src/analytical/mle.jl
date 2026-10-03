@@ -305,7 +305,7 @@ end
 
 Maximum-likelihood fit of `data` — an [`OffspringCounts`](@ref),
 [`ChainSizes`](@ref), or [`ChainLengths`](@ref) — to a `Poisson(R)` or
-`NegBin(R, k)` offspring distribution, via the same [`loglikelihood`](@ref)
+`NegBin(R, k)` offspring distribution, via the same `loglikelihood`
 methods used throughout the package for simulation and inference.
 
 Returns an [`MLEFit`](@ref): the point estimate, the maximised
