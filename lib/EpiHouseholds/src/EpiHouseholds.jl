@@ -34,6 +34,7 @@ export HouseholdProcess, household_sizes
 export HouseholdInfections, household_infections
 export PairwiseSurvivalData, pairwise_surv_loglik
 export HouseholdPairsLayout, compile_household_pairs
+export ConditionOn, RecruitedIndex, EarliestInfected
 export HouseholdOffspring, household_offspring, household_offspring_law
 export household_final_size
 

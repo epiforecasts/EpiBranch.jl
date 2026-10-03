@@ -178,6 +178,13 @@ State of a running or completed simulation.
 `transitions` is the per-run vector of clinical transitions (set by
 `simulate`). It is held on the state so individual-creation paths can
 apply transitions without threading a parameter through every signature.
+
+`scratch` is per-run working space an intervention can keep its own
+derived state in, as `Individual.state` is for per-individual state, with
+keys named as the extending guide describes for both. It holds nothing the
+engine reads, so the engine needs no knowledge of what an intervention puts
+there, and it is discarded with the state. `GroupVaccination`'s
+group-to-members index is the worked example (see `EpiBranch._group_members`).
 """
 mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     individuals::Vector{Individual{T}}
@@ -190,6 +197,21 @@ mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     max_infection_time::T
     attributes::A
     transitions::Vector{AbstractClinicalTransition}
+    scratch::Dict{Any, Any}
+end
+
+# Pre-existing callers construct a `SimulationState` without `scratch`; it
+# always starts empty, so this fills it in rather than requiring every call
+# site to name it.
+function SimulationState(
+        individuals, active_ids, current_generation, rng, cumulative_cases,
+        extinct, population_size, max_infection_time, attributes, transitions
+    )
+    return SimulationState(
+        individuals, active_ids, current_generation, rng, cumulative_cases,
+        extinct, population_size, max_infection_time, attributes, transitions,
+        Dict{Any, Any}()
+    )
 end
 
 """The real element type carrying timing and hazard values in `state`

@@ -8,6 +8,7 @@
 public initialise_individual!
 public resolve_individual!
 public apply_post_transmission!
+public on_infection_settled!
 public trace_contacts!
 public traces_contacts
 public supplies_contacts
@@ -18,6 +19,9 @@ public required_fields
 public infectious_removal_time
 public risk_applies
 public risk_depends_on_infector
+# End an infection early from any intervention hook, and read when it ended.
+public abort_infection!
+public infection_aborted_time
 
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation
@@ -68,6 +72,11 @@ public contact_structure
 public followup_end
 
 public pair_kernel
+# A calendar schedule for a `PairKernel` implements `calendar_multiplier`, and
+# either `next_calendar_break` (piecewise constant, the default shape) or a
+# `calendar_shape` method returning `SmoothCalendar()`.
+public calendar_multiplier, next_calendar_break, calendar_shape,
+    PiecewiseConstantCalendar, SmoothCalendar
 public infection_likelihood_compatible
 public InterventionAction, intervention_actions, action_draw!, apply_actions!,
     continuous_actions

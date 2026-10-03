@@ -536,6 +536,38 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test is_isolated(earlier)
     end
 
+    @testset "A Scheduled reset restores a standing isolation's record" begin
+        iso = Isolation(onset_to_isolation_delay = Dirac(2.0))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+        # A self-report at 3.0, after the outcome at 2.0, revises a standing
+        # isolation at 6.0 and is then undone.
+        function revised_and_reset(standing_unrecorded)
+            ind = Individual(id = 1)
+            ind.state[:onset_time] = 1.0
+            ind.state[:test_positive] = true
+            ind.state[:outcome_time] = 2.0
+            set_isolated!(ind, 6.0)
+            standing_unrecorded && (ind.state[:isolation_unrecorded] = true)
+            EpiBranch.resolve_individual!(iso, ind, state)
+            @test isolation_time(ind) ≈ 3.0 atol = 1.0e-6
+            EpiBranch.reset!(iso, ind)
+            return ind
+        end
+
+        unrecorded = revised_and_reset(true)
+        @test isolation_time(unrecorded) == 6.0
+        @test EpiBranch._isolation_in_force(unrecorded)
+        @test !is_isolated(unrecorded)
+        @test !haskey(unrecorded.state, :isolation_unrecorded_before_isolation)
+
+        recorded = revised_and_reset(false)
+        @test isolation_time(recorded) == 6.0
+        @test is_isolated(recorded)
+    end
+
     @testset "Asymptomatic cases are not isolated" begin
         rng = StableRNG(42)
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))

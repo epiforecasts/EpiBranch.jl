@@ -60,7 +60,7 @@ as described for `InfectionLayer`. Additional hazard modifications require an
 effective kernel when evaluating; extraction records the windows only. A bare `NetworkProcess` is accepted too (its window opens at
 `:infection`, and it has no interventions). `host_times` names further per-node
 times to record, such as `(:onset_time,)`, read from each node's state (`missing`
-where a node has none) for a live [`StatefulKernel`](@ref) to read.
+where a node has none) for a live [`PairKernel`](@ref) to read.
 """
 function network_infections(
         state::SimulationState,
