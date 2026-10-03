@@ -159,6 +159,24 @@ end
         end
     end
 
+    @testset "differentiable in efficacy at the ends of its range" begin
+        # A gradient-based fit can start from no effect or a perfect vaccine,
+        # so the derivative must hold at efficacy 0 and 1 as well as inside.
+        for case in (data(NaN; followup_end = 5.0), data(3.0)),
+                mode in (LeakyMode(), AllOrNothingMode()), e in (0.0, 1.0)
+
+            f(θ) = pairwise_surv_loglik(
+                k, case;
+                susceptibility = VaccineEffect(efficacy = θ[1], mode = mode)
+            )
+            isfinite(f([e])) || continue
+            step = 1.0e-6
+            inner = e == 0.0 ? e + step : e - step
+            numeric = (f([inner]) - f([e])) / (inner - e)
+            @test only(ForwardDiff.gradient(f, [e])) ≈ numeric rtol = 1.0e-3 atol = 1.0e-5
+        end
+    end
+
     @testset "efficacy must be a fixed value" begin
         drawn = VaccineEffect(efficacy = Beta(2.0, 2.0), mode = LeakyMode())
         @test_throws ArgumentError pairwise_surv_loglik(k, data(NaN); susceptibility = drawn)

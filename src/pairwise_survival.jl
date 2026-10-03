@@ -328,7 +328,10 @@ struct HazardScaling{S <: Real, F}
     end
 end
 
-function _check_scaling_factor(factor::Real)
+# Only plain numbers are checked. An AD number at zero compares by the sign of
+# its derivative, so a factor of exactly zero that is being differentiated, such
+# as `1 - efficacy` at efficacy 1, would otherwise be rejected.
+function _check_scaling_factor(factor::Union{AbstractFloat, Integer, Rational})
     factor >= 0 ||
         throw(ArgumentError("a hazard scaling factor must be non-negative, got $factor"))
     return nothing
@@ -421,11 +424,9 @@ function _fitted_efficacy(efficacy)
 end
 
 function _dose_components(::LeakyMode, efficacy, ::Nothing, τ)
-    efficacy > 0 || return nothing
     return (one(efficacy) => HazardScaling(τ, 1 - efficacy),)
 end
 function _dose_components(::LeakyMode, efficacy, waning, τ)
-    efficacy > 0 || return nothing
     return (one(efficacy) => HazardScaling(τ, dt -> 1 - efficacy * waning(dt)),)
 end
 # Responder status is drawn once per vaccinated individual and governs every
@@ -1178,9 +1179,12 @@ _scaled_cumhazard(::Nothing, kernel, origin, stop) = cumhazard(kernel, stop)
 function _scaled_cumhazard(m::HazardScaling{<:Real, <:Real}, kernel, origin, stop)
     boundary = clamp(m.start - origin, zero(stop), stop)
     before = cumhazard(kernel, boundary)
-    # A zero factor skips the tail, which may be infinite.
-    iszero(m.factor) && return before
-    return before + m.factor * (cumhazard(kernel, stop) - before)
+    tail = cumhazard(kernel, stop) - before
+    # An infinite tail under a zero factor contributes nothing, where the
+    # product would give NaN. A finite tail stays in the product so that the
+    # derivative with respect to the factor survives a factor of exactly zero.
+    iszero(m.factor) && !isfinite(tail) && return before
+    return before + m.factor * tail
 end
 function _scaled_cumhazard(m::HazardScaling, kernel, origin, stop)
     boundary = clamp(m.start - origin, zero(stop), stop)
@@ -1254,15 +1258,25 @@ function _mixture_loglik(
     j = layout.sus_unique[g]
     rg = layout.sus_row_ranges[g]
     tj = data.infection_time[j]
-    acc = _LogSumExpAcc{T}()
-    for (weight, modifier) in mixture
-        _push!(
-            acc,
-            log(weight) +
-                _component_loglik(modifier, kernel, extdist, data, layout, rg, tj, tfollow, T)
+    # The weights enter linearly, never through `log(weight)`: a weight of
+    # exactly zero would otherwise drop its component, and with it the
+    # derivative of the mixture with respect to that weight.
+    terms = map(mixture) do (weight, modifier)
+        weight => _component_loglik(
+            modifier, kernel, extdist, data, layout, rg, tj, tfollow, T
         )
     end
-    return _value(acc)
+    m = T(-Inf)
+    for (_, l) in terms
+        _is_minus_inf(l) && continue
+        m = _is_minus_inf(m) ? T(l) : max(m, T(l))
+    end
+    _is_minus_inf(m) && return T(-Inf)
+    total = zero(T)
+    for (weight, l) in terms
+        _is_minus_inf(l) || (total += weight * exp(l - m))
+    end
+    return m + log(total)
 end
 
 # Adds the modified susceptibles' contributions to the flat passes' total `ll0`.
