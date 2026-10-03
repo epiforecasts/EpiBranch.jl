@@ -201,6 +201,15 @@ end
             )
         )
         @test_throws ArgumentError ForwardDiff.gradient(waned, [1.5])
+
+        # A waning function that returns more than the efficacy it scales
+        # drives the factor below zero after the immunity time.
+        overshoot = VaccineEffect(efficacy = 0.5, mode = LeakyMode(), waning = dt -> 3.0)
+        for case in (escaped, data(3.0))
+            @test_throws ArgumentError pairwise_surv_loglik(
+                k, case; susceptibility = overshoot
+            )
+        end
     end
 
     @testset "efficacy must be a fixed value" begin

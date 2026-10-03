@@ -345,7 +345,13 @@ function _negative_scaling_factor(factor)
 end
 
 _scaling_at(factor::Real, dt) = factor
-_scaling_at(factor, dt) = factor(dt)
+# A function factor is checked at each value it returns, since no single value
+# stands for it when it is built.
+function _scaling_at(factor, dt)
+    value = factor(dt)
+    _check_scaling_factor(value)
+    return value
+end
 
 """
     susceptibility_components(effect, host) -> components or nothing
@@ -1208,7 +1214,7 @@ end
 function _scaled_cumhazard(m::HazardScaling, kernel, origin, stop)
     boundary = clamp(m.start - origin, zero(stop), stop)
     after, _ = quadgk(
-        s -> hazard(kernel, s) * m.factor(origin + s - m.start), boundary, stop
+        s -> hazard(kernel, s) * _scaling_at(m.factor, origin + s - m.start), boundary, stop
     )
     return cumhazard(kernel, boundary) + after
 end
