@@ -28,6 +28,11 @@ household_final_size
 ```@docs
 PairKernel
 Steps
+EpiBranch.calendar_multiplier
+EpiBranch.next_calendar_break
+EpiBranch.calendar_shape
+EpiBranch.PiecewiseConstantCalendar
+EpiBranch.SmoothCalendar
 record_kernel
 PairContext
 LayerHost

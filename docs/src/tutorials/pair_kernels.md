@@ -4,8 +4,8 @@
 simulator and an infection-layer likelihood can supply: the two population IDs,
 the infector's infection time and, optionally, each host's own record. The
 callback returns the contact-interval profile, measured from the infector's
-infectious opening, and optionally a step schedule that multiplies the rate on
-the calendar.
+infectious opening, and optionally a calendar schedule that multiplies the
+rate on the calendar.
 
 Use an ordinary `(infector, susceptible)` callable when IDs are sufficient. A
 `PairKernel` selects the richer forms without changing existing callbacks.
@@ -147,9 +147,51 @@ through infectious openings, uses the profile's own differentiation support.
 The tests check forward and reverse derivatives for a step-scaled Weibull
 profile against its analytical likelihood.
 
-The multiplier only rescales the hazard over calendar time, so a calendar law
-whose shape changes continuously over time cannot be written this way; a smooth
-change needs approximating with enough `Steps` breakpoints.
+## A seasonal contact rate
+
+A schedule need not be a step function. Any type with a
+[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) method can be a
+`calendar`, and one that declares itself smooth through
+[`calendar_shape`](@ref EpiBranch.calendar_shape) is integrated by quadrature
+instead of segment by segment. Here contact rates rise and fall over a year:
+
+```@example calendar
+struct Seasonal{T <: Real}
+    amplitude::T
+    peak_day::Float64
+end
+function EpiBranch.calendar_multiplier(s::Seasonal, t)
+    return 1 + s.amplitude * cos(2π * (t - s.peak_day) / 365)
+end
+EpiBranch.calendar_shape(::Seasonal) = EpiBranch.SmoothCalendar()
+
+seasonal_kernel = PairKernel(context -> Exponential(4.0);
+    calendar = Seasonal(0.6, 30.0))
+```
+
+The cumulative hazard over two days from an opening on day 100 is the integral
+of the multiplier times the profile's constant rate of 0.25 per day:
+
+```@example calendar
+seasonal_interval = EpiBranch.pair_kernel(seasonal_kernel, 1, 2, 0.0, 100.0)
+exact = 0.25 * (2 + 0.6 * 365 / 2π *
+    (sin(2π * (102 - 30) / 365) - sin(2π * (100 - 30) / 365)))
+(EpiBranch.cumhazard(seasonal_interval, 2.0), exact)
+```
+
+Simulation draws contact intervals by inverting that same integrated hazard, so
+the network simulation and its likelihood stay consistent:
+
+```@example calendar
+seasonal_model = ModelSpec(NetworkProcess(adjacency, seasonal_kernel); progression)
+seasonal_state = simulate(seasonal_model; rng = Xoshiro(235))
+loglikelihood(network_infections(seasonal_state, seasonal_model), seasonal_model)
+```
+
+With a unit-rate profile, `Exponential(1.0)`, the multiplier is the pair's
+hazard on the calendar, so any calendar-time hazard can be written as a
+schedule. The schedule's fields are typed so that the likelihood can be
+differentiated through them, as with `Steps`.
 
 ## Attributes sampled during simulation
 

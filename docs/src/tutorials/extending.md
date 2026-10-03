@@ -1143,6 +1143,41 @@ error, because the routes would silently drop the shorthand's censoring. A
 model that passes no routes gets a single window that is cut by intervention
 removal.
 
+## Calendar schedules for pair kernels
+
+A [`PairKernel`](@ref)'s `calendar` multiplies its contact-interval hazard by a
+function of calendar time. [`Steps`](@ref) is the piecewise-constant schedule
+the package provides; any other schedule is a type with a
+[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) method returning
+the non-negative multiplier at a calendar time. How simulation and the
+likelihood integrate it is set by
+[`calendar_shape`](@ref EpiBranch.calendar_shape):
+
+- **Piecewise constant**, the default: also define
+  [`next_calendar_break`](@ref EpiBranch.next_calendar_break), the first time
+  strictly after `t` at which the multiplier changes (`Inf` if none). The
+  cumulative hazard is then summed exactly, one constant segment at a time,
+  and a draw is inverted within the segment where it falls.
+- **Smooth**: declare `calendar_shape(::YourSchedule) = EpiBranch.SmoothCalendar()`.
+  The cumulative hazard is the integral of the multiplier times the profile's
+  hazard by adaptive Gauss–Kronrod quadrature, and a draw bisects that integral
+  for its target log-survival.
+
+```julia
+struct Seasonal{T <: Real}
+    amplitude::T
+end
+EpiBranch.calendar_multiplier(s::Seasonal, t) = 1 + s.amplitude * sin(2π * t / 365)
+EpiBranch.calendar_shape(::Seasonal) = EpiBranch.SmoothCalendar()
+
+kernel = PairKernel(context -> Exponential(4.0); calendar = Seasonal(0.5))
+```
+
+Simulation and the likelihood read a schedule only through these methods, so
+both score the same hazard. Parameterise the schedule's fields by type, as
+`Seasonal{T}` does, to differentiate the likelihood through them. A worked
+seasonal example is in [Contextual and calendar-time pair kernels](pair_kernels.md).
+
 ## Adding a transmission model
 
 Most use cases stay inside `BranchingProcess` and customise via the
@@ -1630,6 +1665,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
 | Transmission route | `RouteWindow(name; from, until, kernel, reach)` on a process that reads them | Continuous-time race, per case |
 | Structured fixed-size pool | Reuse the Sellke pool: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply a `force(group, counts)` | Simulation |
+| Calendar schedule for a pair kernel | Struct + `calendar_multiplier`, and `next_calendar_break` or `calendar_shape(::YourSchedule) = SmoothCalendar()` | Simulation + likelihood |
 | Pairwise likelihood for a structure | Struct `<: InfectionLayer` + `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood evaluation |
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
