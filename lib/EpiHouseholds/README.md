@@ -33,7 +33,7 @@ loglikelihood(data, model)                   # contact-process density, via pair
 
 `pairwise_surv_loglik(kernel, rows)` is the order-free, right-censored
 counting-process primitive underneath. In real inference the infection times are
-**latent**: a Turing `@model` augments them, evaluates them with the contact
+**latent**: a Turing `@model` augments them, gives them a density under the contact
 process, and conditions the observed onsets/tests through the progression's
 delays. The inference-friendly `pairwise_surv_loglik(kernel, data; external_hazard)`
 takes the kernel and infection layer separately, so the fitted parameters and the
