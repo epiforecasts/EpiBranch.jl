@@ -197,8 +197,13 @@ differentiated through them, as with `Steps`.
 
 `state` lets a `PairKernel` choose which parts of an individual it reads. Given
 `state`, the callback also takes the pair's two host records, built from the
-usual `PairContext`. Here, each person receives a sampled contact-scale
-attribute:
+usual `PairContext`. A projection also declares the `individual.state` keys it
+reads, as `watches`: a continuous-time race redraws a case's pending contacts
+when one of those keys moves on a host it reads, which is how a hazard that
+changes mid-run keeps its contacts honest. Declare every key the projection
+reads, whether or not anything in the model writes it; `()` is for a
+projection that reads none, such as one indexing a table by `ind.id`. Here,
+each person receives a sampled contact-scale attribute:
 
 ```@example stateful
 using EpiBranch, EpiNetwork, Distributions, Random

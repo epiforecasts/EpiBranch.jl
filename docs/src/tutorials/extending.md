@@ -1201,6 +1201,13 @@ error, because the routes would silently drop the shorthand's censoring. A
 model that passes no routes gets a single window that is cut by intervention
 removal.
 
+A process also passes `watches`, one tuple of
+[`watched_records`](@ref EpiBranch.watched_records) per route in route order
+(a one-element tuple for the shorthand), which is how the race knows which
+host records each route's kernel reads. Leaving it out treats every route as
+fixed for the run, so a kernel reading host records would draw its contacts
+from whatever the records held when they were proposed.
+
 ## Calendar schedules for pair kernels
 
 A [`PairKernel`](@ref)'s `calendar` multiplies its contact-interval hazard by a
