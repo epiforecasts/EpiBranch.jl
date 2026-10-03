@@ -383,11 +383,12 @@ end
         @test !EpiBranch._isolation_in_force(ind)
     end
 
-    @testset "a trace that never arrives reaches nobody" begin
+    @testset "a trace with no arrival time quarantines nobody" begin
         # `trigger_time` gives `Inf` for an infector whose isolation was never
-        # recorded, and quarantining a contact at `Inf` would remove it from
-        # transmission and report it as detected.
-        ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.0); action = Quarantine())
+        # recorded. The trace still reaches the contact — it is pending, not
+        # refused — but an isolation at `Inf` would remove it from nothing
+        # while reporting it as isolated and detected.
+        ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.0), Quarantine())
         infector = Individual(id = 1)
         infector.state[:infected] = true
         infector.state[:isolated] = true
@@ -399,9 +400,10 @@ end
             nothing, AbstractClinicalTransition[]
         )
         EpiBranch._trace_pair!(ct, state, infector, contact, StableRNG(1))
-        @test !is_traced(contact)
+        @test is_traced(contact)
+        @test contact.state[:trace_time] == Inf
         @test !EpiBranch._isolation_in_force(contact)
-        @test !haskey(contact.state, :trace_time)
+        @test !is_isolated(contact)
     end
 
     @testset "trace_level lines up with the ring on a tree sim" begin

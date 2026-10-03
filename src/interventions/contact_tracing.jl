@@ -409,9 +409,13 @@ function apply_trace!(::Quarantine, contact, state, trace_time, rng)
         unrecorded = _isolation_unrecorded(contact) && !(trace_time < standing)
         set_isolated!(contact, min(standing, trace_time))
         unrecorded && (contact.state[:isolation_unrecorded] = true)
-    else
+    elseif isfinite(trace_time)
         set_isolated!(contact, trace_time)
     end
+    # A trace with no arrival time quarantines nobody: an isolation at `Inf`
+    # removes the contact from nothing, while reporting it as isolated and
+    # detected. `!OnIsolation()` reaches a contact this way, no earlier than an
+    # isolation its infector has not had.
     return nothing
 end
 
@@ -684,10 +688,6 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # A contact cannot be sought before it exists, such as a funeral contact
     # before the funeral, so the delay runs from whichever comes later.
     trace_time = max(base, not_before) + trace_delay
-    # A trace that never arrives reaches nobody: quarantining a contact at
-    # `Inf` would remove it from transmission and report it as detected, and
-    # leaving `:ring_remaining` unset keeps the ring from growing past it.
-    isfinite(trace_time) || return nothing
     apply_trace!(ct.action, ind, state, trace_time, rng)
 
     # Record the source this contact was traced from. The engine makes
