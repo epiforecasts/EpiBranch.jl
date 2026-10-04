@@ -1406,6 +1406,25 @@ Distributions.loglikelihood(d::MyInfections, m::MyModel) =
 `HouseholdInfections` in `EpiHouseholds` and `NetworkInfections` in `EpiNetwork`
 are the worked examples.
 
+`pairwise_surv_loglik` and `pairwise_surv_loglik_by_component` each group the
+same rows differently: the first into one total, the second by connected
+component. A different grouping (by stratum, by spatial patch) is a
+[`EpiBranch.PairwiseReduction`](@ref) subtype with `EpiBranch.ngroups` and
+`EpiBranch.group` methods, run with
+[`EpiBranch.pairwise_reduce`](@ref)`(reduction, kernel, data, layout)`, no
+change to `pairwise_survival.jl`:
+
+```julia
+struct ByStratum <: EpiBranch.PairwiseReduction
+    stratum::Vector{Int}
+    nstrata::Int
+end
+EpiBranch.ngroups(r::ByStratum) = r.nstrata
+EpiBranch.group(r::ByStratum, host) = r.stratum[host]
+
+EpiBranch.pairwise_reduce(ByStratum(stratum, nstrata), kernel, data, layout)
+```
+
 For optional **state accessors**, override `population_size` and
 `n_types` if your model has values for them. The defaults
 (`NoPopulation()`, `1`) are fine if not.
@@ -1766,6 +1785,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom clinical transition | Struct `<: AbstractClinicalTransition` + `initialise_individual!`, `resolve_individual!`; `is_terminal`/`terminal_event` if terminal; `transition_loglik` to evaluate it | Case creation |
 | Calendar schedule for a pair kernel | Struct + `calendar_multiplier`, and `next_calendar_break` or `calendar_shape(::YourSchedule) = SmoothCalendar()` | Simulation + likelihood |
 | Pairwise likelihood for a structure | Struct `<: InfectionLayer` + `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood evaluation |
+| Pairwise likelihood row grouping | Struct `<: EpiBranch.PairwiseReduction` + `EpiBranch.ngroups`, `EpiBranch.group`; run with `EpiBranch.pairwise_reduce` | Likelihood evaluation |
 | Progression likelihood | `progression_loglik(spec, individuals)`; built-in transitions work out of the box, a custom one needs `transition_loglik` | Likelihood evaluation |
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
