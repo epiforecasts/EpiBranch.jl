@@ -132,7 +132,7 @@ schedule there:
 edges = [[Exponential(1.0), Exponential(2.0)] for _ in adjacency]
 PairKernel(context -> edges[context.infector][findfirst(==(context.susceptible),
         adjacency[context.infector])];
-    calendar = Steps([policy_day], [before_rate, after_rate]))
+    calendar = Steps([3.0], [1.0, 0.25]))   # rate falls to a quarter on day 3
 ```
 
 Replace `NetworkProcess(adjacency, kernel)` with `HouseholdProcess([3], kernel)`
