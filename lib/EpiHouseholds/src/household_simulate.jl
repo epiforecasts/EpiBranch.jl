@@ -168,9 +168,9 @@ end
 
 # A race's `members` can span more than one household (sharing a clock, per
 # `race_groups`), so each household within it is seeded as its own clique
-# rather than drawing one index case across the merged group: `best` and
-# `members` are grouped by household before `_seed_clique!` sees them, by
-# position within the race rather than by global id.
+# rather than drawing one index case across the merged group. `best` and
+# `members` are grouped by household, using position within the race rather
+# than global id, before `_seed_clique!` sees them.
 function _seed_household_race!(best, members, model, state, Tobs, rng, initial_cases)
     households = Dict{Int, Vector{Int}}()
     for k in eachindex(members)
