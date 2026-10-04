@@ -959,9 +959,11 @@ An infection aborted before onset (see
 [`abort_infection!`](@ref EpiBranch.abort_infection!)) ends its clinical course
 at the abort time. A transition takes effect at the times it writes under
 `_time` keys, so one that writes a time at or after the abort is undone,
-whatever state it is timed from: every key it changed is restored. Transitions timed from it then find their
-`from` state unreached, and it contributes no terminal candidate to the outcome.
-Transitions that take effect strictly before the abort stand.
+whatever state it is timed from: every key it bound is restored, so a
+transition must record through `individual.state` rather than by mutating a
+container it finds there. Transitions timed from an undone one then find their
+`from` state unreached, and it contributes no terminal candidate to the
+outcome. Transitions that take effect strictly before the abort stand.
 """
 function resolve_transitions!(state::SimulationState, individual)
     transitions = state.transitions
