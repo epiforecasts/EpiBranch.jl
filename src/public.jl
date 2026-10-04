@@ -97,3 +97,8 @@ public PairwiseReduction
 public ngroups
 public group
 public pairwise_reduce
+
+# Vaccine effect modes: a new mode defines `realised_efficacy`, and overrides
+# `realise_prior_dose!` only to change what a dose recorded before the run gets.
+public realised_efficacy
+public realise_prior_dose!

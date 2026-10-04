@@ -25,6 +25,8 @@ much you write:
   states of its natural history. Covered below.
 - **Add an observation or data type** — subtype `ObservationModel`, or define a
   `loglikelihood` method for a new data type. Covered below.
+- **Add a stopping rule** — subtype `AbstractStoppingRule` to end a run on a
+  condition none of the built-ins cover. Covered below.
 
 The two surfaces most people reach for are a **custom intervention** (a new risk
 on an existing model) and a **custom transmission model** (a new process); both
@@ -66,15 +68,17 @@ downstream packages should pick names that do not collide.
 | `:group` | `Int` | — | `groups` | Init |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
-| `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
-| `:isolation_unrecorded` | `Bool` | `false` | `Isolation` | `resolve_individual!`; the isolation removes the case from transmission without counting as a detection |
+| `:_isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!`; internal |
+| `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
+| `:_isolation_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The time a standing isolation held before this one |
+| `:_isolation_unrecorded_before_isolation` | `Bool` | — | `Isolation` | `resolve_individual!`; internal |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
-| `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff; may precede onset, so hold it back to onset |
+| `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff; may precede onset, so hold it back to onset |
 | `:trace_time` | `Float64` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
-| `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` / `trace_contacts!` |
-| `:ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!` |
+| `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` / `trace_contacts!`; internal |
+| `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | Post-simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
@@ -174,7 +178,7 @@ counts as a detection is a separate question, answered by `is_isolated`, which
 answers no for an isolation at or after [`outcome_time`](@ref), since a
 self-report or trace reaching a case that has already recovered or died
 describes a detection that did not happen; it then sets
-`:isolation_unrecorded` and leaves the removal in place. The eligibility makes
+`:_isolation_unrecorded` and leaves the removal in place. The eligibility makes
 that call through [`EpiBranch.records_isolation`](@ref): override it for a
 policy that does record a late detection, such as a death found at burial.
 
@@ -196,6 +200,17 @@ Built-in keys use short bare names like `:isolated`, `:traced`, `:age`, and
 those names are reserved. If you add keys from another package, prefix them
 with a short tag for your package so they do not collide with built-ins or
 with keys other packages might add.
+
+A key an intervention keeps purely for its own bookkeeping — provenance such
+as `Isolation`'s `:_isolated_by_isolation`, or a stash such as its
+`:_isolation_time_before_isolation` — starts with an underscore, as
+[`EpiBranch._action_cache`](@ref)'s `:_intervention_actions` does. The
+underscored names in the table above are reserved along with the bare ones, so
+a key of your own carries your package's tag inside the prefix,
+`:_mypkg_budget` rather than `:_budget`. [`linelist`](@ref)
+drops every key with that prefix, so none of it reaches line-list output; a
+key without the prefix becomes a column once a composed component writes it,
+whether or not the package anticipated it.
 
 State that belongs to a whole run, such as an index an intervention builds once
 and reuses, goes in `state.scratch`, a `Dict` on the
@@ -435,7 +450,7 @@ function resolve_individual!(iso::Isolation, individual, state)
 
     # A contact traced before its onset was known has only the bare trace
     # time, so hold it back to the onset.
-    traced_time = max(get(individual.state, :traced_isolation_time, Inf), onset_time(individual))
+    traced_time = max(get(individual.state, :_traced_isolation_time, Inf), onset_time(individual))
     set_isolated!(individual, min(iso_time, traced_time))
     return nothing
 end
@@ -764,6 +779,41 @@ For a scalar, `_store_draw!` stores nothing and `EpiBranch._dose_value` reads
 the value straight off the vaccination; for a distribution or a function it
 stores the draw.
 
+### A custom effect mode
+
+`mode` is dispatched through [`AbstractEffectMode`](@ref): a third mode
+subtypes it and implements [`EpiBranch.realised_efficacy`](@ref), which turns
+the efficacy a dose was given into the value stored on the individual.
+Nothing else on the vaccination machinery needs to change, since the mode is
+read only through `effect_mode(v)`.
+
+Here a "partial responder" mode gives a fraction `efficacy` of vaccinated
+individuals full protection, as `AllOrNothingMode` does, but gives the rest a
+fixed floor of leaky protection instead of none:
+
+```@example extending
+struct PartialResponseMode <: AbstractEffectMode
+    non_responder_efficacy::Float64
+end
+
+function EpiBranch.realised_efficacy(mode::PartialResponseMode, eff, rng)
+    rand(rng, Bernoulli(eff)) && return 1.0
+    return mode.non_responder_efficacy
+end
+
+partial = RingVaccination(efficacy = 0.6, mode = PartialResponseMode(0.2))
+draws = map(1:8) do i
+    contact = Individual(id = i, parent_id = 0, infection_time = 10.0)
+    EpiBranch._record_vaccination!(partial, contact, 0.0, StableRNG(i))
+    EpiBranch._vaccine_efficacy(partial, contact)
+end
+draws
+```
+
+Every stored value is `1.0` (a responder) or `0.2` (the non-responder floor) —
+never the raw `0.6` `LeakyMode` would keep, nor the certain `0.0`
+`AllOrNothingMode` gives a non-responder.
+
 ## Tree-shaping via the offspring distribution
 
 Some interventions don't filter individual transmissions — they change
@@ -810,6 +860,39 @@ Use `ind.infection_time` when R varies with each parent's own
 infection timing, or `state.max_infection_time` (via the
 three-argument form) when R varies with the population-level outbreak
 clock.
+
+## Custom stopping rules
+
+Termination is controlled by a vector of [`AbstractStoppingRule`](@ref)s —
+`stopping_rules`, or the `max_cases`/`max_generations`/`max_time` shortcuts
+that build them (see [`SimOpts`](@ref)). The engine stops at the first step
+where *any* rule's [`should_stop`](@ref) returns `true`. The built-ins —
+[`Extinction`](@ref), [`MaxCases`](@ref), [`MaxGenerations`](@ref),
+[`MaxTime`](@ref) — cover the common cases; a condition none of them express
+is a new subtype and one method.
+
+Here a rule stops a run once any chain reaches a given number of
+generations, regardless of case count:
+
+```@example extending
+struct MaxChainLength <: AbstractStoppingRule
+    n::Int
+end
+EpiBranch.should_stop(r::MaxChainLength, state::SimulationState) =
+    maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
+
+rng = StableRNG(3)
+chain_model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
+chain_state = simulate(
+    chain_model; stopping_rules = [Extinction(), MaxChainLength(5)], rng = rng
+)
+maximum(ind.generation for ind in chain_state.individuals; init = 0)
+```
+
+[`Extinction`](@ref) is prepended automatically unless your `stopping_rules`
+already has one, so a rule set that forgets it still terminates on a
+subcritical outbreak rather than hanging — `MaxChainLength` alone would never
+stop a chain that goes extinct below 5 generations.
 
 ## Custom attributes functions
 
@@ -1284,7 +1367,7 @@ kernel = PairKernel(context -> Exponential(4.0); calendar = Seasonal(0.5))
 Simulation and the likelihood read a schedule only through these methods, so
 both compute the same hazard. Parameterise the schedule's fields by type, as
 `Seasonal{T}` does, to differentiate the likelihood through them. A worked
-seasonal example is in [Contextual and calendar-time pair kernels](pair_kernels.md).
+seasonal example is in [Covariates and time-varying transmission](covariate-transmission.md).
 
 ## Adding a transmission model
 
@@ -1783,8 +1866,11 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom intervention | Struct `<: AbstractIntervention` + hook methods | Each generation |
 | Ending an infection early | `EpiBranch.abort_infection!(ind, time)` from an intervention hook | That hook |
 | Custom vaccination | Struct `<: AbstractVaccination` holding a `VaccineEffect` + `vaccine_effect` + `apply_post_transmission!` | Each generation |
+| Custom effect mode | Struct `<: AbstractEffectMode` + `realised_efficacy`; `realise_prior_dose!` only to change what a dose recorded before the run gets | Dose recording / individual creation |
 | Time-dependent intervention | `Scheduled(iv; start_time = ...)` + `intervention_time`, `reset!` on `iv` | After each hook |
 | Capacity-constrained intervention | `CapacityConstrained(iv; budget_per_period = ...)` + `capacity_key`, `capacity_time_key` on `iv` | `apply_post_transmission!` |
+| Custom stopping rule | Struct `<: AbstractStoppingRule` + `should_stop` | Each step |
+| Terminal clinical transition | Struct `<: AbstractClinicalTransition` + `is_terminal`, `terminal_event`, `terminal_target` | Case creation |
 | Custom attributes | Function `(rng, ind) -> nothing` | Individual creation |
 | Layered attributes | `[f1, f2, ...]` | Individual creation |
 | Custom offspring (function) | Function `(rng, ind) -> Int` | Offspring draw |
@@ -1793,7 +1879,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
 | Transmission route | `RouteWindow(name; from, until, kernel, reach)` on a process that reads them | Continuous-time race, per case |
 | Structured fixed-size pool | Reuse the Sellke pool: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply a `force(group, counts)` | Simulation |
-| Custom clinical transition | Struct `<: AbstractClinicalTransition` + `initialise_individual!`, `resolve_individual!`; `is_terminal`/`terminal_event` if terminal; `transition_loglik` to evaluate it | Case creation |
+| Custom clinical transition | Struct `<: AbstractClinicalTransition` + `initialise_individual!`, `resolve_individual!`; `is_terminal`/`terminal_event`/`terminal_target` if terminal; `transition_loglik` to evaluate it | Case creation |
 | Calendar schedule for a pair kernel | Struct + `calendar_multiplier`, and `next_calendar_break` or `calendar_shape(::YourSchedule) = SmoothCalendar()` | Simulation + likelihood |
 | Pairwise likelihood for a structure | Struct `<: InfectionLayer` + `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood evaluation |
 | Pairwise likelihood row grouping | Struct `<: EpiBranch.PairwiseReduction` + `EpiBranch.ngroups`, `EpiBranch.group`; run with `EpiBranch.pairwise_reduce` | Likelihood evaluation |
@@ -1881,6 +1967,56 @@ no onset to anchor from.
 The second is a gate from [`exclusive_probabilities`](@ref). Its siblings share
 one draw, so the gate returns the 0 or 1 that draw produced, while the term the
 likelihood needs is the width of the bucket the draw selected.
+
+A terminal transition also implements [`EpiBranch.terminal_target`](@ref): the
+state label it writes, known without an individual (unlike `terminal_event`,
+which needs one to resolve the *time*). The `until`-coverage check — the
+warning logged when a progression can reach a terminal state that no window
+closes on, which runs for a fixed-size process, for every `RouteWindow`, and
+for the network and household processes — reads this to see the state at all.
+A terminal transition that skips it is exempt from the check with nothing
+said, so a case reaching its state keeps an open window and goes on
+generating exposure proposals for the rest of the run. `Death` and `Recovery`
+implement it; so does a terminal transition written outside the package:
+
+```@example extending
+struct LostToFollowUp <: AbstractClinicalTransition
+    probability::Float64
+    delay::Float64
+end
+EpiBranch.is_terminal(::LostToFollowUp) = true
+EpiBranch.terminal_target(::LostToFollowUp) = :lost
+function EpiBranch.resolve_individual!(t::LostToFollowUp, ind, state)
+    time = EpiBranch.transition_time(
+        state.rng, ind, ind.infection_time, t.delay; probability = t.probability
+    )
+    time === nothing || (ind.state[:lost_time] = time)
+    return nothing
+end
+function EpiBranch.terminal_event(::LostToFollowUp, individual)
+    t = get(individual.state, :lost_time, Inf)
+    return isfinite(t) ? (t, :lost) : nothing
+end
+
+lost_pool = HomogeneousProcess(;
+    transmission_rate = 0.0, population_size = 20,
+    until = (:recovered, :died, :isolated, :lost)
+)
+lost_model = ModelSpec(
+    lost_pool;
+    progression = [
+        Transition(:recovered; from = :infection, delay = 10.0, terminal = true),
+        LostToFollowUp(0.6, 5.0),
+    ]
+)
+lost_state = simulate(lost_model; n_initial = 20, rng = StableRNG(7))
+count(ind -> get(ind.state, :outcome, :none) == :lost, lost_state.individuals)
+```
+
+Dropping `:lost` from `lost_pool`'s `until` above would still run, and would
+warn that a case reaching `:lost` never has its window closed — the same
+warning logged for `Death`/`Recovery` when `until` leaves out
+`:died`/`:recovered`.
 
 ### Event dates for uninfected people
 

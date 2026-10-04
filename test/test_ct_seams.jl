@@ -290,7 +290,7 @@ end
             # A contact of an uninfected ring member is the outer edge:
             # its own ring budget is exhausted.
             if !is_infected(parent) && is_traced(ind)
-                @test get(ind.state, :ring_remaining, 0) == 0
+                @test get(ind.state, :_ring_remaining, 0) == 0
             end
         end
         @test state.cumulative_cases >= 1
@@ -371,16 +371,16 @@ end
         ind.state[:traced] = true
         ind.state[:traced_by] = 7
         ind.state[:trace_level] = 2
-        ind.state[:ring_propagated] = true
+        ind.state[:_ring_propagated] = true
         # An isolation in force but never recorded as a detection is still an
         # isolation this trace brought about, so the reset lifts it.
         set_isolated!(ind, 6.0)
-        ind.state[:isolation_unrecorded] = true
+        ind.state[:_isolation_unrecorded] = true
         EpiBranch.reset!(ct, ind)
         @test ind.state[:traced] == false
         @test !haskey(ind.state, :traced_by)
         @test !haskey(ind.state, :trace_level)
-        @test !haskey(ind.state, :ring_propagated)
+        @test !haskey(ind.state, :_ring_propagated)
         @test isolation_time(ind) == Inf
         @test !EpiBranch._isolation_in_force(ind)
     end
@@ -422,7 +422,7 @@ end
             # An unrecorded standing isolation stays unrecorded.
             unrecorded = Individual(id = 4)
             set_isolated!(unrecorded, 4.0)
-            unrecorded.state[:isolation_unrecorded] = true
+            unrecorded.state[:_isolation_unrecorded] = true
             EpiBranch.apply_trace!(
                 Quarantine(), unrecorded, state, unreachable, StableRNG(1)
             )
