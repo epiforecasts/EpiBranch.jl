@@ -167,9 +167,17 @@ println("Outbreak size: $(state.cumulative_cases) (target: 50-100)")
 
 ## Next steps
 
-- [Interventions](interventions.md) — combining interventions and the competing risks framework
-- [Multi-type models](multi-type.md) — age-structured and heterogeneous transmission
-- [Line lists and contacts](linelist.md) — generating epidemiological data
-- [Chain statistics and likelihood](chains.md) — inference from chain data
-- [Analytical functions](analytical.md) — closed-form solutions
-- [Extending EpiBranch](extending.md) — writing a custom intervention or a new transmission model
+- [Interventions](interventions.md): combining interventions and the competing risks framework
+- [Clinical transitions](transitions.md): symptom onset, reporting, admission, and recovery or death
+- Transmission models:
+  - [Multi-type models](multi-type.md): age-structured and heterogeneous transmission
+  - [Network models](networks.md): transmission over a fixed contact network
+  - [Household models](households.md): transmission within and between households
+  - [Homogeneous models](homogeneous.md): a closed, well-mixed population
+  - [Covariates and time-varying transmission](covariate-transmission.md): contact intervals that depend on the pair, the calendar or events during the outbreak
+- [Line lists and contacts](linelist.md): generating epidemiological data
+- Analysis:
+  - [Chain statistics](chains.md): chain size and length, and their likelihoods
+  - [Analytical functions](analytical.md): closed-form solutions
+  - [Inference](inference.md): estimating parameters from outbreak data
+- [Extending EpiBranch](extending.md): writing a custom intervention or a new transmission model
