@@ -998,12 +998,15 @@ function _resolve_before_abort!(transitions, individual, state, aborted_t)
     for transition in transitions
         resolve_individual!(transition, individual, state)
         if _writes_time_from(individual.state, kept, aborted_t)
-            # Restore what the transition recorded and leave what it only
-            # cached. Every key a transition writes as its outcome is already
-            # in `kept`, because `initialise_individual!` ran before the copy,
-            # so a key added since belongs to something wider: the uniform a
-            # group of `exclusive_probabilities` siblings shares, which the
-            # next sibling has to read rather than draw again.
+            # The uniform a group of siblings shares belongs to the group
+            # rather than to whichever of them first needed it, so it joins the
+            # state the undo restores: the next sibling then reads the same
+            # value instead of drawing a fresh one, and the group still
+            # partitions a case the abort cut short.
+            for key in _shared_draw_keys(transition)
+                haskey(individual.state, key) && (kept[key] = individual.state[key])
+            end
+            empty!(individual.state)
             merge!(individual.state, kept)
         else
             _catch_up!(kept, individual.state)

@@ -120,6 +120,7 @@ Base.@kwdef struct Death{D, P, F} <: AbstractClinicalTransition
     probability::P
     from::F = :onset_time
 end
+_shared_draw_keys(t::Death) = _shared_draw_keys(t.probability)
 
 required_fields(d::Death) = _from_required(d.from)
 is_terminal(::Death) = true

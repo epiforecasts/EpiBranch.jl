@@ -307,6 +307,13 @@ function exclusive_probabilities(ps::AbstractVector{<:Real})
 end
 
 
+# The state keys a transition reads that belong to a group of siblings rather
+# than to itself, which an aborted infection's undo therefore keeps. Only a
+# shared-draw gate has one.
+_shared_draw_keys(::AbstractClinicalTransition) = ()
+_shared_draw_keys(g::_ExclusiveGate) = (g.key,)
+_shared_draw_keys(probability) = ()
+
 # A shared draw is one event, so the bucket it selected holds the whole gate
 # term and the siblings it passed over say nothing more. The group's shortfall
 # — the probability that it selected none of them, when `sum(ps) < 1` — belongs
