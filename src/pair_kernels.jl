@@ -45,11 +45,11 @@ end
 
 Resolve a contact-interval distribution for an ordered pair. A shared continuous
 distribution is returned unchanged; an ordinary callable receives the two IDs;
-a [`ContextualKernel`](@ref) receives a [`PairContext`](@ref). Structured-process
+a `ContextualKernel` receives a `PairContext`. Structured-process
 extensions can use this method to share kernel semantics with the likelihood.
 The five-argument form supplies the infectious opening required by `CalendarKernel`.
 The six-argument form also passes the `SimulationState`, from which a live
-[`StatefulKernel`](@ref) reads both hosts' records; simulation must use it, since
+`StatefulKernel` reads both hosts' records; simulation must use it, since
 the shorter forms are for likelihoods and throw for a live kernel. Every other
 kernel returns what the five-argument form does.
 """

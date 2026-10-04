@@ -17,19 +17,20 @@
 
 """
     NetworkProcess(adjacency, kernel; from = nothing,
-                   until = (:recovered, :died, :isolated), external_hazard = 0.0,
-                   obs_end = Inf)
+                   until = (:recovered, :died, :isolated), calendar_time = false,
+                   external_hazard = 0.0, obs_end = Inf)
 
 Rate-based transmission over a fixed contact network. `adjacency[i]` lists
 the graph neighbours of node `i` (1-based); the graph is the population.
 `kernel` is the **contact interval** — the one required input — a continuous
 `Distributions.jl` distribution shared by every edge, a callable
-`(infector, susceptible) -> Distribution` for covariate models, a
-[`ContextualKernel`](@ref) that also reads the infector's infection time,
-or a [`StatefulKernel`](@ref) with sampled attributes and dated histories, or a
+`(infector, susceptible) -> Distribution` for covariate models, or a
 per-edge vector of distributions parallel to `adjacency`
 (`kernel[i][k]` for node `i`'s `k`-th listed neighbour). The kernel times
-each infectious contact from the infector's `from` state.
+each infectious contact from the infector's `from` state. With
+`calendar_time = true` the kernel instead describes the contact hazard on the
+calendar-time axis, so transmission can change on a given date partway through
+an infectious window.
 
 The process describes the transmission alone. The natural history is a
 `progression` of EpiBranch `Transition`s attached with a [`ModelSpec`](@ref),
@@ -69,11 +70,12 @@ function NetworkProcess(
         kernel;
         from = nothing,
         until = (:recovered, :died, :isolated),
+        calendar_time::Bool = false,
         external_hazard = 0.0,
         obs_end = Inf
     )
     adj = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
-    edge_kernel = _validate_kernel(kernel, adj)
+    edge_kernel = _validate_kernel(calendar_time ? EpiBranch.CalendarKernel(kernel) : kernel, adj)
     _valid_external(external_hazard) ||
         throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
     obs_end_value = Float64(obs_end)
@@ -168,7 +170,7 @@ function _validate_kernel(k::AbstractVector{<:AbstractVector}, adj)
     end
     return [collect(row) for row in k]
 end
-_validate_kernel(k::CalendarKernel, adj) = CalendarKernel(_validate_kernel(k.kernel, adj))
+_validate_kernel(k::EpiBranch.CalendarKernel, adj) = EpiBranch.CalendarKernel(_validate_kernel(k.kernel, adj))
 _validate_kernel(k, adj) = k   # callable (infector, susceptible) -> Distribution
 
 # The contact-interval distribution for the `pos`-th neighbour of node `i`.
@@ -184,7 +186,7 @@ function _resolve_kernel(k, m, i, pos, state, from)
     )
 end
 
-function _resolve_kernel(k::CalendarKernel, m, i, pos, state, from)
+function _resolve_kernel(k::EpiBranch.CalendarKernel, m, i, pos, state, from)
     return EpiBranch._calendar_interval(
         _resolve_kernel(k.kernel, m, i, pos, state, from),
         EpiBranch._window_open(state.individuals[i], from)

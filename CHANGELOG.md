@@ -12,12 +12,7 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
-- `StatefulKernel` shares sampled attributes and dated intervention histories
-  between structured simulation and likelihoods. `record_kernel` extracts typed
-  host records for inference. An infection layer can hold per-host times such
-  as onsets (`host_times`), which a live `StatefulKernel` reads in the
-  likelihood, so one kernel timed from symptom onset serves both simulation and
-  inference.
+- An infection layer can hold per-host times such as onsets (`host_times`).
 - The households tutorial casts the classical households model as a branching
   process over households: the households-of-one limit, the offspring matrix as
   a multi-type `BranchingProcess`, and the scope of the approximation.
@@ -25,10 +20,9 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   time: people whose infection would fall later stay uninfected, matching the
   full run restricted to infections up to `max_time`. The other termination
   controls still do not apply to these models.
-- `CalendarKernel` aligns calendar-time contact hazards with infectious openings
-  in network and household simulation and likelihoods.
-- `ContextualKernel` shares fixed and infector-infection-time covariates between
-  network or household simulation and the compiled pairwise likelihood.
+- `calendar_time = true` on `NetworkProcess` and `HouseholdProcess` reads the
+  contact interval as a calendar-time hazard, so a policy can change
+  transmission on a given date in both simulation and the pairwise likelihood.
 - Clean-project installation checks for matching source revisions and published
   companion-package installations.
 - Callable objects can supply branching-process offspring rules, generation-time

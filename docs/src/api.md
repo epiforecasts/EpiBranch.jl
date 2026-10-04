@@ -26,12 +26,6 @@ household_final_size
 ## Pairwise survival likelihood
 
 ```@docs
-ContextualKernel
-CalendarKernel
-StatefulKernel
-record_kernel
-PairContext
-LayerHost
 EpiBranch.pair_kernel
 pairwise_surv_loglik
 PairwiseSurvivalData

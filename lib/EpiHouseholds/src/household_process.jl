@@ -16,16 +16,17 @@
 
 """
     HouseholdProcess(sizes, kernel; from = nothing, until = (:recovered, :died, :isolated),
-                     external_hazard = 0.0, obs_end = Inf)
+                     calendar_time = false, external_hazard = 0.0, obs_end = Inf)
 
 Household-structured transmission. `sizes` gives the size of each household (so
 `sum(sizes)` individuals in `length(sizes)` households) and `kernel` is the
 within-household **contact interval** — the one required input — any continuous
 `Distributions.jl` distribution on the positive reals, or a callable
-`(infector, susceptible) -> Distribution` for covariate models, or a
-[`ContextualKernel`](@ref) that also reads the infector's infection time,
-or a [`StatefulKernel`](@ref) with sampled attributes and dated histories. The kernel times
-each infectious contact from the infector's `from` state.
+`(infector, susceptible) -> Distribution` for covariate models. The kernel times
+each infectious contact from the infector's `from` state. With
+`calendar_time = true` the kernel instead describes the contact hazard on the
+calendar-time axis, so transmission can change on a given date partway through
+an infectious window.
 
 The process describes the transmission alone. The natural history is a `progression`
 of EpiBranch `Transition`s attached with a [`ModelSpec`](@ref): a latent period
@@ -102,6 +103,7 @@ function HouseholdProcess(
         sizes::AbstractVector{<:Integer}, kernel;
         from = nothing,
         until = (:recovered, :died, :isolated),
+        calendar_time::Bool = false,
         external_hazard = 0.0,
         obs_end = Inf
     )
@@ -123,7 +125,8 @@ function HouseholdProcess(
     end
 
     return HouseholdProcess(
-        household_of, members, kernel, from, Tuple(until),
+        household_of, members, calendar_time ? EpiBranch.CalendarKernel(kernel) : kernel,
+        from, Tuple(until),
         _normalise_external(external_hazard), Float64(obs_end)
     )
 end

@@ -110,8 +110,8 @@ holds, per host `i` (numbered `1:n`):
 and a scalar `obs_end`, the time community introductions stop (only read when
 there is a community hazard). Spread along the contact structure continues after
 it. A subtype may also hold `host_times`, a named tuple of further per-host time
-vectors such as `onset_time`, which a live [`StatefulKernel`](@ref) reads in the
-likelihood as it reads host state in simulation. `missing` marks a host without
+vectors such as `onset_time`, which a kernel that depends on host state reads in
+the likelihood as it reads that state in simulation. `missing` marks a host without
 that time; a `NaN` entry is a recorded value, as simulation stores the onset of
 an asymptomatic case.
 
@@ -674,8 +674,7 @@ one infected when none of its possible infectors is infectious, makes the whole
 configuration impossible, and the density is `-Inf` with a zero gradient.
 
 `kernel` is a `Distributions.jl` distribution shared by every pair, a callable
-`(infector, susceptible) -> Distribution` for covariates, a [`ContextualKernel`](@ref)
-that also receives the infector's infection time, or a per-edge vector
+`(infector, susceptible) -> Distribution` for covariates, or a per-edge vector
 parallel to an adjacency list (`kernel[i][k]` for host `i`'s `k`-th listed
 contact). `external_hazard` is a community hazard (a positive rate or a
 calendar-time distribution) that introduces cases over `[0, data.obs_end]`. With

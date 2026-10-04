@@ -1,5 +1,7 @@
 using Test
 using EpiBranch
+using EpiBranch: CalendarKernel, ContextualKernel, LayerHost, PairContext, StatefulKernel,
+    record_kernel
 # Non-exported chain-size types, reached in production via chain_size_distribution.
 using EpiBranch: GammaBorel, PoissonGammaChainSize
 using Distributions

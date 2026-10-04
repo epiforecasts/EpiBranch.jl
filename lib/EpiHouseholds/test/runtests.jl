@@ -1,6 +1,8 @@
 using Test
 using EpiHouseholds
 using EpiBranch
+using EpiBranch: CalendarKernel, ContextualKernel, LayerHost, PairContext, StatefulKernel,
+    record_kernel
 using Distributions
 using StableRNGs
 using ForwardDiff

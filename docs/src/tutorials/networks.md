@@ -420,7 +420,9 @@ grid[argmax(ll.(grid))]                # ≈ the true scale, 6.0
 `loglikelihood(data, truth)` is the same density at the model's own kernel. The
 kernel can be anything `NetworkProcess` accepts: a shared distribution, a
 callable `(infector, susceptible) -> Distribution` for covariates, or a per-edge
-vector parallel to the adjacency. Because the structure and the set of infected
+vector parallel to the adjacency (see
+[Covariates and time-varying transmission](@ref) for covariate and calendar-time
+kernels). Because the structure and the set of infected
 nodes stay fixed, [`compile_contact_pairs`](@ref) enumerates the rows once and the
 three-argument `pairwise_surv_loglik` reuses them while the kernel parameters
 change. That form is differentiable in those parameters and can be optimised
