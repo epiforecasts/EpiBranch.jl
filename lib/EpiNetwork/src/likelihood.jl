@@ -98,7 +98,7 @@ The contact-process log-density of `model`'s kernel given the infection layer
 `data`: `pairwise_surv_loglik(model.edge_kernel, data; external_hazard =
 model.external_hazard, susceptibility)`. A per-edge kernel must be parallel to
 `data.contacts`. For a `ModelSpec`, `susceptibility` is the model's
-interventions, so a composed vaccination is scored from the immunity times
+interventions, so a composed vaccination is evaluated from the immunity times
 [`network_infections`](@ref) recorded.
 """
 function Distributions.loglikelihood(

@@ -422,7 +422,7 @@ function susceptibility_components(w::InterventionWrapper, host)
     return susceptibility_components(w.intervention, host)
 end
 
-# The likelihood scores one population-level efficacy. A `Distribution` or
+# The likelihood evaluates one population-level efficacy. A `Distribution` or
 # function draws a value per vaccinated individual in simulation, and the
 # likelihood has no per-host draw to read it from.
 function _fitted_efficacy(efficacy::Union{AbstractFloat, Integer, Rational})
@@ -1064,7 +1064,7 @@ function _pairwise_surv_loglik(
 end
 
 # The flat passes leave out the susceptibles a `susceptibility` effect modifies,
-# which `_pairwise_mixtures` scores instead.
+# which `_pairwise_mixtures` evaluates instead.
 function _pairwise_cumhazard(
         kernel, extdist, data, layout, tfollow,
         ::Type{T}, mixtures = nothing
@@ -1156,13 +1156,13 @@ end
 
 # ── Susceptible-level mixtures ───────────────────────────────────────
 #
-# A susceptible a `susceptibility` effect modifies is scored on its own: its
+# A susceptible a `susceptibility` effect modifies is evaluated on its own: its
 # rows are left out of the two flat passes, and its contribution is the
 # log-sum-exp over its mixture components of the log weight plus the escape
 # and event terms under that component's modifier.
 
 # The mixture of each susceptible the effect modifies, by host id, or `nothing`
-# when it modifies none, which scores the layer exactly as without an effect.
+# when it modifies none, which evaluates the layer exactly as without an effect.
 _host_mixtures(::Nothing, data, layout) = nothing
 function _host_mixtures(effect, data, layout)
     mixtures = Dict{Int, Any}()

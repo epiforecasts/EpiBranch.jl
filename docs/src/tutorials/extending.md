@@ -1892,10 +1892,10 @@ EpiBranch.infection_likelihood_compatible(::Prophylaxis) = true
 ```
 
 `household_infections` and `network_infections` then record `:prophylaxis_time`
-for every host, and `loglikelihood(data, spec)` scores the effect. The same
+for every host, and `loglikelihood(data, spec)` evaluates the effect. The same
 object, or any other effect, can be passed to
 `pairwise_surv_loglik(kernel, data; susceptibility = effect)` directly, which is
-how a candidate efficacy is scored in inference.
+how a candidate efficacy is evaluated in inference.
 
 ### Choosing initial cases in a fixed population
 

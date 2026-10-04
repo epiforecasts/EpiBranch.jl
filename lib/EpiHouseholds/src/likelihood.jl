@@ -129,7 +129,7 @@ The contact-process log-density of `model`'s kernel given the infection layer
 `condition_on` (see there): `pairwise_surv_loglik(model.kernel, data, layout;
 external_hazard = model.external_hazard, susceptibility)`. For a `ModelSpec`,
 `susceptibility` is the model's interventions, so a composed vaccination is
-scored from the immunity times [`household_infections`](@ref) recorded.
+evaluated from the immunity times [`household_infections`](@ref) recorded.
 """
 function Distributions.loglikelihood(
         data::HouseholdInfections, model::HouseholdProcess;

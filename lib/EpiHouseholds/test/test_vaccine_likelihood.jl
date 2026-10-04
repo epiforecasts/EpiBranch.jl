@@ -47,7 +47,7 @@ EpiBranch.infection_likelihood_compatible(::_HalvedFrom) = true
         )
         @test loglikelihood(data, m) ≈ explicit
 
-        # scoring the same data as if nobody were vaccinated gives a
+        # evaluating the same data as if nobody were vaccinated gives a
         # different value
         unvaccinated = ModelSpec(
             process; progression, attributes = clinical,
