@@ -105,7 +105,8 @@ is `1 - post_isolation_transmission`.
 `isolation_duration` is how long the removal lasts before it lapses; it
 accepts a `Real`, a `Distribution`, or a function `(rng, ind) -> Real`
 (drawn per individual, each time isolation is set). The default `Inf` keeps a
-case isolated to the end of its infectious period. A finite duration gives
+case isolated to the end of its infectious period, and a duration of zero
+isolates nobody. A finite duration gives
 [`isolation_release_time`](@ref) the time the block lapses.
 
 What that changes depends on the engine. On a generation-based process the
