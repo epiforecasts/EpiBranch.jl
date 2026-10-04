@@ -197,13 +197,8 @@ differentiated through them, as with `Steps`.
 
 `state` lets a `PairKernel` choose which parts of an individual it reads. Given
 `state`, the callback also takes the pair's two host records, built from the
-usual `PairContext`. A projection also declares the `individual.state` keys it
-reads, as `watches`: a continuous-time race redraws a case's pending contacts
-when one of those keys moves on a host it reads, which is how a hazard that
-changes mid-run keeps its contacts honest. Declare every key the projection
-reads, whether or not anything in the model writes it; `()` is for a
-projection that reads none, such as one indexing a table by `ind.id`. Here,
-each person receives a sampled contact-scale attribute:
+usual `PairContext`. Here, each person receives a sampled contact-scale
+attribute:
 
 ```@example stateful
 using EpiBranch, EpiNetwork, Distributions, Random
@@ -217,6 +212,42 @@ progression = [Transition(:recovered; delay = 5.0, terminal = true)]
 model = ModelSpec(NetworkProcess(adjacency, kernel); attributes, progression)
 state = simulate(model; initial_cases = [1], rng = Xoshiro(235))
 ```
+
+`watches` is that projection's own list of the `individual.state` keys it
+reads. A continuous-time race redraws a case's pending contacts when one of
+those keys moves on a host it reads, which is how a hazard that changes
+mid-run keeps the contacts drawn from it honest. Name every key the projection
+reads, whether or not anything in this model writes it:
+
+```@example stateful
+# Reads two keys, so it declares both: the dose date a `RingVaccination` writes
+# and the onset `clinical_presentation` sets.
+dosed_kernel = PairKernel(
+    (context, source, target) -> Exponential(isfinite(target.dosed) ? 4.0 : 1.5);
+    state = ind -> (
+        dosed = get(ind.state, :vaccination_time, Inf)::Float64,
+        onset = get(ind.state, :onset_time, NaN),
+    ),
+    watches = (:vaccination_time, :onset_time)
+)
+EpiBranch.watched_records(dosed_kernel)
+```
+
+`()` is for a projection that reads no state at all, such as one indexing a
+table of fixed covariates by the host's own id:
+
+```@example stateful
+scale_by_id = [1.0, 2.0, 0.5]
+by_id_kernel = PairKernel(
+    (context, source, target) -> Exponential(source.scale);
+    state = ind -> (scale = scale_by_id[ind.id],), watches = ()
+)
+EpiBranch.watched_records(by_id_kernel)
+```
+
+A key left out of `watches` is a hazard that moves without the contacts
+following it, and a key named where nothing can move only costs the race a
+comparison, so declare generously.
 
 After simulation, extract the selected records and use the same callback in the
 likelihood. `record_kernel` copies the projection results into a vector indexed
