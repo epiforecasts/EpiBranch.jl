@@ -789,8 +789,7 @@ function reads_population_state(ct::ContactTracing)
         reads_population_state(ct.action)
 end
 reads_population_state(::TraceEligibility) = false
-# A combinator is an eligibility too, so it answers for what it wraps rather
-# than hiding a wrapped declaration behind the default above.
+# A combinator is an eligibility too, and answers for what it wraps.
 reads_population_state(e::AnyOf) = any(reads_population_state, e.conditions)
 reads_population_state(e::AllOf) = any(reads_population_state, e.conditions)
 reads_population_state(e::NoneOf) = any(reads_population_state, e.conditions)

@@ -54,5 +54,5 @@ test_continuous_vaccine_actions(k -> HouseholdProcess([4], k))
     # reason: the inner `CapacityConstrained` asks for the one clock, and the
     # outer budget caps what the inner one lets through.
     state = simulate(build(process, nested); rng = StableRNG(32))
-    @test count(is_vaccinated, state.individuals) <= 1
+    @test count(is_vaccinated, state.individuals) == 1
 end
