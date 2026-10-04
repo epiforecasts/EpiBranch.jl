@@ -222,6 +222,18 @@ end
         end
     end
 
+    @testset "a waning effect on a window that closes before immunity" begin
+        # The infector is removed on day 2 and the susceptible is immune from
+        # day 5, so the effect never applies to that pair.
+        early = _VaxInfections(
+            [1, 1], [0.0, NaN], [0.0, NaN], [2.0, Inf], [true, false], [Inf, 5.0];
+            followup_end = 8.0
+        )
+        waned = VaccineEffect(efficacy = 0.4, mode = LeakyMode(), waning = dt -> exp(-dt))
+        @test pairwise_surv_loglik(k, early; susceptibility = waned) ≈
+            pairwise_surv_loglik(k, early)
+    end
+
     @testset "a waning effect on a bounded contact interval past its support" begin
         # Follow-up runs past the end of the kernel's support, where the
         # cumulative hazard is infinite and escape is impossible.

@@ -1212,6 +1212,9 @@ function _scaled_cumhazard(m::HazardScaling, kernel, origin, stop)
     # A bounded profile's survival reaches zero at the top of its support, past
     # which its hazard is undefined, so the cumulative hazard is infinite there,
     # as the kernel's own `cumhazard` has it.
+    # A window that closes before the effect starts has nothing to integrate,
+    # and evaluating the factor there would read it before its start.
+    boundary < stop || return before
     stop < maximum(kernel) || return oftype(float(before), Inf)
     after, _ = quadgk(
         s -> hazard(kernel, s) * _scaling_at(m.factor, origin + s - m.start), boundary, stop
