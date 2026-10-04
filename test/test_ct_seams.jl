@@ -405,25 +405,28 @@ end
         @test !EpiBranch._isolation_in_force(contact)
         @test !is_isolated(contact)
 
-        # A contact that already has an isolation keeps it, whatever the trace
-        # time is. A `NaN` is what the guard above is for, since `min` would
-        # take it into the isolation and from there into the case's infectious
-        # window; an `Inf` pins the `min` and the unrecorded flag instead.
-        for unreachable in (Inf, NaN)
+        # A standing isolation already in force is the other arm of
+        # `apply_trace!` (`min` against the trace time, rather than setting it
+        # outright). `min(standing, NaN)` used to poison that value with a
+        # NaN trigger, not only with an unreached `Inf` one, so the standing
+        # isolation must survive either trace untouched.
+        for unreachable in (NaN, Inf)
             standing = Individual(id = 3)
             set_isolated!(standing, 4.0)
             EpiBranch.apply_trace!(Quarantine(), standing, state, unreachable, StableRNG(1))
-            @test isolation_time(standing) == 4.0
             @test is_traced(standing)
-            @test is_isolated(standing)      # a recorded isolation stays one
+            @test isolation_time(standing) == 4.0
+            @test !EpiBranch._isolation_unrecorded(standing)
+            @test is_isolated(standing)        # a recorded isolation stays one
 
-            # An isolation that was never recorded as a detection stays so.
+            # An unrecorded standing isolation stays unrecorded.
             unrecorded = Individual(id = 4)
             set_isolated!(unrecorded, 4.0)
             unrecorded.state[:isolation_unrecorded] = true
             EpiBranch.apply_trace!(
                 Quarantine(), unrecorded, state, unreachable, StableRNG(1)
             )
+            @test is_traced(unrecorded)
             @test isolation_time(unrecorded) == 4.0
             @test EpiBranch._isolation_unrecorded(unrecorded)
             @test !is_isolated(unrecorded)
