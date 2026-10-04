@@ -6,7 +6,14 @@ household's race holds every case from it regardless of calendar time.
 whether its delivery depends on such population-wide state; the household
 engine now puts every household on one shared clock whenever any composed
 component does. The default is conservative (`true`); `Isolation`,
-`ContactTracing`, plain vaccination and a time-only `Scheduled` declare
-`false`, and a count-gated `Scheduled` and `CapacityConstrained` declare
-`true`. Per-household races, the faster path, stay the default when every
-component declares them safe.
+`ContactTracing`, `RingVaccination`, `MassVaccination` and a time-only
+`Scheduled` declare `false`, and a count-gated `Scheduled`,
+`GroupVaccination` and `CapacityConstrained` declare `true`. `Isolation` and
+`ContactTracing` answer for the eligibility, rate, delay and action they are
+given, so a component of your own that reads population-wide state lifts the
+intervention holding it. Per-household races, the faster path, stay the
+default when every component declares them safe.
+
+A `CapacityConstrained` with a finite `period` on more than one household is
+no longer rejected: the shared clock it now asks for gives the chronological
+admission its period windows need.

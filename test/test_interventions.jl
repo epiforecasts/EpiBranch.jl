@@ -35,6 +35,22 @@ end
 # defaults are inert.
 struct _NoTraceIntervention <: AbstractIntervention end
 
+# A tracing eligibility that gates on the running case count, so it reads
+# population-wide state and must lift the `ContactTracing` holding it.
+struct _PopulationEligibility <: EpiBranch.TraceEligibility end
+EpiBranch.is_eligible(::_PopulationEligibility, infector, contact, state) =
+    state.cumulative_cases >= 2
+EpiBranch.reads_population_state(::_PopulationEligibility) = true
+
+# The same for an isolation eligibility.
+struct _PopulationIsolationEligibility <: EpiBranch.IsolationEligibility end
+EpiBranch.is_eligible_for_isolation(::_PopulationIsolationEligibility, ind, state) =
+    state.cumulative_cases >= 2
+EpiBranch.reads_population_state(::_PopulationIsolationEligibility) = true
+
+# A vaccination written outside the package, declaring nothing.
+struct _OutsideVaccination <: EpiBranch.AbstractVaccination end
+
 # A distribution that draws and evaluates but reports no support, as the
 # package's own `_TruncatedSkewNormal` does.
 struct _UnboundedDelay <: ContinuousUnivariateDistribution end
@@ -2683,8 +2699,22 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
         )
 
+        # A group's trigger is the earliest eligible time among members who
+        # may live in any household, so it reads across the population.
+        @test reads(GroupVaccination(efficacy = 0.8, group_key = :group))
+
+        # A component of its own lifts the intervention that holds it.
+        @test reads(
+            ContactTracing(
+                _PopulationEligibility(), 1.0, Exponential(1.0)
+            )
+        )
+        @test reads(Isolation(; eligibility = _PopulationIsolationEligibility()))
+
         # An intervention written outside the package gets the conservative
-        # default until it declares otherwise.
+        # default until it declares otherwise, and so does a vaccination,
+        # which no longer inherits a blanket `false` from the abstract type.
         @test reads(_NoTraceIntervention())
+        @test reads(_OutsideVaccination())
     end
 end
