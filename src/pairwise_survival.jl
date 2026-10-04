@@ -1317,8 +1317,8 @@ Run the two accumulation passes behind [`pairwise_surv_loglik`](@ref) and
 [`PairwiseReduction`](@ref), returning its `ngroups(reduction)` group
 log-likelihoods. A new grouping (by stratum, by spatial patch) calls this
 directly with its own `PairwiseReduction` subtype; `pairwise_surv_loglik` and
-`pairwise_surv_loglik_by_component` are this call under their respective
-built-in groupings. Arguments are otherwise as in `pairwise_surv_loglik`.
+`pairwise_surv_loglik_by_component` are this call under their own built-in
+groupings. Arguments are otherwise as in `pairwise_surv_loglik`.
 """
 function pairwise_reduce(
         reduction::PairwiseReduction, kernel, data::InfectionLayer,
