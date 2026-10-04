@@ -52,7 +52,9 @@ loglikelihood(household_data, household_model)
 `context.infector_infection_time` is the infection date, even when a latent period
 starts the infectious period later. The returned distribution still measures time
 from the start of the infectious period. `context.infector` and
-`context.susceptible` are population IDs.
+`context.susceptible` are population IDs. Without a `state` argument, the callback
+takes only this context. With one, it also receives a record for each of the two
+people, as later sections show.
 
 ## Inference
 
