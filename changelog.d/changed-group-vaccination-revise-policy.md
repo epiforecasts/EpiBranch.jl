@@ -1,5 +1,5 @@
-`GroupVaccination`'s revise-earlier policy — moving an admitted dose to a
-genuinely earlier trigger discovered later on a continuous-time race — was
+`GroupVaccination`'s revise-earlier policy, moving an admitted dose to a
+genuinely earlier trigger discovered later on a continuous-time race, was
 written into the intervention body, with its own re-derivation of which
 candidates a settled member excludes. It is now a dispatched admission trait,
 `EpiBranch.may_revise(intervention, prior_trigger, new_trigger)`, defaulting
