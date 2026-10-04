@@ -20,6 +20,8 @@ makedocs(;
         "Installation" => "installation.md",
         "Tutorials" => [
             "Getting started" => "tutorials/getting-started.md",
+            "Interventions" => "tutorials/interventions.md",
+            "Clinical transitions" => "tutorials/transitions.md",
             "Transmission models" => [
                 "Multi-type models" => "tutorials/multi-type.md",
                 "Network models" => "tutorials/networks.md",
@@ -27,8 +29,6 @@ makedocs(;
                 "Homogeneous models" => "tutorials/homogeneous.md",
                 "Covariates and time-varying transmission" => "tutorials/covariate-transmission.md",
             ],
-            "Clinical transitions" => "tutorials/transitions.md",
-            "Interventions" => "tutorials/interventions.md",
             "Line lists and contacts" => "tutorials/linelist.md",
             "Analysis" => [
                 "Chain statistics" => "tutorials/chains.md",
