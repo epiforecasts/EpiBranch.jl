@@ -104,13 +104,19 @@ is `1 - post_isolation_transmission`.
 
 `isolation_duration` is how long the removal lasts before it lapses; it
 accepts a `Real`, a `Distribution`, or a function `(rng, ind) -> Real`
-(drawn per individual, each time isolation is set). The default `Inf`
-reproduces the previous behaviour: isolation lasts until the end of the
-infectious period. A finite duration gives [`isolation_release_time`](@ref)
-a value after which the case's own onward transmission is no longer blocked
-by this isolation. That matters for a case isolated or quarantined well
-before it is actually infected through some other route, so the removal
-does not outlive the exposure that caused it.
+(drawn per individual, each time isolation is set). The default `Inf` keeps a
+case isolated to the end of its infectious period. A finite duration gives
+[`isolation_release_time`](@ref) the time the block lapses.
+
+What that changes depends on the engine. On a generation-based process the
+block is a per-contact risk, so a contact after the release is not blocked.
+On the continuous-time (Sellke) models an infectious window carries one
+closing time, so a case isolated during its infectious period is removed for
+the rest of it whatever the duration; what a finite duration changes there is
+a case whose isolation or quarantine had already lapsed before it was
+infected through some other route, which is then not removed at all. That is
+the case the duration exists for: a removal that outlives the exposure which
+caused it.
 
 An isolation time at or after the case's own outcome (recovery, death, or
 any other terminal [`Transition`](@ref)) still removes the case from
@@ -291,7 +297,9 @@ end
 # recording it as a detection only if the eligibility does. The provenance mark
 # lets a Scheduled reset undo only Isolation's own effect.
 function _isolate!(iso::Isolation, individual, state, time)
-    duration = _sample_value(iso.isolation_duration, state.rng, individual)
+    duration = _removal_duration(
+        iso.isolation_duration, state.rng, individual, "`isolation_duration`"
+    )
     set_isolated!(individual, time; release_time = time + duration)
     individual.state[:isolated_by_isolation] = true
     records_isolation(iso.eligibility, individual, state, time) ||

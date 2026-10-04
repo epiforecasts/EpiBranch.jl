@@ -117,6 +117,9 @@ struct Risk{T, P, R}
 end
 Risk(; event_time = -Inf, block_probability, release_time = Inf) =
     Risk(event_time, block_probability, release_time)
+# The two-argument positional form a `competing_risk` method written before
+# there was a release still builds a risk that never lapses.
+Risk(event_time, block_probability) = Risk(event_time, block_probability, Inf)
 
 """
     competing_risk(intervention, parent, contact, state)
@@ -240,4 +243,19 @@ Wrappers delegate to their wrapped intervention.
 """
 function risk_depends_on_infector(iv::AbstractIntervention)
     return _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
+end
+
+# A removal's duration, drawn or given. A negative or `NaN` one makes a
+# release that precedes its own start, which the generation engine reads as no
+# removal at all and the continuous-time engines as a permanent one, so reject
+# it at the draw rather than letting the two disagree silently.
+function _removal_duration(duration, rng, individual, what)
+    d = _sample_value(duration, rng, individual)
+    (isnan(d) || d < 0) && throw(
+        ArgumentError(
+            "$what must be a non-negative duration, got $d" *
+                (individual === nothing ? "" : " for individual $(individual.id)")
+        )
+    )
+    return d
 end
