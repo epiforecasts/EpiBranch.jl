@@ -312,7 +312,7 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
     kernel = PairKernel(callback; state = records)
     @test mean(EpiBranch.pair_kernel(kernel, 1, 2, 0.0)) ≈ exp(0.4)
     @test pairwise_surv_loglik(kernel, data, layout) ≈ -0.4 - 2exp(-0.4)
-    live = PairKernel(callback; state = ind -> (log_scale = ind.state[:log_scale]::Float64,))
+    live = PairKernel(callback; state = ind -> (log_scale = ind.state[:log_scale]::Float64,), watches = (:log_scale,))
     @test_throws ArgumentError pairwise_surv_loglik(live, data, layout)
     @test_throws ArgumentError pairwise_surv_loglik(
         kernel,
@@ -342,16 +342,20 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
     @test saved.state == records
     @test pairwise_surv_loglik(saved, data, layout) ≈ reference(x)
     @test record_kernel(Exponential(), state) == Exponential()
-    history = record_kernel(PairKernel(callback; state = ind -> ind.state[:history]), state)
+    history = record_kernel(PairKernel(callback; state = ind -> ind.state[:history], watches = (:history,)), state)
     push!(state.individuals[1].state[:history], 2.0)
     @test history.state[1] == [1.0]
     @test !EpiBranch._live_kernel(saved)
+    # Extracted records cannot move, so the recorded kernel watches nothing and
+    # a race given it keeps the ordinary path.
+    @test EpiBranch.watched_records(saved) == ()
+    @test EpiBranch.watched_records(history) == ()
 
     # A calendar schedule is carried through recording unchanged, and a kernel
     # with one is live exactly when its host state is.
     calendar_live = PairKernel(
         (c, a, b) -> Exponential(2.0);
-        state = ind -> (tag = 0.0,), calendar = Steps([5.0], [1.0, 0.5])
+        state = ind -> (tag = 0.0,), calendar = Steps([5.0], [1.0, 0.5]), watches = ()
     )
     @test EpiBranch._live_kernel(calendar_live)
     recorded_calendar = record_kernel(calendar_live, state)
@@ -404,7 +408,7 @@ function stateful_test_race(
         state, collect(1:n), rng;
         seed! = (best, members, r) -> copyto!(best, initial_times),
         targets, from = :infection, until = (:recovered,), interventions,
-        introduction, refresh_projection = EpiBranch._kernel_projection(kernel)
+        introduction, watches = (EpiBranch.watched_records(kernel),)
     )
     return state
 end
@@ -412,7 +416,7 @@ end
 @testset "An unchanging live kernel leaves the race stream alone" begin
     seeds = [0.0; fill(Inf, 11)]
     for d in (Exponential(1.5), Weibull(2.0, 2.0), Gamma(3.0, 0.7))
-        live = PairKernel((c, a, b) -> d; state = ind -> (tag = get(ind.state, :tag, 0.0)::Float64,))
+        live = PairKernel((c, a, b) -> d; state = ind -> (tag = get(ind.state, :tag, 0.0)::Float64,), watches = (:tag,))
         @test isequal(
             [i.infection_time for i in stateful_test_race(d, seeds).individuals],
             [i.infection_time for i in stateful_test_race(live, seeds).individuals]
@@ -429,20 +433,24 @@ end
     for ind in state.individuals
         ind.state[:history] = Float64[]
     end
-    project = ind -> ind.state[:history]
     members = [1, 2, 3]
-    records = [deepcopy(project(state.individuals[i])) for i in members]
+    watched_keys = [:history]
+    key_routes = [[1]]            # the one route reads `:history`
+    snapshot = Any[
+        EpiBranch._remember(EpiBranch._watched_value(state.individuals[i], key))
+            for key in watched_keys, i in members
+    ]
     # Case 1 has an open opening that reaches member 2; member 3 is out of reach.
     openings = [
         EpiBranch._RouteOpening(0, 0, 0.0, Inf),
         EpiBranch._RouteOpening(1, 1, 0.0, 5.0),
     ]
-    watch = EpiBranch._LiveWatch(3)
-    EpiBranch._watch_opening!(watch, 1)
+    watch = EpiBranch._LiveWatch(3, 1)
+    EpiBranch._watch_opening!(watch, 1, true)
     EpiBranch._watch_target!(watch, 2, 2)
     processed = [true, false, false]
     changed!(case, now = 1.0) = EpiBranch._records_changed!(
-        records, project, state,
+        snapshot, watched_keys, key_routes, state,
         members, case, now, watch, openings, processed
     )
     @test !changed!(1)
@@ -457,11 +465,11 @@ end
     @test !changed!(1)
     push!(state.individuals[1].state[:history], 1.0)
     @test !changed!(1)
-    @test records[1] == [1.0]
+    @test snapshot[1, 1] == [1.0]
     # Member 2 is compared once however many open openings reach it, and leaves
     # the watch once they have all closed.
     push!(openings, EpiBranch._RouteOpening(1, 1, 0.0, 8.0))
-    EpiBranch._watch_opening!(watch, 1)
+    EpiBranch._watch_opening!(watch, 1, true)
     EpiBranch._watch_target!(watch, 3, 2)
     @test sort(watch.tracked) == [1, 2]
     @test !changed!(1, 6.0)
@@ -526,7 +534,7 @@ end
 end
 
 @testset "Shared race refreshes live pair kernels" begin
-    ties = PairKernel((c, a, b) -> Dirac(1.0); state = tick_state)
+    ties = PairKernel((c, a, b) -> Dirac(1.0); state = tick_state, watches = (:tick,))
     state = stateful_test_race(ties, [0.0, Inf, Inf]; interventions = [TickEveryCase()])
     @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0]
 
@@ -537,7 +545,7 @@ end
             return state_policy_law(0.1, 1.0, b.date)
         return Dirac(20.0)
     end
-    kernel = PairKernel(callback; state = project)
+    kernel = PairKernel(callback; state = project, watches = (:policy_time,))
     changed = stateful_test_race(
         kernel, [0.0, Inf, Inf];
         interventions = [RecordKernelPolicy()]
@@ -560,7 +568,7 @@ end
 
     # Retried introductions must remain later than the admission boundary even
     # when another introduction settles and refreshes the remaining queue.
-    inactive = PairKernel((c, a, b) -> Dirac(20.0); state = tick_state)
+    inactive = PairKernel((c, a, b) -> Dirac(20.0); state = tick_state, watches = (:tick,))
     introduced = stateful_test_race(
         inactive, [0.1, 0.2, 0.3];
         interventions = [WaitForKernelDay(), TickEveryCase()],
@@ -577,7 +585,7 @@ end
     two_atoms = DiscreteNonParametric([1.0, 2.0], [0.5, 0.5])
     atoms = PairKernel(
         (c, a, b) -> c.susceptible == 2 ? two_atoms : Dirac(1.0);
-        state = tick_state
+        state = tick_state, watches = (:tick,)
     )
     at_one = count(1:2000) do seed
         state = stateful_test_race(
@@ -593,7 +601,7 @@ end
     # ordinary kernel does.
     seeds = [0.0; fill(Inf, 29)]
     law = Exponential(4.0)
-    live = PairKernel((c, a, b) -> law; state = tick_state)
+    live = PairKernel((c, a, b) -> law; state = tick_state, watches = (:tick,))
     early(state) = count(ind -> ind.infection_time < 1.0, state.individuals)
     redrawn = mean(
         early(
@@ -608,11 +616,35 @@ end
 end
 
 @testset "Live kernels outside a race" begin
-    live = PairKernel((c, a, b) -> Exponential(1.0); state = tick_state)
-    @test EpiBranch._watched_projection(live, ()) === nothing
-    @test EpiBranch._watched_projection(live, [TickEveryCase()]) === tick_state
-    @test EpiBranch._watched_projection(Exponential(1.0), [TickEveryCase()]) === nothing
+    live = PairKernel((c, a, b) -> Exponential(1.0); state = tick_state, watches = (:tick,))
+    @test EpiBranch.watched_records(live) == (:tick,)
+    @test EpiBranch.watched_records(Exponential(1.0)) == ()
+    @test EpiBranch.watched_records([Exponential(1.0), live]) == (:tick,)
     @test_throws ArgumentError EpiBranch.pair_kernel(live, 1, 2, 0.0)
+
+    # A projection has to declare what it reads, and a kernel with nothing to
+    # read has nothing to declare.
+    @test_throws "must declare every" PairKernel((c, a, b) -> Exponential(1.0); state = tick_state)
+    @test_throws "no records to watch" PairKernel(c -> Exponential(1.0); watches = (:tick,))
+    @test_throws "no records to watch" PairKernel(
+        (c, a, b) -> Exponential(1.0); state = [nothing, nothing], watches = (:tick,)
+    )
+    # A bare `Symbol` is a declaration too, wherever it is passed.
+    @test_throws "no records to watch" PairKernel(c -> Exponential(1.0); watches = :tick)
+    @test_throws "`Symbol`s" PairKernel(
+        (c, a, b) -> Exponential(1.0); state = tick_state, watches = ("tick",)
+    )
+    # A race needs one declaration per route, in route order.
+    @test_throws ArgumentError EpiBranch._route_watch_keys(((:tick,),), 2)
+
+    # Every opening takes a slot whether or not its route is watched, so an
+    # opening's position in `openings` is its position in the watch.
+    watch = EpiBranch._LiveWatch(3, 2)
+    EpiBranch._watch_opening!(watch, 1, false)
+    EpiBranch._watch_opening!(watch, 1, true)
+    @test length(watch.reach) == 3            # the seeds' slot and these two
+    @test watch.source == [0, 1, 1]
+    @test watch.opened_by[1] == [3]
 
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(0.0)), [], NoAttributes(),

@@ -69,9 +69,10 @@ function _simulate(
     # Only a policy that can read population-wide state — cases in other
     # households, a kernel reading host records an intervention can move, a
     # capacity budget shared across households — needs every household on one
-    # clock; `reads_population_state` is how an intervention declares the former.
-    watched = EpiBranch._watched_projection(model.kernel, interventions)
-    live = watched !== nothing || any(EpiBranch.reads_population_state, interventions)
+    # clock. The kernel names the records it watches, and
+    # `reads_population_state` is how an intervention declares the rest.
+    watched = EpiBranch.watched_records(model.kernel)
+    live = !isempty(watched) || any(EpiBranch.reads_population_state, interventions)
     races = live ? (collect(eachindex(model.household_of)),) : model.members
     extinct = true
     for mem in races
@@ -80,7 +81,7 @@ function _simulate(
             from = from, until = model.until, interventions = interventions,
             max_time = EpiBranch._max_time(sim_opts),
             risks = EpiBranch.transmission_risks(model),
-            refresh_projection = watched,
+            watches = (watched,),
             seed! = (best, members, r) -> _seed_household_race!(
                 best, members, model, state, Tobs, r, initial_cases, live
             ),
