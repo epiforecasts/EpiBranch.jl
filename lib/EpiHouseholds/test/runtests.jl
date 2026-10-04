@@ -1145,5 +1145,6 @@ include("test_likelihood_composition.jl")
 include("test_initial_cases.jl")
 include("test_actions.jl")
 include("test_vaccine_mode.jl")
+include("test_vaccine_likelihood.jl")
 
 include("test_pair_kernels.jl")

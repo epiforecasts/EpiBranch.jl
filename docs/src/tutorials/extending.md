@@ -1830,9 +1830,11 @@ clinical timeline, intervention assignment, attribute draws or observations.
 
 Window censoring, including complete isolation, is represented by the extracted
 removal times. A partial transmission reduction or a susceptibility multiplier
-also changes the hazard within that window. The infection layer does not store
-those effects. `loglikelihood(data, spec)` rejects components whose effects have
-not been declared compatible with its bare process kernel.
+also changes the hazard within that window. A change to a host's susceptibility
+is declared through the susceptibility hook described below; other effects are
+not stored in the infection layer. `loglikelihood(data, spec)` rejects
+components whose effects have not been declared compatible with its bare process
+kernel.
 
 An external component that only changes an infectious window can opt in:
 
@@ -1853,6 +1855,47 @@ supplied kernel must represent the full pairwise hazard, including any host or
 intervention modifiers, and the external hazard must represent community
 introductions. This path retains differentiation through kernel parameters.
 Extraction alone does not certify that a bare kernel reproduces a composed model.
+
+#### Susceptibility effects
+
+A component that changes how susceptible a host is, such as a vaccination,
+enters the likelihood through [`EpiBranch.susceptibility_components`](@ref). It
+is asked about each susceptible host, given as a [`LayerHost`](@ref) that reads
+the layer's `host_times`, and returns `nothing` when it leaves that host's
+hazard as it is. Otherwise it returns a collection of `weight => modifier`
+pairs, each modifier an [`EpiBranch.HazardScaling`](@ref) that multiplies every
+hazard the host faces by a factor from a calendar time on, or `nothing` for no
+change. The host's contribution is the mixture over these components, with the
+escape from all of its possible infectors inside each one. A host-level state
+that is drawn once and never observed, such as whether a vaccinee responded,
+then governs all of that host's exposures together.
+
+`VaccineEffect` gives one component under `LeakyMode` and two under
+`AllOrNothingMode`, starting at the host's immunity time, and every
+`AbstractVaccination` answers with its `VaccineEffect`. An intervention of your
+own declares its effect the same way, next to the `competing_risk` that applies
+it in simulation, and names the host times it reads with
+[`EpiBranch.susceptibility_host_times`](@ref):
+
+```julia
+struct Prophylaxis <: EpiBranch.AbstractIntervention
+    reduction::Float64
+end
+
+function EpiBranch.susceptibility_components(p::Prophylaxis, host)
+    t = get(host.state, :prophylaxis_time, Inf)
+    isfinite(t) || return nothing
+    return (1 => EpiBranch.HazardScaling(t, 1 - p.reduction),)
+end
+EpiBranch.susceptibility_host_times(::Prophylaxis) = (:prophylaxis_time,)
+EpiBranch.infection_likelihood_compatible(::Prophylaxis) = true
+```
+
+`household_infections` and `network_infections` then record `:prophylaxis_time`
+for every host, and `loglikelihood(data, spec)` evaluates the effect. The same
+object, or any other effect, can be passed to
+`pairwise_surv_loglik(kernel, data; susceptibility = effect)` directly, which is
+how a candidate efficacy is evaluated in inference.
 
 ### Choosing initial cases in a fixed population
 
