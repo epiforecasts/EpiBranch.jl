@@ -402,6 +402,27 @@ end
         @test contact.state[:trace_time] == Inf
         @test !EpiBranch._isolation_in_force(contact)
         @test !is_isolated(contact)
+
+        # A standing isolation already in force is the other arm of
+        # `apply_trace!` (`min` against the trace time, rather than setting it
+        # outright). A NaN trigger — not just an unreached `Inf` one — is what
+        # `min(standing, NaN)` used to poison, so it must survive this trace
+        # untouched.
+        standing = Individual(id = 3)
+        set_isolated!(standing, 4.0)
+        EpiBranch.apply_trace!(Quarantine(), standing, state, NaN, StableRNG(1))
+        @test is_traced(standing)
+        @test isolation_time(standing) == 4.0
+        @test !EpiBranch._isolation_unrecorded(standing)
+
+        # An unrecorded standing isolation stays unrecorded.
+        unrecorded = Individual(id = 4)
+        set_isolated!(unrecorded, 4.0)
+        unrecorded.state[:isolation_unrecorded] = true
+        EpiBranch.apply_trace!(Quarantine(), unrecorded, state, NaN, StableRNG(1))
+        @test is_traced(unrecorded)
+        @test isolation_time(unrecorded) == 4.0
+        @test EpiBranch._isolation_unrecorded(unrecorded)
     end
 
     @testset "trace_level lines up with the ring on a tree sim" begin
