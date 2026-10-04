@@ -500,10 +500,13 @@ end
 
 #
 # What has no continuous-time representation is a *generation-shaped* hook.
-# `apply_post_transmission!` and `keep_active` act on a batch of freshly created
-# contact objects, and a race that settles one pre-existing node at a time never
-# builds those. So an intervention with a method of its own for either hook is
-# taken to reach its targets that way, and reported as unhonoured, unless it
+# `apply_post_transmission!` acts on a batch of freshly created contact objects,
+# and a race that settles one pre-existing node at a time never builds those.
+# `keep_active` is read, but only from inside a tracing walk (`_trace_from!`
+# asks it which contacts the ring grows from), so an intervention that answers
+# it and does not trace has nothing to call it. So an intervention with a method
+# of its own for either hook is taken to reach its targets that way, and
+# reported as unhonoured, unless it
 # also traces contacts: `trace_contacts!` is then its continuous-time
 # counterpart, which needs a model that can name a case's contacts. The check
 # reads the methods themselves, so an intervention written outside the package
@@ -546,29 +549,75 @@ supplies_contacts(::TransmissionModel) = false
 # shorten. The generation engine behaves the same way, tracing a case's contacts
 # and never an earlier generation, so the two paths agree; tracing *backwards*
 # to an already-final infector is a separate capability neither engine has.
+#
+# A ring (`ContactTracing(depth = 2)` and beyond) grows through uninfected
+# contacts too. On the generation engine an intervention asks for that through
+# `keep_active`, which keeps such a contact exposing for one more generation so
+# `apply_post_transmission!` reaches its own contacts in turn. The race has no
+# generations to keep a node alive for, so it walks the model's own contact
+# structure breadth-first instead, and asks the same hook which contacts the
+# next hop starts from. The depth semantics and the `:ring_remaining` budget
+# behind them stay with `ContactTracing`, so a ring of another shape takes part
+# by answering `keep_active` rather than by writing a state key this loop would
+# have to recognise.
+#
+# `visited` stops a node being traced twice by two branches of one walk
+# reaching it at once. Across walks nothing is suppressed: a node reached as an
+# uninfected ring member, which later becomes an infected and eligible case in
+# its own right, seeds its own fresh full-radius ring when the race settles it,
+# which is the contract `ContactTracing` documents. Whether that second attempt
+# happens at all is the eligibility policy's call, not this loop's.
 function _trace_from!(state, infector, interventions, contacts, pos, processed)
     contacts === nothing && return nothing
     any(traces_contacts, interventions) || return nothing
-    pending = Individual[]
-    not_before = typeof(infector.infection_time)[]
-    timed = false
-    for c in contacts(infector.id, state)
-        cid, t0 = c isa Tuple ? (c[1], c[2]) : (c, -Inf)
-        timed |= c isa Tuple
-        k = get(pos, cid, 0)
-        (k == 0 || processed[k]) && continue
-        push!(pending, state.individuals[cid])
-        push!(not_before, t0)
-    end
-    isempty(pending) && return nothing
-    for iv in interventions
-        if timed
-            trace_contacts!(iv, state, infector, pending, not_before)
-        else
-            trace_contacts!(iv, state, infector, pending)
+    return _walk_ring!(state, infector, interventions, contacts, pos, processed)
+end
+
+# The walk itself, which reports the members it offered to tracing. A ring
+# wider than one hop reaches people the settled case does not neighbour, and
+# the action layer has to be offered those too; which of them a tracing policy
+# actually reached is its own business, and the layer reads that from them.
+function _walk_ring!(state, infector, interventions, contacts, pos, processed)
+    visited = Set{Int}((infector.id,))
+    frontier = Individual[infector]
+    while !isempty(frontier)
+        src = popfirst!(frontier)
+        pending = Individual[]
+        not_before = typeof(infector.infection_time)[]
+        timed = false
+        for c in contacts(src.id, state)
+            cid, t0 = c isa Tuple ? (c[1], c[2]) : (c, -Inf)
+            timed |= c isa Tuple
+            k = get(pos, cid, 0)
+            (k == 0 || processed[k] || cid in visited) && continue
+            push!(pending, state.individuals[cid])
+            push!(not_before, t0)
+        end
+        isempty(pending) && continue
+        for iv in interventions
+            if timed
+                trace_contacts!(iv, state, src, pending, not_before)
+            else
+                trace_contacts!(iv, state, src, pending)
+            end
+        end
+        for ind in pending
+            push!(visited, ind.id)
+        end
+        # Which of them the ring grows from is the intervention's call. Nothing
+        # here is freshly created, so `is_new` is all false; the race settles
+        # pre-existing members rather than creating contacts as it goes.
+        is_new = falses(length(pending))
+        for iv in interventions
+            for id in keep_active(iv, state, pending, is_new)
+                k = get(pos, id, 0)
+                (k == 0 || processed[k]) && continue
+                push!(frontier, state.individuals[id])
+            end
         end
     end
-    return nothing
+    delete!(visited, infector.id)
+    return visited
 end
 
 # Warn once (per `simulate` call) when a continuous-time model is handed
@@ -897,10 +946,10 @@ function _sellke_race!(
         _set_onset_from_incubation!(ind)
         resolve_transitions!(state, ind)
         _resolve_interventions!(state, ind, interventions)
-        _trace_from!(state, ind, interventions, contacts, pos, processed)
+        traced = _trace_from!(state, ind, interventions, contacts, pos, processed)
         contacts === nothing ||
             _apply_continuous_actions!(
-            state, ind, interventions, members, processed, contacts, pos
+            state, ind, interventions, members, processed, contacts, pos, traced
         )
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1
 

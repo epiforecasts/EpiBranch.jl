@@ -51,6 +51,15 @@ is_eligible(::TraceEveryone, infector, contact, state) = true
 struct TraceNobody <: TraceEligibility end
 is_eligible(::TraceNobody, infector, contact, state) = false
 
+"""Trace only from a case that was itself traced as someone else's contact.
+Negate it to stop a case that was reached as a ring member from being
+interviewed again once it becomes a case itself:
+`SymptomaticParent() & !PreviouslyTraced()`. Re-interviewing is the default,
+since a ring member that turns out to be a case is a case like any other and
+the engine agrees with the generation-based one about that."""
+struct PreviouslyTraced <: TraceEligibility end
+is_eligible(::PreviouslyTraced, infector, contact, state) = is_traced(infector)
+
 """Original default gate: infector symptomatic *and* isolated. Equivalent
 to `OnSymptomOnset() & OnIsolation()`; kept as a named type for
 backwards compatibility (it is the default `eligibility`)."""
@@ -388,15 +397,17 @@ apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
 
 """Quarantine the traced contact: set `:traced`, `:quarantined`, and
 isolate them at the trace time (or the earlier of the trace time and
-any pre-existing self-reporting isolation time).
+any pre-existing self-reporting isolation time). A trace with no arrival time
+reaches the contact without isolating it, so the contact is recorded as traced
+and quarantined while any standing isolation is left as it was.
 
 `duration` is how long the quarantine lasts before it lapses; it accepts a
 `Real`, a `Distribution`, or a function `(rng, ind) -> Real` (drawn once per
-trace). The default `Inf` reproduces the previous behaviour: quarantine lasts
-until the end of the infectious period. A finite duration matters for a
-contact who escapes the traced exposure but is infected later through
-another route: without it, the quarantine outlives its cause and keeps
-blocking that contact's own onward transmission forever."""
+trace). The default `Inf` keeps a quarantine in force until the end of the
+infectious period. A finite duration matters for a contact who escapes the
+traced exposure but is infected later through another route: without it, the
+quarantine outlives its cause and keeps blocking that contact's own onward
+transmission forever."""
 struct Quarantine{D} <: TraceAction
     duration::D
 end
@@ -405,6 +416,14 @@ Quarantine(; duration = Inf) = Quarantine(duration)
 function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     contact.state[:traced] = true
     contact.state[:quarantined] = true
+    # A trace with no arrival time quarantines nobody: an isolation at `Inf`
+    # removes the contact from nothing while reporting it as isolated and
+    # detected, and `min` would carry a `NaN` into a standing isolation and
+    # from there into the case's infectious window. `!OnIsolation()` reaches a
+    # contact this way, no earlier than an isolation its infector has not had.
+    # Returning before the draw also leaves the stream where it was for a
+    # trace that changes nothing.
+    isfinite(trace_time) || return nothing
     release_time = trace_time + _sample_value(q.duration, rng, contact)
     if _isolation_in_force(contact)
         standing = isolation_time(contact)
@@ -517,8 +536,14 @@ infected, eligible case seeds a fresh ring of radius `depth`; uninfected
 ring members stay active for one more generation so the ring can grow
 past them (see [`keep_active`](@ref EpiBranch.keep_active)), without
 infecting their contacts (the [`InfectiousSource`](@ref
-EpiBranch.InfectiousSource) default). Pair with [`RingVaccination`](@ref)
-to vaccinate the whole ring:
+EpiBranch.InfectiousSource) default).
+
+A case first reached as someone else's contact seeds its own fresh ring once it
+becomes an infected, eligible case: it is a case like any other, so the two
+engines agree about it. `!PreviouslyTraced()` in the eligibility asks instead
+that each case be interviewed only once.
+
+Pair with [`RingVaccination`](@ref) to vaccinate the whole ring:
 
 ```julia
 [ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0); depth = 2),
@@ -529,7 +554,10 @@ Needs `:asymptomatic`, `:onset_time` from `clinical_presentation()` and optional
 `:isolated`, `:isolation_time`, `:test_positive` depending on eligibility type.
 Sets `:traced`, `:quarantined` and `:trace_time`, the time the contact was
 reached, from which interventions acting on traced contacts are timed. With
-`depth > 1` it also sets `:ring_remaining`, which lets the ring grow outward.
+`depth > 1` it also sets `:ring_remaining`, which lets the ring grow outward,
+and `:ring_propagated` once a member has spent that budget on its own
+contacts, so a later walk reaching the same member widens the ring rather
+than retracing it.
 """
 struct ContactTracing{
         E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction,
@@ -635,6 +663,8 @@ function reset!(::ContactTracing, ind::Individual)
     haskey(ind.state, :traced_by) && delete!(ind.state, :traced_by)
     haskey(ind.state, :trace_level) && delete!(ind.state, :trace_level)
     haskey(ind.state, :trace_time) && delete!(ind.state, :trace_time)
+    haskey(ind.state, :ring_remaining) && delete!(ind.state, :ring_remaining)
+    haskey(ind.state, :ring_propagated) && delete!(ind.state, :ring_propagated)
     _isolation_in_force(ind) && clear_isolated!(ind)
     return nothing
 end
@@ -663,7 +693,13 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # clinical state, from re-seeding a fresh full-radius ring and
     # letting the fringe grow without bound.
     seed = is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state)
+    # A ring grows past a member once. The first walk that reaches it spends
+    # its budget on its contacts; a later one would trace the same pairs again,
+    # which is a second attempt at the same relationship rather than a wider
+    # ring. Seeding is unaffected: a member that becomes an eligible case in
+    # its own right starts a fresh full-radius ring, through the branch above.
     propagate = ct.depth > 1 && !seed && is_traced(infector) &&
+        !get(infector.state, :ring_propagated, false)::Bool &&
         get(infector.state, :ring_remaining, 0)::Int > 0
     (seed || propagate) || return nothing
     traces(ct.trace_rate, infector, ind, state, rng) || return nothing
@@ -694,11 +730,9 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # interventions in the stack, a contact is reached when the first of
     # them gets there.
     #
-    # An infinite trace time is recorded: it says the contact is never
-    # reached, which stops a ring from growing past it. A `NaN` says nothing
-    # about when the contact was reached, and `min` propagates it, so it would
-    # overwrite a good time another tracing system had already written. A
-    # custom `trigger_time` can return one.
+    # A `NaN` says nothing about when the contact was reached, and `min`
+    # propagates it, so it would overwrite a good time another tracing system
+    # had already written. A custom `trigger_time` can return one.
     if !isnan(trace_time)
         ind.state[:trace_time] = min(get(ind.state, :trace_time, Inf), trace_time)
     end
@@ -734,6 +768,11 @@ function trace_contacts!(
         ct::ContactTracing, state, infector, contacts, not_before = nothing
     )
     rng = state.rng
+    # Whether this batch spends `infector`'s ring budget is decided per pair in
+    # `_trace_pair!`, and the same answer holds for every pair in the batch, so
+    # the budget is marked spent once the batch is done rather than part way
+    # through it.
+    propagating = ct.depth > 1 && !is_infected(infector) && is_traced(infector)
     for (i, ind) in enumerate(contacts)
         ind.id == infector.id && continue
         _trace_pair!(
@@ -741,6 +780,7 @@ function trace_contacts!(
             not_before = not_before === nothing ? -Inf : not_before[i]
         )
     end
+    propagating && (infector.state[:ring_propagated] = true)
     return nothing
 end
 

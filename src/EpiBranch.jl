@@ -123,6 +123,10 @@ include("likelihood_dists.jl")
 # (households, networks), shared by the structure-driven companion packages.
 include("pairwise_survival.jl")
 
+# Natural-history likelihood of a ModelSpec's progression, the counterpart to
+# the pairwise survival likelihood above.
+include("progression_likelihood.jl")
+
 # Exports — types
 export TransmissionModel, BranchingProcess, Infectiousness, HomogeneousProcess, ModelSpec
 export Individual, SimulationState
@@ -133,6 +137,7 @@ export IsolationEligibility, SymptomaticOnly, AllCases
 export is_eligible_for_isolation
 export TraceEligibility, AlwaysEligible, SymptomaticParent
 export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody, NoTracing
+export PreviouslyTraced
 export AnyOf, AllOf, NoneOf
 export TraceRate, ConstantRate
 export TraceDelay, ConstantDelay
@@ -203,5 +208,7 @@ export end_of_outbreak_probability
 export PairKernel, PairContext, Steps, record_kernel, LayerHost
 export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout
 export compile_contact_pairs, pairwise_surv_loglik, pairwise_surv_loglik_by_component
+# Progression (natural-history) likelihood
+export progression_loglik
 
 end # module

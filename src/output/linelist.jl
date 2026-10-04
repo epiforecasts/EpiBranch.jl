@@ -99,6 +99,8 @@ function linelist(
     delete!(state_keys, :infected)  # encoded by the row's existence, or the column above
     delete!(state_keys, :isolation_unrecorded)  # read through `:isolated`
     delete!(state_keys, :isolation_unrecorded_before_isolation)
+    delete!(state_keys, :ring_remaining)         # the ring's own bookkeeping
+    delete!(state_keys, :ring_propagated)
 
     for key in state_keys
         _add_state_column!(cols, cases, key, reference_date)
