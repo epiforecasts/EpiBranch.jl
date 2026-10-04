@@ -237,3 +237,28 @@ Wrappers delegate to their wrapped intervention.
 function risk_depends_on_infector(iv::AbstractIntervention)
     return _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
 end
+
+"""
+    reads_population_state(intervention) -> Bool
+
+Whether `intervention`'s delivery can depend on population-wide state — a
+running case count, a capacity budget shared across every individual — rather
+than only on the individual it is resolving. A structure-driven model that
+races a clique (a household) at a time, rather than the whole population on
+one clock, gives each clique's race the state left by whichever clique raced
+before it, in race order rather than calendar order; an intervention that
+reads population-wide state through that race therefore needs every clique on
+one shared clock instead.
+
+The default is the conservative `true`. `Isolation`, `ContactTracing` and
+plain vaccination (no shared capacity) return `false`, since each reads and
+writes only the individual it resolves. A `Scheduled` built with
+`start_after_cases` returns `true`, because the case count it tests is
+exactly such a population-wide read; a `Scheduled` built with only
+`start_time`/`end_time` returns `false`, since those compare against the time
+of the case being resolved. `CapacityConstrained` always returns `true`,
+because its admission decision reads how much of the shared budget every
+other individual has already used. Wrappers without a read of their own
+delegate to the intervention they wrap.
+"""
+reads_population_state(::AbstractIntervention) = true

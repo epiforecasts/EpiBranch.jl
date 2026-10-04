@@ -448,6 +448,11 @@ function risk_depends_on_infector(v::AbstractVaccination)
     return _has_own_method(competing_risk, typeof(v), AbstractVaccination)
 end
 
+# Vaccination delivers against its own eligibility and dose state, with no
+# shared resource read; `CapacityConstrained` declares the shared read itself
+# once a budget is wrapped around one.
+reads_population_state(::AbstractVaccination) = false
+
 # The efficacy stored on the contact by `_record_vaccination!`, given the
 # sampled value `eff` (a `Real`, a draw from a `Distribution`, or a call to a
 # function — already resolved by `_sample_value`) and the vaccination's mode.

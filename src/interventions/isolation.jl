@@ -161,6 +161,9 @@ risk_depends_on_infector(iso::Isolation) = iso.post_isolation_transmission > 0
 # makes, so it reaches the same routes: those the case is isolated from.
 risk_applies(::Isolation, route) = route !== nothing && INTERVENTION_REMOVAL in route.until
 
+# Isolation reads and writes only the case it resolves.
+reads_population_state(::Isolation) = false
+
 function reset!(::Isolation, ind::Individual)
     # Only undo an isolation this Isolation set. `:isolated`/`:isolation_time`
     # are shared keys — ContactTracing's Quarantine writes them directly too —

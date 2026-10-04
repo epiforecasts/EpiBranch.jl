@@ -236,6 +236,7 @@ ones your intervention needs (all default to no-ops).
 | `risk_applies(iv, route)` | Continuous-time models selecting risks for a route (`nothing` for an external introduction) | Nothing | `Bool`; defaults to `true` |
 | `standing_block(iv)` | Continuous-time models deciding whether a certain block has settled a pair for good | Nothing | `Bool`; defaults to `false` |
 | `risk_depends_on_infector(iv)` | Before a fixed-size pool with more than one mixing group runs | Nothing | `Bool`: whether `competing_risk` can block a contact differently depending on its infector (default `true` when the type has its own `competing_risk`) |
+| `reads_population_state(iv)` | Before a structure-driven model (e.g. `HouseholdProcess`) decides whether to race each clique separately or put every clique on one shared clock | Nothing | `Bool`: whether delivery can depend on population-wide state such as a running case count or a shared capacity budget (default `true`, conservative) |
 
 ### Which hooks run on which engine
 

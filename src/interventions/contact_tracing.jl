@@ -778,6 +778,9 @@ function risk_applies(::ContactTracing, route)
     return route !== nothing && INTERVENTION_REMOVAL in route.until
 end
 
+# Tracing reads and writes only the infector's own contacts.
+reads_population_state(::ContactTracing) = false
+
 """Keep uninfected ring members generating contacts so the ring can
 reach contacts-of-contacts. A traced contact with ring budget left
 stays active for one more generation; the [`InfectiousSource`](@ref

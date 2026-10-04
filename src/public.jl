@@ -19,6 +19,7 @@ public required_fields
 public infectious_removal_time
 public risk_applies
 public risk_depends_on_infector
+public reads_population_state
 public standing_block
 # End an infection early from any intervention hook, and read when it ended.
 public abort_infection!
