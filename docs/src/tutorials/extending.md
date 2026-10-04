@@ -2330,3 +2330,15 @@ is never confirmed at all. Group vaccination's own trigger for a pending member
 therefore moves earlier whenever a later discovery finds one, keeping the dose
 at the group's true earliest trigger rather than the first one found; a
 settled member's dose, and a dose another vaccination gave, keep their date.
+
+This revise-earlier behaviour is itself behind a dispatched hook rather than
+written into the intervention body. `EpiBranch.may_revise(iv, prior_trigger,
+new_trigger)` answers whether a dose already admitted under `prior_trigger` may
+move to `new_trigger`; the default is `false` (an admitted dose keeps its
+date), and group vaccination overrides it to permit a genuine improvement. A
+custom intervention wanting the same pattern implements this method on its own
+type rather than branching on it inline. Whether a candidate is still eligible
+for that move is `EpiBranch.is_settled(state, ind)`: `true` once a continuous-
+time race has finished its own round of action discovery for `ind`, `false`
+for one still pending (and for the case currently being settled, during its
+own round).

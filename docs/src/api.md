@@ -178,6 +178,8 @@ EpiBranch.action_draw!
 EpiBranch._action_cache
 EpiBranch.apply_actions!
 EpiBranch.continuous_actions
+EpiBranch.may_revise
+EpiBranch.is_settled
 EpiBranch.persistent_competing_risks
 EpiBranch.capacity_key
 EpiBranch.capacity_time_key
