@@ -83,11 +83,16 @@ println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 Isolation lasts until the end of the infectious period by default. Pass
 `isolation_duration` (a `Real`, a `Distribution`, or a function
 `(rng, ind) -> Real`, like `onset_to_isolation_delay`) to give it a finite
-length instead, after which the case is no longer blocked from onward
-transmission by it. This matters when a case is isolated or quarantined well
-before an infection it later picks up through another route — on a network or
-in a household, say — since an isolation with no end would otherwise keep
-blocking that later transmission indefinitely.
+length instead.
+
+This matters most when a case is isolated or quarantined well before an
+infection it later picks up through another route — on a network or in a
+household, say — since an isolation with no end would otherwise keep blocking
+that later transmission indefinitely. On a network or household the release
+is what spares that later infection: an infectious window there carries one
+closing time, so a case isolated during its infectious period stays removed
+for the rest of it. On a generation-based process the block is a per-contact
+risk, and a contact after the release is not blocked.
 
 ### Contact tracing
 

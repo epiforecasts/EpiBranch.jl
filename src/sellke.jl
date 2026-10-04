@@ -307,7 +307,10 @@ function _next_contact(rng::AbstractRNG, kernel, m::Real, dt, end_dt)
                 "terminal transition reaching one of `until`'s states, or one is " *
                 "reachable but gated so that some cases reach none of them (see " *
                 "`exclusive_probabilities` for terminal transitions meant to " *
-                "partition the population exactly)."
+                "partition the population exactly). A window closed only by " *
+                "`INTERVENTION_REMOVAL` reaches this too when the case's " *
+                "isolation or quarantine lapsed before it was infected, since " *
+                "a removal it never met cannot close it."
         )
     )
     nxt = _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
