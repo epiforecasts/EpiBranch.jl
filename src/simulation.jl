@@ -191,6 +191,8 @@ function _max_time(sim_opts)
     return minimum(time_bound(r) for r in sim_opts.stopping_rules; init = Inf)
 end
 
+_rule_names(rules) = join([string(nameof(typeof(r))) for r in rules], ", ")
+
 # Warn when a termination control is set on a model that ignores it, so the
 # silent no-op is discoverable. Compares against the keyword defaults, so only
 # an explicitly-set control triggers the warning; `simulate` on a pool with no
@@ -202,12 +204,19 @@ function _warn_ignored_termination(
     ignored = String[]
     max_cases != _DEFAULT_MAX_CASES && push!(ignored, "max_cases")
     max_generations != _DEFAULT_MAX_GENERATIONS && push!(ignored, "max_generations")
-    # Extinction and a finite `time_bound` are the two ways these runs end, so
-    # both hold; any other rule is read through the same trait, not matched by
-    # concrete type.
-    stopping_rules !== nothing &&
-        any(r -> !(r isa Extinction) && !isfinite(time_bound(r)), stopping_rules) &&
-        push!(ignored, "stopping_rules other than Extinction and those bounding time")
+    # Each rule says for itself whether a run that never consults `should_stop`
+    # applies it in full. One that does not is reported by name, and separately
+    # when a time bound of its own was still applied, so a rule that is only
+    # half honoured does not read as having done nothing.
+    if stopping_rules !== nothing
+        unapplied = filter(r -> !honoured_without_should_stop(r), stopping_rules)
+        inert = _rule_names(filter(r -> !isfinite(time_bound(r)), unapplied))
+        partial = _rule_names(filter(r -> isfinite(time_bound(r)), unapplied))
+        isempty(inert) || push!(ignored, "stopping_rules ($inert)")
+        isempty(partial) || push!(
+            ignored, "every condition but the time bound of $partial"
+        )
+    end
     isempty(ignored) && return nothing
     @warn "$(nameof(typeof(model))) runs to extinction or `max_time` over its " *
         "fixed population and ignores the other termination controls; " *

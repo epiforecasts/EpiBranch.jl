@@ -15,6 +15,18 @@ struct CustomTimeBoundRule <: AbstractStoppingRule
 end
 EpiBranch.should_stop(r::CustomTimeBoundRule, state::SimulationState) = state.max_infection_time >= r.t
 EpiBranch.time_bound(r::CustomTimeBoundRule) = r.t
+EpiBranch.honoured_without_should_stop(::CustomTimeBoundRule) = true
+
+# A rule that bounds time and tests a case count as well: a run that ends at
+# the bound applies half of it, so it keeps the default and is reported.
+struct TimeOrCasesRule <: AbstractStoppingRule
+    t::Float64
+    n::Int
+end
+function EpiBranch.should_stop(r::TimeOrCasesRule, state::SimulationState)
+    return state.max_infection_time >= r.t || state.cumulative_cases >= r.n
+end
+EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
 
 @testset "Stopping rules" begin
     @testset "MaxCases stops once cumulative cases reach the cap" begin
@@ -96,6 +108,32 @@ EpiBranch.time_bound(r::CustomTimeBoundRule) = r.t
         )
         @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
         @test !is_extinct(cut)
+    end
+
+    @testset "a rule that tests more than time is reported as half applied" begin
+        # Declaring a time bound does not make a rule fully applied: the bound
+        # is honoured and the case count is not, so the warning names the rule
+        # rather than passing over it.
+        @test !EpiBranch.honoured_without_should_stop(TimeOrCasesRule(2.0, 5))
+        @test EpiBranch.honoured_without_should_stop(Extinction())
+        @test EpiBranch.honoured_without_should_stop(MaxTime(5.0))
+        @test EpiBranch.honoured_without_should_stop(CustomTimeBoundRule(5.0))
+        @test !EpiBranch.honoured_without_should_stop(MaxCases(10))
+
+        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        spec = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 500);
+            progression = prog
+        )
+        @test_logs (:warn, r"time bound of TimeOrCasesRule") simulate(
+            spec; n_initial = 3,
+            stopping_rules = [Extinction(), TimeOrCasesRule(2.0, 5)], rng = StableRNG(4)
+        )
+        # With no bound to apply, the rule did nothing at all.
+        @test_logs (:warn, r"stopping_rules \(MaxCases\)") simulate(
+            spec; n_initial = 3,
+            stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(4)
+        )
     end
 
     @testset "Extinction is prepended to user-supplied rules" begin

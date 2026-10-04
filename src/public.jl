@@ -83,3 +83,9 @@ public infection_likelihood_compatible
 public susceptibility_components, susceptibility_host_times, HazardScaling
 public InterventionAction, intervention_actions, action_draw!, apply_actions!,
     continuous_actions
+
+# Stopping rules: a rule bounds a structure-driven run through `time_bound`,
+# and says through `honoured_without_should_stop` whether such a run, which
+# never consults `should_stop`, applies it in full.
+public time_bound
+public honoured_without_should_stop
