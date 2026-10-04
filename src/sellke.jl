@@ -354,12 +354,15 @@ standing_block(v::AbstractVaccination) = effect_mode(v) isa AllOrNothingMode
 
 # Whether a resolved risk is certain and already in force at this proposal: its
 # `event_time`, a plain number rather than one resampled on each ask, has
-# passed, and its `block_probability`, also a plain number rather than a waning
-# closure that could give a smaller value to a later exposure, is 1. Necessary
-# for a standing block but not sufficient, which is what `standing_block` adds.
+# passed, its `block_probability`, also a plain number rather than a waning
+# closure that could give a smaller value to a later exposure, is 1, and its
+# `release_time` is infinite, a plain number, so the block is not due to lapse.
+# Necessary for a standing block but not sufficient, which is what
+# `standing_block` adds.
 function _standing_risk(risk::Risk, transmission_time)
     return risk.event_time isa Real && risk.event_time <= transmission_time &&
-        risk.block_probability isa Real && risk.block_probability >= 1.0
+        risk.block_probability isa Real && risk.block_probability >= 1.0 &&
+        risk.release_time isa Real && isinf(risk.release_time)
 end
 
 # Whether `source` contributes a standing risk against this pair: it declares

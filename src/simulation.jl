@@ -1158,6 +1158,8 @@ function _risk_blocks(source, parent, contact, state, transmission_time)
     for risk in _iter_risks(competing_risk(source, parent, contact, state))
         event_t = _sample_value(risk.event_time, rng, parent, contact, state)
         event_t > transmission_time && continue
+        release_t = _sample_value(risk.release_time, rng, parent, contact, state)
+        transmission_time < release_t || continue
         prob = _sample_value(risk.block_probability, rng, parent, contact, state)
         prob <= 0.0 && continue
         prob >= 1.0 && return true

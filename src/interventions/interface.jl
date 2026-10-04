@@ -89,30 +89,34 @@ keep_active(::AbstractIntervention, state, targets, is_new) = ()
 is_active(::AbstractIntervention, ::SimulationState) = true
 
 """
-    Risk(event_time, block_probability)
+    Risk(event_time, block_probability, release_time)
 
 A competing risk contributed by an intervention against a single
-contact's transmission. The risk's event has occurred by transmission time `T`
-if `event_time <= T`; when it has occurred, transmission is blocked with
-probability `block_probability`. A contact is infected iff no
+contact's transmission. The risk's event is in force at transmission time `T`
+if `event_time <= T < release_time`; while in force, transmission is blocked
+with probability `block_probability`. A contact is infected iff no
 intervention's risk blocks it.
 
-Both fields accept either a `Real` or a function
+All three fields accept either a `Real` or a function
 `(rng, parent, contact, state) -> Real`. The function form lets the
-event time or block probability depend on per-individual state, e.g.
-age-conditional vaccine efficacy.
+event time, block probability, or release time depend on per-individual
+state, e.g. age-conditional vaccine efficacy, or a quarantine's duration.
 
 Use `event_time = -Inf` (the default) for risks that are not
 time-tagged — pop_suscept, per-individual susceptibility,
-infectiousness, and the like.
+infectiousness, and the like. Use `release_time = Inf` (the default) for a
+block that, once in force, never lapses — e.g. isolation lasting until the
+end of the infectious period.
 
 Returned by [`competing_risk`](@ref).
 """
-struct Risk{T, P}
+struct Risk{T, P, R}
     event_time::T
     block_probability::P
+    release_time::R
 end
-Risk(; event_time = -Inf, block_probability) = Risk(event_time, block_probability)
+Risk(; event_time = -Inf, block_probability, release_time = Inf) =
+    Risk(event_time, block_probability, release_time)
 
 """
     competing_risk(intervention, parent, contact, state)
