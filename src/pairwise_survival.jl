@@ -1030,7 +1030,7 @@ function pairwise_surv_loglik(
         kernel, data::InfectionLayer, layout::ContactPairsLayout;
         external_hazard = 0.0, susceptibility = nothing
     )
-    return _pairwise_reduce(
+    return pairwise_reduce(
         _TotalLogLik(), kernel, data, layout; external_hazard, susceptibility
     )
 end
@@ -1213,7 +1213,8 @@ rows belong to; a subtype needs only these two methods; the passes themselves
 do not change. [`pairwise_surv_loglik`](@ref) puts every row into the one
 group its scalar result is; [`pairwise_surv_loglik_by_component`](@ref) groups
 by the contact structure's connected components. A grouping by stratum or by
-spatial patch is written the same way, from outside the package.
+spatial patch is written the same way, from outside the package, and run with
+[`pairwise_reduce`](@ref EpiBranch.pairwise_reduce).
 """
 abstract type PairwiseReduction end
 
@@ -1306,11 +1307,20 @@ _is_infeasible(reduction::PairwiseReduction, totals::_GroupTotals, host) =
 _result(::PairwiseReduction, totals::_GroupTotals) = totals.ll
 _result(::_TotalLogLik, totals::_GroupTotals) = totals.ll[1]
 
-# The reduction behind both `pairwise_surv_loglik` and
-# `pairwise_surv_loglik_by_component`: validate and promote types, mark the
-# groups a conditioned-on host with no possible infector dooms, then run the
-# passes, each skipping rows whose group is already dead.
-function _pairwise_reduce(
+"""
+    pairwise_reduce(reduction::PairwiseReduction, kernel, data::InfectionLayer,
+                     layout::ContactPairsLayout; external_hazard = 0.0,
+                     susceptibility = nothing) -> Vector{<:Real}
+
+Run the two accumulation passes behind [`pairwise_surv_loglik`](@ref) and
+[`pairwise_surv_loglik_by_component`](@ref) under `reduction`, a
+[`PairwiseReduction`](@ref), returning its `ngroups(reduction)` group
+log-likelihoods. A new grouping (by stratum, by spatial patch) calls this
+directly with its own `PairwiseReduction` subtype; `pairwise_surv_loglik` and
+`pairwise_surv_loglik_by_component` are this call under their respective
+built-in groupings. Arguments are otherwise as in `pairwise_surv_loglik`.
+"""
+function pairwise_reduce(
         reduction::PairwiseReduction, kernel, data::InfectionLayer,
         layout::ContactPairsLayout; external_hazard = 0.0, susceptibility = nothing
     )
@@ -1487,7 +1497,7 @@ function pairwise_surv_loglik_by_component(
         external_hazard = 0.0, susceptibility = nothing
     )
     reduction = _ByComponent(layout.component, layout.ncomponents)
-    return _pairwise_reduce(
+    return pairwise_reduce(
         reduction, kernel, data, layout; external_hazard, susceptibility
     )
 end

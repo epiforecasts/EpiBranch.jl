@@ -52,6 +52,7 @@ compile_contact_pairs
 EpiBranch.PairwiseReduction
 EpiBranch.ngroups
 EpiBranch.group
+EpiBranch.pairwise_reduce
 ```
 
 ### Household likelihood

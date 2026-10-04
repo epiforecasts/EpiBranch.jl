@@ -87,7 +87,9 @@ public InterventionAction, intervention_actions, action_draw!, apply_actions!,
 # Pairwise survival likelihood: how its two accumulation passes group rows
 # into a result. `pairwise_surv_loglik` and `pairwise_surv_loglik_by_component`
 # are the two built-in groupings; a new one is a `PairwiseReduction` subtype
-# with `ngroups` and `group` methods, no further change to the package.
+# with `ngroups` and `group` methods, run with `pairwise_reduce`, no further
+# change to the package.
 public PairwiseReduction
 public ngroups
 public group
+public pairwise_reduce

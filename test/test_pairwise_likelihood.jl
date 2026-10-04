@@ -759,7 +759,7 @@ end
         k = Exponential(2.5)
 
         total = pairwise_surv_loglik(k, hh, L; external_hazard = 0.05)
-        by_parity = EpiBranch._pairwise_reduce(_Parity(), k, hh, L; external_hazard = 0.05)
+        by_parity = EpiBranch.pairwise_reduce(_Parity(), k, hh, L; external_hazard = 0.05)
         @test length(by_parity) == 2
         @test sum(by_parity) ≈ total
     end
