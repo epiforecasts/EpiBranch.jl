@@ -450,6 +450,21 @@ function _fitted_efficacy(efficacy)
     )
 end
 
+# Each mode says how a dose decomposes into mixture components. There is no
+# generic answer: the two built-ins differ in kind, and a mode of a user's own
+# (a partial-responder mode, say) differs again, so one that reaches the
+# likelihood without a method is a missing contract rather than a bad value.
+function _dose_components(mode::AbstractEffectMode, efficacy, waning, τ)
+    throw(
+        ArgumentError(
+            "a dose under $(nameof(typeof(mode))) has no decomposition into " *
+                "susceptibility mixture components, so a likelihood cannot " *
+                "evaluate it. Give the effect holding this mode a " *
+                "`susceptibility_components` method"
+        )
+    )
+end
+
 function _dose_components(::LeakyMode, efficacy, ::Nothing, τ)
     return (one(efficacy) => HazardScaling(τ, 1 - efficacy),)
 end

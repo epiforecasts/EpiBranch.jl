@@ -49,6 +49,34 @@ function isolation_time(ind::Individual{T}) where {T}
     return convert(T, get(ind.state, :isolation_time, T(Inf)))::T
 end
 
+"""Time from which the isolation block begun at [`isolation_time`](@ref)
+lapses (`Inf` if it never does); a dual under AD. Set alongside `isolation_time` by
+[`set_isolated!`](@ref); a duration configured on [`Isolation`](@ref) or
+[`ContactTracing`](@ref)'s [`Quarantine`](@ref) action gives this a finite
+value, so a quarantine that ended before a later, unrelated infection no
+longer blocks that case's own onward transmission."""
+function isolation_release_time(ind::Individual{T}) where {T}
+    return convert(T, get(ind.state, :isolation_release_time, T(Inf)))::T
+end
+
+# Whether the individual's own isolation or quarantine had already lapsed
+# before their infection, so a continuous-time route window never met the
+# removal and should not be shut by it.
+#
+# A removal whose release is at or before its own start lapses without ever
+# being in force, which is how a zero-length duration reads here: it removes
+# nobody, as it does on the generation engine, where `event_t <= t < release_t`
+# blocks nothing.
+#
+# `infection_time` is the earliest a window can open, which makes this test
+# sound but not complete: a window whose `from` is a later state (a latent
+# period's `:onset`, a funeral route) can open after a removal lapsed and
+# still be shut by it. Closing that gap needs the window's own open time where
+# the decision is made, and `infectious_removal_time` is given the individual
+# alone, so it is a change to that hook rather than to this predicate.
+_removal_lapsed_before_infection(ind::Individual) =
+    isolation_release_time(ind) <= max(ind.infection_time, isolation_time(ind))
+
 # Whether an isolation or quarantine stands on the individual, recorded or not.
 # Interventions layering one isolation over another read this.
 _isolation_in_force(ind::Individual) = get(ind.state, :isolated, false)::Bool
@@ -180,16 +208,19 @@ is_infected(ind::Individual) = get(ind.state, :infected, true)::Bool
 individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 
 """Mark an individual as isolated at the given time (any `Real`, so an AD
-dual isolation time flows through).
+dual isolation time flows through), with an optional `release_time` (`Inf`
+by default) from which the block lapses.
 
-The time is stored under `:isolation_time`. A route window that isolation should
-end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which
-respects leaky isolation. `:isolated` in an `until` refers to a
-`Transition(:isolated, …)` in the natural history."""
-function set_isolated!(ind::Individual, time::Real)
+The time is stored under `:isolation_time`, the release under
+`:isolation_release_time`. A route window that isolation should end lists
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which respects leaky
+isolation. `:isolated` in an `until` refers to a `Transition(:isolated, …)`
+in the natural history."""
+function set_isolated!(ind::Individual, time::Real; release_time::Real = Inf)
     ind.state[:isolated] = true
     delete!(ind.state, :_isolation_unrecorded)
-    return ind.state[:isolation_time] = time
+    ind.state[:isolation_time] = time
+    return ind.state[:isolation_release_time] = release_time
 end
 
 """Clear an individual's isolation, the inverse of [`set_isolated!`](@ref)."""
@@ -197,5 +228,6 @@ function clear_isolated!(ind::Individual)
     ind.state[:isolated] = false
     delete!(ind.state, :_isolation_unrecorded)
     ind.state[:isolation_time] = Inf
+    ind.state[:isolation_release_time] = Inf
     return nothing
 end

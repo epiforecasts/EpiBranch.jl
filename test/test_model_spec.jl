@@ -1,3 +1,17 @@
+# A custom terminal transition with a `probability` field that gates nothing:
+# the transition always occurs, and `terminal_event` reads the field only to
+# label the outcome. Defined at module scope
+# because struct definitions can't live inside @testset. Used below to check
+# that `terminal_certainty` is read by dispatch rather than guessed from
+# field layout.
+struct AlwaysOccursRule <: AbstractClinicalTransition
+    probability::Float64
+end
+EpiBranch.is_terminal(::AlwaysOccursRule) = true
+function EpiBranch.terminal_event(r::AlwaysOccursRule, individual)
+    return (individual.infection_time + 1.0, r.probability > 0.5 ? :died : :recovered)
+end
+
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
     # attributes, observation) around a pure transmission process. The process
@@ -174,5 +188,12 @@
             bp;
             progression = [Transition(:onset; from = :infection, delay = 1.0)]
         )
+
+        # `terminal_certainty` is dispatched, so a `probability` field that
+        # gates nothing cannot mislead it: `AlwaysOccursRule` has one, and the
+        # transition always occurs. Left at the default (unknown), the
+        # transition is skipped rather than misjudged from its field layout.
+        @test ismissing(EpiBranch.terminal_certainty(AlwaysOccursRule(0.0)))
+        @test_logs ModelSpec(bp; progression = [AlwaysOccursRule(0.0)])
     end
 end

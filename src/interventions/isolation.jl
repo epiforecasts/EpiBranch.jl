@@ -12,7 +12,10 @@
 #
 # Post-isolation transmission stays a scalar parameter — it modifies
 # the competing risk's block probability without changing the
-# intervention's policy shape.
+# intervention's policy shape. `isolation_duration` (a scalar / distribution /
+# function, drawn whenever isolation is set) is the same kind of parameter: it
+# modifies the competing risk's release time, so the block it contributes can
+# lapse rather than last forever.
 
 """
     IsolationEligibility
@@ -99,6 +102,23 @@ switching the delay once a household's first case has been detected.
 probability after isolation. The competing risk's `block_probability`
 is `1 - post_isolation_transmission`.
 
+`isolation_duration` is how long the removal lasts before it lapses; it
+accepts a `Real`, a `Distribution`, or a function `(rng, ind) -> Real`
+(drawn per individual, each time isolation is set). The default `Inf` keeps a
+case isolated to the end of its infectious period, and a duration of zero
+isolates nobody. A finite duration gives
+[`isolation_release_time`](@ref) the time the block lapses.
+
+What that changes depends on the engine. On a generation-based process the
+block is a per-contact risk, so a contact after the release is not blocked.
+
+On the continuous-time (Sellke) models an infectious window carries one
+closing time and cannot reopen, so the release matters only when the removal
+had already lapsed before the case was infected: that case is not removed at
+all, which is what the duration exists for. A removal still standing at the
+infection, even one due to lapse a day later, closes the window for the rest
+of the infectious period.
+
 An isolation time at or after the case's own outcome (recovery, death, or
 any other terminal [`Transition`](@ref)) still removes the case from
 transmission, so a route that opens at the outcome, such as a funeral, is cut
@@ -107,25 +127,28 @@ as before. It is not recorded as a detection: [`is_isolated`](@ref) stays
 [`EpiBranch.records_isolation`](@ref) makes that choice and can be overridden
 through the eligibility.
 
-Initialises: `:isolated`, `:isolation_time`, `:test_positive`; sets
-`:_isolation_unrecorded` for an isolation it does not record.
+Initialises: `:isolated`, `:isolation_time`, `:isolation_release_time`,
+`:test_positive`; sets `:_isolation_unrecorded` for an isolation it does not
+record.
 """
-struct Isolation{E <: IsolationEligibility, D, S} <: AbstractIntervention
+struct Isolation{E <: IsolationEligibility, D, S, U} <: AbstractIntervention
     eligibility::E
     onset_to_isolation_delay::D
     test_sensitivity::S
     post_isolation_transmission::Float64
+    isolation_duration::U
 end
 
 function Isolation(;
         onset_to_isolation_delay,
         eligibility::IsolationEligibility = SymptomaticOnly(),
         test_sensitivity = 1.0,
-        post_isolation_transmission::Real = 0.0
+        post_isolation_transmission::Real = 0.0,
+        isolation_duration = Inf
     )
     return Isolation(
         eligibility, onset_to_isolation_delay, test_sensitivity,
-        Float64(post_isolation_transmission)
+        Float64(post_isolation_transmission), isolation_duration
     )
 end
 
@@ -136,20 +159,34 @@ intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 # time, so a continuous-time model closes the infectious window there. Leaky
 # isolation (`post_isolation_transmission > 0`) only reduces transmission, which
 # the window cannot express, so it contributes no removal in that setting.
+#
+# A window cannot reopen once closed (see `_route_close`): a removal whose
+# release falls inside an already-open window still closes it for good,
+# exactly as before `isolation_duration` existed. A finite duration instead
+# fixes the removal that never meets an open window at all: a quarantine set,
+# and released, before the case was even infected
+# (`_removal_lapsed_before_infection`) contributes no removal, so it cannot
+# shut a window for an infection acquired later through another route.
+# The per-contact `competing_risk` below is release-aware throughout, on every
+# transmission model.
 function infectious_removal_time(iso::Isolation, ind::Individual)
-    return iso.post_isolation_transmission == 0 ? isolation_time(ind) : Inf
+    iso.post_isolation_transmission == 0 || return Inf
+    _removal_lapsed_before_infection(ind) && return Inf
+    return isolation_time(ind)
 end
 
-"""Isolation blocks the parent → contact transmission when the parent's
-isolation time is earlier than the contact's transmission time.
-Residual transmission is governed by `post_isolation_transmission`:
-`block_probability = 1 - post_isolation_transmission`."""
+"""Isolation blocks the parent → contact transmission while the parent's
+isolation is in force: from its isolation time until its
+[`isolation_release_time`](@ref) (`Inf` by default, so the block lasts until
+the end of the infectious period). Residual transmission is governed by
+`post_isolation_transmission`: `block_probability = 1 - post_isolation_transmission`."""
 function competing_risk(iso::Isolation, parent, contact, state)
     iso_t = isolation_time(parent)
     isfinite(iso_t) || return nothing
     return Risk(
         event_time = iso_t,
-        block_probability = 1.0 - iso.post_isolation_transmission
+        block_probability = 1.0 - iso.post_isolation_transmission,
+        release_time = isolation_release_time(parent)
     )
 end
 
@@ -179,10 +216,12 @@ function reset!(::Isolation, ind::Individual)
     # effect must not also undo another intervention's.
     previous = get(ind.state, :_isolation_time_before_isolation, Inf)
     if isfinite(previous)
-        set_isolated!(ind, previous)
+        previous_release = get(ind.state, :_isolation_release_time_before_isolation, Inf)
+        set_isolated!(ind, previous; release_time = previous_release)
         get(ind.state, :_isolation_unrecorded_before_isolation, false) &&
             (ind.state[:_isolation_unrecorded] = true)
         delete!(ind.state, :_isolation_time_before_isolation)
+        delete!(ind.state, :_isolation_release_time_before_isolation)
         delete!(ind.state, :_isolation_unrecorded_before_isolation)
     else
         clear_isolated!(ind)
@@ -224,6 +263,8 @@ function resolve_individual!(iso::Isolation, individual, state)
         # survive that reset, so stash it, and whether it was recorded, for
         # `reset!` to restore.
         individual.state[:_isolation_time_before_isolation] = isolation_time(individual)
+        individual.state[:_isolation_release_time_before_isolation] =
+            isolation_release_time(individual)
         if _isolation_unrecorded(individual)
             individual.state[:_isolation_unrecorded_before_isolation] = true
         else
@@ -260,13 +301,30 @@ function resolve_individual!(iso::Isolation, individual, state)
     return nothing
 end
 
-# Remove the case from transmission at `time`, recording it as a detection only
-# if the eligibility does. The provenance mark lets a Scheduled reset undo only
-# Isolation's own effect.
+# Remove the case from transmission at `time`, until `time + isolation_duration`,
+# recording it as a detection only if the eligibility does. The provenance mark
+# lets a Scheduled reset undo only Isolation's own effect.
 function _isolate!(iso::Isolation, individual, state, time)
-    set_isolated!(individual, time)
+    duration = _removal_duration(
+        iso.isolation_duration, state.rng, individual, "`isolation_duration`"
+    )
+    start, release = time, time + duration
+    # A removal already standing is layered under this one by the same rule the
+    # trace path uses, so neither side's release is lost.
+    was_unrecorded = _isolation_unrecorded(individual)
+    if _isolation_in_force(individual)
+        start, release = _combine_removal(
+            isolation_time(individual), isolation_release_time(individual),
+            start, release
+        )
+    end
+    set_isolated!(individual, start; release_time = release)
     individual.state[:_isolated_by_isolation] = true
-    records_isolation(iso.eligibility, individual, state, time) ||
-        (individual.state[:_isolation_unrecorded] = true)
+    # Whether this counts as a detection is a question about the start in
+    # force, so a standing start that won keeps its own answer, and only an
+    # isolation starting here is put to this eligibility.
+    unrecorded = start == time ?
+        !records_isolation(iso.eligibility, individual, state, start) : was_unrecorded
+    unrecorded && (individual.state[:_isolation_unrecorded] = true)
     return nothing
 end

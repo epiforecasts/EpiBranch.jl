@@ -105,6 +105,7 @@ end
 
 is_terminal(t::Transition) = t.terminal
 terminal_target(t::Transition) = t.terminal ? t.state : nothing
+terminal_certainty(t::Transition) = t.terminal ? _certain_probability(t.probability) : missing
 function terminal_event(t::Transition, individual::Individual{T}) where {T}
     t.terminal || return nothing
     tm = convert(T, get(individual.state, t.time_key, T(Inf)))

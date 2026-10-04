@@ -88,6 +88,8 @@ MaxCases
 MaxGenerations
 MaxTime
 should_stop
+EpiBranch.time_bound
+EpiBranch.honoured_without_should_stop
 ```
 
 ## Simulation
@@ -165,6 +167,8 @@ LeakyMode
 AllOrNothingMode
 EpiBranch.realised_efficacy
 EpiBranch.realise_prior_dose!
+
+EpiBranch.supports_waning
 Scheduled
 CapacityConstrained
 capacity_usage
@@ -237,6 +241,7 @@ onset_time
 incubation_period
 is_isolated
 isolation_time
+isolation_release_time
 outcome_time
 is_traced
 is_quarantined

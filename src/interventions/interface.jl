@@ -89,30 +89,37 @@ keep_active(::AbstractIntervention, state, targets, is_new) = ()
 is_active(::AbstractIntervention, ::SimulationState) = true
 
 """
-    Risk(event_time, block_probability)
+    Risk(event_time, block_probability, release_time)
 
 A competing risk contributed by an intervention against a single
-contact's transmission. The risk's event has occurred by transmission time `T`
-if `event_time <= T`; when it has occurred, transmission is blocked with
-probability `block_probability`. A contact is infected iff no
+contact's transmission. The risk's event is in force at transmission time `T`
+if `event_time <= T < release_time`; while in force, transmission is blocked
+with probability `block_probability`. A contact is infected iff no
 intervention's risk blocks it.
 
-Both fields accept either a `Real` or a function
+All three fields accept either a `Real` or a function
 `(rng, parent, contact, state) -> Real`. The function form lets the
-event time or block probability depend on per-individual state, e.g.
-age-conditional vaccine efficacy.
+event time, block probability, or release time depend on per-individual
+state, e.g. age-conditional vaccine efficacy, or a quarantine's duration.
 
 Use `event_time = -Inf` (the default) for risks that are not
 time-tagged — pop_suscept, per-individual susceptibility,
-infectiousness, and the like.
+infectiousness, and the like. Use `release_time = Inf` (the default) for a
+block that, once in force, never lapses — e.g. isolation lasting until the
+end of the infectious period.
 
 Returned by [`competing_risk`](@ref).
 """
-struct Risk{T, P}
+struct Risk{T, P, R}
     event_time::T
     block_probability::P
+    release_time::R
 end
-Risk(; event_time = -Inf, block_probability) = Risk(event_time, block_probability)
+Risk(; event_time = -Inf, block_probability, release_time = Inf) =
+    Risk(event_time, block_probability, release_time)
+# The two-argument positional form a `competing_risk` method written before
+# there was a release still builds a risk that never lapses.
+Risk(event_time, block_probability) = Risk(event_time, block_probability, Inf)
 
 """
     competing_risk(intervention, parent, contact, state)
@@ -236,6 +243,36 @@ Wrappers delegate to their wrapped intervention.
 """
 function risk_depends_on_infector(iv::AbstractIntervention)
     return _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
+end
+
+# A removal's duration, drawn or given. A negative or `NaN` one puts the
+# release before its own start, which the generation engine reads as no removal
+# and the continuous-time engines as a permanent one, so it is refused here
+# rather than left to split them. Zero is allowed and means no removal on
+# either engine: the generation engine needs `event_t <= t < release_t` and so
+# blocks nothing, and `infectious_removal_time` reports nothing to close a
+# window with.
+function _removal_duration(duration, rng, individual, what)
+    d = _sample_value(duration, rng, individual)
+    (isnan(d) || d < 0) && throw(
+        ArgumentError(
+            "$what must not be negative, got $d for individual $(individual.id)"
+        )
+    )
+    return d
+end
+
+# The start and release holding two removals at once. Where they overlap or
+# touch, the smallest interval covering both is their union and loses nothing,
+# and keeping one side's release alone would drop a removal still in force.
+# Where they are disjoint, one pair cannot hold both: the later removal is kept,
+# the earlier one being spent before the other begins.
+function _combine_removal(standing_start, standing_release, new_start, new_release)
+    if new_start <= standing_release && standing_start <= new_release
+        return (min(new_start, standing_start), max(new_release, standing_release))
+    end
+    return standing_start < new_start ? (new_start, new_release) :
+        (standing_start, standing_release)
 end
 
 """

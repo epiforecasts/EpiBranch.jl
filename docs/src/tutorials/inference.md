@@ -50,7 +50,7 @@ the same Turing model used for the posterior also gives the MLE via
     data ~ offspring_distribution(BranchingProcess(NegBin(R, k)))
 end
 
-mle = maximum_likelihood(offspring_model(data))
+mle = maximum_likelihood(StableRNG(5), offspring_model(data))
 mle_params = NamedTuple(mle.params)
 println("MLE: R=$(round(mle_params.R, digits=2)), k=$(round(mle_params.k, digits=2))")
 ```
@@ -162,7 +162,7 @@ fitted directly:
     y ~ product_distribution(NegBin.(exp.(β0 .+ β1 .* x), k))
 end
 
-mle = maximum_likelihood(offspring_covariate_model(x, y))
+mle = maximum_likelihood(StableRNG(8), offspring_covariate_model(x, y))
 mle_params = NamedTuple(mle.params)
 println("MLE: β0=$(round(mle_params.β0, digits=2)), " *
         "β1=$(round(mle_params.β1, digits=2)), k=$(round(mle_params.k, digits=2))")

@@ -23,6 +23,8 @@ end
 required_fields(r::Recovery) = _from_required(r.from)
 is_terminal(::Recovery) = true
 terminal_target(::Recovery) = :recovered
+# No `probability` field at all: unconditional once the anchor is reached.
+terminal_certainty(::Recovery) = true
 
 function initialise_individual!(::Recovery, individual, state)
     individual.state[:recovery_candidate_time] = Inf
@@ -124,6 +126,7 @@ end
 required_fields(d::Death) = _from_required(d.from)
 is_terminal(::Death) = true
 terminal_target(::Death) = :died
+terminal_certainty(d::Death) = _certain_probability(d.probability)
 
 function initialise_individual!(::Death, individual, state)
     individual.state[:death_candidate_time] = Inf

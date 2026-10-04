@@ -12,30 +12,19 @@
 # the forcing inputs the engine already threads. So there are no per-method
 # forwards — only the entry points know about the spec.
 
-# Whether a terminal transition's own probability, taken alone, guarantees it
-# occurs once its anchor is reached: no `probability` field at all (`Recovery`,
-# or any custom terminal transition following the same contract) means
-# unconditional, so `true`; a constant `probability` is `true` only at exactly
-# `1`; a `Function` depends on the individual and cannot be judged here, so
-# `missing`.
-function _terminal_certain(t)
-    return hasproperty(t, :probability) ? _certain_probability(t.probability) : true
-end
-_certain_probability(p::Real) = isone(p)
-_certain_probability(p) = missing
-
 # Warn when every terminal transition in `progression` is independently gated
 # below certainty: with none that always occurs, a case can clear every gate
 # and reach no terminal state at all — `:outcome` stays unset and, on a
 # structure-driven model, the infectious window this case opened never closes
 # (a different symptom of the same gap that `_warn_uncovered_terminal_states`,
 # in branching_process.jl, catches for states missing from `until`). Skipped
-# when any terminal's probability is a `Function`: unknowable without an
-# individual, so silence over a possible false warning.
+# when any terminal's `terminal_certainty` is `missing`: unknowable without an
+# individual (or a transition type that hasn't declared it), so silence over a
+# possible false warning.
 function _warn_incomplete_terminal_coverage(progression)
     terminals = filter(is_terminal, progression)
     isempty(terminals) && return nothing
-    certainties = Union{Bool, Missing}[_terminal_certain(t) for t in terminals]
+    certainties = Union{Bool, Missing}[terminal_certainty(t) for t in terminals]
     any(isequal(true), certainties) && return nothing
     any(ismissing, certainties) && return nothing
     @warn "Every terminal transition in `progression` is gated below " *

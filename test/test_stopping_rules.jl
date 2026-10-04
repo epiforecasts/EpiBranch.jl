@@ -8,6 +8,26 @@ function EpiBranch.should_stop(r::MaxChainLengthRule, state::SimulationState)
     return maximum(ind.generation for ind in state.individuals) >= r.n
 end
 
+# A user-defined time-bounding rule, used below to check that `time_bound`
+# lets a continuous-time (Sellke) run honour it without core naming the type.
+struct CustomTimeBoundRule <: AbstractStoppingRule
+    t::Float64
+end
+EpiBranch.should_stop(r::CustomTimeBoundRule, state::SimulationState) = state.max_infection_time >= r.t
+EpiBranch.time_bound(r::CustomTimeBoundRule) = r.t
+EpiBranch.honoured_without_should_stop(::CustomTimeBoundRule) = true
+
+# A rule that bounds time and tests a case count as well: a run that ends at
+# the bound applies half of it, so it keeps the default and is reported.
+struct TimeOrCasesRule <: AbstractStoppingRule
+    t::Float64
+    n::Int
+end
+function EpiBranch.should_stop(r::TimeOrCasesRule, state::SimulationState)
+    return state.max_infection_time >= r.t || state.cumulative_cases >= r.n
+end
+EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
+
 @testset "Stopping rules" begin
     @testset "MaxCases stops once cumulative cases reach the cap" begin
         # The engine processes a full generation per step, so cumulative
@@ -65,6 +85,58 @@ end
             rng = rng
         )
         @test maximum(ind.generation for ind in state.individuals) <= 3
+    end
+
+    @testset "time_bound lets a custom rule end a Sellke run" begin
+        # `_max_time` (consulted by the structure-driven Sellke loops) reads
+        # `time_bound` on every rule rather than matching `MaxTime` by type, so
+        # a user's own time-bounding rule ends such a run exactly as `MaxTime`
+        # does, with no warning that it was ignored.
+        @test EpiBranch.time_bound(MaxCases(10)) == Inf
+        @test EpiBranch.time_bound(MaxTime(5.0)) == 5.0
+        @test EpiBranch.time_bound(CustomTimeBoundRule(5.0)) == 5.0
+
+        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        spec = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 500);
+            progression = prog
+        )
+        full = simulate(spec; n_initial = 3, rng = StableRNG(4))
+        cut = @test_logs simulate(
+            spec; n_initial = 3,
+            stopping_rules = [Extinction(), CustomTimeBoundRule(2.0)], rng = StableRNG(4)
+        )
+        @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+        @test !is_extinct(cut)
+    end
+
+    @testset "a rule that tests more than time is reported as half applied" begin
+        # Declaring a time bound does not make a rule fully applied: the bound
+        # is honoured and the case count is not, so the warning names the rule
+        # rather than passing over it.
+        @test !EpiBranch.honoured_without_should_stop(TimeOrCasesRule(2.0, 5))
+        @test EpiBranch.honoured_without_should_stop(Extinction())
+        @test EpiBranch.honoured_without_should_stop(MaxTime(5.0))
+        @test EpiBranch.honoured_without_should_stop(CustomTimeBoundRule(5.0))
+        @test !EpiBranch.honoured_without_should_stop(MaxCases(10))
+
+        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        spec = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 500);
+            progression = prog
+        )
+        full = simulate(spec; n_initial = 3, rng = StableRNG(4))
+        cut = @test_logs (:warn, r"of TimeOrCasesRule") simulate(
+            spec; n_initial = 3,
+            stopping_rules = [Extinction(), TimeOrCasesRule(2.0, 5)], rng = StableRNG(4)
+        )
+        # The bound applied even though the case count did not.
+        @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+        # With no bound to apply, the rule did nothing at all.
+        @test_logs (:warn, r"MaxCases.*no effect") simulate(
+            spec; n_initial = 3,
+            stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(4)
+        )
     end
 
     @testset "Extinction is prepended to user-supplied rules" begin

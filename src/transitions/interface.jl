@@ -56,6 +56,24 @@ exempt from that warning. Non-terminal transitions never need it.
 """
 terminal_target(::AbstractClinicalTransition) = nothing
 
+# Whether a terminal transition, taken alone, is guaranteed to occur once its
+# anchor is reached: `true` when nothing can stop it, `false` when a constant
+# gate sits below certainty (including a gate fixed at 0, which never lets a
+# case through), `missing` when it depends on the individual (a `Function`-valued
+# gate, say) and so cannot be judged without one. Used only
+# by `_warn_incomplete_terminal_coverage` in model_spec.jl, to spot a
+# progression whose terminal transitions are all independently gated below
+# certainty. A transition that does not override this is simply treated as
+# unknown rather than guessed at from its field layout; override it alongside
+# `is_terminal` and `terminal_event` to make that check see past it. Not part
+# of the transition interface documented in `extending.md`.
+terminal_certainty(::AbstractClinicalTransition) = missing
+
+# Whether a constant `probability` guarantees the gate it sits behind passes;
+# a `Function`-valued one depends on the individual and so is unknowable here.
+_certain_probability(p::Real) = isone(p)
+_certain_probability(p) = missing
+
 """
     terminal_event(transition, individual) -> Union{Nothing, Tuple{Float64, Symbol}}
 

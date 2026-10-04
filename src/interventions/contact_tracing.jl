@@ -399,9 +399,21 @@ apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
 isolate them at the trace time (or the earlier of the trace time and
 any pre-existing self-reporting isolation time). A trace with no arrival time
 reaches the contact without isolating it, so the contact is recorded as traced
-and quarantined while any standing isolation is left as it was."""
-struct Quarantine <: TraceAction end
-function apply_trace!(::Quarantine, contact, state, trace_time, rng)
+and quarantined while any standing isolation is left as it was.
+
+`duration` is how long the quarantine lasts before it lapses; it accepts a
+`Real`, a `Distribution`, or a function `(rng, ind) -> Real` (drawn once per
+trace). The default `Inf` keeps a quarantine in force until the end of the
+infectious period. A finite duration matters for a contact who escapes the
+traced exposure but is infected later through another route: without it, the
+quarantine outlives its cause and keeps blocking that contact's own onward
+transmission forever."""
+struct Quarantine{D} <: TraceAction
+    duration::D
+end
+Quarantine(; duration = Inf) = Quarantine(duration)
+
+function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     contact.state[:traced] = true
     contact.state[:quarantined] = true
     # A trace with no arrival time quarantines nobody: an isolation at `Inf`
@@ -409,16 +421,26 @@ function apply_trace!(::Quarantine, contact, state, trace_time, rng)
     # detected, and `min` would carry a `NaN` into a standing isolation and
     # from there into the case's infectious window. `!OnIsolation()` reaches a
     # contact this way, no earlier than an isolation its infector has not had.
+    # Returning before the draw also leaves the stream where it was for a
+    # trace that changes nothing.
     isfinite(trace_time) || return nothing
+    release_time = trace_time + _removal_duration(
+        q.duration, rng, contact, "`Quarantine`'s `duration`"
+    )
     if _isolation_in_force(contact)
         standing = isolation_time(contact)
-        # A trace no earlier than an isolation that was not recorded leaves that
-        # isolation, and its time, as the one in force, so it stays unrecorded.
-        unrecorded = _isolation_unrecorded(contact) && !(trace_time < standing)
-        set_isolated!(contact, min(standing, trace_time))
+        was_unrecorded = _isolation_unrecorded(contact)
+        final_time, final_release = _combine_removal(
+            standing, isolation_release_time(contact), trace_time, release_time
+        )
+        # An isolation that was not recorded keeps that status only while its own
+        # start is the one in force. Where the trace's start wins, or replaces a
+        # spent removal, the removal is the trace's and is recorded as such.
+        unrecorded = was_unrecorded && final_time == standing
+        set_isolated!(contact, final_time; release_time = final_release)
         unrecorded && (contact.state[:_isolation_unrecorded] = true)
     else
-        set_isolated!(contact, trace_time)
+        set_isolated!(contact, trace_time; release_time = release_time)
     end
     return nothing
 end
@@ -768,9 +790,17 @@ end
 time, which is how tracing reaches the infectious window on the continuous-time
 models. Contacts merely flagged (`FlagOnly`) write `:_traced_isolation_time`
 instead, and [`Isolation`](@ref) turns that into the removal, exactly as on the
-generation-based path."""
+generation-based path.
+
+A quarantine set, and released (see [`Quarantine`](@ref)'s `duration`), before
+the contact was infected contributes no removal
+(`EpiBranch._removal_lapsed_before_infection`): it lapsed before this
+contact's own infectious window could have opened, so it cannot be what
+closes a window for an infection acquired later through another route."""
 function infectious_removal_time(::ContactTracing, ind::Individual)
-    return get(ind.state, :quarantined, false) ? isolation_time(ind) : Inf
+    get(ind.state, :quarantined, false) || return Inf
+    _removal_lapsed_before_infection(ind) && return Inf
+    return isolation_time(ind)
 end
 
 # A quarantine is a removal, so it reaches only the routes a removal can cut.

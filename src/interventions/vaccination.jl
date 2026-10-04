@@ -144,6 +144,19 @@ dose's other effects, such as `severity_efficacy`, do not depend on it."""
 struct AllOrNothingMode <: AbstractEffectMode end
 
 """
+    supports_waning(mode::AbstractEffectMode) -> Bool
+
+Whether `waning` has a meaning under `mode`: it decays a per-exposure block,
+which a mode with no such block (`AllOrNothingMode`'s per-individual
+responder draw) has nothing to apply to. `VaccineEffect`'s constructor
+rejects `waning` together with a mode for which this is `false`, so a custom
+`AbstractEffectMode` that is similarly all-or-nothing need only override this
+to get the same rejection. Default: `true`.
+"""
+supports_waning(::AbstractEffectMode) = true
+supports_waning(::AllOrNothingMode) = false
+
+"""
     VaccineEffect(; efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
         waning = nothing, mode = LeakyMode(), dose_label = :default)
 
@@ -187,15 +200,16 @@ function VaccineEffect(;
         efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
         waning = nothing, mode = LeakyMode(), dose_label = :default
     )
-    # `waning` decays a per-exposure block, which `AllOrNothingMode` has none
-    # of: a responder is blocked with certainty from immunity onward, not at a
-    # strength that fades. Reject the combination rather than silently
-    # ignoring `waning`.
-    waning === nothing || !(mode isa AllOrNothingMode) ||
+    # `waning` decays a per-exposure block, which a mode without one (a
+    # responder is blocked with certainty from immunity onward, not at a
+    # strength that fades) has nothing to apply to. Reject the combination
+    # rather than silently ignoring `waning`.
+    waning === nothing || supports_waning(mode) ||
         throw(
         ArgumentError(
-            "`waning` is not yet supported together with `mode = AllOrNothingMode()`. " *
-                "Use `LeakyMode` with `waning`, or drop `waning` under `AllOrNothingMode`."
+            "`waning` is not yet supported together with `mode = $(mode)`. " *
+                "Use `LeakyMode`, or another mode with " *
+                "`supports_waning(mode) == true`, or drop `waning`."
         )
     )
     return VaccineEffect(

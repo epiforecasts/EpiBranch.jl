@@ -78,6 +78,23 @@ results = simulate(scenario([iso_leaky]), 200; max_cases = 500, rng = rng)
 println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 ```
 
+#### Isolation duration
+
+Isolation lasts until the end of the infectious period by default. Pass
+`isolation_duration` (a `Real`, a `Distribution`, or a function
+`(rng, ind) -> Real`, like `onset_to_isolation_delay`) to give it a finite
+length instead.
+
+This matters when a case is quarantined, released, and only then infected
+through another route — on a network or in a household, say — since a
+quarantine with no end would otherwise keep blocking that later transmission
+indefinitely. On those models an infectious window carries one closing time
+and cannot reopen, so the release spares an infection acquired after it and
+nothing else: a removal still standing when the case is infected closes the
+window for the rest of the infectious period, however soon it was due to
+lapse. On a generation-based process the block is a per-contact risk, and a
+contact after the release is not blocked.
+
 ### Contact tracing
 
 Contacts of isolated cases are identified using [`ContactTracing`](@ref).
@@ -91,6 +108,14 @@ rng = StableRNG(42)
 results = simulate(scenario([iso, ct]), 200; max_cases = 500, rng = rng)
 println("Isolation + tracing: $(round(containment_probability(results), digits=3))")
 ```
+
+Quarantine, like isolation, lasts until the end of the infectious period by
+default. Pass a `duration` to [`Quarantine`](@ref) and give it as the
+positional `action` argument (e.g.
+`ContactTracing(OnIsolation(), 0.7, Exponential(1.0), Quarantine(duration = Exponential(5.0)))`)
+to give it a release time, so a quarantined contact who is not infected by
+the traced exposure is not left blocked forever if infected later through
+another route.
 
 #### Who gets traced: eligibility policies
 

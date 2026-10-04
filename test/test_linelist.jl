@@ -271,6 +271,39 @@ using Dates
         @test ismissing(replaced(true))
     end
 
+    @testset "an uninfected contact reports a replaced quarantine's release too" begin
+        release_metadata = EpiBranch.event_time_metadata(Val(:isolation_release_time))
+        function replaced_release(unrecorded)
+            ind = Individual(id = 1)
+            ind.state[:_isolated_by_isolation] = true
+            ind.state[:isolation_release_time] = 8.0
+            ind.state[:_isolation_release_time_before_isolation] = 20.0
+            unrecorded && (ind.state[:_isolation_unrecorded_before_isolation] = true)
+            return EpiBranch._uninfected_event_time(
+                ind, :isolation_release_time, release_metadata
+            )
+        end
+        @test replaced_release(false) == 20.0
+        @test ismissing(replaced_release(true))
+    end
+
+    @testset "linelist reports a quarantine's release date" begin
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        ct = ContactTracing(
+            TraceEveryone(), 1.0, Exponential(0.5), Quarantine(duration = Exponential(1.0))
+        )
+        state = simulate(
+            ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(5.0));
+                interventions = [iso, ct], attributes = clinical
+            );
+            max_cases = 100, rng = StableRNG(7)
+        )
+        df = linelist(state; infected_only = false)
+        @test "date_isolation_release" in names(df)
+        @test any(!ismissing, df.date_isolation_release)
+    end
+
     @testset "linelist picks up custom state fields generically" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
