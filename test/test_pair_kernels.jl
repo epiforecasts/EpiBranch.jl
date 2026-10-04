@@ -629,6 +629,8 @@ end
     @test_throws "no records to watch" PairKernel(
         (c, a, b) -> Exponential(1.0); state = [nothing, nothing], watches = (:tick,)
     )
+    # A bare `Symbol` is a declaration too, wherever it is passed.
+    @test_throws "no records to watch" PairKernel(c -> Exponential(1.0); watches = :tick)
     @test_throws "`Symbol`s" PairKernel(
         (c, a, b) -> Exponential(1.0); state = tick_state, watches = ("tick",)
     )
@@ -641,6 +643,7 @@ end
     EpiBranch._watch_opening!(watch, 1, false)
     EpiBranch._watch_opening!(watch, 1, true)
     @test length(watch.reach) == 3            # the seeds' slot and these two
+    @test watch.source == [0, 1, 1]
     @test watch.opened_by[1] == [3]
 
     state = EpiBranch.new_state(

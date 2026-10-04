@@ -160,8 +160,9 @@ in today's model writes it. It is required with a projection, since no default
 is safe; `()` is for a projection that reads no state key, such as one indexing
 a table by `ind.id`. Only `individual.state` is followed, so anything that can
 move has to be read from there rather than from a field such as
-`ind.susceptibility`. A vector of records needs no declaration: a likelihood
-reads the records it is given.
+`ind.susceptibility`. With no `state`, or with a vector of records, there is
+nothing that can move and so nothing to declare: `watches` is refused there
+rather than ignored.
 
 `calendar`, a [`Steps`](@ref) schedule or any type implementing
 [`calendar_multiplier`](@ref EpiBranch.calendar_multiplier), multiplies the
@@ -220,9 +221,11 @@ function PairKernel(callback; state = nothing, calendar = nothing, watches = not
 end
 
 # A kernel with no `state` reads no host state, and a vector of records is
-# fixed while a likelihood reads it, so neither has anything to declare: a
-# declaration there would send a route live over records that cannot move, so
-# it is refused rather than honoured. A projection has to say what it reads:
+# fixed while a likelihood reads it, so neither has anything that can move and
+# neither has anything to declare. Refused rather than ignored: with no `state`
+# a declaration would otherwise send a route live over nothing, and on records
+# it would say something the kernel cannot honour. A projection has to say what
+# it reads:
 # there is no safe default, since inferring "nothing moves" would draw a run's
 # contacts from stale hazards and inferring "everything moves" would compare
 # the whole population at every case.
@@ -231,7 +234,7 @@ function _kernel_watches(::AbstractVector, watches)
     return _no_records_to_watch(watches, "a vector of records as its `state`")
 end
 function _no_records_to_watch(watches, what)
-    (watches === nothing || isempty(watches)) || throw(
+    (watches === nothing || isempty(_watch_keys(watches))) || throw(
         ArgumentError(
             "a `PairKernel` with $what reads no `individual.state`, so it has " *
                 "no records to watch; drop `watches`"

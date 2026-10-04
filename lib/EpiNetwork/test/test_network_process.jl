@@ -1000,7 +1000,7 @@ end
         # The first route declares a record nothing writes, so its own pending
         # contact stands: host 4 keeps the time it was drawn at. Were the race
         # to invalidate by route, `:flag` moving would redraw this one too.
-        @test isequal(declared_times[4], stale_times[4])
+        @test declared_times[4] == stale_times[4]
         @test isequal(declared_times[1:2], stale_times[1:2])
 
         # Both routes reach cases, so the first comparison has something in it.
