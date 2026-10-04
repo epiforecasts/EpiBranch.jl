@@ -60,8 +60,8 @@ end
     # Declaring a record is what asks for the shared clock, whether or not an
     # intervention is the thing that moves it: an attribute builder or a
     # transition can move one too. One clock seeds and races the households
-    # together, so the stream differs run by run while the outbreak stays the
-    # same distribution.
+    # together, so the stream differs from the separate-clock run while the
+    # outbreak stays the same distribution.
     project(ind) = (tag = get(ind.state, :tag, 0.0)::Float64,)
     progression = [Transition(:recovered; delay = 4.0, terminal = true)]
     household_run(watches, seed) = simulate(

@@ -622,6 +622,27 @@ end
     @test EpiBranch.watched_records([Exponential(1.0), live]) == (:tick,)
     @test_throws ArgumentError EpiBranch.pair_kernel(live, 1, 2, 0.0)
 
+    # A projection has to declare what it reads, and a kernel with nothing to
+    # read has nothing to declare.
+    @test_throws "must declare every" PairKernel((c, a, b) -> Exponential(1.0); state = tick_state)
+    @test_throws "no records to watch" PairKernel(c -> Exponential(1.0); watches = (:tick,))
+    @test_throws "no records to watch" PairKernel(
+        (c, a, b) -> Exponential(1.0); state = [nothing, nothing], watches = (:tick,)
+    )
+    @test_throws "`Symbol`s" PairKernel(
+        (c, a, b) -> Exponential(1.0); state = tick_state, watches = ("tick",)
+    )
+    # A race needs one declaration per route, in route order.
+    @test_throws ArgumentError EpiBranch._route_watch_keys(((:tick,),), 2)
+
+    # Every opening takes a slot whether or not its route is watched, so an
+    # opening's position in `openings` is its position in the watch.
+    watch = EpiBranch._LiveWatch(3, 2)
+    EpiBranch._watch_opening!(watch, 1, false)
+    EpiBranch._watch_opening!(watch, 1, true)
+    @test length(watch.reach) == 3            # the seeds' slot and these two
+    @test watch.opened_by[1] == [3]
+
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(0.0)), [], NoAttributes(),
         StableRNG(1)
