@@ -110,3 +110,12 @@ function terminal_event(t::Transition, individual::Individual{T}) where {T}
     tm = convert(T, get(individual.state, t.time_key, T(Inf)))
     return isfinite(tm) ? (tm, t.state) : nothing
 end
+
+function transition_loglik(t::Transition, individual::Individual)
+    anchor = _state_time(individual, t.from)
+    _anchor_ok(anchor) || return 0.0
+    occurred = individual.state[t.state]::Bool
+    ll = transition_term(t.probability, t.delay, individual, anchor, occurred)
+    occurred || return ll
+    return ll + _delay_loglik(t.delay, individual.state[t.time_key] - anchor)
+end

@@ -1740,8 +1740,10 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
 | Transmission route | `RouteWindow(name; from, until, kernel, reach)` on a process that reads them | Continuous-time race, per case |
 | Structured fixed-size pool | Reuse the Sellke pool: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply a `force(group, counts)` | Simulation |
+| Custom clinical transition | Struct `<: AbstractClinicalTransition` + `initialise_individual!`, `resolve_individual!`; `is_terminal`/`terminal_event` if terminal; `transition_loglik` to evaluate it | Case creation |
 | Calendar schedule for a pair kernel | Struct + `calendar_multiplier`, and `next_calendar_break` or `calendar_shape(::YourSchedule) = SmoothCalendar()` | Simulation + likelihood |
 | Pairwise likelihood for a structure | Struct `<: InfectionLayer` + `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood evaluation |
+| Progression likelihood | `progression_loglik(spec, individuals)`; built-in transitions work out of the box, a custom one needs `transition_loglik` | Likelihood evaluation |
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
@@ -1800,6 +1802,32 @@ A supplied probability consumes an acceptance draw even at zero or one. Omit
 Missing starting events consume no draws. `Transition` sets its flag before its
 delay callback; `Reporting` and `Hospitalisation` set their flags afterwards.
 
+To let [`progression_loglik`](@ref) evaluate `FollowupVisit`, add a
+[`EpiBranch.transition_loglik`](@ref) method reading back the same keys:
+the delay's log-density if the event occurred, the gate's log-probability
+either way, and `0.0` when the starting event was never reached — see the
+[`AntiviralTreatment` example](@ref "Writing a non-terminal custom transition")
+in the transitions tutorial.
+
+Two cases need more than reading the keys back, and
+[`EpiBranch.transition_term`](@ref) handles both: call it for the gate rather
+than reading `probability` yourself, then add the delay density to what it
+gives you.
+
+The first is an aborted infection. A post-exposure dose undoes every transition
+that would have taken effect at or after
+[`infection_aborted_time`](@ref EpiBranch.infection_aborted_time), restoring
+its flag and clearing its time — the same record a failed gate leaves. Read as
+a failed gate it gives `-Inf` for a certain gate, so it is censored at the
+abort instead: the probability that it would have landed no earlier than then,
+`log1p(-p * cdf(delay, aborted - anchor))`, or `logccdf` when `p` is 1. A
+transition anchored before onset is where this bites, since an aborted case has
+no onset to anchor from.
+
+The second is a gate from [`exclusive_probabilities`](@ref). Its siblings share
+one draw, so the gate returns the 0 or 1 that draw produced, while the term the
+likelihood needs is the width of the bucket the draw selected.
+
 ### Event dates for uninfected people
 
 Line lists normally suppress event dates derived from an infection that did not
@@ -1828,6 +1856,8 @@ The network and household infection likelihoods condition on infection times,
 infectious opening and removal times, index-case status and the contact structure.
 They sum over possible infectors. They do not include the probability of the
 clinical timeline, intervention assignment, attribute draws or observations.
+[`progression_loglik`](@ref) evaluates the clinical-timeline term separately;
+the rest have no likelihood function in the package.
 
 Window censoring, including complete isolation, is represented by the extracted
 removal times. A partial transmission reduction or a susceptibility multiplier

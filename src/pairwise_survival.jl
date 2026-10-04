@@ -131,8 +131,10 @@ have infected whom. [`compile_contact_pairs`](@ref) and
 
 The infection layer is latent: it is known exactly after a simulation and
 augmented in inference. Observables such as onsets and tests are outputs of the
-progression and are conditioned on separately. There is no likelihood of the
-onsets alone, since the latent infections cannot be marginalised in closed form.
+progression and are conditioned on separately — [`progression_loglik`](@ref)
+evaluates that term, so the sum of the two is the full log-likelihood of the
+augmented data. There is no likelihood of the onsets alone, since the latent
+infections cannot be marginalised in closed form.
 
 A companion package reads a simulated outbreak back into its layer
 (`household_infections`, `network_infections`). Each infected host's window
