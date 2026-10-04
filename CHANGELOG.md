@@ -245,9 +245,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Changed
 
-- The pair-kernel tutorial is now "Covariates and time-varying transmission".
-  It follows the household models tutorial and starts from the modelling
-  question.
 - The continuous-time models (`HomogeneousProcess`, and `NetworkProcess`,
   `RoutedNetwork` and `HouseholdProcess` in the companion packages) now resolve
   per-contact competing risks, so an intervention whose effect is a per-contact
