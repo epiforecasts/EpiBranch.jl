@@ -717,9 +717,9 @@ end
     @testset "per-component contributions differentiable in the kernel parameters" begin
         # as for the total's "a kernel whose first internal pair holds no
         # fitted parameter", but summed by component rather than into one
-        # scalar: the accumulator is a vector here, so a row the `T` probe
-        # missed throws on the fast path instead of silently widening, and
-        # must fall back to one that does not
+        # scalar: the accumulator is a typed vector here, so a row the `T`
+        # probe missed makes `_add!` widen it explicitly, where the total's
+        # bare scalar local widened the same way for free
         _, adjacency = _cliques([3, 4, 2, 4])
         inf = [0.0, 1.2, NaN, 0.0, 2.1, 3.5, NaN, 0.0, NaN, 0.0, 0.7, NaN, 4.2]
         data = _TestInfections(
