@@ -23,6 +23,8 @@ end
 # `supports_waning` trait rather than a hard-coded `AllOrNothingMode` check.
 struct _TestBlockedMode <: AbstractEffectMode end
 EpiBranch.supports_waning(::_TestBlockedMode) = false
+EpiBranch._realised_efficacy(::_TestBlockedMode, eff, rng) =
+    float(rand(rng, Bernoulli(eff)))
 
 @testset "VaccineEffect" begin
     @testset "Waning is shared by built-in and custom vaccinations" begin

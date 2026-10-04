@@ -126,7 +126,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             progression = prog
         )
         full = simulate(spec; n_initial = 3, rng = StableRNG(4))
-        cut = @test_logs (:warn, r"TimeOrCasesRule.*time bound") simulate(
+        cut = @test_logs (:warn, r"of TimeOrCasesRule") simulate(
             spec; n_initial = 3,
             stopping_rules = [Extinction(), TimeOrCasesRule(2.0, 5)], rng = StableRNG(4)
         )

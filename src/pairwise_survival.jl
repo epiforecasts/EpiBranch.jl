@@ -457,10 +457,10 @@ end
 function _dose_components(mode::AbstractEffectMode, efficacy, waning, τ)
     throw(
         ArgumentError(
-            "$(nameof(typeof(mode))) needs a method for " *
-                "`EpiBranch._dose_components` giving how one of its doses " *
-                "decomposes into susceptibility mixture components before a " *
-                "likelihood can evaluate it"
+            "a dose under $(nameof(typeof(mode))) has no decomposition into " *
+                "susceptibility mixture components, so a likelihood cannot " *
+                "evaluate it. Give the effect holding this mode a " *
+                "`susceptibility_components` method"
         )
     )
 end
