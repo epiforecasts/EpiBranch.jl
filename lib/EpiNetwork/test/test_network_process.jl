@@ -28,6 +28,19 @@ function EpiBranch.competing_risk(::BlockEverything, parent, contact, state)
     return Risk(block_probability = 1.0)
 end
 
+# A trace action that counts how many times each contact is traced, so a test
+# can catch a contact being traced more than once.
+mutable struct _CountingAction <: EpiBranch.TraceAction
+    counts::Dict{Int, Int}
+end
+_CountingAction() = _CountingAction(Dict{Int, Int}())
+function EpiBranch.apply_trace!(a::_CountingAction, contact, state, trace_time, rng)
+    a.counts[contact.id] = get(a.counts, contact.id, 0) + 1
+    contact.state[:traced] = true
+    contact.state[:quarantined] = true
+    return nothing
+end
+
 @testset "NetworkProcess" begin
     @testset "construction" begin
         ring = ring_adjacency(5)
@@ -147,7 +160,7 @@ end
 
     @testset "Isolation intervention curtails the outbreak" begin
         # The Isolation *intervention* (not a Transition) now runs on the
-        # continuous-time network path: its resolve_individual! fires in the
+        # continuous-time network path: its resolve_individual! runs in the
         # Sellke race and its isolation time closes the infectious window.
         n = 60
         ring = ring_adjacency(n)
@@ -813,12 +826,17 @@ end
     @testset "RoutedNetwork: route kernel resolves per pair, matching NetworkProcess" begin
         # A route's kernel must be resolved for the pair exactly as
         # `NetworkProcess` resolves its edge kernel, so a covariate callable, a
-        # `ContextualKernel` and a per-edge vector all behave the same on a
-        # route as on a plain network over the same graph.
+        # `PairKernel` with or without a calendar schedule and a per-edge vector
+        # all behave the same on a route as on a plain network over the same
+        # graph.
         adj = ring_adjacency(30)
         covariates = 0.5 .+ rand(StableRNG(7), 30)
         callable(i, j) = Exponential(0.3 * covariates[j])
-        contextual = ContextualKernel(c -> Exponential(0.3 * covariates[c.susceptible]))
+        contextual = PairKernel(c -> Exponential(0.3 * covariates[c.susceptible]))
+        calendar = PairKernel(
+            c -> Exponential(0.3 * covariates[c.susceptible]);
+            calendar = Steps([3.0], [1.0, 0.5])
+        )
         per_edge = [
             [Exponential(0.2 + 0.1 * mod1(i + k, 5)) for k in eachindex(adj[i])]
                 for i in eachindex(adj)
@@ -827,7 +845,7 @@ end
         run(proc, s) = simulate(
             ModelSpec(proc; progression = _sir(6.0)); n_initial = 2, rng = StableRNG(s)
         )
-        for k in (callable, contextual, per_edge)
+        for k in (callable, contextual, calendar, per_edge)
             routed = RoutedNetwork(
                 [RouteWindow(:all; until = (:recovered,), kernel = k, reach = adj)]
             )
@@ -845,9 +863,9 @@ end
         # several routes can carry several such kernels, so resolving per pair
         # would draw a route's contacts from whatever the records held when
         # they were proposed. `NetworkProcess` takes the same kernel.
-        live = StatefulKernel(
-            ind -> (tick = get(ind.state, :tick, 0)::Int,),
-            (c, a, b) -> Exponential(1.0 + a.tick)
+        live = PairKernel(
+            (c, a, b) -> Exponential(1.0 + a.tick);
+            state = ind -> (tick = get(ind.state, :tick, 0)::Int,)
         )
         err = try
             RoutedNetwork(
@@ -1282,6 +1300,94 @@ end
             build(honoured);
             n_initial = 1, rng = StableRNG(4)
         )
+    end
+
+    @testset "ContactTracing(depth = 2) reaches an uninfected contact's own contacts" begin
+        # A path graph 1-2-3 with a kernel too slow to transmit: node 2 is
+        # traced from node 1 but never becomes infected itself, so the race
+        # never revisits it. A depth-2 ring must still grow through it to
+        # reach node 3.
+        proc = NetworkProcess([[2], [1, 3], [2]], Exponential(1.0e9))
+        model = ModelSpec(
+            proc;
+            attributes = clinical_presentation(incubation_period = Dirac(2.0)),
+            progression = [
+                Transition(
+                    :recovered; from = :infection, delay = 10.0,
+                    terminal = true
+                ),
+            ],
+            interventions = [
+                Isolation(onset_to_isolation_delay = Dirac(1.0)),
+                ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 2),
+                RingVaccination(efficacy = 0.9),
+            ]
+        )
+        st = simulate(model; initial_cases = [1], rng = StableRNG(1))
+        @test !is_infected(st.individuals[2])
+        @test !is_infected(st.individuals[3])
+        @test is_traced(st.individuals[2])
+        @test is_traced(st.individuals[3])
+        @test is_vaccinated(st.individuals[3])
+
+        # depth 1 stops at the direct contact: node 3 is never reached.
+        depth1 = ModelSpec(
+            proc;
+            attributes = model.attributes, progression = model.progression,
+            interventions = [
+                Isolation(onset_to_isolation_delay = Dirac(1.0)),
+                ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 1),
+                RingVaccination(efficacy = 0.9),
+            ]
+        )
+        st1 = simulate(depth1; initial_cases = [1], rng = StableRNG(1))
+        @test is_traced(st1.individuals[2])
+        @test !is_traced(st1.individuals[3])
+    end
+
+    @testset "Whether a ring member is interviewed again is the policy's call" begin
+        # Same path graph, but with a kernel fast enough that node 2 sometimes
+        # becomes infected itself. Node 2's contact (node 3) can then be reached
+        # twice: once through ring propagation while node 2 is still an
+        # uninfected ring member, and again when the race settles node 2 as an
+        # infected, eligible case and traces from it directly.
+        #
+        # The second attempt is the default, because a ring member that turns
+        # out to be a case is a case like any other and the documented contract
+        # gives it a fresh ring. Excluding a case that was already traced is an
+        # eligibility question, so `!PreviouslyTraced()` expresses the
+        # interview-once policy and the engine holds no opinion either way.
+        proc = NetworkProcess([[2], [1, 3], [2]], Exponential(1.0))
+        function counts(eligibility)
+            seen = Int[]
+            for seed in 1:200
+                action = _CountingAction()
+                model = ModelSpec(
+                    proc;
+                    attributes = clinical_presentation(incubation_period = Dirac(2.0)),
+                    progression = [
+                        Transition(
+                            :recovered; from = :infection, delay = 10.0,
+                            terminal = true
+                        ),
+                    ],
+                    interventions = [
+                        Isolation(onset_to_isolation_delay = Dirac(1.0)),
+                        ContactTracing(eligibility, 1.0, Dirac(0.0), action; depth = 2),
+                    ]
+                )
+                simulate(model; initial_cases = [1], rng = StableRNG(seed))
+                append!(seen, values(action.counts))
+            end
+            return seen
+        end
+
+        # Interview once: no contact is ever acted on twice.
+        @test all(<=(1), counts(OnIsolation() & !PreviouslyTraced()))
+
+        # Re-interviewing, the default: a contact reached as a ring member and
+        # then traced again from the same node once it is a case of its own.
+        @test any(>(1), counts(OnIsolation()))
     end
 end
 

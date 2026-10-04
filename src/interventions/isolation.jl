@@ -173,7 +173,10 @@ function reset!(::Isolation, ind::Individual)
     previous = get(ind.state, :isolation_time_before_isolation, Inf)
     if isfinite(previous)
         set_isolated!(ind, previous)
+        get(ind.state, :isolation_unrecorded_before_isolation, false) &&
+            (ind.state[:isolation_unrecorded] = true)
         delete!(ind.state, :isolation_time_before_isolation)
+        delete!(ind.state, :isolation_unrecorded_before_isolation)
     else
         clear_isolated!(ind)
     end
@@ -211,17 +214,23 @@ function resolve_individual!(iso::Isolation, individual, state)
         # Remember what we are overwriting. Claiming provenance below tells a
         # `Scheduled` reset that this isolation is Isolation's to undo, but the
         # standing quarantine underneath it belongs to ContactTracing and must
-        # survive that reset, so stash it for `reset!` to restore.
+        # survive that reset, so stash it, and whether it was recorded, for
+        # `reset!` to restore.
         individual.state[:isolation_time_before_isolation] = isolation_time(individual)
+        if _isolation_unrecorded(individual)
+            individual.state[:isolation_unrecorded_before_isolation] = true
+        else
+            delete!(individual.state, :isolation_unrecorded_before_isolation)
+        end
         _isolate!(iso, individual, state, self_t)
         return nothing
     end
 
     # Three isolation pathways, each independent:
-    #   - test_isolation_time:  onset + delay, fires iff test_positive
+    #   - test_isolation_time:  onset + delay, occurs iff test_positive
     #   - traced_isolation_time: set by ContactTracing's FlagOnly action
-    #     for traced contacts, fires iff contact was traced and has an onset
-    # Isolation fires at the earlier of any active pathway. A
+    #     for traced contacts, occurs iff contact was traced and has an onset
+    # Isolation occurs at the earlier of any active pathway. A
     # test-negative-but-traced contact is still isolated via tracing.
     #
     # The traced pathway isolates a flagged contact once it has symptoms, so a

@@ -828,8 +828,8 @@ end
 # exposure and onset, so a dose that cannot abort anything leaves the random
 # stream untouched. The exposure is the contact's provisional infection time,
 # its earliest exposure when several infectors reach it. If that exposure turns
-# out not to be the infection, the engine removes the abort
-# (`_drop_stale_abort!`), and a contact that escaped it gets a fresh draw at its
+# out not to be the infection, the engine discards the abort (see
+# `abort_infection!`), and a contact that escaped it gets a fresh draw at its
 # next exposure. `action_draw!` caches the draw against this exposure, so a
 # continuous-time race, which settles a contact's infection before checking a
 # dose already recorded against it and can then reconsider the same contact at
@@ -860,12 +860,7 @@ function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
         _covers(post, contact, rng)
     end
     covered || return nothing
-    # An earlier dose may already have aborted it; the infection ends at the
-    # first abort.
-    contact.state[:infection_aborted_time] = min(
-        get(contact.state, :infection_aborted_time, Inf), immunity
-    )
-    _set_onset_from_incubation!(contact)
+    abort_infection!(contact, immunity)
     return nothing
 end
 
@@ -1079,8 +1074,8 @@ connection to that case.
 
 `eligibility` is a [`TraceEligibility`](@ref) policy, exactly as
 [`ContactTracing`](@ref) uses it, but tested against a case itself rather
-than an infector–contact pair: `OnLabConfirmation()` (the default) fires
-once a case in the group has tested positive, `OnSymptomOnset()` fires on
+than an infector–contact pair: `OnLabConfirmation()` (the default) triggers
+once a case in the group has tested positive, `OnSymptomOnset()` triggers on
 suspicion alone, and the boolean operators `&`, `|`, `!` combine them the
 same way. The policy's [`trigger_time`](@ref EpiBranch.trigger_time) sets
 when the group is deemed to have a case in it; `dose_delay` is added on
@@ -1191,16 +1186,36 @@ function required_fields(gv::GroupVaccination)
     return union([gv.group_key], required_fields(gv.eligibility))
 end
 
-# The group's trigger time: the earliest time any of its members (found by
-# scanning every individual created so far, not just this generation's
+# A group's members under `key`, from an index this intervention keeps in the
+# run's `scratch` and grows incrementally as `state.individuals` grows: only
+# the tail added since the last query is scanned, rather than every individual
+# on every call. Correct because membership is set once, at creation, and never
+# changes afterwards (see `groups`/`group_attribute`), so an id already indexed
+# never needs revisiting.
+function _group_members(state::SimulationState, key::Symbol, group)
+    seen, index = get!(state.scratch, (:group_members, key)) do
+        (Ref(0), Dict{Any, Vector{Int}}())
+    end::Tuple{Base.RefValue{Int}, Dict{Any, Vector{Int}}}
+    n = length(state.individuals)
+    for id in (seen[] + 1):n
+        g = get(state.individuals[id].state, key, nothing)
+        g === nothing && continue
+        push!(get!(index, g, Int[]), id)
+    end
+    seen[] = n
+    return get(index, group, Int[])
+end
+
+# The group's trigger time: the earliest time any of its members (found
+# through the group-to-members index, not just this generation's
 # `new_contacts`) meets `eligibility`, tested against the member itself in
 # both the infector and contact slots since the policy describes a property
 # of a case, not a pair. `Inf` if no member has triggered yet.
 function _group_trigger_time(gv::GroupVaccination, state, group)
     key = gv.group_key
     t = Inf
-    for m in state.individuals
-        get(m.state, key, nothing) == group || continue
+    for id in _group_members(state, key, group)
+        m = state.individuals[id]
         is_eligible(gv.eligibility, m, m, state) || continue
         tt = trigger_time(gv.eligibility, m, state)
         isnan(tt) && continue
@@ -1213,10 +1228,10 @@ end
 # earlier newly meets `eligibility` (the group's first trigger), or a member
 # is created into a group that already triggered in an earlier generation.
 # Recomputing the trigger time for every group touched by `new_contacts` and
-# sweeping the whole population against it handles both in one pass: a fresh
-# trigger reaches members already present, and a standing one reaches a
-# member only now created. Groups untouched this generation are left alone,
-# so nobody outside a triggered group is ever visited.
+# visiting that group's members (via the index) against it handles both in
+# one pass: a fresh trigger reaches members already present, and a standing
+# one reaches a member only now created. Groups untouched this generation are
+# left alone, so nobody outside a triggered group is ever visited.
 function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
     return apply_actions!(gv, state, new_contacts)
 end

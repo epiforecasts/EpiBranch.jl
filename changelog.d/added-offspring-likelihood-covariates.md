@@ -1,4 +1,4 @@
-`loglikelihood(::OffspringCounts, ::AbstractVector{<:Distribution})` scores
+`loglikelihood(::OffspringCounts, ::AbstractVector{<:Distribution})` evaluates
 each secondary case count against its own offspring distribution, for
 case-level covariates such as `NegBin.(exp.(X * β), k)`. Composes with
 `Distributions.truncated` for zero-truncated data and with

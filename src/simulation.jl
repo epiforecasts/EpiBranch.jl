@@ -665,21 +665,18 @@ end
 
 # ── Internal helpers ───────────────────────────────────────────────
 
-# A post-exposure abort (`:infection_aborted_time`) is drawn in the
-# intervention phase against a target's provisional exposure, its earliest
-# exposing edge, and applies only to the infection that exposure starts. When
-# resolution does not confirm that exposure, this removes the abort and
-# restores the onset it suppressed, so the abort cannot act on an infection it
-# was not drawn for. One such target escapes infection: as a pre-created node
-# it could otherwise be infected in a later generation and have its dose
-# counted twice. The other is infected through a later edge at or after the
-# abort time, where the dose's contact-side risk already applied.
-function _drop_stale_abort!(target::Individual)
-    aborted_t = get(target.state, :infection_aborted_time, nothing)
-    aborted_t === nothing && return nothing
-    is_infected(target) && target.infection_time < aborted_t && return nothing
-    delete!(target.state, :infection_aborted_time)
-    _set_onset_from_incubation!(target)
+# Discard an abort that the resolved infection does not bear out: the
+# individual escaped infection, or its infection started at or after the abort
+# and so is a later infection the abort never ended. The onset the abort
+# suppressed comes back. Without this, an abort recorded on a pre-created node
+# that escapes one exposure would end the infection it gets in a later
+# generation.
+function _drop_stale_abort!(ind::Individual)
+    _infection_aborted(ind) || return nothing
+    is_infected(ind) && ind.infection_time < infection_aborted_time(ind) &&
+        return nothing
+    delete!(ind.state, :infection_aborted_time)
+    _set_onset_from_incubation!(ind)
     return nothing
 end
 
@@ -958,13 +955,15 @@ attributes and intervention state are set. The transitions come from the model's
 `progression`, placed on the state when it is built with
 [`new_state`](@ref EpiBranch.new_state).
 
-An infection aborted before onset (`:infection_aborted_time`, see
-[`RingVaccination`](@ref)) ends its clinical course at the abort time. A
-transition takes effect at the times it writes under `_time` keys, so one that
-writes a time at or after the abort is undone, whatever state it is timed from:
-every key it changed is restored. Transitions timed from it then find their
-`from` state unreached, and it contributes no terminal candidate to the outcome.
-Transitions that take effect strictly before the abort stand.
+An infection aborted before onset (see
+[`abort_infection!`](@ref EpiBranch.abort_infection!)) ends its clinical course
+at the abort time. A transition takes effect at the times it writes under
+`_time` keys, so one that writes a time at or after the abort is undone,
+whatever state it is timed from: every key it bound is restored, so a
+transition must record through `individual.state` rather than by mutating a
+container it finds there. Transitions timed from an undone one then find their
+`from` state unreached, and it contributes no terminal candidate to the
+outcome. Transitions that take effect strictly before the abort stand.
 """
 function resolve_transitions!(state::SimulationState, individual)
     transitions = state.transitions
@@ -974,10 +973,9 @@ function resolve_transitions!(state::SimulationState, individual)
     end
     # Branch once per case: a check inside the loop measurably slows every
     # progression model, although almost no case is aborted.
-    if haskey(individual.state, :infection_aborted_time)
+    if _infection_aborted(individual)
         _resolve_before_abort!(
-            transitions, individual, state,
-            individual.state[:infection_aborted_time]
+            transitions, individual, state, infection_aborted_time(individual)
         )
     else
         for transition in transitions
@@ -1002,6 +1000,14 @@ function _resolve_before_abort!(transitions, individual, state, aborted_t)
     for transition in transitions
         resolve_individual!(transition, individual, state)
         if _writes_time_from(individual.state, kept, aborted_t)
+            # The uniform a group of siblings shares belongs to the group
+            # rather than to whichever of them first needed it, so it joins the
+            # state the undo restores: the next sibling then reads the same
+            # value instead of drawing a fresh one, and the group still
+            # partitions a case the abort cut short.
+            for key in _shared_draw_keys(transition)
+                haskey(individual.state, key) && (kept[key] = individual.state[key])
+            end
             empty!(individual.state)
             merge!(individual.state, kept)
         else
@@ -1047,7 +1053,7 @@ composing competing risks. Built-in risks (per-individual
 susceptibility, parent infectiousness, population-level susceptibility
 for finite-population models) are applied first; any
 [`competing_risk`](@ref) contributed by an intervention is then applied
-in stack order. A risk that has fired by transmission time blocks
+in stack order. A risk whose event has occurred by transmission time blocks
 transmission with its `block_probability`; transmission succeeds iff no
 risk blocks it.
 
@@ -1114,16 +1120,15 @@ function competing_risk(::WindowCensor, parent, contact, state)
 end
 
 """Default risk source: the end of an aborted infection. An infector whose
-infection was aborted (`:infection_aborted_time`, written by a post-exposure
-dose of [`RingVaccination`](@ref)) transmits nothing from that time on. The
-block reads the infector's state and nothing else, so it lasts exactly as long
-as the abort is recorded, whether or not the intervention that recorded it is
-still active. A no-op on every infector without the key."""
+infection was aborted ([`abort_infection!`](@ref EpiBranch.abort_infection!),
+as a post-exposure dose of [`RingVaccination`](@ref) does) transmits nothing
+from that time on. The block reads the infector's state and nothing else, so it
+lasts exactly as long as the abort is recorded, whether or not the intervention
+that recorded it is still active. A no-op on every infector without the key."""
 struct AbortedInfection end
 function competing_risk(::AbortedInfection, parent, contact, state)
-    aborted_t = get(parent.state, :infection_aborted_time, nothing)
-    aborted_t === nothing && return nothing
-    return Risk(event_time = aborted_t, block_probability = 1.0)
+    _infection_aborted(parent) || return nothing
+    return Risk(event_time = infection_aborted_time(parent), block_probability = 1.0)
 end
 
 # The built-in risk sources, in the order they apply. The calls are written out
@@ -1144,7 +1149,7 @@ function _builtin_risk_blocks(parent, contact, state, transmission_time)
 end
 
 # The built-in sources the continuous-time models compose. Only one of the five
-# applies there. Two are the generation engine's own and can never fire: an
+# applies there. Two are the generation engine's own and can never apply: an
 # infector on those models has settled and so is infected by construction, and
 # route censoring is the infectious window's job rather than a tag written on a
 # contact. The other two, the per-individual susceptibility and infectiousness,
@@ -1229,7 +1234,7 @@ interval, the pool gives the susceptible a fresh resistance above the pressure
 it has absorbed — so blocking a fraction of the contacts thins the hazard by
 the same fraction. `builtin_blocks` is where the two part company, dropping
 four of the five built-in sources on a continuous-time model: two that cannot
-fire there, and the per-individual susceptibility and infectiousness, which
+apply there, and the per-individual susceptibility and infectiousness, which
 those models already carry in the contact-interval draw and in the pool's
 threshold and force.
 Nothing is drawn from the rng unless a risk actually applies."""

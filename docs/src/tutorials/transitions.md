@@ -371,7 +371,7 @@ two of them independently at `p` and `1 - p` does not partition cases
 exactly: about `p(1 - p)` of cases pass both gates (resolved by whichever
 candidate time is earlier) and another `p(1 - p)` pass neither gate, leaving
 `:outcome` unset. [`exclusive_probabilities`](@ref) fixes this by sharing one
-uniform draw between the siblings, so exactly one of them triggers:
+uniform draw between the siblings, so exactly one of them occurs:
 
 ```@example transitions
 death_p, recovered_p = exclusive_probabilities([0.05, 0.95])
@@ -396,6 +396,38 @@ println("Died: ", n_died, " of ", length(symptomatic))
 below certainty and none is unconditional, the same gap this section
 describes, so the mistake surfaces before a run rather than as an implausible
 outbreak or a rejection-sampling error on a structure-driven model.
+
+## Evaluating the progression's likelihood
+
+[`progression_loglik`](@ref) gives the log-density of a case's clinical
+timeline under the `progression` that produced it: the log-density of each
+transition's delay when it occurred, and the log-probability of its gate
+either way. It reads the state each transition wrote in
+`resolve_individual!`, so it takes the same individuals (or the
+[`SimulationState`](@ref) holding them) that `simulate` returned:
+
+```@example transitions
+progression = [
+    Reporting(delay = LogNormal(1.0, 0.3), probability = 0.7),
+    Recovery(delay = LogNormal(2.0, 0.4)),
+]
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = clinical)
+
+rng = StableRNG(42)
+state = simulate(model; max_cases = 200, rng = rng)
+progression_loglik(model, state)
+```
+
+This is the natural-history counterpart to [`pairwise_surv_loglik`](@ref),
+which gives the log-density of the infection layer. Added together, the two
+give the full log-likelihood of an outbreak's augmented data — infection
+times, order and clinical timelines — under `model`.
+
+Only the individuals `resolve_transitions!` actually ran on contribute: a host
+never infected, or one whose onset (or other anchor) was never reached,
+adds `0.0`. A transition's `delay` must be a `Distribution` or a fixed `Real`
+to be evaluated this way — a raw `Function (rng, ind) -> Real` delay has no
+density, and evaluating one throws.
 
 ## Writing a non-terminal custom transition
 
@@ -438,6 +470,29 @@ Death(
     probability = (rng, ind) -> ind.state[:treated] ? 0.02 : 0.08,
 )
 ```
+
+`AntiviralTreatment` has no [`EpiBranch.transition_loglik`](@ref) method of
+its own, so [`progression_loglik`](@ref) throws on a progression that includes
+it. Give it one, reading back the same `:treated`/`:treatment_time` keys
+`resolve_individual!` writes:
+
+```julia
+function EpiBranch.transition_loglik(t::AntiviralTreatment, ind)
+    ot = onset_time(ind)
+    isnan(ot) && return 0.0
+    get(ind.state, :reported, false) || return 0.0
+    occurred = ind.state[:treated]
+    ll = EpiBranch.transition_term(t.probability, t.delay, ind, ot, occurred)
+    occurred || return ll
+    return ll + logpdf(t.delay, ind.state[:treatment_time] - ot)
+end
+```
+
+[`EpiBranch.transition_term`](@ref) gives the gate's contribution. Reading
+`t.probability` directly would be wrong for a gate built by
+[`exclusive_probabilities`](@ref), whose siblings share one draw, and for a
+case whose infection was aborted before the transition could take effect; the
+[extending guide](@ref "Extending EpiBranch") spells both out.
 
 That's the whole extension surface. Three ingredients (the shared
 `ind.state` dict, callable probability/delay, optional terminal

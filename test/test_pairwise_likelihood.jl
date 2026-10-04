@@ -454,7 +454,7 @@ end
         @test pairwise_surv_loglik(k, index_3) ≈ log(1 / 2) - 1 / 2
     end
 
-    @testset "nothing after the end of follow-up is scored" begin
+    @testset "nothing after the end of follow-up contributes" begin
         # path 1-2-3 followed up to 5: index 1 infectious over [0, 2] infects 2 at
         # 1, which is still infectious at 5, and 3 has escaped until then
         contacts = [[2], [1, 3], [2]]
@@ -476,8 +476,8 @@ end
 
         # Cliques and a graph with latent periods, ongoing windows, infections
         # after follow-up (including one nobody could explain then, and an index
-        # case) and a window opening after it: scoring up to 6 matches scoring
-        # the data truncated at 6.
+        # case) and a window opening after it: evaluating up to 6 matches
+        # evaluating the data truncated at 6.
         membership, adjacency = _cliques([3, 4, 2, 4])
         inf = [0.0, 1.2, NaN, 0.0, 2.1, 5.5, 8.0, 0.0, 7.0, 0.0, 0.7, NaN, 9.0]
         infectious = inf .+ [0.5, 0.3, 0, 0.4, 0.2, 0.1, 0.3, 0.6, 0.2, 0.1, 0.2, 0, 0.3]
@@ -705,7 +705,7 @@ end
         @test by_component[broken_household] == -Inf
         @test isfinite(by_component[ok_household])
 
-        # the finite household's contribution matches scoring it on its own
+        # the finite household's contribution matches evaluating it on its own
         solo = _TestInfections(
             [1, 1], [0.0, 1.0], [0.0, 1.0], [5.0, 6.0], [true, false];
             obs_end = 5.0
