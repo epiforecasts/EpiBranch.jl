@@ -54,6 +54,14 @@ _nan_where(x, mask) = [m ? NaN : v for (v, m) in zip(x, mask)]
 # A layer that forgets to name its structure.
 struct _NoStructure <: InfectionLayer end
 
+# A layer holding its per-host times under a name of its own, as a subtype
+# written before `host_times` existed might.
+struct _NamedTimes{S} <: InfectionLayer
+    structure::S
+    times::NamedTuple
+end
+EpiBranch.contact_structure(d::_NamedTimes) = d.structure
+
 # A grouping the package does not define, written the same way a household or
 # network grouping would be: every host's rows add into one of two groups by
 # parity of its id, with no change to pairwise_survival.jl.
@@ -555,6 +563,24 @@ end
             [2.0, Inf, NaN], [true, false, false]; followup_end = NaN
         )
         @test_throws ArgumentError pairwise_surv_loglik(k, bad)
+    end
+
+    @testset "host_times reads a fixed field name, overridable" begin
+        # a layer without the field holds no extra host times
+        plain = _TestInfections(
+            contacts, [0.0, 1.0, NaN], [0.0, 1.0, NaN],
+            [2.0, Inf, NaN], [true, false, false]; obs_end = 5.0
+        )
+        @test EpiBranch.host_times(plain) == (;)
+
+        # a layer holding per-host times under a name of its own is invisible
+        # until it defines its own method, the shape `followup_end` sets
+        layer = _NamedTimes([[2], [1]], (onset_time = [1.0, 2.0],))
+        @test EpiBranch.host_times(layer) == (;)
+        EpiBranch.host_times(d::_NamedTimes) = d.times
+        @test EpiBranch.host_times(layer) == (onset_time = [1.0, 2.0],)
+
+        @test Base.ispublic(EpiBranch, :host_times)
     end
 
     @testset "an impossible configuration has a zero gradient" begin

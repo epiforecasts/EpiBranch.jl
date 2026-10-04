@@ -1509,6 +1509,7 @@ struct MyInfections{T <: Real} <: InfectionLayer
     is_index::Vector{Bool}           # introduced from outside
     obs_end::T                       # community introductions stop
     followup_end::T                  # observation ends (optional; Inf if absent)
+    host_times::NamedTuple           # per-host times a live kernel reads (optional; empty if absent)
 end
 EpiBranch.contact_structure(d::MyInfections) = d.contacts
 

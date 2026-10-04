@@ -80,6 +80,9 @@ public NoGenerationTime
 # pairwise likelihood enumerate its (susceptible, possible infector) pairs.
 public contact_structure
 public followup_end
+# A subtype holding per-host times under a name of its own overrides this
+# rather than have the likelihood read a fixed field name off it.
+public host_times
 
 public pair_kernel
 # A calendar schedule for a `PairKernel` implements `calendar_multiplier`, and

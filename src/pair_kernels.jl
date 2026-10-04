@@ -310,7 +310,7 @@ end
 Base.haskey(s::_LayerHostState, key::Symbol) = !ismissing(_layer_time(s, key))
 
 function _layer_host(data, i)
-    return LayerHost(i, data.infection_time[i], _LayerHostState(_host_times(data), i))
+    return LayerHost(i, data.infection_time[i], _LayerHostState(host_times(data), i))
 end
 
 _pair_state(project, individual) = project(individual)

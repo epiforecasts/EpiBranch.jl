@@ -48,6 +48,7 @@ EpiBranch.susceptibility_host_times
 EpiBranch.HazardScaling
 EpiBranch.contact_structure
 EpiBranch.followup_end
+EpiBranch.host_times
 ContactPairsLayout
 compile_contact_pairs
 EpiBranch.PairwiseReduction
