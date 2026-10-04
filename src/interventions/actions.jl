@@ -292,20 +292,26 @@ function _pending(id, members, processed, pos)
 end
 
 """
-    _continuous_candidates(intervention, state, current, members, processed, contacts, pos)
+    _continuous_candidates(intervention, state, current, members, processed, contacts, pos, traced)
 
 The individuals to offer `intervention`'s [`intervention_actions`](@ref) once
 `current` has just settled. The default is every other still-pending member
 together with `current` itself — safe for any intervention, but a full scan
 of the population on every settled case. [`RingVaccination`](@ref) and
-[`GroupVaccination`](@ref) need far less: only `current`'s newly traced
-contacts, or the members of `current`'s own group found through the
-group-to-members index (see `EpiBranch._group_members`), so they override
+[`GroupVaccination`](@ref) need far less: the members the tracing walk
+reached from `current`, or the members of `current`'s own group found through
+the group-to-members index (see `EpiBranch._group_members`), so they override
 this with a candidate list bounded by ring or group size rather than
 population size.
+
+`traced` is the set the race's walk reached, or `nothing` where no walk ran. A
+ring wider than one hop reaches people `current` does not neighbour, so a
+candidate list built from `contacts(current.id, state)` alone would leave them
+out.
 """
 function _continuous_candidates(
-        ::AbstractIntervention, state, current, members, processed, contacts, pos
+        ::AbstractIntervention, state, current, members, processed, contacts, pos,
+        traced = nothing
     )
     return [
         state.individuals[id]
@@ -315,18 +321,25 @@ function _continuous_candidates(
 end
 function _continuous_candidates(
         w::InterventionWrapper, state, current,
-        members, processed, contacts, pos
+        members, processed, contacts, pos, traced = nothing
     )
-    return _continuous_candidates(w.intervention, state, current, members, processed, contacts, pos)
+    return _continuous_candidates(
+        w.intervention, state, current, members, processed, contacts, pos, traced
+    )
 end
 
 function _continuous_candidates(
-        ::RingVaccination, state, current, members, processed, contacts, pos
+        ::RingVaccination, state, current, members, processed, contacts, pos,
+        traced = nothing
     )
     candidates = [current]
-    contacts === nothing && return candidates
-    for c in contacts(current.id, state)
-        cid = c isa Tuple ? c[1] : c
+    # The walk's own reach where there was one: a ring of depth above 1 grows
+    # past `current`'s neighbours, and those members are the ones it traced.
+    if traced === nothing
+        contacts === nothing && return candidates
+        traced = (c isa Tuple ? c[1] : c for c in contacts(current.id, state))
+    end
+    for cid in traced
         _pending(cid, members, processed, pos) || continue
         push!(candidates, state.individuals[cid])
     end
@@ -334,7 +347,8 @@ function _continuous_candidates(
 end
 
 function _continuous_candidates(
-        gv::GroupVaccination, state, current, members, processed, contacts, pos
+        gv::GroupVaccination, state, current, members, processed, contacts, pos,
+        traced = nothing
     )
     candidates = [current]
     group = get(current.state, gv.group_key, nothing)
@@ -349,7 +363,7 @@ end
 
 function _apply_continuous_actions!(
         state, current, interventions, members, processed,
-        contacts = nothing, pos = nothing
+        contacts = nothing, pos = nothing, traced = nothing
     )
     any(continuous_actions, interventions) || return nothing
     # Finalised cases have already generated proposals. A new action may affect
@@ -358,7 +372,9 @@ function _apply_continuous_actions!(
     # boundary while choosing its own, much smaller, set of people to visit.
     for iv in interventions
         continuous_actions(iv) || continue
-        candidates = _continuous_candidates(iv, state, current, members, processed, contacts, pos)
+        candidates = _continuous_candidates(
+            iv, state, current, members, processed, contacts, pos, traced
+        )
         allowed = Set(ind.id for ind in candidates)
         actions = intervention_actions(iv, state, candidates)
         actions === nothing && continue

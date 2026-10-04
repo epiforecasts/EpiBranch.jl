@@ -136,6 +136,8 @@ end
         @test any(ind -> !haskey(ind.state, :trace_time), traced)
         for ind in traced
             @test !isnan(get(ind.state, :trace_time, 0.0))
+            # Nor does a NaN reach the isolation the trace would have set.
+            @test !isnan(isolation_time(ind))
         end
     end
 end
@@ -369,10 +371,66 @@ end
         ind.state[:traced] = true
         ind.state[:traced_by] = 7
         ind.state[:trace_level] = 2
+        ind.state[:ring_propagated] = true
+        # An isolation in force but never recorded as a detection is still an
+        # isolation this trace brought about, so the reset lifts it.
+        set_isolated!(ind, 6.0)
+        ind.state[:isolation_unrecorded] = true
         EpiBranch.reset!(ct, ind)
         @test ind.state[:traced] == false
         @test !haskey(ind.state, :traced_by)
         @test !haskey(ind.state, :trace_level)
+        @test !haskey(ind.state, :ring_propagated)
+        @test isolation_time(ind) == Inf
+        @test !EpiBranch._isolation_in_force(ind)
+    end
+
+    @testset "a trace with no arrival time quarantines nobody" begin
+        # The default `trigger_time` is the infector's recorded isolation, so
+        # an infector eligible on other grounds and never isolated gives `Inf`.
+        # The trace still reaches the contact — it is pending, not refused —
+        # but an isolation at `Inf` would remove it from nothing while
+        # reporting it as isolated and detected.
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine())
+        infector = Individual(id = 1)
+        infector.state[:infected] = true
+        contact = Individual(id = 2)
+        state = SimulationState(
+            [infector, contact], Int[], 1, StableRNG(1), 0, false, nothing, Inf,
+            nothing, AbstractClinicalTransition[]
+        )
+        EpiBranch._trace_pair!(ct, state, infector, contact, StableRNG(1))
+        @test is_traced(contact)
+        @test contact.state[:trace_time] == Inf
+        @test !EpiBranch._isolation_in_force(contact)
+        @test !is_isolated(contact)
+
+        # A standing isolation already in force is the other arm of
+        # `apply_trace!` (`min` against the trace time, rather than setting it
+        # outright). `min(standing, NaN)` used to poison that value with a
+        # NaN trigger, not only with an unreached `Inf` one, so the standing
+        # isolation must survive either trace untouched.
+        for unreachable in (NaN, Inf)
+            standing = Individual(id = 3)
+            set_isolated!(standing, 4.0)
+            EpiBranch.apply_trace!(Quarantine(), standing, state, unreachable, StableRNG(1))
+            @test is_traced(standing)
+            @test isolation_time(standing) == 4.0
+            @test !EpiBranch._isolation_unrecorded(standing)
+            @test is_isolated(standing)        # a recorded isolation stays one
+
+            # An unrecorded standing isolation stays unrecorded.
+            unrecorded = Individual(id = 4)
+            set_isolated!(unrecorded, 4.0)
+            unrecorded.state[:isolation_unrecorded] = true
+            EpiBranch.apply_trace!(
+                Quarantine(), unrecorded, state, unreachable, StableRNG(1)
+            )
+            @test is_traced(unrecorded)
+            @test isolation_time(unrecorded) == 4.0
+            @test EpiBranch._isolation_unrecorded(unrecorded)
+            @test !is_isolated(unrecorded)
+        end
     end
 
     @testset "trace_level lines up with the ring on a tree sim" begin

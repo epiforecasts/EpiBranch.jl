@@ -130,6 +130,7 @@ OnLabConfirmation
 OnIsolation
 TraceEveryone
 TraceNobody
+PreviouslyTraced
 AlwaysEligible
 SymptomaticParent
 NoTracing
