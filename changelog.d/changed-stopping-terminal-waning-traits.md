@@ -15,7 +15,7 @@ extension-by-dispatch rule:
   either way: certain when it happened to have no `probability` field,
   however conditional it was, and judged by an unrelated field when it did.
   `Recovery`, `Death` and `Transition` declare it; the default is `missing`
-  (unknown), as `_terminal_target` already did for the `until`-coverage check.
+  (unknown), as `terminal_target` already did for the `until`-coverage check.
 - `supports_waning(mode::AbstractEffectMode)` replaces `VaccineEffect`'s
   constructor testing `mode isa AllOrNothingMode`. Default `true`,
   `AllOrNothingMode` overriding it to `false`; a third-party effect mode that
