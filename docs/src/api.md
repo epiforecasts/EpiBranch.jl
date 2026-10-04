@@ -83,6 +83,8 @@ MaxCases
 MaxGenerations
 MaxTime
 should_stop
+EpiBranch.time_bound
+EpiBranch.honoured_without_should_stop
 ```
 
 ## Simulation
