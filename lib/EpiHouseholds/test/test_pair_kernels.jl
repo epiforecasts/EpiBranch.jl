@@ -129,3 +129,22 @@ end
     # a process replace the choice rather than have it decided inline.
     @test EpiBranch.race_groups(model, _AlwaysSharedKernel()) == (collect(1:7),)
 end
+
+# A kernel type whose `race_groups` merges some, but not all, households into
+# one race: households 1 and 2 (members 1-4) share a clock, household 3
+# (members 5-6) does not.
+struct _MergeTwoHouseholds{K}
+    kernel::K
+end
+EpiBranch.pair_kernel(k::_MergeTwoHouseholds, i, j, infection_time) = k.kernel
+EpiBranch.race_groups(m::HouseholdProcess, ::_MergeTwoHouseholds) = ([1, 2, 3, 4], [5, 6])
+
+@testset "A race merging only some households still seeds every household" begin
+    model = HouseholdProcess([2, 2, 2], _MergeTwoHouseholds(Exponential(2.0)))
+    for seed in 1:20
+        state = simulate(model; rng = StableRNG(seed))
+        @test count(i -> get(i.state, :index, false), state.individuals[1:2]) == 1
+        @test count(i -> get(i.state, :index, false), state.individuals[3:4]) == 1
+        @test count(i -> get(i.state, :index, false), state.individuals[5:6]) == 1
+    end
+end

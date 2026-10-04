@@ -78,7 +78,6 @@ function _simulate(
     # kernel's watched records say otherwise.
     races = any(EpiBranch.reads_population_state, interventions) ?
         (collect(eachindex(model.household_of)),) : race_groups(model, model.kernel)
-    live = length(races) == 1
     extinct = true
     for mem in races
         extinct &= EpiBranch._sellke_race!(
@@ -88,7 +87,7 @@ function _simulate(
             risks = EpiBranch.transmission_risks(model),
             watches = (watched,),
             seed! = (best, members, r) -> _seed_household_race!(
-                best, members, model, state, Tobs, r, initial_cases, live
+                best, members, model, state, Tobs, r, initial_cases
             ),
             introduction = _ext_active(model.external_hazard) ?
                 (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
@@ -167,16 +166,21 @@ function race_groups(model::HouseholdProcess, kernel)
         model.members : (collect(eachindex(model.household_of)),)
 end
 
-function _seed_household_race!(best, members, model, state, Tobs, rng, initial_cases, live)
-    if live
-        for mem in model.members
-            _seed_clique!(
-                view(best, mem), mem, state, model.external_hazard, Tobs, rng;
-                initial_cases
-            )
-        end
-    else
-        _seed_clique!(best, members, state, model.external_hazard, Tobs, rng; initial_cases)
+# A race's `members` can span more than one household (sharing a clock, per
+# `race_groups`), so each household within it is seeded as its own clique
+# rather than drawing one index case across the merged group: `best` and
+# `members` are grouped by household before `_seed_clique!` sees them, by
+# position within the race rather than by global id.
+function _seed_household_race!(best, members, model, state, Tobs, rng, initial_cases)
+    households = Dict{Int, Vector{Int}}()
+    for k in eachindex(members)
+        push!(get!(() -> Int[], households, model.household_of[members[k]]), k)
+    end
+    for idxs in values(households)
+        _seed_clique!(
+            view(best, idxs), view(members, idxs), state, model.external_hazard, Tobs,
+            rng; initial_cases
+        )
     end
     return nothing
 end
