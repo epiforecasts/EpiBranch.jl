@@ -412,21 +412,24 @@ end
 
 Re-apply [`realised_efficacy`](@ref) to a dose an `attributes` function
 recorded on `individual` before the simulation started, never seen by
-`_record_vaccination!`. Mutates `individual.state` in place.
-[`LeakyMode`](@ref) does nothing, since the raw efficacy it was given is
-already the value it stores; [`AllOrNothingMode`](@ref) turns that raw
-value into a one-time responder/non-responder draw, so a dose recorded
-outside a run gets the same per-individual draw one recorded during a run
-would.
+`_record_vaccination!`, so that a dose recorded outside a run gets the same
+per-individual draw one recorded during a run would. Mutates
+`individual.state` in place.
+
+A new mode needs no method of its own: the default applies the mode's own
+[`realised_efficacy`](@ref) to whatever efficacy is already recorded, which is
+what [`AllOrNothingMode`](@ref) needs to turn a raw value into a one-time
+responder draw. [`LeakyMode`](@ref) overrides it to do nothing, since the raw
+efficacy it was given is already the value it stores.
 """
-realise_prior_dose!(::LeakyMode, individual, label, state) = nothing
-function realise_prior_dose!(mode::AllOrNothingMode, individual, label, state)
+function realise_prior_dose!(mode::AbstractEffectMode, individual, label, state)
     key = _vaccine_efficacy_key(label)
     eff = get(individual.state, key, nothing)
     (eff isa Real && 0 < eff < 1) || return nothing
     individual.state[key] = realised_efficacy(mode, eff, state.rng)
     return nothing
 end
+realise_prior_dose!(::LeakyMode, individual, label, state) = nothing
 
 """Susceptibility-side risk: blocks the parent → contact transmission
 iff this dose has been administered to the contact and the contact's

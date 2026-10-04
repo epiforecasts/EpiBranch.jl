@@ -15,14 +15,6 @@ struct _TestThresholdMode <: AbstractEffectMode
 end
 EpiBranch.realised_efficacy(mode::_TestThresholdMode, eff, rng) =
     eff >= mode.threshold ? 1.0 : 0.0
-function EpiBranch.realise_prior_dose!(mode::_TestThresholdMode, individual, label, state)
-    key = EpiBranch._vaccine_efficacy_key(label)
-    eff = get(individual.state, key, nothing)
-    (eff isa Real && 0 < eff < 1) || return nothing
-    individual.state[key] = EpiBranch.realised_efficacy(mode, eff, state.rng)
-    return nothing
-end
-
 function EpiBranch.apply_post_transmission!(
         v::_TestCampaignVaccination, state,
         new_contacts

@@ -83,3 +83,8 @@ public infection_likelihood_compatible
 public susceptibility_components, susceptibility_host_times, HazardScaling
 public InterventionAction, intervention_actions, action_draw!, apply_actions!,
     continuous_actions
+
+# Vaccine effect modes: a new mode defines `realised_efficacy`, and overrides
+# `realise_prior_dose!` only to change what a dose recorded before the run gets.
+public realised_efficacy
+public realise_prior_dose!
