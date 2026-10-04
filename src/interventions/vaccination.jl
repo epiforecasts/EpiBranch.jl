@@ -448,10 +448,6 @@ function risk_depends_on_infector(v::AbstractVaccination)
     return _has_own_method(competing_risk, typeof(v), AbstractVaccination)
 end
 
-# Vaccination delivers against its own eligibility and dose state, with no
-# shared resource read; `CapacityConstrained` declares the shared read itself
-# once a budget is wrapped around one.
-reads_population_state(::AbstractVaccination) = false
 
 # The efficacy stored on the contact by `_record_vaccination!`, given the
 # sampled value `eff` (a `Real`, a draw from a `Distribution`, or a call to a
@@ -905,6 +901,11 @@ end
 # Only the onward risk reads the infector.
 risk_depends_on_infector(rv::RingVaccination) = rv.onward_efficacy > 0
 
+# A ring doses the infector's own traced contacts, so delivery depends on
+# the individual being resolved. A shared budget wrapped around one is
+# `CapacityConstrained`'s own declaration.
+reads_population_state(::RingVaccination) = false
+
 # Scalar defaults short-circuit without drawing from the rng so that
 # coverage = 1.0 and eligibility_window = Inf reproduce the previous
 # deterministic behaviour exactly.
@@ -1216,6 +1217,11 @@ end
 # `new_contacts`) meets `eligibility`, tested against the member itself in
 # both the infector and contact slots since the policy describes a property
 # of a case, not a pair. `Inf` if no member has triggered yet.
+# A group's trigger is the earliest eligible time among every member
+# carrying the group key, wherever they live, so the trigger a race sees
+# depends on which cliques have raced already.
+reads_population_state(::GroupVaccination) = true
+
 function _group_trigger_time(gv::GroupVaccination, state, group)
     key = gv.group_key
     t = Inf
@@ -1337,6 +1343,10 @@ function MassVaccination(; eligibility_time, effect...)
 end
 
 vaccine_effect(mv::MassVaccination) = getfield(mv, :effect)
+
+# Each contact's eligibility time is drawn when the contact is created, so
+# delivery depends on the individual being resolved.
+reads_population_state(::MassVaccination) = false
 Base.getproperty(mv::MassVaccination, name::Symbol) = _effect_getproperty(mv, name)
 Base.propertynames(mv::MassVaccination, ::Bool = false) = _effect_propertynames(mv)
 Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)
