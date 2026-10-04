@@ -536,6 +536,82 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test is_isolated(earlier)
     end
 
+    @testset "A released quarantine does not block a later, unrelated infection" begin
+        # Reproduces the bug: a contact traced and quarantined long before it is
+        # actually infected, through another route, must not go on carrying that
+        # stale quarantine forever. `Isolation`'s competing risk must respect
+        # the release time, not just the isolation time.
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+        contact = Individual(id = 1, infection_time = 60.0)
+        set_isolated!(contact, 10.0; release_time = 12.0)
+
+        risk = EpiBranch.competing_risk(iso, contact, Individual(id = 2), nothing)
+        @test risk.event_time == 10.0
+        @test risk.release_time == 12.0
+        @test risk.block_probability == 1.0
+
+        rng = StableRNG(1)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), rng
+        )
+        # Within the quarantine window the block still stands…
+        @test EpiBranch._risk_blocks(iso, contact, Individual(id = 2), state, 11.0)
+        # …but it has lapsed well before the infection this contact actually
+        # goes on to transmit from.
+        @test !EpiBranch._risk_blocks(iso, contact, Individual(id = 2), state, 60.0)
+
+        # The default duration (`Inf`) reproduces the previous behaviour: no
+        # release, so the block never lapses.
+        default_release = set_isolated!(Individual(id = 3), 10.0)
+        @test isinf(default_release)
+    end
+
+    @testset "isolation_duration gives a self-reported isolation a release time" begin
+        iso = Isolation(onset_to_isolation_delay = Dirac(2.0), isolation_duration = Dirac(5.0))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+        ind = Individual(id = 1)
+        ind.state[:onset_time] = 1.0
+        ind.state[:test_positive] = true
+        EpiBranch.resolve_individual!(iso, ind, state)
+        @test isolation_time(ind) ≈ 3.0 atol = 1.0e-6
+        @test isolation_release_time(ind) ≈ 8.0 atol = 1.0e-6
+
+        # Closing a continuous-time window permanently is only safe while the
+        # isolation stands at the infection itself; a release before the
+        # infection means no removal happened in the first place.
+        early = Individual(id = 2, infection_time = 100.0)
+        early.state[:onset_time] = 1.0
+        early.state[:test_positive] = true
+        EpiBranch.resolve_individual!(iso, early, state)
+        @test EpiBranch.infectious_removal_time(iso, early) == Inf
+    end
+
+    @testset "Quarantine duration releases a standalone quarantine" begin
+        q = Quarantine(duration = Dirac(2.0))
+        rng = StableRNG(1)
+
+        contact = Individual(id = 1, infection_time = 100.0)
+        EpiBranch.apply_trace!(q, contact, nothing, 10.0, rng)
+        @test isolation_time(contact) == 10.0
+        @test isolation_release_time(contact) == 12.0
+        # The quarantine is long over by the time this contact is infected
+        # through another route, so it contributes no removal.
+        ct = ContactTracing(TraceEveryone(), 1.0, Exponential(0.5), q)
+        @test EpiBranch.infectious_removal_time(ct, contact) == Inf
+
+        # A standing, earlier self-report keeps its own release untouched by a
+        # later, losing trace.
+        self_reported = Individual(id = 2)
+        set_isolated!(self_reported, 3.0; release_time = 9.0)
+        EpiBranch.apply_trace!(q, self_reported, nothing, 5.0, rng)
+        @test isolation_time(self_reported) == 3.0
+        @test isolation_release_time(self_reported) == 9.0
+    end
+
     @testset "A Scheduled reset restores a standing isolation's record" begin
         iso = Isolation(onset_to_isolation_delay = Dirac(2.0))
         state = EpiBranch.new_state(
@@ -549,7 +625,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             ind.state[:onset_time] = 1.0
             ind.state[:test_positive] = true
             ind.state[:outcome_time] = 2.0
-            set_isolated!(ind, 6.0)
+            set_isolated!(ind, 6.0; release_time = 9.0)
             standing_unrecorded && (ind.state[:isolation_unrecorded] = true)
             EpiBranch.resolve_individual!(iso, ind, state)
             @test isolation_time(ind) ≈ 3.0 atol = 1.0e-6
@@ -559,12 +635,15 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         unrecorded = revised_and_reset(true)
         @test isolation_time(unrecorded) == 6.0
+        @test isolation_release_time(unrecorded) == 9.0
         @test EpiBranch._isolation_in_force(unrecorded)
         @test !is_isolated(unrecorded)
         @test !haskey(unrecorded.state, :isolation_unrecorded_before_isolation)
+        @test !haskey(unrecorded.state, :isolation_release_time_before_isolation)
 
         recorded = revised_and_reset(false)
         @test isolation_time(recorded) == 6.0
+        @test isolation_release_time(recorded) == 9.0
         @test is_isolated(recorded)
     end
 
