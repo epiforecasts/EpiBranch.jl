@@ -649,19 +649,19 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "Two overlapping removals layer into the interval covering both" begin
-        # One pair of times holds the two, so neither release can be dropped by
-        # the other winning the start — but only where the two actually meet.
+        # Where the two meet, one pair of times holds both, and neither release
+        # can be dropped by the other winning the start.
         rng = StableRNG(1)
 
-        # The trace starts earlier and ends earlier; the standing release is
-        # the one still in force.
+        # The trace starts earlier and ends inside the standing removal, so the
+        # standing release is the one still in force.
         earlier_start = Individual(id = 1)
-        set_isolated!(earlier_start, 10.0; release_time = 12.0)
+        set_isolated!(earlier_start, 10.0; release_time = 24.0)
         EpiBranch.apply_trace!(
-            Quarantine(duration = Dirac(2.0)), earlier_start, nothing, 5.0, rng
+            Quarantine(duration = Dirac(7.0)), earlier_start, nothing, 5.0, rng
         )
         @test isolation_time(earlier_start) == 5.0
-        @test isolation_release_time(earlier_start) == 12.0
+        @test isolation_release_time(earlier_start) == 24.0
 
         # Overlapping the other way: the standing start, the trace's release.
         overlapping = Individual(id = 2)
@@ -681,11 +681,13 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test isolation_release_time(permanent) == Inf
     end
 
-    @testset "A removal that has lapsed is replaced, not spanned" begin
-        # The standing removal ended before the new one begins. One interval
-        # cannot hold both, and spanning them would block the gap between,
-        # when the case was under no removal at all.
+    @testset "Disjoint removals keep the later one rather than spanning" begin
+        # One interval cannot hold two that do not meet, and spanning them
+        # would block the gap between, when the case was under no removal at
+        # all. The spent one goes, whichever side it is on.
         rng = StableRNG(1)
+
+        # The standing removal ended before the trace arrives.
         lapsed = Individual(id = 1)
         set_isolated!(lapsed, 5.0; release_time = 7.0)
         EpiBranch.apply_trace!(
@@ -693,6 +695,47 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         )
         @test isolation_time(lapsed) == 20.0
         @test isolation_release_time(lapsed) == 34.0
+        # The trace is the removal in force, so it is recorded as one.
+        @test is_isolated(lapsed)
+
+        # The trace's own removal ends before a standing one begins, so the
+        # standing removal is the one kept.
+        future = Individual(id = 2)
+        set_isolated!(future, 20.0; release_time = 22.0)
+        EpiBranch.apply_trace!(
+            Quarantine(duration = Dirac(0.5)), future, nothing, 10.0, rng
+        )
+        @test isolation_time(future) == 20.0
+        @test isolation_release_time(future) == 22.0
+    end
+
+    @testset "Removals that touch exactly keep both" begin
+        # `[5, 10)` and `[10, 14)` are one interval under the half-open
+        # convention, so nothing is lost by holding them as `[5, 14)`.
+        rng = StableRNG(1)
+        touching = Individual(id = 1)
+        set_isolated!(touching, 5.0; release_time = 10.0)
+        EpiBranch.apply_trace!(
+            Quarantine(duration = Dirac(4.0)), touching, nothing, 10.0, rng
+        )
+        @test isolation_time(touching) == 5.0
+        @test isolation_release_time(touching) == 14.0
+    end
+
+    @testset "An unrecorded isolation keeps that status only while it is in force" begin
+        # Where the trace replaces a spent isolation, the removal is the
+        # trace's, so it must not inherit the old isolation's unrecorded mark —
+        # otherwise the quarantine is invisible to the line list and to
+        # isolation-triggered tracing.
+        rng = StableRNG(1)
+        replaced = Individual(id = 1)
+        set_isolated!(replaced, 5.0; release_time = 7.0)
+        replaced.state[:isolation_unrecorded] = true
+        EpiBranch.apply_trace!(
+            Quarantine(duration = Dirac(14.0)), replaced, nothing, 20.0, rng
+        )
+        @test is_isolated(replaced)
+        @test !EpiBranch._isolation_unrecorded(replaced)
     end
 
     @testset "An isolation layers over a standing quarantine" begin
@@ -714,12 +757,35 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test isolation_release_time(ind) == 24.0
     end
 
-    @testset "A removal duration must be positive" begin
-        # A release at or before its own start reads as no removal on the
-        # generation engine and a permanent one on the continuous-time engines,
-        # so it is refused at the draw rather than left to disagree.
+    @testset "A zero-length removal removes nobody on either engine" begin
+        # A day-resolution duration can legitimately draw 0, so it is accepted
+        # and means no removal: the generation engine needs
+        # `event_t <= t < release_t` and blocks nothing, and the continuous-time
+        # engines find nothing to close a window with.
+        iso = Isolation(
+            onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(0.0)
+        )
+        ind = Individual(id = 1, infection_time = 0.0)
+        ind.state[:onset_time] = 3.0
+        ind.state[:test_positive] = true
+        EpiBranch.resolve_individual!(
+            iso, ind,
+            EpiBranch.new_state(
+                BranchingProcess(Poisson(1.0), Exponential(5.0)),
+                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+            )
+        )
+        @test isolation_time(ind) == 4.0
+        @test isolation_release_time(ind) == 4.0
+        @test EpiBranch.infectious_removal_time(iso, ind) == Inf
+    end
+
+    @testset "A removal duration must not be negative" begin
+        # A release before its own start reads as no removal on the generation
+        # engine and a permanent one on the continuous-time engines, so it is
+        # refused at the draw rather than left to disagree.
         rng = StableRNG(1)
-        for bad in (-1.0, 0.0, NaN)
+        for bad in (-1.0, NaN)
             contact = Individual(id = 1)
             @test_throws ArgumentError EpiBranch.apply_trace!(
                 Quarantine(duration = bad), contact, nothing, 2.0, rng
