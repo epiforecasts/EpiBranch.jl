@@ -174,13 +174,15 @@ as `(profile = ..., calendar = ...)`; that overrides the kernel's own
 ```julia
 PairKernel((ctx, source, target) -> Gamma(2.0, 1.5);
            calendar = Steps([30.0], [1.0, 0.25]),   # shared policy: rate falls to a quarter on day 30
-           state = ind -> (age = ind.state[:age],))  # optional per-person record
+           state = ind -> (age = ind.state[:age],),  # optional per-person record
+           watches = (:age,))
 
 PairKernel((ctx, source, target) ->
                isfinite(target.date) ?
                (profile = Exponential(2.5), calendar = Steps([target.date], [1.0, 0.25])) :
                Exponential(2.5);
-           state = ind -> (date = get(ind.state, :policy_time, Inf)::Float64,))
+           state = ind -> (date = get(ind.state, :policy_time, Inf)::Float64,),
+           watches = (:policy_time,))
 ```
 
 The pair's hazard is the profile's hazard at time since opening, multiplied by
@@ -218,12 +220,25 @@ function PairKernel(callback; state = nothing, calendar = nothing, watches = not
 end
 
 # A kernel with no `state` reads no host state, and a vector of records is
-# fixed while a likelihood reads it, so neither needs a declaration. A
-# projection has to say what it reads: there is no safe default, since
-# inferring "nothing moves" would draw a run's contacts from stale hazards and
-# inferring "everything moves" would compare the whole population at every case.
-_kernel_watches(::Nothing, watches) = _watch_keys(watches === nothing ? () : watches)
-_kernel_watches(::AbstractVector, watches) = _watch_keys(watches === nothing ? () : watches)
+# fixed while a likelihood reads it, so neither has anything to declare: a
+# declaration there would send a route live over records that cannot move, so
+# it is refused rather than honoured. A projection has to say what it reads:
+# there is no safe default, since inferring "nothing moves" would draw a run's
+# contacts from stale hazards and inferring "everything moves" would compare
+# the whole population at every case.
+_kernel_watches(::Nothing, watches) = _no_records_to_watch(watches, "no `state`")
+function _kernel_watches(::AbstractVector, watches)
+    return _no_records_to_watch(watches, "a vector of records as its `state`")
+end
+function _no_records_to_watch(watches, what)
+    (watches === nothing || isempty(watches)) || throw(
+        ArgumentError(
+            "a `PairKernel` with $what reads no `individual.state`, so it has " *
+                "no records to watch; drop `watches`"
+        )
+    )
+    return ()
+end
 function _kernel_watches(state, watches)
     watches === nothing && throw(
         ArgumentError(
@@ -297,11 +312,12 @@ end
 
 _pair_state(project, individual) = project(individual)
 _pair_state(records::AbstractVector, individual) = records[individual.id]
-# The projection a live kernel reads host state through, or `nothing` for a
-# kernel whose hazards cannot change during a run. A race compares successive
-# projections to decide whether pending contacts need redrawing, so a kernel may
-# depend on host state only through this record — the restriction `record_kernel`
-# already relies on to reproduce a run's hazards from recorded records alone.
+# The projection a kernel reads host state through, or `nothing` for one that
+# needs no running state to evaluate: a kernel given records, or none at all. A
+# kernel may depend on host state only through this record, which is what lets
+# `record_kernel` reproduce a run's hazards from recorded records alone. Which
+# of those records a race watches is the kernel's own declaration, through
+# `watched_records`.
 _kernel_projection(k) = nothing
 _kernel_projection(k::PairKernel) = k.state
 _kernel_projection(k::PairKernel{F, <:AbstractVector}) where {F} = nothing
@@ -331,7 +347,9 @@ watched_records(k::PairKernel) = k.watches
 # A vector of records cannot move while a likelihood reads it, and a race given
 # one has nothing to watch.
 watched_records(::PairKernel{F, <:AbstractVector}) where {F} = ()
-# A per-edge collection of kernels watches what any one of them watches.
+# A per-edge collection declares the union of what its entries declare. Every
+# such entry a network resolves today reads no host state, so this is `()` in
+# practice; it keeps the union right if one ever does.
 function watched_records(ks::AbstractVector)
     keys = Symbol[]
     for k in ks, key in watched_records(k)
