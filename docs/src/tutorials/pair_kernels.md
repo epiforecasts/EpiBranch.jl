@@ -213,15 +213,20 @@ model = ModelSpec(NetworkProcess(adjacency, kernel); attributes, progression)
 state = simulate(model; initial_cases = [1], rng = Xoshiro(235))
 ```
 
-`watches` is that projection's own list of the `individual.state` keys it
-reads. A continuous-time race redraws a case's pending contacts when one of
-those keys moves on a host it reads, which is how a hazard that changes
-mid-run keeps the contacts drawn from it honest. Name every key the projection
-reads, whether or not anything in this model writes it:
+The rate at which a case infects its contacts can change during its infectious
+period: a post-exposure dose takes effect, or symptoms begin and the case is
+isolated. When the kernel reads one of those dates from the record, the race
+has already drawn when that case's contacts fall, at the rate in force when it
+drew them, and has to draw them again at the new rate. `watches` names the
+records to watch for: the `individual.state` keys the projection reads. Above,
+that is the one key the attributes builder sets.
+
+Name every key the projection reads, even one that nothing in this model
+writes:
 
 ```@example stateful
-# Reads two keys, so it declares both: the dose date a `RingVaccination` writes
-# and the onset `clinical_presentation` sets.
+# Two keys read, both declared: the dose date a `RingVaccination` writes and
+# the onset `clinical_presentation` sets.
 dosed_kernel = PairKernel(
     (context, source, target) -> Exponential(isfinite(target.dosed) ? 4.0 : 1.5);
     state = ind -> (
@@ -233,8 +238,8 @@ dosed_kernel = PairKernel(
 EpiBranch.watched_records(dosed_kernel)
 ```
 
-`()` is for a projection that reads no state at all, such as one indexing a
-table of fixed covariates by the host's own id:
+A projection that reads no record at all declares `()`. This one scales each
+person's contact rate by a fixed covariate, indexed by their own id:
 
 ```@example stateful
 scale_by_id = [1.0, 2.0, 0.5]
@@ -245,9 +250,9 @@ by_id_kernel = PairKernel(
 EpiBranch.watched_records(by_id_kernel)
 ```
 
-A key left out of `watches` is a hazard that moves without the contacts
-following it, and a key named where nothing can move only costs the race a
-comparison, so declare generously.
+Leave a key out and the contacts keep the rate they were drawn at after the
+record moves, with nothing to report it. Name a key that never moves and the
+race pays one comparison per case. When in doubt, name it.
 
 After simulation, extract the selected records and use the same callback in the
 likelihood. `record_kernel` copies the projection results into a vector indexed

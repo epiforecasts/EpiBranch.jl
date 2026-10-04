@@ -1218,8 +1218,7 @@ removal.
 
 A process also passes `watches`: one tuple of
 [`watched_records`](@ref EpiBranch.watched_records) per route, in route order.
-That is how the race learns which host records each route's kernel reads, so
-ask each route's own kernel:
+Ask each route's own kernel for it:
 
 ```julia
 EpiBranch._sellke_race!(
@@ -1236,9 +1235,9 @@ A process with one kernel passes a one-element tuple, matching the
 watches = (EpiBranch.watched_records(model.edge_kernel),)
 ```
 
-Leave it out and every route counts as fixed for the run, so a kernel that
-reads host records draws its contacts from whatever the records held when the
-contacts were proposed — with no error to say so.
+Without it the race treats every route's rates as fixed for the run. A kernel
+that reads host records then keeps the contacts it drew before the record
+moved, and nothing reports it.
 
 ## Calendar schedules for pair kernels
 
