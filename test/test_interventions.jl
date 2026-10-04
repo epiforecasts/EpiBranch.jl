@@ -35,6 +35,31 @@ end
 # defaults are inert.
 struct _NoTraceIntervention <: AbstractIntervention end
 
+# A tracing eligibility that gates on the running case count, so it reads
+# population-wide state and must lift the `ContactTracing` holding it.
+struct _PopulationEligibility <: EpiBranch.TraceEligibility end
+EpiBranch.is_eligible(::_PopulationEligibility, infector, contact, state) =
+    state.cumulative_cases >= 2
+EpiBranch.reads_population_state(::_PopulationEligibility) = true
+
+# The same for an isolation eligibility.
+struct _PopulationIsolationEligibility <: EpiBranch.IsolationEligibility end
+EpiBranch.is_eligible_for_isolation(::_PopulationIsolationEligibility, ind, state) =
+    state.cumulative_cases >= 2
+EpiBranch.reads_population_state(::_PopulationIsolationEligibility) = true
+
+# A vaccination written outside the package, declaring nothing.
+struct _OutsideVaccination <: EpiBranch.AbstractVaccination end
+
+# A rate, a delay and an action that read population-wide state, one per
+# remaining arm of `ContactTracing`'s declaration.
+struct _PopulationRate <: EpiBranch.TraceRate end
+EpiBranch.reads_population_state(::_PopulationRate) = true
+struct _PopulationDelay <: EpiBranch.TraceDelay end
+EpiBranch.reads_population_state(::_PopulationDelay) = true
+struct _PopulationAction <: EpiBranch.TraceAction end
+EpiBranch.reads_population_state(::_PopulationAction) = true
+
 # A distribution that draws and evaluates but reports no support, as the
 # package's own `_TruncatedSkewNormal` does.
 struct _UnboundedDelay <: ContinuousUnivariateDistribution end
@@ -2920,5 +2945,87 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             @test_throws ErrorException Scheduled(iso)
         end
+    end
+
+    @testset "reads_population_state" begin
+        reads = EpiBranch.reads_population_state
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        ring = RingVaccination(efficacy = 0.8)
+
+        # Each of these resolves one individual from that individual alone.
+        @test !reads(iso)
+        @test !reads(ring)
+        @test !reads(MassVaccination(efficacy = 0.8, eligibility_time = 0.0))
+        @test !reads(
+            ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0))
+        )
+
+        # A time-gated schedule compares against the time of the case being
+        # resolved; a count-gated one tests the running case count.
+        @test !reads(Scheduled(iso; start_time = 5.0))
+        @test !reads(Scheduled(iso; end_time = 20.0))
+        @test reads(Scheduled(iso; start_after_cases = 10))
+        # An opaque predicate could read anything, so it stays conservative.
+        @test reads(Scheduled(iso, state -> true))
+
+        # A shared budget is read across every individual.
+        @test reads(CapacityConstrained(ring; budget_per_period = 5.0))
+        # A schedule answers for the intervention it wraps.
+        @test reads(
+            Scheduled(
+                CapacityConstrained(ring; budget_per_period = 5.0); start_time = 5.0
+            )
+        )
+
+        # A group's trigger is the earliest eligible time among members who
+        # may live in any household, so it reads across the population.
+        @test reads(GroupVaccination(efficacy = 0.8, group_key = :group))
+
+        # A component of its own lifts the intervention that holds it.
+        @test reads(
+            ContactTracing(
+                _PopulationEligibility(), 1.0, Exponential(1.0)
+            )
+        )
+        @test reads(
+            Isolation(;
+                onset_to_isolation_delay = Exponential(1.0),
+                eligibility = _PopulationIsolationEligibility()
+            )
+        )
+        # A combined eligibility answers for what it wraps, so an operator
+        # cannot drop a component's declaration.
+        @test reads(
+            ContactTracing(
+                OnSymptomOnset() & _PopulationEligibility(), 1.0, Exponential(1.0)
+            )
+        )
+        @test reads(ContactTracing(!_PopulationEligibility(), 1.0, Exponential(1.0)))
+        @test !reads(ContactTracing(OnSymptomOnset() | TraceEveryone(), 1.0, Exponential(1.0)))
+
+        # Each of the other three arms is reached as well.
+        @test reads(
+            ContactTracing(
+                TraceEveryone(), _PopulationRate(), ConstantDelay(Exponential(1.0)),
+                Quarantine()
+            )
+        )
+        @test reads(
+            ContactTracing(
+                TraceEveryone(), ConstantRate(1.0), _PopulationDelay(), Quarantine()
+            )
+        )
+        @test reads(
+            ContactTracing(
+                TraceEveryone(), ConstantRate(1.0), ConstantDelay(Exponential(1.0)),
+                _PopulationAction()
+            )
+        )
+
+        # An intervention written outside the package gets the conservative
+        # default until it declares otherwise, and so does a vaccination,
+        # which no longer inherits a blanket `false` from the abstract type.
+        @test reads(_NoTraceIntervention())
+        @test reads(_OutsideVaccination())
     end
 end

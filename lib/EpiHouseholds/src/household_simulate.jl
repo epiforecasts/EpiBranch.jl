@@ -42,7 +42,6 @@ function _simulate(
         condition, max_attempts
     )
 
-    length(model.members) > 1 && foreach(_validate_household_capacity, interventions)
     from = _resolve_infectious_from(model.from, progression)
     Tobs = model.obs_end
 
@@ -67,10 +66,13 @@ function _simulate(
     # rather than being cut off at `max_time` with candidates still pending.
     initial_cases = sim_opts.initial_cases === nothing ? nothing :
         Set(sim_opts.initial_cases)
-    # Only a kernel whose hazards can move needs every household on one clock,
-    # so that a policy reading cases in other households is seen as it happens.
+    # Only a policy that can read population-wide state — cases in other
+    # households, a kernel reading host records an intervention can move, a
+    # capacity budget shared across households — needs every household on one
+    # clock. The kernel names the records it watches, and
+    # `reads_population_state` is how an intervention declares the rest.
     watched = EpiBranch.watched_records(model.kernel)
-    live = !isempty(watched)
+    live = !isempty(watched) || any(EpiBranch.reads_population_state, interventions)
     races = live ? (collect(eachindex(model.household_of)),) : model.members
     extinct = true
     for mem in races
@@ -149,22 +151,6 @@ end
 
 function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpts)
     return EpiBranch._validate_initial_case_ids(opts, length(model.household_of))
-end
-
-# Separate household races revisit earlier times. Periodic shared budgets need
-# a single chronological race; lifetime budgets remain valid across races.
-_validate_household_capacity(::EpiBranch.AbstractIntervention) = nothing
-function _validate_household_capacity(iv::EpiBranch.InterventionWrapper)
-    return _validate_household_capacity(iv.intervention)
-end
-function _validate_household_capacity(iv::CapacityConstrained)
-    isfinite(iv.period) && throw(
-        ArgumentError(
-            "finite-period capacity budgets require chronological admission across households; " *
-                "use period = Inf for a shared lifetime budget, or simulate one household"
-        )
-    )
-    return _validate_household_capacity(iv.intervention)
 end
 
 function _seed_household_race!(best, members, model, state, Tobs, rng, initial_cases, live)

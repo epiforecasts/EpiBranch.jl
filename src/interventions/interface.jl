@@ -274,3 +274,38 @@ function _combine_removal(standing_start, standing_release, new_start, new_relea
     return standing_start < new_start ? (new_start, new_release) :
         (standing_start, standing_release)
 end
+
+"""
+    reads_population_state(intervention) -> Bool
+
+Whether `intervention`'s delivery can depend on population-wide state — a
+running case count, a capacity budget shared across every individual — rather
+than only on the individual it is resolving. A structure-driven model that
+races a clique (a household) at a time, rather than the whole population on
+one clock, gives each clique's race the state left by whichever clique raced
+before it, in race order rather than calendar order; an intervention that
+reads population-wide state through that race therefore needs every clique on
+one shared clock instead.
+
+The default is the conservative `true`. An intervention written outside the
+package therefore reads population-wide state until it says otherwise.
+
+`RingVaccination` and `MassVaccination` return `false`, each delivering
+against the individual it resolves. `GroupVaccination` returns `true`, since a
+group's trigger is the earliest eligible time among members who may live
+anywhere in the population. `CapacityConstrained` returns `true`, because its
+admission decision reads how much of the shared budget every other individual
+has used. A `Scheduled` built with `start_after_cases` returns `true`, the
+case count being exactly such a read; one built with only
+`start_time`/`end_time` compares against the time of the case being resolved
+and answers for the intervention it wraps, returning `false` only while that
+intervention does.
+
+`Isolation` and `ContactTracing` answer for the components they are given —
+`ContactTracing` its eligibility, rate, delay and action, `Isolation` its
+eligibility — each defaulting to `false`, and an eligibility combinator
+answers for what it wraps. A component of your own that reads population-wide
+state declares `true` for itself, which lifts the intervention holding it. Wrappers without a read of their own delegate to the intervention
+they wrap.
+"""
+reads_population_state(::AbstractIntervention) = true

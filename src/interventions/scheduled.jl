@@ -56,6 +56,9 @@ struct Scheduled{I <: AbstractIntervention, F} <: InterventionWrapper
     intervention::I
     condition::F
     start_time::Float64
+    # Whether `condition` can read population-wide state (a case count) rather
+    # than only the time of the case being resolved. See `reads_population_state`.
+    population_dependent::Bool
 end
 
 # ── Keyword convenience constructor ──────────────────────────────────
@@ -88,12 +91,13 @@ function Scheduled(
         s -> all(c -> c(s), conditions)
     end
     t = start_time === nothing ? 0.0 : start_time
-    return Scheduled(intervention, condition, t)
+    return Scheduled(intervention, condition, t, start_after_cases !== nothing)
 end
 
-# Predicate constructor: no individual-level reset
+# Predicate constructor: no individual-level reset. The predicate is opaque, so
+# `population_dependent` stays conservatively `true` — see `reads_population_state`.
 function Scheduled(intervention::AbstractIntervention, condition)
-    return Scheduled(intervention, condition, 0.0)
+    return Scheduled(intervention, condition, 0.0, true)
 end
 
 # ── Protocol delegation ──────────────────────────────────────────────
@@ -166,6 +170,13 @@ function _may_lapse(s::Scheduled)
     return persistent_competing_risks(s.intervention) ? _may_lapse(s.intervention) : true
 end
 _may_lapse(w::InterventionWrapper) = _may_lapse(w.intervention)
+
+# A count-gated `start_after_cases` reads the running case count, a
+# population-wide read; a `start_time`/`end_time`-only schedule compares
+# against the time of the case being resolved and is not.
+function reads_population_state(s::Scheduled)
+    return s.population_dependent || reads_population_state(s.intervention)
+end
 
 function competing_risk(s::Scheduled, parent, contact, state)
     (persistent_competing_risks(s.intervention) || is_active(s, state)) || return nothing

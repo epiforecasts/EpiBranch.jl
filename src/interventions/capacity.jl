@@ -248,3 +248,8 @@ end
 # budget at all. Opting out keeps the documented "no effect" there.
 traces_contacts(::CapacityConstrained) = false
 trace_contacts!(::CapacityConstrained, state, infector, contacts) = nothing
+
+# Admission reads `_capacity_usage`, how much of the shared budget every other
+# individual has already used — population-wide state regardless of what the
+# wrapped intervention declares.
+reads_population_state(::CapacityConstrained) = true

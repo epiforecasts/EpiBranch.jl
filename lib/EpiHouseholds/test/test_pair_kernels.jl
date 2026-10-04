@@ -32,6 +32,29 @@ end
     @test count(i -> get(i.state, :index, false), default.individuals[3:4]) == 1
 end
 
+@testset "A count-gated Scheduled shares one household clock" begin
+    # Household 1 (members 1-4) runs a fast internal chain: its index case at
+    # t = 0 infects the other three at t = 1. Household 2 (members 5-6) runs a
+    # slow one: its index also at t = 0, its second case at t = 10. The real
+    # 4th case (one of household 1's three t = 1 infections) has not happened
+    # when household 2's index case resolves at t = 0. `start_after_cases = 4`
+    # must not yet be satisfied for it, whichever household races first.
+    clinical = clinical_presentation(incubation_period = Dirac(0.0))
+    iso = Scheduled(
+        Isolation(onset_to_isolation_delay = Dirac(0.0));
+        start_after_cases = 4
+    )
+    kernel(i, j) = i <= 4 ? Dirac(1.0) : Dirac(10.0)
+    model = ModelSpec(
+        HouseholdProcess([4, 2], kernel); attributes = clinical,
+        progression = [Transition(:recovered; delay = 100.0, terminal = true)],
+        interventions = [iso]
+    )
+    state = simulate(model; initial_cases = [1, 5], rng = StableRNG(1))
+    @test state.individuals[5].infection_time == 0.0
+    @test !is_isolated(state.individuals[5])
+end
+
 @testset "A kernel watching no record keeps separate household races" begin
     # A projection reading no state key has nothing that can move, so neither
     # redrawing nor a shared clock is needed and the run must match an ordinary
