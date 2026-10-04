@@ -66,6 +66,7 @@ downstream packages should pick names that do not collide.
 | `:group` | `Int` | — | `groups` | Init |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
+| `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block lapses |
 | `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_unrecorded` | `Bool` | `false` | `Isolation` | `resolve_individual!`; the isolation removes the case from transmission without counting as a detection |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
@@ -161,13 +162,16 @@ sets it from a probability gate) and `PerCaseObservation` (which sets it
 post-simulation from a detection-probability draw). Composing both in the
 same simulation is not supported, because they will overwrite each other.
 
-Isolation is recorded under `:isolation_time`. A window that isolation should
-end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
+Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
+alongside it for when the block lapses (`Inf` by default, so isolation lasts
+until the end of the infectious period as before). A window that isolation
+should end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
 [Transmission routes](#Transmission-routes)), which respects leaky isolation.
 `:isolated` in an `until` refers to a `Transition(:isolated, …)` in the natural
 history. Set and undo isolation with `set_isolated!` and `clear_isolated!`.
-`:isolation_time` is when the case leaves transmission, which is what
-competing risks and `INTERVENTION_REMOVAL` read. Whether that isolation also
+`:isolation_time` is when the case leaves transmission and
+`:isolation_release_time` is when it may resume, which is what competing risks
+and `INTERVENTION_REMOVAL` read. Whether that isolation also
 counts as a detection is a separate question, answered by `is_isolated`, which
 `OnIsolation` tracing, group vaccination and the line list read. `Isolation`
 answers no for an isolation at or after [`outcome_time`](@ref), since a
