@@ -424,17 +424,20 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     # Returning before the draw also leaves the stream where it was for a
     # trace that changes nothing.
     isfinite(trace_time) || return nothing
-    release_time = trace_time + _sample_value(q.duration, rng, contact)
+    release_time = trace_time + _removal_duration(
+        q.duration, rng, contact, "`Quarantine`'s `duration`"
+    )
     if _isolation_in_force(contact)
         standing = isolation_time(contact)
         # A trace no earlier than an isolation that was not recorded leaves that
         # isolation, and its time, as the one in force, so it stays unrecorded.
         unrecorded = _isolation_unrecorded(contact) && !(trace_time < standing)
-        # Whichever start wins keeps its own release, matching the existing
-        # earliest-start combination: the quarantine this trace contributes
-        # does not get to shorten (or lengthen) a standing isolation it loses to.
-        final_time, final_release = trace_time < standing ?
-            (trace_time, release_time) : (standing, isolation_release_time(contact))
+        # Two removals, one pair of times to hold them: take the earliest start
+        # and the latest release, the smallest interval covering both. Keeping
+        # only the winning start's own release would drop a removal that is
+        # still in force, which no later check could recover.
+        final_time = min(trace_time, standing)
+        final_release = max(release_time, isolation_release_time(contact))
         set_isolated!(contact, final_time; release_time = final_release)
         unrecorded && (contact.state[:isolation_unrecorded] = true)
     else
