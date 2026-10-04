@@ -126,4 +126,48 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
             ind.state[:test_positive] && @test ind.state[:age] >= 50
         end
     end
+
+    @testset "A lapsed isolation lets the case go again, on every engine" begin
+        # Isolated on day 4 for 7 days (released day 11), recovering on day 30,
+        # meeting its one contact at a fixed interval of 15 days — after the
+        # release, so the contact should go through on every engine. Before the
+        # fix, a continuous-time window closed for good at the isolation time
+        # and never saw this contact at all.
+        prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
+        attrs = clinical_presentation(incubation_period = Dirac(3.0))
+        iso = Isolation(
+            onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(7.0)
+        )
+
+        # The continuous-time race, which `HouseholdProcess` and `NetworkProcess`
+        # share.
+        rng = StableRNG(1)
+        state = EpiBranch.new_state(
+            BranchingProcess(Dirac(1), Dirac(15.0)), prog, attrs, rng
+        )
+        EpiBranch.add_individuals!(state, 2, [iso])
+        EpiBranch._sellke_race!(
+            state, [1, 2], rng; from = :infection, until = (:recovered,),
+            interventions = [iso],
+            targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+                ((2, Dirac(15.0)),) : (),
+            seed! = (best, members, r) -> (best[1] = 0.0)
+        )
+        @test isolation_time(state.individuals[1]) == 4.0
+        @test isolation_release_time(state.individuals[1]) == 11.0
+        @test is_infected(state.individuals[2])
+
+        # The generation engine, which already answers this correctly, for the
+        # same isolation and the same fixed contact time.
+        gen_state = simulate(
+            ModelSpec(
+                BranchingProcess(Dirac(1), Dirac(15.0));
+                progression = prog, attributes = attrs, interventions = [iso]
+            );
+            max_cases = 2, rng = StableRNG(1)
+        )
+        secondary = [ind for ind in gen_state.individuals if ind.parent_id != 0]
+        @test length(secondary) == 1
+        @test is_infected(only(secondary))
+    end
 end

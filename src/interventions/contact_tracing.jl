@@ -796,7 +796,12 @@ A quarantine set, and released (see [`Quarantine`](@ref)'s `duration`), before
 the contact was infected contributes no removal
 (`EpiBranch._removal_lapsed_before_infection`): it lapsed before this
 contact's own infectious window could have opened, so it cannot be what
-closes a window for an infection acquired later through another route."""
+closes a window for an infection acquired later through another route.
+`ContactTracing` has no per-contact `competing_risk` of its own — unlike
+[`Isolation`](@ref), whose release-aware one stands in for a lapse mid-window
+— so a quarantine that lapses after the contact is already infected still
+closes the window for good here; compose [`Isolation`](@ref) as well for a
+quarantine that should let the case go once released."""
 function infectious_removal_time(::ContactTracing, ind::Individual)
     get(ind.state, :quarantined, false) || return Inf
     _removal_lapsed_before_infection(ind) && return Inf

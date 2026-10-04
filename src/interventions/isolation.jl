@@ -112,12 +112,14 @@ isolates nobody. A finite duration gives
 What that changes depends on the engine. On a generation-based process the
 block is a per-contact risk, so a contact after the release is not blocked.
 
-On the continuous-time (Sellke) models an infectious window carries one
-closing time and cannot reopen, so the release matters only when the removal
-had already lapsed before the case was infected: that case is not removed at
-all, which is what the duration exists for. A removal still standing at the
-infection, even one due to lapse a day later, closes the window for the rest
-of the infectious period.
+On the continuous-time (Sellke) models a removal that is due to lapse does not
+close the window at all: the window stays open on the case's other removal
+states, if any, and the per-contact competing risk blocks exactly the isolated
+interval, so the case transmits again from the release time, matching the
+generation engine. Only a removal standing to the end of the infectious period
+(the default `Inf` duration) closes the window there, which is cheaper than
+leaving it to the per-contact risk and is exact because nothing is left to
+reopen.
 
 An isolation time at or after the case's own outcome (recovery, death, or
 any other terminal [`Transition`](@ref)) still removes the case from
@@ -160,18 +162,17 @@ intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 # isolation (`post_isolation_transmission > 0`) only reduces transmission, which
 # the window cannot express, so it contributes no removal in that setting.
 #
-# A window cannot reopen once closed (see `_route_close`): a removal whose
-# release falls inside an already-open window still closes it for good,
-# exactly as before `isolation_duration` existed. A finite duration instead
-# fixes the removal that never meets an open window at all: a quarantine set,
-# and released, before the case was even infected
-# (`_removal_lapsed_before_infection`) contributes no removal, so it cannot
-# shut a window for an infection acquired later through another route.
-# The per-contact `competing_risk` below is release-aware throughout, on every
-# transmission model.
+# A window cannot reopen once closed (see `_route_close`), so a removal that is
+# due to lapse — whether before the case was even infected or partway through
+# an already-open window — must not close it at all: closing it at the
+# isolation time would take the case out of transmission for good, when the
+# removal itself only takes it out until the release. The per-contact
+# `competing_risk` below is release-aware throughout, on every transmission
+# model, so it is what blocks the isolated interval instead; the window closes
+# here only for a removal with no release to leave it for.
 function infectious_removal_time(iso::Isolation, ind::Individual)
     iso.post_isolation_transmission == 0 || return Inf
-    _removal_lapsed_before_infection(ind) && return Inf
+    isfinite(isolation_release_time(ind)) && return Inf
     return isolation_time(ind)
 end
 
