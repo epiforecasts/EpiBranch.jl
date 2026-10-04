@@ -124,6 +124,17 @@ data = network_infections(state, model)
 loglikelihood(data, model)
 ```
 
+A per-edge vector of distributions does not take a `calendar` schedule. To apply
+one, look the pair's distribution up inside a `PairKernel` callback and pass the
+schedule there:
+
+```julia
+edges = [[Exponential(1.0), Exponential(2.0)] for _ in adjacency]
+PairKernel(context -> edges[context.infector][findfirst(==(context.susceptible),
+        adjacency[context.infector])];
+    calendar = Steps([policy_day], [before_rate, after_rate]))
+```
+
 Replace `NetworkProcess(adjacency, kernel)` with `HouseholdProcess([3], kernel)`
 and extract `household_infections` to use the same policy in a household model.
 Both likelihoods condition on the observed start of each infectious period. A
