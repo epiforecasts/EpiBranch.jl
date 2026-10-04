@@ -66,15 +66,11 @@ downstream packages should pick names that do not collide.
 | `:group` | `Int` | — | `groups` | Init |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
-| `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
-| `:isolation_unrecorded` | `Bool` | `false` | `Isolation` | `resolve_individual!`; the isolation removes the case from transmission without counting as a detection |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff; may precede onset, so hold it back to onset |
 | `:trace_time` | `Float64` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
-| `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` / `trace_contacts!` |
-| `:ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!` |
 | `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | Post-simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
@@ -174,7 +170,7 @@ counts as a detection is a separate question, answered by `is_isolated`, which
 answers no for an isolation at or after [`outcome_time`](@ref), since a
 self-report or trace reaching a case that has already recovered or died
 describes a detection that did not happen; it then sets
-`:isolation_unrecorded` and leaves the removal in place. The eligibility makes
+`:_isolation_unrecorded` and leaves the removal in place. The eligibility makes
 that call through [`EpiBranch.records_isolation`](@ref): override it for a
 policy that does record a late detection, such as a death found at burial.
 
@@ -196,6 +192,14 @@ Built-in keys use short bare names like `:isolated`, `:traced`, `:age`, and
 those names are reserved. If you add keys from another package, prefix them
 with a short tag for your package so they do not collide with built-ins or
 with keys other packages might add.
+
+A key an intervention keeps purely for its own bookkeeping — provenance such
+as `Isolation`'s `:_isolated_by_isolation`, or a stash such as its
+`:_isolation_time_before_isolation` — starts with an underscore, as
+[`EpiBranch._action_cache`](@ref)'s `:_intervention_actions` does. [`linelist`](@ref)
+drops every key with that prefix, so none of it reaches line-list output; a
+key without the prefix becomes a column once a composed component writes it,
+whether or not the package anticipated it.
 
 State that belongs to a whole run, such as an index an intervention builds once
 and reuses, goes in `state.scratch`, a `Dict` on the
