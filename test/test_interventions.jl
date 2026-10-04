@@ -757,6 +757,38 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test isolation_release_time(ind) == 24.0
     end
 
+    @testset "A standing start that wins keeps its own detection status" begin
+        # The standing removal is not recorded as a detection because it starts
+        # after the case's own outcome. An isolation layering under it must not
+        # turn it into one by asking its eligibility about a start the combine
+        # discarded.
+        mkstate() = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+        ind = Individual(id = 1, infection_time = 0.0)
+        ind.state[:onset_time] = 4.0
+        ind.state[:test_positive] = true
+        ind.state[:outcome_time] = 8.0
+
+        late = Isolation(
+            onset_to_isolation_delay = Dirac(16.0), isolation_duration = Dirac(14.0)
+        )
+        EpiBranch.resolve_individual!(late, ind, mkstate())
+        @test isolation_time(ind) == 20.0
+        @test !is_isolated(ind)                      # after the outcome: no detection
+
+        early = Isolation(
+            onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(2.0)
+        )
+        EpiBranch.resolve_individual!(early, ind, mkstate())
+        # The earlier interval [5, 7) does not meet [20, 34), so the standing
+        # removal is kept, and with it its unrecorded status.
+        @test isolation_time(ind) == 20.0
+        @test isolation_release_time(ind) == 34.0
+        @test !is_isolated(ind)
+    end
+
     @testset "A zero-length removal removes nobody on either engine" begin
         # A day-resolution duration can legitimately draw 0, so it is accepted
         # and means no removal: the generation engine needs

@@ -304,6 +304,7 @@ function _isolate!(iso::Isolation, individual, state, time)
     start, release = time, time + duration
     # A removal already standing is layered under this one by the same rule the
     # trace path uses, so neither side's release is lost.
+    was_unrecorded = _isolation_unrecorded(individual)
     if _isolation_in_force(individual)
         start, release = _combine_removal(
             isolation_time(individual), isolation_release_time(individual),
@@ -312,7 +313,11 @@ function _isolate!(iso::Isolation, individual, state, time)
     end
     set_isolated!(individual, start; release_time = release)
     individual.state[:_isolated_by_isolation] = true
-    records_isolation(iso.eligibility, individual, state, time) ||
-        (individual.state[:_isolation_unrecorded] = true)
+    # Whether this counts as a detection is a question about the start in
+    # force, so a standing start that won keeps its own answer, and only an
+    # isolation starting here is put to this eligibility.
+    unrecorded = start == time ?
+        !records_isolation(iso.eligibility, individual, state, start) : was_unrecorded
+    unrecorded && (individual.state[:_isolation_unrecorded] = true)
     return nothing
 end
