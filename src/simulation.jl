@@ -208,20 +208,21 @@ function _warn_ignored_termination(
     # applies it in full. One that does not is reported by name, and separately
     # when a time bound of its own was still applied, so a rule that is only
     # half honoured does not read as having done nothing.
+    partial = ""
     if stopping_rules !== nothing
         unapplied = filter(r -> !honoured_without_should_stop(r), stopping_rules)
         inert = _rule_names(filter(r -> !isfinite(time_bound(r)), unapplied))
         partial = _rule_names(filter(r -> isfinite(time_bound(r)), unapplied))
         isempty(inert) || push!(ignored, "stopping_rules ($inert)")
-        isempty(partial) || push!(
-            ignored, "every condition but the time bound of $partial"
-        )
     end
-    isempty(ignored) && return nothing
-    @warn "$(nameof(typeof(model))) runs to extinction or `max_time` over its " *
-        "fixed population and ignores the other termination controls; " *
-        "$(join(ignored, ", ")) had no effect (only n_initial, max_time and " *
-        "condition apply)."
+    (isempty(ignored) && isempty(partial)) && return nothing
+    msg = "$(nameof(typeof(model))) runs to extinction or `max_time` over its " *
+        "fixed population and ignores the other termination controls"
+    isempty(ignored) || (msg *= "; $(join(ignored, ", ")) had no effect")
+    # A rule that bounds time and tests something else had half an effect, so
+    # it is reported apart from the controls that had none.
+    isempty(partial) || (msg *= "; of $partial only the time bound applied")
+    @warn msg * " (only n_initial, a time bound and condition apply)."
     return nothing
 end
 
