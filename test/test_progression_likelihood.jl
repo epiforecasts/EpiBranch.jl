@@ -149,7 +149,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test loglik(1.0, 3.5) == -Inf
     end
 
-    @testset "a shared-draw group scores the bucket its draw selected" begin
+    @testset "a shared-draw group keeps the bucket its draw selected" begin
         # The bucket's width is the probability of selecting it, which a run's
         # 0 or 1 hides: without it the case-fatality ratio would reach the
         # likelihood only through the delays.
@@ -185,7 +185,37 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
             log(0.36) + logpdf(Exponential(3.0), 3.0)
     end
 
-    @testset "a shared-draw group below 1 scores its shortfall once" begin
+    @testset "a group still partitions a case an abort cut short" begin
+        # The undo restores what a transition recorded and leaves the uniform
+        # its group shares, so the sibling after it reads the same draw rather
+        # than a fresh one. Without that, the second sibling occurs on three
+        # quarters of these cases instead of its own half, and the likelihood
+        # has no draw to read.
+        first_p, second_p = exclusive_probabilities([0.5, 0.5])
+        progression = EpiBranch.AbstractClinicalTransition[
+            Transition(:first_step, from = :infection, delay = 5.0, probability = first_p),
+            Transition(:second_step, from = :infection, delay = 0.1, probability = second_p),
+        ]
+        spec = ModelSpec(BranchingProcess(Poisson(0.0)); progression = progression)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(0.0)), progression, NoAttributes(), StableRNG(7)
+        )
+        second = 0
+        n = 2000
+        for _ in 1:n
+            ind = Individual(id = 1, infection_time = 0.0)
+            ind.state[:infected] = true
+            EpiBranch.abort_infection!(ind, 1.0)
+            EpiBranch.resolve_transitions!(state, ind)
+            second += ind.state[:second_step]::Bool
+            # The first step always lands past the abort, so it is undone; the
+            # likelihood still reads the group's draw.
+            @test isfinite(progression_loglik(spec, [ind]))
+        end
+        @test isapprox(second / n, 0.5; atol = 0.04)
+    end
+
+    @testset "a shared-draw group below 1 holds its shortfall once" begin
         # A group whose probabilities leave room is the one case that needs the
         # draw itself: nothing in the individual's own flags says whether the
         # draw selected a sibling or fell past them all.
@@ -209,7 +239,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         neither.state[:onset_time] = 1.0
         neither.state[:hospitalised] = false
         neither.state[:recovered] = false
-        @test_throws ArgumentError progression_loglik(spec, [neither])
+        @test_throws "needs the draw" progression_loglik(spec, [neither])
         neither.state[second_p.key] = 0.9
         @test progression_loglik(spec, [neither]) ≈ log1p(-0.6)
         # A draw that did select a sibling leaves the shortfall out of it.
@@ -251,7 +281,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         # The latent step is censored at the abort; the second step's own
         # anchor was never reached, so it contributes nothing.
         @test progression_loglik(spec, [ind]) ≈ logccdf(Exponential(2.0), 1.5)
-        # With the latent step standing, it scores as it ever did and the
+        # With the latent step standing, it contributes as it ever did and the
         # second step is censored from its own anchor.
         ind.state[:infectious] = true
         ind.state[:infectious_time] = 1.2
@@ -332,7 +362,12 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         for i in eachindex(gates)
             ind.state[Symbol(:step, i)] = false
         end
-        @test progression_loglik(spec, [ind]) == 0.0
+        # The first bucket occurred, so the expected value is its own width and
+        # its delay density — a value a skipped anchor could not give.
+        ind.state[:step1] = true
+        ind.state[:step1_time] = 2.0
+        @test progression_loglik(spec, [ind]) ≈
+            log(0.7) + logpdf(Exponential(1.0), 2.0)
     end
 
     @testset "an aborted run has a finite likelihood" begin
