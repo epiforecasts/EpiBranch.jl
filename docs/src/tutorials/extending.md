@@ -238,6 +238,16 @@ ones your intervention needs (all default to no-ops).
 | `risk_depends_on_infector(iv)` | Before a fixed-size pool with more than one mixing group runs | Nothing | `Bool`: whether `competing_risk` can block a contact differently depending on its infector (default `true` when the type has its own `competing_risk`) |
 | `reads_population_state(iv)` | Before a structure-driven model (e.g. `HouseholdProcess`) decides whether to race each clique separately or put every clique on one shared clock | Nothing | `Bool`: whether delivery can depend on population-wide state such as a running case count or a shared capacity budget (default `true`, conservative) |
 
+`reads_population_state` covers whatever an intervention delegates to, so a
+component or callable you supply counts as part of its owner's answer. A
+built-in intervention asks its own components — `ContactTracing` its
+eligibility, rate, delay and action, `Isolation` its eligibility — each
+defaulting to `false`. An eligibility, rate, delay or action of yours that
+tests a running case count, or any other state beyond the individual being
+resolved, declares `true` for itself, which lifts its owner with it. Giving a
+function-valued parameter such a test leaves nothing to declare, so read the
+count through a component instead.
+
 ### Which hooks run on which engine
 
 The hooks above are not all available everywhere, because the engines are

@@ -778,8 +778,20 @@ function risk_applies(::ContactTracing, route)
     return route !== nothing && INTERVENTION_REMOVAL in route.until
 end
 
-# Tracing reads and writes only the infector's own contacts.
-reads_population_state(::ContactTracing) = false
+# Tracing itself reads and writes only the infector's own contacts, but it
+# hands each decision to a component that receives the whole state, so it
+# answers for those components too. The built-in ones read only the infector
+# or the contact; one written outside the package declares its own read.
+function reads_population_state(ct::ContactTracing)
+    return reads_population_state(ct.eligibility) ||
+        reads_population_state(ct.trace_rate) ||
+        reads_population_state(ct.isolation_to_trace_delay) ||
+        reads_population_state(ct.action)
+end
+reads_population_state(::TraceEligibility) = false
+reads_population_state(::TraceRate) = false
+reads_population_state(::TraceDelay) = false
+reads_population_state(::TraceAction) = false
 
 """Keep uninfected ring members generating contacts so the ring can
 reach contacts-of-contacts. A traced contact with ring budget left
