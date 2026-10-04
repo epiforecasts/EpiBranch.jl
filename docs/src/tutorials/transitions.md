@@ -482,11 +482,17 @@ function EpiBranch.transition_loglik(t::AntiviralTreatment, ind)
     isnan(ot) && return 0.0
     get(ind.state, :reported, false) || return 0.0
     occurred = ind.state[:treated]
-    ll = occurred ? log(t.probability) : log1p(-t.probability)
+    ll = EpiBranch.transition_term(t.probability, t.delay, ind, ot, occurred)
     occurred || return ll
     return ll + logpdf(t.delay, ind.state[:treatment_time] - ot)
 end
 ```
+
+[`EpiBranch.transition_term`](@ref) gives the gate's contribution. Reading
+`t.probability` directly would be wrong for a gate built by
+[`exclusive_probabilities`](@ref), whose siblings share one draw, and for a
+case whose infection was aborted before the transition could take effect; the
+[extending guide](@ref "Extending EpiBranch") spells both out.
 
 That's the whole extension surface. Three ingredients (the shared
 `ind.state` dict, callable probability/delay, optional terminal
