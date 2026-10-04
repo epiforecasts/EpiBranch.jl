@@ -51,6 +51,15 @@ EpiBranch.reads_population_state(::_PopulationIsolationEligibility) = true
 # A vaccination written outside the package, declaring nothing.
 struct _OutsideVaccination <: EpiBranch.AbstractVaccination end
 
+# A rate, a delay and an action that read population-wide state, one per
+# remaining arm of `ContactTracing`'s declaration.
+struct _PopulationRate <: EpiBranch.TraceRate end
+EpiBranch.reads_population_state(::_PopulationRate) = true
+struct _PopulationDelay <: EpiBranch.TraceDelay end
+EpiBranch.reads_population_state(::_PopulationDelay) = true
+struct _PopulationAction <: EpiBranch.TraceAction end
+EpiBranch.reads_population_state(::_PopulationAction) = true
+
 # A distribution that draws and evaluates but reports no support, as the
 # package's own `_TruncatedSkewNormal` does.
 struct _UnboundedDelay <: ContinuousUnivariateDistribution end
@@ -2713,6 +2722,34 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             Isolation(;
                 onset_to_isolation_delay = Exponential(1.0),
                 eligibility = _PopulationIsolationEligibility()
+            )
+        )
+        # A combined eligibility answers for what it wraps, so an operator
+        # cannot drop a component's declaration.
+        @test reads(
+            ContactTracing(
+                OnSymptomOnset() & _PopulationEligibility(), 1.0, Exponential(1.0)
+            )
+        )
+        @test reads(ContactTracing(!_PopulationEligibility(), 1.0, Exponential(1.0)))
+        @test !reads(ContactTracing(OnSymptomOnset() | TraceEveryone(), 1.0, Exponential(1.0)))
+
+        # Each of the other three arms is reached as well.
+        @test reads(
+            ContactTracing(
+                TraceEveryone(), _PopulationRate(), ConstantDelay(Exponential(1.0)),
+                Quarantine()
+            )
+        )
+        @test reads(
+            ContactTracing(
+                TraceEveryone(), ConstantRate(1.0), _PopulationDelay(), Quarantine()
+            )
+        )
+        @test reads(
+            ContactTracing(
+                TraceEveryone(), ConstantRate(1.0), ConstantDelay(Exponential(1.0)),
+                _PopulationAction()
             )
         )
 
