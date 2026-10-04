@@ -1,26 +1,27 @@
-# Contextual and calendar-time pair kernels
+# Covariates and time-varying transmission
 
-[`PairKernel`](@ref) gives a pair-kernel callback information that both a
-simulator and an infection-layer likelihood can supply: the two population IDs,
-the infector's infection time and, optionally, each host's own record. The
-callback returns the contact-interval profile, measured from the infector's
-infectious opening, and optionally a calendar schedule that multiplies the
-rate on the calendar.
+In [network](@ref "Network models") and [household](@ref "Household models")
+models, transmission between two people is described by the contact interval:
+the time from the infector becoming infectious to an infectious contact with
+the other person. Often that interval depends on who the two people are, on
+when contact happens, or on events during the outbreak such as vaccination or a
+change in policy. This page shows how to model each of these, in simulation and
+in the pairwise likelihood.
 
-Use an ordinary `(infector, susceptible)` callable when IDs are sufficient. A
-`PairKernel` selects the richer forms without changing existing callbacks.
-Shared distributions and per-edge distribution vectors keep their existing use.
-That per-edge fast path is not itself calendar-aware: to scale a per-edge
-distribution by a `calendar` schedule, look the pair's distribution up inside a
-`PairKernel` callback instead of passing the vector directly, for example
-`PairKernel(context -> edges[context.infector][findfirst(==(context.susceptible),
-adjacency[context.infector])]; calendar = Steps(...))`.
+The simplest case needs no extra machinery. A callable
+`(infector, susceptible) -> Distribution` gives each ordered pair its own
+contact interval from fixed covariates indexed by population ID, as the
+[households tutorial](@ref "The pairwise likelihood") shows. The rest of this
+page uses [`PairKernel`](@ref) for the cases a callable cannot express: a
+contact interval that depends on the infector's infection date, a contact rate
+that changes on the calendar, and characteristics or events recorded on each
+person during the outbreak.
 
-## Fixed covariates and infection time
+## Covariates and the infector's infection date
 
-Here the mean contact interval depends on a fixed recipient covariate and the
-infector's infection date. The covariate vector is indexed by population ID and
-stays fixed throughout simulation and likelihood evaluation.
+Here the mean contact interval depends on a fixed covariate of the susceptible
+and on the date the infector was infected. The covariate vector is indexed by
+population ID and stays fixed throughout simulation and likelihood evaluation.
 
 ```@example contextual
 using EpiBranch, EpiNetwork, EpiHouseholds, Distributions, Random
@@ -49,10 +50,11 @@ loglikelihood(household_data, household_model)
 ```
 
 `context.infector_infection_time` is the infection date, even when a latent period
-opens the infectious window later. The returned distribution still measures time
-from that window's opening. `context.infector` and `context.susceptible` are IDs;
-`PairContext` contains no live individual or state dictionary. With no `state`
-given to `PairKernel`, the callback takes only this context.
+starts the infectious period later. The returned distribution still measures time
+from the start of the infectious period. `context.infector` and
+`context.susceptible` are population IDs. Without a `state` argument, the callback
+takes only this context. With one, it also receives a record for each of the two
+people, as later sections show.
 
 ## Inference
 
@@ -65,10 +67,9 @@ layout = compile_contact_pairs(network_data)
 pairwise_surv_loglik(kernel, network_data, layout)
 ```
 
-The context preserves the infection time's number type. Forward- and reverse-mode
-automatic differentiation can include both kernel parameters and infection times,
-subject to the chosen distribution's existing differentiation support. Context
-construction uses a small immutable value and leaves the compiled layout unchanged.
+Forward- and reverse-mode automatic differentiation can include both kernel
+parameters and infection times, subject to the chosen distribution's own
+differentiation support.
 
 The lower-level `PairwiseSurvivalData` representation contains counting-process
 rows but lacks infector IDs and their infection dates. Its callable kernels still
@@ -77,11 +78,10 @@ needed information through a row-indexed callback yourself.
 
 ## A policy starting on a calendar day
 
-`calendar`, a [`Steps`](@ref) schedule, multiplies a `PairKernel`'s returned
-profile by a step function of the calendar date — the infector's infectious
-opening plus time elapsed — rather than time since opening. This lets a policy
-change transmission partway through someone's infectious period, including when
-their latent period was sampled during simulation.
+The `calendar` argument multiplies the contact rate by a schedule on the
+calendar. With a [`Steps`](@ref) schedule the multiplier is a step function of
+the date. A policy can then change transmission during someone's infectious
+period, including when their latent period was sampled during simulation.
 
 Suppose the contact rate is 0.4 per day before day 3 and 0.1 afterwards. A flat,
 unit-hazard profile multiplied by a single step at day 3 is exactly this policy:
@@ -97,19 +97,20 @@ kernel = PairKernel(context -> Exponential(1.0);
 ```
 
 The cumulative hazard splits into a segment before the policy day and a segment
-after it, each a scaled difference of the profile's own cumulative hazard, so it
-stays exact whatever the profile.
+after it, and both simulation and the likelihood compute it exactly for any
+profile.
 
 Consider a person who becomes infectious on day 2. By day 4, the cumulative
-hazard is `0.4 × 1 + 0.1 × 1 = 0.5`. The contact interval returned by the adapter
-has exactly that cumulative hazard after two elapsed days:
+hazard is `0.4 × 1 + 0.1 × 1 = 0.5`, and the pair's contact interval has exactly
+that cumulative hazard after two days:
 
 ```@example calendar
 interval = EpiBranch.pair_kernel(kernel, 1, 2, 0.0, 2.0)
 EpiBranch.cumhazard(interval, 2.0)
 ```
 
-The last two arguments are the infector's infection date and infectious opening.
+The last two arguments are the infector's infection date and the start of its
+infectious period.
 The process supplies these automatically. Here is a network simulation with a
 sampled latent period and its infection likelihood:
 
@@ -123,11 +124,22 @@ data = network_infections(state, model)
 loglikelihood(data, model)
 ```
 
+A per-edge vector of distributions does not take a `calendar` schedule. To apply
+one, look the pair's distribution up inside a `PairKernel` callback and pass the
+schedule there:
+
+```julia
+edges = [[Exponential(1.0), Exponential(2.0)] for _ in adjacency]
+PairKernel(context -> edges[context.infector][findfirst(==(context.susceptible),
+        adjacency[context.infector])];
+    calendar = Steps([3.0], [1.0, 0.25]))   # rate falls to a quarter on day 3
+```
+
 Replace `NetworkProcess(adjacency, kernel)` with `HouseholdProcess([3], kernel)`
 and extract `household_infections` to use the same policy in a household model.
-Both likelihoods condition on the observed infectious openings. A compiled layout
-reads those openings again at every evaluation, allowing them to change during
-inference.
+Both likelihoods condition on the observed start of each infectious period. A
+compiled layout reads those times again at every evaluation, allowing them to
+change during inference.
 
 A pair whose schedule differs from the shared one instead returns it from the
 callback, as `(profile = ..., calendar = ...)`, overriding the kernel's own
@@ -143,7 +155,7 @@ covariate_kernel = PairKernel(context ->
 ```
 
 Automatic differentiation through a schedule's rates and breakpoints, and
-through infectious openings, uses the profile's own differentiation support.
+through the start of each infectious period, uses the profile's own differentiation support.
 The tests check forward and reverse derivatives for a step-scaled Weibull
 profile against its analytical likelihood.
 
@@ -169,7 +181,8 @@ seasonal_kernel = PairKernel(context -> Exponential(4.0);
     calendar = Seasonal(0.6, 30.0))
 ```
 
-The cumulative hazard over two days from an opening on day 100 is the integral
+The cumulative hazard over two days from the start of an infectious
+period on day 100 is the integral
 of the multiplier times the profile's constant rate of 0.25 per day:
 
 ```@example calendar
@@ -179,8 +192,8 @@ exact = 0.25 * (2 + 0.6 * 365 / 2π *
 (EpiBranch.cumhazard(seasonal_interval, 2.0), exact)
 ```
 
-Simulation draws contact intervals by inverting that same integrated hazard, so
-the network simulation and its likelihood stay consistent:
+Simulation draws contact intervals by inverting that same integrated hazard,
+which keeps the network simulation consistent with its likelihood:
 
 ```@example calendar
 seasonal_model = ModelSpec(NetworkProcess(adjacency, seasonal_kernel); progression)
@@ -189,16 +202,15 @@ loglikelihood(network_infections(seasonal_state, seasonal_model), seasonal_model
 ```
 
 With a unit-rate profile, `Exponential(1.0)`, the multiplier is the pair's
-hazard on the calendar, so any calendar-time hazard can be written as a
+hazard on the calendar. Any calendar-time hazard can therefore be written as a
 schedule. The schedule's fields are typed so that the likelihood can be
 differentiated through them, as with `Steps`.
 
-## Attributes sampled during simulation
+## Characteristics recorded during simulation
 
-`state` lets a `PairKernel` choose which parts of an individual it reads. Given
-`state`, the callback also takes the pair's two host records, built from the
-usual `PairContext`. Here, each person receives a sampled contact-scale
-attribute:
+The `state` argument selects what the kernel reads from each person. Its
+callback then also receives a record for each of the two people. Here, each
+person receives a sampled contact-scale attribute:
 
 ```@example stateful
 using EpiBranch, EpiNetwork, Distributions, Random
@@ -215,13 +227,13 @@ state = simulate(model; initial_cases = [1], rng = Xoshiro(235))
 
 The rate at which a case infects its contacts can change during its infectious
 period: a post-exposure dose takes effect, or symptoms begin and the case is
-isolated. When the kernel reads one of those dates from the record, the race
-has already drawn when that case's contacts fall, at the rate in force when it
-drew them, and has to draw them again at the new rate. `watches` names the
-records to watch for: the `individual.state` keys the projection reads. Above,
+isolated. When the kernel reads one of those dates from the record, simulation
+has already drawn the times of that case's contacts at the rate in force then,
+and has to draw them again at the new rate. `watches` names the
+records to watch for: the `individual.state` keys the `state` function reads. Above,
 that is the one key the attributes builder sets.
 
-Name every key the projection reads, even one that nothing in this model
+Name every key the `state` function reads, even one that nothing in this model
 writes:
 
 ```@example stateful
@@ -238,7 +250,7 @@ dosed_kernel = PairKernel(
 EpiBranch.watched_records(dosed_kernel)
 ```
 
-A projection that reads no record at all declares `()`. This one scales each
+A `state` function that reads no record at all declares `()`. This one scales each
 person's contact rate by a fixed covariate, indexed by their own id:
 
 ```@example stateful
@@ -251,13 +263,12 @@ EpiBranch.watched_records(by_id_kernel)
 ```
 
 Leave a key out and the contacts keep the rate they were drawn at after the
-record moves, with nothing to report it. Name a key that never moves and the
-race pays one comparison per case. When in doubt, name it.
+record changes, with nothing to report it. Name a key that never changes and
+simulation pays one comparison per case. When in doubt, name it.
 
-After simulation, extract the selected records and use the same callback in the
-likelihood. `record_kernel` copies the projection results into a vector indexed
-by population ID. The likelihood reads those typed records without constructing
-individuals or reading their dictionaries:
+After simulation, extract the records and use the same callback in the
+likelihood. `record_kernel` copies each person's record into a vector indexed
+by population ID:
 
 ```@example stateful
 data = network_infections(state, model)
@@ -270,16 +281,20 @@ For observed data, build `PairKernel(contact_law; state = records)` directly
 from measured covariates. When attributes are latent or contain fitted
 parameters, build that kernel from the current records on each likelihood
 evaluation. The compiled layout can be reused. Records retain their numeric
-types, including AD values. An unrecorded projection raises an error on the
-likelihood path unless the infection layer holds the times it reads, as in the
-next section.
+types, including AD values. A kernel whose records have not been extracted
+raises an error in the likelihood, unless the infection layer holds the times
+it reads, as in the next section.
 
 ## Infectiousness timed from symptom onset
 
-An infector often becomes infectious around its symptom onset, so its contact
-interval depends on its own incubation period. The projection reads the onset
-from the host, and the callback shifts the contact law by the time from
-infection to onset:
+If infectiousness starts at symptom onset, set `from = :onset` on the process
+and add an onset transition to the progression. Simulation and the likelihood
+then both measure the contact interval from each case's onset, and an ordinary
+distribution or callable is enough.
+
+A kernel can also read the onset itself, for a contact rate that depends on it
+in other ways. Here the record holds the onset, and the callback shifts the
+contact interval by the time from infection to onset:
 
 ```@example stateful
 onset_state(ind) = (onset = get(ind.state, :onset_time, NaN),)
@@ -292,11 +307,10 @@ onset_model = ModelSpec(NetworkProcess(adjacency, onset_kernel);
 onset_run = simulate(onset_model; initial_cases = [1], rng = Xoshiro(237))
 ```
 
-Simulation sets each case's onset before it draws that case's contacts, so the
-projection reads the onset directly. In the likelihood, the onsets belong in the
-infection layer: `host_times` records them alongside the infection times, and
-the likelihood applies the same projection to each host as a
-[`LayerHost`](@ref):
+Simulation sets each case's onset before it draws that case's contacts, and the
+record reads it directly. In the likelihood, the onsets belong in the infection
+layer. `host_times` records them alongside the infection times. The likelihood
+then builds the same record for each person as a [`LayerHost`](@ref):
 
 ```@example stateful
 onset_data = network_infections(onset_run, onset_model; host_times = (:onset_time,))
@@ -310,9 +324,9 @@ unchanged.
 ## A policy triggered during an outbreak
 
 Suppose the second case triggers a policy half a day later. The intervention
-records that date on each host, and the kernel's per-pair calendar reads it back
-to switch the rate at that date, so an earlier exposure keeps its original
-hazard:
+records that date on each person. The kernel's per-pair calendar reads it back
+and switches the rate from that date, leaving the hazard of an earlier exposure
+unchanged:
 
 ```@example stateful
 struct TwoCasePolicy <: AbstractIntervention end
@@ -338,25 +352,25 @@ policy_records = record_kernel(policy_kernel, policy_run)
 pairwise_surv_loglik(policy_records, policy_data)
 ```
 
-A contact scheduled before a policy took effect still follows the hazard in
-force once it has: simulation keeps pending contacts consistent with the records
-as they change, and a run whose records never change follows the same
-distribution as an ordinary kernel.
+A contact drawn before a policy took effect still follows the hazard in force
+once it has. Simulation keeps pending contacts consistent with the records as
+they change. A run whose records never change follows the same distribution as
+an ordinary kernel.
 
 A policy can depend on cases in other households. The existing restriction on
 periodic shared capacity budgets still applies.
 
-## History and inference contracts
+## Requirements for simulation and inference
 
 The kernel must define a predictable hazard. An event recorded at time `t` may
 change the hazard at or after `t`; it must preserve the earlier hazard. Store
 dates or event histories instead of using a final vaccinated or quarantined flag
-to change the whole infectious window. Projections and kernel callbacks must be
+to change the whole infectious window. The `state` function and the callback must be
 free of side effects. State updates occur in the existing case-resolution and
 intervention hooks; scheduled future effects must be encoded in the returned
 hazard law.
 
-`record_kernel` extracts the history retained by your projection. It cannot
+`record_kernel` extracts the history your `state` function retains. It cannot
 recover past values that an intervention overwrote. For several changes, retain
 all relevant dates and values and construct a distribution whose hazard follows
 them. An intervention that also contributes a built-in risk must not have that
@@ -370,7 +384,7 @@ policy's trigger date, reconstruct that history at each likelihood evaluation;
 reusing the final simulated dates would fit a different model.
 
 The susceptible's eventual infection time is unknown when simulation chooses its
-contact distribution. Neither projections nor callbacks may read future outcomes
-from an external table. Independent community introductions remain the role of
-`external_hazard`; these kernel adapters change within-network or within-household
-transmission.
+contact distribution. Neither the `state` function nor the callback may read
+future outcomes from an external table. Community introductions from outside the
+network or households are modelled by `external_hazard`. The kernels on this page describe transmission within the
+network or household.
