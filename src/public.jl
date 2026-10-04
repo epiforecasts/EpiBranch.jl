@@ -97,6 +97,11 @@ public ngroups
 public group
 public pairwise_reduce
 
+# Vaccine effect modes: a new mode defines `realised_efficacy`, and overrides
+# `realise_prior_dose!` only to change what a dose recorded before the run gets.
+public realised_efficacy
+public realise_prior_dose!
+
 # Stopping rules: a rule bounds a structure-driven run through `time_bound`,
 # and says through `honoured_without_should_stop` whether such a run, which
 # never consults `should_stop`, applies it in full.

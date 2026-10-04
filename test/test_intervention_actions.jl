@@ -101,7 +101,7 @@ end
         ind = Individual(id = id, state = Dict{Symbol, Any}(:traced => true))
         EpiBranch.initialise_individual!(rv, ind, state)
         set_isolated!(ind, 5.0)
-        unrecorded && (ind.state[:isolation_unrecorded] = true)
+        unrecorded && (ind.state[:_isolation_unrecorded] = true)
         push!(state.individuals, ind)
         return ind
     end

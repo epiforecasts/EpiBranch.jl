@@ -49,8 +49,12 @@ probability `efficacy`. The mode acts on `efficacy` alone: the same dose's
 `onward_efficacy`, apply to responders and non-responders alike. The
 draw is stored alongside the other per-dose state, so it is made once
 and read back at every exposure the individual faces, however many
-there are. `AllOrNothingMode` cannot yet be combined with `waning` (see
-below); a `VaccineEffect` combining them raises an `ArgumentError`.
+there are. A new mode subtypes `AbstractEffectMode` and implements
+[`realised_efficacy`](@ref EpiBranch.realised_efficacy) and
+[`realise_prior_dose!`](@ref EpiBranch.realise_prior_dose!); see the
+Extending guide for a worked example. `AllOrNothingMode` cannot yet be
+combined with `waning` (see below); a `VaccineEffect` combining them raises
+an `ArgumentError`.
 
 `waning` is an optional function `dt -> Real` giving the fraction of
 `efficacy` still in force `dt` time units after immunity develops
@@ -121,6 +125,10 @@ Concrete subtypes:
 - [`AllOrNothingMode`](@ref): a fraction `efficacy` of vaccinated
   individuals are fully protected against infection for all exposures; the
   rest gain no protection against infection (per-individual semantics).
+
+A new mode is two methods, dispatched on it: [`EpiBranch.realised_efficacy`](@ref)
+and [`EpiBranch.realise_prior_dose!`](@ref). See the Extending guide for a
+worked example.
 """
 abstract type AbstractEffectMode end
 
@@ -409,18 +417,33 @@ function initialise_individual!(v::AbstractVaccination, individual, state)
     label = dose_label(v)
     get!(individual.state, _vaccinated_key(label), false)
     get!(individual.state, _vaccination_time_key(label), Inf)
-    _realise_prior_dose!(effect_mode(v), individual, label, state)
+    realise_prior_dose!(effect_mode(v), individual, label, state)
     return nothing
 end
 
-_realise_prior_dose!(::LeakyMode, individual, label, state) = nothing
-function _realise_prior_dose!(mode::AllOrNothingMode, individual, label, state)
+"""
+    realise_prior_dose!(mode::AbstractEffectMode, individual, label, state)
+
+Re-apply [`realised_efficacy`](@ref) to a dose an `attributes` function
+recorded on `individual` before the simulation started, never seen by
+`_record_vaccination!`, so that a dose recorded outside a run gets the same
+per-individual draw one recorded during a run would. Mutates
+`individual.state` in place.
+
+A new mode needs no method of its own: the default applies the mode's own
+[`realised_efficacy`](@ref) to whatever efficacy is already recorded, which is
+what [`AllOrNothingMode`](@ref) needs to turn a raw value into a one-time
+responder draw. [`LeakyMode`](@ref) overrides it to do nothing, since the raw
+efficacy it was given is already the value it stores.
+"""
+function realise_prior_dose!(mode::AbstractEffectMode, individual, label, state)
     key = _vaccine_efficacy_key(label)
     eff = get(individual.state, key, nothing)
     (eff isa Real && 0 < eff < 1) || return nothing
-    individual.state[key] = _realised_efficacy(mode, eff, state.rng)
+    individual.state[key] = realised_efficacy(mode, eff, state.rng)
     return nothing
 end
+realise_prior_dose!(::LeakyMode, individual, label, state) = nothing
 
 """Susceptibility-side risk: blocks the parent → contact transmission
 iff this dose has been administered to the contact and the contact's
@@ -462,11 +485,23 @@ function risk_depends_on_infector(v::AbstractVaccination)
     return _has_own_method(competing_risk, typeof(v), AbstractVaccination)
 end
 
-# The efficacy stored on the contact by `_record_vaccination!`, given the
-# sampled value `eff` (a `Real`, a draw from a `Distribution`, or a call to a
-# function — already resolved by `_sample_value`) and the vaccination's mode.
-_realised_efficacy(::LeakyMode, eff, rng) = eff
-_realised_efficacy(::AllOrNothingMode, eff, rng) = float(rand(rng, Bernoulli(eff)))
+"""
+    realised_efficacy(mode::AbstractEffectMode, eff, rng) -> Real
+
+Turn a dose's sampled `efficacy` `eff` (a `Real`, a draw from a
+`Distribution`, or a call to a function — already resolved by
+`_sample_value`) into the value `_record_vaccination!` stores on the
+contact and `_susceptibility_risk` reads back unchanged at every exposure.
+Called once, when the dose is recorded. [`LeakyMode`](@ref) stores `eff`
+itself, so every exposure is blocked with that same probability;
+[`AllOrNothingMode`](@ref) draws a `Bernoulli(eff)` once, so the stored
+value becomes `1.0` for a responder (certain block once immune) or `0.0`
+for a non-responder (no risk built at all — `_susceptibility_risk` skips a
+non-positive efficacy). A new mode implements this to describe how it
+turns a sampled efficacy into a stored block probability.
+"""
+realised_efficacy(::LeakyMode, eff, rng) = eff
+realised_efficacy(::AllOrNothingMode, eff, rng) = float(rand(rng, Bernoulli(eff)))
 
 # Helper for concrete subtypes: write per-dose state on a contact at
 # vaccination time. Samples efficacy, severity efficacy, and the
@@ -477,21 +512,15 @@ _realised_efficacy(::AllOrNothingMode, eff, rng) = float(rand(rng, Bernoulli(eff
 # time also lets a clinical transition check it without reaching for the
 # vaccination object, which it never sees.
 #
-# `_susceptibility_risk` reads the stored efficacy back unchanged at every
-# exposure, so this is also where the two effect modes part ways. Under
-# `LeakyMode` the sampled efficacy is stored as-is, and every exposure is
-# blocked with that same probability. Under `AllOrNothingMode` a single
-# Bernoulli draw, made here once, decides whether this individual responds: a
-# responder's stored efficacy becomes 1 (certain block once immune) and a
-# non-responder's becomes 0 (no risk built at all — `_susceptibility_risk`
-# skips a non-positive efficacy). `rand(rng, Bernoulli(e))` is what a
-# StochasticAD pass differentiates without bias; a continuous relaxation of
-# the draw would reintroduce leaky semantics.
+# `realised_efficacy` is where the two effect modes part ways (see its
+# docstring); `rand(rng, Bernoulli(e))` there is what a StochasticAD pass
+# differentiates without bias, so a continuous relaxation of that draw would
+# reintroduce leaky semantics.
 function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     label = dose_label(v)
     contact.state[_vaccinated_key(label)] = true
     contact.state[_vaccination_time_key(label)] = vacc_t
-    contact.state[_vaccine_efficacy_key(label)] = _realised_efficacy(
+    contact.state[_vaccine_efficacy_key(label)] = realised_efficacy(
         effect_mode(v), _sample_value(efficacy(v), rng, contact), rng
     )
     contact.state[_immunity_time_key(label)] = vacc_t +

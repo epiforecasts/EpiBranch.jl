@@ -7,6 +7,14 @@ end
 
 EpiBranch.vaccine_effect(v::_TestCampaignVaccination) = v.effect
 
+# An `AbstractEffectMode` defined outside the package (#373): deterministic
+# instead of either `LeakyMode`'s identity or `AllOrNothingMode`'s Bernoulli
+# draw, exercising the two public hooks a new mode needs.
+struct _TestThresholdMode <: AbstractEffectMode
+    threshold::Float64
+end
+EpiBranch.realised_efficacy(mode::_TestThresholdMode, eff, rng) =
+    eff >= mode.threshold ? 1.0 : 0.0
 function EpiBranch.apply_post_transmission!(
         v::_TestCampaignVaccination, state,
         new_contacts
@@ -263,6 +271,28 @@ EpiBranch._realised_efficacy(::_TestBlockedMode, eff, rng) =
         ind = prior(0.5)
         EpiBranch.initialise_individual!(leaky, ind, (; rng = StableRNG(1)))
         @test EpiBranch._vaccine_efficacy(leaky, ind) == 0.5
+    end
+
+    @testset "Custom AbstractEffectMode defined outside the package" begin
+        above = RingVaccination(efficacy = 0.6, mode = _TestThresholdMode(0.5))
+        responder = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+        EpiBranch._record_vaccination!(above, responder, 0.0, StableRNG(1))
+        @test EpiBranch._vaccine_efficacy(above, responder) == 1.0
+
+        below = RingVaccination(efficacy = 0.4, mode = _TestThresholdMode(0.5))
+        non_responder = Individual(id = 3, parent_id = 1, infection_time = 10.0)
+        EpiBranch._record_vaccination!(below, non_responder, 0.0, StableRNG(1))
+        @test EpiBranch._vaccine_efficacy(below, non_responder) == 0.0
+
+        # A dose recorded before the run (via `attributes`) is re-realised too.
+        prior = Individual(
+            id = 1,
+            state = Dict{Symbol, Any}(
+                :vaccinated => true, :vaccination_time => -10.0, :vaccine_efficacy => 0.6
+            )
+        )
+        EpiBranch.initialise_individual!(above, prior, (; rng = StableRNG(1)))
+        @test EpiBranch._vaccine_efficacy(above, prior) == 1.0
     end
 
     @testset "waning has no AllOrNothingMode meaning yet" begin

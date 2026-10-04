@@ -104,7 +104,7 @@ function resolve_individual!(t::Transition, individual, state)
 end
 
 is_terminal(t::Transition) = t.terminal
-_terminal_target(t::Transition) = t.terminal ? t.state : nothing
+terminal_target(t::Transition) = t.terminal ? t.state : nothing
 terminal_certainty(t::Transition) = t.terminal ? _certain_probability(t.probability) : missing
 function terminal_event(t::Transition, individual::Individual{T}) where {T}
     t.terminal || return nothing

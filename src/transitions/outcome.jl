@@ -22,7 +22,7 @@ end
 
 required_fields(r::Recovery) = _from_required(r.from)
 is_terminal(::Recovery) = true
-_terminal_target(::Recovery) = :recovered
+terminal_target(::Recovery) = :recovered
 # No `probability` field at all: unconditional once the anchor is reached.
 terminal_certainty(::Recovery) = true
 
@@ -125,7 +125,7 @@ end
 
 required_fields(d::Death) = _from_required(d.from)
 is_terminal(::Death) = true
-_terminal_target(::Death) = :died
+terminal_target(::Death) = :died
 terminal_certainty(d::Death) = _certain_probability(d.probability)
 
 function initialise_individual!(::Death, individual, state)

@@ -17,13 +17,17 @@ Built-in rules:
 - [`MaxTime`](@ref) — stop when the maximum infection time crosses a
   threshold.
 
-User extensions are a single method:
+User extensions are a single method, qualified with `EpiBranch.` (or
+reached via `import EpiBranch: should_stop`) so it adds to this function
+rather than shadowing it with a new one of the same name, and with
+`state` typed `::SimulationState` so it doesn't clash with the default
+method above:
 
 ```julia
 struct MaxChainLength <: AbstractStoppingRule
     n::Int
 end
-should_stop(r::MaxChainLength, state) =
+EpiBranch.should_stop(r::MaxChainLength, state::SimulationState) =
     maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
 ```
 
@@ -34,6 +38,7 @@ should also be able to end such a run overrides
 reaching that bound is the whole of what the rule tests, it also declares
 [`honoured_without_should_stop`](@ref EpiBranch.honoured_without_should_stop),
 so such a run does not report it as ignored.
+See the Extending guide for a worked example.
 """
 abstract type AbstractStoppingRule end
 
