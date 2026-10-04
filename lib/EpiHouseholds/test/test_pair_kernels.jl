@@ -11,7 +11,10 @@ function EpiBranch.resolve_individual!(::RecordKernelClock, ind, state)
 end
 
 @testset "Live kernels share one household clock" begin
-    kernel = PairKernel((c, a, b) -> Exponential(1.0); state = _ -> nothing)
+    kernel = PairKernel(
+        (c, a, b) -> Exponential(1.0);
+        state = ind -> (tick = get(ind.state, :tick, 0)::Int,), watches = (:tick,)
+    )
     model = ModelSpec(
         HouseholdProcess([2, 2], kernel);
         progression = [Transition(:recovered; delay = 10.0, terminal = true)],
@@ -29,12 +32,17 @@ end
     @test count(i -> get(i.state, :index, false), default.individuals[3:4]) == 1
 end
 
-@testset "Without interventions live kernels keep separate household races" begin
-    # Nothing can move a record mid-run, so neither redrawing nor a shared
-    # clock is needed and the run must match an ordinary kernel exactly.
-    project(ind) = (tag = get(ind.state, :tag, 0.0)::Float64,)
+@testset "A kernel watching no record keeps separate household races" begin
+    # A projection reading no state key has nothing that can move, so neither
+    # redrawing nor a shared clock is needed and the run must match an ordinary
+    # kernel exactly.
+    scales = fill(2.0, 7)
+    by_id(ind) = (scale = scales[ind.id],)
     progression = [Transition(:recovered; delay = 4.0, terminal = true)]
-    kernels = (Exponential(2.0), PairKernel((c, a, b) -> Exponential(2.0); state = project))
+    kernels = (
+        Exponential(2.0),
+        PairKernel((c, a, b) -> Exponential(a.scale); state = by_id, watches = ()),
+    )
     for seed in 1:25
         runs = map(kernels) do kernel
             process = HouseholdProcess(
@@ -46,4 +54,35 @@ end
         end
         @test isequal(runs...)
     end
+end
+
+@testset "A watched record puts every household on one clock" begin
+    # Declaring a record is what asks for the shared clock, whether or not an
+    # intervention is the thing that moves it: an attribute builder or a
+    # transition can move one too. One clock seeds and races the households
+    # together, so the stream differs from the separate-clock run while the
+    # outbreak stays the same distribution.
+    project(ind) = (tag = get(ind.state, :tag, 0.0)::Float64,)
+    progression = [Transition(:recovered; delay = 4.0, terminal = true)]
+    household_run(watches, seed) = simulate(
+        ModelSpec(
+            HouseholdProcess(
+                [2, 3, 2],
+                PairKernel(
+                    (c, a, b) -> Exponential(2.0); state = project, watches = watches
+                ); external_hazard = 0.1, obs_end = 10.0
+            );
+            progression = progression
+        );
+        rng = StableRNG(seed)
+    )
+    times(state) = [i.infection_time for i in state.individuals]
+    @test any(
+        !isequal(times(household_run((:tag,), seed)), times(household_run((), seed)))
+            for seed in 1:5
+    )
+    means = map(((:tag,), ())) do watches
+        mean(household_run(watches, seed).cumulative_cases for seed in 1:400)
+    end
+    @test isapprox(means[1], means[2]; atol = 0.25)
 end
