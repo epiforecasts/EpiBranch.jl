@@ -259,6 +259,12 @@ every sibling reads the same value. The case's draw lands in exactly one of the
 proportions, with no case counted twice and none dropped except by design
 (see below).
 
+Assign each gate to its sibling's `probability` as it comes. A gate wrapped in
+a callable of your own is a plain 0-or-1 probability to the rest of the
+package: the likelihood reads that instead of the bucket's width, and an
+aborted infection drops the group's draw. Fold a per-individual modifier into
+`ps` instead of around the gate.
+
 `ps` must be non-negative and sum to at most `1`; a shortfall between
 `sum(ps)` and `1` is the (intentional) probability that none of the siblings
 occurs — pair it with an unconditional terminal transition, or expect some
@@ -309,8 +315,13 @@ end
 
 # The state keys a transition reads that belong to a group of siblings rather
 # than to itself, which an aborted infection's undo therefore keeps. Only a
-# shared-draw gate has one.
-_shared_draw_keys(::AbstractClinicalTransition) = ()
+# shared-draw gate has one, so this asks the transition's own gate — including
+# a custom transition's, which keeps it under `probability` as every documented
+# one does. A transition holding its gate anywhere else declares its own
+# method.
+function _shared_draw_keys(t::AbstractClinicalTransition)
+    return hasproperty(t, :probability) ? _shared_draw_keys(t.probability) : ()
+end
 _shared_draw_keys(g::_ExclusiveGate) = (g.key,)
 _shared_draw_keys(probability) = ()
 

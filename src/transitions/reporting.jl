@@ -28,7 +28,6 @@ Base.@kwdef struct Reporting{D, P, F} <: AbstractClinicalTransition
     probability::P = 1.0
     from::F = :onset_time
 end
-_shared_draw_keys(t::Reporting) = _shared_draw_keys(t.probability)
 
 required_fields(r::Reporting) = _from_required(r.from)
 

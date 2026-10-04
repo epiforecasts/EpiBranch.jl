@@ -31,7 +31,6 @@ Base.@kwdef struct Hospitalisation{D, P, F} <: AbstractClinicalTransition
     probability::P = 0.2
     from::F = :onset_time
 end
-_shared_draw_keys(t::Hospitalisation) = _shared_draw_keys(t.probability)
 
 required_fields(h::Hospitalisation) = _from_required(h.from)
 

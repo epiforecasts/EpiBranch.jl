@@ -1,5 +1,26 @@
 using ForwardDiff
 
+# A custom transition that gates itself, in the shape the extending guide
+# documents: its own keys, its gate under `probability`.
+struct _GatedVisit{P} <: EpiBranch.AbstractClinicalTransition
+    delay::Float64
+    probability::P
+end
+function EpiBranch.initialise_individual!(::_GatedVisit, ind, state)
+    ind.state[:visited] = false
+    ind.state[:visit_time] = Inf
+    return nothing
+end
+function EpiBranch.resolve_individual!(t::_GatedVisit, ind, state)
+    time = EpiBranch.transition_time(
+        state.rng, ind, ind.infection_time, t.delay; probability = t.probability
+    )
+    time === nothing && return nothing
+    ind.state[:visited] = true
+    ind.state[:visit_time] = time
+    return nothing
+end
+
 # A transition with no `transition_loglik` method of its own, as one
 # written before `progression_loglik` existed.
 struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
@@ -211,6 +232,32 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
             # The first step always lands past the abort, so it is undone; the
             # likelihood still reads the group's draw.
             @test isfinite(progression_loglik(spec, [ind]))
+        end
+        @test isapprox(second / n, 0.5; atol = 0.04)
+    end
+
+    @testset "a custom transition's group partitions an aborted case too" begin
+        # The undo asks the transition for the records that belong to its
+        # group, so a custom transition holding its gate under `probability`,
+        # as every documented one does, keeps the draw exactly as a built-in
+        # does. Wiring this to the built-in types alone left the split broken
+        # at three quarters for anyone else.
+        first_p, second_p = exclusive_probabilities([0.5, 0.5])
+        progression = AbstractClinicalTransition[
+            _GatedVisit(5.0, first_p),
+            Transition(:second_step, from = :infection, delay = 0.1, probability = second_p),
+        ]
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(0.0)), progression, NoAttributes(), StableRNG(7)
+        )
+        second = 0
+        n = 2000
+        for _ in 1:n
+            ind = Individual(id = 1, infection_time = 0.0)
+            ind.state[:infected] = true
+            EpiBranch.abort_infection!(ind, 1.0)
+            EpiBranch.resolve_transitions!(state, ind)
+            second += ind.state[:second_step]::Bool
         end
         @test isapprox(second / n, 0.5; atol = 0.04)
     end

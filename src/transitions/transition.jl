@@ -50,7 +50,6 @@ struct Transition{D, P, F} <: AbstractClinicalTransition
     from::F
     terminal::Bool
 end
-_shared_draw_keys(t::Transition) = _shared_draw_keys(t.probability)
 
 function Transition(
         state::Symbol; delay = nothing, rate = nothing,
