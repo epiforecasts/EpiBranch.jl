@@ -33,7 +33,10 @@ test_continuous_vaccine_actions(k -> HouseholdProcess([4], k))
                 ),
             )
 
-        @test_throws ArgumentError simulate(build(process, wrap(rv)); rng = StableRNG(32))
+        # A periodic budget is shared across households, which the one clock
+        # a `CapacityConstrained` now asks for makes chronological.
+        state = simulate(build(process, wrap(rv)); rng = StableRNG(32))
+        @test count(is_vaccinated, state.individuals) >= 1
         state = simulate(build(HouseholdProcess([3], (i, j) -> Dirac(2.0)), wrap(rv)); rng = StableRNG(32))
         @test count(is_vaccinated, state.individuals) >= 1
     end
