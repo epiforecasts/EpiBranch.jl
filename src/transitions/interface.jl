@@ -18,7 +18,11 @@ transition that declared itself terminal) and assigns `:outcome` and
 are the built-in pair, but the framework is open: a user-defined
 `LostToFollowUp`, `MovedAway`, or disease-specific terminal state plugs
 in by adding the same two methods and dropping the struct into the
-transitions vector. Competing-risks arbitration handles the rest.
+transitions vector. Competing-risks arbitration handles the rest. Also
+implement [`terminal_target`](@ref) so a window's `until`-coverage check
+can see the new terminal state (see the Extending guide for a worked
+example); without it, the check simply cannot tell the state apart from
+one no transition reaches.
 
 See also [`AbstractIntervention`](@ref) — transitions are the clinical
 analogue: where interventions are policy applied to a case, transitions
@@ -39,14 +43,18 @@ resolve_individual!(::AbstractClinicalTransition, individual, state) = nothing
 """Whether this transition is terminal (i.e. ends the case). Default: false."""
 is_terminal(::AbstractClinicalTransition) = false
 
-# The state label a terminal transition writes, known without an individual
-# (unlike `terminal_event`, which needs one to resolve the *time*). Used only
-# by the `until`-coverage check in branching_process.jl; a transition that
-# does not override this is simply not checkable there, so a custom terminal
-# transition written to the `is_terminal`/`terminal_event` contract above
-# without also adding this is silently exempt from that check. Not part of
-# the transition interface documented in `extending.md`.
-_terminal_target(::AbstractClinicalTransition) = nothing
+"""
+    terminal_target(transition::AbstractClinicalTransition) -> Union{Nothing, Symbol}
+
+The state label a terminal transition writes, known without an
+individual (unlike [`terminal_event`](@ref), which needs one to resolve
+the *time*). The `until`-coverage check in a process's progression
+validation reads this to warn when a terminal state is missing from a
+window's `until`; a terminal transition that does not override this
+(default `nothing`) is simply not checkable there and stays silently
+exempt from that warning. Non-terminal transitions never need it.
+"""
+terminal_target(::AbstractClinicalTransition) = nothing
 
 """
     terminal_event(transition, individual) -> Union{Nothing, Tuple{Float64, Symbol}}

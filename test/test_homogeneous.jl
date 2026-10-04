@@ -87,6 +87,21 @@ function EpiBranch.resolve_individual!(::RouteSelectedBlock, ind, state)
     return (ind.state[:route_block_resolved] = true)
 end
 
+# A terminal clinical transition written outside the package (#373):
+# declares `terminal_target` alongside `is_terminal`/`terminal_event`, so
+# the `until`-coverage check can see it the same way it sees `Death`/`Recovery`.
+struct LostToFollowUp <: EpiBranch.AbstractClinicalTransition end
+EpiBranch.is_terminal(::LostToFollowUp) = true
+EpiBranch.terminal_target(::LostToFollowUp) = :lost
+function EpiBranch.resolve_individual!(::LostToFollowUp, ind, state)
+    ind.state[:lost_time] = 3.0
+    return nothing
+end
+function EpiBranch.terminal_event(::LostToFollowUp, individual)
+    t = get(individual.state, :lost_time, Inf)
+    return isfinite(t) ? (t, :lost) : nothing
+end
+
 @testset "HomogeneousProcess (Sellke fixed pool)" begin
     @testset "Pool risk selection preserves other intervention hooks" begin
         process = HomogeneousProcess(; transmission_rate = 20.0, population_size = 20)
@@ -1158,5 +1173,20 @@ end
                 Death(delay = Exponential(5.0), probability = 0.3),
             ]
         )
+        # A terminal transition defined outside the package (`LostToFollowUp`)
+        # is checked the same way once it declares `terminal_target`: missing
+        # from `until` warns, and adding it silences the warning.
+        lost = [
+            Transition(:recovered; from = :infection, delay = 1.0, terminal = true),
+            LostToFollowUp(),
+        ]
+        @test_logs (:warn, r":lost") match_mode = :any ModelSpec(
+            process; progression = lost
+        )
+        covered_lost = HomogeneousProcess(;
+            transmission_rate = 2.0, population_size = 200,
+            until = (:recovered, :died, :isolated, :lost)
+        )
+        @test_logs ModelSpec(covered_lost; progression = lost)
     end
 end
