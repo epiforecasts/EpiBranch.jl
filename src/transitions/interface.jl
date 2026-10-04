@@ -108,15 +108,12 @@ end
 # generation methods, so a callable that actually draws from its `rng`
 # argument (rather than merely accepting it, as every deterministic
 # per-individual gate does) fails loudly here instead of drawing a fresh,
-# uncontrolled value and silently caching it on the individual — which is
-# what `exclusive_probabilities`' shared-draw gate does when evaluated against
-# an individual that lacks the cached draw from a prior `resolve_individual!`
-# call.
+# uncontrolled value and silently caching it on the individual.
 struct _NoRandRNG <: Random.AbstractRNG end
 
 # One bucket of a shared draw: the transition is selected when `lo <= u < hi`.
 # Returning 0.0/1.0 (rather than deciding directly) keeps this a `probability`
-# like any other, so it composes with `_transition_selected`'s own
+# callable like any other, so it composes with `_transition_selected`'s own
 # `rand(rng) < p` unchanged — that draw is now deterministic, since `u` alone
 # decided the outcome. A type rather than a closure, so the likelihood can read
 # the bucket's width: the probability the shared draw selects it, which a run's
@@ -126,7 +123,7 @@ struct _ExclusiveGate{T <: Real}
     lo::T
     hi::T
     total::T
-    owns_shortfall::Bool   # the one bucket that scores the group's shortfall
+    owns_shortfall::Bool   # the one bucket that holds the group's shortfall
 end
 function (g::_ExclusiveGate)(rng, ind)
     u = get!(() -> rand(rng), ind.state, g.key)
@@ -163,10 +160,23 @@ function _probability_loglik(probability, passed, ind)
     return passed ? log(p) : log1p(-p)
 end
 
-# A transition's own term, given whether it happened: the gate either way, plus
-# the delay density at the time it did. An abort is the exception, and every
-# built-in routes through here so the exception is written once.
-function _transition_term(probability, delay, ind, anchor, occurred)
+"""
+    transition_term(probability, delay, individual, anchor, occurred)
+
+A transition's gate term for [`transition_loglik`](@ref
+EpiBranch.transition_loglik), given whether the transition happened: the
+log-probability of the gate either way, to which the caller adds the delay
+density when it did.
+
+Call it rather than reading `probability` directly. It handles the two cases a
+custom transition would otherwise get wrong: a gate built by
+[`exclusive_probabilities`](@ref) contributes the width of the bucket its
+group's shared draw selected, not the 0 or 1 the gate itself returns; and a
+transition an abort undid is censored at
+[`infection_aborted_time`](@ref EpiBranch.infection_aborted_time) rather than
+read as a gate that failed.
+"""
+function transition_term(probability, delay, ind, anchor, occurred)
     occurred && return _probability_loglik(probability, true, ind)
     abort = infection_aborted_time(ind)
     isinf(abort) && return _probability_loglik(probability, false, ind)
@@ -254,7 +264,7 @@ proportions, with no case counted twice and none dropped except by design
 occurs — pair it with an unconditional terminal transition, or expect some
 cases to reach no terminal state.
 
-[`progression_loglik`](@ref) treats such a group as one event: the bucket the
+[`progression_loglik`](@ref) evaluates such a group as one event: the bucket the
 draw selected contributes the log of its own width, and the siblings it passed
 over contribute nothing. A group with a shortfall also needs the draw a
 simulation cached, so keep every one of its gates in the `progression`.
@@ -283,7 +293,7 @@ function exclusive_probabilities(ps::AbstractVector{<:Real})
             "exclusive_probabilities needs probabilities summing to at most 1, got $total"
         )
     )
-    # A sum that reaches 1 up to its own rounding leaves no shortfall to score.
+    # A sum that reaches 1 up to its own rounding leaves no shortfall at all.
     shortfall = total < 1 - slack
     key = gensym(:exclusive_draw)
     bounds = cumsum(ps)
@@ -300,7 +310,7 @@ end
 # A shared draw is one event, so the bucket it selected holds the whole gate
 # term and the siblings it passed over say nothing more. The group's shortfall
 # — the probability that it selected none of them, when `sum(ps) < 1` — belongs
-# to the group once, so the last bucket is the one that owns it, reading the
+# to the group once, so the last bucket is the one that holds it, reading the
 # draw a simulation cached.
 function _probability_loglik(g::_ExclusiveGate, passed, ind)
     passed && return log(g.hi - g.lo)
@@ -314,10 +324,11 @@ function _exclusive_draw(g::_ExclusiveGate, ind)
     u === nothing && throw(
         ArgumentError(
             "a shared-draw gate needs the draw `resolve_individual!` cached " *
-                "under `:$(g.key)`, which this individual does not hold; a " *
+                "under `:$(g.key)`, which this individual does not hold. A " *
                 "group whose probabilities leave a shortfall, or one censored " *
-                "by an aborted infection, can only be evaluated on simulated " *
-                "individuals"
+                "by an aborted infection, reads that draw, so build the " *
+                "individual through a simulation or give the group " *
+                "probabilities summing to 1"
         )
     )
     return u

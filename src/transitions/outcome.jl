@@ -53,7 +53,7 @@ function transition_loglik(r::Recovery, individual::Individual)
         # No gate of its own, so a candidate is missing only where an abort
         # undid it; anything else rules the individual out.
         isinf(infection_aborted_time(individual)) && return -Inf
-        return _transition_term(1.0, r.delay, individual, anchor, false)
+        return transition_term(1.0, r.delay, individual, anchor, false)
     end
     return _delay_loglik(r.delay, t - anchor)
 end
@@ -151,7 +151,7 @@ function transition_loglik(d::Death, individual::Individual)
     _anchor_ok(anchor) || return 0.0
     t = individual.state[:death_candidate_time]
     candidate = isfinite(t)
-    ll = _transition_term(d.probability, d.delay, individual, anchor, candidate)
+    ll = transition_term(d.probability, d.delay, individual, anchor, candidate)
     candidate || return ll
     return ll + _delay_loglik(d.delay, t - anchor)
 end
