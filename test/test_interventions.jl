@@ -648,6 +648,53 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test is_isolated(earlier)
     end
 
+    @testset "A quarantine keeps the later of the two releases" begin
+        # Two removals, one pair of times to hold them: the combination covers
+        # both, so neither the standing isolation's release nor the trace's can
+        # be dropped by the other winning the start.
+        rng = StableRNG(1)
+
+        # The trace starts earlier but ends earlier too; the standing release
+        # is the one still in force.
+        earlier_start = Individual(id = 1)
+        set_isolated!(earlier_start, 10.0; release_time = 12.0)
+        EpiBranch.apply_trace!(
+            Quarantine(duration = Dirac(2.0)), earlier_start, nothing, 5.0, rng
+        )
+        @test isolation_time(earlier_start) == 5.0
+        @test isolation_release_time(earlier_start) == 12.0
+
+        # The standing isolation keeps the start and the trace the release.
+        later_start = Individual(id = 2)
+        set_isolated!(later_start, 5.0; release_time = 6.0)
+        EpiBranch.apply_trace!(
+            Quarantine(duration = Dirac(4.0)), later_start, nothing, 8.0, rng
+        )
+        @test isolation_time(later_start) == 5.0
+        @test isolation_release_time(later_start) == 12.0
+
+        # A standing isolation that never lapses is not given an end.
+        permanent = Individual(id = 3)
+        set_isolated!(permanent, 10.0)
+        EpiBranch.apply_trace!(
+            Quarantine(duration = Dirac(2.0)), permanent, nothing, 5.0, rng
+        )
+        @test isolation_release_time(permanent) == Inf
+    end
+
+    @testset "A removal duration must be non-negative" begin
+        # A release before its own start reads as no removal on the generation
+        # engine and a permanent one on the continuous-time engines, so it is
+        # refused at the draw rather than left to disagree.
+        rng = StableRNG(1)
+        for bad in (-1.0, NaN)
+            contact = Individual(id = 1)
+            @test_throws ArgumentError EpiBranch.apply_trace!(
+                Quarantine(duration = bad), contact, nothing, 2.0, rng
+            )
+        end
+    end
+
     @testset "A released quarantine does not block a later, unrelated infection" begin
         # Reproduces the bug: a contact traced and quarantined long before it is
         # actually infected, through another route, must not still be carrying
