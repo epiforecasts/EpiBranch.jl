@@ -31,6 +31,13 @@ EpiBranch.should_stop(r::MaxChainLength, state::SimulationState) =
     maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
 ```
 
+The structure-driven (Sellke) models run to extinction or a time bound
+rather than stepping through `should_stop` each generation; a rule that
+should also be able to end such a run overrides
+[`time_bound`](@ref EpiBranch.time_bound), as [`MaxTime`](@ref) does. When
+reaching that bound is the whole of what the rule tests, it also declares
+[`honoured_without_should_stop`](@ref EpiBranch.honoured_without_should_stop),
+so such a run does not report it as ignored.
 See the Extending guide for a worked example.
 """
 abstract type AbstractStoppingRule end
@@ -70,6 +77,38 @@ should_stop(::Extinction, state::SimulationState) = state.extinct
 should_stop(r::MaxCases, state::SimulationState) = state.cumulative_cases >= r.n
 should_stop(r::MaxGenerations, state::SimulationState) = state.current_generation >= r.n
 should_stop(r::MaxTime, state::SimulationState) = state.max_infection_time >= r.t
+
+"""
+    time_bound(rule::AbstractStoppingRule) -> Real
+
+The latest infection time at which `rule` could still want the simulation to
+continue, or `Inf` if the rule places no bound on time. The continuous-time
+(Sellke) models run over a fixed population to extinction or this bound,
+rather than stepping through `should_stop` each generation, so they read this
+trait instead of enumerating the known stopping-rule subtypes. Override it
+alongside `should_stop` for a rule that, like [`MaxTime`](@ref), should be
+able to end such a run; the default `Inf` leaves it unaffected. Default:
+`Inf`.
+"""
+time_bound(::AbstractStoppingRule) = Inf
+time_bound(r::MaxTime) = r.t
+
+"""
+    honoured_without_should_stop(rule::AbstractStoppingRule) -> Bool
+
+Whether a run that never consults [`should_stop`](@ref) still applies `rule` in
+full. The structure-driven (Sellke) models end at extinction or at a time bound
+instead of stepping through `should_stop` each generation, so they apply a rule
+that asks for nothing more: [`Extinction`](@ref), and [`MaxTime`](@ref) through
+its [`time_bound`](@ref EpiBranch.time_bound). A rule that tests anything else
+keeps the default `false` and such a run reports it as ignored, including a
+rule that declares a time bound and tests a case count as well, since only its
+bound is applied. Declaring a time bound is therefore not on its own grounds
+for answering `true`. Default: `false`.
+"""
+honoured_without_should_stop(::AbstractStoppingRule) = false
+honoured_without_should_stop(::Extinction) = true
+honoured_without_should_stop(::MaxTime) = true
 
 """
 Options controlling simulation termination and setup. Contains only

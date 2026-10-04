@@ -25,6 +25,15 @@ function EpiBranch.apply_post_transmission!(
     return nothing
 end
 
+# A third effect mode defined outside the package, as all-or-nothing as
+# `AllOrNothingMode` and so unable to combine with `waning`. Used
+# below to check that `VaccineEffect` rejects the combination through the
+# `supports_waning` trait rather than a hard-coded `AllOrNothingMode` check.
+struct _TestBlockedMode <: AbstractEffectMode end
+EpiBranch.supports_waning(::_TestBlockedMode) = false
+EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
+    float(rand(rng, Bernoulli(eff)))
+
 @testset "VaccineEffect" begin
     @testset "Waning is shared by built-in and custom vaccinations" begin
         decay = dt -> exp(-dt / 30)
@@ -298,6 +307,33 @@ end
         @test VaccineEffect(efficacy = 0.5, waning = decay, mode = LeakyMode()) isa
             VaccineEffect
         @test VaccineEffect(efficacy = 0.5, mode = AllOrNothingMode()) isa VaccineEffect
+    end
+
+    @testset "supports_waning is dispatched, not matched against AllOrNothingMode" begin
+        @test EpiBranch.supports_waning(LeakyMode())
+        @test !EpiBranch.supports_waning(AllOrNothingMode())
+        decay = dt -> exp(-dt / 30)
+        # A third-party mode rejects `waning` the same way, by declaring
+        # itself through the trait rather than requiring a core-level edit.
+        @test_throws ArgumentError VaccineEffect(
+            efficacy = 0.5, waning = decay, mode = _TestBlockedMode()
+        )
+        @test VaccineEffect(efficacy = 0.5, mode = _TestBlockedMode()) isa VaccineEffect
+
+        # The trait reaches the race too: a mode that disallows waning composes
+        # a block that is certain for good, which is what `standing_block`
+        # reports, rather than the race naming `AllOrNothingMode` by type.
+        blocked = RingVaccination(efficacy = 0.5, mode = _TestBlockedMode())
+        @test EpiBranch.standing_block(blocked)
+        @test EpiBranch.standing_block(RingVaccination(efficacy = 1.0, mode = AllOrNothingMode()))
+        @test !EpiBranch.standing_block(RingVaccination(efficacy = 1.0))
+
+        # The likelihood needs each mode's own decomposition, so a mode that
+        # has not given one says so rather than raising a `MethodError` from
+        # inside the mixture.
+        @test_throws ArgumentError EpiBranch._dose_components(
+            _TestBlockedMode(), 0.5, nothing, 0.0
+        )
     end
 
     @testset "Branching process: the two modes agree in distribution" begin

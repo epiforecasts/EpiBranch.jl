@@ -101,3 +101,14 @@ public pairwise_reduce
 # `realise_prior_dose!` only to change what a dose recorded before the run gets.
 public realised_efficacy
 public realise_prior_dose!
+
+# Stopping rules: a rule bounds a structure-driven run through `time_bound`,
+# and says through `honoured_without_should_stop` whether such a run, which
+# never consults `should_stop`, applies it in full.
+public time_bound
+public honoured_without_should_stop
+
+# Vaccine effect modes: whether a mode's protection can be given a `waning`
+# curve, which also tells a continuous-time race whether the block it composes
+# is certain for good.
+public supports_waning
