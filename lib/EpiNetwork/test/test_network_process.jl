@@ -168,7 +168,7 @@ end
 
     @testset "Isolation intervention curtails the outbreak" begin
         # The Isolation *intervention* (not a Transition) now runs on the
-        # continuous-time network path: its resolve_individual! fires in the
+        # continuous-time network path: its resolve_individual! runs in the
         # Sellke race and its isolation time closes the infectious window.
         n = 60
         ring = ring_adjacency(n)

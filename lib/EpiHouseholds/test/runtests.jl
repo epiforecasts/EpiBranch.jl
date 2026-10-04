@@ -173,7 +173,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
 
     @testset "Isolation intervention reduces household spread" begin
         # The Isolation *intervention* runs on the continuous-time household
-        # path: its resolve_individual! fires in the Sellke race and its
+        # path: its resolve_individual! runs in the Sellke race and its
         # isolation time closes the infectious window, cutting secondary cases.
         # Onset comes from a progression transition, anchored on infection time.
         sizes = fill(6, 300)
@@ -611,7 +611,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         @test layout isa HouseholdPairsLayout
         @test !layout.external
         @test length(layout) == length(layout.sus)
-        @test length(layout) > 0                          # there is real spread to score
+        @test length(layout) > 0                          # there is real spread to evaluate
 
         for s in 1.5:0.5:6.0
             @test pairwise_surv_loglik(Exponential(s), data, layout) ≈
@@ -844,7 +844,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         # since neither household-mate is infectious before it is infected — the
         # impossible configuration the issue describes. Conditioning on the
         # earliest infection instead explains member 1 and member 3 from member 2
-        # and gives a finite density, the one scoring member 2 as the index by
+        # and gives a finite density, the one taking member 2 as the index by
         # hand (the documented workaround) also gives.
         data = HouseholdInfections(
             [1, 1, 1], [1.0, 0.2, 2.0], [1.0, 0.2, 2.0],
@@ -883,7 +883,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         @test ext_index.infector == ext_earliest.infector
 
         # a household with a single case has no household-mate to condition
-        # against either way, and both modes score it the same
+        # against either way, and both modes evaluate it the same
         solo = HouseholdInfections([1], [0.0], [0.0], [Inf], [true])
         @test pairwise_surv_loglik(Exponential(3.0), solo) ≈
             pairwise_surv_loglik(
@@ -945,8 +945,8 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         )
     end
 
-    @testset "simulated index cases at time 0 scored with a community hazard" begin
-        # index cases simulated at 0 without a community hazard, scored with one
+    @testset "simulated index cases at time 0 evaluated with a community hazard" begin
+        # index cases simulated at 0 without a community hazard, evaluated with one
         m = ModelSpec(
             HouseholdProcess(fill(4, 300), Exponential(3.0));
             progression = _sir(5.0)

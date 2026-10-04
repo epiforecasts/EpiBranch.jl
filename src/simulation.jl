@@ -1043,7 +1043,7 @@ composing competing risks. Built-in risks (per-individual
 susceptibility, parent infectiousness, population-level susceptibility
 for finite-population models) are applied first; any
 [`competing_risk`](@ref) contributed by an intervention is then applied
-in stack order. A risk that has fired by transmission time blocks
+in stack order. A risk whose event has occurred by transmission time blocks
 transmission with its `block_probability`; transmission succeeds iff no
 risk blocks it.
 
@@ -1139,7 +1139,7 @@ function _builtin_risk_blocks(parent, contact, state, transmission_time)
 end
 
 # The built-in sources the continuous-time models compose. Only one of the five
-# applies there. Two are the generation engine's own and can never fire: an
+# applies there. Two are the generation engine's own and can never apply: an
 # infector on those models has settled and so is infected by construction, and
 # route censoring is the infectious window's job rather than a tag written on a
 # contact. The other two, the per-individual susceptibility and infectiousness,
@@ -1224,7 +1224,7 @@ interval, the pool gives the susceptible a fresh resistance above the pressure
 it has absorbed — so blocking a fraction of the contacts thins the hazard by
 the same fraction. `builtin_blocks` is where the two part company, dropping
 four of the five built-in sources on a continuous-time model: two that cannot
-fire there, and the per-individual susceptibility and infectiousness, which
+apply there, and the per-individual susceptibility and infectiousness, which
 those models already carry in the contact-interval draw and in the pool's
 threshold and force.
 Nothing is drawn from the rng unless a risk actually applies."""

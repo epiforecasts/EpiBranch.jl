@@ -1074,8 +1074,8 @@ connection to that case.
 
 `eligibility` is a [`TraceEligibility`](@ref) policy, exactly as
 [`ContactTracing`](@ref) uses it, but tested against a case itself rather
-than an infector–contact pair: `OnLabConfirmation()` (the default) fires
-once a case in the group has tested positive, `OnSymptomOnset()` fires on
+than an infector–contact pair: `OnLabConfirmation()` (the default) triggers
+once a case in the group has tested positive, `OnSymptomOnset()` triggers on
 suspicion alone, and the boolean operators `&`, `|`, `!` combine them the
 same way. The policy's [`trigger_time`](@ref EpiBranch.trigger_time) sets
 when the group is deemed to have a case in it; `dose_delay` is added on

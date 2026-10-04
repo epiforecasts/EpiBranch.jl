@@ -184,6 +184,7 @@ EpiBranch.competing_risk
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.risk_depends_on_infector
+EpiBranch.standing_block
 EpiBranch.intervention_time
 EpiBranch.reset!
 is_active
@@ -365,7 +366,7 @@ loglikelihood(ChainLengths(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), model)   # interventions/observation read from model
 ```
 
-The vector form of `loglikelihood(::OffspringCounts, ...)` scores each count
+The vector form of `loglikelihood(::OffspringCounts, ...)` evaluates each count
 against its own distribution, for case-level covariates such as `NegBin.(exp.(X * β), k)`.
 Pass `truncated.(offspring, 1, Inf)` for the zero-truncated case (data listing
 only cases with at least one secondary case); `Distributions.truncated`

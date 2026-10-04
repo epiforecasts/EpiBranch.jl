@@ -90,7 +90,7 @@ per-cluster `prob_concluded` vector of "is finished" probabilities to
 `loglikelihood(::ChainSizes, ::Distribution)`.
 
 Data recorded only once a cluster reaches a given size (for example, only
-groups of two or more cases) are scored against a [`MinimumSize`](@ref)
+groups of two or more cases) are evaluated against a [`MinimumSize`](@ref)
 observation, which conditions the likelihood on `N ≥ min_size`.
 
 # Examples

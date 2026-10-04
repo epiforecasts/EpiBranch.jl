@@ -379,7 +379,7 @@ instead and contribute nothing, and the value stays finite. Each is correct for
 what it conditions on.
 
 For fitting, this means a likelihood ratio between "some community transmission"
-and "none" cannot be read off by letting `α` approach zero. Score the two models
+and "none" cannot be read off by letting `α` approach zero. Evaluate the two models
 separately.
 
 The discontinuity is only at that one point, and the density behaves regularly
