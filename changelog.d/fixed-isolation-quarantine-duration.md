@@ -14,7 +14,9 @@ lapses.
 
 On a generation-based process the release ends a per-contact block, so a
 contact after it is not blocked. On the continuous-time (Sellke) models an
-infectious window carries one closing time, so a case isolated during its
-infectious period stays removed for the rest of it; what the release changes
-there is a case whose removal had already lapsed before it was infected,
-which is the case the duration exists for.
+infectious window carries one closing time and cannot reopen, so the release
+spares an infection acquired after a removal had lapsed and nothing else,
+which is the case the duration exists for. Two removals layered on one case
+are held as the interval covering both, and a removal that had lapsed before
+the next one begins is replaced rather than spanned. A duration must be
+positive.

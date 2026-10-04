@@ -60,10 +60,15 @@ function isolation_release_time(ind::Individual{T}) where {T}
 end
 
 # Whether the individual's own isolation or quarantine had already lapsed
-# before their infection, so a continuous-time route window — which cannot
-# open before `infection_time` — never met the removal and should not be shut
-# by it. A route window that opens later still is covered a fortiori, since
-# `isolation_release_time` is evaluated once and does not grow with time.
+# before their infection, so a continuous-time route window never met the
+# removal and should not be shut by it.
+#
+# `infection_time` is the earliest a window can open, which makes this test
+# sound but not complete: a window whose `from` is a later state (a latent
+# period's `:onset`, a funeral route) can open after a removal lapsed and
+# still be shut by it. Closing that gap needs the window's own open time where
+# the decision is made, and `infectious_removal_time` is given the individual
+# alone, so it is a change to that hook rather than to this predicate.
 _removal_lapsed_before_infection(ind::Individual) =
     isolation_release_time(ind) <= ind.infection_time
 
