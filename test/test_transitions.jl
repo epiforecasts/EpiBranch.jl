@@ -152,9 +152,9 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
     end
 
     @testset "Chained transition skips an un-reached (Inf) anchor" begin
-        # Hospitalisation never fires (probability 0), so :admission_time stays
+        # Hospitalisation never occurs (probability 0), so :admission_time stays
         # at its Inf default. A Reporting anchored on :admission_time must not
-        # fire either — an Inf anchor means the upstream state was never
+        # occur either — an Inf anchor means the upstream state was never
         # reached. (Previously the isnan guard let Inf through, reporting the
         # case at time Inf.)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
@@ -189,7 +189,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             if ind.state[:outcome] == :died
                 @test ind.state[:outcome_time] ==
                     ind.state[:death_candidate_time]
-                # And the death candidate fires before any recovery candidate.
+                # And the death candidate's time comes before any recovery candidate's.
                 @test ind.state[:death_candidate_time] <=
                     ind.state[:recovery_candidate_time]
             else
@@ -312,7 +312,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
 
     @testset "Anchor on :test_time via `from`" begin
         # Built-in Reporting anchored on a state key set by a custom
-        # upstream transition. Reporting fires only after Testing wrote
+        # upstream transition. Reporting occurs only after Testing wrote
         # :test_time; the reporting time is test_time + reporting delay,
         # not onset + reporting delay.
         rng = StableRNG(14)
@@ -450,7 +450,7 @@ end
         @test_throws ArgumentError exclusive_probabilities([-0.1, 1.1])
     end
 
-    @testset "exactly one sibling fires, whichever order they resolve in" begin
+    @testset "exactly one sibling occurs, whichever order they resolve in" begin
         ps = [0.2, 0.3, 0.5]
         # Calling the gates in a different order each time checks the shared
         # draw is cached on first use, not on a fixed position in the group.
@@ -459,9 +459,9 @@ end
             gates = exclusive_probabilities(ps)
             ind = Individual(id = 1, infection_time = 0.0)
             order = orders[mod1(seed, length(orders))]
-            fired = [gates[i](StableRNG(seed + i), ind) for i in order]
-            @test count(==(1.0), fired) == 1
-            @test count(==(0.0), fired) == length(ps) - 1
+            occurred = [gates[i](StableRNG(seed + i), ind) for i in order]
+            @test count(==(1.0), occurred) == 1
+            @test count(==(0.0), occurred) == length(ps) - 1
         end
     end
 
@@ -482,7 +482,7 @@ end
         @test isapprox(n_high / N, ps[2]; atol = 0.02)
     end
 
-    @testset "a shortfall below 1 is the probability neither fires" begin
+    @testset "a shortfall below 1 is the probability neither occurs" begin
         ps = [0.3, 0.3]
         n_neither = 0
         N = 20_000

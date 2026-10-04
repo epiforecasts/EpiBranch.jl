@@ -55,6 +55,71 @@ mle_params = NamedTuple(mle.params)
 println("MLE: R=$(round(mle_params.R, digits=2)), k=$(round(mle_params.k, digits=2))")
 ```
 
+### Profile-likelihood intervals
+
+[ProfileLikelihood.jl](https://github.com/SciML/ProfileLikelihood.jl) adds
+confidence intervals to the maximum-likelihood estimate. For each parameter in
+turn it fixes the parameter at a range of values, maximises the likelihood over
+the others, and keeps the values where the log-likelihood lies within 1.92
+(half the 95% quantile of a χ² distribution with one degree of freedom) of its
+maximum. The objective is EpiBranch's `loglikelihood`. Working with
+log R and log k keeps both parameters positive and spreads the profile evenly
+over several orders of magnitude of k.
+
+```@example inference
+using ProfileLikelihood, OptimizationOptimJL
+
+negbin_loglik(θ, data) = loglikelihood(data, NegBin(exp(θ[1]), exp(θ[2])))
+
+function negbin_problem(data)
+    return LikelihoodProblem(
+        negbin_loglik, [0.0, 0.0];
+        data = data,
+        syms = [:log_R, :log_k],
+        f_kwargs = (adtype = AutoForwardDiff(),),
+        prob_kwargs = (lb = log.([0.01, 0.01]), ub = log.([10.0, 100.0]))
+    )
+end
+
+function print_intervals(prob)
+    # `mle` above holds the Turing estimate, so name the package's function in full
+    sol = ProfileLikelihood.mle(prob, Optim.LBFGS())
+    prof = profile(prob, sol; confidence_interval_method = :extrema)
+    for (name, sym) in ((:R, :log_R), (:k, :log_k))
+        ci = get_confidence_intervals(prof, sym)
+        println("$name: $(round(exp(sol[sym]), digits = 2)) (95% CI: " *
+                "$(round(exp(ci.lower), digits = 2))–$(round(exp(ci.upper), digits = 2)))")
+    end
+end
+
+print_intervals(negbin_problem(OffspringCounts(data)))
+```
+
+Both intervals contain the values used to simulate the data (R = 0.8,
+k = 0.5). The same objective works for chain sizes; only the data change:
+
+```@example inference
+# 200 chains from NegBin(R=0.6, k=0.2)
+chain_sizes = rand(StableRNG(1), chain_size_distribution(NegBin(0.6, 0.2)), 200)
+print_intervals(negbin_problem(ChainSizes(chain_sizes)))
+```
+
+The upper end of the interval for k often does not exist. As k grows the
+negative binomial approaches a Poisson distribution and the likelihood levels
+off. With few observations or little overdispersion the profile for k stays
+within 1.92 of its maximum all the way up, and the data cannot rule out Poisson
+offspring. The upper bound on log k in `ub` then caps the profile: set it where
+the offspring distribution is close to Poisson (k = 100 above), and read an
+interval whose upper end equals that bound as "k is at least the lower end".
+With `confidence_interval_method = :extrema` the profile reports the bound in
+this case; the default spline method can return the maximum-likelihood estimate
+as the upper end instead.
+
+A parametric bootstrap gives intervals too: simulate many datasets of the same
+size from the fitted model with `simulate`, refit each one, and take quantiles
+of the refitted estimates. It needs one fit per replicate, and many replicates
+put k at the upper bound.
+
 ### Bayesian estimation
 
 ```@example inference
@@ -71,7 +136,7 @@ println("Posterior k: $(round(mean(chain[:k]), digits=2)) " *
 
 The number of secondary cases a case causes often depends on its own
 characteristics: the setting of exposure, age, or time of infection. Passing a
-vector of distributions, one per observation, scores each count against its
+vector of distributions, one per observation, evaluates each count against its
 own offspring distribution instead of a single shared one:
 
 ```@example inference

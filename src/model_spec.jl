@@ -13,7 +13,7 @@
 # forwards — only the entry points know about the spec.
 
 # Warn when every terminal transition in `progression` is independently gated
-# below certainty: with none that always fires, a case can clear every gate
+# below certainty: with none that always occurs, a case can clear every gate
 # and reach no terminal state at all — `:outcome` stays unset and, on a
 # structure-driven model, the infectious window this case opened never closes
 # (a different symptom of the same gap that `_warn_uncovered_terminal_states`,
@@ -56,7 +56,7 @@ the per-individual `attributes`, and the `observation` model. Each keyword
 defaults to the value already on `process`, so `ModelSpec(process)` wraps it
 faithfully and the keywords override layer by layer.
 
-`simulate(spec)` runs it; `loglikelihood(data, spec)` scores observed `data`
+`simulate(spec)` runs it; `loglikelihood(data, spec)` evaluates observed `data`
 against it. The observations themselves stay outside the spec, as the
 likelihood argument.
 """

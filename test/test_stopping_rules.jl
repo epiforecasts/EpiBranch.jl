@@ -20,7 +20,7 @@ EpiBranch.time_bound(r::CustomTimeBoundRule) = r.t
     @testset "MaxCases stops once cumulative cases reach the cap" begin
         # The engine processes a full generation per step, so cumulative
         # cases can overshoot the cap by one generation's worth of new
-        # infections — we check the rule fired, not that the count is
+        # infections — we check the rule stopped the run, not that the count is
         # tight against the cap.
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))

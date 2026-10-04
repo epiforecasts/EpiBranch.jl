@@ -26,9 +26,13 @@ household_final_size
 ## Pairwise survival likelihood
 
 ```@docs
-ContextualKernel
-CalendarKernel
-StatefulKernel
+PairKernel
+Steps
+EpiBranch.calendar_multiplier
+EpiBranch.next_calendar_break
+EpiBranch.calendar_shape
+EpiBranch.PiecewiseConstantCalendar
+EpiBranch.SmoothCalendar
 record_kernel
 PairContext
 LayerHost
@@ -38,6 +42,9 @@ pairwise_surv_loglik_by_component
 PairwiseSurvivalData
 InfectionLayer
 EpiBranch.infection_likelihood_compatible
+EpiBranch.susceptibility_components
+EpiBranch.susceptibility_host_times
+EpiBranch.HazardScaling
 EpiBranch.contact_structure
 EpiBranch.followup_end
 ContactPairsLayout
@@ -51,6 +58,10 @@ household_infections
 HouseholdInfections
 HouseholdPairsLayout
 compile_household_pairs
+ConditionOn
+RecruitedIndex
+EarliestInfected
+EpiHouseholds.condition_mask
 ```
 
 ### Network likelihood
@@ -111,6 +122,7 @@ IsolationEligibility
 SymptomaticOnly
 AllCases
 EpiBranch.is_eligible_for_isolation
+EpiBranch.records_isolation
 ContactTracing
 TraceEligibility
 OnSymptomOnset
@@ -118,6 +130,7 @@ OnLabConfirmation
 OnIsolation
 TraceEveryone
 TraceNobody
+PreviouslyTraced
 AlwaysEligible
 SymptomaticParent
 NoTracing
@@ -165,6 +178,7 @@ EpiBranch.AbortedInfection
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
+EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
 EpiBranch.traces_contacts
 EpiBranch.supplies_contacts
@@ -173,6 +187,7 @@ EpiBranch.competing_risk
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.risk_depends_on_infector
+EpiBranch.standing_block
 EpiBranch.intervention_time
 EpiBranch.reset!
 is_active
@@ -201,6 +216,9 @@ terminal_event
 exclusive_probabilities
 EpiBranch.resolve_transitions!
 EpiBranch.transition_time
+progression_loglik
+EpiBranch.transition_loglik
+EpiBranch.transition_term
 ```
 
 ## State accessors
@@ -210,6 +228,7 @@ onset_time
 incubation_period
 is_isolated
 isolation_time
+outcome_time
 is_traced
 is_quarantined
 is_vaccinated
@@ -221,6 +240,8 @@ is_infected
 individual_type
 set_isolated!
 clear_isolated!
+EpiBranch.abort_infection!
+EpiBranch.infection_aborted_time
 ```
 
 ## Output
@@ -351,7 +372,7 @@ loglikelihood(ChainLengths(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), model)   # interventions/observation read from model
 ```
 
-The vector form of `loglikelihood(::OffspringCounts, ...)` scores each count
+The vector form of `loglikelihood(::OffspringCounts, ...)` evaluates each count
 against its own distribution, for case-level covariates such as `NegBin.(exp.(X * β), k)`.
 Pass `truncated.(offspring, 1, Inf)` for the zero-truncated case (data listing
 only cases with at least one secondary case); `Distributions.truncated`

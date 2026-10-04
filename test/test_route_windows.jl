@@ -23,6 +23,8 @@ end
 function EpiBranch.competing_risk(p::ProtectTo, parent, contact, state)
     return contact.id == p.id ? Risk(block_probability = 1.0) : nothing
 end
+# The protected contact is fixed at construction, so the block never lifts.
+EpiBranch.standing_block(::ProtectTo) = true
 
 # A custom route predicate can select a route independently of removal.
 struct ProtectOnRoute <: EpiBranch.AbstractIntervention
@@ -55,6 +57,8 @@ end
 function EpiBranch.competing_risk(b::FlatBlock, parent, contact, state)
     return parent === contact ? nothing : Risk(block_probability = b.p)
 end
+# The block reads nothing that changes, so a certain one never lifts.
+EpiBranch.standing_block(::FlatBlock) = true
 
 # The same risk with its arguments typed, as the style guide asks for. The race
 # has to find this method as readily as the untyped one above.
@@ -66,6 +70,18 @@ function EpiBranch.competing_risk(
         state::EpiBranch.SimulationState
     )
     return parent === contact ? nothing : Risk(block_probability = b.p)
+end
+
+# A certain block given as a function rather than a plain number: the value
+# never actually varies, but the race cannot tell that without calling it
+# again, so this is not eligible for the certain-block shortcut `FlatBlock(1.0)`
+# is. It keeps exercising the ordinary redraw path where a test needs a block
+# that always fires without the pair being dropped after the first one.
+struct FunctionBlock <: EpiBranch.AbstractIntervention
+    p::Float64
+end
+function EpiBranch.competing_risk(b::FunctionBlock, parent, contact, state)
+    return parent === contact ? nothing : Risk(block_probability = (rng, p, c, st) -> b.p)
 end
 
 @testset "Route windows" begin
@@ -382,6 +398,17 @@ end
             [Scheduled(FlatBlock(1.0); end_time = 5.0)], 20.0, 1
         )
 
+        # A schedule-gated block of 1 still looks certain at the moment it
+        # fires, but its schedule can end and hand the pair back, so it must
+        # not be read as standing the way an unscheduled `FlatBlock(1.0)` is:
+        # some contacts still get through once the block lapses, where an
+        # unscheduled certain block lets none through at all.
+        @test share(
+            Exponential(1.0), 1.0,
+            [Scheduled(FlatBlock(1.0); end_time = 1.0)]; period = 20.0
+        ) > 0.5
+        @test share(Exponential(1.0), 1.0, [FlatBlock(1.0)]; period = 20.0) == 0.0
+
         # The trait folds into the contact-interval draw.
         @test isapprox(share(Exponential(1.0), 1.0), 1 - exp(-2.0); atol = 0.025)
         for m in (0.5, 0.25)
@@ -482,11 +509,12 @@ end
             1.0, [FlatBlock(0.95)]; period = 20.0
         )
         @test share(Uniform(1.5, 1.9), 0.5) == 1.0
-        @test_throws ArgumentError share(Uniform(0.1, 0.5), 1.0, [FlatBlock(1.0)])
-        @test_throws ArgumentError share(
-            Exponential(1.0), 1.0, [FlatBlock(1.0)];
-            period = Inf
-        )
+        # A block probability of 1 is certain and does not fade, so the race
+        # drops the pair after the first block instead of asking the kernel
+        # again, which is what spares this pair, and the unbounded window
+        # below, the rejection-continuation guard the leaky case above hits.
+        @test share(Uniform(0.1, 0.5), 1.0, [FlatBlock(1.0)]) == 0.0
+        @test share(Exponential(1.0), 1.0, [FlatBlock(1.0)]; period = Inf) == 0.0
         # A degenerate contact interval is the exception: it offers one contact
         # and no more, which a multiplier leaves alone and a risk blocks.
         @test share(Dirac(1.0), 0.5) == 1.0
@@ -688,7 +716,9 @@ end
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
     )
-    interventions = [FlatBlock(1.0)]
+    # A function-valued block, which the race cannot drop the pair for on
+    # sight, so this still exercises the ask-again path.
+    interventions = [FunctionBlock(1.0)]
     EpiBranch.add_individuals!(state, 2, interventions)
     enquiries = Ref(0)
     targets = function (inf, st)
@@ -705,7 +735,37 @@ end
     @test enquiries[] == 2
 end
 
-@testset "Unbounded blocked introductions fail promptly" begin
+@testset "A certain block drops the pair without asking again" begin
+    # Same setup as above, but the block is a plain number: certain and not
+    # subject to change later, so the race stops proposing for the pair after
+    # the first block instead of asking the model for the edge again.
+    rng = StableRNG(11)
+    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(1.0)),
+        prog, NoAttributes(), rng
+    )
+    interventions = [FlatBlock(1.0)]
+    EpiBranch.add_individuals!(state, 2, interventions)
+    enquiries = Ref(0)
+    targets = function (inf, st)
+        enquiries[] += 1
+        return ((2, Exponential(1.0)),)
+    end
+    EpiBranch._sellke_race!(
+        state, [1, 2], rng; targets,
+        from = :infection, until = (:recovered,), interventions,
+        seed! = (best, members, r) -> (best[1] = 0.0)
+    )
+    @test !is_infected(state.individuals[2])
+    @test enquiries[] == 1
+end
+
+@testset "Unbounded blocked introductions stop without asking again" begin
+    # `ProtectTo(1)` is a certain, non-fading block, so the community
+    # introduction is dropped after the first block rather than redrawing
+    # towards a window that never closes — what used to need the
+    # rejection-continuation guard to refuse promptly now never reaches it.
     rng = StableRNG(1)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(0.0), Exponential(1.0)),
@@ -713,12 +773,11 @@ end
     )
     interventions = [ProtectTo(1)]
     EpiBranch.add_individuals!(state, 1, interventions)
-    @test_throws ArgumentError EpiBranch._sellke_race!(
+    @test EpiBranch._sellke_race!(
         state, [1], rng;
         from = :infection, until = (), interventions,
         introduction = (Exponential(1.0), Inf), targets = (i, st) -> (),
         seed! = (best, members, r) -> (best[1] = 1.0)
     )
     @test !is_infected(only(state.individuals))
-    @test state.max_infection_time == 0.0
 end

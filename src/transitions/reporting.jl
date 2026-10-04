@@ -48,3 +48,12 @@ function resolve_individual!(r::Reporting, individual, state)
     individual.state[:reporting_time] = time
     return nothing
 end
+
+function transition_loglik(r::Reporting, individual::Individual)
+    anchor = _resolve_anchor(r.from, individual)
+    _anchor_ok(anchor) || return 0.0
+    occurred = individual.state[:reported]::Bool
+    ll = transition_term(r.probability, r.delay, individual, anchor, occurred)
+    occurred || return ll
+    return ll + _delay_loglik(r.delay, individual.state[:reporting_time] - anchor)
+end

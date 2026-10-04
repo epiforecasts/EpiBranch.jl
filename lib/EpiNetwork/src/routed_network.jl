@@ -22,8 +22,9 @@ Network transmission over several routes at once.
   connect different pairs of the same nodes;
 - `kernel`: the contact-interval distribution along those edges — a shared
   `Distributions.jl` distribution, a callable `(infector, susceptible) ->
-  Distribution` for covariate models, a [`ContextualKernel`](@ref) that also
-  reads the infector's infection time, or a per-edge vector parallel to
+  Distribution` for covariate models, a [`PairKernel`](@ref) without `state`,
+  which also reads the infector's infection time and may carry a calendar
+  schedule, or a per-edge vector parallel to
   `reach`, resolved per pair exactly as on [`NetworkProcess`](@ref). A kernel
   that reads host records is refused: several routes can carry several of them
   and the race is given one set of records to watch, so there is no way to keep
@@ -324,7 +325,7 @@ end
 
 # One route's susceptible targets, each with that route's kernel resolved for
 # the pair: a shared distribution, a per-edge vector, a covariate callable or a
-# `ContextualKernel`, exactly as `NetworkProcess` resolves its edge kernel (see
+# `PairKernel` without `state`, exactly as `NetworkProcess` resolves its edge kernel (see
 # `_resolve_kernel`). A record-reading kernel is refused at construction.
 function _route_targets(w::RouteWindow)
     adjacency, kernel = w.reach, w.kernel

@@ -355,6 +355,18 @@ for it. Without a community hazard the density conditions on index cases, and
 they need no possible infector. The `-Inf` comes with a zero gradient, since
 whether a configuration is possible at all depends on the times alone.
 
+The recruited index need not be the first household member infected, and
+augmenting infection times can move an earlier one onto a household-mate from
+one draw to the next; conditioning on the fixed recruited index then makes that
+draw's configuration impossible.
+`compile_household_pairs(data; condition_on = EarliestInfected())` conditions
+each household on whichever member currently has the lowest infection time
+instead, resolved from `data` on the call. That host can change between draws,
+so this layout has to be recompiled every evaluation rather than reused like
+the one above. Passing `condition_on = EarliestInfected()` to
+`loglikelihood(data, model)` has the same effect without building the layout by
+hand.
+
 ### Fitting a community hazard
 
 A positive `external_hazard` and no community hazard are different conditionings,
@@ -367,7 +379,7 @@ instead and contribute nothing, and the value stays finite. Each is correct for
 what it conditions on.
 
 For fitting, this means a likelihood ratio between "some community transmission"
-and "none" cannot be read off by letting `α` approach zero. Score the two models
+and "none" cannot be read off by letting `α` approach zero. Evaluate the two models
 separately.
 
 The discontinuity is only at that one point, and the density behaves regularly

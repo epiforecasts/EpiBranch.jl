@@ -1,14 +1,14 @@
-# A custom terminal transition with a `probability` field that means
-# something unrelated to its own firing (always fires; the field is read by
-# `terminal_event` only to label its outcome). Defined at module scope
+# A custom terminal transition with a `probability` field that gates nothing:
+# the transition always occurs, and `terminal_event` reads the field only to
+# label the outcome. Defined at module scope
 # because struct definitions can't live inside @testset. Used below to check
 # that `terminal_certainty` is read by dispatch rather than guessed from
 # field layout.
-struct AlwaysFiresRule <: AbstractClinicalTransition
+struct AlwaysOccursRule <: AbstractClinicalTransition
     probability::Float64
 end
-EpiBranch.is_terminal(::AlwaysFiresRule) = true
-function EpiBranch.terminal_event(r::AlwaysFiresRule, individual)
+EpiBranch.is_terminal(::AlwaysOccursRule) = true
+function EpiBranch.terminal_event(r::AlwaysOccursRule, individual)
     return (individual.infection_time + 1.0, r.probability > 0.5 ? :died : :recovered)
 end
 
@@ -83,7 +83,7 @@ end
         # Chain size/length depend only on the offspring law, so composing a
         # progression and attributes (which don't alter the offspring) must
         # leave the analytical likelihood unchanged — only interventions, which
-        # thin transmission, route the score through simulation instead.
+        # thin transmission, route the evaluation through simulation instead.
         bp = BranchingProcess(Poisson(0.8))
         data = ChainSizes([1, 1, 2, 1, 3, 1, 2, 1, 1, 5])
         composed = ModelSpec(
@@ -101,7 +101,7 @@ end
 
         # A structured (depleting) model has no single-type offspring, so the
         # analytical path can't be taken — `single_type_offspring` throws and the
-        # score falls through to simulation.
+        # evaluation falls through to simulation.
         @test_throws ArgumentError single_type_offspring(
             HomogeneousProcess(; transmission_rate = 1.0, population_size = 100)
         )
@@ -142,7 +142,7 @@ end
         ]
         @test_logs ModelSpec(bp; progression = exclusive)
 
-        # `Recovery` has no `probability` field at all — always fires once its
+        # `Recovery` has no `probability` field at all — always occurs once its
         # anchor is reached — so pairing it with a gated `Death` guarantees
         # coverage and stays silent.
         @test_logs ModelSpec(
@@ -189,12 +189,11 @@ end
             progression = [Transition(:onset; from = :infection, delay = 1.0)]
         )
 
-        # `terminal_certainty` is dispatched, not read off whether a
-        # `probability` field exists: `AlwaysFiresRule` has one, but it means
-        # something other than a firing gate, and the transition always
-        # fires. Left to the default (unknown), it is skipped rather than
-        # misjudged from its field layout.
-        @test ismissing(EpiBranch.terminal_certainty(AlwaysFiresRule(0.0)))
-        @test_logs ModelSpec(bp; progression = [AlwaysFiresRule(0.0)])
+        # `terminal_certainty` is dispatched, so a `probability` field that
+        # gates nothing cannot mislead it: `AlwaysOccursRule` has one, and the
+        # transition always occurs. Left at the default (unknown), the
+        # transition is skipped rather than misjudged from its field layout.
+        @test ismissing(EpiBranch.terminal_certainty(AlwaysOccursRule(0.0)))
+        @test_logs ModelSpec(bp; progression = [AlwaysOccursRule(0.0)])
     end
 end
