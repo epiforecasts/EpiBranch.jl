@@ -269,7 +269,7 @@
 
         @testset "Supercritical Poisson uses the actual mean (no clamp)" begin
             # The Poisson mean must not be clamped to the critical value 1:
-            # score the defective Borel PMF at the true μ, so the likelihood
+            # evaluate the defective Borel PMF at the true μ, so the likelihood
             # keeps varying for R > 1 rather than flattening.
             ll = loglikelihood(ChainSizes([3]), Poisson(1.5))
             @test ll ≈ EpiBranch._borel_logpdf(1.5, 3) atol = 1.0e-10
@@ -897,7 +897,7 @@
         end
 
         @testset "MinimumSize falls through to the simulation path" begin
-            # With interventions present the score is empirical, and the
+            # With interventions present the likelihood is empirical, and the
             # observation has to drop the simulated clusters below its minimum
             # there as well, so both paths condition the same way.
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
@@ -1144,7 +1144,7 @@
             dists = NegBin.(μ, 0.5)
             ll = loglikelihood(OffspringCounts(counts), dists)
             @test ll ≈ sum(logpdf(d, x) for (d, x) in zip(dists, counts))
-            # Same as scoring each count against its own distribution one at
+            # Same as evaluating each count against its own distribution one at
             # a time, matching the workaround the vectorised method replaces.
             @test ll ≈
                 sum(loglikelihood(OffspringCounts([x]), d) for (d, x) in zip(dists, counts))

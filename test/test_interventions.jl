@@ -35,8 +35,8 @@ end
 # defaults are inert.
 struct _NoTraceIntervention <: AbstractIntervention end
 
-# A distribution that draws and scores but reports no support, as the package's
-# own `_TruncatedSkewNormal` does.
+# A distribution that draws and evaluates but reports no support, as the
+# package's own `_TruncatedSkewNormal` does.
 struct _UnboundedDelay <: ContinuousUnivariateDistribution end
 Base.rand(::AbstractRNG, ::_UnboundedDelay) = 30.0
 Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
@@ -2317,10 +2317,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test !is_vaccinated(ind; dose_label = :prime)
     end
 
-    @testset "RingVaccination fires under FlagOnly tracing" begin
+    @testset "RingVaccination doses contacts under FlagOnly tracing" begin
         # FlagOnly writes :traced_isolation_time, not :isolation_time. Ring
         # vaccination keys on the trace-driven isolation time, so it must still
-        # fire (previously it silently no-op'd when tracing only flagged).
+        # dose the contact (it silently no-op'd before, when tracing only flagged).
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         ct = ContactTracing(
             probability = 1.0,

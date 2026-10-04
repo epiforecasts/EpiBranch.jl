@@ -40,7 +40,7 @@ function test_structured_composition(make_process, extract)
             data,
             ModelSpec(process; progression, attributes = transmission_traits(susceptibility = 0.5))
         )
-        # A supplied effective kernel uses the existing differentiable scoring path.
+        # A supplied effective kernel uses the existing differentiable evaluation path.
         effective(i, j) = Exponential(4.0)
         @test pairwise_surv_loglik(effective, data) ==
             pairwise_surv_loglik(Exponential(4.0), data)

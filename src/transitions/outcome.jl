@@ -106,14 +106,14 @@ time reliably precedes any competing recovery/removal — otherwise the realised
 case-fatality is lower (with equal delays and a competing `Recovery`, roughly
 halved). Gating `Death` and a second terminal transition independently — say
 at `CFR` and `1 - CFR` — does not fix this either: each draws its own
-Bernoulli, so about `CFR * (1 - CFR)` of cases fire both (resolved by
-whichever candidate time is earlier) and another `CFR * (1 - CFR)` fire
-neither, leaving `:outcome` unset. `Recovery` has no `probability` of its own
-to gate this way in any case — it always fires once its anchor is reached.
+Bernoulli, so both occur (resolved by whichever candidate time is earlier) on
+about `CFR * (1 - CFR)` of cases, and neither occurs — leaving `:outcome`
+unset — on another `CFR * (1 - CFR)`. `Recovery` has no `probability` of its own
+to gate this way in any case — it always occurs once its anchor is reached.
 For an exact CFR, replace the competing `Recovery` with a `Transition`
 carrying its own `probability`, and build both probabilities with
 [`exclusive_probabilities`](@ref), which shares one draw between the two so
-exactly one of them fires; or make death's delay dominate the competing one.
+exactly one of them occurs; or make death's delay dominate the competing one.
 """
 Base.@kwdef struct Death{D, P, F} <: AbstractClinicalTransition
     delay::D
