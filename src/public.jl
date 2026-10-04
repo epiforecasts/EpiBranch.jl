@@ -27,6 +27,9 @@ public infection_aborted_time
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation
 
+# Pair kernels: the host records a kernel's hazards depend on.
+public watched_records
+
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:
 #   - candidate generation: `generate_offspring` (offspring-driven) or
@@ -83,6 +86,16 @@ public infection_likelihood_compatible
 public susceptibility_components, susceptibility_host_times, HazardScaling
 public InterventionAction, intervention_actions, action_draw!, apply_actions!,
     continuous_actions
+
+# Pairwise survival likelihood: how its two accumulation passes group rows
+# into a result. `pairwise_surv_loglik` and `pairwise_surv_loglik_by_component`
+# are the two built-in groupings; a new one is a `PairwiseReduction` subtype
+# with `ngroups` and `group` methods, run with `pairwise_reduce`, no further
+# change to the package.
+public PairwiseReduction
+public ngroups
+public group
+public pairwise_reduce
 
 # Vaccine effect modes: a new mode defines `realised_efficacy`, and overrides
 # `realise_prior_dose!` only to change what a dose recorded before the run gets.
