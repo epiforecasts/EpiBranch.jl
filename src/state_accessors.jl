@@ -204,6 +204,19 @@ is_test_positive(ind::Individual) = get(ind.state, :test_positive, false)::Bool
 """Whether the individual was successfully infected (vs contact only)."""
 is_infected(ind::Individual) = get(ind.state, :infected, true)::Bool
 
+"""
+    is_settled(state, ind) -> Bool
+
+Whether `ind`'s own fate in a continuous-time race is already fixed, so that
+no later discovery on this run will revisit it. Set by
+`_apply_continuous_actions!` once a case's own round of action discovery has
+run; `false` for a case still pending, and for the case currently being
+settled during its own round (letting that round still revise an action it
+had already admitted). An intervention consults this instead of
+reconstructing the settled/pending distinction from the candidate list the
+race handed it."""
+is_settled(state, ind::Individual) = get(ind.state, :_settled, false)::Bool
+
 """Type index for multi-type branching processes (default 1)."""
 individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 
