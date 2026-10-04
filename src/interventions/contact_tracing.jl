@@ -394,9 +394,9 @@ any pre-existing self-reporting isolation time).
 `Real`, a `Distribution`, or a function `(rng, ind) -> Real` (drawn once per
 trace). The default `Inf` reproduces the previous behaviour: quarantine lasts
 until the end of the infectious period. A finite duration matters for a
-contact who is not infected by the traced exposure and goes on to be infected
-later through another route — without it, that stale quarantine would go on
-blocking the contact's own onward transmission indefinitely."""
+contact who escapes the traced exposure but is infected later through
+another route: without it, the quarantine outlives its cause and keeps
+blocking that contact's own onward transmission forever."""
 struct Quarantine{D} <: TraceAction
     duration::D
 end
@@ -753,8 +753,8 @@ generation-based path.
 A quarantine set, and released (see [`Quarantine`](@ref)'s `duration`), before
 the contact was infected contributes no removal
 (`EpiBranch._removal_lapsed_before_infection`): it lapsed before this
-contact's own infectious window could possibly have opened, so it cannot be
-what closes a window for an infection acquired later through another route."""
+contact's own infectious window could have opened, so it cannot be what
+closes a window for an infection acquired later through another route."""
 function infectious_removal_time(::ContactTracing, ind::Individual)
     get(ind.state, :quarantined, false) || return Inf
     _removal_lapsed_before_infection(ind) && return Inf

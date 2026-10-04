@@ -108,9 +108,9 @@ accepts a `Real`, a `Distribution`, or a function `(rng, ind) -> Real`
 reproduces the previous behaviour: isolation lasts until the end of the
 infectious period. A finite duration gives [`isolation_release_time`](@ref)
 a value after which the case's own onward transmission is no longer blocked
-by this isolation — needed for a case isolated or quarantined well before an
-infection it goes on to acquire through another route, so that removal does
-not outlive the exposure that caused it.
+by this isolation. That matters for a case isolated or quarantined well
+before it is actually infected through some other route, so the removal
+does not outlive the exposure that caused it.
 
 An isolation time at or after the case's own outcome (recovery, death, or
 any other terminal [`Transition`](@ref)) still removes the case from
@@ -153,14 +153,15 @@ intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 # isolation (`post_isolation_transmission > 0`) only reduces transmission, which
 # the window cannot express, so it contributes no removal in that setting.
 #
-# A window cannot reopen once closed (see `_route_close`), so a removal whose
-# release falls inside an already-open window still closes it for good, as
-# before `isolation_duration` existed. What a finite duration does fix here is
-# the removal that never meets an open window at all: a quarantine set, and
-# released, before the case was even infected (`_removal_lapsed_before_infection`)
-# contributes no removal, so it cannot shut a window for an infection acquired
-# later through another route. The per-contact `competing_risk` below is
-# release-aware throughout, on every transmission model.
+# A window cannot reopen once closed (see `_route_close`): a removal whose
+# release falls inside an already-open window still closes it for good,
+# exactly as before `isolation_duration` existed. A finite duration instead
+# fixes the removal that never meets an open window at all: a quarantine set,
+# and released, before the case was even infected
+# (`_removal_lapsed_before_infection`) contributes no removal, so it cannot
+# shut a window for an infection acquired later through another route.
+# The per-contact `competing_risk` below is release-aware throughout, on every
+# transmission model.
 function infectious_removal_time(iso::Isolation, ind::Individual)
     iso.post_isolation_transmission == 0 || return Inf
     _removal_lapsed_before_infection(ind) && return Inf

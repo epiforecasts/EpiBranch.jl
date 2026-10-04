@@ -84,9 +84,9 @@ Isolation lasts until the end of the infectious period by default. Pass
 `isolation_duration` (a `Real`, a `Distribution`, or a function
 `(rng, ind) -> Real`, like `onset_to_isolation_delay`) to give it a finite
 length instead, after which the case is no longer blocked from onward
-transmission by it. This matters for a case isolated or quarantined well
-before an infection it goes on to acquire through another route — on a
-network or in a household, say — where an isolation with no end would go on
+transmission by it. This matters when a case is isolated or quarantined well
+before an infection it later picks up through another route — on a network or
+in a household, say — since an isolation with no end would otherwise keep
 blocking that later transmission indefinitely.
 
 ### Contact tracing
@@ -108,8 +108,8 @@ default. Pass a `duration` to [`Quarantine`](@ref) and give it as the
 positional `action` argument (e.g.
 `ContactTracing(OnIsolation(), 0.7, Exponential(1.0), Quarantine(duration = Exponential(5.0)))`)
 to give it a release time, so a quarantined contact who is not infected by
-the traced exposure is not left blocked forever if infected later some other
-way.
+the traced exposure is not left blocked forever if infected later through
+another route.
 
 #### Who gets traced: eligibility policies
 

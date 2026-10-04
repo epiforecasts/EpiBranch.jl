@@ -49,8 +49,8 @@ function isolation_time(ind::Individual{T}) where {T}
     return convert(T, get(ind.state, :isolation_time, T(Inf)))::T
 end
 
-"""Time from which the block [`isolation_time`](@ref) started lapses (`Inf` if
-it never does); a dual under AD. Set alongside `isolation_time` by
+"""Time from which the isolation block begun at [`isolation_time`](@ref)
+lapses (`Inf` if it never does); a dual under AD. Set alongside `isolation_time` by
 [`set_isolated!`](@ref); a duration configured on [`Isolation`](@ref) or
 [`ContactTracing`](@ref)'s [`Quarantine`](@ref) action gives this a finite
 value, so a quarantine that ended before a later, unrelated infection no
