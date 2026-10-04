@@ -388,20 +388,38 @@ apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
 
 """Quarantine the traced contact: set `:traced`, `:quarantined`, and
 isolate them at the trace time (or the earlier of the trace time and
-any pre-existing self-reporting isolation time)."""
-struct Quarantine <: TraceAction end
-function apply_trace!(::Quarantine, contact, state, trace_time, rng)
+any pre-existing self-reporting isolation time).
+
+`duration` is how long the quarantine lasts before it lapses; it accepts a
+`Real`, a `Distribution`, or a function `(rng, ind) -> Real` (drawn once per
+trace). The default `Inf` reproduces the previous behaviour: quarantine lasts
+until the end of the infectious period. A finite duration matters for a
+contact who is not infected by the traced exposure and goes on to be infected
+later through another route — without it, that stale quarantine would go on
+blocking the contact's own onward transmission indefinitely."""
+struct Quarantine{D} <: TraceAction
+    duration::D
+end
+Quarantine(; duration = Inf) = Quarantine(duration)
+
+function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     contact.state[:traced] = true
     contact.state[:quarantined] = true
+    release_time = trace_time + _sample_value(q.duration, rng, contact)
     if _isolation_in_force(contact)
         standing = isolation_time(contact)
         # A trace no earlier than an isolation that was not recorded leaves that
         # isolation, and its time, as the one in force, so it stays unrecorded.
         unrecorded = _isolation_unrecorded(contact) && !(trace_time < standing)
-        set_isolated!(contact, min(standing, trace_time))
+        # Whichever start wins keeps its own release, matching the existing
+        # earliest-start combination: the quarantine this trace contributes
+        # does not get to shorten (or lengthen) a standing isolation it loses to.
+        final_time, final_release = trace_time < standing ?
+            (trace_time, release_time) : (standing, isolation_release_time(contact))
+        set_isolated!(contact, final_time; release_time = final_release)
         unrecorded && (contact.state[:isolation_unrecorded] = true)
     else
-        set_isolated!(contact, trace_time)
+        set_isolated!(contact, trace_time; release_time = release_time)
     end
     return nothing
 end
@@ -730,9 +748,17 @@ end
 time, which is how tracing reaches the infectious window on the continuous-time
 models. Contacts merely flagged (`FlagOnly`) write `:traced_isolation_time`
 instead, and [`Isolation`](@ref) turns that into the removal, exactly as on the
-generation-based path."""
+generation-based path.
+
+A quarantine set, and released (see [`Quarantine`](@ref)'s `duration`), before
+the contact was infected contributes no removal
+(`EpiBranch._removal_lapsed_before_infection`): it lapsed before this
+contact's own infectious window could possibly have opened, so it cannot be
+what closes a window for an infection acquired later through another route."""
 function infectious_removal_time(::ContactTracing, ind::Individual)
-    return get(ind.state, :quarantined, false) ? isolation_time(ind) : Inf
+    get(ind.state, :quarantined, false) || return Inf
+    _removal_lapsed_before_infection(ind) && return Inf
+    return isolation_time(ind)
 end
 
 # A quarantine is a removal, so it reaches only the routes a removal can cut.
