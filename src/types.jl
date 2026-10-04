@@ -174,10 +174,10 @@ end
 
 # `Individual` holds one infection episode: a case whose outcome has already
 # resolved (`:outcome_time` set by `_finalise_terminal!`) has nowhere to put a
-# second exposure, so reassigning `infection_time` on one would silently
-# overwrite the episode while leaving its outcome behind — a record that
-# recovers before it is infected. Reassignment before an outcome exists (the
-# engine's own competing-risks resolution) is unaffected.
+# second exposure. Reassigning `infection_time` on one would silently
+# overwrite the episode while leaving its outcome behind, giving a record
+# that recovers before it is infected. Reassignment before an outcome exists
+# (the engine's own competing-risks resolution) is unaffected.
 function Base.setproperty!(ind::Individual, name::Symbol, value)
     if name === :infection_time && haskey(ind.state, :outcome_time)
         throw(
