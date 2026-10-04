@@ -67,10 +67,12 @@ function _simulate(
     # rather than being cut off at `max_time` with candidates still pending.
     initial_cases = sim_opts.initial_cases === nothing ? nothing :
         Set(sim_opts.initial_cases)
-    # Only a policy that can read cases in other households needs every household
-    # on one clock, and only an intervention can write such a policy.
+    # Only a policy that can read population-wide state — cases in other
+    # households, a kernel reading host records an intervention can move, a
+    # capacity budget shared across households — needs every household on one
+    # clock; `reads_population_state` is how an intervention declares the former.
     watched = EpiBranch._watched_projection(model.kernel, interventions)
-    live = watched !== nothing
+    live = watched !== nothing || any(EpiBranch.reads_population_state, interventions)
     races = live ? (collect(eachindex(model.household_of)),) : model.members
     extinct = true
     for mem in races
