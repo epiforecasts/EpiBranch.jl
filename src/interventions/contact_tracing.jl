@@ -416,7 +416,7 @@ function apply_trace!(::Quarantine, contact, state, trace_time, rng)
         # isolation, and its time, as the one in force, so it stays unrecorded.
         unrecorded = _isolation_unrecorded(contact) && !(trace_time < standing)
         set_isolated!(contact, min(standing, trace_time))
-        unrecorded && (contact.state[:isolation_unrecorded] = true)
+        unrecorded && (contact.state[:_isolation_unrecorded] = true)
     else
         set_isolated!(contact, trace_time)
     end
@@ -534,8 +534,8 @@ Needs `:asymptomatic`, `:onset_time` from `clinical_presentation()` and optional
 `:isolated`, `:isolation_time`, `:test_positive` depending on eligibility type.
 Sets `:traced`, `:quarantined` and `:trace_time`, the time the contact was
 reached, from which interventions acting on traced contacts are timed. With
-`depth > 1` it also sets `:ring_remaining`, which lets the ring grow outward,
-and `:ring_propagated` once a member has spent that budget on its own
+`depth > 1` it also sets `:_ring_remaining`, which lets the ring grow outward,
+and `:_ring_propagated` once a member has spent that budget on its own
 contacts, so a later walk reaching the same member widens the ring rather
 than retracing it.
 """
@@ -643,8 +643,8 @@ function reset!(::ContactTracing, ind::Individual)
     haskey(ind.state, :traced_by) && delete!(ind.state, :traced_by)
     haskey(ind.state, :trace_level) && delete!(ind.state, :trace_level)
     haskey(ind.state, :trace_time) && delete!(ind.state, :trace_time)
-    haskey(ind.state, :ring_remaining) && delete!(ind.state, :ring_remaining)
-    haskey(ind.state, :ring_propagated) && delete!(ind.state, :ring_propagated)
+    haskey(ind.state, :_ring_remaining) && delete!(ind.state, :_ring_remaining)
+    haskey(ind.state, :_ring_propagated) && delete!(ind.state, :_ring_propagated)
     _isolation_in_force(ind) && clear_isolated!(ind)
     return nothing
 end
@@ -679,8 +679,8 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # ring. Seeding is unaffected: a member that becomes an eligible case in
     # its own right starts a fresh full-radius ring, through the branch above.
     propagate = ct.depth > 1 && !seed && is_traced(infector) &&
-        !get(infector.state, :ring_propagated, false)::Bool &&
-        get(infector.state, :ring_remaining, 0)::Int > 0
+        !get(infector.state, :_ring_propagated, false)::Bool &&
+        get(infector.state, :_ring_remaining, 0)::Int > 0
     (seed || propagate) || return nothing
     traces(ct.trace_rate, infector, ind, state, rng) || return nothing
 
@@ -721,8 +721,8 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # contact-of-contact one hop further out can time its own trace from
     # here. Only `depth > 1` rings expand.
     if ct.depth > 1
-        ind.state[:ring_remaining] = seed ? ct.depth - 1 :
-            get(infector.state, :ring_remaining, 0)::Int - 1
+        ind.state[:_ring_remaining] = seed ? ct.depth - 1 :
+            get(infector.state, :_ring_remaining, 0)::Int - 1
     end
     return nothing
 end
@@ -760,7 +760,7 @@ function trace_contacts!(
             not_before = not_before === nothing ? -Inf : not_before[i]
         )
     end
-    propagating && (infector.state[:ring_propagated] = true)
+    propagating && (infector.state[:_ring_propagated] = true)
     return nothing
 end
 
@@ -790,7 +790,7 @@ function keep_active(ct::ContactTracing, state, targets, is_new)
     for t in targets
         is_infected(t) && continue
         is_traced(t) || continue
-        get(t.state, :ring_remaining, 0)::Int > 0 || continue
+        get(t.state, :_ring_remaining, 0)::Int > 0 || continue
         push!(ids, t.id)
     end
     return ids

@@ -148,7 +148,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # An isolation Isolation itself set (marked) is still reset.
         own = Individual(id = 2)
         set_isolated!(own, 3.0)
-        own.state[:isolated_by_isolation] = true
+        own.state[:_isolated_by_isolation] = true
         EpiBranch.reset!(iso, own)
         @test !is_isolated(own)
     end
@@ -282,7 +282,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         inds, reached = walk(3)
         @test all(is_traced, inds[2:4])
-        @test [inds[i].state[:ring_remaining] for i in 2:4] == [2, 1, 0]
+        @test [inds[i].state[:_ring_remaining] for i in 2:4] == [2, 1, 0]
         @test [inds[i].state[:traced_by] for i in 2:4] == [1, 2, 3]
         @test !any(is_infected, inds[2:4])
         # The walk reports who it reached, which is what the action layer is
@@ -345,14 +345,14 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         EpiBranch.trace_contacts!(sched, state, case(1, 12.0), [member])
         EpiBranch.trace_contacts!(sched, state, member, [first_out])
         @test is_traced(first_out)
-        @test member.state[:ring_propagated]
+        @test member.state[:_ring_propagated]
 
         # A second case traces the member earlier, before the start: the
         # schedule undoes the trace altogether.
         EpiBranch.trace_contacts!(sched, state, case(2, 5.0), [member])
         @test !is_traced(member)
-        @test !haskey(member.state, :ring_remaining)
-        @test !haskey(member.state, :ring_propagated)
+        @test !haskey(member.state, :_ring_remaining)
+        @test !haskey(member.state, :_ring_propagated)
 
         # A third case traces it after the start, and the ring grows through
         # it once more.
@@ -383,7 +383,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         set_isolated!(late, 50.0)
         EpiBranch.resolve_individual!(iso, late, state)
         @test isolation_time(late) ≈ 2.0 atol = 1.0e-6
-        @test get(late.state, :isolated_by_isolation, false)
+        @test get(late.state, :_isolated_by_isolation, false)
 
         # Quarantined early: the quarantine stands and is left untouched.
         early = Individual(id = 2)
@@ -392,7 +392,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         set_isolated!(early, 1.0)
         EpiBranch.resolve_individual!(iso, early, state)
         @test isolation_time(early) == 1.0
-        @test !get(early.state, :isolated_by_isolation, false)
+        @test !get(early.state, :_isolated_by_isolation, false)
 
         # A test-negative quarantined contact has no self-reporting pathway,
         # so the quarantine stands.
@@ -619,7 +619,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         df = linelist(s)
         @test !any(df.isolated)
         @test !hasproperty(df, :date_isolation) || all(ismissing, df.date_isolation)
-        @test !hasproperty(df, :isolation_unrecorded)
+        @test !hasproperty(df, :_isolation_unrecorded)
 
         s_late = run(_DetectAfterOutcome())
         @test any(is_traced, s_late.individuals)
@@ -632,7 +632,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         function unrecorded_isolation()
             ind = Individual(id = 1)
             set_isolated!(ind, 6.0)
-            ind.state[:isolation_unrecorded] = true
+            ind.state[:_isolation_unrecorded] = true
             return ind
         end
         rng = StableRNG(1)
@@ -662,7 +662,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             ind.state[:test_positive] = true
             ind.state[:outcome_time] = 2.0
             set_isolated!(ind, 6.0)
-            standing_unrecorded && (ind.state[:isolation_unrecorded] = true)
+            standing_unrecorded && (ind.state[:_isolation_unrecorded] = true)
             EpiBranch.resolve_individual!(iso, ind, state)
             @test isolation_time(ind) ≈ 3.0 atol = 1.0e-6
             EpiBranch.reset!(iso, ind)
@@ -673,7 +673,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test isolation_time(unrecorded) == 6.0
         @test EpiBranch._isolation_in_force(unrecorded)
         @test !is_isolated(unrecorded)
-        @test !haskey(unrecorded.state, :isolation_unrecorded_before_isolation)
+        @test !haskey(unrecorded.state, :_isolation_unrecorded_before_isolation)
 
         recorded = revised_and_reset(false)
         @test isolation_time(recorded) == 6.0

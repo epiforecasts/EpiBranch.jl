@@ -108,7 +108,7 @@ as before. It is not recorded as a detection: [`is_isolated`](@ref) stays
 through the eligibility.
 
 Initialises: `:isolated`, `:isolation_time`, `:test_positive`; sets
-`:isolation_unrecorded` for an isolation it does not record.
+`:_isolation_unrecorded` for an isolation it does not record.
 """
 struct Isolation{E <: IsolationEligibility, D, S} <: AbstractIntervention
     eligibility::E
@@ -166,27 +166,27 @@ function reset!(::Isolation, ind::Individual)
     # are shared keys — ContactTracing's Quarantine writes them directly too —
     # so resetting unconditionally would un-quarantine a validly-traced contact
     # when a Scheduled(Isolation) sees its pre-start isolation time.
-    get(ind.state, :isolated_by_isolation, false) || return nothing
+    get(ind.state, :_isolated_by_isolation, false) || return nothing
     # If this isolation was layered over a quarantine, restore that quarantine
     # rather than clearing the individual outright — undoing Isolation's own
     # effect must not also undo another intervention's.
-    previous = get(ind.state, :isolation_time_before_isolation, Inf)
+    previous = get(ind.state, :_isolation_time_before_isolation, Inf)
     if isfinite(previous)
         set_isolated!(ind, previous)
-        get(ind.state, :isolation_unrecorded_before_isolation, false) &&
-            (ind.state[:isolation_unrecorded] = true)
-        delete!(ind.state, :isolation_time_before_isolation)
-        delete!(ind.state, :isolation_unrecorded_before_isolation)
+        get(ind.state, :_isolation_unrecorded_before_isolation, false) &&
+            (ind.state[:_isolation_unrecorded] = true)
+        delete!(ind.state, :_isolation_time_before_isolation)
+        delete!(ind.state, :_isolation_unrecorded_before_isolation)
     else
         clear_isolated!(ind)
     end
-    ind.state[:isolated_by_isolation] = false
+    ind.state[:_isolated_by_isolation] = false
     return nothing
 end
 
 function initialise_individual!(iso::Isolation, individual, state)
     clear_isolated!(individual)
-    individual.state[:isolated_by_isolation] = false
+    individual.state[:_isolated_by_isolation] = false
     if is_eligible_for_isolation(iso.eligibility, individual, state)
         sens = _sample_value(iso.test_sensitivity, state.rng, individual)
         individual.state[:test_positive] = rand(state.rng) < sens
@@ -216,11 +216,11 @@ function resolve_individual!(iso::Isolation, individual, state)
         # standing quarantine underneath it belongs to ContactTracing and must
         # survive that reset, so stash it, and whether it was recorded, for
         # `reset!` to restore.
-        individual.state[:isolation_time_before_isolation] = isolation_time(individual)
+        individual.state[:_isolation_time_before_isolation] = isolation_time(individual)
         if _isolation_unrecorded(individual)
-            individual.state[:isolation_unrecorded_before_isolation] = true
+            individual.state[:_isolation_unrecorded_before_isolation] = true
         else
-            delete!(individual.state, :isolation_unrecorded_before_isolation)
+            delete!(individual.state, :_isolation_unrecorded_before_isolation)
         end
         _isolate!(iso, individual, state, self_t)
         return nothing
@@ -258,8 +258,8 @@ end
 # Isolation's own effect.
 function _isolate!(iso::Isolation, individual, state, time)
     set_isolated!(individual, time)
-    individual.state[:isolated_by_isolation] = true
+    individual.state[:_isolated_by_isolation] = true
     records_isolation(iso.eligibility, individual, state, time) ||
-        (individual.state[:isolation_unrecorded] = true)
+        (individual.state[:_isolation_unrecorded] = true)
     return nothing
 end
