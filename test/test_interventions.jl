@@ -2652,4 +2652,39 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @test_throws ErrorException Scheduled(iso)
         end
     end
+
+    @testset "reads_population_state" begin
+        reads = EpiBranch.reads_population_state
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        ring = RingVaccination(efficacy = 0.8)
+
+        # Each of these resolves one individual from that individual alone.
+        @test !reads(iso)
+        @test !reads(ring)
+        @test !reads(MassVaccination(efficacy = 0.8, eligibility_time = 0.0))
+        @test !reads(
+            ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0))
+        )
+
+        # A time-gated schedule compares against the time of the case being
+        # resolved; a count-gated one tests the running case count.
+        @test !reads(Scheduled(iso; start_time = 5.0))
+        @test !reads(Scheduled(iso; end_time = 20.0))
+        @test reads(Scheduled(iso; start_after_cases = 10))
+        # An opaque predicate could read anything, so it stays conservative.
+        @test reads(Scheduled(iso, state -> true))
+
+        # A shared budget is read across every individual.
+        @test reads(CapacityConstrained(ring; budget_per_period = 5.0))
+        # A schedule answers for the intervention it wraps.
+        @test reads(
+            Scheduled(
+                CapacityConstrained(ring; budget_per_period = 5.0); start_time = 5.0
+            )
+        )
+
+        # An intervention written outside the package gets the conservative
+        # default until it declares otherwise.
+        @test reads(_NoTraceIntervention())
+    end
 end
