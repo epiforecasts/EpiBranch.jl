@@ -25,6 +25,16 @@
         @test is_isolated(ind)
     end
 
+    @testset "Individual rejects a reinfection that would overwrite an outcome" begin
+        ind = Individual(; id = 1, infection_time = 5.0)
+        ind.state[:outcome] = :recovered
+        ind.state[:outcome_time] = 12.0
+        @test_throws ArgumentError (ind.infection_time = 40.0)
+        # The stale episode survives the rejected assignment.
+        @test ind.infection_time == 5.0
+        @test ind.state[:outcome_time] == 12.0
+    end
+
     @testset "State accessors with defaults" begin
         ind = Individual(; id = 1)
         @test !is_isolated(ind)

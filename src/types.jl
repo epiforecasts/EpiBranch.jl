@@ -90,7 +90,9 @@ Core fields (used by the engine):
 - `id`, `parent_id`, `generation`, `chain_id` — identity and position in
   the tree. `id` is the 1-based index into `state.individuals`; this
   invariant is relied on for O(1) parent lookups.
-- `infection_time::T` — time at which this contact was exposed.
+- `infection_time::T` — time at which this contact was exposed. Holds one
+  infection episode; reassigning it once `:outcome_time` is set throws, since
+  there is nowhere on the individual to put the earlier episode's outcome.
 - `susceptibility::T` ∈ `[0, 1]` — per-contact probability of
   being infected given exposure. Applied as a built-in competing risk
   by the engine during infection resolution.
@@ -168,6 +170,28 @@ function Individual(;
         id, parent_id, generation, chain_id, convert(T, infection_time),
         convert(T, susceptibility), convert(T, infectiousness), Int[], state
     )
+end
+
+# `Individual` holds one infection episode: a case whose outcome has already
+# resolved (`:outcome_time` set by `_finalise_terminal!`) has nowhere to put a
+# second exposure, so reassigning `infection_time` on one would silently
+# overwrite the episode while leaving its outcome behind — a record that
+# recovers before it is infected. Reassignment before an outcome exists (the
+# engine's own competing-risks resolution) is unaffected.
+function Base.setproperty!(ind::Individual, name::Symbol, value)
+    if name === :infection_time && haskey(ind.state, :outcome_time)
+        throw(
+            ArgumentError(
+                "individual $(ind.id) already has an outcome at " *
+                    "$(ind.state[:outcome_time]); `Individual` holds one " *
+                    "infection episode, so assigning a new `infection_time` " *
+                    "would overwrite it while leaving the outcome behind. " *
+                    "Clear `:outcome_time` (and any other episode-scoped " *
+                    "state) first if this reassignment is intended."
+            )
+        )
+    end
+    return setfield!(ind, name, convert(fieldtype(typeof(ind), name), value))
 end
 
 # ── Simulation state ───────────────────────────────────────────────
