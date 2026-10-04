@@ -51,7 +51,7 @@ end
             );
             max_cases = 50, rng = rng
         )
-        # Some traces should fire: at least one quarantined contact.
+        # At least one traced contact should be quarantined.
         @test any(get(ind.state, :quarantined, false) for ind in state.individuals)
     end
 

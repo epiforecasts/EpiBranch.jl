@@ -71,7 +71,7 @@ println("Posterior k: $(round(mean(chain[:k]), digits=2)) " *
 
 The number of secondary cases a case causes often depends on its own
 characteristics: the setting of exposure, age, or time of infection. Passing a
-vector of distributions, one per observation, scores each count against its
+vector of distributions, one per observation, evaluates each count against its
 own offspring distribution instead of a single shared one:
 
 ```@example inference

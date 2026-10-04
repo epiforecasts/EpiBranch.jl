@@ -117,11 +117,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   time for every case.
 - `NetworkProcess` (in `EpiNetwork`) can be fitted as well as simulated.
   `network_infections` reads the infection layer out of a simulation, and
-  `loglikelihood(data, model)` scores it with the pairwise survival likelihood,
-  whose generative model is the network's continuous-time race. Each node's
-  possible infectors are its in-neighbours. Shared, covariate and per-edge
-  kernels and a community hazard are supported. Each case's infectious window
-  ends where the simulation ends it, including removal by the model's
+  `loglikelihood(data, model)` evaluates it with the pairwise survival
+  likelihood, whose generative model is the network's continuous-time race. Each
+  node's possible infectors are its in-neighbours. Shared, covariate and
+  per-edge kernels and a community hazard are supported. Each case's infectious
+  window ends where the simulation ends it, including removal by the model's
   interventions such as isolation.
 - The pairwise survival likelihood now lives in EpiBranch and works over any
   contact structure. `compile_contact_pairs` enumerates the (susceptible,
@@ -135,9 +135,9 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   `Inf`), on `HouseholdInfections`, `NetworkInfections` and a custom
   `InfectionLayer` alike, and `household_infections` and `network_infections`
   take it as a keyword. The pairwise survival likelihood ignores infections and
-  exposure after it. An outbreak still going when the data end is then scored as
-  observed so far, with a finite value and gradient, and a case still infectious
-  at the end of follow-up can keep a removal time of `Inf`.
+  exposure after it. An outbreak still going when the data end is then evaluated
+  as observed so far, with a finite value and gradient, and a case still
+  infectious at the end of follow-up can keep a removal time of `Inf`.
 - Analytical results for multi-type branching processes built from an offspring
   matrix. `reproduction_number(model)` returns R*, the dominant eigenvalue of the
   next-generation matrix (the offspring mean for a single-type model), and

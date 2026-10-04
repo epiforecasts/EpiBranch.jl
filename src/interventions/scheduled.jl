@@ -18,7 +18,7 @@ scheduling. It enforces start times at two levels:
 - **Population-level gate** — `is_active(::Scheduled, state)` skips
   `resolve_individual!` and `apply_post_transmission!` until the
   condition returns `true`.
-- **Individual-level reset** — after each per-individual hook fires,
+- **Individual-level reset** — after each per-individual hook runs,
   `Scheduled` checks whether the individual's `intervention_time` falls
   before `start_time` and, if so, calls `reset!` to undo the effect.
   This handles the case where the population gate has opened but a
@@ -152,6 +152,20 @@ persistent_competing_risks(::AbstractVaccination) = true
 function persistent_competing_risks(w::InterventionWrapper)
     return persistent_competing_risks(w.intervention)
 end
+
+# Whether `iv`'s risk, once it has fired, could later be withdrawn by a
+# schedule's active window closing rather than standing for good. Only
+# `Scheduled` can withdraw a risk that has already fired, and only when the
+# intervention it wraps has not declared `persistent_competing_risks` — a
+# vaccination's protection has, since it derives from a recorded dose rather
+# than the schedule's own clock, so a `Scheduled` vaccination cannot lapse
+# either. Used by the continuous-time race to tell a standing block from one
+# that merely happens to be in force right now (see `_standing_risk`).
+_may_lapse(::AbstractIntervention) = false
+function _may_lapse(s::Scheduled)
+    return persistent_competing_risks(s.intervention) ? _may_lapse(s.intervention) : true
+end
+_may_lapse(w::InterventionWrapper) = _may_lapse(w.intervention)
 
 function competing_risk(s::Scheduled, parent, contact, state)
     (persistent_competing_risks(s.intervention) || is_active(s, state)) || return nothing

@@ -124,7 +124,7 @@ end
     @test DifferentiationInterface.gradient(f, AutoMooncake(), x) ≈
         ForwardDiff.gradient(reference, x)
 
-    # A pair's own calendar, returned from the callback, scores the same as the
+    # A pair's own calendar, returned from the callback, evaluates the same as the
     # kernel-level schedule.
     contextual = PairKernel(c -> (profile = Exponential(1.0), calendar = Steps([date], [before, after])))
     @test pairwise_surv_loglik(contextual, data, layout) ≈

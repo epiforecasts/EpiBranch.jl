@@ -124,7 +124,7 @@ end
 
 With no keyword arguments, no interventions and a single-type offspring law,
 the analytical chain-size distribution (`Borel` / `GammaBorel`) is returned
-directly; otherwise a wrapper that scores via `loglikelihood`. Keyword
+directly; otherwise a wrapper that evaluates via `loglikelihood`. Keyword
 arguments:
 
 - `seeds`: per-cluster number of index cases, for multi-seed clusters.
