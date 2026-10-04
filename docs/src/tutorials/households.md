@@ -303,6 +303,10 @@ household data call it with the ids in that order. One callable therefore works 
 both simulation and fitting, and fitting the simulated outbreak recovers each of its
 parameters.
 
+[Covariates and time-varying transmission](@ref) covers contact intervals that
+also depend on the infector's infection date, on the calendar, or on events
+recorded during the outbreak.
+
 ## Fitting with Turing
 
 When the infection layer is observed (here it comes directly from the simulation),

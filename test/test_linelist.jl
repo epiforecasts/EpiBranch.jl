@@ -144,6 +144,24 @@ using Dates
         @test "isolated" in names(df)
     end
 
+    @testset "linelist omits interventions' internal bookkeeping keys" begin
+        rng = StableRNG(3)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(2.0), Gamma(2.0, 3.0); population_size = 2000);
+            attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.4)),
+            interventions = [
+                Isolation(onset_to_isolation_delay = Exponential(2.0)),
+                ContactTracing(
+                    probability = 0.8, isolation_to_trace_delay = Exponential(1.0)
+                ),
+            ]
+        )
+        state = simulate(spec; n_initial = 5, rng = rng, max_cases = 500)
+        df = linelist(state)
+        @test isempty(intersect(names(df), ["isolated_by_isolation", "isolation_time_before_isolation"]))
+        @test all(name -> !startswith(name, "_"), names(df))
+    end
+
     @testset "contacts output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
@@ -243,10 +261,10 @@ using Dates
         metadata = EpiBranch.event_time_metadata(Val(:isolation_time))
         function replaced(unrecorded)
             ind = Individual(id = 1)
-            ind.state[:isolated_by_isolation] = true
+            ind.state[:_isolated_by_isolation] = true
             ind.state[:isolation_time] = 3.0
-            ind.state[:isolation_time_before_isolation] = 5.0
-            unrecorded && (ind.state[:isolation_unrecorded_before_isolation] = true)
+            ind.state[:_isolation_time_before_isolation] = 5.0
+            unrecorded && (ind.state[:_isolation_unrecorded_before_isolation] = true)
             return EpiBranch._uninfected_event_time(ind, :isolation_time, metadata)
         end
         @test replaced(false) == 5.0
@@ -257,10 +275,10 @@ using Dates
         release_metadata = EpiBranch.event_time_metadata(Val(:isolation_release_time))
         function replaced_release(unrecorded)
             ind = Individual(id = 1)
-            ind.state[:isolated_by_isolation] = true
+            ind.state[:_isolated_by_isolation] = true
             ind.state[:isolation_release_time] = 8.0
-            ind.state[:isolation_release_time_before_isolation] = 20.0
-            unrecorded && (ind.state[:isolation_unrecorded_before_isolation] = true)
+            ind.state[:_isolation_release_time_before_isolation] = 20.0
+            unrecorded && (ind.state[:_isolation_unrecorded_before_isolation] = true)
             return EpiBranch._uninfected_event_time(
                 ind, :isolation_release_time, release_metadata
             )

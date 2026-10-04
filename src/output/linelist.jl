@@ -73,7 +73,9 @@ Use [`event_time_metadata`](@ref) to declare additional event dates.
 Columns that are not dates are reported as stored.
 
 To add a column, write the field during the simulation. `linelist`
-reads whatever is on `state`.
+reads whatever is on `state`, except a key starting with an underscore, which
+marks an intervention's own bookkeeping (as `:_intervention_actions` does) and
+never becomes a column.
 """
 function linelist(
         state::SimulationState;
@@ -95,12 +97,8 @@ function linelist(
     for ind in cases
         union!(state_keys, keys(ind.state))
     end
-    delete!(state_keys, :_intervention_actions)
+    filter!(key -> !startswith(String(key), "_"), state_keys)  # an intervention's own bookkeeping
     delete!(state_keys, :infected)  # encoded by the row's existence, or the column above
-    delete!(state_keys, :isolation_unrecorded)  # read through `:isolated`
-    delete!(state_keys, :isolation_unrecorded_before_isolation)
-    delete!(state_keys, :ring_remaining)         # the ring's own bookkeeping
-    delete!(state_keys, :ring_propagated)
 
     for key in state_keys
         _add_state_column!(cols, cases, key, reference_date)
@@ -204,11 +202,11 @@ provisional onset; where one replaced a recorded quarantine, that quarantine's
 time, and its release time, are reported in its place."""
 function _uninfected_event_time(ind, key::Symbol, metadata)
     if key === :isolation_time || key === :isolation_release_time
-        get(ind.state, :isolated_by_isolation, false) ||
+        get(ind.state, :_isolated_by_isolation, false) ||
             return _reported_state(ind, key)
-        get(ind.state, :isolation_unrecorded_before_isolation, false) && return missing
-        before_key = key === :isolation_time ? :isolation_time_before_isolation :
-            :isolation_release_time_before_isolation
+        get(ind.state, :_isolation_unrecorded_before_isolation, false) && return missing
+        before_key = key === :isolation_time ? :_isolation_time_before_isolation :
+            :_isolation_release_time_before_isolation
         return get(ind.state, before_key, missing)
     end
     return metadata.requires_infection ? missing : _reported_state(ind, key)
