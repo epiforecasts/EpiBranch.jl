@@ -648,14 +648,13 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test is_isolated(earlier)
     end
 
-    @testset "A quarantine keeps the later of the two releases" begin
-        # Two removals, one pair of times to hold them: the combination covers
-        # both, so neither the standing isolation's release nor the trace's can
-        # be dropped by the other winning the start.
+    @testset "Two overlapping removals layer into the interval covering both" begin
+        # One pair of times holds the two, so neither release can be dropped by
+        # the other winning the start — but only where the two actually meet.
         rng = StableRNG(1)
 
-        # The trace starts earlier but ends earlier too; the standing release
-        # is the one still in force.
+        # The trace starts earlier and ends earlier; the standing release is
+        # the one still in force.
         earlier_start = Individual(id = 1)
         set_isolated!(earlier_start, 10.0; release_time = 12.0)
         EpiBranch.apply_trace!(
@@ -664,14 +663,14 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test isolation_time(earlier_start) == 5.0
         @test isolation_release_time(earlier_start) == 12.0
 
-        # The standing isolation keeps the start and the trace the release.
-        later_start = Individual(id = 2)
-        set_isolated!(later_start, 5.0; release_time = 6.0)
+        # Overlapping the other way: the standing start, the trace's release.
+        overlapping = Individual(id = 2)
+        set_isolated!(overlapping, 5.0; release_time = 9.0)
         EpiBranch.apply_trace!(
-            Quarantine(duration = Dirac(4.0)), later_start, nothing, 8.0, rng
+            Quarantine(duration = Dirac(4.0)), overlapping, nothing, 8.0, rng
         )
-        @test isolation_time(later_start) == 5.0
-        @test isolation_release_time(later_start) == 12.0
+        @test isolation_time(overlapping) == 5.0
+        @test isolation_release_time(overlapping) == 12.0
 
         # A standing isolation that never lapses is not given an end.
         permanent = Individual(id = 3)
@@ -682,15 +681,61 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test isolation_release_time(permanent) == Inf
     end
 
-    @testset "A removal duration must be non-negative" begin
-        # A release before its own start reads as no removal on the generation
-        # engine and a permanent one on the continuous-time engines, so it is
-        # refused at the draw rather than left to disagree.
+    @testset "A removal that has lapsed is replaced, not spanned" begin
+        # The standing removal ended before the new one begins. One interval
+        # cannot hold both, and spanning them would block the gap between,
+        # when the case was under no removal at all.
         rng = StableRNG(1)
-        for bad in (-1.0, NaN)
+        lapsed = Individual(id = 1)
+        set_isolated!(lapsed, 5.0; release_time = 7.0)
+        EpiBranch.apply_trace!(
+            Quarantine(duration = Dirac(14.0)), lapsed, nothing, 20.0, rng
+        )
+        @test isolation_time(lapsed) == 20.0
+        @test isolation_release_time(lapsed) == 34.0
+    end
+
+    @testset "An isolation layers over a standing quarantine" begin
+        # The mirror of the trace path: an isolation starting earlier than a
+        # standing quarantine must not discard the quarantine's release.
+        iso = Isolation(
+            onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(2.0)
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+        ind = Individual(id = 1)
+        ind.state[:onset_time] = 8.0
+        ind.state[:test_positive] = true
+        set_isolated!(ind, 10.0; release_time = 24.0)
+        EpiBranch.resolve_individual!(iso, ind, state)
+        @test isolation_time(ind) == 9.0
+        @test isolation_release_time(ind) == 24.0
+    end
+
+    @testset "A removal duration must be positive" begin
+        # A release at or before its own start reads as no removal on the
+        # generation engine and a permanent one on the continuous-time engines,
+        # so it is refused at the draw rather than left to disagree.
+        rng = StableRNG(1)
+        for bad in (-1.0, 0.0, NaN)
             contact = Individual(id = 1)
             @test_throws ArgumentError EpiBranch.apply_trace!(
                 Quarantine(duration = bad), contact, nothing, 2.0, rng
+            )
+            isolated = Individual(id = 2)
+            isolated.state[:onset_time] = 1.0
+            isolated.state[:test_positive] = true
+            @test_throws ArgumentError EpiBranch.resolve_individual!(
+                Isolation(
+                    onset_to_isolation_delay = Dirac(1.0), isolation_duration = bad
+                ),
+                isolated,
+                EpiBranch.new_state(
+                    BranchingProcess(Poisson(1.0), Exponential(5.0)),
+                    EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+                )
             )
         end
     end
