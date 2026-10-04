@@ -2709,7 +2709,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 _PopulationEligibility(), 1.0, Exponential(1.0)
             )
         )
-        @test reads(Isolation(; eligibility = _PopulationIsolationEligibility()))
+        @test reads(
+            Isolation(;
+                onset_to_isolation_delay = Exponential(1.0),
+                eligibility = _PopulationIsolationEligibility()
+            )
+        )
 
         # An intervention written outside the package gets the conservative
         # default until it declares otherwise, and so does a vaccination,
