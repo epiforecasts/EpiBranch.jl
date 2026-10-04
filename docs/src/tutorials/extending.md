@@ -1273,7 +1273,7 @@ kernel = PairKernel(context -> Exponential(4.0); calendar = Seasonal(0.5))
 Simulation and the likelihood read a schedule only through these methods, so
 both compute the same hazard. Parameterise the schedule's fields by type, as
 `Seasonal{T}` does, to differentiate the likelihood through them. A worked
-seasonal example is in [Contextual and calendar-time pair kernels](pair_kernels.md).
+seasonal example is in [Covariates and time-varying transmission](covariate-transmission.md).
 
 ## Adding a transmission model
 
