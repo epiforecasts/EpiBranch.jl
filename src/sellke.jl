@@ -309,9 +309,9 @@ function _next_contact(rng::AbstractRNG, kernel, m::Real, dt, end_dt)
                 "`exclusive_probabilities` for terminal transitions meant to " *
                 "partition the population exactly). A window closed only by " *
                 "`INTERVENTION_REMOVAL` reaches this too when the case's " *
-                "isolation or quarantine is due to lapse, since a removal that " *
-                "will not stand for the rest of the infectious period never " *
-                "closes the window by itself."
+                "isolation or quarantine is due to lapse, since only a removal " *
+                "that stands for the rest of the infectious period closes the " *
+                "window by itself."
         )
     )
     nxt = _time_at_log_survival(kernel, ls + log(rand(rng)) / m)

@@ -113,10 +113,10 @@ What that changes depends on the engine. On a generation-based process the
 block is a per-contact risk, so a contact after the release is not blocked.
 
 On the continuous-time (Sellke) models a removal that is due to lapse does not
-close the window at all: the window stays open on the case's other removal
-states, if any, and the per-contact competing risk blocks exactly the isolated
-interval, so the case transmits again from the release time, matching the
-generation engine. Only a removal standing to the end of the infectious period
+close the window: it stays open on the case's other removal states, if any,
+and the per-contact competing risk blocks exactly the isolated interval, so
+the case transmits again from the release time, matching the generation
+engine. Only a removal standing to the end of the infectious period
 (the default `Inf` duration) closes the window there, which is cheaper than
 leaving it to the per-contact risk and is exact because nothing is left to
 reopen.
@@ -164,12 +164,12 @@ intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 #
 # A window cannot reopen once closed (see `_route_close`), so a removal that is
 # due to lapse — whether before the case was even infected or partway through
-# an already-open window — must not close it at all: closing it at the
-# isolation time would take the case out of transmission for good, when the
-# removal itself only takes it out until the release. The per-contact
-# `competing_risk` below is release-aware throughout, on every transmission
-# model, so it is what blocks the isolated interval instead; the window closes
-# here only for a removal with no release to leave it for.
+# an already-open window — must not close it: closing it at the isolation time
+# would take the case out of transmission for good, when the removal itself
+# only takes it out until the release. The per-contact `competing_risk` below
+# is release-aware throughout, on every transmission model, so it blocks the
+# isolated interval instead; the window closes here only for a removal with no
+# release to leave it for.
 function infectious_removal_time(iso::Isolation, ind::Individual)
     iso.post_isolation_transmission == 0 || return Inf
     isfinite(isolation_release_time(ind)) && return Inf

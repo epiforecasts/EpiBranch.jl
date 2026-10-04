@@ -131,8 +131,8 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         # Isolated on day 4 for 7 days (released day 11), recovering on day 30,
         # meeting its one contact at a fixed interval of 15 days — after the
         # release, so the contact should go through on every engine. Before the
-        # fix, a continuous-time window closed for good at the isolation time
-        # and never saw this contact at all.
+        # fix, a continuous-time window closed for good at the isolation time,
+        # missing this contact entirely.
         prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
         iso = Isolation(
