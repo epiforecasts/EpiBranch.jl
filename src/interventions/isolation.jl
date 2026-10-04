@@ -199,7 +199,7 @@ risk_depends_on_infector(iso::Isolation) = iso.post_isolation_transmission > 0
 risk_applies(::Isolation, route) = route !== nothing && INTERVENTION_REMOVAL in route.until
 
 # Isolation itself reads and writes only the case it resolves, but its
-# eligibility receives the whole state, so it answers for that too. The
+# eligibility receives the whole state, and it answers for that too. The
 # built-in eligibilities read only the individual; one written outside the
 # package declares its own read.
 reads_population_state(iso::Isolation) = reads_population_state(iso.eligibility)

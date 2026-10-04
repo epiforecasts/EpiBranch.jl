@@ -287,8 +287,8 @@ before it, in race order rather than calendar order; an intervention that
 reads population-wide state through that race therefore needs every clique on
 one shared clock instead.
 
-The default is the conservative `true`, so an intervention written outside the
-package reads population-wide state until it says otherwise.
+The default is the conservative `true`. An intervention written outside the
+package therefore reads population-wide state until it says otherwise.
 
 `RingVaccination` and `MassVaccination` return `false`, each delivering
 against the individual it resolves. `GroupVaccination` returns `true`, since a
@@ -298,15 +298,14 @@ admission decision reads how much of the shared budget every other individual
 has used. A `Scheduled` built with `start_after_cases` returns `true`, the
 case count being exactly such a read; one built with only
 `start_time`/`end_time` compares against the time of the case being resolved
-and answers for the intervention it wraps, so it returns `false` only while
-that intervention does.
+and answers for the intervention it wraps, returning `false` only while that
+intervention does.
 
 `Isolation` and `ContactTracing` answer for the components they are given —
 `ContactTracing` its eligibility, rate, delay and action, `Isolation` its
 eligibility — each defaulting to `false`, and an eligibility combinator
-answers for what it wraps. So a component of your own that reads
-population-wide state declares `true` for itself and lifts the intervention
-holding it. Wrappers without a read of their own delegate to the intervention
+answers for what it wraps. A component of your own that reads population-wide
+state declares `true` for itself, which lifts the intervention holding it. Wrappers without a read of their own delegate to the intervention
 they wrap.
 """
 reads_population_state(::AbstractIntervention) = true

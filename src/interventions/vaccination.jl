@@ -943,8 +943,8 @@ end
 # Only the onward risk reads the infector.
 risk_depends_on_infector(rv::RingVaccination) = rv.onward_efficacy > 0
 
-# A ring doses the infector's own traced contacts, so delivery depends on
-# the individual being resolved. A shared budget wrapped around one is
+# A ring doses the infector's own traced contacts: delivery depends on the
+# individual being resolved. A shared budget wrapped around one is
 # `CapacityConstrained`'s own declaration.
 reads_population_state(::RingVaccination) = false
 
@@ -1260,8 +1260,8 @@ end
 # both the infector and contact slots since the policy describes a property
 # of a case, not a pair. `Inf` if no member has triggered yet.
 # A group's trigger is the earliest eligible time among every member
-# carrying the group key, wherever they live, so the trigger a race sees
-# depends on which cliques have raced already.
+# under the group key, wherever they live. The trigger a race sees
+# therefore depends on which cliques have raced already.
 reads_population_state(::GroupVaccination) = true
 
 function _group_trigger_time(gv::GroupVaccination, state, group)
@@ -1386,7 +1386,7 @@ end
 
 vaccine_effect(mv::MassVaccination) = getfield(mv, :effect)
 
-# Each contact's eligibility time is drawn when the contact is created, so
+# Each contact's eligibility time is drawn when the contact is created:
 # delivery depends on the individual being resolved.
 reads_population_state(::MassVaccination) = false
 Base.getproperty(mv::MassVaccination, name::Symbol) = _effect_getproperty(mv, name)

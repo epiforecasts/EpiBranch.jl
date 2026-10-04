@@ -809,7 +809,7 @@ function risk_applies(::ContactTracing, route)
 end
 
 # Tracing itself reads and writes only the infector's own contacts, but it
-# hands each decision to a component that receives the whole state, so it
+# hands each decision to a component that receives the whole state, and
 # answers for those components too. The built-in ones read only the infector
 # or the contact; one written outside the package declares its own read.
 function reads_population_state(ct::ContactTracing)
