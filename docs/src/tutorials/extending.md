@@ -69,12 +69,14 @@ downstream packages should pick names that do not collide.
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
 | `:isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
+| `:isolation_unrecorded` | `Bool` | `false` | `Isolation` | `resolve_individual!`; the isolation removes the case from transmission without counting as a detection |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff; may precede onset, so hold it back to onset |
 | `:trace_time` | `Float64` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` / `trace_contacts!` |
+| `:ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!` |
 | `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | Post-simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
@@ -85,7 +87,7 @@ downstream packages should pick names that do not collide.
 | `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | `apply_post_transmission!` |
-| `:infection_aborted_time` | `Float64` | — | `RingVaccination` (`post_exposure_efficacy`) | `apply_post_transmission!` |
+| `:infection_aborted_time` | `Float64` | — | Engine, written through `abort_infection!` (e.g. by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
 | `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | `apply_post_transmission!` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
@@ -128,12 +130,14 @@ transition decides — without gating transmission. Neither participates in
 on the former so a dose whose immunity has not yet developed by the
 outcome it would affect confers no protection.
 
-`:infection_aborted_time` marks an infection that a post-exposure dose ended
-before symptom onset. The individual is still infected but transmits nothing
-from that time, and the engine applies this block for as long as the key is
-present. It has no onset: `:onset_time` is `NaN` while `:asymptomatic` stays
-`false`, so isolation, tracing and clinical transitions triggered by onset never
-happen.
+`:infection_aborted_time` marks an infection that ended before symptom onset,
+as a post-exposure dose of `RingVaccination` or an antiviral can end it. Any
+intervention records it by calling [`EpiBranch.abort_infection!`](@ref), which
+keeps the earliest abort, and [`EpiBranch.infection_aborted_time`](@ref) reads
+it. The individual is still infected but transmits nothing from that time. The
+engine applies this block for as long as the key is present. It has no onset:
+`:onset_time` is `NaN` while `:asymptomatic` stays `false`. Isolation, tracing
+and clinical transitions triggered by onset never happen.
 
 Its clinical course ends at the abort time. When transitions are resolved, any
 transition that would take effect at or after that time, whatever its `from`,
@@ -142,15 +146,18 @@ is undone and the keys it wrote are restored, so no hospitalisation, death or
 the `_time` keys a transition writes, so it covers a custom transition that
 records when it happens under a `_time` key, as the built-ins do.
 
-The key is drawn against a particular exposure, before infection is resolved:
-when the dose is given, and again each time a contact that already has the dose
-is exposed, using its recorded vaccination time. The engine removes the key and
-restores the onset when resolution does not confirm that exposure, which happens
-on a contact the exposure did not infect and on one infected through a later
-exposure at or after the abort time. The key is therefore only present on an
-infected individual whose infection it ended, and a pre-created node that
-escapes one exposure gets a fresh draw against the exposure that later infects
-it.
+On the generation-based engine `apply_post_transmission!` runs before infection
+is resolved. An abort recorded there is set against a contact's provisional
+infection time, its earliest exposure. The engine removes the key and restores
+the onset when resolution does not confirm an infection that started before the
+abort: on a contact the exposure did not infect, and on one infected through a
+later exposure at or after the abort time. The key is therefore only present on an
+infected individual whose infection it ended. `RingVaccination` draws again
+each time a contact that already has the dose is exposed: a pre-created node
+that escapes one exposure gets a fresh draw against the exposure that later
+infects it. On the continuous-time models the infection time is final by the
+time `on_infection_settled!` runs, and an abort recorded there needs no such
+check.
 
 `:reported` is shared between the `Reporting` clinical transition (which
 sets it from a probability gate) and `PerCaseObservation` (which sets it
@@ -162,12 +169,22 @@ end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
 [Transmission routes](#Transmission-routes)), which respects leaky isolation.
 `:isolated` in an `until` refers to a `Transition(:isolated, …)` in the natural
 history. Set and undo isolation with `set_isolated!` and `clear_isolated!`.
+`:isolation_time` is when the case leaves transmission, which is what
+competing risks and `INTERVENTION_REMOVAL` read. Whether that isolation also
+counts as a detection is a separate question, answered by `is_isolated`, which
+`OnIsolation` tracing, group vaccination and the line list read. `Isolation`
+answers no for an isolation at or after [`outcome_time`](@ref), since a
+self-report or trace reaching a case that has already recovered or died
+describes a detection that did not happen; it then sets
+`:isolation_unrecorded` and leaves the removal in place. The eligibility makes
+that call through [`EpiBranch.records_isolation`](@ref): override it for a
+policy that does record a late detection, such as a death found at burial.
 
 The tracing keys name two hooks because the two engines reach them
 differently: `apply_post_transmission!` on the generation-based engine, and
 `trace_contacts!` on the continuous-time models. Both funnel through the same
 per-pair policy, so the keys and their meanings are identical either way; see
-[Which hooks fire on which engine](#which-hooks-fire-on-which-engine).
+[Which hooks run on which engine](#which-hooks-run-on-which-engine).
 
 `:traced_by` is the source a node was traced from — the *first*,
 earliest-exposure tracer, since the engine makes one trace attempt per node.
@@ -181,6 +198,14 @@ Built-in keys use short bare names like `:isolated`, `:traced`, `:age`, and
 those names are reserved. If you add keys from another package, prefix them
 with a short tag for your package so they do not collide with built-ins or
 with keys other packages might add.
+
+State that belongs to a whole run, such as an index an intervention builds once
+and reuses, goes in `state.scratch`, a `Dict` on the
+[`SimulationState`](@ref) that the engine never reads
+and discards with the state. Its keys follow the same rule. Built-in
+interventions use a tuple whose first element names what the entry holds, as
+`GroupVaccination` keeps each group's members under `(:group_members, key)`,
+and a key added from another package starts with that package's tag.
 
 State times follow a convention. A generic `Transition(:state; …)` writes the
 flag `:state` and the time `:state_time` (that is, `Symbol(state, :_time)`).
@@ -211,9 +236,10 @@ ones your intervention needs (all default to no-ops).
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
 | `on_infection_settled!(iv, individual, state, rng)` | Continuous-time models only: once the race fixes a case's infection time, before its onset or transitions read it | The case, and the race's own `rng` | `nothing` (mutate the case's `state` in place; default no-op) |
 | `risk_applies(iv, route)` | Continuous-time models selecting risks for a route (`nothing` for an external introduction) | Nothing | `Bool`; defaults to `true` |
+| `standing_block(iv)` | Continuous-time models deciding whether a certain block has settled a pair for good | Nothing | `Bool`; defaults to `false` |
 | `risk_depends_on_infector(iv)` | Before a fixed-size pool with more than one mixing group runs | Nothing | `Bool`: whether `competing_risk` can block a contact differently depending on its infector (default `true` when the type has its own `competing_risk`) |
 
-### Which hooks fire on which engine
+### Which hooks run on which engine
 
 The hooks above are not all available everywhere, because the engines are
 built differently. The generation-based engine creates a fresh `Individual`
@@ -286,7 +312,7 @@ What this means in practice:
   is still representable wherever that family is closed under proportional
   hazards, as an exponential contact interval is. A risk that arrives partway
   through the window — an isolation, or a dose a trace gives — is not, so
-  simulating with those and scoring the result with `loglikelihood` will
+  simulating with those and evaluating the result with `loglikelihood` will
   disagree.
 - A community introduction, on a model with an `external_hazard`, is put to the
   risks that act on the person being introduced: their susceptibility, a
@@ -301,6 +327,20 @@ What this means in practice:
   `EpiBranch.INTERVENTION_REMOVAL` in `until`. Wrappers forward the predicate.
   The generation engine applies every risk to every contact; model-provided
   risks and host multipliers also apply on every route.
+- [`EpiBranch.standing_block`](@ref) tells a continuous-time race that a
+  certain block of yours, once in force for a pair, never lifts, so the race
+  can stop proposing along that pair rather than redraw towards an answer it
+  already has. The `Risk` you return cannot carry this, because
+  `competing_risk` reads the state: a block that is certain at one proposal may
+  have lifted by the next, and both cases return the same plain numbers.
+  Declare it only when the block is permanent; a race over an unbounded window
+  needs the declaration to terminate, and without it a certain block raises
+  `ArgumentError` rather than quietly dropping transmission that could still
+  happen.
+
+  ```julia
+  EpiBranch.standing_block(::MyClosedWard) = true
+  ```
 - An external intervention can choose any subset of routes without adding a
   scope type. For example, a removal effect can follow the window's censoring:
 
@@ -392,7 +432,7 @@ function resolve_individual!(iso::Isolation, individual, state)
 end
 ```
 
-**`apply_post_transmission!`** — `ContactTracing` walks the new contacts, looks up each contact's parent, and applies the configured trace action (`Quarantine` or `FlagOnly`) when the eligibility and rate traits both pass:
+**`apply_post_transmission!`** — `ContactTracing` walks the new contacts, looks up each contact's parent, and applies the configured trace action (`Quarantine` or `FlagOnly`) when the eligibility and rate traits both pass. The trace is timed from [`trigger_time`](@ref EpiBranch.trigger_time), which for an isolation-based policy is the recorded isolation, so an isolation that counts as no detection starts no trace:
 
 ```julia
 function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
@@ -403,7 +443,7 @@ function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
         is_eligible(ct.eligibility, parent, ind, state) || continue
         traces(ct.trace_rate, parent, ind, state, rng) || continue
         trace_delay = draw_trace_delay(ct.isolation_to_trace_delay, parent, ind, state, rng)
-        trace_time = isolation_time(parent) + trace_delay
+        trace_time = trigger_time(ct.eligibility, parent, ind, state) + trace_delay
         apply_trace!(ct.action, ind, state, trace_time, rng)
     end
     return nothing
@@ -449,6 +489,40 @@ end
 whose transmission time is on or after the closure date; cross-border
 transmissions before the closure are unaffected.
 
+### Ending an infection early
+
+An intervention that ends an infection before symptom onset, such as a
+post-exposure antiviral, calls [`EpiBranch.abort_infection!`](@ref) with the
+time the infection ends. The engine does the rest on every transmission model:
+the case transmits nothing from that time, has no onset, and loses any clinical
+transition from that time on (see [Reserved keys](#Reserved-keys)). Here every
+exposed contact is treated and its infection ends `delay` days after exposure,
+unless symptoms would come first:
+
+```@example extending
+struct Antiviral <: AbstractIntervention
+    delay::Float64
+end
+
+function treat!(av::Antiviral, ind)
+    incubation = get(ind.state, :incubation_period, NaN)
+    ends = ind.infection_time + av.delay
+    isnan(incubation) || ends < ind.infection_time + incubation || return nothing
+    return EpiBranch.abort_infection!(ind, ends)
+end
+
+# Generation-based engine: contacts, at their provisional exposure.
+function EpiBranch.apply_post_transmission!(av::Antiviral, state, contacts)
+    foreach(c -> treat!(av, c), contacts)
+    return nothing
+end
+
+# Network and household models: each case once its infection time is settled.
+function EpiBranch.on_infection_settled!(av::Antiviral, ind, state, rng)
+    return treat!(av, ind)
+end
+```
+
 ### Built-in transmission terms are risk sources too
 
 The host's susceptibility and the infector's infectiousness are not
@@ -469,8 +543,8 @@ Four defaults ship, each contributing a block probability:
   where every active node is infected.
 - [`EpiBranch.AbortedInfection`](@ref) blocks every transmission an
   infector makes from its `:infection_aborted_time`, so an infection
-  aborted by a post-exposure dose stays ended whether or not the
-  intervention that aborted it is still active.
+  ended by [`EpiBranch.abort_infection!`](@ref) stays ended after the
+  intervention that aborted it stops being active.
 
 A trait of `1.0` contributes no risk, so the defaults are silent unless
 an attributes function sets a susceptibility or infectiousness below one.
@@ -1224,6 +1298,41 @@ error, because the routes would silently drop the shorthand's censoring. A
 model that passes no routes gets a single window that is cut by intervention
 removal.
 
+## Calendar schedules for pair kernels
+
+A [`PairKernel`](@ref)'s `calendar` multiplies its contact-interval hazard by a
+function of calendar time. [`Steps`](@ref) is the piecewise-constant schedule
+the package provides; any other schedule is a type with a
+[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) method returning
+the non-negative multiplier at a calendar time. How simulation and the
+likelihood integrate it is set by
+[`calendar_shape`](@ref EpiBranch.calendar_shape):
+
+- **Piecewise constant**, the default: also define
+  [`next_calendar_break`](@ref EpiBranch.next_calendar_break), the first time
+  strictly after `t` at which the multiplier changes (`Inf` if none). The
+  cumulative hazard is then summed exactly, one constant segment at a time,
+  and a draw is inverted within the segment where it falls.
+- **Smooth**: declare `calendar_shape(::YourSchedule) = EpiBranch.SmoothCalendar()`.
+  The cumulative hazard is the integral of the multiplier times the profile's
+  hazard by adaptive Gauss–Kronrod quadrature, and a draw bisects that integral
+  for its target log-survival.
+
+```julia
+struct Seasonal{T <: Real}
+    amplitude::T
+end
+EpiBranch.calendar_multiplier(s::Seasonal, t) = 1 + s.amplitude * sin(2π * t / 365)
+EpiBranch.calendar_shape(::Seasonal) = EpiBranch.SmoothCalendar()
+
+kernel = PairKernel(context -> Exponential(4.0); calendar = Seasonal(0.5))
+```
+
+Simulation and the likelihood read a schedule only through these methods, so
+both compute the same hazard. Parameterise the schedule's fields by type, as
+`Seasonal{T}` does, to differentiate the likelihood through them. A worked
+seasonal example is in [Contextual and calendar-time pair kernels](pair_kernels.md).
+
 ## Adding a transmission model
 
 Most use cases stay inside `BranchingProcess` and customise via the
@@ -1700,6 +1809,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Extension point | Mechanism | When called |
 |---|---|---|
 | Custom intervention | Struct `<: AbstractIntervention` + hook methods | Each generation |
+| Ending an infection early | `EpiBranch.abort_infection!(ind, time)` from an intervention hook | That hook |
 | Custom vaccination | Struct `<: AbstractVaccination` holding a `VaccineEffect` + `vaccine_effect` + `apply_post_transmission!` | Each generation |
 | Custom effect mode | Struct `<: AbstractEffectMode` + `realised_efficacy`, `realise_prior_dose!` | Dose recording |
 | Time-dependent intervention | `Scheduled(iv; start_time = ...)` + `intervention_time`, `reset!` on `iv` | After each hook |
@@ -1714,7 +1824,10 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
 | Transmission route | `RouteWindow(name; from, until, kernel, reach)` on a process that reads them | Continuous-time race, per case |
 | Structured fixed-size pool | Reuse the Sellke pool: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply a `force(group, counts)` | Simulation |
+| Custom clinical transition | Struct `<: AbstractClinicalTransition` + `initialise_individual!`, `resolve_individual!`; `is_terminal`/`terminal_event` if terminal; `transition_loglik` to evaluate it | Case creation |
+| Calendar schedule for a pair kernel | Struct + `calendar_multiplier`, and `next_calendar_break` or `calendar_shape(::YourSchedule) = SmoothCalendar()` | Simulation + likelihood |
 | Pairwise likelihood for a structure | Struct `<: InfectionLayer` + `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood evaluation |
+| Progression likelihood | `progression_loglik(spec, individuals)`; built-in transitions work out of the box, a custom one needs `transition_loglik` | Likelihood evaluation |
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
 | Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
@@ -1772,6 +1885,32 @@ A supplied probability consumes an acceptance draw even at zero or one. Omit
 `probability` for an unconditional event without that draw, as `Recovery` does.
 Missing starting events consume no draws. `Transition` sets its flag before its
 delay callback; `Reporting` and `Hospitalisation` set their flags afterwards.
+
+To let [`progression_loglik`](@ref) evaluate `FollowupVisit`, add a
+[`EpiBranch.transition_loglik`](@ref) method reading back the same keys:
+the delay's log-density if the event occurred, the gate's log-probability
+either way, and `0.0` when the starting event was never reached — see the
+[`AntiviralTreatment` example](@ref "Writing a non-terminal custom transition")
+in the transitions tutorial.
+
+Two cases need more than reading the keys back, and
+[`EpiBranch.transition_term`](@ref) handles both: call it for the gate rather
+than reading `probability` yourself, then add the delay density to what it
+gives you.
+
+The first is an aborted infection. A post-exposure dose undoes every transition
+that would have taken effect at or after
+[`infection_aborted_time`](@ref EpiBranch.infection_aborted_time), restoring
+its flag and clearing its time — the same record a failed gate leaves. Read as
+a failed gate it gives `-Inf` for a certain gate, so it is censored at the
+abort instead: the probability that it would have landed no earlier than then,
+`log1p(-p * cdf(delay, aborted - anchor))`, or `logccdf` when `p` is 1. A
+transition anchored before onset is where this bites, since an aborted case has
+no onset to anchor from.
+
+The second is a gate from [`exclusive_probabilities`](@ref). Its siblings share
+one draw, so the gate returns the 0 or 1 that draw produced, while the term the
+likelihood needs is the width of the bucket the draw selected.
 
 A terminal transition also implements [`EpiBranch.terminal_target`](@ref): the
 state label it writes, known without an individual (unlike `terminal_event`,
@@ -1849,12 +1988,16 @@ The network and household infection likelihoods condition on infection times,
 infectious opening and removal times, index-case status and the contact structure.
 They sum over possible infectors. They do not include the probability of the
 clinical timeline, intervention assignment, attribute draws or observations.
+[`progression_loglik`](@ref) evaluates the clinical-timeline term separately;
+the rest have no likelihood function in the package.
 
 Window censoring, including complete isolation, is represented by the extracted
 removal times. A partial transmission reduction or a susceptibility multiplier
-also changes the hazard within that window. The infection layer does not store
-those effects. `loglikelihood(data, spec)` rejects components whose effects have
-not been declared compatible with its bare process kernel.
+also changes the hazard within that window. A change to a host's susceptibility
+is declared through the susceptibility hook described below; other effects are
+not stored in the infection layer. `loglikelihood(data, spec)` rejects
+components whose effects have not been declared compatible with its bare process
+kernel.
 
 An external component that only changes an infectious window can opt in:
 
@@ -1875,6 +2018,47 @@ supplied kernel must represent the full pairwise hazard, including any host or
 intervention modifiers, and the external hazard must represent community
 introductions. This path retains differentiation through kernel parameters.
 Extraction alone does not certify that a bare kernel reproduces a composed model.
+
+#### Susceptibility effects
+
+A component that changes how susceptible a host is, such as a vaccination,
+enters the likelihood through [`EpiBranch.susceptibility_components`](@ref). It
+is asked about each susceptible host, given as a [`LayerHost`](@ref) that reads
+the layer's `host_times`, and returns `nothing` when it leaves that host's
+hazard as it is. Otherwise it returns a collection of `weight => modifier`
+pairs, each modifier an [`EpiBranch.HazardScaling`](@ref) that multiplies every
+hazard the host faces by a factor from a calendar time on, or `nothing` for no
+change. The host's contribution is the mixture over these components, with the
+escape from all of its possible infectors inside each one. A host-level state
+that is drawn once and never observed, such as whether a vaccinee responded,
+then governs all of that host's exposures together.
+
+`VaccineEffect` gives one component under `LeakyMode` and two under
+`AllOrNothingMode`, starting at the host's immunity time, and every
+`AbstractVaccination` answers with its `VaccineEffect`. An intervention of your
+own declares its effect the same way, next to the `competing_risk` that applies
+it in simulation, and names the host times it reads with
+[`EpiBranch.susceptibility_host_times`](@ref):
+
+```julia
+struct Prophylaxis <: EpiBranch.AbstractIntervention
+    reduction::Float64
+end
+
+function EpiBranch.susceptibility_components(p::Prophylaxis, host)
+    t = get(host.state, :prophylaxis_time, Inf)
+    isfinite(t) || return nothing
+    return (1 => EpiBranch.HazardScaling(t, 1 - p.reduction),)
+end
+EpiBranch.susceptibility_host_times(::Prophylaxis) = (:prophylaxis_time,)
+EpiBranch.infection_likelihood_compatible(::Prophylaxis) = true
+```
+
+`household_infections` and `network_infections` then record `:prophylaxis_time`
+for every host, and `loglikelihood(data, spec)` evaluates the effect. The same
+object, or any other effect, can be passed to
+`pairwise_surv_loglik(kernel, data; susceptibility = effect)` directly, which is
+how a candidate efficacy is evaluated in inference.
 
 ### Choosing initial cases in a fixed population
 

@@ -700,7 +700,7 @@ end
     end
 
     @testset "removal before infectious onset never infects" begin
-        # A latent period opens the window at :infectious, but isolation fires
+        # A latent period opens the window at :infectious, but isolation comes
         # first (close_t <= open_t). Such a case is never infectious: it must be
         # skipped rather than pop a close event against an id never made infectious.
         N = 100
@@ -1035,9 +1035,9 @@ end
 
     @testset "positive force with empty infectious pool is index-labelled" begin
         # A custom force with a count-independent positive hazard (external
-        # importation) keeps firing infections even when no one is infectious. The
-        # first infection draws its source from an empty pool: without a guard that
-        # throws; with the guard it falls back to the index-case label 0.
+        # importation) keeps generating infections even when no one is infectious.
+        # The first infection draws its source from an empty pool: without a
+        # guard that throws; with the guard it falls back to the index-case label 0.
         N = 50
         process = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
         prog = [

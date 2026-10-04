@@ -5,6 +5,13 @@ struct _PolicyEnabled
 end
 (p::_PolicyEnabled)(state) = p.enabled
 
+# An isolation eligibility that records a detection arriving after the case's
+# outcome, which the default declines.
+struct _DetectAfterOutcome <: EpiBranch.IsolationEligibility end
+EpiBranch.is_eligible_for_isolation(::_DetectAfterOutcome, ind, state) =
+    !is_asymptomatic(ind)
+EpiBranch.records_isolation(::_DetectAfterOutcome, ind, state, t) = true
+
 @testset "Callable isolation and scheduling parameters" begin
     for enabled in (false, true)
         iso = Isolation(
@@ -28,8 +35,8 @@ end
 # defaults are inert.
 struct _NoTraceIntervention <: AbstractIntervention end
 
-# A distribution that draws and scores but reports no support, as the package's
-# own `_TruncatedSkewNormal` does.
+# A distribution that draws and evaluates but reports no support, as the
+# package's own `_TruncatedSkewNormal` does.
 struct _UnboundedDelay <: ContinuousUnivariateDistribution end
 Base.rand(::AbstractRNG, ::_UnboundedDelay) = 30.0
 Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
@@ -243,6 +250,118 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         ) === nothing
     end
 
+    @testset "The race's tracing walk grows a ring through uninfected contacts" begin
+        # The structure-driven processes that call this walk live in the
+        # companion packages, so it is driven directly here on a path graph
+        # 1-2-3-4 in which only node 1 is a case.
+        function walk(depth; timed = false, wrap = identity)
+            ct = wrap(ContactTracing(TraceEveryone(), 1.0, Dirac(0.0); depth))
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(1.0), Exponential(5.0)),
+                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+            )
+            EpiBranch.add_individuals!(state, 4, [ct])
+            case = state.individuals[1]
+            case.state[:infected] = true
+            case.infection_time = 0.0
+            set_isolated!(case, 2.0)
+            neighbours = [[2], [1, 3], [2, 4], [3]]
+            # Node 3 cannot be reached before time 50, as on a route that
+            # opens late.
+            opens = Dict(3 => 50.0)
+            contacts = timed ?
+                (i, st) -> ((j, get(opens, j, -Inf)) for j in neighbours[i]) :
+                (i, st) -> neighbours[i]
+            pos = Dict(i => i for i in 1:4)
+            processed = [true, false, false, false]
+            reached = EpiBranch._trace_from!(
+                state, case, [ct], contacts, pos, processed
+            )
+            return state.individuals, reached
+        end
+
+        inds, reached = walk(3)
+        @test all(is_traced, inds[2:4])
+        @test [inds[i].state[:ring_remaining] for i in 2:4] == [2, 1, 0]
+        @test [inds[i].state[:traced_by] for i in 2:4] == [1, 2, 3]
+        @test !any(is_infected, inds[2:4])
+        # The walk reports who it reached, which is what the action layer is
+        # offered: a ring past the case's own neighbours included.
+        @test reached == Set([2, 3, 4])
+
+        # The ring stops at its radius.
+        inds, reached = walk(2)
+        @test is_traced(inds[3])
+        @test !is_traced(inds[4])
+        @test reached == Set([2, 3])
+
+        # A contact reached late on its route is traced no earlier than that,
+        # and the ring past it is timed from its trace.
+        inds, _ = walk(3; timed = true)
+        @test isolation_time(inds[2]) == 2.0
+        @test isolation_time(inds[3]) == 50.0
+        @test isolation_time(inds[4]) == 50.0
+
+        # A schedule gates the walk: inside its window the ring grows as it
+        # ever did, and outside it nothing is kept active, so the frontier
+        # stops at the case's own contacts.
+        inds, reached = walk(3; wrap = ct -> Scheduled(ct; start_time = 0.0))
+        @test all(is_traced, inds[2:4])
+        @test reached == Set([2, 3, 4])
+        inds, reached = walk(3; wrap = ct -> Scheduled(ct; start_time = 1000.0))
+        @test !any(is_traced, inds[2:4])
+        # The case's own contacts were still offered; nothing beyond them was,
+        # because an inactive schedule keeps nobody active.
+        @test reached == Set([2])
+    end
+
+    @testset "Scheduled resetting a ring member lets a later trace grow the ring" begin
+        # A ring member that has already grown the ring, and whose trace a
+        # `Scheduled` start time then undoes, must behave as never traced: a
+        # later trace that the schedule keeps grows the ring through it again.
+        ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 2)
+        sched = Scheduled(ct; start_time = 10.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+        state.max_infection_time = 20.0
+        function case(id, isolated_at)
+            ind = Individual(id = id)
+            EpiBranch.initialise_individual!(ct, ind, state)
+            ind.state[:infected] = true
+            set_isolated!(ind, isolated_at)
+            return ind
+        end
+        function contact(id)
+            ind = Individual(id = id)
+            EpiBranch.initialise_individual!(ct, ind, state)
+            ind.state[:infected] = false
+            return ind
+        end
+        member, first_out, second_out = contact(10), contact(11), contact(12)
+
+        # Traced after the start, so kept, and grows the ring.
+        EpiBranch.trace_contacts!(sched, state, case(1, 12.0), [member])
+        EpiBranch.trace_contacts!(sched, state, member, [first_out])
+        @test is_traced(first_out)
+        @test member.state[:ring_propagated]
+
+        # A second case traces the member earlier, before the start: the
+        # schedule undoes the trace altogether.
+        EpiBranch.trace_contacts!(sched, state, case(2, 5.0), [member])
+        @test !is_traced(member)
+        @test !haskey(member.state, :ring_remaining)
+        @test !haskey(member.state, :ring_propagated)
+
+        # A third case traces it after the start, and the ring grows through
+        # it once more.
+        EpiBranch.trace_contacts!(sched, state, case(3, 15.0), [member])
+        @test is_traced(member)
+        EpiBranch.trace_contacts!(sched, state, member, [second_out])
+        @test is_traced(second_out)
+    end
+
     @testset "Isolation keeps the earliest pathway when already isolated" begin
         # A quarantine written by ContactTracing leaves `:isolated` set before
         # Isolation resolves the individual. That is the ordering the
@@ -283,6 +402,282 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         set_isolated!(negative, 50.0)
         EpiBranch.resolve_individual!(iso, negative, state)
         @test isolation_time(negative) == 50.0
+    end
+
+    @testset "An eligibility can record a detection after the outcome" begin
+        # The eligibility decides: a policy that wants post-mortem detection,
+        # as an Ebola death found at burial does, overrides
+        # `records_isolation`. The default declines such a time.
+        iso_default = Isolation(onset_to_isolation_delay = Dirac(5.0))
+        iso_late = Isolation(
+            onset_to_isolation_delay = Dirac(5.0), eligibility = _DetectAfterOutcome()
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(31)
+        )
+        function after_outcome(iso)
+            ind = Individual(id = 1)
+            ind.state[:onset_time] = 1.0
+            ind.state[:test_positive] = true
+            ind.state[:outcome_time] = 2.0
+            EpiBranch.resolve_individual!(iso, ind, state)
+            return ind
+        end
+
+        unrecorded = after_outcome(iso_default)
+        @test !is_isolated(unrecorded)
+        @test isolation_time(unrecorded) ≈ 6.0 atol = 1.0e-6
+        recorded = after_outcome(iso_late)
+        @test is_isolated(recorded)
+        @test isolation_time(recorded) ≈ 6.0 atol = 1.0e-6
+
+        # The same choice applies to the self-report that revises a standing
+        # quarantine, so one override covers both pathways.
+        function quarantined(iso)
+            ind = Individual(id = 2)
+            ind.state[:onset_time] = 1.0
+            ind.state[:test_positive] = true
+            ind.state[:outcome_time] = 2.0
+            set_isolated!(ind, 20.0)
+            EpiBranch.resolve_individual!(iso, ind, state)
+            return ind
+        end
+        @test !is_isolated(quarantined(iso_default))
+        @test isolation_time(quarantined(iso_default)) ≈ 6.0 atol = 1.0e-6
+        @test is_isolated(quarantined(iso_late))
+        @test isolation_time(quarantined(iso_late)) ≈ 6.0 atol = 1.0e-6
+    end
+
+    @testset "Isolation does not record a case as isolated after its outcome" begin
+        # An isolation time at or after `:outcome_time` (the case's recovery,
+        # death, or other terminal transition) still removes the case from
+        # transmission, but a self-report or trace reaching a case that has
+        # already recovered or died is not a detection.
+        iso = Isolation(onset_to_isolation_delay = Dirac(5.0))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+
+        # Self-reported pathway: onset at 1.0 + delay 5.0 = 6.0, after the
+        # case recovered at 2.0.
+        recovered_before_test = Individual(id = 1)
+        recovered_before_test.state[:onset_time] = 1.0
+        recovered_before_test.state[:test_positive] = true
+        recovered_before_test.state[:outcome_time] = 2.0
+        EpiBranch.resolve_individual!(iso, recovered_before_test, state)
+        @test !is_isolated(recovered_before_test)
+        @test isolation_time(recovered_before_test) ≈ 6.0 atol = 1.0e-6
+
+        # Traced pathway: the same bound applies regardless of which pathway
+        # produces the isolation time.
+        recovered_before_trace = Individual(id = 2)
+        recovered_before_trace.state[:onset_time] = 1.0
+        recovered_before_trace.state[:test_positive] = false
+        recovered_before_trace.state[:traced_isolation_time] = 6.0
+        recovered_before_trace.state[:outcome_time] = 2.0
+        EpiBranch.resolve_individual!(iso, recovered_before_trace, state)
+        @test !is_isolated(recovered_before_trace)
+        @test isolation_time(recovered_before_trace) ≈ 6.0 atol = 1.0e-6
+
+        # An isolation time before the outcome is unaffected.
+        recovered_after = Individual(id = 3)
+        recovered_after.state[:onset_time] = 1.0
+        recovered_after.state[:test_positive] = true
+        recovered_after.state[:outcome_time] = 10.0
+        EpiBranch.resolve_individual!(iso, recovered_after, state)
+        @test is_isolated(recovered_after)
+        @test isolation_time(recovered_after) ≈ 6.0 atol = 1.0e-6
+
+        # An already-isolated (quarantined) individual whose self-report
+        # comes earlier but after the outcome is removed at the self-report,
+        # unrecorded, and a Scheduled reset restores the quarantine.
+        quarantined = Individual(id = 4)
+        quarantined.state[:onset_time] = 1.0
+        quarantined.state[:test_positive] = true
+        quarantined.state[:outcome_time] = 2.0
+        set_isolated!(quarantined, 50.0)
+        EpiBranch.resolve_individual!(iso, quarantined, state)
+        @test isolation_time(quarantined) ≈ 6.0 atol = 1.0e-6
+        @test !is_isolated(quarantined)
+        EpiBranch.reset!(iso, quarantined)
+        @test isolation_time(quarantined) == 50.0
+        @test is_isolated(quarantined)
+    end
+
+    @testset "End-to-end: isolation does not follow recovery" begin
+        # Reproduces the reported case: onset at 1.0, recovery a day later,
+        # and a self-reported isolation delay long enough to fall after it.
+        model = ModelSpec(
+            BranchingProcess(Poisson(0.0), Exponential(1.0e9));
+            attributes = clinical_presentation(incubation_period = Dirac(1.0)),
+            progression = [Transition(:recovered; from = :onset, delay = 1.0, terminal = true)],
+            interventions = [Isolation(onset_to_isolation_delay = Dirac(5.0))]
+        )
+        state = simulate(model; n_initial = 1, rng = StableRNG(1))
+        ind = only(state.individuals)
+        @test ind.state[:recovered_time] == 2.0
+        @test !is_isolated(ind)
+        @test isolation_time(ind) == 6.0
+    end
+
+    @testset "An unrecorded isolation still removes the case as before" begin
+        # Case counts and removals were computed on the main branch before
+        # isolation after the outcome stopped counting as a detection. Only
+        # the detection record may differ.
+        removed(s) = count(i -> isfinite(isolation_time(i)), s.individuals)
+        configs = (
+            (
+                Recovery(delay = Gamma(2.0, 3.0)), 7,
+                [124, 1, 5, 1, 2, 132, 107, 17, 10, 1],
+                [97, 1, 5, 1, 2, 96, 85, 17, 10, 1],
+            ),
+            (
+                Death(delay = 0.0, probability = 1.0), 11,
+                [3, 1, 111, 1, 1, 1, 119, 130, 1, 1],
+                [3, 1, 84, 1, 1, 1, 86, 93, 1, 1],
+            ),
+        )
+        for (outcome, seed, cases, removals) in configs
+            model = ModelSpec(
+                BranchingProcess(Poisson(2.0), Gamma(2.0, 3.0));
+                attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.4)),
+                progression = [outcome],
+                interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0))]
+            )
+            results = simulate(model, 10; max_cases = 100, rng = StableRNG(seed))
+            @test [s.cumulative_cases for s in results] == cases
+            @test [removed(s) for s in results] == removals
+            @test sum(s -> count(is_isolated, s.individuals), results) <
+                sum(removals)
+        end
+    end
+
+    @testset "Isolation after death still cuts the funeral route" begin
+        history = [
+            Transition(:infectious, from = :infection, delay = 0.0),
+            Transition(:died, from = :onset, delay = 1.0, terminal = true),
+            Transition(:buried, from = :died, delay = 5.0),
+        ]
+        community = Infectiousness(
+            Poisson(0.5); from = :infectious,
+            until = (:died, EpiBranch.INTERVENTION_REMOVAL), kernel = Exponential(1.0)
+        )
+        funeral = Infectiousness(
+            Poisson(3.0); from = :died,
+            until = (:buried, EpiBranch.INTERVENTION_REMOVAL), kernel = Uniform(0.0, 5.0)
+        )
+        function funeral_cases(interventions)
+            model = ModelSpec(
+                BranchingProcess(community, funeral); progression = history,
+                attributes = clinical_presentation(incubation_period = Dirac(2.0)),
+                interventions = interventions
+            )
+            s = simulate(model; n_initial = 5, max_cases = 200, rng = StableRNG(3))
+            kids = filter(s.individuals) do ind
+                (ind.parent_id == 0 || !is_infected(ind)) && return false
+                p = s.individuals[ind.parent_id]
+                ind.infection_time >= get(p.state, :died_time, Inf)
+            end
+            return s, kids
+        end
+
+        _, uncontrolled = funeral_cases(AbstractIntervention[])
+        # Isolation two days after death, during the funeral window.
+        s, controlled = funeral_cases([Isolation(onset_to_isolation_delay = Dirac(3.0))])
+        @test length(controlled) < length(uncontrolled)
+        for ind in controlled
+            @test ind.infection_time < isolation_time(s.individuals[ind.parent_id])
+        end
+        # The removal is in force, but no isolation after death is a detection.
+        @test any(i -> isfinite(isolation_time(i)), s.individuals)
+        @test !any(is_isolated, s.individuals)
+    end
+
+    @testset "An unrecorded isolation is not a detection" begin
+        # Every isolation falls after the case's death at onset, so none is
+        # recorded: isolation-triggered tracing never starts and the line list
+        # reports no isolation. Recording post-mortem detection restores both.
+        function run(eligibility)
+            model = ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0));
+                attributes = clinical_presentation(incubation_period = Dirac(1.0)),
+                progression = [Death(delay = 0.0, probability = 1.0)],
+                interventions = [
+                    Isolation(onset_to_isolation_delay = Dirac(2.0), eligibility = eligibility),
+                    ContactTracing(OnIsolation(), 1.0, Dirac(0.5)),
+                ]
+            )
+            return simulate(model; n_initial = 3, max_cases = 50, rng = StableRNG(5))
+        end
+
+        s = run(SymptomaticOnly())
+        @test any(i -> isfinite(isolation_time(i)), s.individuals)
+        @test !any(is_isolated, s.individuals)
+        @test !any(is_traced, s.individuals)
+        df = linelist(s)
+        @test !any(df.isolated)
+        @test !hasproperty(df, :date_isolation) || all(ismissing, df.date_isolation)
+        @test !hasproperty(df, :isolation_unrecorded)
+
+        s_late = run(_DetectAfterOutcome())
+        @test any(is_traced, s_late.individuals)
+        df_late = linelist(s_late)
+        @test any(df_late.isolated)
+        @test any(!ismissing, df_late.date_isolation)
+    end
+
+    @testset "A later quarantine leaves an unrecorded isolation unrecorded" begin
+        function unrecorded_isolation()
+            ind = Individual(id = 1)
+            set_isolated!(ind, 6.0)
+            ind.state[:isolation_unrecorded] = true
+            return ind
+        end
+        rng = StableRNG(1)
+
+        later = unrecorded_isolation()
+        EpiBranch.apply_trace!(Quarantine(), later, nothing, 8.0, rng)
+        @test isolation_time(later) == 6.0
+        @test !is_isolated(later)
+
+        earlier = unrecorded_isolation()
+        EpiBranch.apply_trace!(Quarantine(), earlier, nothing, 4.0, rng)
+        @test isolation_time(earlier) == 4.0
+        @test is_isolated(earlier)
+    end
+
+    @testset "A Scheduled reset restores a standing isolation's record" begin
+        iso = Isolation(onset_to_isolation_delay = Dirac(2.0))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+        # A self-report at 3.0, after the outcome at 2.0, revises a standing
+        # isolation at 6.0 and is then undone.
+        function revised_and_reset(standing_unrecorded)
+            ind = Individual(id = 1)
+            ind.state[:onset_time] = 1.0
+            ind.state[:test_positive] = true
+            ind.state[:outcome_time] = 2.0
+            set_isolated!(ind, 6.0)
+            standing_unrecorded && (ind.state[:isolation_unrecorded] = true)
+            EpiBranch.resolve_individual!(iso, ind, state)
+            @test isolation_time(ind) ≈ 3.0 atol = 1.0e-6
+            EpiBranch.reset!(iso, ind)
+            return ind
+        end
+
+        unrecorded = revised_and_reset(true)
+        @test isolation_time(unrecorded) == 6.0
+        @test EpiBranch._isolation_in_force(unrecorded)
+        @test !is_isolated(unrecorded)
+        @test !haskey(unrecorded.state, :isolation_unrecorded_before_isolation)
+
+        recorded = revised_and_reset(false)
+        @test isolation_time(recorded) == 6.0
+        @test is_isolated(recorded)
     end
 
     @testset "Asymptomatic cases are not isolated" begin
@@ -1846,8 +2241,13 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # A vaccine with efficacy = 0.0 leaves transmission untouched;
                 # severity_efficacy = 1.0 fully protects anyone whose immunity
                 # has developed by their own onset from the (otherwise
-                # certain) death drawn below.
-                iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+                # certain) death drawn below. That death comes at onset, so
+                # each case is detected post mortem, which the eligibility
+                # records for tracing to reach its contacts.
+                iso = Isolation(
+                    onset_to_isolation_delay = Exponential(1.0),
+                    eligibility = _DetectAfterOutcome()
+                )
                 ct = ContactTracing(
                     probability = 1.0,
                     isolation_to_trace_delay = Exponential(0.5)
@@ -1916,8 +2316,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @testset "Immunity arriving after the outcome confers no protection" begin
                 # delay_to_immunity is long enough that immunity never
                 # develops before onset, so severity_efficacy must leave
-                # every death exactly as if the dose were never given.
-                iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+                # every death exactly as if the dose were never given. Death
+                # comes at onset, so detection is post mortem.
+                iso = Isolation(
+                    onset_to_isolation_delay = Exponential(1.0),
+                    eligibility = _DetectAfterOutcome()
+                )
                 ct = ContactTracing(
                     probability = 1.0,
                     isolation_to_trace_delay = Exponential(0.5)
@@ -2025,10 +2429,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test !is_vaccinated(ind; dose_label = :prime)
     end
 
-    @testset "RingVaccination fires under FlagOnly tracing" begin
+    @testset "RingVaccination doses contacts under FlagOnly tracing" begin
         # FlagOnly writes :traced_isolation_time, not :isolation_time. Ring
         # vaccination keys on the trace-driven isolation time, so it must still
-        # fire (previously it silently no-op'd when tracing only flagged).
+        # dose the contact (it silently no-op'd before, when tracing only flagged).
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
         ct = ContactTracing(
             probability = 1.0,

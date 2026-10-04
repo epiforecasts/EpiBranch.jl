@@ -57,6 +57,15 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
 
         @test elig(TraceEveryone(), asymptomatic)
         @test !elig(TraceNobody(), symptomatic)
+
+        @test elig(PreviouslyTraced(), infector_with(traced = true))
+        @test !elig(PreviouslyTraced(), infector_with(traced = false))
+        @test !elig(PreviouslyTraced(), infector_with())
+        # Interview once: an isolated case is traced from unless it was itself
+        # reached as someone else's contact.
+        once = OnIsolation() & !PreviouslyTraced()
+        @test elig(once, infector_with(isolated = true))
+        @test !elig(once, infector_with(isolated = true, traced = true))
     end
 
     @testset "Boolean operators compose policies" begin
@@ -125,7 +134,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         @test tt(OnSymptomOnset(), infector) == 4.0
         @test tt(OnIsolation(), infector) == 9.0
         @test tt(SymptomaticParent(), infector) == 9.0
-        # Combinators: AnyOf fires at the earliest trigger, AllOf at the latest.
+        # Combinators: AnyOf triggers at the earliest condition, AllOf at the latest.
         @test tt(OnSymptomOnset() | OnIsolation(), infector) == 4.0
         @test tt(OnSymptomOnset() & OnIsolation(), infector) == 9.0
     end

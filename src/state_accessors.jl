@@ -25,12 +25,42 @@ incubation period.
 """
 incubation_period(ind::Individual) = onset_time(ind) - ind.infection_time
 
-"""Whether the individual is isolated."""
-is_isolated(ind::Individual) = get(ind.state, :isolated, false)::Bool
+"""
+Time of the individual's terminal outcome — the earliest terminal
+[`Transition`](@ref) to occur, e.g. recovery or death (`Inf` if none has
+occurred, whether because the case is still ongoing or the progression has no
+terminal transition); a dual under AD.
+"""
+function outcome_time(ind::Individual{T}) where {T}
+    return convert(T, get(ind.state, :outcome_time, T(Inf)))::T
+end
 
-"""Time of isolation (Inf if not isolated); a dual under AD."""
+"""Whether the individual is recorded as isolated, which is what tracing,
+group vaccination and the line list read as a detection. An isolation that
+[`Isolation`](@ref) does not record (see
+[`EpiBranch.records_isolation`](@ref)) still removes the case from
+transmission at [`isolation_time`](@ref) but leaves this `false`."""
+is_isolated(ind::Individual) = _isolation_in_force(ind) && !_isolation_unrecorded(ind)
+
+"""Time from which isolation or quarantine removes the individual from
+transmission (`Inf` if never), whether or not the isolation is recorded as a
+detection (see [`is_isolated`](@ref)); a dual under AD."""
 function isolation_time(ind::Individual{T}) where {T}
     return convert(T, get(ind.state, :isolation_time, T(Inf)))::T
+end
+
+# Whether an isolation or quarantine stands on the individual, recorded or not.
+# Interventions layering one isolation over another read this.
+_isolation_in_force(ind::Individual) = get(ind.state, :isolated, false)::Bool
+
+# Whether the standing isolation removes the case from transmission without
+# counting as a detection.
+_isolation_unrecorded(ind::Individual) = get(ind.state, :isolation_unrecorded, false)::Bool
+
+# The time a detection reader sees: the isolation time, or `Inf` for an
+# isolation that is not recorded.
+function _recorded_isolation_time(ind::Individual{T}) where {T}
+    return _isolation_unrecorded(ind) ? T(Inf) : isolation_time(ind)
 end
 
 """Whether the individual was traced via contact tracing."""
@@ -80,12 +110,60 @@ end
 """Whether the individual is asymptomatic."""
 is_asymptomatic(ind::Individual) = get(ind.state, :asymptomatic, false)::Bool
 
-"""Whether the individual's infection was aborted before symptom onset, as a
-post-exposure dose of [`RingVaccination`](@ref) can do. The infection lasts
-until `:infection_aborted_time` and ends there, before any onset. The abort is
-recorded against the contact's exposure at the time the dose is given, or at a
-later exposure of a contact already given it. It is removed when infection is
-resolved if that exposure does not infect the contact before the abort time."""
+"""
+    infection_aborted_time(ind)
+
+Time at which the individual's infection was aborted before symptom onset
+(`Inf` if it was not); a dual under AD. Recorded by
+[`abort_infection!`](@ref EpiBranch.abort_infection!).
+"""
+function infection_aborted_time(ind::Individual{T}) where {T}
+    return convert(T, get(ind.state, :infection_aborted_time, T(Inf)))::T
+end
+
+"""
+    abort_infection!(ind, time)
+
+End the individual's infection at `time`, before symptom onset, as a
+post-exposure treatment would. For intervention authors: call it from any hook
+once the individual has an infection time. Several aborts keep the earliest.
+
+The engine then treats the infection as ended at `time` on every transmission
+model: the individual stays a case but transmits nothing from `time` on, also
+after the intervention that aborted it stops being active, and every route
+window closes there. It has no onset (`:onset_time` is `NaN` while
+`:asymptomatic` stays `false`), and nothing triggered by onset happens. Any
+clinical transition that would take effect at or after `time` is undone (see
+[`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)).
+
+On the generation-based engine an intervention acting before infection is
+resolved, in `apply_post_transmission!`, sees each contact's provisional
+infection time, its earliest exposure. If resolution leaves the contact
+uninfected, or infected at or after `time`, the abort did not end that
+infection and the engine discards it, restoring the onset.
+
+Throws an `ArgumentError` unless `time` falls after the infection time and,
+for an individual with a finite `:incubation_period`, before its onset.
+"""
+function abort_infection!(ind::Individual, time::Real)
+    ind.infection_time < time || throw(
+        ArgumentError(
+            "an infection can only be aborted after it starts (infection time " *
+                "$(ind.infection_time), abort time $time)"
+        )
+    )
+    incubation = get(ind.state, :incubation_period, NaN)
+    isnan(incubation) || time < ind.infection_time + incubation || throw(
+        ArgumentError(
+            "an infection can only be aborted before symptom onset (onset " *
+                "$(ind.infection_time + incubation), abort time $time)"
+        )
+    )
+    ind.state[:infection_aborted_time] = min(infection_aborted_time(ind), time)
+    _set_onset_from_incubation!(ind)
+    return nothing
+end
+
 _infection_aborted(ind::Individual) = haskey(ind.state, :infection_aborted_time)
 
 """Whether the individual develops symptoms: it is not asymptomatic and its
@@ -110,12 +188,14 @@ respects leaky isolation. `:isolated` in an `until` refers to a
 `Transition(:isolated, …)` in the natural history."""
 function set_isolated!(ind::Individual, time::Real)
     ind.state[:isolated] = true
+    delete!(ind.state, :isolation_unrecorded)
     return ind.state[:isolation_time] = time
 end
 
 """Clear an individual's isolation, the inverse of [`set_isolated!`](@ref)."""
 function clear_isolated!(ind::Individual)
     ind.state[:isolated] = false
+    delete!(ind.state, :isolation_unrecorded)
     ind.state[:isolation_time] = Inf
     return nothing
 end

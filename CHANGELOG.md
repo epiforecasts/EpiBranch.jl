@@ -24,12 +24,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   form can read state that another intervention recorded on the individual,
   such as a group's own event time, so detection can speed up once a
   household's first case is found.
-- `StatefulKernel` shares sampled attributes and dated intervention histories
-  between structured simulation and likelihoods. `record_kernel` extracts typed
-  host records for inference. An infection layer can hold per-host times such
-  as onsets (`host_times`), which a live `StatefulKernel` reads in the
-  likelihood, so one kernel timed from symptom onset serves both simulation and
-  inference.
 - The households tutorial casts the classical households model as a branching
   process over households: the households-of-one limit, the offspring matrix as
   a multi-type `BranchingProcess`, and the scope of the approximation.
@@ -37,10 +31,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   time: people whose infection would fall later stay uninfected, matching the
   full run restricted to infections up to `max_time`. The other termination
   controls still do not apply to these models.
-- `CalendarKernel` aligns calendar-time contact hazards with infectious openings
-  in network and household simulation and likelihoods.
-- `ContextualKernel` shares fixed and infector-infection-time covariates between
-  network or household simulation and the compiled pairwise likelihood.
 - Clean-project installation checks for matching source revisions and published
   companion-package installations.
 - Callable objects can supply branching-process offspring rules, generation-time
@@ -127,11 +117,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   time for every case.
 - `NetworkProcess` (in `EpiNetwork`) can be fitted as well as simulated.
   `network_infections` reads the infection layer out of a simulation, and
-  `loglikelihood(data, model)` scores it with the pairwise survival likelihood,
-  whose generative model is the network's continuous-time race. Each node's
-  possible infectors are its in-neighbours. Shared, covariate and per-edge
-  kernels and a community hazard are supported. Each case's infectious window
-  ends where the simulation ends it, including removal by the model's
+  `loglikelihood(data, model)` evaluates it with the pairwise survival
+  likelihood, whose generative model is the network's continuous-time race. Each
+  node's possible infectors are its in-neighbours. Shared, covariate and
+  per-edge kernels and a community hazard are supported. Each case's infectious
+  window ends where the simulation ends it, including removal by the model's
   interventions such as isolation.
 - The pairwise survival likelihood now lives in EpiBranch and works over any
   contact structure. `compile_contact_pairs` enumerates the (susceptible,
@@ -145,9 +135,9 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   `Inf`), on `HouseholdInfections`, `NetworkInfections` and a custom
   `InfectionLayer` alike, and `household_infections` and `network_infections`
   take it as a keyword. The pairwise survival likelihood ignores infections and
-  exposure after it. An outbreak still going when the data end is then scored as
-  observed so far, with a finite value and gradient, and a case still infectious
-  at the end of follow-up can keep a removal time of `Inf`.
+  exposure after it. An outbreak still going when the data end is then evaluated
+  as observed so far, with a finite value and gradient, and a case still
+  infectious at the end of follow-up can keep a removal time of `Inf`.
 - Analytical results for multi-type branching processes built from an offspring
   matrix. `reproduction_number(model)` returns R*, the dominant eigenvalue of the
   next-generation matrix (the offspring mean for a single-type model), and
