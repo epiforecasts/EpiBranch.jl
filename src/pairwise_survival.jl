@@ -1045,130 +1045,9 @@ function pairwise_surv_loglik(
         kernel, data::InfectionLayer, layout::ContactPairsLayout;
         external_hazard = 0.0, susceptibility = nothing
     )
-    extdist, tfollow, T = _pairwise_setup(kernel, data, layout, external_hazard)
-    mixtures = _host_mixtures(susceptibility, data, layout)
-    # A per-edge or covariate kernel's parameter type is only known at run time;
-    # the function barrier keeps the passes type-stable.
-    return _pairwise_surv_loglik(
-        kernel, extdist, data, layout, tfollow,
-        promote_type(T, _mixtures_partype(mixtures)), mixtures
+    return pairwise_reduce(
+        _TotalLogLik(), kernel, data, layout; external_hazard, susceptibility
     )
-end
-
-function _pairwise_surv_loglik(
-        kernel, extdist, data, layout, tfollow,
-        ::Type{T}, mixtures
-    ) where {T}
-    # An infected host that is not conditioned on and has no possible infector
-    # cannot have been infected, unless that infection falls after the end of
-    # follow-up.
-    @inbounds for j in layout.no_rows
-        tj = data.infection_time[j]
-        (isnan(tj) || tj > tfollow) || return T(-Inf)
-    end
-
-    # A covariate or per-edge kernel may hold the fitted parameters on only some
-    # pairs, and the probe behind `T` can miss them. Every row pass 2 evaluates has a
-    # positive at-risk time in pass 1. Pass 1's sum has therefore seen every
-    # kernel pass 2 will use, and its type sets pass 2's accumulator.
-    ll = _pairwise_cumhazard(kernel, extdist, data, layout, tfollow, T, mixtures)
-    ll = _pairwise_events(
-        kernel, extdist, data, layout, tfollow, ll,
-        promote_type(T, typeof(ll)), mixtures
-    )
-    _is_minus_inf(ll) && return ll
-    return _pairwise_mixtures(kernel, extdist, data, layout, tfollow, ll, mixtures)
-end
-
-# The flat passes leave out the susceptibles a `susceptibility` effect modifies,
-# which `_pairwise_mixtures` evaluates instead.
-function _pairwise_cumhazard(
-        kernel, extdist, data, layout, tfollow,
-        ::Type{T}, mixtures = nothing
-    ) where {T}
-    sus = layout.sus
-    infector = layout.infector
-    is_ext = layout.is_ext
-    ll = zero(T)
-
-    # Pass 1: cumulative-hazard contribution per row, each at risk from 0. A
-    # susceptible is exposed to its possible infectors until it is infected, and
-    # to the community hazard until the earlier of that and `obs_end`, after
-    # which there are no more introductions. Nothing is at risk after the end of
-    # follow-up, and a host infected after it has escaped until then as far as
-    # the data show.
-    @inbounds for r in eachindex(sus)
-        j = sus[r]
-        _is_mixed(mixtures, j) && continue
-        tj = data.infection_time[j]
-        tend = (isnan(tj) || tj > tfollow) ? tfollow : convert(typeof(tfollow), tj)
-        if is_ext[r]
-            stop = min(tend, data.obs_end)
-            stop > 0 || continue
-            ll -= cumhazard(extdist, stop)
-        else
-            i = infector[r]
-            oi = data.infectious_time[i]
-            isfinite(oi) || continue
-            oi < tend || continue
-            stop = min(data.removal_time[i], tend) - oi
-            stop > 0 || continue
-            ll -= cumhazard(_pair_kernel(kernel, layout, r, data), stop)
-        end
-    end
-    return ll
-end
-
-function _pairwise_events(
-        kernel, extdist, data, layout, tfollow, ll0,
-        ::Type{T}, mixtures = nothing
-    ) where {T}
-    sus = layout.sus
-    infector = layout.infector
-    is_ext = layout.is_ext
-    ll = T(ll0)
-
-    # Pass 2: per-susceptible log-sum-exp over event rows. A single accumulator
-    # is reused across groups (reset per group) so the reduction stays
-    # allocation-free on the AD tape. Every host in the layout is explained: an
-    # infected one with no positive hazard at its infection time has density
-    # zero, and the whole configuration is impossible: return -Inf there rather
-    # than adding it, so that the derivative is zero too. Adding it would leave
-    # the derivatives of the other hosts' finite terms sitting alongside an
-    # infinite value, whereas the log-density is -Inf throughout a neighbourhood
-    # of the parameters, because impossibility is a discrete fact of the fixed
-    # times.
-    acc = _LogSumExpAcc{T}()
-    @inbounds for g in eachindex(layout.sus_unique)
-        j = layout.sus_unique[g]
-        _is_mixed(mixtures, j) && continue
-        tj = data.infection_time[j]
-        (isnan(tj) || tj > tfollow) && continue
-        acc.m = T(-Inf)
-        acc.s = zero(T)
-        acc.nseen = 0
-        for k in layout.sus_row_ranges[g]
-            r = layout.sus_row_order[k]
-            if is_ext[r]
-                # a host infected after `obs_end` was infected along a contact;
-                # one infected at 0 is a community case like any other
-                (tj >= 0 && tj <= data.obs_end) || continue
-                _push!(acc, loghazard(extdist, tj))
-            else
-                i = infector[r]
-                oi = data.infectious_time[i]
-                isfinite(oi) || continue
-                if oi < tj && tj <= data.removal_time[i]
-                    _push!(acc, loghazard(_pair_kernel(kernel, layout, r, data), tj - oi))
-                end
-            end
-        end
-        v = _value(acc)
-        _is_minus_inf(v) && return T(-Inf)
-        ll += v
-    end
-
-    return ll
 end
 
 # ── Susceptible-level mixtures ───────────────────────────────────────
@@ -1324,29 +1203,274 @@ function _mixture_loglik(
     return m + log(total)
 end
 
-# Adds the modified susceptibles' contributions to the flat passes' total `ll0`.
-_pairwise_mixtures(kernel, extdist, data, layout, tfollow, ll0, ::Nothing) = ll0
-function _pairwise_mixtures(
-        kernel, extdist, data, layout, tfollow, ll0, mixtures::AbstractDict
-    )
-    T = typeof(ll0)
-    ll = ll0
-    for g in eachindex(layout.sus_unique)
-        mixture = get(mixtures, layout.sus_unique[g], nothing)
-        mixture === nothing && continue
-        v = _mixture_loglik(mixture, kernel, extdist, data, layout, g, tfollow, T)
-        _is_minus_inf(v) && return T(-Inf)
-        ll += v
-    end
-    return ll
-end
-
 function pairwise_surv_loglik(
         kernel, data::InfectionLayer; external_hazard = 0.0,
         susceptibility = nothing
     )
     layout = compile_contact_pairs(data; external = _ext_active(external_hazard))
     return pairwise_surv_loglik(kernel, data, layout; external_hazard, susceptibility)
+end
+
+# ── Row-grouped reductions ───────────────────────────────────────────
+#
+# `pairwise_surv_loglik` and `pairwise_surv_loglik_by_component` score the
+# same two passes over `layout`'s rows and differ only in which rows add into
+# a shared number and which add into their own. A `PairwiseReduction` says
+# that, so the maths underneath is written once.
+
+"""
+    PairwiseReduction
+
+Supertype for how the two accumulation passes behind [`pairwise_surv_loglik`](@ref)
+group rows into a result. [`ngroups`](@ref EpiBranch.ngroups) gives how many
+groups a subtype has and [`group`](@ref EpiBranch.group) which group a host's
+rows belong to; a subtype needs only these two methods; the passes themselves
+do not change. [`pairwise_surv_loglik`](@ref) puts every row into the one
+group its scalar result is; [`pairwise_surv_loglik_by_component`](@ref) groups
+by the contact structure's connected components. A grouping by stratum or by
+spatial patch is written the same way, from outside the package, and run with
+[`pairwise_reduce`](@ref EpiBranch.pairwise_reduce).
+"""
+abstract type PairwiseReduction end
+
+"""
+    ngroups(reduction::PairwiseReduction) -> Int
+
+How many groups `reduction` sums rows into. A [`PairwiseReduction`](@ref)
+subtype defines this.
+"""
+function ngroups(reduction::PairwiseReduction)
+    throw(
+        ArgumentError(
+            "$(nameof(typeof(reduction))) needs a method for " *
+                "`EpiBranch.ngroups` giving how many groups it sums rows into"
+        )
+    )
+end
+
+"""
+    group(reduction::PairwiseReduction, host::Int) -> Int
+
+Which of `reduction`'s `1:ngroups(reduction)` groups `host`'s rows add into.
+A [`PairwiseReduction`](@ref) subtype defines this.
+"""
+function group(reduction::PairwiseReduction, host)
+    throw(
+        ArgumentError(
+            "$(nameof(typeof(reduction))) needs a method for " *
+                "`EpiBranch.group` naming which group a host's rows add into"
+        )
+    )
+end
+
+# `pairwise_surv_loglik`'s grouping: every row shares the one group its
+# scalar result is returned as.
+struct _TotalLogLik <: PairwiseReduction end
+ngroups(::_TotalLogLik) = 1
+group(::_TotalLogLik, host) = 1
+
+# `pairwise_surv_loglik_by_component`'s grouping: a row's group is its
+# susceptible's connected component (shared with its infector, since the
+# contact structure is what makes them a possible pair), read off the layout
+# it was compiled from.
+struct _ByComponent <: PairwiseReduction
+    component::Vector{Int}
+    ncomponents::Int
+end
+ngroups(r::_ByComponent) = r.ncomponents
+group(r::_ByComponent, host) = r.component[host]
+
+# The running state of a reduction: one number per group, and which groups
+# are already known impossible; their rows are then skipped and their number
+# stays -Inf regardless of what else would be added. A group's number widens
+# if a row adds a wider type than it currently holds: a covariate kernel may
+# hold its fitted parameters on only some rows, and the type probe behind the
+# initial `T` can miss them. `pairwise_surv_loglik`'s single running total
+# used to be a bare local and widened the same way for free; a vector element
+# cannot, which is why `_add!` below checks and widens explicitly instead.
+struct _GroupTotals{T}
+    ll::Vector{T}
+    infeasible::Vector{Bool}
+end
+function _GroupTotals(reduction::PairwiseReduction, ::Type{T}) where {T}
+    n = ngroups(reduction)
+    return _GroupTotals{T}(zeros(T, n), falses(n))
+end
+
+function _add!(reduction::PairwiseReduction, totals::_GroupTotals{T}, host, Δ) where {T}
+    g = group(reduction, host)
+    totals.infeasible[g] && return totals
+    S = promote_type(T, typeof(Δ))
+    widened = S === T ? totals : _GroupTotals{S}(convert(Vector{S}, totals.ll), totals.infeasible)
+    widened.ll[g] += Δ
+    return widened
+end
+
+function _infeasible!(reduction::PairwiseReduction, totals::_GroupTotals{T}, host) where {T}
+    g = group(reduction, host)
+    totals.ll[g] = T(-Inf)
+    totals.infeasible[g] = true
+    return totals
+end
+
+_is_infeasible(reduction::PairwiseReduction, totals::_GroupTotals, host) =
+    totals.infeasible[group(reduction, host)]
+
+# A reduction's result is its vector of group totals, bar `_TotalLogLik`'s
+# single group, which is returned as the bare scalar `pairwise_surv_loglik`
+# promises.
+_result(::PairwiseReduction, totals::_GroupTotals) = totals.ll
+_result(::_TotalLogLik, totals::_GroupTotals) = totals.ll[1]
+
+"""
+    pairwise_reduce(reduction::PairwiseReduction, kernel, data::InfectionLayer,
+                     layout::ContactPairsLayout; external_hazard = 0.0,
+                     susceptibility = nothing) -> Vector{<:Real}
+
+Run the two accumulation passes behind [`pairwise_surv_loglik`](@ref) and
+[`pairwise_surv_loglik_by_component`](@ref) under `reduction`, a
+[`PairwiseReduction`](@ref), returning its `ngroups(reduction)` group
+log-likelihoods. A new grouping (by stratum, by spatial patch) calls this
+directly with its own `PairwiseReduction` subtype; `pairwise_surv_loglik` and
+`pairwise_surv_loglik_by_component` are this call under their own built-in
+groupings. Arguments are otherwise as in `pairwise_surv_loglik`.
+"""
+function pairwise_reduce(
+        reduction::PairwiseReduction, kernel, data::InfectionLayer,
+        layout::ContactPairsLayout; external_hazard = 0.0, susceptibility = nothing
+    )
+    extdist, tfollow, T = _pairwise_setup(kernel, data, layout, external_hazard)
+    mixtures = _host_mixtures(susceptibility, data, layout)
+    # A per-edge or covariate kernel's parameter type is only known at run time;
+    # the function barrier keeps the passes type-stable.
+    return _pairwise_surv_loglik(
+        kernel, extdist, data, layout, tfollow, reduction,
+        promote_type(T, _mixtures_partype(mixtures)), mixtures
+    )
+end
+
+function _pairwise_surv_loglik(
+        kernel, extdist, data, layout, tfollow,
+        reduction::PairwiseReduction, ::Type{T}, mixtures = nothing
+    ) where {T}
+    totals = _GroupTotals(reduction, T)
+    # An infected host that is not conditioned on and has no possible infector
+    # cannot have been infected, unless that infection falls after the end of
+    # follow-up; mark its group before any pass runs.
+    @inbounds for j in layout.no_rows
+        tj = data.infection_time[j]
+        (isnan(tj) || tj > tfollow) || (totals = _infeasible!(reduction, totals, j))
+    end
+    if !all(totals.infeasible)
+        totals = _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures)
+        totals = _pairwise_events(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures)
+        totals = _pairwise_mixtures(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures)
+    end
+    return _result(reduction, totals)
+end
+
+# Pass 1: cumulative-hazard contribution per row, each at risk from 0, added
+# into its susceptible's group. A susceptible is exposed to its possible
+# infectors until it is infected, and to the community hazard until the
+# earlier of that and `obs_end`, after which there are no more introductions.
+# Nothing is at risk after the end of follow-up, and a host infected after it
+# has escaped until then as far as the data show.
+function _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures = nothing)
+    sus = layout.sus
+    infector = layout.infector
+    is_ext = layout.is_ext
+
+    @inbounds for row in eachindex(sus)
+        j = sus[row]
+        _is_infeasible(reduction, totals, j) && continue
+        _is_mixed(mixtures, j) && continue
+        tj = data.infection_time[j]
+        tend = (isnan(tj) || tj > tfollow) ? tfollow : convert(typeof(tfollow), tj)
+        if is_ext[row]
+            stop = min(tend, data.obs_end)
+            stop > 0 || continue
+            totals = _add!(reduction, totals, j, -cumhazard(extdist, stop))
+        else
+            i = infector[row]
+            oi = data.infectious_time[i]
+            isfinite(oi) || continue
+            oi < tend || continue
+            stop = min(data.removal_time[i], tend) - oi
+            stop > 0 || continue
+            totals = _add!(reduction, totals, j, -cumhazard(_pair_kernel(kernel, layout, row, data), stop))
+        end
+    end
+    return totals
+end
+
+# Pass 2: per-susceptible log-sum-exp over event rows, added into (or dooming)
+# its susceptible's group. A single accumulator is reused across susceptibles
+# (reset per susceptible), keeping the reduction allocation-free on the AD
+# tape. Every host in the layout is explained: an infected one with no
+# positive hazard at its infection time has density zero, and its group is
+# impossible: mark it rather than adding it, so that the derivative is zero
+# too. Adding it would leave the derivatives of the other hosts' finite terms
+# sitting alongside an infinite value, whereas the log-density is -Inf
+# throughout a neighbourhood of the parameters, because impossibility is a
+# discrete fact of the fixed times.
+function _pairwise_events(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures = nothing)
+    sus = layout.sus
+    infector = layout.infector
+    is_ext = layout.is_ext
+
+    T = eltype(totals.ll)
+    acc = _LogSumExpAcc{T}()
+    @inbounds for g in eachindex(layout.sus_unique)
+        j = layout.sus_unique[g]
+        _is_infeasible(reduction, totals, j) && continue
+        _is_mixed(mixtures, j) && continue
+        tj = data.infection_time[j]
+        (isnan(tj) || tj > tfollow) && continue
+        acc.m = T(-Inf)
+        acc.s = zero(T)
+        acc.nseen = 0
+        for k in layout.sus_row_ranges[g]
+            row = layout.sus_row_order[k]
+            if is_ext[row]
+                # a host infected after `obs_end` was infected along a contact;
+                # one infected at 0 is a community case like any other
+                (tj >= 0 && tj <= data.obs_end) || continue
+                _push!(acc, loghazard(extdist, tj))
+            else
+                i = infector[row]
+                oi = data.infectious_time[i]
+                isfinite(oi) || continue
+                if oi < tj && tj <= data.removal_time[i]
+                    _push!(acc, loghazard(_pair_kernel(kernel, layout, row, data), tj - oi))
+                end
+            end
+        end
+        v = _value(acc)
+        totals = _is_minus_inf(v) ? _infeasible!(reduction, totals, j) : _add!(reduction, totals, j, v)
+    end
+
+    return totals
+end
+
+# Pass 3: a susceptible whose susceptibility an effect modifies is left out of
+# both flat passes and evaluated on its own here, as the log-sum-exp over its
+# mixture components of the log weight plus the escape and event terms under
+# that component's modifier. As in the event pass, a mixture of density zero
+# makes its group impossible.
+_pairwise_mixtures(reduction, kernel, extdist, data, layout, tfollow, totals, ::Nothing) = totals
+function _pairwise_mixtures(
+        reduction, kernel, extdist, data, layout, tfollow, totals, mixtures::AbstractDict
+    )
+    for g in eachindex(layout.sus_unique)
+        j = layout.sus_unique[g]
+        _is_infeasible(reduction, totals, j) && continue
+        mixture = get(mixtures, j, nothing)
+        mixture === nothing && continue
+        T = eltype(totals.ll)
+        v = _mixture_loglik(mixture, kernel, extdist, data, layout, g, tfollow, T)
+        totals = _is_minus_inf(v) ? _infeasible!(reduction, totals, j) : _add!(reduction, totals, j, v)
+    end
+    return totals
 end
 
 # ── Per-component contributions ──────────────────────────────────────
@@ -1379,175 +1503,18 @@ component can accept or reject each move on its own entry without recompiling
 the layout.
 
 Arguments, community-hazard handling and `susceptibility` are otherwise as in
-[`pairwise_surv_loglik`](@ref).
+[`pairwise_surv_loglik`](@ref), which this shares the [`PairwiseReduction`](@ref)
+machinery with: the only difference is grouping by component instead of into
+one total.
 """
 function pairwise_surv_loglik_by_component(
         kernel, data::InfectionLayer, layout::ContactPairsLayout;
         external_hazard = 0.0, susceptibility = nothing
     )
-    extdist, tfollow, T = _pairwise_setup(kernel, data, layout, external_hazard)
-    mixtures = _host_mixtures(susceptibility, data, layout)
-    return _pairwise_surv_loglik_by_component(
-        kernel, extdist, data, layout, tfollow,
-        promote_type(T, _mixtures_partype(mixtures)), mixtures
+    reduction = _ByComponent(layout.component, layout.ncomponents)
+    return pairwise_reduce(
+        reduction, kernel, data, layout; external_hazard, susceptibility
     )
-end
-
-function _pairwise_surv_loglik_by_component(
-        kernel, extdist, data, layout, tfollow,
-        ::Type{T}, mixtures
-    ) where {T}
-    component = layout.component
-    infeasible = falses(layout.ncomponents)
-    # As in the total, a conditioned-on host with no possible infector makes its
-    # whole component impossible; mark it before either pass runs.
-    @inbounds for j in layout.no_rows
-        tj = data.infection_time[j]
-        !(isnan(tj) || tj > tfollow) && (infeasible[component[j]] = true)
-    end
-    ll = _pairwise_cumhazard_by_component(
-        infeasible, kernel, extdist, data, layout, tfollow, T, mixtures
-    )
-    _pairwise_events_by_component!(
-        ll, infeasible, kernel, extdist, data, layout, tfollow, eltype(ll), mixtures
-    )
-    _pairwise_mixtures_by_component!(
-        ll, infeasible, kernel, extdist, data, layout, tfollow, mixtures
-    )
-    return ll
-end
-
-_pairwise_mixtures_by_component!(ll, infeasible, kernel, extdist, data, layout, tfollow, ::Nothing) = ll
-function _pairwise_mixtures_by_component!(
-        ll, infeasible, kernel, extdist, data, layout, tfollow, mixtures::AbstractDict
-    )
-    T = eltype(ll)
-    for g in eachindex(layout.sus_unique)
-        j = layout.sus_unique[g]
-        c = layout.component[j]
-        infeasible[c] && continue
-        mixture = get(mixtures, j, nothing)
-        mixture === nothing && continue
-        v = _mixture_loglik(mixture, kernel, extdist, data, layout, g, tfollow, T)
-        if _is_minus_inf(v)
-            ll[c] = T(-Inf)
-            infeasible[c] = true
-        else
-            ll[c] += v
-        end
-    end
-    return ll
-end
-
-# A per-edge or covariate kernel may hold the fitted parameters on only some
-# rows, and the probe behind `T` can miss them, as for the total. There the
-# accumulator is an untyped local that Julia silently widens if a row
-# disagrees; here it is a concretely-typed vector, which would throw instead.
-# Attempt it at `T` first, since that holds on every row but the rare one
-# the probe missed. If a row does disagree, `_pairwise_cumhazard` (which
-# visits the same rows, unsplit by component) has by then seen every kernel
-# this pass will use, so its result's type is wide enough to retry with.
-function _pairwise_cumhazard_by_component(
-        infeasible, kernel, extdist, data, layout, tfollow, ::Type{T}, mixtures
-    ) where {T}
-    ll = [c ? T(-Inf) : zero(T) for c in infeasible]
-    try
-        return _pairwise_cumhazard_by_component!(
-            ll, infeasible, kernel, extdist, data, layout, tfollow, mixtures
-        )
-    catch e
-        e isa MethodError || rethrow()
-        T2 = promote_type(
-            T, typeof(_pairwise_cumhazard(kernel, extdist, data, layout, tfollow, T, mixtures))
-        )
-        ll2 = [c ? T2(-Inf) : zero(T2) for c in infeasible]
-        return _pairwise_cumhazard_by_component!(
-            ll2, infeasible, kernel, extdist, data, layout, tfollow, mixtures
-        )
-    end
-end
-
-function _pairwise_cumhazard_by_component!(
-        ll, infeasible, kernel, extdist, data, layout, tfollow, mixtures
-    )
-    sus = layout.sus
-    infector = layout.infector
-    is_ext = layout.is_ext
-    component = layout.component
-
-    # Pass 1, as in `_pairwise_cumhazard`, but added into the row's own
-    # component rather than a single total; an already-infeasible component's
-    # rows are skipped, since their contribution is discarded regardless.
-    @inbounds for r in eachindex(sus)
-        j = sus[r]
-        c = component[j]
-        (infeasible[c] || _is_mixed(mixtures, j)) && continue
-        tj = data.infection_time[j]
-        tend = (isnan(tj) || tj > tfollow) ? tfollow : convert(typeof(tfollow), tj)
-        if is_ext[r]
-            stop = min(tend, data.obs_end)
-            stop > 0 || continue
-            ll[c] -= cumhazard(extdist, stop)
-        else
-            i = infector[r]
-            oi = data.infectious_time[i]
-            isfinite(oi) || continue
-            oi < tend || continue
-            stop = min(data.removal_time[i], tend) - oi
-            stop > 0 || continue
-            ll[c] -= cumhazard(_pair_kernel(kernel, layout, r, data), stop)
-        end
-    end
-    return ll
-end
-
-function _pairwise_events_by_component!(
-        ll, infeasible, kernel, extdist, data, layout, tfollow,
-        ::Type{T}, mixtures
-    ) where {T}
-    sus = layout.sus
-    infector = layout.infector
-    is_ext = layout.is_ext
-    component = layout.component
-
-    # Pass 2, as in `_pairwise_events`. A group whose log-sum-exp is -Inf makes
-    # its own component impossible: overwrite that entry with a literal -Inf,
-    # discarding whatever finite, AD-tracked value it held (from this pass or
-    # pass 1), so the component's derivative is exactly zero rather than the
-    # sum of finite terms next to an infinite one.
-    acc = _LogSumExpAcc{T}()
-    @inbounds for g in eachindex(layout.sus_unique)
-        j = layout.sus_unique[g]
-        c = component[j]
-        (infeasible[c] || _is_mixed(mixtures, j)) && continue
-        tj = data.infection_time[j]
-        (isnan(tj) || tj > tfollow) && continue
-        acc.m = T(-Inf)
-        acc.s = zero(T)
-        acc.nseen = 0
-        for k in layout.sus_row_ranges[g]
-            r = layout.sus_row_order[k]
-            if is_ext[r]
-                (tj >= 0 && tj <= data.obs_end) || continue
-                _push!(acc, loghazard(extdist, tj))
-            else
-                i = infector[r]
-                oi = data.infectious_time[i]
-                isfinite(oi) || continue
-                if oi < tj && tj <= data.removal_time[i]
-                    _push!(acc, loghazard(_pair_kernel(kernel, layout, r, data), tj - oi))
-                end
-            end
-        end
-        v = _value(acc)
-        if _is_minus_inf(v)
-            ll[c] = T(-Inf)
-            infeasible[c] = true
-        else
-            ll[c] += v
-        end
-    end
-    return ll
 end
 
 function pairwise_surv_loglik_by_component(

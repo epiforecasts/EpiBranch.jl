@@ -54,6 +54,13 @@ _nan_where(x, mask) = [m ? NaN : v for (v, m) in zip(x, mask)]
 # A layer that forgets to name its structure.
 struct _NoStructure <: InfectionLayer end
 
+# A grouping the package does not define, written the same way a household or
+# network grouping would be: every host's rows add into one of two groups by
+# parity of its id, with no change to pairwise_survival.jl.
+struct _Parity <: EpiBranch.PairwiseReduction end
+EpiBranch.ngroups(::_Parity) = 2
+EpiBranch.group(::_Parity, host) = host % 2 == 0 ? 2 : 1
+
 # Contiguous cliques of the given sizes, as a membership vector and as the
 # equivalent adjacency list (each member lists its household-mates in order).
 function _cliques(sizes)
@@ -710,9 +717,8 @@ end
     @testset "per-component contributions differentiable in the kernel parameters" begin
         # as for the total's "a kernel whose first internal pair holds no
         # fitted parameter", but summed by component rather than into one
-        # scalar: the accumulator is a vector here, so a row the `T` probe
-        # missed throws on the fast path instead of silently widening, and
-        # must fall back to one that does not
+        # scalar: a row the `T` probe missed still makes `_add!`, now shared
+        # machinery for both entry points, widen the running totals
         _, adjacency = _cliques([3, 4, 2, 4])
         inf = [0.0, 1.2, NaN, 0.0, 2.1, 3.5, NaN, 0.0, NaN, 0.0, 0.7, NaN, 4.2]
         data = _TestInfections(
@@ -732,5 +738,28 @@ end
                 (i, j) -> i == first_inf ? Exponential(3.0) : Exponential(s), data, L
             ), 2.5
         )
+    end
+
+    @testset "a new grouping needs no change to pairwise_survival.jl" begin
+        # pairwise_surv_loglik and pairwise_surv_loglik_by_component are two
+        # groupings of the same two passes; a third (here, by parity) is
+        # written from outside with the same two tiny methods and reuses them
+        # unchanged.
+        membership, _ = _cliques([3, 4, 2, 4])
+        inf = [0.0, 1.2, NaN, 0.0, 2.1, 3.5, NaN, 0.0, NaN, 0.0, 0.7, NaN, 4.2]
+        infectious = inf .+ 0.5
+        removal = infectious .+ 4.0
+        is_index = [
+            true, false, false, true, false, false, false, true, false,
+            true, false, false, false,
+        ]
+        hh = _TestInfections(membership, inf, infectious, removal, is_index; obs_end = 10.0)
+        L = compile_contact_pairs(hh; external = true)
+        k = Exponential(2.5)
+
+        total = pairwise_surv_loglik(k, hh, L; external_hazard = 0.05)
+        by_parity = EpiBranch.pairwise_reduce(_Parity(), k, hh, L; external_hazard = 0.05)
+        @test length(by_parity) == 2
+        @test sum(by_parity) ≈ total
     end
 end
