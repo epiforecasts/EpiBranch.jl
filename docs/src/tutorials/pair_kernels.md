@@ -206,12 +206,53 @@ using EpiBranch, EpiNetwork, Distributions, Random
 attributes = (rng, ind) -> (ind.state[:contact_scale] = rand(rng, Uniform(0.5, 1.5)))
 project(ind) = (scale = ind.state[:contact_scale]::Float64,)
 contact_law(context, source, target) = Exponential(source.scale + target.scale)
-kernel = PairKernel(contact_law; state = project)
+kernel = PairKernel(contact_law; state = project, watches = (:contact_scale,))
 adjacency = [[2, 3], [1, 3], [1, 2]]
 progression = [Transition(:recovered; delay = 5.0, terminal = true)]
 model = ModelSpec(NetworkProcess(adjacency, kernel); attributes, progression)
 state = simulate(model; initial_cases = [1], rng = Xoshiro(235))
 ```
+
+The rate at which a case infects its contacts can change during its infectious
+period: a post-exposure dose takes effect, or symptoms begin and the case is
+isolated. When the kernel reads one of those dates from the record, the race
+has already drawn when that case's contacts fall, at the rate in force when it
+drew them, and has to draw them again at the new rate. `watches` names the
+records to watch for: the `individual.state` keys the projection reads. Above,
+that is the one key the attributes builder sets.
+
+Name every key the projection reads, even one that nothing in this model
+writes:
+
+```@example stateful
+# Two keys read, both declared: the dose date a `RingVaccination` writes and
+# the onset `clinical_presentation` sets.
+dosed_kernel = PairKernel(
+    (context, source, target) -> Exponential(isfinite(target.dosed) ? 4.0 : 1.5);
+    state = ind -> (
+        dosed = get(ind.state, :vaccination_time, Inf)::Float64,
+        onset = get(ind.state, :onset_time, NaN),
+    ),
+    watches = (:vaccination_time, :onset_time)
+)
+EpiBranch.watched_records(dosed_kernel)
+```
+
+A projection that reads no record at all declares `()`. This one scales each
+person's contact rate by a fixed covariate, indexed by their own id:
+
+```@example stateful
+scale_by_id = [1.0, 2.0, 0.5]
+by_id_kernel = PairKernel(
+    (context, source, target) -> Exponential(source.scale);
+    state = ind -> (scale = scale_by_id[ind.id],), watches = ()
+)
+EpiBranch.watched_records(by_id_kernel)
+```
+
+Leave a key out and the contacts keep the rate they were drawn at after the
+record moves, with nothing to report it. Name a key that never moves and the
+race pays one comparison per case. When in doubt, name it.
 
 After simulation, extract the selected records and use the same callback in the
 likelihood. `record_kernel` copies the projection results into a vector indexed
@@ -244,7 +285,7 @@ infection to onset:
 onset_state(ind) = (onset = get(ind.state, :onset_time, NaN),)
 after_onset(context, source, target) =
     (source.onset - context.infector_infection_time) + Exponential(1.0)
-onset_kernel = PairKernel(after_onset; state = onset_state)
+onset_kernel = PairKernel(after_onset; state = onset_state, watches = (:onset_time,))
 onset_model = ModelSpec(NetworkProcess(adjacency, onset_kernel);
     attributes = clinical_presentation(incubation_period = Gamma(2.0, 1.0)),
     progression)
@@ -288,7 +329,7 @@ function policy_contact(context, source, target)
     isfinite(target.date) || return Exponential(1 / 0.4)
     return (profile = Exponential(1.0), calendar = Steps([target.date], [0.4, 0.1]))
 end
-policy_kernel = PairKernel(policy_contact; state = policy_state)
+policy_kernel = PairKernel(policy_contact; state = policy_state, watches = (:policy_time,))
 policy_model = ModelSpec(NetworkProcess(adjacency, policy_kernel);
     progression, interventions = [TwoCasePolicy()])
 policy_run = simulate(policy_model; initial_cases = [1], rng = Xoshiro(236))

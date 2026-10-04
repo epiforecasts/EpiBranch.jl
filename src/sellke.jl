@@ -684,6 +684,12 @@ through [`risk_applies`](@ref). A case infected along one of these routes has
 the route's `name` in its `:infection_route`, which `linelist` reports. The
 single-window shorthand has no named route and writes nothing.
 
+`watches` names the host records each route's kernel reads, one tuple of
+`individual.state` keys per route in route order, as
+[`watched_records`](@ref EpiBranch.watched_records) reports them. A route that
+watches nothing draws from hazards fixed for the run and its contacts are never
+redrawn; `nothing`, the default, is a model with no such kernel at all.
+
 `introduction`, when given, is the `(kernel, until)` of the community hazard the
 model seeded its members from: the contact-interval distribution of an
 introduction from outside the population, and the time the introduction window
@@ -722,7 +728,7 @@ function _sellke_race!(
         rng::AbstractRNG; seed!, targets = nothing,
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
         routes = nothing, interventions = (), contacts = nothing, risks = (),
-        introduction = nothing, refresh_projection = nothing, max_time = Inf
+        introduction = nothing, watches = nothing, max_time = Inf
     )
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
@@ -765,15 +771,28 @@ function _sellke_race!(
     ]
 
     seed!(best, members, rng)
-    live = refresh_projection !== nothing
-    # What each member's host record held when contacts were last drawn from it.
-    # An intervention can change a record's type as well as its value (a date
-    # that was `nothing` until a dose), so the store takes any record.
-    records = live ?
+    # The host state each route's kernel reads, as the keys it declares through
+    # `watched_records`. A route that declares nothing draws from hazards fixed
+    # for the run, so its contacts are never redrawn; the race watches the union
+    # of the keys the live routes declare, and a key belongs to the routes that
+    # declared it, which is how a record that moves reaches only the pairs whose
+    # own kernel reads it.
+    route_keys = _route_watch_keys(watches, length(rts))
+    watched_keys = _watched_union(route_keys)
+    live = !isempty(watched_keys)
+    live_route = Bool[!isempty(keys) for keys in route_keys]
+    key_routes = [
+        [ri for ri in eachindex(route_keys) if key in route_keys[ri]]
+            for key in watched_keys
+    ]
+    # What each watched key held on each member when contacts were last drawn
+    # from it. A key can change type as well as value (a date that was absent
+    # until a dose), so the store takes anything.
+    snapshot = live ?
         Any[
-            deepcopy(_pair_state(refresh_projection, state.individuals[id]))
-            for id in members
-        ] : nothing
+            _remember(_watched_value(state.individuals[id], key))
+            for key in watched_keys, id in members
+        ] : Matrix{Any}(undef, 0, 0)
 
     T = eltype(best)
     # A popped entry is final unless the risks block it: every other pending
@@ -835,7 +854,7 @@ function _sellke_race!(
     passed = 0
     # For a live kernel, which hosts' records a pending or future draw reads.
     # Empty and unused otherwise.
-    watch = _LiveWatch(live ? m : 0)
+    watch = _LiveWatch(live ? m : 0, length(rts))
     for k in 1:m
         best[k] < Inf || continue
         seeded = best[k]
@@ -963,7 +982,7 @@ function _sellke_race!(
         # the ordinary path. Either way this case's own openings are drawn
         # inline below, from the records as they now stand.
         if live && _records_changed!(
-                records, refresh_projection, state, members,
+                snapshot, watched_keys, key_routes, state, members,
                 j, bt, watch, openings, processed
             )
             orphans += _redraw_moved!(
@@ -986,19 +1005,17 @@ function _sellke_race!(
             close_t = _route_close(ind, w, interventions)
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
-            live && _watch_opening!(watch, j)
+            live && _watch_opening!(watch, j, live_route[ri])
 
             for (target_id, kernel) in route_targets(members[j], state)
                 k = get(pos, target_id, 0)
                 (k == 0 || processed[k]) && continue
-                if live
+                if live_route[ri]
                     # This opening's draws come from the target's record as it
                     # stands now, which is what later comparisons start from.
                     _watch_target!(watch, opening_id, k)
-                    records[k] = _remember(
-                        _pair_state(
-                            refresh_projection, state.individuals[target_id]
-                        )
+                    _refresh_host!(
+                        snapshot, watched_keys, state.individuals[target_id], k
                     )
                 end
                 # Both per-individual traits are rate multipliers on this
@@ -1030,6 +1047,45 @@ end
 # copied. The usual named tuple of numbers is bits and is kept as it stands.
 _remember(record) = isbits(record) ? record : deepcopy(record)
 
+# A member's value of one watched key. An absent key reads as `_ABSENT`, which
+# no state value can equal, so a key an intervention writes for the first time
+# counts as a move.
+_watched_value(ind::Individual, key::Symbol) = get(ind.state, key, _ABSENT)
+
+function _refresh_host!(snapshot, watched_keys, ind::Individual, k)
+    for (ki, key) in enumerate(watched_keys)
+        snapshot[ki, k] = _remember(_watched_value(ind, key))
+    end
+    return nothing
+end
+
+# The keys each route's kernel declares. A model gives one tuple per route, in
+# route order; `nothing` is a model with no live kernel at all.
+function _route_watch_keys(watches, nroutes::Int)
+    watches === nothing && return [() for _ in 1:nroutes]
+    keys = [Tuple(w) for w in watches]
+    length(keys) == nroutes || throw(
+        ArgumentError(
+            "`watches` must name the watched records of each of the $nroutes " *
+                "routes (got $(length(keys)))"
+        )
+    )
+    for ks in keys
+        all(k -> k isa Symbol, ks) || throw(
+            ArgumentError("`watches` must name `individual.state` keys as `Symbol`s")
+        )
+    end
+    return keys
+end
+
+function _watched_union(route_keys)
+    declared = Symbol[]
+    for ks in route_keys, key in ks
+        key in declared || push!(declared, key)
+    end
+    return declared
+end
+
 # The hosts whose records a pending or future draw of a live kernel reads: the
 # infectors of openings still open and the unsettled members those openings
 # reach. Only these are compared after a case settles, each once however many
@@ -1045,13 +1101,15 @@ struct _LiveWatch
     slot::Vector{Int}              # each member's place in `tracked`, or 0
     opened_by::Vector{Vector{Int}} # the openings each member made
     reached_by::Vector{Vector{Int}} # the openings that reached each member
-    moved::Vector{Int}             # members whose records moved at this case
+    # Members whose records moved at this case, per route: a route hears only
+    # about the keys its own kernel declared.
+    moved::Vector{Vector{Int}}
 end
 # The seeds' opening has no infector and a fixed kernel, so it is never watched.
-function _LiveWatch(m::Int)
+function _LiveWatch(m::Int, nroutes::Int)
     return _LiveWatch(
         Int[], [0], [Int[]], zeros(Int, m), zeros(Int, m), Int[], zeros(Int, m),
-        [Int[] for _ in 1:m], [Int[] for _ in 1:m], Int[]
+        [Int[] for _ in 1:m], [Int[] for _ in 1:m], [Int[] for _ in 1:nroutes]
     )
 end
 
@@ -1073,9 +1131,13 @@ function _untrack_at!(w::_LiveWatch, idx)
     return nothing
 end
 
-function _watch_opening!(w::_LiveWatch, infector)
+# Every opening takes a slot, so an opening's position in `openings` is its
+# position here. A route that watches nothing takes its slot and no more: its
+# contacts are never redrawn, so nothing reads its hosts.
+function _watch_opening!(w::_LiveWatch, infector, watched::Bool)
     push!(w.source, infector)
     push!(w.reach, Int[])
+    watched || return nothing
     push!(w.open, length(w.reach))
     push!(w.opened_by[infector], length(w.reach))
     w.as_infector[infector] += 1
@@ -1096,10 +1158,10 @@ end
 # move: contacts to it are settled, and its own contacts are drawn after this
 # check.
 function _records_changed!(
-        records, project, state, members, case, now,
+        snapshot, watched_keys, key_routes, state, members, case, now,
         w::_LiveWatch, openings, processed
     )
-    records[case] = _remember(_pair_state(project, state.individuals[members[case]]))
+    _refresh_host!(snapshot, watched_keys, state.individuals[members[case]], case)
     kept = 0
     for oi in w.open
         if openings[oi].close_t >= now
@@ -1114,25 +1176,33 @@ function _records_changed!(
         end
     end
     resize!(w.open, kept)
-    empty!(w.moved)
+    for list in w.moved
+        empty!(list)
+    end
     idx = 1
+    any_moved = false
     while idx <= length(w.tracked)
         k = w.tracked[idx]
         if w.as_infector[k] == 0 && (processed[k] || w.as_target[k] == 0)
             _untrack_at!(w, idx)
             continue
         end
-        _record_moved!(records, project, state, members, k) && push!(w.moved, k)
+        ind = state.individuals[members[k]]
+        for (ki, key) in enumerate(watched_keys)
+            current = _watched_value(ind, key)
+            isequal(snapshot[ki, k], current) && continue
+            snapshot[ki, k] = _remember(current)
+            any_moved = true
+            # The member's keys are compared together, so a route it is already
+            # listed for is listed once however many of its keys moved.
+            for ri in key_routes[ki]
+                list = w.moved[ri]
+                (isempty(list) || last(list) != k) && push!(list, k)
+            end
+        end
         idx += 1
     end
-    return !isempty(w.moved)
-end
-
-function _record_moved!(records, project, state, members, k)
-    current = _pair_state(project, state.individuals[members[k]])
-    isequal(records[k], current) && return false
-    records[k] = _remember(current)
-    return true
+    return any_moved
 end
 
 _link(p::_Pending, chain) = _Pending(p.opening, chain, p.time, p.queued)
@@ -1175,15 +1245,19 @@ function _redraw_moved!(
     # Opening => the members whose pairs with it are drawn again, or `nothing`
     # for all of them.
     redo = Dict{Int, Union{Nothing, Set{Int}}}()
-    for k in w.moved
-        for oi in w.opened_by[k]
-            openings[oi].close_t >= now && (redo[oi] = nothing)
-        end
-        processed[k] && continue
-        for oi in w.reached_by[k]
-            openings[oi].close_t >= now || continue
-            members_hit = get!(Set{Int}, redo, oi)
-            members_hit === nothing || push!(members_hit, k)
+    for (ri, moved) in enumerate(w.moved)
+        for k in moved
+            for oi in w.opened_by[k]
+                openings[oi].route == ri || continue
+                openings[oi].close_t >= now && (redo[oi] = nothing)
+            end
+            processed[k] && continue
+            for oi in w.reached_by[k]
+                openings[oi].route == ri || continue
+                openings[oi].close_t >= now || continue
+                members_hit = get!(Set{Int}, redo, oi)
+                members_hit === nothing || push!(members_hit, k)
+            end
         end
     end
     redoes(oi, j) = haskey(redo, oi) && (redo[oi] === nothing || j in redo[oi])
@@ -1224,7 +1298,10 @@ function _redraw_moved!(
     # can be off by the clock's resolution, so the draw starts `slack` early and
     # is then carried past any contact whose stored time falls before `now`.
     slack = 2 * eps(float(now))
-    for (oi, members_hit) in redo
+    # In opening order, so that what the race draws depends on the records that
+    # moved and not on the order the bookkeeping happened to visit them in.
+    for oi in sort!(collect(keys(redo)))
+        members_hit = redo[oi]
         opening = openings[oi]
         source = state.individuals[opening.infector]
         passed_since = _passed_since(pops, passed, oi)

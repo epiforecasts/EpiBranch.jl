@@ -59,7 +59,7 @@ SUITE["simulation: households"] = @benchmarkable simulate(
 # without an intervention that moves one.
 const LIVE_KERNEL = PairKernel(
     (c, a, b) -> Exponential(1.2);
-    state = ind -> (tag = get(ind.state, :tag, 0.0)::Float64,)
+    state = ind -> (tag = get(ind.state, :tag, 0.0)::Float64,), watches = (:tag,)
 )
 
 SUITE["simulation: network, live kernel"] = @benchmarkable simulate(

@@ -1221,6 +1221,29 @@ error, because the routes would silently drop the shorthand's censoring. A
 model that passes no routes gets a single window that is cut by intervention
 removal.
 
+A process also passes `watches`: one tuple of
+[`watched_records`](@ref EpiBranch.watched_records) per route, in route order.
+Ask each route's own kernel for it:
+
+```julia
+EpiBranch._sellke_race!(
+    state, members, rng;
+    routes = routes, interventions = interventions, seed!,
+    watches = Tuple(EpiBranch.watched_records(w.kernel) for w in windows),
+)
+```
+
+A process with one kernel passes a one-element tuple, matching the
+`from`/`until`/`targets` shorthand's single window:
+
+```julia
+watches = (EpiBranch.watched_records(model.edge_kernel),)
+```
+
+Without it the race treats every route's rates as fixed for the run. A kernel
+that reads host records then keeps the contacts it drew before the record
+moved, and nothing reports it.
+
 ## Calendar schedules for pair kernels
 
 A [`PairKernel`](@ref)'s `calendar` multiplies its contact-interval hazard by a

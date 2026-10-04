@@ -214,7 +214,10 @@ This holds on every axis:
   shape for that is a documented trait with a conservative default, which an
   intervention opts out of for itself, as
   [`infection_likelihood_compatible`](@ref EpiBranch.infection_likelihood_compatible)
-  is asked of a composed component. A method on a concrete type is then that
+  is asked of a composed component and
+  [`watched_records`](@ref EpiBranch.watched_records) of a pair kernel, which
+  says which host records its hazards depend on in place of the race guessing
+  that only an intervention can move one. A method on a concrete type is then that
   type's author declaring something about it, available to anyone who writes a
   type, where a method the engine keeps on its own built-ins is reachable only
   from inside the package.
