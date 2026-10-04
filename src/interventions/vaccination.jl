@@ -200,7 +200,8 @@ function VaccineEffect(;
         throw(
         ArgumentError(
             "`waning` is not yet supported together with `mode = $(mode)`. " *
-                "Use a mode with `supports_waning(mode) == true`, or drop `waning`."
+                "Use `LeakyMode`, or another mode with " *
+                "`supports_waning(mode) == true`, or drop `waning`."
         )
     )
     return VaccineEffect(

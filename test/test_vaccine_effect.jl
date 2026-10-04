@@ -287,6 +287,21 @@ EpiBranch.supports_waning(::_TestBlockedMode) = false
             efficacy = 0.5, waning = decay, mode = _TestBlockedMode()
         )
         @test VaccineEffect(efficacy = 0.5, mode = _TestBlockedMode()) isa VaccineEffect
+
+        # The trait reaches the race too: a mode that disallows waning composes
+        # a block that is certain for good, which is what `standing_block`
+        # reports, rather than the race naming `AllOrNothingMode` by type.
+        blocked = RingVaccination(efficacy = 0.5, mode = _TestBlockedMode())
+        @test EpiBranch.standing_block(blocked)
+        @test EpiBranch.standing_block(RingVaccination(efficacy = 1.0, mode = AllOrNothingMode()))
+        @test !EpiBranch.standing_block(RingVaccination(efficacy = 1.0))
+
+        # The likelihood needs each mode's own decomposition, so a mode that
+        # has not given one says so rather than raising a `MethodError` from
+        # inside the mixture.
+        @test_throws ArgumentError EpiBranch._dose_components(
+            _TestBlockedMode(), 0.5, nothing, 0.0
+        )
     end
 
     @testset "Branching process: the two modes agree in distribution" begin

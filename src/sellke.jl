@@ -345,12 +345,12 @@ standing_block(w::InterventionWrapper) = standing_block(w.intervention)
 # An abort is recorded on the infector and never withdrawn, so the block it
 # composes lasts as long as the infector does.
 standing_block(::AbortedInfection) = true
-# An `AllOrNothingMode` responder's block is a one-time draw at vaccination
-# that never fades: `waning` is disallowed under this mode, so once immunity
-# has developed the block it composes is certain for good. `LeakyMode` is not
-# declared here even at `efficacy = 1.0`, because a later waning value could
-# still give a smaller block to a later exposure.
-standing_block(v::AbstractVaccination) = effect_mode(v) isa AllOrNothingMode
+# A mode that disallows `waning` draws its block once at vaccination and it
+# never fades, so once immunity has developed the block it composes is certain
+# for good — which is what `supports_waning` reports. A mode that allows
+# waning is not declared here even at `efficacy = 1.0`, because a later waning
+# value could still give a smaller block to a later exposure.
+standing_block(v::AbstractVaccination) = !supports_waning(effect_mode(v))
 
 # Whether a resolved risk is certain and already in force at this proposal: its
 # `event_time`, a plain number rather than one resampled on each ask, has

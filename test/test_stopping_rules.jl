@@ -126,14 +126,14 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             progression = prog
         )
         full = simulate(spec; n_initial = 3, rng = StableRNG(4))
-        cut = @test_logs (:warn, r"of TimeOrCasesRule only the time bound") simulate(
+        cut = @test_logs (:warn, r"TimeOrCasesRule.*time bound") simulate(
             spec; n_initial = 3,
             stopping_rules = [Extinction(), TimeOrCasesRule(2.0, 5)], rng = StableRNG(4)
         )
         # The bound applied even though the case count did not.
         @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
         # With no bound to apply, the rule did nothing at all.
-        @test_logs (:warn, r"stopping_rules \(MaxCases\)") simulate(
+        @test_logs (:warn, r"MaxCases.*no effect") simulate(
             spec; n_initial = 3,
             stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(4)
         )

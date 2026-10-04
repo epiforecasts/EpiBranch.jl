@@ -161,6 +161,7 @@ GroupVaccination
 AbstractEffectMode
 LeakyMode
 AllOrNothingMode
+EpiBranch.supports_waning
 Scheduled
 CapacityConstrained
 capacity_usage
