@@ -958,16 +958,21 @@ end
             )
         end
         # The other direction: a record only the second route reads redraws
-        # that route's contacts and leaves the first alone. With atoms the
-        # effect is exact — host 3's contact moves from 5.0 to 1.0 once the
-        # flag is set, and nothing else does.
+        # that route's contacts, and the first route hears nothing about it.
+        # Both routes read a record here, so the first route's own pending
+        # contact is what shows that the keying is by record and not by route:
+        # it keeps its draw while the second route's is redrawn.
         two_atoms(declared) = ModelSpec(
             RoutedNetwork(
                 [
                     RouteWindow(
                         :early; until = (:recovered,),
-                        kernel = PairKernel(c -> Dirac(0.5)),
-                        reach = [[2], [1], Int[], Int[]]
+                        kernel = PairKernel(
+                            (c, a, b) -> c.susceptible == 2 ? Dirac(0.5) : Exponential(2.0);
+                            state = ind -> (quiet = get(ind.state, :quiet, 0)::Int,),
+                            watches = (:quiet,)
+                        ),
+                        reach = [[2, 4], [1], Int[], [1], Int[]]
                     ),
                     RouteWindow(
                         :late; until = (:recovered,),
@@ -976,7 +981,7 @@ end
                             state = ind -> (flag = get(ind.state, :flag, 0)::Int,),
                             watches = declared
                         ),
-                        reach = [[3], Int[], [1], Int[]]
+                        reach = [[3], Int[], [1], Int[], Int[]]
                     ),
                 ]
             );
@@ -989,8 +994,13 @@ end
                 ).individuals
         ]
         declared_times, stale_times = atom_times((:flag,)), atom_times(())
+        # The second route follows the record it declares.
         @test declared_times[3] == 1.0
         @test stale_times[3] == 5.0
+        # The first route declares a record nothing writes, so its own pending
+        # contact stands: host 4 keeps the time it was drawn at. Were the race
+        # to invalidate by route, `:flag` moving would redraw this one too.
+        @test isequal(declared_times[4], stale_times[4])
         @test isequal(declared_times[1:2], stale_times[1:2])
 
         # Both routes reach cases, so the first comparison has something in it.
