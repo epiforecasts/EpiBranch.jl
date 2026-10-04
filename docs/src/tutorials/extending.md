@@ -758,11 +758,10 @@ stores the draw.
 ### A custom effect mode
 
 `mode` is dispatched through [`AbstractEffectMode`](@ref): a third mode
-subtypes it and implements [`EpiBranch.realised_efficacy`](@ref) and
-[`EpiBranch.realise_prior_dose!`](@ref), the two methods [`LeakyMode`](@ref)
-and [`AllOrNothingMode`](@ref) themselves implement. Nothing else on the
-vaccination machinery needs to change: both methods are read only through
-`effect_mode(v)`.
+subtypes it and implements [`EpiBranch.realised_efficacy`](@ref), which turns
+the efficacy a dose was given into the value stored on the individual.
+Nothing else on the vaccination machinery needs to change, since the mode is
+read only through `effect_mode(v)`.
 
 Here a "partial responder" mode gives a fraction `efficacy` of vaccinated
 individuals full protection, as `AllOrNothingMode` does, but gives the rest a
@@ -776,16 +775,6 @@ end
 function EpiBranch.realised_efficacy(mode::PartialResponseMode, eff, rng)
     rand(rng, Bernoulli(eff)) && return 1.0
     return mode.non_responder_efficacy
-end
-
-# A dose recorded through `attributes`, before the run starts, needs the
-# same one-time realisation `_record_vaccination!` would otherwise give it.
-function EpiBranch.realise_prior_dose!(mode::PartialResponseMode, individual, label, state)
-    key = EpiBranch._vaccine_efficacy_key(label)
-    eff = get(individual.state, key, nothing)
-    (eff isa Real && 0 < eff < 1) || return nothing
-    individual.state[key] = EpiBranch.realised_efficacy(mode, eff, state.rng)
-    return nothing
 end
 
 partial = RingVaccination(efficacy = 0.6, mode = PartialResponseMode(0.2))
@@ -1811,7 +1800,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom intervention | Struct `<: AbstractIntervention` + hook methods | Each generation |
 | Ending an infection early | `EpiBranch.abort_infection!(ind, time)` from an intervention hook | That hook |
 | Custom vaccination | Struct `<: AbstractVaccination` holding a `VaccineEffect` + `vaccine_effect` + `apply_post_transmission!` | Each generation |
-| Custom effect mode | Struct `<: AbstractEffectMode` + `realised_efficacy`, `realise_prior_dose!` | Dose recording |
+| Custom effect mode | Struct `<: AbstractEffectMode` + `realised_efficacy`; `realise_prior_dose!` only to change what a dose recorded before the run gets | Dose recording / individual creation |
 | Time-dependent intervention | `Scheduled(iv; start_time = ...)` + `intervention_time`, `reset!` on `iv` | After each hook |
 | Capacity-constrained intervention | `CapacityConstrained(iv; budget_per_period = ...)` + `capacity_key`, `capacity_time_key` on `iv` | `apply_post_transmission!` |
 | Custom stopping rule | Struct `<: AbstractStoppingRule` + `should_stop` | Each step |
@@ -1824,7 +1813,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
 | Transmission route | `RouteWindow(name; from, until, kernel, reach)` on a process that reads them | Continuous-time race, per case |
 | Structured fixed-size pool | Reuse the Sellke pool: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply a `force(group, counts)` | Simulation |
-| Custom clinical transition | Struct `<: AbstractClinicalTransition` + `initialise_individual!`, `resolve_individual!`; `is_terminal`/`terminal_event` if terminal; `transition_loglik` to evaluate it | Case creation |
+| Custom clinical transition | Struct `<: AbstractClinicalTransition` + `initialise_individual!`, `resolve_individual!`; `is_terminal`/`terminal_event`/`terminal_target` if terminal; `transition_loglik` to evaluate it | Case creation |
 | Calendar schedule for a pair kernel | Struct + `calendar_multiplier`, and `next_calendar_break` or `calendar_shape(::YourSchedule) = SmoothCalendar()` | Simulation + likelihood |
 | Pairwise likelihood for a structure | Struct `<: InfectionLayer` + `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood evaluation |
 | Progression likelihood | `progression_loglik(spec, individuals)`; built-in transitions work out of the box, a custom one needs `transition_loglik` | Likelihood evaluation |
@@ -1914,10 +1903,13 @@ likelihood needs is the width of the bucket the draw selected.
 
 A terminal transition also implements [`EpiBranch.terminal_target`](@ref): the
 state label it writes, known without an individual (unlike `terminal_event`,
-which needs one to resolve the *time*). A fixed-size process's `until`-coverage
-check — the warning it logs when its progression can reach a terminal state no
-window closes on — reads this to see the state at all; a terminal transition
-that skips it stays silently exempt from that check. `Death` and `Recovery`
+which needs one to resolve the *time*). The `until`-coverage check — the
+warning logged when a progression can reach a terminal state that no window
+closes on, which runs for a fixed-size process, for every `RouteWindow`, and
+for the network and household processes — reads this to see the state at all.
+A terminal transition that skips it is exempt from the check with nothing
+said, so a case reaching its state keeps an open window and goes on
+generating exposure proposals for the rest of the run. `Death` and `Recovery`
 implement it; so does a terminal transition written outside the package:
 
 ```@example extending
@@ -1954,11 +1946,10 @@ lost_state = simulate(lost_model; n_initial = 20, rng = StableRNG(7))
 count(ind -> get(ind.state, :outcome, :none) == :lost, lost_state.individuals)
 ```
 
-Dropping `:lost` from `lost_pool`'s `until` above would still run — a
-transition that does not implement `terminal_target` is not an error, only
-unchecked — but would also warn that a case reaching `:lost` never has its
-window closed, the same warning `Death`/`Recovery` would trigger if `until`
-left out `:died`/`:recovered`.
+Dropping `:lost` from `lost_pool`'s `until` above would still run, and would
+warn that a case reaching `:lost` never has its window closed — the same
+warning logged for `Death`/`Recovery` when `until` leaves out
+`:died`/`:recovered`.
 
 ### Event dates for uninfected people
 
