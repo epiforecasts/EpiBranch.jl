@@ -110,13 +110,13 @@ case isolated to the end of its infectious period. A finite duration gives
 
 What that changes depends on the engine. On a generation-based process the
 block is a per-contact risk, so a contact after the release is not blocked.
+
 On the continuous-time (Sellke) models an infectious window carries one
-closing time, so a case isolated during its infectious period is removed for
-the rest of it whatever the duration; what a finite duration changes there is
-a case whose isolation or quarantine had already lapsed before it was
-infected through some other route, which is then not removed at all. That is
-the case the duration exists for: a removal that outlives the exposure which
-caused it.
+closing time and cannot reopen, so the release matters only when the removal
+had already lapsed before the case was infected: that case is not removed at
+all, which is what the duration exists for. A removal still standing at the
+infection, even one due to lapse a day later, closes the window for the rest
+of the infectious period.
 
 An isolation time at or after the case's own outcome (recovery, death, or
 any other terminal [`Transition`](@ref)) still removes the case from
@@ -300,7 +300,16 @@ function _isolate!(iso::Isolation, individual, state, time)
     duration = _removal_duration(
         iso.isolation_duration, state.rng, individual, "`isolation_duration`"
     )
-    set_isolated!(individual, time; release_time = time + duration)
+    start, release = time, time + duration
+    # A removal already standing is layered under this one by the same rule the
+    # trace path uses, so neither side's release is lost.
+    if _isolation_in_force(individual)
+        start, release = _combine_removal(
+            isolation_time(individual), isolation_release_time(individual),
+            start, release
+        )
+    end
+    set_isolated!(individual, start; release_time = release)
     individual.state[:isolated_by_isolation] = true
     records_isolation(iso.eligibility, individual, state, time) ||
         (individual.state[:isolation_unrecorded] = true)

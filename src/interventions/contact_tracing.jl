@@ -432,12 +432,9 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
         # A trace no earlier than an isolation that was not recorded leaves that
         # isolation, and its time, as the one in force, so it stays unrecorded.
         unrecorded = _isolation_unrecorded(contact) && !(trace_time < standing)
-        # Two removals, one pair of times to hold them: take the earliest start
-        # and the latest release, the smallest interval covering both. Keeping
-        # only the winning start's own release would drop a removal that is
-        # still in force, which no later check could recover.
-        final_time = min(trace_time, standing)
-        final_release = max(release_time, isolation_release_time(contact))
+        final_time, final_release = _combine_removal(
+            standing, isolation_release_time(contact), trace_time, release_time
+        )
         set_isolated!(contact, final_time; release_time = final_release)
         unrecorded && (contact.state[:isolation_unrecorded] = true)
     else

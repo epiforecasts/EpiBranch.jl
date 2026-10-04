@@ -245,17 +245,28 @@ function risk_depends_on_infector(iv::AbstractIntervention)
     return _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
 end
 
-# A removal's duration, drawn or given. A negative or `NaN` one makes a
-# release that precedes its own start, which the generation engine reads as no
-# removal at all and the continuous-time engines as a permanent one, so reject
-# it at the draw rather than letting the two disagree silently.
+# A removal's duration, drawn or given. A release at or before its own start
+# leaves nothing for the two engines to agree on: the generation engine needs
+# `event_t <= t < release_t` and so reads no removal at all, while the
+# continuous-time engines meet the removal and close the window for good. A
+# `NaN` splits them the same way. Reject all three at the draw.
 function _removal_duration(duration, rng, individual, what)
     d = _sample_value(duration, rng, individual)
-    (isnan(d) || d < 0) && throw(
+    (isnan(d) || d <= 0) && throw(
         ArgumentError(
-            "$what must be a non-negative duration, got $d" *
-                (individual === nothing ? "" : " for individual $(individual.id)")
+            "$what must be a positive duration, got $d for individual $(individual.id)"
         )
     )
     return d
+end
+
+# The start and release holding two removals at once. One pair of times cannot
+# hold two disjoint intervals, so when the standing one has already lapsed by
+# the time the new one starts, the new one replaces it; otherwise they overlap
+# or touch and the smallest interval covering both is their union. Keeping only
+# one side's release would drop a removal still in force, which no later check
+# could recover.
+function _combine_removal(standing_start, standing_release, new_start, new_release)
+    standing_release <= new_start && return (new_start, new_release)
+    return (min(new_start, standing_start), max(new_release, standing_release))
 end
