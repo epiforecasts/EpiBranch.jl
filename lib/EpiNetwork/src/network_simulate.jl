@@ -61,7 +61,7 @@ function _simulate(
         from = from, until = model.until, interventions = interventions,
         max_time = EpiBranch._max_time(sim_opts),
         risks = EpiBranch.transmission_risks(model),
-        refresh_projection = EpiBranch._watched_projection(model.edge_kernel, interventions),
+        watches = (EpiBranch.watched_records(model.edge_kernel),),
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, n_initial, Tobs, r;
             initial_cases = sim_opts.initial_cases

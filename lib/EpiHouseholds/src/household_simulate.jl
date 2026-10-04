@@ -67,10 +67,10 @@ function _simulate(
     # rather than being cut off at `max_time` with candidates still pending.
     initial_cases = sim_opts.initial_cases === nothing ? nothing :
         Set(sim_opts.initial_cases)
-    # Only a policy that can read cases in other households needs every household
-    # on one clock, and only an intervention can write such a policy.
-    watched = EpiBranch._watched_projection(model.kernel, interventions)
-    live = watched !== nothing
+    # Only a kernel whose hazards can move needs every household on one clock,
+    # so that a policy reading cases in other households is seen as it happens.
+    watched = EpiBranch.watched_records(model.kernel)
+    live = !isempty(watched)
     races = live ? (collect(eachindex(model.household_of)),) : model.members
     extinct = true
     for mem in races
@@ -79,7 +79,7 @@ function _simulate(
             from = from, until = model.until, interventions = interventions,
             max_time = EpiBranch._max_time(sim_opts),
             risks = EpiBranch.transmission_risks(model),
-            refresh_projection = watched,
+            watches = (watched,),
             seed! = (best, members, r) -> _seed_household_race!(
                 best, members, model, state, Tobs, r, initial_cases, live
             ),
