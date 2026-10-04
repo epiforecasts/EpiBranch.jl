@@ -117,18 +117,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         asymptomatic.state[:onset_time] = NaN
         EpiBranch.apply_trace!(FlagOnly(), asymptomatic, nothing, 2.0, rng)
         @test is_traced(asymptomatic)
-        @test !haskey(asymptomatic.state, :traced_isolation_time)
+        @test !haskey(asymptomatic.state, :_traced_isolation_time)
 
         # An onset not yet known is recorded at the trace time.
         pending = Individual(id = 2, infection_time = 1.0)
         EpiBranch.apply_trace!(FlagOnly(), pending, nothing, 2.0, rng)
-        @test pending.state[:traced_isolation_time] == 2.0
+        @test pending.state[:_traced_isolation_time] == 2.0
 
         # A later trace by another infector keeps the earlier time.
         EpiBranch.apply_trace!(FlagOnly(), pending, nothing, 4.0, rng)
-        @test pending.state[:traced_isolation_time] == 2.0
+        @test pending.state[:_traced_isolation_time] == 2.0
         EpiBranch.apply_trace!(FlagOnly(), pending, nothing, 1.5, rng)
-        @test pending.state[:traced_isolation_time] == 1.5
+        @test pending.state[:_traced_isolation_time] == 1.5
     end
 
     @testset "reset!(Isolation) leaves another intervention's isolation intact" begin
@@ -475,7 +475,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         recovered_before_trace = Individual(id = 2)
         recovered_before_trace.state[:onset_time] = 1.0
         recovered_before_trace.state[:test_positive] = false
-        recovered_before_trace.state[:traced_isolation_time] = 6.0
+        recovered_before_trace.state[:_traced_isolation_time] = 6.0
         recovered_before_trace.state[:outcome_time] = 2.0
         EpiBranch.resolve_individual!(iso, recovered_before_trace, state)
         @test !is_isolated(recovered_before_trace)
@@ -2430,7 +2430,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "RingVaccination doses contacts under FlagOnly tracing" begin
-        # FlagOnly writes :traced_isolation_time, not :isolation_time. Ring
+        # FlagOnly writes :_traced_isolation_time, not :isolation_time. Ring
         # vaccination keys on the trace-driven isolation time, so it must still
         # dose the contact (it silently no-op'd before, when tracing only flagged).
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
@@ -2455,7 +2455,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # Regression test: with test_sensitivity < 1 and FlagOnly tracing,
         # test-negative contacts must still be isolated via the tracing
         # pathway. Previously a `is_test_positive || return` gate in
-        # Isolation::resolve_individual discarded traced_isolation_time for
+        # Isolation::resolve_individual discarded _traced_isolation_time for
         # test-negative contacts, so 1 − test_sensitivity of cases never
         # isolated even when traced.
         #

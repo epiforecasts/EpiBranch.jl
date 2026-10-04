@@ -66,11 +66,17 @@ downstream packages should pick names that do not collide.
 | `:group` | `Int` | — | `groups` | Init |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
+| `:_isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!`; internal |
+| `:_isolation_unrecorded` | `Bool` | `false` | `Isolation` | `resolve_individual!`; internal. The isolation removes the case from transmission without counting as a detection |
+| `:_isolation_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The time a standing isolation held before this one |
+| `:_isolation_unrecorded_before_isolation` | `Bool` | — | `Isolation` | `resolve_individual!`; internal |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
-| `:traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff; may precede onset, so hold it back to onset |
+| `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff; may precede onset, so hold it back to onset |
 | `:trace_time` | `Float64` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
+| `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` / `trace_contacts!`; internal |
+| `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | Post-simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
@@ -196,7 +202,10 @@ with keys other packages might add.
 A key an intervention keeps purely for its own bookkeeping — provenance such
 as `Isolation`'s `:_isolated_by_isolation`, or a stash such as its
 `:_isolation_time_before_isolation` — starts with an underscore, as
-[`EpiBranch._action_cache`](@ref)'s `:_intervention_actions` does. [`linelist`](@ref)
+[`EpiBranch._action_cache`](@ref)'s `:_intervention_actions` does. The
+underscored names in the table above are reserved along with the bare ones, so
+a key of your own carries your package's tag inside the prefix,
+`:_mypkg_budget` rather than `:_budget`. [`linelist`](@ref)
 drops every key with that prefix, so none of it reaches line-list output; a
 key without the prefix becomes a column once a composed component writes it,
 whether or not the package anticipated it.
@@ -428,7 +437,7 @@ function resolve_individual!(iso::Isolation, individual, state)
 
     # A contact traced before its onset was known has only the bare trace
     # time, so hold it back to the onset.
-    traced_time = max(get(individual.state, :traced_isolation_time, Inf), onset_time(individual))
+    traced_time = max(get(individual.state, :_traced_isolation_time, Inf), onset_time(individual))
     set_isolated!(individual, min(iso_time, traced_time))
     return nothing
 end

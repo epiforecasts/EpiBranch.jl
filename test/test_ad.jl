@@ -238,7 +238,7 @@ end
 end
 
 # Contact tracing carries dual timing too: FlagOnly writes a dual
-# `:traced_isolation_time` (from onset) that Isolation reads, and depth-2 tracing
+# `:_traced_isolation_time` (from onset) that Isolation reads, and depth-2 tracing
 # reads the infector's dual `:trace_time`. Exercises the eltype-generic reads in
 # isolation.jl and contact_tracing.jl that the isolation-only test above misses.
 @testset "AD through the forward simulator (contact tracing + isolation)" begin

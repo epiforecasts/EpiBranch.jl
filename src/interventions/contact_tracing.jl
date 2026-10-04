@@ -424,7 +424,7 @@ function apply_trace!(::Quarantine, contact, state, trace_time, rng)
 end
 
 """Flag the contact as traced without quarantining them, and record a
-`:traced_isolation_time` so [`Isolation`](@ref) can later pick the earlier of
+`:_traced_isolation_time` so [`Isolation`](@ref) can later pick the earlier of
 self-reporting and tracing. The recorded time is the later of the trace time
 and the contact's onset, or the trace time alone while the onset is not yet
 known. An asymptomatic contact has no onset to isolate at, so none is
@@ -441,8 +441,8 @@ function apply_trace!(::FlagOnly, contact, state, trace_time, rng)
     # A contact reached by several infectors keeps its earliest trace.
     ind_onset = onset_time(contact)
     traced_iso = isnan(ind_onset) ? trace_time : max(ind_onset, trace_time)
-    contact.state[:traced_isolation_time] = min(
-        get(contact.state, :traced_isolation_time, Inf), traced_iso
+    contact.state[:_traced_isolation_time] = min(
+        get(contact.state, :_traced_isolation_time, Inf), traced_iso
     )
     return nothing
 end
@@ -766,7 +766,7 @@ end
 
 """A quarantined contact is out of onward transmission from its quarantine
 time, which is how tracing reaches the infectious window on the continuous-time
-models. Contacts merely flagged (`FlagOnly`) write `:traced_isolation_time`
+models. Contacts merely flagged (`FlagOnly`) write `:_traced_isolation_time`
 instead, and [`Isolation`](@ref) turns that into the removal, exactly as on the
 generation-based path."""
 function infectious_removal_time(::ContactTracing, ind::Individual)
