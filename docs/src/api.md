@@ -164,6 +164,7 @@ capacity_usage
 EpiBranch.InterventionAction
 EpiBranch.intervention_actions
 EpiBranch.action_draw!
+EpiBranch._action_cache
 EpiBranch.apply_actions!
 EpiBranch.continuous_actions
 EpiBranch.persistent_competing_risks
