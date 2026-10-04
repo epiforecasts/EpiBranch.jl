@@ -717,8 +717,8 @@ end
     @testset "per-component contributions differentiable in the kernel parameters" begin
         # as for the total's "a kernel whose first internal pair holds no
         # fitted parameter", but summed by component rather than into one
-        # scalar: a row the `T` probe missed still makes `_add!` widen the
-        # running totals, now shared machinery for both entry points
+        # scalar: a row the `T` probe missed still makes `_add!`, now shared
+        # machinery for both entry points, widen the running totals
         _, adjacency = _cliques([3, 4, 2, 4])
         inf = [0.0, 1.2, NaN, 0.0, 2.1, 3.5, NaN, 0.0, NaN, 0.0, 0.7, NaN, 4.2]
         data = _TestInfections(
