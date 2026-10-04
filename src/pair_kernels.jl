@@ -315,16 +315,6 @@ end
 
 _pair_state(project, individual) = project(individual)
 _pair_state(records::AbstractVector, individual) = records[individual.id]
-# The projection a kernel reads host state through, or `nothing` for one that
-# needs no running state to evaluate: a kernel given records, or none at all. A
-# kernel may depend on host state only through this record, which is what lets
-# `record_kernel` reproduce a run's hazards from recorded records alone. Which
-# of those records a race watches is the kernel's own declaration, through
-# `watched_records`.
-_kernel_projection(k) = nothing
-_kernel_projection(k::PairKernel) = k.state
-_kernel_projection(k::PairKernel{F, <:AbstractVector}) where {F} = nothing
-_live_kernel(k) = _kernel_projection(k) !== nothing
 
 """
     watched_records(kernel)
