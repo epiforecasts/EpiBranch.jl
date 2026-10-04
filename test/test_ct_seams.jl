@@ -402,6 +402,28 @@ end
         @test contact.state[:trace_time] == Inf
         @test !EpiBranch._isolation_in_force(contact)
         @test !is_isolated(contact)
+
+        # A contact that already has an isolation keeps it, whatever the trace
+        # time is: `min` would carry a `NaN` into the isolation and from there
+        # into the case's infectious window.
+        for unreachable in (Inf, NaN)
+            standing = Individual(id = 3)
+            set_isolated!(standing, 4.0)
+            EpiBranch.apply_trace!(Quarantine(), standing, state, unreachable, StableRNG(1))
+            @test isolation_time(standing) == 4.0
+            @test is_traced(standing)
+
+            # An isolation that was never recorded as a detection stays so.
+            unrecorded = Individual(id = 4)
+            set_isolated!(unrecorded, 4.0)
+            unrecorded.state[:isolation_unrecorded] = true
+            EpiBranch.apply_trace!(
+                Quarantine(), unrecorded, state, unreachable, StableRNG(1)
+            )
+            @test isolation_time(unrecorded) == 4.0
+            @test EpiBranch._isolation_unrecorded(unrecorded)
+            @test !is_isolated(unrecorded)
+        end
     end
 
     @testset "trace_level lines up with the ring on a tree sim" begin
