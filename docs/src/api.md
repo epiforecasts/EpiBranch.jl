@@ -241,6 +241,7 @@ onset_time
 incubation_period
 is_isolated
 isolation_time
+isolation_release_time
 outcome_time
 is_traced
 is_quarantined

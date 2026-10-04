@@ -307,7 +307,10 @@ function _next_contact(rng::AbstractRNG, kernel, m::Real, dt, end_dt)
                 "terminal transition reaching one of `until`'s states, or one is " *
                 "reachable but gated so that some cases reach none of them (see " *
                 "`exclusive_probabilities` for terminal transitions meant to " *
-                "partition the population exactly)."
+                "partition the population exactly). A window closed only by " *
+                "`INTERVENTION_REMOVAL` reaches this too when the case's " *
+                "isolation or quarantine lapsed before it was infected, since " *
+                "a removal it never met cannot close it."
         )
     )
     nxt = _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
@@ -354,12 +357,15 @@ standing_block(v::AbstractVaccination) = !supports_waning(effect_mode(v))
 
 # Whether a resolved risk is certain and already in force at this proposal: its
 # `event_time`, a plain number rather than one resampled on each ask, has
-# passed, and its `block_probability`, also a plain number rather than a waning
-# closure that could give a smaller value to a later exposure, is 1. Necessary
-# for a standing block but not sufficient, which is what `standing_block` adds.
+# passed, its `block_probability`, also a plain number rather than a waning
+# closure that could give a smaller value to a later exposure, is 1, and its
+# `release_time` is infinite, a plain number, so the block is not due to lapse.
+# Necessary for a standing block but not sufficient, which is what
+# `standing_block` adds.
 function _standing_risk(risk::Risk, transmission_time)
     return risk.event_time isa Real && risk.event_time <= transmission_time &&
-        risk.block_probability isa Real && risk.block_probability >= 1.0
+        risk.block_probability isa Real && risk.block_probability >= 1.0 &&
+        risk.release_time isa Real && isinf(risk.release_time)
 end
 
 # Whether `source` contributes a standing risk against this pair: it declares

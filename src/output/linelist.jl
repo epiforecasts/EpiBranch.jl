@@ -62,11 +62,13 @@ contact they exposed who was not infected. An uninfected row has `missing` for
 admission, outcome, a traced isolation held back to onset, and custom
 events whose metadata requires infection). Dates of events that happen to a person whether or not they
 are infected are kept: `date_trace`, `date_vaccination`, `date_immunity`, and
-`date_isolation` when the isolation is a quarantine on tracing. Where
-[`Isolation`](@ref) derived the isolation from a provisional onset, the column
-reports the quarantine it replaced, if there was one, and `missing` otherwise.
-The `isolated` and `date_isolation` columns report an isolation only when it
-is recorded as a detection (see [`is_isolated`](@ref)).
+`date_isolation` (with `date_isolation_release`, when a finite
+`isolation_duration` or `Quarantine` `duration` is configured) when the
+isolation is a quarantine on tracing. Where [`Isolation`](@ref) derived the
+isolation from a provisional onset, both columns report the quarantine they
+replaced, if there was one, and `missing` otherwise. The `isolated`,
+`date_isolation` and `date_isolation_release` columns report an isolation
+only when it is recorded as a detection (see [`is_isolated`](@ref)).
 Use [`event_time_metadata`](@ref) to declare additional event dates.
 Columns that are not dates are reported as stored.
 
@@ -196,14 +198,16 @@ vaccination read them during the run. Those times describe an infection that
 never happened, so the reported events are only the ones that act on a person
 regardless of infection: being traced, vaccinated, gaining vaccine immunity, or
 being quarantined. An isolation written by `Isolation` came from the
-provisional onset; where one replaced a recorded quarantine, that quarantine's time is
-reported in its place."""
+provisional onset; where one replaced a recorded quarantine, that quarantine's
+time, and its release time, are reported in its place."""
 function _uninfected_event_time(ind, key::Symbol, metadata)
-    if key === :isolation_time
+    if key === :isolation_time || key === :isolation_release_time
         get(ind.state, :_isolated_by_isolation, false) ||
             return _reported_state(ind, key)
         get(ind.state, :_isolation_unrecorded_before_isolation, false) && return missing
-        return get(ind.state, :_isolation_time_before_isolation, missing)
+        before_key = key === :isolation_time ? :_isolation_time_before_isolation :
+            :_isolation_release_time_before_isolation
+        return get(ind.state, before_key, missing)
     end
     return metadata.requires_infection ? missing : _reported_state(ind, key)
 end
@@ -214,7 +218,8 @@ end
 function _reported_state(ind, key::Symbol)
     haskey(ind.state, key) || return missing
     key === :isolated && return is_isolated(ind)
-    key === :isolation_time && _isolation_unrecorded(ind) && return missing
+    (key === :isolation_time || key === :isolation_release_time) &&
+        _isolation_unrecorded(ind) && return missing
     return ind.state[key]
 end
 
