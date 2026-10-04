@@ -173,7 +173,7 @@ PairKernel((ctx, source, target) ->
 
 The pair's hazard is the profile's hazard at time since opening, multiplied by
 the schedule's value on the calendar day. For a piecewise-constant schedule
-such as `Steps`, simulation and the likelihood both score this exactly,
+such as `Steps`, simulation and the likelihood both compute this exactly,
 splitting the cumulative hazard into segments at the schedule's breakpoints. A
 schedule declaring [`SmoothCalendar`](@ref EpiBranch.SmoothCalendar) is
 integrated by quadrature in both.

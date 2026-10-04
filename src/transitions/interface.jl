@@ -52,7 +52,7 @@ _terminal_target(::AbstractClinicalTransition) = nothing
     terminal_event(transition, individual) -> Union{Nothing, Tuple{Float64, Symbol}}
 
 For terminal transitions, return `(time, label)` if this transition would
-end the case (e.g. `(11.3, :died)`), or `nothing` if it does not fire for
+end the case (e.g. `(11.3, :died)`), or `nothing` if it does not occur for
 this case. Called after all `resolve_individual!`s have run. The engine
 takes the earliest terminal candidate across all transitions and writes
 `:outcome` (Symbol) and `:outcome_time` (Float64) to the individual's
@@ -98,8 +98,8 @@ ratio split between death and recovery, say.
 Passing raw probabilities straight to each sibling's own `probability` field
 draws an *independent* Bernoulli per transition (`_transition_selected`
 consumes its own `rand(rng)`): two terminal transitions gated at `p` and
-`1 - p` then both fire (resolved by whichever candidate time comes first) on
-about `p(1 - p)` of cases, and neither fires — leaving `:outcome` unset — on
+`1 - p` then both occur (resolved by whichever candidate time comes first) on
+about `p(1 - p)` of cases, and neither occurs — leaving `:outcome` unset — on
 another `p(1 - p)`.
 
 This function closes over a single shared uniform draw per case instead: the
@@ -111,7 +111,7 @@ proportions, with no case counted twice and none dropped except by design
 
 `ps` must be non-negative and sum to at most `1`; a shortfall between
 `sum(ps)` and `1` is the (intentional) probability that none of the siblings
-fires — pair it with an unconditional terminal transition, or expect some
+occurs — pair it with an unconditional terminal transition, or expect some
 cases to reach no terminal state.
 
 # Examples
@@ -145,7 +145,7 @@ function exclusive_probabilities(ps::AbstractVector{<:Real})
     ]
 end
 
-# One bucket of a shared draw: `lo <= u < hi` fires, everything else doesn't.
+# One bucket of a shared draw: the transition is selected when `lo <= u < hi`.
 # Returning 0.0/1.0 (rather than deciding directly) keeps this a `probability`
 # callable like any other, so it composes with `_transition_selected`'s own
 # `rand(rng) < p` unchanged — that draw is now deterministic, since `u` alone
@@ -193,9 +193,9 @@ function _resolve_anchor(s::Symbol, ind::Individual{T}) where {T}
 end
 _resolve_anchor(f, ind) = float(f(ind))
 
-# A transition fires only from a finite anchor. An anchor is missing (`NaN`)
+# A transition occurs only from a finite anchor. An anchor is missing (`NaN`)
 # when the `from` key was never written, and non-finite (`Inf`) when the
-# upstream transition initialised the key but never fired — both mean "the
+# upstream transition initialised the key but never occurred — both mean "the
 # `from` state was not reached", so the transition must be skipped. Guarding
 # on `isfinite` (not `isnan`) keeps the two subsystems in step; the generic
 # `Transition` uses the same check.
@@ -215,7 +215,7 @@ _from_required(_) = Symbol[]
 
 After all `resolve_individual!`s have run, collect terminal candidates
 across all terminal transitions and set `:outcome` and `:outcome_time`
-to the earliest. If no terminal transition fires, neither key is set.
+to the earliest. If no terminal transition occurs, neither key is set.
 """
 function _finalise_terminal!(individual, transitions)
     best_time = Inf

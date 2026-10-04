@@ -69,7 +69,7 @@
         # Chain size/length depend only on the offspring law, so composing a
         # progression and attributes (which don't alter the offspring) must
         # leave the analytical likelihood unchanged — only interventions, which
-        # thin transmission, route the score through simulation instead.
+        # thin transmission, route the evaluation through simulation instead.
         bp = BranchingProcess(Poisson(0.8))
         data = ChainSizes([1, 1, 2, 1, 3, 1, 2, 1, 1, 5])
         composed = ModelSpec(
@@ -87,7 +87,7 @@
 
         # A structured (depleting) model has no single-type offspring, so the
         # analytical path can't be taken — `single_type_offspring` throws and the
-        # score falls through to simulation.
+        # evaluation falls through to simulation.
         @test_throws ArgumentError single_type_offspring(
             HomogeneousProcess(; transmission_rate = 1.0, population_size = 100)
         )
@@ -128,7 +128,7 @@
         ]
         @test_logs ModelSpec(bp; progression = exclusive)
 
-        # `Recovery` has no `probability` field at all — always fires once its
+        # `Recovery` has no `probability` field at all — always occurs once its
         # anchor is reached — so pairing it with a gated `Death` guarantees
         # coverage and stays silent.
         @test_logs ModelSpec(
