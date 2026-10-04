@@ -55,7 +55,7 @@ _isolation_in_force(ind::Individual) = get(ind.state, :isolated, false)::Bool
 
 # Whether the standing isolation removes the case from transmission without
 # counting as a detection.
-_isolation_unrecorded(ind::Individual) = get(ind.state, :isolation_unrecorded, false)::Bool
+_isolation_unrecorded(ind::Individual) = get(ind.state, :_isolation_unrecorded, false)::Bool
 
 # The time a detection reader sees: the isolation time, or `Inf` for an
 # isolation that is not recorded.
@@ -188,14 +188,14 @@ respects leaky isolation. `:isolated` in an `until` refers to a
 `Transition(:isolated, …)` in the natural history."""
 function set_isolated!(ind::Individual, time::Real)
     ind.state[:isolated] = true
-    delete!(ind.state, :isolation_unrecorded)
+    delete!(ind.state, :_isolation_unrecorded)
     return ind.state[:isolation_time] = time
 end
 
 """Clear an individual's isolation, the inverse of [`set_isolated!`](@ref)."""
 function clear_isolated!(ind::Individual)
     ind.state[:isolated] = false
-    delete!(ind.state, :isolation_unrecorded)
+    delete!(ind.state, :_isolation_unrecorded)
     ind.state[:isolation_time] = Inf
     return nothing
 end

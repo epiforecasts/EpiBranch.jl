@@ -553,7 +553,7 @@ supplies_contacts(::TransmissionModel) = false
 # `apply_post_transmission!` reaches its own contacts in turn. The race has no
 # generations to keep a node alive for, so it walks the model's own contact
 # structure breadth-first instead, and asks the same hook which contacts the
-# next hop starts from. The depth semantics and the `:ring_remaining` budget
+# next hop starts from. The depth semantics and the `:_ring_remaining` budget
 # behind them stay with `ContactTracing`, so a ring of another shape takes part
 # by answering `keep_active` rather than by writing a state key this loop would
 # have to recognise.
