@@ -102,6 +102,7 @@ EpiBranch.collect_exposures
 EpiBranch.gather_by_target
 EpiBranch.model_generation_time
 EpiBranch.transmission_risks
+EpiBranch.race_groups
 make_contact!
 susceptible_fraction
 ```

@@ -1462,6 +1462,20 @@ the model's clinical transitions (placed on the state by
 continuous-time household and network processes, which step cases in
 infection-time order instead of by generation, are the worked examples.
 
+A model with more than one natural partition of its population into
+independent races over `EpiBranch._sellke_race!` — a household process,
+over its households — defines
+[`EpiBranch.race_groups`](@ref)`(model, kernel)` to say how it splits for a
+given kernel, rather than have a shared simulation loop decide for it. A new
+kernel type can override the method for a given model to pick a different
+partition outright:
+
+```julia
+EpiBranch.race_groups(model::HouseholdProcess, kernel) =
+    isempty(EpiBranch.watched_records(kernel)) ?
+    model.members : (collect(eachindex(model.household_of)),)
+```
+
 For **analytical inference helpers** that route through the offspring
 specification (`reproduction_number`, `extinction_probability`,
 `epidemic_probability`, `probability_contain`, `proportion_transmission`,

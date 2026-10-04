@@ -1041,6 +1041,27 @@ function _sellke_race!(
     return true
 end
 
+"""
+    race_groups(model, kernel)
+
+The races `model` runs its `_sellke_race!` construction over for `kernel`:
+disjoint groups of population ids, each raced independently in its own call
+with its own RNG stream. A model with more than one natural grouping —
+[`HouseholdProcess`](@ref), over its households — defines this to say how
+many races it needs and which members fall in each, so the choice is the
+model's own rather than inlined in whichever loop calls `_sellke_race!`
+repeatedly. A new kernel type can override the method for a given model to
+pick a different partition outright.
+"""
+function race_groups(model::TransmissionModel, kernel)
+    throw(
+        ArgumentError(
+            "$(nameof(typeof(model))) needs a method for `EpiBranch.race_groups` " *
+                "naming how it partitions its races for a kernel of this type"
+        )
+    )
+end
+
 # Keep a record to compare against later. A projection may hand back a mutable
 # history that an intervention appends to in place, which would then compare
 # equal to itself and hide the change, so anything that is not plain bits is

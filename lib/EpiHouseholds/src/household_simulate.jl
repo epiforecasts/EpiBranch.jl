@@ -66,14 +66,19 @@ function _simulate(
     # rather than being cut off at `max_time` with candidates still pending.
     initial_cases = sim_opts.initial_cases === nothing ? nothing :
         Set(sim_opts.initial_cases)
+    # The keys the kernel's hazards depend on, for `_sellke_race!` to redraw a
+    # pending contact when one moves.
+    watched = EpiBranch.watched_records(model.kernel)
     # Only a policy that can read population-wide state — cases in other
     # households, a kernel reading host records an intervention can move, a
     # capacity budget shared across households — needs every household on one
-    # clock. The kernel names the records it watches, and
-    # `reads_population_state` is how an intervention declares the rest.
-    watched = EpiBranch.watched_records(model.kernel)
-    live = !isempty(watched) || any(EpiBranch.reads_population_state, interventions)
-    races = live ? (collect(eachindex(model.household_of)),) : model.members
+    # clock. `reads_population_state` is how an intervention declares that;
+    # `race_groups` is how the process itself partitions races for a kernel,
+    # which `HouseholdProcess` narrows to one race per household unless the
+    # kernel's watched records say otherwise.
+    races = any(EpiBranch.reads_population_state, interventions) ?
+        (collect(eachindex(model.household_of)),) : race_groups(model, model.kernel)
+    live = length(races) == 1
     extinct = true
     for mem in races
         extinct &= EpiBranch._sellke_race!(
@@ -151,6 +156,15 @@ end
 
 function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpts)
     return EpiBranch._validate_initial_case_ids(opts, length(model.household_of))
+end
+
+# One race per household by default, since each household's outbreak is
+# otherwise independent; a kernel whose watched records name any key needs
+# every household sharing one clock instead, so a key moving on one
+# household's host redraws a pending contact in another that reads it.
+function race_groups(model::HouseholdProcess, kernel)
+    return isempty(EpiBranch.watched_records(kernel)) ?
+        model.members : (collect(eachindex(model.household_of)),)
 end
 
 function _seed_household_race!(best, members, model, state, Tobs, rng, initial_cases, live)
