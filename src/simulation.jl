@@ -959,9 +959,11 @@ An infection aborted before onset (see
 [`abort_infection!`](@ref EpiBranch.abort_infection!)) ends its clinical course
 at the abort time. A transition takes effect at the times it writes under
 `_time` keys, so one that writes a time at or after the abort is undone,
-whatever state it is timed from: every key it changed is restored. Transitions timed from it then find their
-`from` state unreached, and it contributes no terminal candidate to the outcome.
-Transitions that take effect strictly before the abort stand.
+whatever state it is timed from: every key it bound is restored, so a
+transition must record through `individual.state` rather than by mutating a
+container it finds there. Transitions timed from an undone one then find their
+`from` state unreached, and it contributes no terminal candidate to the
+outcome. Transitions that take effect strictly before the abort stand.
 """
 function resolve_transitions!(state::SimulationState, individual)
     transitions = state.transitions
@@ -998,6 +1000,14 @@ function _resolve_before_abort!(transitions, individual, state, aborted_t)
     for transition in transitions
         resolve_individual!(transition, individual, state)
         if _writes_time_from(individual.state, kept, aborted_t)
+            # The uniform a group of siblings shares belongs to the group
+            # rather than to whichever of them first needed it, so it joins the
+            # state the undo restores: the next sibling then reads the same
+            # value instead of drawing a fresh one, and the group still
+            # partitions a case the abort cut short.
+            for key in _shared_draw_keys(transition)
+                haskey(individual.state, key) && (kept[key] = individual.state[key])
+            end
             empty!(individual.state)
             merge!(individual.state, kept)
         else

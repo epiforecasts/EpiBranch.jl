@@ -26,6 +26,15 @@ const ABORT_PROGRESSION = [
     Transition(:late; from = :infection, delay = 10.0),
 ]
 
+# A transition that records its own key and leaves it to the undo to remove.
+struct _OwnKeyVisit <: AbstractClinicalTransition
+    delay::Float64
+end
+function EpiBranch.resolve_individual!(t::_OwnKeyVisit, ind, state)
+    ind.state[:followup_time] = ind.infection_time + t.delay
+    return nothing
+end
+
 @testset "abort_infection!" begin
     function exposed(; infection_time = 1.0, incubation = 6.0)
         ind = Individual(id = 1, infection_time = infection_time)
@@ -86,6 +95,29 @@ const ABORT_PROGRESSION = [
         ind = exposed()
         EpiBranch._drop_stale_abort!(ind)
         @test onset_time(ind) == 7.0
+    end
+
+    @testset "the undo removes a key the transition made for itself" begin
+        # A transition may write its own key without initialising it, which the
+        # extending guide documents, so the undo cannot assume every key it has
+        # to remove is one it can restore from the state it copied. A leftover
+        # would also read as a post-abort time to the transitions after it, and
+        # undo one that stood.
+        prog = AbstractClinicalTransition[
+            _OwnKeyVisit(5.0),
+            Transition(:early_step, from = :infection, delay = 0.1),
+        ]
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(0.0)), prog, NoAttributes(), StableRNG(1)
+        )
+        ind = Individual(id = 1, infection_time = 0.0)
+        ind.state[:infected] = true
+        EpiBranch.abort_infection!(ind, 1.0)
+        EpiBranch.resolve_transitions!(state, ind)
+        @test !haskey(ind.state, :followup_time)
+        # The second transition lands before the abort, so it stands.
+        @test ind.state[:early_step]
+        @test ind.state[:early_step_time] == 0.1
     end
 end
 

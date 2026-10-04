@@ -216,6 +216,9 @@ terminal_event
 exclusive_probabilities
 EpiBranch.resolve_transitions!
 EpiBranch.transition_time
+progression_loglik
+EpiBranch.transition_loglik
+EpiBranch.transition_term
 ```
 
 ## State accessors
