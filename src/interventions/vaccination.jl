@@ -199,7 +199,7 @@ function VaccineEffect(;
     waning === nothing || supports_waning(mode) ||
         throw(
         ArgumentError(
-            "`waning` is not yet supported together with `mode = $(typeof(mode))()`. " *
+            "`waning` is not yet supported together with `mode = $(mode)`. " *
                 "Use a mode with `supports_waning(mode) == true`, or drop `waning`."
         )
     )
