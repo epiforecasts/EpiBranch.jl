@@ -242,7 +242,10 @@ meansize(ivs) = sum(simulate(build(ivs); n_initial = 1,
 println("no control:              ", round(meansize(AbstractIntervention[]), digits = 1))
 println("isolation:               ", round(meansize([iso]), digits = 1))
 for p in (0.5, 1.0)
-    ct = ContactTracing(probability = p, isolation_to_trace_delay = Exponential(1.0))
+    ct = ContactTracing(
+        probability = p, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = Inf)
+    )
     println("isolation + $(round(Int, 100p))% tracing:  ", round(meansize([iso, ct]), digits = 1))
 end
 ```
@@ -345,7 +348,10 @@ live with can be named whether or not you also meet them elsewhere.
 # Slower isolation and more community contact than above, so that tracing has
 # transmission left to prevent.
 iso3 = Isolation(onset_to_isolation_delay = Exponential(4.0), test_sensitivity = 1.0)
-ct3 = ContactTracing(probability = 0.9, isolation_to_trace_delay = Exponential(0.5))
+ct3 = ContactTracing(
+    probability = 0.9, isolation_to_trace_delay = Exponential(0.5),
+    action = Quarantine(duration = Inf)
+)
 traced_routes(community_traceable) = [
     RouteWindow(:household; until = (:recovered, REM),
         kernel = Weibull(1.5, 4.0), reach = hh_adj),

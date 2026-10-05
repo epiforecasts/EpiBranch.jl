@@ -1161,7 +1161,7 @@ recorded as vaccinated by the time `GroupVaccination` runs and is
 skipped, leaving the group dose to reach only those the ring did not:
 
 ```julia
-[ContactTracing(OnLabConfirmation(), 0.7, Exponential(1.0)),
+[ContactTracing(OnLabConfirmation(), 0.7, Exponential(1.0), Quarantine(duration = Inf)),
  RingVaccination(efficacy = 0.9),
  GroupVaccination(efficacy = 0.6)]
 ```

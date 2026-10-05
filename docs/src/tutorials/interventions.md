@@ -102,7 +102,10 @@ With quarantine, traced contacts are isolated before symptom onset:
 
 ```@example interventions
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
-ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = true)
+ct = ContactTracing(
+    probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+    action = Quarantine(duration = Inf)
+)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso, ct]), 200; max_cases = 500, rng = rng)
@@ -137,7 +140,7 @@ trace probability, and a delay distribution):
 ```@example interventions
 # Begin tracing as soon as the infector shows symptoms, without waiting
 # for a positive test.
-ct_fast = ContactTracing(OnSymptomOnset(), 0.7, Exponential(1.0))
+ct_fast = ContactTracing(OnSymptomOnset(), 0.7, Exponential(1.0), Quarantine(duration = Inf))
 nothing # hide
 ```
 
@@ -150,7 +153,7 @@ elig = OnSymptomOnset() | OnLabConfirmation()
 # Trace symptomatic infectors who have not yet been isolated.
 elig_gap = OnSymptomOnset() & !OnIsolation()
 
-ct_combined = ContactTracing(elig, 0.7, Exponential(1.0))
+ct_combined = ContactTracing(elig, 0.7, Exponential(1.0), Quarantine(duration = Inf))
 nothing # hide
 ```
 
@@ -199,7 +202,10 @@ are identified.
 
 ```@example interventions
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
-ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0))
+ct = ContactTracing(
+    probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+    action = Quarantine(duration = Inf)
+)
 rv = RingVaccination(efficacy = 0.8)
 
 rng = StableRNG(42)
@@ -213,7 +219,7 @@ println("Iso + tracing + ring vaccination: $(round(containment_probability(resul
     infector has been isolated, and that isolation already blocks every
     later transmission to the contact. `efficacy` protects a contact only
     against exposure after its immunity arrives, so it has nothing left to
-    prevent, with or without quarantine (`quarantine_on_trace = false`).
+    prevent, with or without quarantine (`action = FlagOnly()`).
     It acts only where a contact can still be infected after being traced:
     under leaky isolation (`post_isolation_transmission > 0`), when tracing
     starts before the infector is isolated (for example
@@ -264,7 +270,10 @@ contacts for one more hop so the ring can grow past them. The same
 `RingVaccination` then vaccinates the whole ring:
 
 ```@example interventions
-ct2 = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0), depth = 2)
+ct2 = ContactTracing(
+    probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+    action = Quarantine(duration = Inf), depth = 2
+)
 
 rng = StableRNG(42)
 state = simulate(scenario([iso, ct2, rv]); condition = 50:200, max_cases = 200, rng = rng)
@@ -382,7 +391,7 @@ leaves the vaccination as the only difference between them:
 
 ```@example interventions
 ct_noquarantine = ContactTracing(probability = 0.7,
-    isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = false)
+    isolation_to_trace_delay = Exponential(1.0), action = FlagOnly())
 rv_clustered_onward = RingVaccination(efficacy = 0.8, onward_efficacy = 0.8,
     coverage = (rng, ind) -> ind.state[:vaccine_acceptance])
 rv_independent_onward = RingVaccination(efficacy = 0.8, onward_efficacy = 0.8,
@@ -559,7 +568,7 @@ they follow within days:
 ```@example interventions
 ct_onset = ContactTracing(probability = 0.7,
     isolation_to_trace_delay = Exponential(1.0),
-    eligibility = OnSymptomOnset(), quarantine_on_trace = false)
+    eligibility = OnSymptomOnset(), action = FlagOnly())
 
 for (label, tracing) in (("after isolation", ct), ("at symptom onset", ct_onset))
     let rng = StableRNG(42)
@@ -625,7 +634,7 @@ effect is the number of people each traced case goes on to infect:
 
 ```@example interventions
 ct_flag = ContactTracing(probability = 0.7,
-    isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = false)
+    isolation_to_trace_delay = Exponential(1.0), action = FlagOnly())
 
 # Infections per traced case, over cases whose own contacts were simulated
 function onward_per_traced(runs)
@@ -889,7 +898,10 @@ fixed time, such as case-count triggers:
 # Start contact tracing after 20 cumulative cases
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
 ct_triggered = Scheduled(
-    ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0));
+    ContactTracing(
+        probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = Inf)
+    );
     start_after_cases = 20,
 )
 
