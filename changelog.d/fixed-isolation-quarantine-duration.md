@@ -6,7 +6,9 @@ lapsed long before. `Isolation` now takes an `isolation_duration` and
 or a function of the individual, matching `onset_to_isolation_delay`), giving
 each removal a release time (`EpiBranch.isolation_release_time`) after which
 the block lapses. `Quarantine`'s `duration` defaults to `Inf`, which never
-releases the contact, reproducing the previous behaviour. `Risk` gained a
+releases the contact, reproducing the previous behaviour, and
+`ContactTracing`'s keyword form takes a `quarantine_duration` that reaches
+it. `Risk` gained a
 matching `release_time` field, and the
 line list reports a `date_isolation_release` column once a finite duration is
 in use, and its two-argument positional form still builds a risk that never

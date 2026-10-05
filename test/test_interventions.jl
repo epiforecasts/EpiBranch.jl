@@ -2947,6 +2947,24 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             end
         end
 
+        @testset "quarantine_duration reaches the quarantine" begin
+            ct = ContactTracing(
+                probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+                quarantine_duration = Dirac(7.0)
+            )
+            @test ct.action == Quarantine(duration = Dirac(7.0))
+
+            # The default keeps the previous behaviour, and the keyword is
+            # ignored where nothing is quarantined.
+            @test ContactTracing(
+                probability = 0.5, isolation_to_trace_delay = Exponential(1.0)
+            ).action == Quarantine(duration = Inf)
+            @test ContactTracing(
+                probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+                quarantine_on_trace = false, quarantine_duration = Dirac(7.0)
+            ).action == FlagOnly()
+        end
+
         @testset "requires at least one condition" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
             @test_throws ErrorException Scheduled(iso)

@@ -600,10 +600,14 @@ function ContactTracing(
     )
 end
 
+# `quarantine_duration` reaches `Quarantine`'s `duration` through this form,
+# which otherwise builds the action itself and leaves no way to give a
+# quarantine a release time.
 function ContactTracing(;
         probability::Float64,
         isolation_to_trace_delay::Distribution,
         quarantine_on_trace::Bool = true,
+        quarantine_duration = Inf,
         eligibility::TraceEligibility = SymptomaticParent(),
         depth::Integer = 1
     )
@@ -611,7 +615,7 @@ function ContactTracing(;
         eligibility,
         ConstantRate(probability),
         ConstantDelay(isolation_to_trace_delay),
-        quarantine_on_trace ? Quarantine() : FlagOnly(),
+        quarantine_on_trace ? Quarantine(duration = quarantine_duration) : FlagOnly(),
         Int(depth)
     )
 end
