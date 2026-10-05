@@ -59,23 +59,6 @@ function isolation_release_time(ind::Individual{T}) where {T}
     return convert(T, get(ind.state, :isolation_release_time, T(Inf)))::T
 end
 
-# Whether the individual's own isolation or quarantine had already lapsed
-# before their infection, so a continuous-time route window never met the
-# removal and should not be shut by it.
-#
-# A removal whose release is at or before its own start lapses without ever
-# being in force, which is how a zero-length duration reads here: it removes
-# nobody, as it does on the generation engine, where `event_t <= t < release_t`
-# blocks nothing.
-#
-# `infection_time` is the earliest a window can open, which makes this test
-# sound but not complete: a window whose `from` is a later state (a latent
-# period's `:onset`, a funeral route) can open after a removal lapsed and
-# still be shut by it. Closing that gap needs the window's own open time where
-# the decision is made, and `infectious_removal_time` is given the individual
-# alone, so it is a change to that hook rather than to this predicate.
-_removal_lapsed_before_infection(ind::Individual) =
-    isolation_release_time(ind) <= max(ind.infection_time, isolation_time(ind))
 
 # Whether an isolation or quarantine stands on the individual, recorded or not.
 # Interventions layering one isolation over another read this.

@@ -792,14 +792,11 @@ models. Contacts merely flagged (`FlagOnly`) write `:_traced_isolation_time`
 instead, and [`Isolation`](@ref) turns that into the removal, exactly as on the
 generation-based path.
 
-A quarantine set, and released (see [`Quarantine`](@ref)'s `duration`), before
-the contact was infected contributes no removal
-(`EpiBranch._removal_lapsed_before_infection`): it lapsed before this
-contact's own infectious window could have opened, so it cannot be what
-closes a window for an infection acquired later through another route.
-A quarantine with a release leaves the window open and is blocked per contact
-by the `competing_risk` below, which hands the case back once released, as
-[`Isolation`](@ref)'s does."""
+A quarantine with a release (see [`Quarantine`](@ref)'s `duration`) leaves the
+window open and is blocked per contact by the `competing_risk` below, which
+hands the case back once released, as [`Isolation`](@ref)'s does. That covers
+a quarantine released before the contact was infected as well, which never
+reached its infectious window at all."""
 function infectious_removal_time(::ContactTracing, ind::Individual)
     get(ind.state, :quarantined, false) || return Inf
     isfinite(isolation_release_time(ind)) && return Inf
