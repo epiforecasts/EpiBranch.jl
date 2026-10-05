@@ -27,6 +27,9 @@ much you write:
   `loglikelihood` method for a new data type. Covered below.
 - **Add a stopping rule** — subtype `AbstractStoppingRule` to end a run on a
   condition none of the built-ins cover. Covered below.
+- **Record every contact event** — subtype `ContactRecorder` to keep a
+  continuous-time race drawing a standing-blocked pair instead of dropping
+  it, for an output that wants the full stream. Covered below.
 
 The two surfaces most people reach for are a **custom intervention** (a new risk
 on an existing model) and a **custom transmission model** (a new process); both
@@ -370,6 +373,17 @@ What this means in practice:
   ```julia
   EpiBranch.standing_block(::MyClosedWard) = true
   ```
+
+  Dropping the pair is what every run does by default, because tracing and
+  ring construction read the standing contact relationship rather than these
+  proposals, and the realised infection outcome is unaffected either way.
+  What it costs is the later contact *events* on that pair: an output built
+  to count them — exposures a vaccine averted, say, or failed-contact
+  intervention effort — needs the draws the race would otherwise skip. A
+  [`ContactRecorder`](@ref) attached to the composed model's `recorder` is
+  asked, every time a standing block would end a pair's draws, whether they
+  still matter; see [Recording every contact
+  event](#recording-every-contact-event) below.
 - An external intervention can choose any subset of routes without adding a
   scope type. For example, a removal effect can follow the window's censoring:
 
@@ -1788,7 +1802,52 @@ With that in place,
 returns empirical and analytical PMFs that should agree within
 sampling error.
 
-## Adding an offspring specification
+## Recording every contact event
+
+A continuous-time (Sellke) race stops proposing contacts for a pair once a
+[`standing_block`](@ref) has settled it for good, because nothing is left to
+gain from asking the model or the kernel again — see the bullet above. The
+transmission outcome is unaffected: the pair still stands in each other's
+contacts, which is what tracing and ring construction read. What the dropped
+pair costs is the later contact *events* between it and its infector, and an
+output built to count them — how many exposures a vaccine averted, say, or
+how much intervention effort went into contacts that failed — needs those
+draws back.
+
+A [`ContactRecorder`](@ref) attached to the composed model's `recorder` is
+the seam for that. It joins in through one method dispatched on the
+recorder type:
+
+[`records_contacts`](@ref EpiBranch.records_contacts)`(recorder, parent, contact, state, t)` —
+whether `recorder` wants the race to keep drawing this pair, asked every time
+a standing block would otherwise end its draws (not only the first), with
+`t` the time the dropped proposal fell at. The default
+[`NoContactRecorder`](@ref) answers `false` to every pair, so a model with no
+recorder attached drops the pair exactly as it always has, at no extra cost.
+
+### Minimal sketch
+
+```julia
+struct CountingRecorder <: ContactRecorder
+    events::Vector{NTuple{3, Float64}}  # (parent_id, contact_id, t)
+end
+CountingRecorder() = CountingRecorder(NTuple{3, Float64}[])
+
+function EpiBranch.records_contacts(r::CountingRecorder, parent, contact, state, t)
+    push!(r.events, (parent.id, contact.id, t))
+    return true
+end
+```
+
+Usage: `ModelSpec(HouseholdProcess(...); recorder = CountingRecorder())`. Every
+subsequent proposal on a standing-blocked pair is logged before the race is
+told to keep going, so `rec.events` ends up with the full stream for every
+pair a standing block ever settled.
+
+Declaring `true` narrows which models can run: resuming the draws puts the
+pair back under the rejection-continuation guard described above, so a
+model whose window never closes is refused there, exactly as a block that
+was never declared standing would have been.
 
 Offspring specifications replace what `BranchingProcess` draws per
 individual. `ClusterMixed(build, mixing)` (per-chain parameter
@@ -1875,6 +1934,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Time-dependent intervention | `Scheduled(iv; start_time = ...)` + `intervention_time`, `reset!` on `iv` | After each hook |
 | Capacity-constrained intervention | `CapacityConstrained(iv; budget_per_period = ...)` + `capacity_key`, `capacity_time_key` on `iv` | `apply_post_transmission!` |
 | Custom stopping rule | Struct `<: AbstractStoppingRule` + `should_stop` | Each step |
+| Contact recorder | Struct `<: ContactRecorder` + `records_contacts` | Continuous-time race, per standing-blocked proposal |
 | Terminal clinical transition | Struct `<: AbstractClinicalTransition` + `is_terminal`, `terminal_event`, `terminal_target` | Case creation |
 | Custom attributes | Function `(rng, ind) -> nothing` | Individual creation |
 | Layered attributes | `[f1, f2, ...]` | Individual creation |
