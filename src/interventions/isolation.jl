@@ -105,10 +105,16 @@ is `1 - post_isolation_transmission`.
 `isolation_duration` is how long the removal lasts before it lapses; it
 accepts a `Real`, a `Distribution`, or a function `(rng, ind) -> Real`
 (drawn per individual, each time isolation is set). There is no default:
-callers must choose, since no policy actually isolates indefinitely. Pass
-`Inf` to keep a case isolated to the end of its infectious period, or a
-finite duration to give [`isolation_release_time`](@ref) the time the block
-lapses; a duration of zero isolates nobody.
+callers must choose, since no policy actually isolates indefinitely. `Inf`
+never releases the case; a finite duration gives
+[`isolation_release_time`](@ref) the time the block lapses, and a duration of
+zero isolates nobody.
+
+`Inf` and a duration longer than the infectious period part company only
+where a case can transmit again, through waning or a second exposure on a
+network or in a household. There the removal that never releases keeps
+blocking that later transmission as well, which is why the choice is the
+caller's.
 
 What that changes depends on the engine. On a generation-based process the
 block is a per-contact risk, so a contact after the release is not blocked.
@@ -178,8 +184,8 @@ end
 
 """Isolation blocks the parent → contact transmission while the parent's
 isolation is in force: from its isolation time until its
-[`isolation_release_time`](@ref) (`Inf` by default, so the block lasts until
-the end of the infectious period). Residual transmission is governed by
+[`isolation_release_time`](@ref), which an `isolation_duration` of `Inf`
+leaves infinite. Residual transmission is governed by
 `post_isolation_transmission`: `block_probability = 1 - post_isolation_transmission`."""
 function competing_risk(iso::Isolation, parent, contact, state)
     iso_t = isolation_time(parent)

@@ -2,5 +2,5 @@
 and must be passed explicitly, as `onset_to_isolation_delay` already is,
 since no policy isolates indefinitely and a silent default handed indefinite
 isolation to a caller who did not know the parameter existed. Pass `Inf` to
-keep the previous behaviour (isolation to the end of the infectious period),
-or a finite value or distribution to give it a release time.
+keep the previous behaviour, which never releases the case, or a finite value
+or distribution to give it a release time.
