@@ -12,6 +12,13 @@ proposed action time before delivery. Predicates see that time as
 Capacity admission uses the original simulation clock in either wrapper order.
 The batch-hook behaviour below applies to interventions without this protocol.
 
+A schedule built with an `end_time`, or from a predicate, can withdraw a block
+it has already delivered, which one per-host record of a removal's stretches
+cannot express. Such a schedule therefore removes a case for good at its
+removal's own start, and a wrapped `isolation_duration` or `Quarantine`
+`duration` does not hand the case back. Wrap the removal in a schedule with
+only a `start_time`, or compose it unwrapped, for the duration to apply.
+
 `Scheduled` is the single entry point for time-based intervention
 scheduling. It enforces start times at two levels:
 
@@ -144,8 +151,8 @@ end
     return nothing
 end
 
-# `infectious_removal_time` is inherited ungated: on the continuous-time models
-# a Scheduled removes a case when the wrapped intervention does. The loop
+# `infectious_removal_time` comes from `InterventionWrapper`, which narrows it
+# for a schedule that can close: see `removal_gap_host_times` below. The loop
 # resolves it against the running clock, so a case whose infection time is
 # before `start_time` never has its wrapped intervention run (its gate is
 # closed) and so is not removed.
