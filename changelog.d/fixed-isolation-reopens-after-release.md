@@ -9,7 +9,13 @@ leaves the window open on the case's other removal states when its own
 removal is due to lapse, and the release-aware per-contact `competing_risk`
 blocks exactly the isolated interval instead, matching the generation engine.
 A removal with no release (the default `Inf` duration) still closes the
-window at its own start, as before. `ContactTracing`'s `Quarantine` keeps its
-previous behaviour, having no per-contact risk of its own to fall back on;
-compose `Isolation` alongside it for a quarantine that should let a case go
-once released.
+window at its own start, as before. `ContactTracing`'s `Quarantine` behaves the same
+way, gaining a per-contact risk of its own so a quarantine with a duration
+hands the case back once released.
+
+The structured pairwise likelihood follows the same rule, taking the isolated
+stretch out of each pair's exposure, so a finite duration can be fitted on
+household and network data as well as simulated. `Isolation` and
+`ContactTracing` name the two times it reads through
+`EpiBranch.removal_gap_times`, which `household_infections` and
+`network_infections` record in the layer's `host_times`.

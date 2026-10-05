@@ -85,15 +85,11 @@ Isolation lasts until the end of the infectious period by default. Pass
 `(rng, ind) -> Real`, like `onset_to_isolation_delay`) to give it a finite
 length instead.
 
-This matters when a case is quarantined, released, and only then infected
-through another route — on a network or in a household, say — since a
-quarantine with no end would otherwise keep blocking that later transmission
-indefinitely. On those models an infectious window carries one closing time
-and cannot reopen, so the release spares an infection acquired after it and
-nothing else: a removal still standing when the case is infected closes the
-window for the rest of the infectious period, however soon it was due to
-lapse. On a generation-based process the block is a per-contact risk, and a
-contact after the release is not blocked.
+A case isolated part-way through its infectious period transmits again once
+released, on every transmission model. The release is also what spares a case
+quarantined, released, and only then infected through another route — on a
+network or in a household, say — where a quarantine with no end would
+otherwise keep blocking that later transmission indefinitely.
 
 ### Contact tracing
 
