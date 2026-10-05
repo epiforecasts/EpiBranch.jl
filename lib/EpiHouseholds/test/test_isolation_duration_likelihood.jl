@@ -49,6 +49,15 @@
             data.is_index; obs_end = data.obs_end
         )
     )
+
+    # A duration of `Inf` records nothing extra, its window closing at the
+    # isolation's own start as before.
+    forever = Isolation(onset_to_isolation_delay = Dirac(1.0))
+    m_inf = ModelSpec(
+        process; progression, attributes = clinical, interventions = [forever]
+    )
+    inf_state = simulate(m_inf; rng = StableRNG(17))
+    @test isempty(household_infections(inf_state, m_inf).host_times)
 end
 
 @testset "A household layer loses exactly the isolated stretch" begin
@@ -78,15 +87,6 @@ end
     @test pairwise_surv_loglik(Exponential(theta), gapped) ≈ -2 * (30.0 - 7.0) / theta
     @test pairwise_surv_loglik(Exponential(theta), gapped) -
         pairwise_surv_loglik(Exponential(theta), plain) ≈ 2 * 7.0 / theta
-
-    # A duration of `Inf` records nothing extra, its window closing at the
-    # isolation's own start as before.
-    forever = Isolation(onset_to_isolation_delay = Dirac(1.0))
-    m_inf = ModelSpec(
-        process; progression, attributes = clinical, interventions = [forever]
-    )
-    inf_state = simulate(m_inf; rng = StableRNG(17))
-    @test isempty(household_infections(inf_state, m_inf).host_times)
 end
 
 @testset "A wrapped isolation records its stretch like a bare one" begin
@@ -103,20 +103,23 @@ end
         onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(7.0)
     )
 
-    for wrapped in (
-            Scheduled(iso; start_time = 0.0),
-            CapacityConstrained(iso; budget_per_period = 1.0e6),
-        )
-        @test EpiBranch.records_removal_gap(wrapped)
-        m = ModelSpec(
-            process; progression, attributes = clinical, interventions = [wrapped]
-        )
-        state = simulate(m; rng = StableRNG(21))
-        data = household_infections(state, m)
-        @test haskey(data.host_times, :isolation_release_time)
-        @test any(isfinite, coalesce.(data.host_times.isolation_release_time, Inf))
-        @test isfinite(loglikelihood(data, m))
-    end
+    # Both wrappers forward the declaration.
+    @test EpiBranch.records_removal_gap(Scheduled(iso; start_time = 0.0))
+    @test EpiBranch.records_removal_gap(
+        CapacityConstrained(iso; budget_per_period = 1.0e6)
+    )
+
+    # `Scheduled` is the one a household engine honours, so it is the one
+    # driven end to end.
+    m = ModelSpec(
+        process; progression, attributes = clinical,
+        interventions = [Scheduled(iso; start_time = 0.0)]
+    )
+    state = simulate(m; rng = StableRNG(21))
+    data = household_infections(state, m)
+    @test haskey(data.host_times, :isolation_release_time)
+    @test any(isfinite, coalesce.(data.host_times.isolation_release_time, Inf))
+    @test isfinite(loglikelihood(data, m))
 end
 
 @testset "A quarantine with a duration is fitted on its own" begin
