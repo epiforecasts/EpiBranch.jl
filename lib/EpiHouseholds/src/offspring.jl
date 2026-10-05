@@ -473,7 +473,8 @@ function _simulated_person_time(
     sample_spec = ModelSpec(
         sample;
         progression = spec.progression, interventions = spec.interventions,
-        attributes = spec.attributes, observation = spec.observation
+        attributes = spec.attributes, observation = spec.observation,
+        recorder = spec.recorder
     )
     state = simulate(sample_spec; rng)
 
