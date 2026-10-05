@@ -195,6 +195,10 @@ end
 # A duration of `Inf` leaves no stretch to read, the window closing at the
 # isolation's own start, and the layer records nothing extra for it.
 function removal_gap_host_times(iso::Isolation)
+    # Leaky isolation contributes no removal at all, only a reduced hazard, so
+    # it has no stretch for anything to read; a duration of `Inf` has one
+    # stretch and no release, which the infectious window holds instead.
+    iso.post_isolation_transmission == 0 || return ()
     iso.isolation_duration === Inf && return ()
     return (REMOVAL_STRETCHES_KEY,)
 end
