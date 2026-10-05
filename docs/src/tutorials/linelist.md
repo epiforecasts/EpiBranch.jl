@@ -167,10 +167,10 @@ model, a pair that a certain, non-fading block has settled for good (see
 [`EpiBranch.standing_block`](@ref)) — an all-or-nothing vaccine responder,
 say, or an aborted infection's infector — stops being drawn once that block
 is seen, rather than being redrawn towards an answer the race already has.
-This leaves the pair's standing relationship, and so this table
-and the tracing and ring construction built on it, unaffected: a vaccinated
-pair appears here exactly as an unprotected one would. What it does leave out
-is event-level counting — how many contact events the pair actually had, and
+This leaves the pair's standing relationship untouched, so this table
+and the tracing and ring construction built on it stay unaffected: a vaccinated
+pair appears here exactly as an unprotected one would. It leaves out
+event-level counting, though — how many contact events the pair actually had, and
 when — since the race stops generating the later ones. An output that needs
 that count attaches a [`ContactRecorder`](@ref) to the model's `recorder`, which
 asks the race to keep drawing; see [Recording every contact

@@ -1,11 +1,11 @@
 # ── Contact recorder ─────────────────────────────────────────────────
-# An output concern, alongside `ObservationModel`: a composed model can carry
+# An output concern, alongside `ObservationModel`: a composed model can hold
 # one so a continuous-time (Sellke) race knows whether a pair's contact draws
 # still matter once a standing block (`standing_block`) would otherwise end
 # them. Tracing and ring construction read the standing contact relationship,
-# not these draws, so they are unaffected either way; what a dropped pair
-# costs is the later contact *events* between it and its infector, which this
-# is the seam for recovering.
+# not these draws, so they are unaffected either way. A dropped pair still
+# costs the later contact *events* between it and its infector; this is the
+# seam for recovering them.
 
 """
 Abstract supertype for a composed model's contact recorder. Attached to a

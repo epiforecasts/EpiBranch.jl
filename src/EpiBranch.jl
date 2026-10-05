@@ -65,7 +65,7 @@ end
 
 # Observation models (state-space slot), the contact recorder (output slot)
 # and the model inputs (interventions, attributes, observation) that every
-# process carries. Defined before the process types so their constructors
+# process stores. Defined before the process types so their constructors
 # can store them.
 include("observation_models.jl")
 include("contact_recorder.jl")

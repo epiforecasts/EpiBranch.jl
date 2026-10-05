@@ -7,4 +7,5 @@ draws, whether they still matter (`EpiBranch.records_contacts`); the default
 `NoContactRecorder` answers no to every pair, so a run with none attached is
 unaffected. Resuming the draws puts the pair back under the
 rejection-continuation guard, so attaching a recorder narrows which models can
-run, exactly as a model with no standing block never reached.
+run, exactly as a model whose block was never declared standing would have
+been refused there too.

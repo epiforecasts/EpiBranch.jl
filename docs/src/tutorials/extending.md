@@ -374,10 +374,10 @@ What this means in practice:
   EpiBranch.standing_block(::MyClosedWard) = true
   ```
 
-  Dropping the pair is what every run does by default, because tracing and
+  Every run drops the pair by default, because tracing and
   ring construction read the standing contact relationship rather than these
   proposals, and the realised infection outcome is unaffected either way.
-  What it costs is the later contact *events* on that pair: an output built
+  It still costs the later contact *events* on that pair: an output built
   to count them — exposures a vaccine averted, say, or failed-contact
   intervention effort — needs the draws the race would otherwise skip. A
   [`ContactRecorder`](@ref) attached to the composed model's `recorder` is
@@ -1808,11 +1808,11 @@ A continuous-time (Sellke) race stops proposing contacts for a pair once a
 [`standing_block`](@ref) has settled it for good, because nothing is left to
 gain from asking the model or the kernel again — see the bullet above. The
 transmission outcome is unaffected: the pair still stands in each other's
-contacts, which is what tracing and ring construction read. What the dropped
-pair costs is the later contact *events* between it and its infector, and an
-output built to count them — how many exposures a vaccine averted, say, or
-how much intervention effort went into contacts that failed — needs those
-draws back.
+contacts; tracing and ring construction read that, not these proposals. The
+dropped pair still costs the later contact *events* between it and its
+infector, and an output built to count them — how many exposures a vaccine
+averted, say, or how much intervention effort went into contacts that failed
+— needs those draws back.
 
 A [`ContactRecorder`](@ref) attached to the composed model's `recorder` is
 the seam for that. It joins in through one method dispatched on the
