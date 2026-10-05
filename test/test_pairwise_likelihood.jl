@@ -5,6 +5,20 @@ using ADTypes: AutoMooncake
 
 # A minimal infection layer over an explicit contact structure, as a companion
 # package would define one: the fields the likelihood reads plus the structure.
+# A layer that also records the stretch a lapsing removal took each host out
+# for, which `household_infections`/`network_infections` put in `host_times`.
+struct _GappedInfections{S} <: InfectionLayer
+    structure::S
+    infection_time::Vector{Float64}
+    infectious_time::Vector{Float64}
+    removal_time::Vector{Float64}
+    is_index::Vector{Bool}
+    obs_end::Float64
+    followup_end::Float64
+    host_times::NamedTuple
+end
+EpiBranch.contact_structure(d::_GappedInfections) = d.structure
+
 struct _TestInfections{S} <: InfectionLayer
     structure::S
     infection_time::Vector{Float64}
@@ -762,4 +776,50 @@ end
         @test length(by_parity) == 2
         @test sum(by_parity) ≈ total
     end
+end
+
+@testset "A removal that lapses leaves its stretch out of the exposure" begin
+    # Two hosts in one household: host 1 infectious over [0, 30], host 2 never
+    # infected, so the pair is pure escape. An exponential kernel integrates to
+    # `exposed / theta`, which makes the subtraction exact to read.
+    adj = [1, 1]
+    theta = 4.0
+    k = Exponential(theta)
+    layer(host_times) = _GappedInfections(
+        adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf, host_times
+    )
+
+    @test pairwise_surv_loglik(k, layer((;))) ≈ -30.0 / theta
+
+    # Isolated over [4, 11]: seven days out of the thirty.
+    gap = (isolation_time = [4.0, Inf], isolation_release_time = [11.0, Inf])
+    @test pairwise_surv_loglik(k, layer(gap)) ≈ -(30.0 - 7.0) / theta
+
+    # A removal with no release closes the window at its own start, so the
+    # layer's `removal_time` already holds it and there is nothing to subtract.
+    no_release = (isolation_time = [4.0, Inf], isolation_release_time = [Inf, Inf])
+    @test pairwise_surv_loglik(k, layer(no_release)) ≈ -30.0 / theta
+
+    # A stretch reaching past the end of the exposure is clamped to it.
+    overrun = (isolation_time = [20.0, Inf], isolation_release_time = [40.0, Inf])
+    @test pairwise_surv_loglik(k, layer(overrun)) ≈ -20.0 / theta
+end
+
+@testset "An infector removed at the infection cannot be the one" begin
+    adj = [1, 1]
+    k = Exponential(4.0)
+    gap = (isolation_time = [4.0, Inf], isolation_release_time = [11.0, Inf])
+
+    # Host 1 is host 2's only possible infector and was removed at day 7, so
+    # the configuration has density zero.
+    inside = _GappedInfections(
+        adj, [0.0, 7.0], [0.0, 7.0], [30.0, 37.0], [true, false], Inf, Inf, gap
+    )
+    @test pairwise_surv_loglik(k, inside) == -Inf
+
+    # After the release it is an ordinary event.
+    after = _GappedInfections(
+        adj, [0.0, 15.0], [0.0, 15.0], [30.0, 45.0], [true, false], Inf, Inf, gap
+    )
+    @test isfinite(pairwise_surv_loglik(k, after))
 end
