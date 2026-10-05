@@ -125,8 +125,8 @@ the release matters only when the removal had already lapsed before the case
 was infected: that case is not removed at all, which is what the duration
 exists for. A removal still standing at the infection, even one due to lapse a
 day later, closes the window for the rest of the infectious period. Leaky
-isolation closes no window, so there the release ends the hazard reduction and
-the case transmits at full rate again, on every model.
+isolation closes no window on any model, so the release there just ends the
+hazard reduction and the case transmits at full rate again.
 
 An isolation time at or after the case's own outcome (recovery, death, or
 any other terminal [`Transition`](@ref)) still removes the case from

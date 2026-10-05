@@ -174,9 +174,9 @@ same simulation is not supported, because they will overwrite each other.
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 alongside it for when the block lapses; a release of `Inf`, which is what
 `set_isolated!` assumes when given no `release_time`, never comes. A window
-that isolation
-should end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
-[Transmission routes](#Transmission-routes)), which respects leaky isolation.
+that isolation should end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in
+its `until` (see [Transmission routes](#Transmission-routes)), which respects
+leaky isolation.
 `:isolated` in an `until` refers to a `Transition(:isolated, …)` in the natural
 history. Set and undo isolation with `set_isolated!` and `clear_isolated!`.
 `:isolation_time` is when the case leaves transmission and
