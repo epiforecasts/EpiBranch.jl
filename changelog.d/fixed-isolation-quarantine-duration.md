@@ -16,9 +16,11 @@ lapses.
 
 On a generation-based process the release ends a per-contact block, so a
 contact after it is not blocked. On the continuous-time (Sellke) models an
-infectious window carries one closing time and cannot reopen, so the release
-spares an infection acquired after a removal had lapsed and nothing else,
-which is the case the duration exists for. Two removals layered on one case
+infectious window holds one closing time and cannot reopen, so for a removal
+that takes the case out completely the release spares an infection acquired
+after the removal had lapsed and nothing else, which is the case the duration
+exists for. Leaky isolation closes no window, so there the release ends the
+hazard reduction and the case transmits at full rate again. Two removals layered on one case
 are held as the interval covering both where they meet; where they do not, the
 later one is kept, the earlier being spent before it begins. A duration of zero
 removes nobody on either engine, and a negative one is refused.
