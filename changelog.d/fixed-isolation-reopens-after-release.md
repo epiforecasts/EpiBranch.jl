@@ -14,6 +14,14 @@ risk of its own so a quarantine with a duration hands the case back once
 released, and one without a duration now reduces onward transmission on the
 generation engine as well.
 
+Because the window stays open across a removal that lapses, a blocked contact
+proposal asks the pair's kernel for a later one, which a kernel whose support
+ends inside the window has unboundedly many of. The race now ends such a pair
+where the block is certain to cover the rest of that support, and goes on
+drawing where it lapses inside it, rather than refusing to sample. A truncated
+or otherwise bounded generation interval therefore runs under a finite
+duration, where it raised an error about the remaining integrated hazard.
+
 The structured pairwise likelihood follows the same rule, taking every
 isolated stretch out of each pair's exposure, so a finite duration can be
 fitted on household and network data as well as simulated. A host quarantined,

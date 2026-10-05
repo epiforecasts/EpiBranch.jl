@@ -127,6 +127,50 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         end
     end
 
+    @testset "A certain block past a bounded kernel's reach ends the pair" begin
+        # The window now runs to recovery, so a blocked proposal asks the kernel
+        # for a later contact. Under a kernel whose support ends inside the
+        # window the remaining integrated hazard is infinite, which the race
+        # refuses to sample against. A block certain to cover the rest of that
+        # support answers every contact that could still happen, so the pair
+        # ends; one that lapses inside it leaves contacts it does not block, and
+        # the redraws terminate on one of them. Before the fix both threw.
+        prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
+        attrs = clinical_presentation(incubation_period = Dirac(3.0))
+        kernel = Uniform(0.0, 10.0)
+        function race(duration)
+            iso = Isolation(
+                onset_to_isolation_delay = Dirac(1.0), isolation_duration = duration
+            )
+            rng = StableRNG(3)
+            state = EpiBranch.new_state(
+                BranchingProcess(Dirac(1), kernel), prog, attrs, rng
+            )
+            EpiBranch.add_individuals!(state, 2, [iso])
+            EpiBranch._sellke_race!(
+                state, [1, 2], rng; from = :infection, until = (:recovered,),
+                interventions = [iso],
+                targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+                    ((2, kernel),) : (),
+                seed! = (best, members, r) -> (best[1] = 0.0)
+            )
+            return state
+        end
+
+        # Isolated on day 4, released on day 11, past the kernel's support: no
+        # contact after day 4 can transmit, so the pair ends rather than erroring.
+        covered = race(Dirac(7.0))
+        @test isolation_release_time(covered.individuals[1]) == 11.0
+        @test !is_infected(covered.individuals[2])
+
+        # Released on day 7 instead, inside the support: the same seed infects
+        # the contact after the release.
+        lapses = race(Dirac(3.0))
+        @test isolation_release_time(lapses.individuals[1]) == 7.0
+        @test is_infected(lapses.individuals[2])
+        @test lapses.individuals[2].infection_time > 7.0
+    end
+
     @testset "A leaky isolation records no stretch and keeps its window open" begin
         # Leaky isolation reduces each contact's hazard and removes nobody, so
         # it has no stretch for a likelihood to take out and no window to

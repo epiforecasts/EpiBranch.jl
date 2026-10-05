@@ -299,14 +299,26 @@ end
 # multiplier. A kernel whose support ends at or before `dt` has no survival left
 # and so no later contact to give: a degenerate (`Dirac`) contact interval is one
 # such, offering exactly one contact.
-_next_contact(::AbstractRNG, ::Nothing, ::Real, dt, end_dt) = Inf
-function _next_contact(rng::AbstractRNG, kernel, m::Real, dt, end_dt)
+_next_contact(::AbstractRNG, ::Nothing, ::Real, dt, end_dt, certain_until = nothing) = Inf
+function _next_contact(
+        rng::AbstractRNG, kernel, m::Real, dt, end_dt, certain_until = nothing
+    )
     m <= 0 && return Inf
     ls = logccdf(kernel, dt)
     isfinite(ls) || return Inf
     # An opaque risk may block forever. Rejection sampling is supported only
     # when the remaining integrated hazard is finite; a finite time alone is
     # insufficient for a continuous kernel whose support ends in the window.
+    #
+    # A block known to be certain is the exception, `certain_until` holding when
+    # it lapses. Reaching the end of the kernel's own survival, it answers every
+    # proposal that could still happen, so the pair is finished rather than
+    # resampled; lapsing before then, it leaves contacts it does not block, and
+    # the redraws terminate on one of them.
+    if !isfinite(logccdf(kernel, end_dt)) && certain_until !== nothing
+        return isfinite(logccdf(kernel, certain_until)) ?
+            _draw_next_contact(rng, kernel, m, ls, dt) : oftype(ls, Inf)
+    end
     isfinite(logccdf(kernel, end_dt)) || throw(
         ArgumentError(
             "repeated contacts after a blocked proposal require finite remaining " *
@@ -324,6 +336,10 @@ function _next_contact(rng::AbstractRNG, kernel, m::Real, dt, end_dt)
                 "window by itself."
         )
     )
+    return _draw_next_contact(rng, kernel, m, ls, dt)
+end
+
+function _draw_next_contact(rng::AbstractRNG, kernel, m::Real, ls, dt)
     nxt = _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
     return nxt > dt ? nxt : Inf
 end
@@ -392,6 +408,49 @@ function _any_standing_risk(source, parent, contact, state, transmission_time)
     return false
 end
 
+# Whether a resolved risk is certain and already in force at this proposal,
+# whatever it does later: the weaker half of `_standing_risk`, which adds that
+# the block never lapses.
+function _in_force_certainly(risk::Risk, transmission_time)
+    return risk.event_time isa Real && risk.event_time <= transmission_time &&
+        risk.block_probability isa Real && risk.block_probability >= 1.0 &&
+        risk.release_time isa Real
+end
+
+# The time every certain block now in force against this pair has lapsed, or
+# `Inf` where one never does; `nothing` where no certain block is in force, the
+# proposal having been stopped by something that may answer the next one
+# differently. A pair certainly blocked to that time cannot transmit before it,
+# which is what tells the race whether redrawing can terminate.
+function _certain_block_release(
+        state, parent, contact, transmission_time, model_risks, interventions
+    )
+    release = nothing
+    for source in (AbortedInfection(), model_risks...)
+        release = _max_certain_release(
+            release, source, parent, contact, state, transmission_time
+        )
+    end
+    for iv in interventions
+        # As in `_permanently_blocked`: a wrapper that can turn its block off
+        # tells us nothing about the next proposal, so its release is not read.
+        _may_lapse(iv) && continue
+        release = _max_certain_release(
+            release, iv, parent, contact, state, transmission_time
+        )
+    end
+    return release
+end
+
+function _max_certain_release(release, source, parent, contact, state, transmission_time)
+    for risk in _iter_risks(competing_risk(source, parent, contact, state))
+        _in_force_certainly(risk, transmission_time) || continue
+        release = release === nothing ? risk.release_time :
+            max(release, risk.release_time)
+    end
+    return release
+end
+
 # Whether the block just resolved for `parent` → `contact` at `transmission_time`
 # will stand for every later proposal on the same edge, so the race can stop
 # proposing for the pair instead of redrawing towards a block it already knows
@@ -444,7 +503,11 @@ function _proposal_blocked(
         permanent = blocked && _permanently_blocked(
             state, parent, contact, transmission_time, model_risks, interventions
         )
-        return blocked, permanent
+        release = blocked && !permanent ?
+            _certain_block_release(
+                state, parent, contact, transmission_time, model_risks, interventions
+            ) : nothing
+        return blocked, permanent, release
     finally
         state.max_infection_time = previous_clock
         blocked && (contact.infection_time = previous)
@@ -908,7 +971,7 @@ function _sellke_race!(
         # defined to start, and is put to no risk at all.
         source = infector_id == 0 ? ind : state.individuals[infector_id]
         if may_block && (infector_id != 0 || introduction !== nothing)
-            blocked, permanent = _proposal_blocked(
+            blocked, permanent, certain_release = _proposal_blocked(
                 state, source, ind, bt, risks,
                 opening.route == 0 ? introduction_interventions :
                     route_interventions[opening.route]
@@ -946,8 +1009,11 @@ function _sellke_race!(
                         close_t = opening.close_t
                         mult = source.infectiousness * ind.susceptibility
                     end
-                    nxt = open_t +
-                        _next_contact(rng, kernel, mult, bt - open_t, close_t - open_t)
+                    nxt = open_t + _next_contact(
+                        rng, kernel, mult, bt - open_t, close_t - open_t,
+                        certain_release === nothing ? nothing :
+                            certain_release - open_t
+                    )
                     proposals[p] = _at(proposals[p], nxt <= close_t ? nxt : T(Inf))
                 end
                 _requeue!(pending, proposals, head, best, represents, j)
