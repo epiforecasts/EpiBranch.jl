@@ -823,8 +823,11 @@ removal_gap_host_times(::Quarantine) = (QUARANTINE_STRETCHES_KEY,)
 # written outside the package names its own key, as the built-in quarantine
 # does, and both the window and the per-contact risk read it. One that names
 # none and still removes the contact is read from the shared history
-# `set_isolated!` keeps, which is where such an action will have recorded, so
-# its quarantine goes on closing the window as it did before this seam existed.
+# `set_isolated!` keeps, which is where such an action will have recorded, so a
+# quarantine it never releases goes on closing the window as it did before this
+# seam existed. One it does release leaves the window open with nothing taken
+# out of the exposure, which `infection_likelihood_compatible`'s `false`
+# default keeps out of a likelihood.
 # That fallback cannot tell the action's own stretches from another removal's,
 # so an action composed with a leaky `Isolation` blocks the isolation's days
 # fully as well; naming a key is what separates them.
