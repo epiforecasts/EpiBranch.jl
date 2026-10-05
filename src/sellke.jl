@@ -78,13 +78,23 @@ end
 # A risk whose block is certain and does not fade — an `AllOrNothingMode`
 # responder blocked from its immunity time, an aborted infection's infector —
 # answers every later proposal on the pair the same way it just answered this
-# one, so nothing is left to gain from asking again: the pair is dropped from
-# the race instead of drawing towards a foregone conclusion, which is also
-# what spares an unbounded window from the rejection-continuation guard above.
-# The pair still stands in each other's contacts; tracing and ring
-# construction read that, not the proposals the race no longer makes. An
-# output that logs every contact event needs the draws the race now skips,
-# and cannot be built on top of it.
+# one, so nothing is left to gain from asking the model or the kernel again:
+# the pair is dropped from the race instead of drawing towards a foregone
+# conclusion, which is also what spares an unbounded window from the
+# rejection-continuation guard above. The pair still stands in each other's
+# contacts; tracing and ring construction read that, not the proposals the
+# race no longer makes, so they are unaffected either way.
+#
+# An output that wants every contact event — to count how many exposures a
+# vaccine averted, say — needs the draws the race would otherwise skip. A
+# `recorder` ([`ContactRecorder`](@ref)) attached to the composed model is
+# asked, every time a standing block would end a pair's draws, whether they
+# still matter ([`records_contacts`](@ref EpiBranch.records_contacts)); if it
+# says yes the race keeps drawing exactly as it does for a block that is not
+# certain, which puts the pair back under the rejection-continuation guard
+# rather than needing one of its own. The default `NoContactRecorder` answers
+# no to every pair, so a run with no recorder attached drops the pair exactly
+# as above.
 #
 # It is not what a block means on the generation engine, where a parent draws a
 # fixed set of contacts and a blocked one is a transmission lost with nothing to
@@ -671,9 +681,10 @@ so they are not resolved here. A block that is certain and does not fade —
 a constant `block_probability` of 1 past its `event_time`, neither given as
 a `Distribution` or function that could read differently later — answers every
 later proposal on the pair the same way, so the race stops proposing for it
-instead of redrawing towards a foregone block; the pair remains in each
-other's contacts for tracing and ring construction, which read that
-relationship rather than the proposals.
+instead of redrawing towards a foregone block, unless `recorder` ([`records_contacts`](@ref
+EpiBranch.records_contacts)) says the pair's draws still matter; the pair
+remains in each other's contacts for tracing and ring construction either
+way, which read that relationship rather than the proposals.
 
 A model with several transmission routes passes `routes`, a collection of
 `(RouteWindow, targets)` pairs, in place of `from`/`until`/`targets`. Each route
@@ -728,7 +739,8 @@ function _sellke_race!(
         rng::AbstractRNG; seed!, targets = nothing,
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
         routes = nothing, interventions = (), contacts = nothing, risks = (),
-        introduction = nothing, watches = nothing, max_time = Inf
+        introduction = nothing, watches = nothing, max_time = Inf,
+        recorder::ContactRecorder = NoContactRecorder()
     )
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
@@ -907,9 +919,13 @@ function _sellke_race!(
                 # falling later, kept while the window is still open for it. A
                 # permanent block already answers every later proposal the same
                 # way, so the pair is dropped without asking the model or the
-                # kernel again; tracing and ring construction read the standing
-                # contacts, not these proposals, so the pair itself is unaffected.
-                if permanent
+                # kernel again, unless `recorder` says this pair's draws still
+                # matter, in which case it is asked afresh at every proposal a
+                # standing block would otherwise end — not just this one — so a
+                # recorder that wants the stream can log each one. Tracing and
+                # ring construction read the standing contacts, not these
+                # proposals, so the pair itself is unaffected either way.
+                if permanent && !records_contacts(recorder, source, ind, state, bt)
                     proposals[p] = _at(proposals[p], T(Inf))
                 else
                     if opening.route == 0

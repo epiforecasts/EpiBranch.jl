@@ -84,6 +84,11 @@ function EpiBranch.competing_risk(b::FunctionBlock, parent, contact, state)
     return parent === contact ? nothing : Risk(block_probability = (rng, p, c, st) -> b.p)
 end
 
+# A contact recorder that always wants a standing-blocked pair's draws kept,
+# so a test can tell the race asked for one.
+struct AlwaysRecord <: EpiBranch.ContactRecorder end
+EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
+
 @testset "Route windows" begin
     @testset "construction and show" begin
         w = RouteWindow(
@@ -780,4 +785,52 @@ end
         seed! = (best, members, r) -> (best[1] = 1.0)
     )
     @test !is_infected(only(state.individuals))
+end
+
+@testset "A recorder keeps drawing a standing-blocked pair" begin
+    # Same setup as "A certain block drops the pair without asking again", but
+    # a recorder that wants the stream is attached: the race keeps asking the
+    # model for the edge, exactly as it does for a block that is not certain,
+    # instead of dropping the pair after the first block.
+    rng = StableRNG(11)
+    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(1.0)),
+        prog, NoAttributes(), rng
+    )
+    interventions = [FlatBlock(1.0)]
+    EpiBranch.add_individuals!(state, 2, interventions)
+    enquiries = Ref(0)
+    targets = function (inf, st)
+        enquiries[] += 1
+        return ((2, Exponential(1.0)),)
+    end
+    EpiBranch._sellke_race!(
+        state, [1, 2], rng; targets,
+        from = :infection, until = (:recovered,), interventions,
+        seed! = (best, members, r) -> (best[1] = 0.0),
+        recorder = AlwaysRecord()
+    )
+    @test !is_infected(state.individuals[2])
+    @test enquiries[] >= 2
+end
+
+@testset "A recorder cannot resurrect an unbounded window" begin
+    # Resuming the draws puts the pair back under the rejection-continuation
+    # guard, so a recorder does not let a model whose window never closes run
+    # where it would otherwise have been refused.
+    rng = StableRNG(1)
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0), Exponential(1.0)),
+        AbstractClinicalTransition[], NoAttributes(), rng
+    )
+    interventions = [ProtectTo(1)]
+    EpiBranch.add_individuals!(state, 1, interventions)
+    @test_throws ArgumentError EpiBranch._sellke_race!(
+        state, [1], rng;
+        from = :infection, until = (), interventions,
+        introduction = (Exponential(1.0), Inf), targets = (i, st) -> (),
+        seed! = (best, members, r) -> (best[1] = 1.0),
+        recorder = AlwaysRecord()
+    )
 end

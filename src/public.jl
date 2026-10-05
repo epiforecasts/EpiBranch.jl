@@ -43,6 +43,7 @@ public initialise_state
 public interventions
 public attributes
 public observation
+public recorder
 public population_size
 public n_types
 public model_generation_time
@@ -113,3 +114,7 @@ public honoured_without_should_stop
 # curve, which also tells a continuous-time race whether the block it composes
 # is certain for good.
 public supports_waning
+
+# Contact recorder: whether a continuous-time race should keep drawing a
+# pair's contacts after a standing block would otherwise end them.
+public records_contacts

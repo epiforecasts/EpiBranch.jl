@@ -39,22 +39,25 @@ function _warn_incomplete_terminal_coverage(progression)
     return nothing
 end
 
-struct ModelSpec{P <: TransmissionModel, A, O}
+struct ModelSpec{P <: TransmissionModel, A, O, C}
     process::P
     progression::Vector{AbstractClinicalTransition}
     interventions::Vector{AbstractIntervention}
     attributes::A
     observation::O
+    recorder::C
 end
 
 """
-    ModelSpec(process; progression, interventions, attributes, observation)
+    ModelSpec(process; progression, interventions, attributes, observation, recorder)
 
 Compose a transmission `process` with the modelling layers
 that force and observe it: the within-host `progression`, the `interventions`,
-the per-individual `attributes`, and the `observation` model. Each keyword
-defaults to the value already on `process`, so `ModelSpec(process)` wraps it
-faithfully and the keywords override layer by layer.
+the per-individual `attributes`, the `observation` model, and the `recorder`
+([`ContactRecorder`](@ref)) that tells a continuous-time race which
+standing-blocked pairs to keep drawing. Each keyword defaults to the value
+already on `process`, so `ModelSpec(process)` wraps it faithfully and the
+keywords override layer by layer.
 
 `simulate(spec)` runs it; `loglikelihood(data, spec)` evaluates observed `data`
 against it. The observations themselves stay outside the spec, as the
@@ -65,20 +68,22 @@ function ModelSpec(
         progression = _progression(process),
         interventions = interventions(process),
         attributes = attributes(process),
-        observation = observation(process)
+        observation = observation(process),
+        recorder = recorder(process)
     )
     prog = _progvec(progression)
     _validate_process_windows(process, prog)
     _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
     _validate_dose_schedule(ivs)
-    return ModelSpec(process, prog, ivs, attributes, observation)
+    return ModelSpec(process, prog, ivs, attributes, observation, recorder)
 end
 
 # Convenience accessors — the spec's own modelling layers.
 interventions(s::ModelSpec) = s.interventions
 attributes(s::ModelSpec) = s.attributes
 observation(s::ModelSpec) = s.observation
+recorder(s::ModelSpec) = s.recorder
 _progression(s::ModelSpec) = s.progression
 population_size(s::ModelSpec) = population_size(s.process)
 
@@ -116,7 +121,8 @@ function simulate(
     return _simulate(
         spec.process, sim_opts; interventions = spec.interventions,
         attributes = spec.attributes, progression = spec.progression,
-        observation = spec.observation, rng, condition, max_attempts
+        observation = spec.observation, recorder = spec.recorder, rng, condition,
+        max_attempts
     )
 end
 
@@ -143,8 +149,8 @@ function simulate(
     return _simulate_n(
         spec.process, n, sim_opts;
         interventions = spec.interventions, attributes = spec.attributes,
-        progression = spec.progression, observation = spec.observation, rng,
-        parallel
+        progression = spec.progression, observation = spec.observation,
+        recorder = spec.recorder, rng, parallel
     )
 end
 
