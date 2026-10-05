@@ -203,6 +203,13 @@ is_settled(state, ind::Individual) = get(ind.state, :_settled, false)::Bool
 """Type index for multi-type branching processes (default 1)."""
 individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 
+# The key `set_isolated!` records a removal's history under. A component that
+# removes a host through a path of its own records under its own key instead,
+# and names it from `removal_gap_host_times`.
+const REMOVAL_STRETCHES_KEY = :_removal_stretches
+
+const _NO_STRETCHES = Tuple{Float64, Float64}[]
+
 """Mark an individual as isolated at the given time (any `Real`, so an AD
 dual isolation time flows through), with an optional `release_time` (`Inf`
 by default) from which the block lapses.
@@ -212,13 +219,6 @@ The time is stored under `:isolation_time`, the release under
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which respects leaky
 isolation. `:isolated` in an `until` refers to a `Transition(:isolated, …)`
 in the natural history."""
-# The key `set_isolated!` records a removal's history under. A component that
-# removes a host through a path of its own records under its own key instead,
-# and names it from `removal_gap_host_times`.
-const REMOVAL_STRETCHES_KEY = :_removal_stretches
-
-const _NO_STRETCHES = Tuple{Float64, Float64}[]
-
 function set_isolated!(ind::Individual, time::Real; release_time::Real = Inf)
     ind.state[:isolated] = true
     delete!(ind.state, :_isolation_unrecorded)

@@ -395,6 +395,10 @@ abstract type TraceAction end
 """
 apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
 
+# The key a quarantine records its own removals under, apart from the shared
+# history `set_isolated!` keeps, so that its block covers its own days only.
+const QUARANTINE_STRETCHES_KEY = :_quarantine_stretches
+
 """Quarantine the traced contact: set `:traced`, `:quarantined`, and
 isolate them at the trace time (or the earlier of the trace time and
 any pre-existing self-reporting isolation time). A trace with no arrival time
@@ -408,10 +412,6 @@ infectious period. A finite duration matters for a contact who escapes the
 traced exposure but is infected later through another route: without it, the
 quarantine outlives its cause and keeps blocking that contact's own onward
 transmission forever."""
-# The key a quarantine records its own removals under, apart from the shared
-# history `set_isolated!` keeps, so that its block covers its own days only.
-const QUARANTINE_STRETCHES_KEY = :_quarantine_stretches
-
 struct Quarantine{D} <: TraceAction
     duration::D
 end
