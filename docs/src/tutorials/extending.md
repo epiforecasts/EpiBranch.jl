@@ -174,11 +174,12 @@ post-simulation from a detection-probability draw). Composing both in the
 same simulation is not supported, because they will overwrite each other.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
-alongside it for when the block lapses; a release of `Inf` never comes, so the
-removal stands for as long as the case does. Those two hold the removal in
-force, which is what a detection reads. The history, which a likelihood needs,
-is the list of stretches under `:_removal_stretches`, since one pair of times
-cannot say that a host was quarantined, released, and isolated again later. A window that isolation
+alongside it for when the block lapses; a release of `Inf`, which is what
+`set_isolated!` assumes when given no `release_time`, never comes. Those two
+hold the removal in force, which is what a detection reads. The history, which
+a likelihood needs, is the list of stretches under `:_removal_stretches`, since
+one pair of times cannot say that a host was quarantined, released, and
+isolated again later. A window that isolation
 should end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
 [Transmission routes](#Transmission-routes)), which respects leaky isolation.
 `:isolated` in an `until` refers to a `Transition(:isolated, …)` in the natural
@@ -707,7 +708,7 @@ clinical_with_region = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     (rng, ind) -> (ind.state[:region] = :only),
 ]
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
 bc = BorderClosure(10.0, 0.05)
 model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0));
     interventions = [iso, bc], attributes = clinical_with_region)

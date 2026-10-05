@@ -71,7 +71,7 @@ end
     @testset "Default ContactTracing reproduces existing behaviour" begin
         # Tracing on isolated symptomatic parents, with quarantine.
         rng = StableRNG(42)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
         ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
         state = simulate(
             ModelSpec(
@@ -111,7 +111,7 @@ end
         # A contact reached by two tracing systems was reached when the
         # first of them got there, so the recorded trace time must not
         # depend on the order the interventions sit in the stack.
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
         fast = ContactTracing(
             probability = 1.0,
             isolation_to_trace_delay = Dirac(0.5), quarantine_on_trace = false
@@ -150,7 +150,7 @@ end
     @testset "A NaN trace time is never recorded" begin
         # A trigger time can be NaN, and `min` propagates NaN, so such a
         # time must not be written at all.
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
         ct = ContactTracing(NaNForEvenIds(), 1.0, Exponential(1.0))
         state = simulate(
             ModelSpec(
@@ -224,7 +224,7 @@ end
         # itself reached at a finite time, whatever its own isolation.
         iso = Isolation(
             onset_to_isolation_delay = Exponential(1.0),
-            test_sensitivity = 0.5
+            test_sensitivity = 0.5, isolation_duration = Inf
         )
         ct = ContactTracing(OddIdSeeds(), 1.0, Exponential(0.5); depth = 2)
         checked = 0

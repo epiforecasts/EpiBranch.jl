@@ -139,7 +139,7 @@ end
         m = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = 300);
             progression,
-            interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0))]
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)]
         )
         state = simulate(m; rng = StableRNG(1), n_initial = 3)
         columns = EpiBranch._infection_layer_columns(state, m)

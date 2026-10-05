@@ -407,11 +407,10 @@ and quarantined while any standing isolation is left as it was.
 
 `duration` is how long the quarantine lasts before it lapses; it accepts a
 `Real`, a `Distribution`, or a function `(rng, ind) -> Real` (drawn once per
-trace). The default `Inf` keeps a quarantine in force until the end of the
-infectious period. A finite duration matters for a contact who escapes the
-traced exposure but is infected later through another route: without it, the
-quarantine outlives its cause and keeps blocking that contact's own onward
-transmission forever."""
+trace). The default `Inf` never releases the contact. A finite duration
+matters for a contact who escapes the traced exposure and is infected later
+through another route: without one, the quarantine outlives its cause and
+keeps blocking that contact's own onward transmission."""
 struct Quarantine{D} <: TraceAction
     duration::D
 end

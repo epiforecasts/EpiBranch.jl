@@ -359,7 +359,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.3
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.5)
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.5, isolation_duration = Inf)
         S, L, I, N = OnSymptomOnset(), OnLabConfirmation(), OnIsolation(), TraceNobody()
         function simulate_with(eligibility, seed)
             ct = ContactTracing(eligibility, 1.0, Exponential(1.0))
@@ -393,7 +393,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases())
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases(), isolation_duration = Inf)
         ct = ContactTracing(OnSymptomOnset() | OnLabConfirmation(), 1.0, Exponential(1.0))
         state = simulate(
             ModelSpec(
@@ -416,7 +416,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.3
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.5)
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.5, isolation_duration = Inf)
         function simulate_with(eligibility, action = Quarantine())
             ct = ContactTracing(
                 eligibility, ConstantRate(1.0),
