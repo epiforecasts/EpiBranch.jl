@@ -403,11 +403,12 @@ and quarantined while any standing isolation is left as it was.
 
 `duration` is how long the quarantine lasts before it lapses; it accepts a
 `Real`, a `Distribution`, or a function `(rng, ind) -> Real` (drawn once per
-trace). There is no default: callers must choose, since no policy actually
+trace). There is no default: callers must choose, since no policy
 quarantines indefinitely. Pass `Inf` to keep a quarantine in force until the
-end of the infectious period, or a finite duration so a contact who escapes
-the traced exposure but is infected later through another route is not kept
-blocked by a quarantine that has already lapsed."""
+end of the infectious period. Pass a finite duration instead for a contact
+who escapes the traced exposure but is infected later through another
+route, so the quarantine lapses rather than outliving its cause and
+blocking that contact's own onward transmission forever."""
 struct Quarantine{D} <: TraceAction
     duration::D
 end
@@ -494,8 +495,8 @@ OnSymptomOnset() & !OnIsolation()         # symptomatic, not yet isolated
 
 The terse positional form takes an eligibility policy, a trace
 probability, a delay distribution, and an action, with no default for
-the last: a plausible policy is as likely to flag a contact without
-quarantining it as to quarantine it, and for how long:
+the last, since a plausible policy might flag a contact without
+quarantining it, or quarantine it for any length of time:
 
 ```julia
 # Trace on symptoms (no wait for confirmation)
@@ -627,10 +628,10 @@ function ContactTracing(;
 end
 
 # `quarantine_on_trace` hid the action behind a `Bool`; `action` replaces it,
-# with no default, since a plausible policy is as likely to flag a contact as
-# to quarantine it, and for how long. The deprecated keyword still resolves
-# to an action for a release, mapping onto the same indefinite `Quarantine`
-# it always built.
+# with no default, since a plausible policy might flag a contact without
+# quarantining it, or quarantine it for any length of time. The deprecated
+# keyword still resolves to an action for a release, mapping onto the same
+# indefinite `Quarantine` it always built.
 function _resolve_action(action, quarantine_on_trace)
     if quarantine_on_trace !== nothing
         action === nothing || throw(
