@@ -340,8 +340,8 @@ end
             progression = prog,
             interventions = [
                 ContactTracing(
-                    probability = 0.5,
-                    isolation_to_trace_delay = Exponential(1.0)
+                    probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+                    action = Quarantine(duration = Inf)
                 ),
             ]
         )
@@ -688,8 +688,8 @@ end
             interventions = [
                 Scheduled(
                     ContactTracing(
-                        probability = 0.5,
-                        isolation_to_trace_delay = Exponential(1.0)
+                        probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+                        action = Quarantine(duration = Inf)
                     ); start_time = 5.0
                 ),
             ]

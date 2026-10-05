@@ -411,7 +411,7 @@ end
     # engine needs no knowledge of which types take part.
     for iv in (
             Isolation(onset_to_isolation_delay = Dirac(0.0)),
-            ContactTracing(OnIsolation(), 1.0, Dirac(0.0)),
+            ContactTracing(OnIsolation(), 1.0, Dirac(0.0), Quarantine(duration = Inf)),
             AppointmentAction(),
         )
         untouched = pending()

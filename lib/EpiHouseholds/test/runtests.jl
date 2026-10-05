@@ -1084,7 +1084,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         )
         ct = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Exponential(0.5)
+            isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
         )
 
         build(ivs) = ModelSpec(
@@ -1114,7 +1114,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         # suite for the isolation-pathway interaction this guards).
         late = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Exponential(500.0)
+            isolation_to_trace_delay = Exponential(500.0), action = Quarantine(duration = Inf)
         )
         @test meansize([iso, late]) <= meansize([iso]) * 1.05
     end

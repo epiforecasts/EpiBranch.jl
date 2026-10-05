@@ -152,7 +152,8 @@ using Dates
             interventions = [
                 Isolation(onset_to_isolation_delay = Exponential(2.0)),
                 ContactTracing(
-                    probability = 0.8, isolation_to_trace_delay = Exponential(1.0)
+                    probability = 0.8, isolation_to_trace_delay = Exponential(1.0),
+                    action = Quarantine(duration = Inf)
                 ),
             ]
         )
@@ -227,7 +228,7 @@ using Dates
                 Isolation(onset_to_isolation_delay = Exponential(1.0)),
                 ContactTracing(
                     probability = 0.8,
-                    isolation_to_trace_delay = Exponential(1.0)
+                    isolation_to_trace_delay = Exponential(1.0), action = Quarantine(duration = Inf)
                 ),
                 RingVaccination(efficacy = 0.9),
             ]

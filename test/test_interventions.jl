@@ -97,7 +97,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     @testset "Contact tracing marks individuals as traced" begin
         rng = StableRNG(101)
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0))
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
+            action = Quarantine(duration = Inf)
+        )
 
         state = simulate(
             ModelSpec(
@@ -182,7 +185,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # The hooks the Sellke models call. Exercised here directly because the
         # only processes that drive them live in the companion packages, so the
         # core suite would otherwise never touch this code.
-        ct = ContactTracing(TraceEveryone(), 1.0, Exponential(0.5))
+        ct = ContactTracing(TraceEveryone(), 1.0, Exponential(0.5), Quarantine(duration = Inf))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
 
         # Only interventions that trace declare themselves, so the race can skip
@@ -280,7 +283,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # companion packages, so it is driven directly here on a path graph
         # 1-2-3-4 in which only node 1 is a case.
         function walk(depth; timed = false, wrap = identity)
-            ct = wrap(ContactTracing(TraceEveryone(), 1.0, Dirac(0.0); depth))
+            ct = wrap(ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth))
             state = EpiBranch.new_state(
                 BranchingProcess(Poisson(1.0), Exponential(5.0)),
                 EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
@@ -344,7 +347,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # A ring member that has already grown the ring, and whose trace a
         # `Scheduled` start time then undoes, must behave as never traced: a
         # later trace that the schedule keeps grows the ring through it again.
-        ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 2)
+        ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth = 2)
         sched = Scheduled(ct; start_time = 10.0)
         state = EpiBranch.new_state(
             BranchingProcess(Poisson(1.0), Exponential(5.0)),
@@ -631,7 +634,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 progression = [Death(delay = 0.0, probability = 1.0)],
                 interventions = [
                     Isolation(onset_to_isolation_delay = Dirac(2.0), eligibility = eligibility),
-                    ContactTracing(OnIsolation(), 1.0, Dirac(0.5)),
+                    ContactTracing(OnIsolation(), 1.0, Dirac(0.5), Quarantine(duration = Inf)),
                 ]
             )
             return simulate(model; n_initial = 3, max_cases = 50, rng = StableRNG(5))
@@ -663,12 +666,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         rng = StableRNG(1)
 
         later = unrecorded_isolation()
-        EpiBranch.apply_trace!(Quarantine(), later, nothing, 8.0, rng)
+        EpiBranch.apply_trace!(Quarantine(duration = Inf), later, nothing, 8.0, rng)
         @test isolation_time(later) == 6.0
         @test !is_isolated(later)
 
         earlier = unrecorded_isolation()
-        EpiBranch.apply_trace!(Quarantine(), earlier, nothing, 4.0, rng)
+        EpiBranch.apply_trace!(Quarantine(duration = Inf), earlier, nothing, 4.0, rng)
         @test isolation_time(earlier) == 4.0
         @test is_isolated(earlier)
     end
@@ -1040,7 +1043,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     @testset "Intervention initialises state on individuals" begin
         rng = StableRNG(42)
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-        ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.0))
+        ct = ContactTracing(
+            probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+            action = Quarantine(duration = Inf)
+        )
 
         state = simulate(
             ModelSpec(
@@ -1086,7 +1092,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     @testset "Ring vaccination" begin
         @testset "Leaky mode reduces transmission" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+            ct = ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                action = Quarantine(duration = Inf)
+            )
 
             rng1 = StableRNG(42)
             rv = RingVaccination(efficacy = 0.9, mode = LeakyMode())
@@ -1113,7 +1122,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         @testset "All-or-nothing mode" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+            ct = ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                action = Quarantine(duration = Inf)
+            )
             rv = RingVaccination(efficacy = 0.8, mode = AllOrNothingMode())
 
             state = simulate(
@@ -1135,7 +1147,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         @testset "Delay to immunity" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+            ct = ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                action = Quarantine(duration = Inf)
+            )
 
             rng1 = StableRNG(42)
             rv_instant = RingVaccination(efficacy = 0.9, delay_to_immunity = 0.0)
@@ -1376,7 +1391,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # `_record_vaccination!`), so every exposure it faces reads
             # back the same immunity time.
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+            ct = ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                action = Quarantine(duration = Inf)
+            )
             rv = RingVaccination(efficacy = 0.9, delay_to_immunity = Uniform(7.0, 21.0))
             state = simulate(
                 ModelSpec(
@@ -1407,7 +1425,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         @testset "delay_to_immunity accepts a function" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+            ct = ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                action = Quarantine(duration = Inf)
+            )
             attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
             rv = RingVaccination(
                 efficacy = 0.9,
@@ -1430,7 +1451,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         @testset "Coverage thins vaccinations" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+            ct = ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                action = Quarantine(duration = Inf)
+            )
 
             # Coverage = 0 means nobody gets vaccinated, even though traced.
             rv_zero = RingVaccination(efficacy = 0.9, coverage = 0.0)
@@ -1490,7 +1514,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 demographics(age_distribution = Uniform(0, 90)),
             ]
             iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
-            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+            ct = ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                action = Quarantine(duration = Inf)
+            )
             rv = RingVaccination(
                 efficacy = 0.9,
                 coverage = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0
@@ -1512,7 +1539,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # within a tight window. A short window should produce strictly
             # fewer vaccinations than an infinite one.
             iso = Isolation(onset_to_isolation_delay = Exponential(5.0))
-            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0))
+            ct = ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
+                action = Quarantine(duration = Inf)
+            )
 
             rv_inf = RingVaccination(efficacy = 0.9, eligibility_window = Inf)
             n_inf = sum(
@@ -1626,7 +1656,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
             ct = ContactTracing(
                 probability = 1.0,
-                isolation_to_trace_delay = Exponential(1.0)
+                isolation_to_trace_delay = Exponential(1.0), action = Quarantine(duration = Inf)
             )
             prime = RingVaccination(
                 efficacy = 0.6, delay_to_immunity = 21.0,
@@ -2445,7 +2475,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # the parent's immunity is in place the onward risk is
             # certain to block.
             iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
-            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+            ct = ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                action = Quarantine(duration = Inf)
+            )
             rv = RingVaccination(
                 efficacy = 0.0, onward_efficacy = 1.0,
                 delay_to_immunity = 0.0
@@ -2482,7 +2515,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # should be bit-identical to the previous behaviour for the
             # same seed.
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-            ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+            ct = ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                action = Quarantine(duration = Inf)
+            )
             rv = RingVaccination(efficacy = 0.9)  # default onward_efficacy
 
             rng1 = StableRNG(42)
@@ -2543,8 +2579,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     eligibility = _DetectAfterOutcome()
                 )
                 ct = ContactTracing(
-                    probability = 1.0,
-                    isolation_to_trace_delay = Exponential(0.5)
+                    probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                    action = Quarantine(duration = Inf)
                 )
                 progression = [
                     Death(
@@ -2617,8 +2653,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     eligibility = _DetectAfterOutcome()
                 )
                 ct = ContactTracing(
-                    probability = 1.0,
-                    isolation_to_trace_delay = Exponential(0.5)
+                    probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                    action = Quarantine(duration = Inf)
                 )
                 progression = [
                     Death(
@@ -2903,7 +2939,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @testset "mixed Scheduled and always-on" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             ct = Scheduled(
-                ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.0));
+                ContactTracing(
+                    probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+                    action = Quarantine(duration = Inf)
+                );
                 start_after_cases = 10
             )
 
@@ -2957,7 +2996,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test !reads(ring)
         @test !reads(MassVaccination(efficacy = 0.8, eligibility_time = 0.0))
         @test !reads(
-            ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(1.0))
+            ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
+                action = Quarantine(duration = Inf)
+            )
         )
 
         # A time-gated schedule compares against the time of the case being
@@ -2984,7 +3026,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # A component of its own lifts the intervention that holds it.
         @test reads(
             ContactTracing(
-                _PopulationEligibility(), 1.0, Exponential(1.0)
+                _PopulationEligibility(), 1.0, Exponential(1.0), Quarantine(duration = Inf)
             )
         )
         @test reads(
@@ -2997,22 +3039,32 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # cannot drop a component's declaration.
         @test reads(
             ContactTracing(
-                OnSymptomOnset() & _PopulationEligibility(), 1.0, Exponential(1.0)
+                OnSymptomOnset() & _PopulationEligibility(), 1.0, Exponential(1.0),
+                Quarantine(duration = Inf)
             )
         )
-        @test reads(ContactTracing(!_PopulationEligibility(), 1.0, Exponential(1.0)))
-        @test !reads(ContactTracing(OnSymptomOnset() | TraceEveryone(), 1.0, Exponential(1.0)))
+        @test reads(
+            ContactTracing(
+                !_PopulationEligibility(), 1.0, Exponential(1.0), Quarantine(duration = Inf)
+            )
+        )
+        @test !reads(
+            ContactTracing(
+                OnSymptomOnset() | TraceEveryone(), 1.0, Exponential(1.0),
+                Quarantine(duration = Inf)
+            )
+        )
 
         # Each of the other three arms is reached as well.
         @test reads(
             ContactTracing(
                 TraceEveryone(), _PopulationRate(), ConstantDelay(Exponential(1.0)),
-                Quarantine()
+                Quarantine(duration = Inf)
             )
         )
         @test reads(
             ContactTracing(
-                TraceEveryone(), ConstantRate(1.0), _PopulationDelay(), Quarantine()
+                TraceEveryone(), ConstantRate(1.0), _PopulationDelay(), Quarantine(duration = Inf)
             )
         )
         @test reads(

@@ -346,7 +346,8 @@ end
         @testset "0/1 propensity gives all-or-nothing groups at the independent mean" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
             ct = ContactTracing(
-                probability = 1.0, isolation_to_trace_delay = Exponential(0.5)
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                action = Quarantine(duration = Inf)
             )
             p = 0.4
             attrs = [

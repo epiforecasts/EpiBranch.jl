@@ -317,7 +317,10 @@ end
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
         )
         iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
-        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+            action = Quarantine(duration = Inf)
+        )
 
         n_group_doses = 0
         n_ring_doses = 0
@@ -355,7 +358,10 @@ end
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
         )
         iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
-        ct = ContactTracing(probability = 0.3, isolation_to_trace_delay = Exponential(0.5))
+        ct = ContactTracing(
+            probability = 0.3, isolation_to_trace_delay = Exponential(0.5),
+            action = Quarantine(duration = Inf)
+        )
         rv = RingVaccination(efficacy = 0.9)
         gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation())
         attrs = [clinical, groups(2)]

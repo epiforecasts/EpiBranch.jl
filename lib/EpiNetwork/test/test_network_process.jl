@@ -442,7 +442,10 @@ end
             )
             return sum(infected(simulate(m; rng = StableRNG(s))) for s in 1:5) / 5
         end
-        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+            action = Quarantine(duration = Inf)
+        )
         plain = introductions(AbstractIntervention[])
         for residual in (0.0, 0.5)
             iso = Isolation(
@@ -820,7 +823,7 @@ end
             Isolation(onset_to_isolation_delay = Exponential(0.5)),
             ContactTracing(
                 probability = 1.0,
-                isolation_to_trace_delay = Exponential(0.5)
+                isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
             ),
         ]
         routed = RoutedNetwork(
@@ -1038,7 +1041,7 @@ end
             Isolation(onset_to_isolation_delay = Exponential(1.0)),
             ContactTracing(
                 probability = 1.0,
-                isolation_to_trace_delay = Exponential(0.5)
+                isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
             ),
         ]
         on_route = RoutedNetwork(
@@ -1094,7 +1097,7 @@ end
                 Isolation(onset_to_isolation_delay = Exponential(0.5)),
                 ContactTracing(
                     probability = 1.0,
-                    isolation_to_trace_delay = Exponential(0.5)
+                    isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
                 ),
             ]
         )
@@ -1129,7 +1132,7 @@ end
                 Isolation(onset_to_isolation_delay = Exponential(0.5)),
                 ContactTracing(
                     probability = 1.0,
-                    isolation_to_trace_delay = Exponential(0.5)
+                    isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
                 ),
             ]
         )
@@ -1253,7 +1256,7 @@ end
             ),
             ContactTracing(
                 probability = 1.0,
-                isolation_to_trace_delay = Exponential(0.5)
+                isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
             ),
         ]
         build(p) = ModelSpec(
@@ -1304,7 +1307,7 @@ end
             ),
             ContactTracing(
                 probability = 0.5,
-                isolation_to_trace_delay = Exponential(0.5)
+                isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
             ),
         ]
         m = ModelSpec(
@@ -1348,7 +1351,7 @@ end
         )
         ct = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Exponential(0.5)
+            isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
         )
 
         build(ivs) = ModelSpec(
@@ -1382,7 +1385,7 @@ end
         # be no worse than isolation alone.
         late = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Exponential(500.0)
+            isolation_to_trace_delay = Exponential(500.0), action = Quarantine(duration = Inf)
         )
         @test meansize([iso, late]) <= meansize([iso]) * 1.05
 
@@ -1444,7 +1447,7 @@ end
             ],
             interventions = [
                 Isolation(onset_to_isolation_delay = Dirac(1.0)),
-                ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 2),
+                ContactTracing(OnIsolation(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth = 2),
                 RingVaccination(efficacy = 0.9),
             ]
         )
@@ -1461,7 +1464,7 @@ end
             attributes = model.attributes, progression = model.progression,
             interventions = [
                 Isolation(onset_to_isolation_delay = Dirac(1.0)),
-                ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 1),
+                ContactTracing(OnIsolation(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth = 1),
                 RingVaccination(efficacy = 0.9),
             ]
         )

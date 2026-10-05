@@ -274,7 +274,10 @@ end
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
     iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-    ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+    ct = ContactTracing(
+        probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+        action = Quarantine(duration = Inf)
+    )
     rv = RingVaccination(efficacy = 0.8, onward_efficacy = 0.5)
     function total_infection_time(μ)
         model = BranchingProcess(NegBin(2.0, 0.5), LogNormal(μ, 0.5))
@@ -333,7 +336,10 @@ end
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
     iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
-    ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+    ct = ContactTracing(
+        probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+        action = Quarantine(duration = Inf)
+    )
     process = BranchingProcess(Poisson(2.0), Exponential(5.0))
     run_with(interventions) = simulate(
         ModelSpec(process; interventions = interventions, attributes = clinical);
@@ -388,7 +394,10 @@ end
         onset_to_isolation_delay = Exponential(1.0),
         post_isolation_transmission = 0.3
     )
-    ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+    ct = ContactTracing(
+        probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+        action = Quarantine(duration = Inf)
+    )
     function recorded_effect(make_vaccination, key)
         return function (x)
             spec = ModelSpec(

@@ -64,7 +64,10 @@ using Dates
     @testset "ringbp-style scenario" begin
         rng = StableRNG(314)
         iso = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5))
-        ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(2.0))
+        ct = ContactTracing(
+            probability = 0.5, isolation_to_trace_delay = Exponential(2.0),
+            action = Quarantine(duration = Inf)
+        )
 
         results = simulate(
             ModelSpec(

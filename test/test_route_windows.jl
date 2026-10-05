@@ -326,7 +326,10 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         end
         infected(state) = [get(ind.state, :infected, false) for ind in state.individuals]
         iso = Isolation(onset_to_isolation_delay = Dirac(0.0))
-        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Dirac(0.0))
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
+            action = Quarantine(duration = Inf)
+        )
         node1_contacts = (inf, st) -> inf == 1 ? (2,) : ()
 
         @test infected(race([iso])) == [true, true, true]
@@ -659,7 +662,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
             @test EpiBranch.risk_applies(
                 ContactTracing(
                     probability = 1.0,
-                    isolation_to_trace_delay = Dirac(1.0)
+                    isolation_to_trace_delay = Dirac(1.0), action = Quarantine(duration = Inf)
                 ),
                 route
             ) == removes
