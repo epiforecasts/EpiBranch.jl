@@ -76,7 +76,7 @@
                 30; opts..., rng = rng_a
             )
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
         isolated = realised_generation_intervals(
             simulate(
                 ModelSpec(

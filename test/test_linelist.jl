@@ -133,7 +133,7 @@ using Dates
     @testset "linelist includes intervention state" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
         state = tsim(
             model;
             interventions = [iso], attributes = clinical,
@@ -150,7 +150,7 @@ using Dates
             BranchingProcess(Poisson(2.0), Gamma(2.0, 3.0); population_size = 2000);
             attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.4)),
             interventions = [
-                Isolation(onset_to_isolation_delay = Exponential(2.0)),
+                Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = Inf),
                 ContactTracing(
                     probability = 0.8, isolation_to_trace_delay = Exponential(1.0),
                     action = Quarantine(duration = Inf)
@@ -225,7 +225,7 @@ using Dates
             BranchingProcess(Poisson(2.5), Exponential(5.0); population_size = 400);
             attributes = clinical,
             interventions = [
-                Isolation(onset_to_isolation_delay = Exponential(1.0)),
+                Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf),
                 ContactTracing(
                     probability = 0.8,
                     isolation_to_trace_delay = Exponential(1.0), action = Quarantine(duration = Inf)
@@ -289,7 +289,7 @@ using Dates
     end
 
     @testset "linelist reports a quarantine's release date" begin
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
         ct = ContactTracing(
             TraceEveryone(), 1.0, Exponential(0.5), Quarantine(duration = Exponential(1.0))
         )

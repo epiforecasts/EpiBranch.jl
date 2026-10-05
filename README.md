@@ -24,7 +24,7 @@ matching development revisions and the companion-package release requirements.
 using EpiBranch
 using Distributions
 
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
 ct = ContactTracing(
     probability = 0.5, isolation_to_trace_delay = Exponential(1.5),
     action = Quarantine(duration = Inf)

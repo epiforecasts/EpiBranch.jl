@@ -61,7 +61,9 @@ for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan
             for initial_cases in [5, 20]
                 k = 0.16
                 process = BranchingProcess(NegBin(R0, k), gt)
-                iso = Isolation(onset_to_isolation_delay = delay_dist, test_sensitivity = 1.0)
+                # ringbp removes an isolated case for good, so the duration
+                # that reproduces it is the one that never releases.
+                iso = Isolation(onset_to_isolation_delay = delay_dist, test_sensitivity = 1.0, isolation_duration = Inf)
 
                 interventions = if tracing_prob > 0
                     ct = ContactTracing(

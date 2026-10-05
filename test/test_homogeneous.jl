@@ -307,7 +307,7 @@ end
         iso = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
             progression = prog,
-            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.1))]
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.1), isolation_duration = Inf)]
         )
 
         base_mean = mean(
@@ -381,11 +381,11 @@ end
             prob_asymptomatic = 0.0
         )
         honoured = [
-            Isolation(onset_to_isolation_delay = Exponential(0.5)),
+            Isolation(onset_to_isolation_delay = Exponential(0.5), isolation_duration = Inf),
             Scheduled(
                 Isolation(
                     onset_to_isolation_delay = Exponential(0.5),
-                    post_isolation_transmission = 0.5
+                    post_isolation_transmission = 0.5, isolation_duration = Inf
                 );
                 start_time = 1.0
             ),
@@ -410,7 +410,7 @@ end
         leaky(residual) = [
             Isolation(
                 onset_to_isolation_delay = Exponential(0.5),
-                post_isolation_transmission = residual
+                post_isolation_transmission = residual, isolation_duration = Inf
             ),
         ]
         mean_size(ivs) = sum(
@@ -659,7 +659,7 @@ end
             progression = prog,
             interventions = [
                 Scheduled(
-                    Isolation(onset_to_isolation_delay = Exponential(0.1)); start_time
+                    Isolation(onset_to_isolation_delay = Exponential(0.1), isolation_duration = Inf); start_time
                 ),
             ]
         )
@@ -732,7 +732,7 @@ end
         clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
         iso = Isolation(
             onset_to_isolation_delay = Exponential(1.0),
-            test_sensitivity = 1.0
+            test_sensitivity = 1.0, isolation_duration = Inf
         )
         m = ModelSpec(
             HomogeneousProcess(; transmission_rate = 1.0, population_size = 500);
@@ -944,7 +944,7 @@ end
 
         leaky = Isolation(
             onset_to_isolation_delay = Exponential(1.0),
-            post_isolation_transmission = 0.5
+            post_isolation_transmission = 0.5, isolation_duration = Inf
         )
         @test_throws r"Isolation" band1_attack(1; interventions = [leaky])
         @test_throws r"Isolation" band1_attack(
@@ -975,7 +975,7 @@ end
 
         depends = EpiBranch.risk_depends_on_infector
         # Perfect isolation closes the window, so it never blocks a drawn contact.
-        perfect = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        perfect = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
         @test !depends(perfect)
         @test depends(leaky)
         @test !depends(Scheduled(perfect; start_time = 5.0))

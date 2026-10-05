@@ -228,7 +228,7 @@ isolation does.
 ```@example networks
 clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
     prob_asymptomatic = 0.0)
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 1.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 1.0, isolation_duration = 7.0)
 
 ws = watts_strogatz(400, 6, 0.1; rng = StableRNG(1))
 build(ivs) = ModelSpec(NetworkProcess(ws, Exponential(16.0));
@@ -299,7 +299,7 @@ hh_adj, comm_adj = households_and_community(150, 4, StableRNG(99))
 
 clinical2 = clinical_presentation(incubation_period = LogNormal(0.5, 0.3),
     prob_asymptomatic = 0.0)
-iso2 = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 1.0)
+iso2 = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 1.0, isolation_duration = 7.0)
 REM = EpiBranch.INTERVENTION_REMOVAL
 
 # The household route differs from the community route in one tuple: whether
@@ -347,7 +347,7 @@ live with can be named whether or not you also meet them elsewhere.
 ```@example networks
 # Slower isolation and more community contact than above, so that tracing has
 # transmission left to prevent.
-iso3 = Isolation(onset_to_isolation_delay = Exponential(4.0), test_sensitivity = 1.0)
+iso3 = Isolation(onset_to_isolation_delay = Exponential(4.0), test_sensitivity = 1.0, isolation_duration = 7.0)
 ct3 = ContactTracing(
     probability = 0.9, isolation_to_trace_delay = Exponential(0.5),
     action = Quarantine(duration = Inf)
