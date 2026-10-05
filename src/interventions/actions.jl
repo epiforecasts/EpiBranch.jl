@@ -217,6 +217,13 @@ end
 
 function intervention_actions(gv::GroupVaccination, state, candidates)
     actions = InterventionAction[]
+    # `is_settled` only ever becomes `true` on the continuous-time race this
+    # call may be part of; the ordinary generation engine never sets it, so
+    # it is always `false` there. `allowed` is the candidate-based guard this
+    # replaced for the revise branch below, kept here as well so a member the
+    # generation engine already finalised in an earlier generation (not among
+    # this call's own `candidates`) cannot have its dose moved.
+    allowed = Set(ind.id for ind in candidates)
     groups_here = Set(
         get(ind.state, gv.group_key, nothing)
             for ind in candidates
@@ -231,8 +238,9 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
                 # A settled member's dose keeps its date; a member still
                 # pending in a continuous-time race (or the member currently
                 # being settled, mid-round) can still be reached by a
-                # genuinely earlier trigger.
-                is_settled(state, ind) && continue
+                # genuinely earlier trigger. `ind.id in allowed` keeps this
+                # within the members this call actually received.
+                (ind.id in allowed && !is_settled(state, ind)) || continue
                 prior = get(_action_cache(ind), _group_trigger_cache_key(gv), nothing)
                 (prior !== nothing && may_revise(gv, prior, trigger)) || continue
                 delay = action_draw!(ind, (gv, :delay)) do
