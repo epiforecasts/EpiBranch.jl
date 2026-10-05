@@ -345,7 +345,7 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
     history = record_kernel(PairKernel(callback; state = ind -> ind.state[:history], watches = (:history,)), state)
     push!(state.individuals[1].state[:history], 2.0)
     @test history.state[1] == [1.0]
-    @test !EpiBranch._live_kernel(saved)
+    @test !(saved.state isa Function)
     # Extracted records cannot move, so the recorded kernel watches nothing and
     # a race given it keeps the ordinary path.
     @test EpiBranch.watched_records(saved) == ()
@@ -357,10 +357,10 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
         (c, a, b) -> Exponential(2.0);
         state = ind -> (tag = 0.0,), calendar = Steps([5.0], [1.0, 0.5]), watches = ()
     )
-    @test EpiBranch._live_kernel(calendar_live)
+    @test calendar_live.state isa Function
     recorded_calendar = record_kernel(calendar_live, state)
     @test recorded_calendar.calendar === calendar_live.calendar
-    @test !EpiBranch._live_kernel(recorded_calendar)
+    @test !(recorded_calendar.state isa Function)
 end
 
 @testset "Differentiable recorded event dates" begin

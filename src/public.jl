@@ -43,12 +43,17 @@ public initialise_state
 public interventions
 public attributes
 public observation
+public recorder
 public population_size
 public n_types
 public model_generation_time
 #   - `transmission_risks` to contribute per-pair competing risks (e.g. a
 #     network's per-edge probability), resolved alongside the built-ins.
 public transmission_risks
+#   - a model with more than one natural race partition (a household process,
+#     over its households) defines `race_groups` to say how it splits into
+#     independent `_sellke_race!` calls for a given kernel.
+public race_groups
 
 # Helpers an `initialise_state` / `contacts_of` builds on, so a model never
 # touches the engine's bookkeeping directly.
@@ -76,6 +81,9 @@ public NoGenerationTime
 # pairwise likelihood enumerate its (susceptible, possible infector) pairs.
 public contact_structure
 public followup_end
+# A subtype holding per-host times under a name of its own overrides this
+# rather than have the likelihood read a fixed field name off it.
+public host_times
 
 public pair_kernel
 # A calendar schedule for a `PairKernel` implements `calendar_multiplier`, and
@@ -89,7 +97,7 @@ public removal_gap_host_times
 public record_removal!
 public removal_stretches
 public InterventionAction, intervention_actions, action_draw!, apply_actions!,
-    continuous_actions
+    continuous_actions, may_revise, is_settled
 
 # Pairwise survival likelihood: how its two accumulation passes group rows
 # into a result. `pairwise_surv_loglik` and `pairwise_surv_loglik_by_component`
@@ -116,3 +124,7 @@ public honoured_without_should_stop
 # curve, which also tells a continuous-time race whether the block it composes
 # is certain for good.
 public supports_waning
+
+# Contact recorder: whether a continuous-time race should keep drawing a
+# pair's contacts after a standing block would otherwise end them.
+public records_contacts

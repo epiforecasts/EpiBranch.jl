@@ -148,6 +148,37 @@ EpiBranch.continuous_actions(::AppointmentAction) = true
     @test state.max_infection_time == 11.0
 end
 
+@testset "A dose's revise-earlier policy is a dispatched trait, not a branch in the body" begin
+    @test !EpiBranch.may_revise(AppointmentAction(), 20.0, 5.0)
+    @test !EpiBranch.may_revise(RingVaccination(efficacy = 0.8), 20.0, 5.0)
+    gv = GroupVaccination(efficacy = 0.8)
+    @test EpiBranch.may_revise(gv, 20.0, 5.0)
+    @test !EpiBranch.may_revise(gv, 5.0, 20.0)
+    @test !EpiBranch.may_revise(gv, 5.0, 5.0)
+    @test EpiBranch.may_revise(Scheduled(gv; start_time = 1.0), 20.0, 5.0)
+end
+
+@testset "is_settled reflects a continuous-time race's own round of discovery" begin
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+    )
+    append!(
+        state.individuals,
+        [Individual(id = i, state = Dict{Symbol, Any}(:appointment_time => 1.0)) for i in 1:2]
+    )
+    current, other = state.individuals
+    @test !EpiBranch.is_settled(state, current)
+    @test !EpiBranch.is_settled(state, other)
+    EpiBranch._apply_continuous_actions!(
+        state, current, [AppointmentAction()], [1, 2], [true, false]
+    )
+    # `current`'s own round is done, so it is now settled; `other`, never the
+    # current case of a round, is still pending.
+    @test EpiBranch.is_settled(state, current)
+    @test !EpiBranch.is_settled(state, other)
+end
+
 @testset "Continuous-time candidates scale with the ring or group, not the population" begin
     # A settled case's own ring or group is tiny; most of the population is
     # neither traced by it nor in its group, and must never be materialised

@@ -174,6 +174,39 @@ end
         @test latecomer.state[:vaccination_time] == confirmed.state[:vaccination_time]
     end
 
+    @testset "A dose from an earlier generation keeps its date on a later, earlier trigger" begin
+        # The ordinary generation engine has no settled/pending distinction
+        # of its own: unlike a continuous-time race, it never excludes an
+        # already-decided member from a later call's candidates by itself, so
+        # `intervention_actions` must keep that member out on its own.
+        gv = GroupVaccination(
+            efficacy = 0.9, eligibility = OnLabConfirmation(),
+            dose_delay = 1.0
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+
+        confirmed = _group_member(gv, 1, :A, test_positive = true)
+        set_isolated!(confirmed, 4.0)
+        member = _group_member(gv, 2, :A, test_positive = false)
+        first_gen = [confirmed, member]
+        append!(state.individuals, first_gen)
+        EpiBranch.apply_post_transmission!(gv, state, first_gen)
+        @test member.state[:vaccination_time] == 5.0
+
+        # A later generation's own case is confirmed earlier (isolated at 1),
+        # moving the group's trigger earlier still.
+        earlier_confirmed = _group_member(gv, 3, :A, test_positive = true)
+        set_isolated!(earlier_confirmed, 1.0)
+        second_gen = [earlier_confirmed]
+        append!(state.individuals, second_gen)
+        EpiBranch.apply_post_transmission!(gv, state, second_gen)
+
+        @test member.state[:vaccination_time] == 5.0
+    end
+
     @testset "A pending member's dose moves earlier when the group's trigger moves earlier" begin
         # On a continuous-time race, cases settle in order of infection, not
         # in order of eligibility: a secondary case can be lab-confirmed

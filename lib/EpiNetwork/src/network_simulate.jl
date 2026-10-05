@@ -12,7 +12,7 @@
 
 """
     _simulate(model::NetworkProcess, sim_opts; interventions, attributes,
-              progression, observation, rng, condition, max_attempts)
+              progression, observation, recorder, rng, condition, max_attempts)
 
 Simulate `model` by the Sellke construction in continuous time, with the
 modelling layers supplied by the caller (a bare process, or a `ModelSpec`). The
@@ -28,13 +28,13 @@ any external hazard still acts on the rest of the network from time 0.
 """
 function _simulate(
         model::NetworkProcess, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, rng, condition,
-        max_attempts
+        interventions, attributes, progression, observation, recorder, rng,
+        condition, max_attempts
     )
     condition !== nothing && return _retry_for_condition(
         () -> _simulate(
             model, sim_opts; interventions, attributes, progression,
-            observation, rng, condition = nothing, max_attempts
+            observation, recorder, rng, condition = nothing, max_attempts
         ),
         condition, max_attempts
     )
@@ -61,7 +61,7 @@ function _simulate(
         from = from, until = model.until, interventions = interventions,
         max_time = EpiBranch._max_time(sim_opts),
         risks = EpiBranch.transmission_risks(model),
-        watches = (EpiBranch.watched_records(model.edge_kernel),),
+        watches = (EpiBranch.watched_records(model.edge_kernel),), recorder = recorder,
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, n_initial, Tobs, r;
             initial_cases = sim_opts.initial_cases

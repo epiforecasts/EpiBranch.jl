@@ -13,10 +13,11 @@ struct NoObservation <: ObservationModel end
 
 # Shared accessors with abstract-type defaults, so a model that carries
 # none of these defines nothing. A process opts in by defining whichever
-# of `interventions`, `attributes` and `observation` it stores.
+# of `interventions`, `attributes`, `observation` and `recorder` it stores.
 interventions(::TransmissionModel) = AbstractIntervention[]
 attributes(::TransmissionModel) = NoAttributes()
 observation(::TransmissionModel) = NoObservation()
+recorder(::TransmissionModel) = NoContactRecorder()
 
 # The within-host natural history: the clinical-state transitions a case moves
 # through. Composed onto a process with a `ModelSpec`; empty for a bare process.

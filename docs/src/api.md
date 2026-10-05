@@ -49,6 +49,7 @@ EpiBranch.records_removal_gap
 EpiBranch.HazardScaling
 EpiBranch.contact_structure
 EpiBranch.followup_end
+EpiBranch.host_times
 ContactPairsLayout
 compile_contact_pairs
 EpiBranch.PairwiseReduction
@@ -103,6 +104,7 @@ EpiBranch.collect_exposures
 EpiBranch.gather_by_target
 EpiBranch.model_generation_time
 EpiBranch.transmission_risks
+EpiBranch.race_groups
 make_contact!
 susceptible_fraction
 ```
@@ -179,6 +181,8 @@ EpiBranch.action_draw!
 EpiBranch._action_cache
 EpiBranch.apply_actions!
 EpiBranch.continuous_actions
+EpiBranch.may_revise
+EpiBranch.is_settled
 EpiBranch.persistent_competing_risks
 EpiBranch.capacity_key
 EpiBranch.capacity_time_key
@@ -213,6 +217,14 @@ RouteWindow
 window_open
 window_close
 EpiBranch.INTERVENTION_REMOVAL
+```
+
+## Contact recorder
+
+```@docs
+ContactRecorder
+NoContactRecorder
+EpiBranch.records_contacts
 ```
 
 ## Natural history (progression)
