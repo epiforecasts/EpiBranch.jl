@@ -49,6 +49,10 @@ public model_generation_time
 #   - `transmission_risks` to contribute per-pair competing risks (e.g. a
 #     network's per-edge probability), resolved alongside the built-ins.
 public transmission_risks
+#   - a model with more than one natural race partition (a household process,
+#     over its households) defines `race_groups` to say how it splits into
+#     independent `_sellke_race!` calls for a given kernel.
+public race_groups
 
 # Helpers an `initialise_state` / `contacts_of` builds on, so a model never
 # touches the engine's bookkeeping directly.
@@ -76,6 +80,9 @@ public NoGenerationTime
 # pairwise likelihood enumerate its (susceptible, possible infector) pairs.
 public contact_structure
 public followup_end
+# A subtype holding per-host times under a name of its own overrides this
+# rather than have the likelihood read a fixed field name off it.
+public host_times
 
 public pair_kernel
 # A calendar schedule for a `PairKernel` implements `calendar_multiplier`, and

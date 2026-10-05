@@ -48,6 +48,7 @@ EpiBranch.susceptibility_host_times
 EpiBranch.HazardScaling
 EpiBranch.contact_structure
 EpiBranch.followup_end
+EpiBranch.host_times
 ContactPairsLayout
 compile_contact_pairs
 EpiBranch.PairwiseReduction
@@ -102,6 +103,7 @@ EpiBranch.collect_exposures
 EpiBranch.gather_by_target
 EpiBranch.model_generation_time
 EpiBranch.transmission_risks
+EpiBranch.race_groups
 make_contact!
 susceptible_fraction
 ```

@@ -185,9 +185,19 @@ function followup_end(data::InfectionLayer)
         data.followup_end : Inf
 end
 
-# The per-host times of an infection layer beyond its infectious windows, as a
-# named tuple of vectors; empty when the subtype holds none.
-_host_times(data) = hasproperty(data, :host_times) ? data.host_times : (;)
+"""
+    host_times(data::InfectionLayer)
+
+The per-host times of `data` beyond its infectious windows, as a named tuple of
+vectors (such as `onset_time`), `missing` marking a host without that time. A
+live [`PairKernel`](@ref) or a susceptibility effect reads these in the
+likelihood as it reads host state in simulation. The default reads a
+`host_times` field when the [`InfectionLayer`](@ref) subtype has one, and is
+empty otherwise; a subtype that stores them elsewhere defines a method.
+"""
+function host_times(data::InfectionLayer)
+    return hasproperty(data, :host_times) ? data.host_times : (;)
+end
 
 # The per-host fields of an `InfectionLayer` subtype over `n` hosts, in field
 # order after the contact structure: the three time vectors, `is_index`,
