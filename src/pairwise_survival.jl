@@ -222,9 +222,10 @@ hands a host back.
 
 Both built-in removals record through
 [`record_removal!`](@ref EpiBranch.record_removal!): [`Isolation`](@ref) names
-the reserved `:_removal_stretches` for a duration that can lapse, and
-[`ContactTracing`](@ref) names the quarantine's own key for a
-[`Quarantine`](@ref) with one. A removal of your own names the key it recorded
+the reserved `:_removal_stretches` for a perfect removal with a duration that
+can lapse, and [`ContactTracing`](@ref) names the quarantine's own key for any
+[`Quarantine`](@ref), whatever its duration. A stretch that never releases is
+read from either, the exposure ending where it starts. A removal of your own names the key it recorded
 under, whose value is a vector of `(start, release)` pairs. A wrapper that can
 withdraw the block part-way through a stretch, such as a [`Scheduled`](@ref)
 with an end, names none and closes the infectious window at the first removal
