@@ -126,18 +126,15 @@ println("Isolation + tracing: $(round(containment_probability(results), digits=3
 ```
 
 A quarantine is never released by default, where `isolation_duration` has no
-default at all. Pass `quarantine_duration` to give the quarantine a release
-time, so a quarantined contact who
-is not infected by the traced exposure is not left blocked if infected later
-through another route:
+default at all. Pass a `duration` to [`Quarantine`](@ref) and give it as the
+positional `action` argument to give the quarantine a release time, so a
+quarantined contact who is not infected by the traced exposure is not left
+blocked if infected later through another route:
 
 ```julia
-ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
-    quarantine_duration = Exponential(5.0))
+ContactTracing(OnIsolation(), 0.7, Exponential(1.0),
+    Quarantine(duration = Exponential(5.0)))
 ```
-
-The positional form takes the action itself, as
-`ContactTracing(OnIsolation(), 0.7, Exponential(1.0), Quarantine(duration = Exponential(5.0)))`.
 
 #### Who gets traced: eligibility policies
 
