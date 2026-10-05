@@ -249,6 +249,12 @@ end
 traces_contacts(::CapacityConstrained) = false
 trace_contacts!(::CapacityConstrained, state, infector, contacts) = nothing
 
+# Capacity gates who a removal reaches, never whether one already delivered
+# still stands, so the stretches it recorded are read back unchanged.
+function removal_gap_host_times(c::CapacityConstrained)
+    return removal_gap_host_times(c.intervention)
+end
+
 # Admission reads `_capacity_usage`, how much of the shared budget every other
 # individual has already used — population-wide state regardless of what the
 # wrapped intervention declares.

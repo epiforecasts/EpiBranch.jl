@@ -59,6 +59,11 @@ struct Scheduled{I <: AbstractIntervention, F} <: InterventionWrapper
     # Whether `condition` can read population-wide state (a case count) rather
     # than only the time of the case being resolved. See `reads_population_state`.
     population_dependent::Bool
+    # Whether the active window can close again once open. Every condition the
+    # keyword constructor builds is monotone in the state except `end_time`, so
+    # only that one can withdraw an effect already delivered. An opaque
+    # predicate is assumed to.
+    can_lapse::Bool
 end
 
 # ── Keyword convenience constructor ──────────────────────────────────
@@ -91,13 +96,16 @@ function Scheduled(
         s -> all(c -> c(s), conditions)
     end
     t = start_time === nothing ? 0.0 : start_time
-    return Scheduled(intervention, condition, t, start_after_cases !== nothing)
+    return Scheduled(
+        intervention, condition, t, start_after_cases !== nothing,
+        end_time !== nothing
+    )
 end
 
 # Predicate constructor: no individual-level reset. The predicate is opaque, so
 # `population_dependent` stays conservatively `true` — see `reads_population_state`.
 function Scheduled(intervention::AbstractIntervention, condition)
-    return Scheduled(intervention, condition, 0.0, true)
+    return Scheduled(intervention, condition, 0.0, true, true)
 end
 
 # ── Protocol delegation ──────────────────────────────────────────────
@@ -170,6 +178,14 @@ function _may_lapse(s::Scheduled)
     return persistent_competing_risks(s.intervention) ? _may_lapse(s.intervention) : true
 end
 _may_lapse(w::InterventionWrapper) = _may_lapse(w.intervention)
+
+# A schedule that cannot close again honours the inner removal's releases for
+# good, so its stretches can be read back; one with an end withdraws the block
+# part-way through a stretch it recorded, which the record cannot express.
+function removal_gap_host_times(s::Scheduled)
+    s.can_lapse && return ()
+    return removal_gap_host_times(s.intervention)
+end
 
 # A count-gated `start_after_cases` reads the running case count, a
 # population-wide read; a `start_time`/`end_time`-only schedule compares
