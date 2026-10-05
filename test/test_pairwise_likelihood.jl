@@ -832,9 +832,22 @@ end
     @test pairwise_surv_loglik(k, gapped([(4.0, 11.0), (18.0, 22.0)])) ≈
         -(30.0 - 7.0 - 4.0) / theta
 
-    # A removal with no release closes the window at its own start, so the
-    # layer's `removal_time` already holds it and there is nothing to subtract.
-    @test pairwise_surv_loglik(k, gapped([(4.0, Inf)])) ≈ -30.0 / theta
+    # A removal with no release ends the exposure where it starts. The built-in
+    # removals close the infectious window there through
+    # `infectious_removal_time`, so the two agree and nothing is taken out
+    # twice; a layer whose removal time runs past such a stretch, which a
+    # removal written outside the package can leave, loses the days after it
+    # rather than being fitted on days the simulation blocked.
+    @test pairwise_surv_loglik(k, gapped([(4.0, Inf)])) ≈ -4.0 / theta
+    closed = _GappedInfections(
+        adj, [0.0, NaN], [0.0, NaN], [4.0, NaN], [true, false], Inf, Inf,
+        (_removal_stretches = [[(4.0, Inf)], none],)
+    )
+    @test pairwise_surv_loglik(k, closed) ≈ -4.0 / theta
+    # A stretch that lapses and a later one that never does: the first comes
+    # out, and the exposure ends at the second.
+    @test pairwise_surv_loglik(k, gapped([(4.0, 11.0), (18.0, Inf)])) ≈
+        -(18.0 - 7.0) / theta
 
     # A stretch reaching past the end of the exposure is clamped to it, and one
     # starting after the end takes nothing out.

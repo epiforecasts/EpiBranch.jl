@@ -273,11 +273,14 @@ function _gapped_cumhazard(H, stretches, oi, stop)
     total = H(zero_t)
     u = zero_t
     for (a, b) in stretches
-        # A removal that never releases closes the infectious window, which
-        # `stop` already accounts for, so it is not taken out twice.
-        isfinite(b) || continue
         lo = clamp(a - oi, zero_t, stop)
-        hi = clamp(b - oi, zero_t, stop)
+        # A removal that never releases ends the exposure where it starts. The
+        # built-in removals close the infectious window there through
+        # `infectious_removal_time`, so `stop` has already accounted for it and
+        # `lo` is `stop`, which adds nothing; one written outside the package
+        # that leaves its window open is still fitted on the exposure it
+        # offered rather than on the days it blocked.
+        hi = isfinite(b) ? clamp(b - oi, zero_t, stop) : stop
         hi > lo || continue
         total += _surviving_cumhazard(H, u, lo)
         u = max(u, hi)
