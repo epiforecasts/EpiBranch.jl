@@ -167,8 +167,8 @@ intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 # an already-open window — must not close it: closing it at the isolation time
 # would take the case out of transmission for good, when the removal itself
 # only takes it out until the release. The per-contact `competing_risk` below
-# is release-aware throughout, on every transmission model, so it blocks the
-# isolated interval instead; the window closes here only for a removal with no
+# is release-aware throughout, on every transmission model, and blocks the
+# isolated interval instead. The window closes here only for a removal with no
 # release to leave it for.
 function infectious_removal_time(iso::Isolation, ind::Individual)
     iso.post_isolation_transmission == 0 || return Inf
@@ -191,9 +191,20 @@ function competing_risk(iso::Isolation, parent, contact, state)
     )
 end
 
-# Perfect isolation's block starts when the infector's window closes, so a
-# contact drawn from that infector never meets it; only a leaky residual can.
-risk_depends_on_infector(iso::Isolation) = iso.post_isolation_transmission > 0
+# A finite duration leaves the window open and blocks each contact against the
+# infector's own isolated stretch. The block then depends on the infector
+# whatever the residual is.
+function risk_depends_on_infector(iso::Isolation)
+    return iso.post_isolation_transmission > 0 || !(iso.isolation_duration === Inf)
+end
+
+# The likelihood reads the stretch a lapsing isolation removed the host for.
+# A duration of `Inf` leaves no stretch to read, the window closing at the
+# isolation's own start, and the layer records nothing extra for it.
+function removal_gap_times(iso::Isolation)
+    return iso.isolation_duration === Inf ? () :
+        (:isolation_time, :isolation_release_time)
+end
 
 # Leaky isolation's residual block stands in for the removal perfect isolation
 # makes, so it reaches the same routes: those the case is isolated from.

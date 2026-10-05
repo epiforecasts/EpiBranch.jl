@@ -189,6 +189,60 @@ end
 # named tuple of vectors; empty when the subtype holds none.
 _host_times(data) = hasproperty(data, :host_times) ? data.host_times : (;)
 
+# ── Removals that lapse ──────────────────────────────────────────────
+#
+# A removal with a release takes its host out of transmission for a stretch and
+# hands it back, leaving the host infectious on both sides of it. An infectious
+# window holds one closing time and cannot reopen, and
+# `infectious_removal_time` therefore leaves such a removal alone (see
+# `Isolation`): the window runs to the host's natural-history close and the
+# stretch comes out of each pair's exposure here instead. Cumulative hazards
+# add, so the stretch comes out by evaluating the pair's own kernel at its two
+# ends.
+
+"""
+    removal_gap_times(component) -> Tuple of Symbols
+
+The per-host times a component's lapsing removal is read from, which
+`household_infections` and `network_infections` record in the infection layer's
+`host_times` whenever the model composes `component`. The default is `()`.
+[`Isolation`](@ref) and [`ContactTracing`](@ref), whose `Quarantine` action
+shares the same keys, name the isolation's start and release.
+"""
+removal_gap_times(component) = ()
+
+# The isolated stretch of each host, as `(start, release)` vectors read from the
+# layer's `host_times`, or `nothing` when the layer records no release.
+function _removal_gaps(data)
+    times = _host_times(data)
+    (haskey(times, :isolation_time) && haskey(times, :isolation_release_time)) ||
+        return nothing
+    return (times.isolation_time, times.isolation_release_time)
+end
+
+# That stretch for one pair, in elapsed time since the infector became
+# infectious, clamped into the exposure `[0, stop]`; `nothing` when none of it
+# falls inside. A removal with no release never reaches here, its window having
+# closed at its own start.
+function _removal_gap(gaps, i, oi, stop)
+    gaps === nothing && return nothing
+    starts, releases = gaps
+    a = starts[i]
+    b = releases[i]
+    (isfinite(b) && b > a) || return nothing
+    lo = clamp(a - oi, zero(stop), stop)
+    hi = clamp(b - oi, zero(stop), stop)
+    return hi > lo ? (lo, hi) : nothing
+end
+
+# Whether the infector was removed at `t`, so it cannot be what infected this
+# susceptible.
+function _removed_at(gaps, i, t)
+    gaps === nothing && return false
+    starts, releases = gaps
+    return starts[i] <= t < releases[i]
+end
+
 # The per-host fields of an `InfectionLayer` subtype over `n` hosts, in field
 # order after the contact structure: the three time vectors, `is_index`,
 # `obs_end`, `followup_end` and `host_times`. Every time shares one number type,
@@ -501,6 +555,9 @@ end
 function _layer_host_time_keys(model::ModelSpec, host_times)
     keys = Symbol[Symbol(key) for key in host_times]
     for component in model.interventions, key in susceptibility_host_times(component)
+        key in keys || push!(keys, key)
+    end
+    for component in model.interventions, key in removal_gap_times(component)
         key in keys || push!(keys, key)
     end
     return keys
@@ -1131,7 +1188,8 @@ end
 # infection if that falls within follow-up. The windows are those of the flat
 # passes.
 function _component_loglik(
-        modifier, kernel, extdist, data, layout, rg, tj, tfollow, ::Type{T}
+        modifier, kernel, extdist, data, layout, rg, tj, tfollow, ::Type{T},
+        gaps = nothing
     ) where {T}
     infector = layout.infector
     is_ext = layout.is_ext
@@ -1150,7 +1208,13 @@ function _component_loglik(
             oi < tend || continue
             stop = min(data.removal_time[i], tend) - oi
             stop > 0 || continue
-            ll -= _scaled_cumhazard(modifier, _pair_kernel(kernel, layout, r, data), oi, stop)
+            pk = _pair_kernel(kernel, layout, r, data)
+            ll -= _scaled_cumhazard(modifier, pk, oi, stop)
+            gap = _removal_gap(gaps, i, oi, stop)
+            gap === nothing || (
+                ll += _scaled_cumhazard(modifier, pk, oi, gap[2]) -
+                    _scaled_cumhazard(modifier, pk, oi, gap[1])
+            )
         end
     end
     (isnan(tj) || tj > tfollow) && return ll
@@ -1164,7 +1228,7 @@ function _component_loglik(
             i = infector[r]
             oi = data.infectious_time[i]
             isfinite(oi) || continue
-            if oi < tj && tj <= data.removal_time[i]
+            if oi < tj && tj <= data.removal_time[i] && !_removed_at(gaps, i, tj)
                 lh = loghazard(_pair_kernel(kernel, layout, r, data), tj - oi)
                 _push!(acc, _scaled_loghazard(modifier, lh, tj))
             end
@@ -1177,7 +1241,7 @@ end
 
 # One modified susceptible's contribution: the log of its mixture.
 function _mixture_loglik(
-        mixture, kernel, extdist, data, layout, g, tfollow, ::Type{T}
+        mixture, kernel, extdist, data, layout, g, tfollow, ::Type{T}, gaps = nothing
     ) where {T}
     j = layout.sus_unique[g]
     rg = layout.sus_row_ranges[g]
@@ -1187,7 +1251,7 @@ function _mixture_loglik(
     # derivative of the mixture with respect to that weight.
     terms = map(mixture) do (weight, modifier)
         weight => _component_loglik(
-            modifier, kernel, extdist, data, layout, rg, tj, tfollow, T
+            modifier, kernel, extdist, data, layout, rg, tj, tfollow, T, gaps
         )
     end
     m = T(-Inf)
@@ -1362,9 +1426,16 @@ function _pairwise_surv_loglik(
         (isnan(tj) || tj > tfollow) || (totals = _infeasible!(reduction, totals, j))
     end
     if !all(totals.infeasible)
-        totals = _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures)
-        totals = _pairwise_events(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures)
-        totals = _pairwise_mixtures(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures)
+        gaps = _removal_gaps(data)
+        totals = _pairwise_cumhazard(
+            reduction, kernel, extdist, data, layout, tfollow, totals, mixtures, gaps
+        )
+        totals = _pairwise_events(
+            reduction, kernel, extdist, data, layout, tfollow, totals, mixtures, gaps
+        )
+        totals = _pairwise_mixtures(
+            reduction, kernel, extdist, data, layout, tfollow, totals, mixtures, gaps
+        )
     end
     return _result(reduction, totals)
 end
@@ -1375,7 +1446,7 @@ end
 # earlier of that and `obs_end`, after which there are no more introductions.
 # Nothing is at risk after the end of follow-up, and a host infected after it
 # has escaped until then as far as the data show.
-function _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures = nothing)
+function _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing)
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
@@ -1397,7 +1468,12 @@ function _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, 
             oi < tend || continue
             stop = min(data.removal_time[i], tend) - oi
             stop > 0 || continue
-            totals = _add!(reduction, totals, j, -cumhazard(_pair_kernel(kernel, layout, row, data), stop))
+            pk = _pair_kernel(kernel, layout, row, data)
+            h = cumhazard(pk, stop)
+            gap = _removal_gap(gaps, i, oi, stop)
+            gap === nothing ||
+                (h -= cumhazard(pk, gap[2]) - cumhazard(pk, gap[1]))
+            totals = _add!(reduction, totals, j, -h)
         end
     end
     return totals
@@ -1413,7 +1489,7 @@ end
 # sitting alongside an infinite value, whereas the log-density is -Inf
 # throughout a neighbourhood of the parameters, because impossibility is a
 # discrete fact of the fixed times.
-function _pairwise_events(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures = nothing)
+function _pairwise_events(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing)
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
@@ -1440,7 +1516,7 @@ function _pairwise_events(reduction, kernel, extdist, data, layout, tfollow, tot
                 i = infector[row]
                 oi = data.infectious_time[i]
                 isfinite(oi) || continue
-                if oi < tj && tj <= data.removal_time[i]
+                if oi < tj && tj <= data.removal_time[i] && !_removed_at(gaps, i, tj)
                     _push!(acc, loghazard(_pair_kernel(kernel, layout, row, data), tj - oi))
                 end
             end
@@ -1457,9 +1533,12 @@ end
 # mixture components of the log weight plus the escape and event terms under
 # that component's modifier. As in the event pass, a mixture of density zero
 # makes its group impossible.
-_pairwise_mixtures(reduction, kernel, extdist, data, layout, tfollow, totals, ::Nothing) = totals
+_pairwise_mixtures(
+    reduction, kernel, extdist, data, layout, tfollow, totals, ::Nothing, gaps = nothing
+) = totals
 function _pairwise_mixtures(
-        reduction, kernel, extdist, data, layout, tfollow, totals, mixtures::AbstractDict
+        reduction, kernel, extdist, data, layout, tfollow, totals,
+        mixtures::AbstractDict, gaps = nothing
     )
     for g in eachindex(layout.sus_unique)
         j = layout.sus_unique[g]
@@ -1467,7 +1546,7 @@ function _pairwise_mixtures(
         mixture = get(mixtures, j, nothing)
         mixture === nothing && continue
         T = eltype(totals.ll)
-        v = _mixture_loglik(mixture, kernel, extdist, data, layout, g, tfollow, T)
+        v = _mixture_loglik(mixture, kernel, extdist, data, layout, g, tfollow, T, gaps)
         totals = _is_minus_inf(v) ? _infeasible!(reduction, totals, j) : _add!(reduction, totals, j, v)
     end
     return totals
