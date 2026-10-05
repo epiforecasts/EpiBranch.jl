@@ -797,15 +797,36 @@ the contact was infected contributes no removal
 (`EpiBranch._removal_lapsed_before_infection`): it lapsed before this
 contact's own infectious window could have opened, so it cannot be what
 closes a window for an infection acquired later through another route.
-`ContactTracing` has no per-contact `competing_risk` of its own — unlike
-[`Isolation`](@ref), whose release-aware one stands in for a lapse mid-window
-— so a quarantine that lapses after the contact is already infected still
-closes the window for good here; compose [`Isolation`](@ref) as well for a
-quarantine that should let the case go once released."""
+A quarantine with a release leaves the window open and is blocked per contact
+by the `competing_risk` below, which hands the case back once released, as
+[`Isolation`](@ref)'s does."""
 function infectious_removal_time(::ContactTracing, ind::Individual)
     get(ind.state, :quarantined, false) || return Inf
-    _removal_lapsed_before_infection(ind) && return Inf
+    isfinite(isolation_release_time(ind)) && return Inf
     return isolation_time(ind)
+end
+
+# A quarantine writes the same two keys an isolation does. The likelihood reads
+# its lapsing stretch from the same place, and records nothing extra for a
+# duration of `Inf`.
+removal_gap_times(ct::ContactTracing) = removal_gap_times(ct.action)
+removal_gap_times(::TraceAction) = ()
+function removal_gap_times(q::Quarantine)
+    return q.duration === Inf ? () : (:isolation_time, :isolation_release_time)
+end
+
+# A quarantine that lapses leaves the window open above. The stretch it removed
+# the case for is blocked per contact here instead. A quarantine with
+# no release still closes the window, which blocks the rest of the infectious
+# period exactly, and adds no risk here: a model written before durations
+# existed keeps the hazards it had.
+function competing_risk(::ContactTracing, parent, contact, state)
+    get(parent.state, :quarantined, false) || return nothing
+    release = isolation_release_time(parent)
+    isfinite(release) || return nothing
+    iso_t = isolation_time(parent)
+    isfinite(iso_t) || return nothing
+    return Risk(event_time = iso_t, block_probability = 1.0, release_time = release)
 end
 
 # A quarantine is a removal, so it reaches only the routes a removal can cut.
