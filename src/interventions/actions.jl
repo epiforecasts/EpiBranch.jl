@@ -219,10 +219,11 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
     actions = InterventionAction[]
     # `is_settled` only ever becomes `true` on the continuous-time race this
     # call may be part of; the ordinary generation engine never sets it, so
-    # it is always `false` there. `allowed` is the candidate-based guard this
-    # replaced for the revise branch below, kept here as well so a member the
-    # generation engine already finalised in an earlier generation (not among
-    # this call's own `candidates`) cannot have its dose moved.
+    # it is always `false` there. `allowed` is the candidate-based guard
+    # `is_settled` replaced for the revise branch below, kept here as well to
+    # stop a member the generation engine already finalised in an earlier
+    # generation (not among this call's own `candidates`) from having its
+    # dose moved.
     allowed = Set(ind.id for ind in candidates)
     groups_here = Set(
         get(ind.state, gv.group_key, nothing)
