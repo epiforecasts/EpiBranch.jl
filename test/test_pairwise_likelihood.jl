@@ -882,3 +882,51 @@ end
     )
     @test pairwise_surv_loglik(Exponential(theta), mixed_layer) ≈ -(30.0 - 7.0) / theta
 end
+
+# A susceptibility effect that changes nothing: one component, weight 1, a
+# factor of 1 from time 0. It sends its host down the mixture path without
+# altering any hazard, which makes that path's answer comparable with the flat
+# one directly.
+struct _IdentitySusceptibility <: EpiBranch.AbstractIntervention end
+EpiBranch.susceptibility_components(::_IdentitySusceptibility, host) =
+    (1.0 => EpiBranch.HazardScaling(0.0, 1.0),)
+EpiBranch.infection_likelihood_compatible(::_IdentitySusceptibility) = true
+
+@testset "The mixture path takes out the same stretch" begin
+    # `_component_loglik` keeps its own exposure loop for a susceptible whose
+    # susceptibility an effect modifies, so it has to take the infector's
+    # isolated stretch out as well. Under a modifier that changes nothing the
+    # two paths must agree exactly.
+    adj = [1, 1]
+    theta = 4.0
+    layer(host_times) = _GappedInfections(
+        adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf, host_times
+    )
+    gap = (isolation_time = [4.0, Inf], isolation_release_time = [11.0, Inf])
+
+    flat = pairwise_surv_loglik(Exponential(theta), layer(gap))
+    mixed = pairwise_surv_loglik(
+        Exponential(theta), layer(gap); susceptibility = _IdentitySusceptibility()
+    )
+    @test flat ≈ -(30.0 - 7.0) / theta
+    @test mixed ≈ flat
+
+    # Without the gap both paths give the whole exposure, so the mixture path
+    # is not simply ignoring the host times.
+    @test pairwise_surv_loglik(
+        Exponential(theta), layer((;)); susceptibility = _IdentitySusceptibility()
+    ) ≈ -30.0 / theta
+
+    # A bounded kernel reaches the same infinity guard on this path.
+    bounded = pairwise_surv_loglik(
+        Uniform(0, 10), layer(
+            (
+                isolation_time = [4.0, Inf],
+                isolation_release_time = [20.0, Inf],
+            )
+        );
+        susceptibility = _IdentitySusceptibility()
+    )
+    @test !isnan(bounded)
+    @test bounded ≈ log(1 - 4 / 10)
+end
