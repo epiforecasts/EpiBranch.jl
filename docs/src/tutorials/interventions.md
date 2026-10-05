@@ -109,10 +109,15 @@ change a leaky model's final size by an order of magnitude.
 ### Contact tracing
 
 Contacts of isolated cases are identified using [`ContactTracing`](@ref).
-With quarantine, traced contacts are isolated before symptom onset:
+With quarantine, traced contacts are isolated before symptom onset.
+
+From here through the vaccination sections the stacks isolate with
+`isolation_duration = Inf`, so an isolated case blocks every later
+transmission to its contacts. That keeps the comparisons about the tracing and
+the vaccination rather than about the release.
 
 ```@example interventions
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = Inf)
 ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = true)
 
 rng = StableRNG(42)
@@ -120,8 +125,9 @@ results = simulate(scenario([iso, ct]), 200; max_cases = 500, rng = rng)
 println("Isolation + tracing: $(round(containment_probability(results), digits=3))")
 ```
 
-Quarantine, like isolation, is never released by default. Pass
-`quarantine_duration` to give it a release time, so a quarantined contact who
+A quarantine is never released by default, where `isolation_duration` has no
+default at all. Pass `quarantine_duration` to give the quarantine a release
+time, so a quarantined contact who
 is not infected by the traced exposure is not left blocked if infected later
 through another route:
 
@@ -197,7 +203,7 @@ disease_hard = clinical_presentation(
     incubation_period = LogNormal(1.5, 0.5),
     prob_asymptomatic = 0.3,
 )
-iso_imperfect = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.8, isolation_duration = 7.0)
+iso_imperfect = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.8, isolation_duration = Inf)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso_imperfect, ct], disease_hard), 200; max_cases = 500, rng = rng)
@@ -212,12 +218,6 @@ if the vaccination has had time to confer immunity by the contact's
 transmission time, it blocks transmission with probability `efficacy`.
 Requires [`ContactTracing`](@ref) in the intervention stack so contacts
 are identified.
-
-The stacks from here on isolate with `isolation_duration = Inf`, so an
-isolated case blocks every later transmission to its contacts. That is what
-makes the comparisons below about the vaccination alone; a finite duration
-would let a traced contact be infected after its trace, which is a separate
-effect and the subject of the warning after the next example.
 
 ```@example interventions
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = Inf)
@@ -237,10 +237,11 @@ println("Iso + tracing + ring vaccination: $(round(containment_probability(resul
     against exposure after its immunity arrives, so it has nothing left to
     prevent, with or without quarantine (`quarantine_on_trace = false`).
     It acts only where a contact can still be infected after being traced:
-    under leaky isolation (`post_isolation_transmission > 0`), when tracing
-    starts before the infector is isolated (for example
-    `eligibility = OnSymptomOnset()`), or in a `depth > 1` ring passing
-    through members who keep transmitting after they are traced.
+    under leaky isolation (`post_isolation_transmission > 0`), under a finite
+    `isolation_duration` that releases the infector while the contact is still
+    susceptible, when tracing starts before the infector is isolated (for
+    example `eligibility = OnSymptomOnset()`), or in a `depth > 1` ring
+    passing through members who keep transmitting after they are traced.
     `onward_efficacy` acts on the traced contact's own later transmission.
     A quarantine already blocks that transmission, so `onward_efficacy`
     acts when tracing does not quarantine. So does
