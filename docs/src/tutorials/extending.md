@@ -382,8 +382,8 @@ What this means in practice:
   intervention effort — needs the draws the race would otherwise skip. A
   [`ContactRecorder`](@ref) attached to the composed model's `recorder` is
   asked, every time a standing block would end a pair's draws, whether they
-  still matter; see [Recording every contact
-  event](#recording-every-contact-event) below.
+  still matter; see [Recording every contact event](@ref "Recording every
+  contact event") below.
 - An external intervention can choose any subset of routes without adding a
   scope type. For example, a removal effect can follow the window's censoring:
 
