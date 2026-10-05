@@ -86,7 +86,10 @@ Isolation lasts until the end of the infectious period by default. Pass
 length instead.
 
 A case isolated part-way through its infectious period transmits again once
-released, on every transmission model. The release is also what spares a case
+released. The one exception is a removal wrapped in a [`Scheduled`](@ref) that
+can close, which on the continuous-time models removes the case for good at
+the isolation instead; the generation engine applies the duration either way.
+The release is also what spares a case
 quarantined, released, and only then infected through another route — on a
 network or in a household, say — where a quarantine with no end would
 otherwise keep blocking that later transmission indefinitely.

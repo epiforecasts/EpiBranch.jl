@@ -14,10 +14,12 @@ The batch-hook behaviour below applies to interventions without this protocol.
 
 A schedule built with an `end_time`, or from a predicate, can withdraw a block
 it has already delivered, which one per-host record of a removal's stretches
-cannot express. Such a schedule therefore removes a case for good at its
-removal's own start, and a wrapped `isolation_duration` or `Quarantine`
-`duration` does not hand the case back. Wrap the removal in a schedule with
-only a `start_time`, or compose it unwrapped, for the duration to apply.
+cannot express. On the continuous-time models such a schedule therefore closes
+the infectious window at its removal's own start, and a wrapped
+`isolation_duration` or `Quarantine` `duration` does not hand the case back;
+wrap the removal in a schedule with only a `start_time`, or compose it
+unwrapped, for the duration to apply there. The generation engine blocks per
+contact and is unaffected, applying the duration either way. See issue #410.
 
 `Scheduled` is the single entry point for time-based intervention
 scheduling. It enforces start times at two levels:
