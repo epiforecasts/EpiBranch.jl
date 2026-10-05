@@ -260,7 +260,7 @@ instead of `NUTS()`:
 # Generate "observed" chain sizes from a model WITH isolation
 rng = StableRNG(42)
 true_R = 2.0
-iso = Isolation(onset_to_isolation_delay=Exponential(2.0), isolation_duration = Inf)
+iso = Isolation(onset_to_isolation_delay=Exponential(2.0), isolation_duration = 7.0)
 clinical = clinical_presentation(incubation_period=LogNormal(1.5, 0.5))
 true_model = ModelSpec(BranchingProcess(Poisson(true_R), Exponential(5.0));
     interventions=[iso], attributes=clinical)

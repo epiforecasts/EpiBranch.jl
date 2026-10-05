@@ -124,7 +124,7 @@ the likelihood is evaluated under exactly the process that produced the
 data, with nothing to pass twice:
 
 ```@example chains
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = Inf)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
 
 model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     interventions = [iso],

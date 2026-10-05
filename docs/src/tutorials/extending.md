@@ -688,7 +688,7 @@ clinical_with_region = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     (rng, ind) -> (ind.state[:region] = :only),
 ]
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = Inf)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
 bc = BorderClosure(10.0, 0.05)
 model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0));
     interventions = [iso, bc], attributes = clinical_with_region)

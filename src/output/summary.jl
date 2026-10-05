@@ -190,7 +190,7 @@ sweep axis — pass it once through `sim_kwargs`.
 ```julia
 results = scenario_sweep(Dict(
     :offspring => [NegBin(2.5, 0.16), NegBin(1.5, 0.5)],
-    :interventions => [[Isolation(onset_to_isolation_delay=Exponential(d), isolation_duration=Inf)] for d in [1.0, 2.0, 5.0]],
+    :interventions => [[Isolation(onset_to_isolation_delay=Exponential(d), isolation_duration=7.0)] for d in [1.0, 2.0, 5.0]],
     :generation_time => [LogNormal(1.6, 0.5)],
 ))
 ```
