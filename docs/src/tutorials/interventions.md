@@ -85,17 +85,21 @@ println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 no default, since no study isolates indefinitely. `Inf` never releases the
 case; a finite value gives it a release time.
 
-The two read the same while a case is infectious once and then done, which is
-why `Inf` looks like "isolated for the rest of the infectious period" on a
-plain branching process. They part company when a case is quarantined,
-released, and only then infected through another route, on a network or in a
-household: a quarantine with no end keeps blocking that later transmission
-too. On those models an infectious window has one closing time and cannot
-reopen, so the release spares an infection acquired after it and nothing
-else. A removal still standing when the case is infected closes the window
-for the rest of the infectious period, however soon it was due to lapse. On a
-generation-based process the block is a per-contact risk, and a contact after
-the release is not blocked.
+`Inf` and a finite duration read the same only where a case is infectious for
+a bounded period that the duration outlasts, which is how "isolated for the
+rest of the infectious period" came to stand for `Inf`. The models on this
+page have no terminal transition, so their generation times are unbounded and
+the week above is doing real work: on a generation-based process the block is
+a per-contact risk, so a contact drawn after the release is not blocked and
+the case goes on transmitting.
+
+The choice matters again where a case is quarantined, released, and only then
+infected through another route, on a network or in a household: a quarantine
+with no end keeps blocking that later transmission. On those models an
+infectious window has one closing time and cannot reopen, so the release
+spares an infection acquired after it and nothing else. A removal still
+standing when the case is infected closes the window for the rest of the
+infectious period, however soon it was due to lapse.
 
 ### Contact tracing
 
