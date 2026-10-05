@@ -824,20 +824,38 @@ end
     @test isfinite(pairwise_surv_loglik(k, after))
 end
 
-@testset "A gap reaching past a bounded kernel's support keeps the finite head" begin
-    # A kernel of bounded support has an infinite cumulative hazard past it, so
-    # taking the gap out as the whole exposure less the gap would subtract an
-    # infinity from itself. Removed from day 4 onward, the exposure is the head
-    # alone, and escape past the support is possible precisely because the host
-    # was removed over the tail.
+@testset "A gap past a bounded kernel's support keeps the finite head" begin
+    # A kernel of bounded support has an infinite cumulative hazard past it,
+    # and taking the gap out as the whole exposure less the gap would subtract
+    # an infinity from itself. Once survival reaches zero no mass is left, so
+    # the stretch after the release contributes nothing and the head alone is
+    # the answer: escape past the support is possible precisely because the
+    # host was removed over the tail.
     adj = [1, 1]
-    gap = (isolation_time = [4.0, Inf], isolation_release_time = [40.0, Inf])
-    layer = _GappedInfections(
-        adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf, gap
+    layer(a, b) = _GappedInfections(
+        adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf,
+        (isolation_time = [a, Inf], isolation_release_time = [b, Inf])
     )
-    v = pairwise_surv_loglik(Uniform(0, 10), layer)
-    @test !isnan(v)
-    @test v ≈ log(1 - 4 / 10)
+    head = log(1 - 4 / 10)
+
+    # Each of these has the gap end at or past the support while the exposure
+    # runs on to day 30, so each is a place the two infinities would meet.
+    for (a, b) in ((4.0, 10.0), (4.0, 20.0), (4.0, 40.0))
+        v = pairwise_surv_loglik(Uniform(0, 10), layer(a, b))
+        @test !isnan(v)
+        @test v ≈ head
+    end
+
+    # A gap wholly past the support leaves the whole of the kernel's mass in
+    # the exposure, so the susceptible cannot escape.
+    @test pairwise_surv_loglik(Uniform(0, 10), layer(15.0, 20.0)) == -Inf
+
+    # A gap strictly inside the support leaves the tail uncovered, which is
+    # impossible to escape for the same reason.
+    @test pairwise_surv_loglik(Uniform(0, 10), layer(2.0, 4.0)) == -Inf
+
+    # An unbounded kernel takes the ordinary path.
+    @test pairwise_surv_loglik(Exponential(4.0), layer(4.0, 11.0)) ≈ -(30.0 - 7.0) / 4.0
 end
 
 @testset "A host no removal reached contributes no gap" begin

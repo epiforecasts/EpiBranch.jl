@@ -38,15 +38,46 @@
 
     @test isfinite(loglikelihood(data, m))
 
-    # Taking the isolated stretch out leaves strictly less exposure than
-    # ignoring it, which makes the escape terms larger.
-    ignoring = HouseholdInfections(
-        [ind.state[:household]::Int for ind in state.individuals],
-        data.infection_time, data.infectious_time, data.removal_time, data.is_index;
-        obs_end = data.obs_end
+    # The round trip's job is the plumbing; the arithmetic is pinned exactly
+    # on a layer built by hand, where nothing is infected inside a gap, so the
+    # whole difference between the two totals is the stretch taken out.
+    @test pairwise_surv_loglik(process.kernel, data) > pairwise_surv_loglik(
+        process.kernel,
+        HouseholdInfections(
+            [ind.state[:household]::Int for ind in state.individuals],
+            data.infection_time, data.infectious_time, data.removal_time,
+            data.is_index; obs_end = data.obs_end
+        )
     )
-    @test pairwise_surv_loglik(process.kernel, data) >
-        pairwise_surv_loglik(process.kernel, ignoring)
+end
+
+@testset "A household layer loses exactly the isolated stretch" begin
+    # One household of three. Host 1 is infectious over [0, 30] and isolated
+    # over [4, 11]; hosts 2 and 3 are never infected, which makes the total
+    # pure escape and the gap's effect exactly the seven days each of them did
+    # not spend exposed, at rate `1 / theta`.
+    theta = 2.0
+    households = [1, 1, 1]
+    infection = [0.0, NaN, NaN]
+    infectious = [0.0, NaN, NaN]
+    removal = [30.0, NaN, NaN]
+    index = [true, false, false]
+
+    gapped = HouseholdInfections(
+        households, infection, infectious, removal, index; obs_end = Inf,
+        host_times = (
+            isolation_time = [4.0, Inf, Inf],
+            isolation_release_time = [11.0, Inf, Inf],
+        )
+    )
+    plain = HouseholdInfections(
+        households, infection, infectious, removal, index; obs_end = Inf
+    )
+
+    @test pairwise_surv_loglik(Exponential(theta), plain) ≈ -2 * 30.0 / theta
+    @test pairwise_surv_loglik(Exponential(theta), gapped) ≈ -2 * (30.0 - 7.0) / theta
+    @test pairwise_surv_loglik(Exponential(theta), gapped) -
+        pairwise_surv_loglik(Exponential(theta), plain) ≈ 2 * 7.0 / theta
 
     # A duration of `Inf` records nothing extra, its window closing at the
     # isolation's own start as before.
