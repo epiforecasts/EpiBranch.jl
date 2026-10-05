@@ -2,7 +2,7 @@
 #
 # Contact tracing factors into four independent points of variation,
 # each a dispatched seam. The default built-ins reproduce the original
-# `ContactTracing(probability, isolation_to_trace_delay, quarantine_on_trace)`
+# `ContactTracing(probability, isolation_to_trace_delay, action)`
 # behaviour; user-defined subtypes slot in via a single method.
 
 """
@@ -403,15 +403,15 @@ and quarantined while any standing isolation is left as it was.
 
 `duration` is how long the quarantine lasts before it lapses; it accepts a
 `Real`, a `Distribution`, or a function `(rng, ind) -> Real` (drawn once per
-trace). The default `Inf` keeps a quarantine in force until the end of the
-infectious period. A finite duration matters for a contact who escapes the
-traced exposure but is infected later through another route: without it, the
-quarantine outlives its cause and keeps blocking that contact's own onward
-transmission forever."""
+trace). There is no default: callers must choose, since no policy actually
+quarantines indefinitely. Pass `Inf` to keep a quarantine in force until the
+end of the infectious period, or a finite duration so a contact who escapes
+the traced exposure but is infected later through another route is not kept
+blocked by a quarantine that has already lapsed."""
 struct Quarantine{D} <: TraceAction
     duration::D
 end
-Quarantine(; duration = Inf) = Quarantine(duration)
+Quarantine(; duration) = Quarantine(duration)
 
 function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     contact.state[:traced] = true
@@ -493,25 +493,32 @@ OnSymptomOnset() & !OnIsolation()         # symptomatic, not yet isolated
 ## Examples
 
 The terse positional form takes an eligibility policy, a trace
-probability, a delay distribution, and (optionally) an action:
+probability, a delay distribution, and an action, with no default for
+the last: a plausible policy is as likely to flag a contact without
+quarantining it as to quarantine it, and for how long:
 
 ```julia
 # Trace on symptoms (no wait for confirmation)
-ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0))
+ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = Inf))
 
 # Standard protocol (wait for lab confirmation)
-ContactTracing(OnLabConfirmation(), 0.6, Exponential(2.0))
+ContactTracing(OnLabConfirmation(), 0.6, Exponential(2.0), Quarantine(duration = 14.0))
 
 # Belt and braces (trace suspected OR confirmed)
-ContactTracing(OnSymptomOnset() | OnLabConfirmation(), 0.7, Exponential(1.5))
+ContactTracing(
+    OnSymptomOnset() | OnLabConfirmation(), 0.7, Exponential(1.5), Quarantine(duration = Inf)
+)
 ```
 
-The keyword form keeps the original default (`SymptomaticParent`,
-i.e. symptomatic and isolated) and is convenient when only the
-probability and delay vary:
+The keyword form keeps the original default eligibility
+(`SymptomaticParent`, i.e. symptomatic and isolated) and is convenient
+when only the probability, delay and action vary:
 
 ```julia
-ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0))
+ContactTracing(
+    probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+    action = Quarantine(duration = Inf)
+)
 ```
 
 ## Custom eligibility
@@ -548,7 +555,7 @@ that each case be interviewed only once.
 Pair with [`RingVaccination`](@ref) to vaccinate the whole ring:
 
 ```julia
-[ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0); depth = 2),
+[ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = Inf); depth = 2),
  RingVaccination(efficacy = 0.9)]
 ```
 
@@ -604,17 +611,43 @@ end
 function ContactTracing(;
         probability::Float64,
         isolation_to_trace_delay::Distribution,
-        quarantine_on_trace::Bool = true,
+        action::Union{TraceAction, Nothing} = nothing,
+        quarantine_on_trace::Union{Bool, Nothing} = nothing,
         eligibility::TraceEligibility = SymptomaticParent(),
         depth::Integer = 1
     )
+    action = _resolve_action(action, quarantine_on_trace)
     return ContactTracing(
         eligibility,
         ConstantRate(probability),
         ConstantDelay(isolation_to_trace_delay),
-        quarantine_on_trace ? Quarantine() : FlagOnly(),
+        action,
         Int(depth)
     )
+end
+
+# `quarantine_on_trace` hid the action behind a `Bool`; `action` replaces it,
+# with no default, since a plausible policy is as likely to flag a contact as
+# to quarantine it, and for how long. The deprecated keyword still resolves
+# to an action for a release, mapping onto the same indefinite `Quarantine`
+# it always built.
+function _resolve_action(action, quarantine_on_trace)
+    if quarantine_on_trace !== nothing
+        action === nothing || throw(
+            ArgumentError(
+                "pass only one of `action` and the deprecated `quarantine_on_trace`"
+            )
+        )
+        Base.depwarn(
+            "`quarantine_on_trace` is deprecated, pass `action` instead " *
+                "(`Quarantine(duration = ...)` or `FlagOnly()`)",
+            :ContactTracing
+        )
+        return quarantine_on_trace ? Quarantine(duration = Inf) : FlagOnly()
+    end
+    action === nothing &&
+        throw(ArgumentError("ContactTracing requires `action`"))
+    return action
 end
 
 # Terse positional form: an eligibility policy with a constant trace
@@ -623,7 +656,7 @@ end
 # `probability::Real` and `delay::Distribution` do not match those.
 function ContactTracing(
         eligibility::TraceEligibility, probability::Real,
-        isolation_to_trace_delay::Distribution, action::TraceAction = Quarantine();
+        isolation_to_trace_delay::Distribution, action::TraceAction;
         depth::Integer = 1
     )
     return ContactTracing(
