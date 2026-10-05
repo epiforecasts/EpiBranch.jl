@@ -807,13 +807,11 @@ function infectious_removal_time(::ContactTracing, ind::Individual)
 end
 
 # A quarantine writes the same two keys an isolation does. The likelihood reads
-# its lapsing stretch from the same place, and records nothing extra for a
-# duration of `Inf`.
-removal_gap_times(ct::ContactTracing) = removal_gap_times(ct.action)
-removal_gap_times(::TraceAction) = ()
-function removal_gap_times(q::Quarantine)
-    return q.duration === Inf ? () : (:isolation_time, :isolation_release_time)
-end
+# its lapsing stretch from the same place, and reads none for a duration of
+# `Inf`, whose window closes at the quarantine's own start.
+records_removal_gap(ct::ContactTracing) = records_removal_gap(ct.action)
+records_removal_gap(::TraceAction) = false
+records_removal_gap(q::Quarantine) = !(q.duration === Inf)
 
 # A quarantine that lapses leaves the window open above. The stretch it removed
 # the case for is blocked per contact here instead. A quarantine with

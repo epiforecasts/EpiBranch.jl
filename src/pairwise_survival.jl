@@ -201,24 +201,37 @@ _host_times(data) = hasproperty(data, :host_times) ? data.host_times : (;)
 # ends.
 
 """
-    removal_gap_times(component) -> Tuple of Symbols
+    records_removal_gap(component) -> Bool
 
-The per-host times a component's lapsing removal is read from, which
-`household_infections` and `network_infections` record in the infection layer's
-`host_times` whenever the model composes `component`. The default is `()`.
-[`Isolation`](@ref) and [`ContactTracing`](@ref), whose `Quarantine` action
-shares the same keys, name the isolation's start and release.
+Whether `component` can remove a host for a stretch and hand it back, so that
+`household_infections` and `network_infections` record `:isolation_time` and
+`:isolation_release_time` in the infection layer's `host_times` for the
+likelihood to read the stretch from. The default is `false`.
+
+The two keys are fixed, both built-in removals writing them through
+[`set_isolated!`](@ref): [`Isolation`](@ref) answers `true` for a duration that
+can lapse, and [`ContactTracing`](@ref) for a [`Quarantine`](@ref) with one.
+A removal of your own that writes those keys answers `true` as well; one
+keeping its stretch elsewhere has no way to declare it, and the likelihood
+reads no gap for it.
 """
-removal_gap_times(component) = ()
+records_removal_gap(component) = false
+
+# The keys both built-in removals write, recorded whenever one of them can
+# hand a host back.
+const _REMOVAL_GAP_KEYS = (:isolation_time, :isolation_release_time)
 
 # The isolated stretch of each host, as `(start, release)` vectors read from the
 # layer's `host_times`, or `nothing` when the layer records no release.
 function _removal_gaps(data)
     times = _host_times(data)
-    (haskey(times, :isolation_time) && haskey(times, :isolation_release_time)) ||
-        return nothing
+    all(key -> haskey(times, key), _REMOVAL_GAP_KEYS) || return nothing
     return (times.isolation_time, times.isolation_release_time)
 end
+
+# A host that never had the key written reads as `missing`, which stands for a
+# host no removal reached: no stretch to take out.
+_gap_time(column, i) = coalesce(column[i], Inf)
 
 # That stretch for one pair, in elapsed time since the infector became
 # infectious, clamped into the exposure `[0, stop]`; `nothing` when none of it
@@ -227,8 +240,8 @@ end
 function _removal_gap(gaps, i, oi, stop)
     gaps === nothing && return nothing
     starts, releases = gaps
-    a = starts[i]
-    b = releases[i]
+    a = _gap_time(starts, i)
+    b = _gap_time(releases, i)
     (isfinite(b) && b > a) || return nothing
     lo = clamp(a - oi, zero(stop), stop)
     hi = clamp(b - oi, zero(stop), stop)
@@ -240,7 +253,7 @@ end
 function _removed_at(gaps, i, t)
     gaps === nothing && return false
     starts, releases = gaps
-    return starts[i] <= t < releases[i]
+    return _gap_time(starts, i) <= t < _gap_time(releases, i)
 end
 
 # The per-host fields of an `InfectionLayer` subtype over `n` hosts, in field
@@ -557,8 +570,10 @@ function _layer_host_time_keys(model::ModelSpec, host_times)
     for component in model.interventions, key in susceptibility_host_times(component)
         key in keys || push!(keys, key)
     end
-    for component in model.interventions, key in removal_gap_times(component)
-        key in keys || push!(keys, key)
+    if any(records_removal_gap, model.interventions)
+        for key in _REMOVAL_GAP_KEYS
+            key in keys || push!(keys, key)
+        end
     end
     return keys
 end
@@ -1209,12 +1224,19 @@ function _component_loglik(
             stop = min(data.removal_time[i], tend) - oi
             stop > 0 || continue
             pk = _pair_kernel(kernel, layout, r, data)
-            ll -= _scaled_cumhazard(modifier, pk, oi, stop)
             gap = _removal_gap(gaps, i, oi, stop)
-            gap === nothing || (
-                ll += _scaled_cumhazard(modifier, pk, oi, gap[2]) -
-                    _scaled_cumhazard(modifier, pk, oi, gap[1])
-            )
+            # As above: the two surviving stretches, so an infinite tail past a
+            # bounded kernel's support never cancels against itself.
+            ll -= if gap === nothing
+                _scaled_cumhazard(modifier, pk, oi, stop)
+            elseif gap[2] >= stop
+                _scaled_cumhazard(modifier, pk, oi, gap[1])
+            else
+                _scaled_cumhazard(modifier, pk, oi, gap[1]) + (
+                    _scaled_cumhazard(modifier, pk, oi, stop) -
+                        _scaled_cumhazard(modifier, pk, oi, gap[2])
+                )
+            end
         end
     end
     (isnan(tj) || tj > tfollow) && return ll
@@ -1469,10 +1491,18 @@ function _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, 
             stop = min(data.removal_time[i], tend) - oi
             stop > 0 || continue
             pk = _pair_kernel(kernel, layout, row, data)
-            h = cumhazard(pk, stop)
             gap = _removal_gap(gaps, i, oi, stop)
-            gap === nothing ||
-                (h -= cumhazard(pk, gap[2]) - cumhazard(pk, gap[1]))
+            # Added as the two surviving stretches, never as the whole exposure
+            # less the gap: a kernel of bounded support has an infinite
+            # cumulative hazard past its support, and the difference of two
+            # infinities is a `NaN` where the answer is the finite head alone.
+            h = if gap === nothing
+                cumhazard(pk, stop)
+            elseif gap[2] >= stop
+                cumhazard(pk, gap[1])
+            else
+                cumhazard(pk, gap[1]) + (cumhazard(pk, stop) - cumhazard(pk, gap[2]))
+            end
             totals = _add!(reduction, totals, j, -h)
         end
     end

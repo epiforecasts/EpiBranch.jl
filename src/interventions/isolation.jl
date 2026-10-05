@@ -201,10 +201,7 @@ end
 # The likelihood reads the stretch a lapsing isolation removed the host for.
 # A duration of `Inf` leaves no stretch to read, the window closing at the
 # isolation's own start, and the layer records nothing extra for it.
-function removal_gap_times(iso::Isolation)
-    return iso.isolation_duration === Inf ? () :
-        (:isolation_time, :isolation_release_time)
-end
+records_removal_gap(iso::Isolation) = !(iso.isolation_duration === Inf)
 
 # Leaky isolation's residual block stands in for the removal perfect isolation
 # makes, so it reaches the same routes: those the case is isolated from.
