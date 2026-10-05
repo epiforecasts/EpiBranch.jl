@@ -20,7 +20,11 @@ ends inside the window has unboundedly many of. The race now ends such a pair
 where the block is certain to cover the rest of that support, and goes on
 drawing where it lapses inside it, rather than refusing to sample. A truncated
 or otherwise bounded generation interval therefore runs under a finite
-duration, where it raised an error about the remaining integrated hazard.
+duration, where it raised an error about the remaining integrated hazard. A
+release is read only from a component declaring `EpiBranch.binding_release`,
+which the built-in removals do and a `Scheduled` that can close does not, so a
+certain block from anything else still raises rather than quietly ending a
+pair.
 
 The structured pairwise likelihood follows the same rule, taking every
 isolated stretch out of each pair's exposure, so a finite duration can be

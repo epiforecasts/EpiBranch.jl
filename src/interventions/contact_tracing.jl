@@ -812,6 +812,9 @@ function infectious_removal_time(ct::ContactTracing, ind::Individual)
     return t
 end
 
+# As for `Isolation`: a quarantine's recorded stretches are append-only.
+binding_release(::ContactTracing) = true
+
 removal_gap_host_times(ct::ContactTracing) = removal_gap_host_times(ct.action)
 removal_gap_host_times(::TraceAction) = ()
 removal_gap_host_times(::Quarantine) = (QUARANTINE_STRETCHES_KEY,)

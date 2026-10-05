@@ -39,6 +39,7 @@ function on_infection_settled!(w::InterventionWrapper, ind, state, rng)
 end
 _unwrap_scheduled(w::InterventionWrapper) = _unwrap_scheduled(w.intervention)
 
+binding_release(w::InterventionWrapper) = binding_release(w.intervention)
 risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route)
 risk_depends_on_infector(w::InterventionWrapper) = risk_depends_on_infector(w.intervention)
 reads_population_state(w::InterventionWrapper) = reads_population_state(w.intervention)

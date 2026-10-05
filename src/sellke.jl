@@ -382,6 +382,29 @@ standing_block(::AbortedInfection) = true
 # value could still give a smaller block to a later exposure.
 standing_block(v::AbstractVaccination) = !supports_waning(effect_mode(v))
 
+"""
+    binding_release(component) -> Bool
+
+Whether a `release_time` this component reports on a [`Risk`](@ref) binds its
+later answers: a block it says lapses at `t` is not still in force after `t`,
+and a block it reports as never releasing has not lifted by the next proposal.
+The default is the conservative `false`.
+
+The continuous-time race reads this where a pair's kernel has unboundedly many
+contacts left in the window, to tell a block that ends the pair from one it
+must go on proposing against. Without the declaration such a block raises
+rather than silently dropping transmission that could still happen, for the
+reason [`standing_block`](@ref EpiBranch.standing_block) gives: `competing_risk`
+reads the state, so a block that looks certain at one proposal may have lifted
+by the next.
+
+The built-in removals declare it, their stretches being append-only state that
+[`record_removal!`](@ref EpiBranch.record_removal!) only ever adds to. A
+[`Scheduled`](@ref) that can close declares it away again, its window closing
+being exactly a block withdrawn before the release it reported.
+"""
+binding_release(component) = false
+
 # Whether a resolved risk is certain and already in force at this proposal: its
 # `event_time`, a plain number rather than one resampled on each ask, has
 # passed, its `block_probability`, also a plain number rather than a waning
@@ -418,37 +441,45 @@ function _in_force_certainly(risk::Risk, transmission_time)
 end
 
 # The time every certain block now in force against this pair has lapsed, or
-# `Inf` where one never does; `nothing` where no certain block is in force, the
-# proposal having been stopped by something that may answer the next one
-# differently. A pair certainly blocked to that time cannot transmit before it,
-# which is what tells the race whether redrawing can terminate.
+# `Inf` where one never does; `nothing` where no certain block is in force, or
+# where one of them comes from a source whose reported releases do not bind. A
+# pair certainly blocked to that time cannot transmit before it, which is what
+# tells the race whether redrawing can terminate.
 function _certain_block_release(
         state, parent, contact, transmission_time, model_risks, interventions
     )
-    release = nothing
-    for source in (AbortedInfection(), model_risks...)
-        release = _max_certain_release(
+    release, ok = _certain_release(
+        nothing, AbortedInfection(), parent, contact, state, transmission_time
+    )
+    ok || return nothing
+    for source in model_risks
+        release, ok = _certain_release(
             release, source, parent, contact, state, transmission_time
         )
+        ok || return nothing
     end
     for iv in interventions
-        # As in `_permanently_blocked`: a wrapper that can turn its block off
-        # tells us nothing about the next proposal, so its release is not read.
-        _may_lapse(iv) && continue
-        release = _max_certain_release(
+        release, ok = _certain_release(
             release, iv, parent, contact, state, transmission_time
         )
+        ok || return nothing
     end
     return release
 end
 
-function _max_certain_release(release, source, parent, contact, state, transmission_time)
+# The release of every certain block `source` has in force, folded into
+# `release`, and whether its releases bind at all (`binding_release`). One
+# whose do not could be blocking at the next proposal whatever this risk says,
+# so nothing it reports can end the pair, and no other source's release can
+# speak for it either.
+function _certain_release(release, source, parent, contact, state, transmission_time)
     for risk in _iter_risks(competing_risk(source, parent, contact, state))
         _in_force_certainly(risk, transmission_time) || continue
+        binding_release(source) || return release, false
         release = release === nothing ? risk.release_time :
             max(release, risk.release_time)
     end
-    return release
+    return release, true
 end
 
 # Whether the block just resolved for `parent` → `contact` at `transmission_time`

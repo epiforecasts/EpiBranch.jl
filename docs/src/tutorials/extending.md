@@ -2250,6 +2250,15 @@ EpiBranch.infection_likelihood_compatible(::Shielding) = true
 with every other removal's stretches, and `loglikelihood(data, spec)` loses
 exactly the days the simulation blocked.
 
+A removal that releases its host should also declare
+[`EpiBranch.binding_release`](@ref EpiBranch.binding_release), as the built-in
+ones do. The continuous-time race reads a `Risk`'s `release_time` only from a
+component that declares it, because `competing_risk` reads the state and a
+block that looks certain at one proposal may have lifted by the next.
+Recorded stretches are append-only, so their releases bind; a block that comes
+and goes with the state, such as a ward that reopens, does not, and the race
+raises rather than ending a pair whose contacts could still transmit.
+
 Naming the key is not optional for a removal that declares
 `infection_likelihood_compatible`. Name none and the layer records nothing, so
 the likelihood fits on the whole exposure while the simulation blocked part of

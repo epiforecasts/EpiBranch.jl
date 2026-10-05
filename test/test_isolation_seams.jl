@@ -7,6 +7,17 @@ function EpiBranch.is_eligible_for_isolation(e::OnlyOlder, ind, state)
 end
 EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, :age]
 
+# A ward shut until day 5, blocking with certainty while shut and reopening
+# after. Its `Risk` holds plain numbers and looks identical to a standing block,
+# which is why `binding_release` has to be declared rather than inferred: this
+# one leaves it at the conservative default.
+struct ReopeningWard <: EpiBranch.AbstractIntervention end
+function EpiBranch.competing_risk(::ReopeningWard, parent, contact, state)
+    state.max_infection_time < 5.0 || return nothing
+    return Risk(event_time = 0.0, block_probability = 1.0, release_time = Inf)
+end
+EpiBranch.risk_applies(::ReopeningWard, route) = true
+
 @testset "Isolation trait seams" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
@@ -169,6 +180,59 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         @test isolation_release_time(lapses.individuals[1]) == 7.0
         @test is_infected(lapses.individuals[2])
         @test lapses.individuals[2].infection_time > 7.0
+    end
+
+    @testset "Only a binding release can end a pair, and wrappers forward it" begin
+        # The race reads a release only from a component that says its releases
+        # bind. A recorded stretch is append-only, so the removals declare it,
+        # and a schedule that can close declares it away again. Without the
+        # declaration a certain block raises rather than silently dropping
+        # contacts that could still transmit.
+        iso = Isolation(
+            onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(7.0)
+        )
+        @test EpiBranch.binding_release(iso)
+        @test EpiBranch.binding_release(Scheduled(iso; start_time = 0.0))
+        @test EpiBranch.binding_release(Scheduled(iso; start_after_cases = 2))
+        @test EpiBranch.binding_release(
+            CapacityConstrained(iso; budget_per_period = 1.0e6)
+        )
+        @test !EpiBranch.binding_release(
+            Scheduled(iso; start_time = 0.0, end_time = 10.0)
+        )
+        @test !EpiBranch.binding_release(ReopeningWard())
+
+        prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
+        attrs = clinical_presentation(incubation_period = Dirac(3.0))
+        kernel = Uniform(0.0, 10.0)
+        function race(interventions)
+            rng = StableRNG(3)
+            state = EpiBranch.new_state(
+                BranchingProcess(Dirac(1), kernel), prog, attrs, rng
+            )
+            EpiBranch.add_individuals!(state, 2, interventions)
+            EpiBranch._sellke_race!(
+                state, [1, 2], rng; from = :infection, until = (:recovered,),
+                interventions = interventions,
+                targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+                    ((2, kernel),) : (),
+                seed! = (best, members, r) -> (best[1] = 0.0)
+            )
+            return state
+        end
+
+        # A start-only schedule keeps the window open and relies on the
+        # per-contact block, so its release has to reach the race: before the
+        # fix this threw, the gate having read whether the wrapper could lapse
+        # rather than whether its releases bind.
+        wrapped = race([Scheduled(iso; start_time = 0.0)])
+        @test isolation_release_time(wrapped.individuals[1]) == 11.0
+        @test !is_infected(wrapped.individuals[2])
+
+        # The ward's block looks certain at this proposal and lifts at day 5, so
+        # ending the pair would lose the contacts after it. The race says so
+        # instead of guessing.
+        @test_throws ArgumentError race([ReopeningWard()])
     end
 
     @testset "A leaky isolation records no stretch and keeps its window open" begin

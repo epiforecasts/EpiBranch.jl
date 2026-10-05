@@ -194,6 +194,9 @@ end
 # The likelihood reads the stretch a lapsing isolation removed the host for.
 # A duration of `Inf` leaves no stretch to read, the window closing at the
 # isolation's own start, and the layer records nothing extra for it.
+# A recorded stretch is append-only, so the release it reports binds.
+binding_release(::Isolation) = true
+
 function removal_gap_host_times(iso::Isolation)
     # Leaky isolation contributes no removal at all, only a reduced hazard, so
     # it has no stretch for anything to read; a duration of `Inf` has one

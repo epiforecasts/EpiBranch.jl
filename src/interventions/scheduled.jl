@@ -191,6 +191,10 @@ _may_lapse(w::InterventionWrapper) = _may_lapse(w.intervention)
 # A schedule that cannot close again honours the inner removal's releases for
 # good, so its stretches can be read back; one with an end withdraws the block
 # part-way through a stretch it recorded, which the record cannot express.
+# Closing the window withdraws a block before the release it reported, so a
+# schedule that can close speaks for none of the inner releases.
+binding_release(s::Scheduled) = !s.can_lapse && binding_release(s.intervention)
+
 function removal_gap_host_times(s::Scheduled)
     s.can_lapse && return ()
     return removal_gap_host_times(s.intervention)
