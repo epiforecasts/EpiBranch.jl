@@ -206,11 +206,12 @@ with interventions.
 """
 function _sim_loglikelihood(
         observed, process, column::Symbol, min_val::Int;
-        interventions, attributes, progression, observation, sim_opts, n_sim, rng
+        interventions, attributes, progression, observation, recorder,
+        sim_opts, n_sim, rng
     )
     states = _simulate_n(
         process, n_sim, sim_opts; interventions, attributes,
-        progression, observation, rng
+        progression, observation, recorder, rng
     )
     sim_values = Int[]
     # Track which simulations hit the case cap (right-censored)
@@ -261,13 +262,13 @@ the spec for a [`ModelSpec`](@ref).
 function loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
     return _chain_size_model_loglik(
         data, model, interventions(model), attributes(model),
-        _progression(model), observation(model); kwargs...
+        _progression(model), observation(model), recorder(model); kwargs...
     )
 end
 function loglikelihood(data::ChainSizes, spec::ModelSpec; kwargs...)
     return _chain_size_model_loglik(
         data, spec.process, interventions(spec), attributes(spec),
-        _progression(spec), observation(spec); kwargs...
+        _progression(spec), observation(spec), recorder(spec); kwargs...
     )
 end
 
@@ -275,7 +276,7 @@ end
 # passed explicitly, so a bare process supplies its own and a `ModelSpec`
 # supplies the spec's.
 function _chain_size_model_loglik(
-        data::ChainSizes, process, ivs, attrs, prog, obs;
+        data::ChainSizes, process, ivs, attrs, prog, obs, rec;
         n_initial::Int = 1,
         max_cases::Union{Int, Nothing} = 10_000,
         max_generations::Union{Int, Nothing} = 100,
@@ -305,7 +306,7 @@ function _chain_size_model_loglik(
     states = _simulate_n(
         process, n_sim, sim_opts;
         interventions = ivs, attributes = attrs,
-        progression = prog, observation = obs, rng
+        progression = prog, observation = obs, recorder = rec, rng
     )
     sim_values = Int[]
     censored = Bool[]
@@ -335,18 +336,18 @@ from the process for a bare model, or from the spec for a [`ModelSpec`](@ref).
 function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
     return _chain_length_model_loglik(
         data, model, interventions(model), attributes(model),
-        _progression(model), observation(model); kwargs...
+        _progression(model), observation(model), recorder(model); kwargs...
     )
 end
 function loglikelihood(data::ChainLengths, spec::ModelSpec; kwargs...)
     return _chain_length_model_loglik(
         data, spec.process, interventions(spec), attributes(spec),
-        _progression(spec), observation(spec); kwargs...
+        _progression(spec), observation(spec), recorder(spec); kwargs...
     )
 end
 
 function _chain_length_model_loglik(
-        data::ChainLengths, process, ivs, attrs, prog, obs;
+        data::ChainLengths, process, ivs, attrs, prog, obs, rec;
         n_initial::Int = 1,
         max_cases::Union{Int, Nothing} = 10_000,
         max_generations::Union{Int, Nothing} = 100,
@@ -378,7 +379,7 @@ function _chain_length_model_loglik(
     return _sim_loglikelihood(
         data.data, process, :length, 0;
         interventions = ivs, attributes = attrs, progression = prog,
-        observation = obs, sim_opts, n_sim, rng
+        observation = obs, recorder = rec, sim_opts, n_sim, rng
     )
 end
 
