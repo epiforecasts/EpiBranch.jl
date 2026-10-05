@@ -7,15 +7,19 @@ weeks instead of resuming at the release, disagreeing with the generation
 engine, which already let it go. `infectious_removal_time` for `Isolation` now
 leaves the window open on the case's other removal states when its own
 removal is due to lapse, and the release-aware per-contact `competing_risk`
-blocks exactly the isolated interval instead, matching the generation engine.
-A removal with no release (the default `Inf` duration) still closes the
-window at its own start, as before. `ContactTracing`'s `Quarantine` behaves the same
-way, gaining a per-contact risk of its own so a quarantine with a duration
-hands the case back once released.
+blocks exactly the isolated stretches instead, matching the generation engine.
+A removal with no release still closes the window at its own start, as before.
+`ContactTracing`'s `Quarantine` behaves the same way, gaining a per-contact
+risk of its own so a quarantine with a duration hands the case back once
+released, and one without a duration now reduces onward transmission on the
+generation engine as well.
 
-The structured pairwise likelihood follows the same rule, taking the isolated
-stretch out of each pair's exposure, so a finite duration can be fitted on
-household and network data as well as simulated. `Isolation` and
-`ContactTracing` declare that they can hand a host back through
-`EpiBranch.records_removal_gap`, which `household_infections` and
-`network_infections` record in the layer's `host_times`.
+The structured pairwise likelihood follows the same rule, taking every
+isolated stretch out of each pair's exposure, so a finite duration can be
+fitted on household and network data as well as simulated. A host quarantined,
+released, and isolated again later keeps both stretches:
+`EpiBranch.record_removal!` holds the history that one start and one release
+cannot, and a removal written outside the package records its own stretches
+and names the key with `EpiBranch.removal_gap_host_times`, which
+`household_infections` and `network_infections` record in the layer's
+`host_times`.
