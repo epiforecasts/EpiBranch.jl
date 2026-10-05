@@ -2253,9 +2253,19 @@ with every other removal's stretches, and `loglikelihood(data, spec)` loses
 exactly the days the simulation blocked.
 
 `EpiBranch.binding_release` is what lets the continuous-time race read the
-release, and leaving it out is not a safe omission: one source that has not
-declared it stops the race reading any release for that pair, so a model that
-ran without this intervention raises with it. The continuous-time race reads a `Risk`'s `release_time` only from a
+release. Leaving it out is not a safe omission where a pair's kernel has
+unboundedly many contacts left in the window, such as a truncated generation
+interval: one source that has not declared it stops the race reading any
+release for that pair, and a model that ran without this intervention then
+raises with it. Under an unbounded kernel the omission changes nothing, so the
+failure appears only on the models where it matters most.
+
+A removal that sometimes never releases its host should also define
+[`infectious_removal_time`](@ref EpiBranch.infectious_removal_time), returning
+the start of such a removal as the built-ins do. Its default is `Inf`, which
+leaves the infectious window at the natural-history close, and the likelihood
+then ends the exposure at the stretch's start to match what the simulation
+blocked. The continuous-time race reads a `Risk`'s `release_time` only from a
 component that declares it, because `competing_risk` reads the state and a
 block that looks certain at one proposal may have lifted by the next.
 Recorded stretches are append-only, so their releases bind; a block that comes

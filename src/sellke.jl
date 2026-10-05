@@ -334,7 +334,7 @@ function _next_contact(
                 "isolation or quarantine is due to lapse, since only a removal " *
                 "that stands for the rest of the infectious period closes the " *
                 "window by itself. A component whose certain block is in force " *
-                "reaches this too until it declares `binding_release`, which is " *
+                "also lands here until it declares `binding_release`, which is " *
                 "what lets the race read the release it reports."
         )
     )
