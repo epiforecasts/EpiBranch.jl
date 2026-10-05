@@ -16,6 +16,6 @@ hands the case back once released.
 The structured pairwise likelihood follows the same rule, taking the isolated
 stretch out of each pair's exposure, so a finite duration can be fitted on
 household and network data as well as simulated. `Isolation` and
-`ContactTracing` name the two times it reads through
-`EpiBranch.removal_gap_times`, which `household_infections` and
+`ContactTracing` declare that they can hand a host back through
+`EpiBranch.records_removal_gap`, which `household_infections` and
 `network_infections` record in the layer's `host_times`.

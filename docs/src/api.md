@@ -45,6 +45,7 @@ InfectionLayer
 EpiBranch.infection_likelihood_compatible
 EpiBranch.susceptibility_components
 EpiBranch.susceptibility_host_times
+EpiBranch.records_removal_gap
 EpiBranch.HazardScaling
 EpiBranch.contact_structure
 EpiBranch.followup_end
