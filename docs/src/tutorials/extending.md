@@ -2248,10 +2248,17 @@ EpiBranch.infection_likelihood_compatible(::Shielding) = true
 
 `household_infections` and `network_infections` then record the key, merge it
 with every other removal's stretches, and `loglikelihood(data, spec)` loses
-exactly the days the simulation blocked. Name no key and the likelihood takes
-nothing out, which is the right answer for a removal whose block the engine
-can withdraw part-way through a stretch: a [`Scheduled`](@ref) with an end
-does that, and closes the infectious window at the first removal instead.
+exactly the days the simulation blocked.
+
+Naming the key is not optional for a removal that declares
+`infection_likelihood_compatible`. Name none and the layer records nothing, so
+the likelihood fits on the whole exposure while the simulation blocked part of
+it, which biases the fit without any sign of it. The one component for which
+naming none is right is a wrapper, which can withdraw the inner block
+part-way through a stretch it recorded: a [`Scheduled`](@ref) with an end does
+that, and `InterventionWrapper` narrows the infectious window to the first
+removal instead. That narrowing is the wrapper's own and no plain intervention
+inherits it, the default `infectious_removal_time` being `Inf`.
 
 ### Choosing initial cases in a fixed population
 
