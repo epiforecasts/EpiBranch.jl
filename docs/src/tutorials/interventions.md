@@ -94,11 +94,13 @@ the week above is doing real work: on a generation-based process the block is
 a per-contact risk, so a contact drawn after the release is not blocked and
 the case goes on transmitting.
 
-The choice matters again where a case is quarantined, released, and only then
-infected through another route, on a network or in a household: a quarantine
-with no end keeps blocking that later transmission. On those models an
-infectious window has one closing time and cannot reopen, so for a removal
-that takes the case out completely the release spares an infection acquired
+A removal set before its host was infected at all belongs to the quarantine
+below rather than to this parameter, isolation following an onset and so
+always releasing after the infection.
+
+On the continuous-time models an infectious window has one closing time and
+cannot reopen, so for a removal that takes the case out completely the release
+spares an infection acquired
 after it and nothing else: a removal still standing when the case is infected
 closes the window for the rest of the infectious period, however soon it was
 due to lapse. Leaky isolation (`post_isolation_transmission > 0`) closes no
@@ -750,7 +752,7 @@ repeated_campaign = GroupVaccination(efficacy = 0.8,
 
 campaign_model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     attributes = [clinical, groups(3), willingness],
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = 7.0),
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf),
         repeated_campaign])
 ```
 

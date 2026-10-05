@@ -112,11 +112,9 @@ zero isolates nobody.
 
 `Inf` and a finite duration coincide only where the case is infectious for a
 bounded period that the duration outlasts. Where it does not, each contact
-drawn after the release goes through. They part company for a second reason on
-a network or in a household, where an individual can be quarantined while
-still susceptible, released, and only then infected through another route: the
-removal that never releases goes on blocking that individual's own onward
-transmission.
+drawn after the release goes through. A removal set before its host was
+infected at all is [`Quarantine`](@ref)'s to release, not this one's: isolation
+follows an onset, so its own release always falls after the infection.
 
 What that changes depends on the engine. On a generation-based process the
 block is a per-contact risk, so a contact after the release is not blocked.
