@@ -104,10 +104,11 @@ is `1 - post_isolation_transmission`.
 
 `isolation_duration` is how long the removal lasts before it lapses; it
 accepts a `Real`, a `Distribution`, or a function `(rng, ind) -> Real`
-(drawn per individual, each time isolation is set). The default `Inf` keeps a
-case isolated to the end of its infectious period, and a duration of zero
-isolates nobody. A finite duration gives
-[`isolation_release_time`](@ref) the time the block lapses.
+(drawn per individual, each time isolation is set). There is no default:
+callers must choose, since no policy actually isolates indefinitely. Pass
+`Inf` to keep a case isolated to the end of its infectious period, or a
+finite duration to give [`isolation_release_time`](@ref) the time the block
+lapses; a duration of zero isolates nobody.
 
 What that changes depends on the engine. On a generation-based process the
 block is a per-contact risk, so a contact after the release is not blocked.
@@ -141,10 +142,10 @@ end
 
 function Isolation(;
         onset_to_isolation_delay,
+        isolation_duration,
         eligibility::IsolationEligibility = SymptomaticOnly(),
         test_sensitivity = 1.0,
-        post_isolation_transmission::Real = 0.0,
-        isolation_duration = Inf
+        post_isolation_transmission::Real = 0.0
     )
     return Isolation(
         eligibility, onset_to_isolation_delay, test_sensitivity,
