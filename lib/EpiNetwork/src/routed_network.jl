@@ -257,12 +257,12 @@ end
 
 function _simulate(
         model::RoutedNetwork, sim_opts::SimOpts; interventions, attributes,
-        progression, observation, rng, condition, max_attempts
+        progression, observation, recorder, rng, condition, max_attempts
     )
     condition !== nothing && return _retry_for_condition(
         () -> _simulate(
             model, sim_opts; interventions, attributes, progression,
-            observation, rng, condition = nothing, max_attempts
+            observation, recorder, rng, condition = nothing, max_attempts
         ),
         condition, max_attempts
     )
@@ -291,7 +291,7 @@ function _simulate(
         routes = routes, interventions = interventions,
         watches = Tuple(EpiBranch.watched_records(w.kernel) for w in windows),
         max_time = EpiBranch._max_time(sim_opts),
-        risks = EpiBranch.transmission_risks(model),
+        risks = EpiBranch.transmission_risks(model), recorder = recorder,
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, sim_opts.n_initial, Tobs, r;
             initial_cases = sim_opts.initial_cases

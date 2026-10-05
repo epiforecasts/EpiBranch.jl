@@ -63,10 +63,12 @@ function generate_offspring end
     include("public.jl")
 end
 
-# Observation models (state-space slot) and the model inputs
-# (interventions, attributes, observation) that every process carries.
-# Defined before the process types so their constructors can store them.
+# Observation models (state-space slot), the contact recorder (output slot)
+# and the model inputs (interventions, attributes, observation) that every
+# process stores. Defined before the process types so their constructors
+# can store them.
 include("observation_models.jl")
+include("contact_recorder.jl")
 include("model_inputs.jl")
 
 # Transmission models
@@ -152,6 +154,7 @@ export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event, terminal_target, exclusive_probabilities
 export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, observe
+export ContactRecorder, NoContactRecorder
 export single_type_offspring
 
 # Exports — sentinel types

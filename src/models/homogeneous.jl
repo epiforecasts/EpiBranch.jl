@@ -116,22 +116,25 @@ end
 
 """
     _simulate(model::HomogeneousProcess, sim_opts; interventions, attributes,
-              progression, observation, rng, condition, max_attempts)
+              progression, observation, recorder, rng, condition, max_attempts)
 
 Simulate the homogeneous pool by the Sellke threshold construction, with the
 modelling layers supplied by the caller (a bare process, or a `ModelSpec`). The
 infectious window's `from` state is resolved here from the composed
-`progression`.
+`progression`. The pool draws a fresh infector for every contact rather than
+meeting the same one again (see `_proposal_blocked`'s call site in
+`sellke_pool.jl`), so it has no standing pair for `recorder` to be asked
+about; it is accepted for a uniform call signature and otherwise unused.
 """
 function _simulate(
         model::HomogeneousProcess, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, rng, condition,
-        max_attempts
+        interventions, attributes, progression, observation, recorder, rng,
+        condition, max_attempts
     )
     condition !== nothing && return _retry_for_condition(
         () -> _simulate(
             model, sim_opts; interventions, attributes, progression,
-            observation, rng, condition = nothing, max_attempts
+            observation, recorder, rng, condition = nothing, max_attempts
         ),
         condition, max_attempts
     )

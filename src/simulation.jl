@@ -63,25 +63,29 @@ function simulate(
     return _simulate(
         model, sim_opts; interventions = interventions(model),
         attributes = attributes(model), progression = _progression(model),
-        observation = observation(model), rng, condition, max_attempts
+        observation = observation(model), recorder = recorder(model), rng,
+        condition, max_attempts
     )
 end
 
 # Internal single run against a built `SimOpts`. The forcing layers
-# (interventions, attributes, progression, observation) are passed in
-# explicitly, so a `ModelSpec` can supply its own while the process stays the
-# dispatched model. The public methods read them off a bare process, or off
-# the spec.
+# (interventions, attributes, progression, observation, recorder) are passed
+# in explicitly, so a `ModelSpec` can supply its own while the process stays
+# the dispatched model. The public methods read them off a bare process, or
+# off the spec. `recorder` is read only by the continuous-time (Sellke) race;
+# the generation-based engine below never drops a pair for a standing block,
+# so it has nothing to ask one.
 function _simulate(
         model::TransmissionModel, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, rng, condition,
-        max_attempts
+        interventions, attributes, progression, observation, recorder, rng,
+        condition, max_attempts
     )
     if condition !== nothing
         for _ in 1:max_attempts
             state = _simulate(
                 model, sim_opts; interventions, attributes,
-                progression, observation, rng, condition = nothing, max_attempts
+                progression, observation, recorder, rng, condition = nothing,
+                max_attempts
             )
             state.cumulative_cases in condition && return state
         end
@@ -140,13 +144,14 @@ function simulate(
     return _simulate_n(
         model, n, sim_opts; interventions = interventions(model),
         attributes = attributes(model), progression = _progression(model),
-        observation = observation(model), rng, parallel
+        observation = observation(model), recorder = recorder(model), rng,
+        parallel
     )
 end
 
 function _simulate_n(
         model::TransmissionModel, n::Int, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, rng,
+        interventions, attributes, progression, observation, recorder, rng,
         parallel::Bool = false
     )
     if parallel && Threads.nthreads() > 1
@@ -156,8 +161,8 @@ function _simulate_n(
             local_rng = Random.Xoshiro(seeds[i])
             results[i] = _simulate(
                 model, sim_opts; interventions, attributes,
-                progression, observation, rng = local_rng, condition = nothing,
-                max_attempts = 10_000
+                progression, observation, recorder, rng = local_rng,
+                condition = nothing, max_attempts = 10_000
             )
         end
         return results
@@ -165,7 +170,8 @@ function _simulate_n(
         return [
             _simulate(
                 model, sim_opts; interventions, attributes, progression,
-                observation, rng, condition = nothing, max_attempts = 10_000
+                observation, recorder, rng, condition = nothing,
+                max_attempts = 10_000
             )
                 for _ in 1:n
         ]

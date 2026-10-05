@@ -218,6 +218,14 @@ window_close
 EpiBranch.INTERVENTION_REMOVAL
 ```
 
+## Contact recorder
+
+```@docs
+ContactRecorder
+NoContactRecorder
+EpiBranch.records_contacts
+```
+
 ## Natural history (progression)
 
 ```@docs

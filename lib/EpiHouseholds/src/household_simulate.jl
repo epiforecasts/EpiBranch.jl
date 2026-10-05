@@ -14,7 +14,7 @@
 
 """
     _simulate(model::HouseholdProcess, sim_opts; interventions, attributes,
-              progression, observation, rng, condition, max_attempts)
+              progression, observation, recorder, rng, condition, max_attempts)
 
 Simulate `model` by the Sellke construction in continuous time — the exact
 generative model of the pairwise likelihood — with the modelling layers supplied
@@ -31,13 +31,13 @@ on the rest of the population from time 0.
 """
 function _simulate(
         model::HouseholdProcess, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, rng, condition,
-        max_attempts
+        interventions, attributes, progression, observation, recorder, rng,
+        condition, max_attempts
     )
     condition !== nothing && return _retry_for_condition(
         () -> _simulate(
             model, sim_opts; interventions, attributes, progression,
-            observation, rng, condition = nothing, max_attempts
+            observation, recorder, rng, condition = nothing, max_attempts
         ),
         condition, max_attempts
     )
@@ -85,7 +85,7 @@ function _simulate(
             from = from, until = model.until, interventions = interventions,
             max_time = EpiBranch._max_time(sim_opts),
             risks = EpiBranch.transmission_risks(model),
-            watches = (watched,),
+            watches = (watched,), recorder = recorder,
             seed! = (best, members, r) -> _seed_household_race!(
                 best, members, model, state, Tobs, r, initial_cases
             ),
