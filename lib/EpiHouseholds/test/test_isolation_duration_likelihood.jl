@@ -57,3 +57,53 @@
     inf_state = simulate(m_inf; rng = StableRNG(17))
     @test isempty(household_infections(inf_state, m_inf).host_times)
 end
+
+@testset "A wrapped isolation records its stretch like a bare one" begin
+    # A wrapper forwards the gate, so a scheduled or capacity-constrained
+    # isolation is fitted against the same gapped exposure. Without the
+    # forwarding the layer records nothing and the likelihood silently uses the
+    # whole exposure.
+    clinical = clinical_presentation(incubation_period = Dirac(0.0))
+    progression = [
+        Transition(:recovered; from = :infection, delay = 30.0, terminal = true),
+    ]
+    process = HouseholdProcess(fill(5, 60), Exponential(0.4))
+    iso = Isolation(
+        onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(7.0)
+    )
+
+    for wrapped in (
+            Scheduled(iso; start_time = 0.0),
+            CapacityConstrained(iso; budget_per_period = 1.0e6),
+        )
+        @test EpiBranch.records_removal_gap(wrapped)
+        m = ModelSpec(
+            process; progression, attributes = clinical, interventions = [wrapped]
+        )
+        state = simulate(m; rng = StableRNG(21))
+        data = household_infections(state, m)
+        @test haskey(data.host_times, :isolation_release_time)
+        @test any(isfinite, coalesce.(data.host_times.isolation_release_time, Inf))
+        @test isfinite(loglikelihood(data, m))
+    end
+end
+
+@testset "A quarantine with a duration is fitted on its own" begin
+    # `ContactTracing` writes neither key at initialisation, so every host a
+    # quarantine never reached reads as `missing` in the recorded column.
+    clinical = clinical_presentation(incubation_period = Dirac(0.0))
+    progression = [
+        Transition(:recovered; from = :infection, delay = 30.0, terminal = true),
+    ]
+    process = HouseholdProcess(fill(5, 60), Exponential(0.4))
+    ct = ContactTracing(
+        SymptomaticParent(), 1.0, Exponential(0.5), Quarantine(duration = Dirac(7.0))
+    )
+    m = ModelSpec(process; progression, attributes = clinical, interventions = [ct])
+    state = simulate(m; rng = StableRNG(5))
+    data = household_infections(state, m)
+
+    @test EpiBranch.records_removal_gap(ct)
+    @test haskey(data.host_times, :isolation_time)
+    @test isfinite(loglikelihood(data, m))
+end

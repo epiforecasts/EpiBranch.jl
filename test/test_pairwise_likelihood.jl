@@ -823,3 +823,44 @@ end
     )
     @test isfinite(pairwise_surv_loglik(k, after))
 end
+
+@testset "A gap reaching past a bounded kernel's support keeps the finite head" begin
+    # A kernel of bounded support has an infinite cumulative hazard past it, so
+    # taking the gap out as the whole exposure less the gap would subtract an
+    # infinity from itself. Removed from day 4 onward, the exposure is the head
+    # alone, and escape past the support is possible precisely because the host
+    # was removed over the tail.
+    adj = [1, 1]
+    gap = (isolation_time = [4.0, Inf], isolation_release_time = [40.0, Inf])
+    layer = _GappedInfections(
+        adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf, gap
+    )
+    v = pairwise_surv_loglik(Uniform(0, 10), layer)
+    @test !isnan(v)
+    @test v ≈ log(1 - 4 / 10)
+end
+
+@testset "A host no removal reached contributes no gap" begin
+    # `_host_time_columns` writes `missing` for a host that never had the key,
+    # which a quarantine-only model leaves for everyone it did not reach.
+    adj = [1, 1]
+    theta = 4.0
+    absent = (
+        isolation_time = Union{Missing, Float64}[missing, missing],
+        isolation_release_time = Union{Missing, Float64}[missing, missing],
+    )
+    layer = _GappedInfections(
+        adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf, absent
+    )
+    @test pairwise_surv_loglik(Exponential(theta), layer) ≈ -30.0 / theta
+
+    # Mixed: host 1 was quarantined, host 2 never reached.
+    mixed = (
+        isolation_time = Union{Missing, Float64}[4.0, missing],
+        isolation_release_time = Union{Missing, Float64}[11.0, missing],
+    )
+    mixed_layer = _GappedInfections(
+        adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf, mixed
+    )
+    @test pairwise_surv_loglik(Exponential(theta), mixed_layer) ≈ -(30.0 - 7.0) / theta
+end
