@@ -698,8 +698,8 @@ end
 
 @testset "race_groups has no generic default" begin
     # A model with only one natural race partition never defines its own
-    # `race_groups` method, so the fallback's informative throw is what a
-    # caller sees — the same shape `contact_structure` uses.
+    # `race_groups` method, so a caller sees the fallback's informative
+    # throw, the same shape `contact_structure` uses.
     @test_throws ArgumentError EpiBranch.race_groups(
         BranchingProcess(Poisson(1.0), Exponential(1.0)), nothing
     )
