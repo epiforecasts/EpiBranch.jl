@@ -1047,7 +1047,7 @@ end
 The races `model` runs its `_sellke_race!` construction over for `kernel`:
 disjoint groups of population ids, each raced independently in its own call
 with its own RNG stream. A model with more than one natural grouping —
-[`HouseholdProcess`](@ref), over its households — defines this to say how
+`HouseholdProcess`, over its households — defines this to say how
 many races it needs and which members fall in each, so the choice is the
 model's own rather than inlined in whichever loop calls `_sellke_race!`
 repeatedly. A new kernel type can override the method for a given model to
