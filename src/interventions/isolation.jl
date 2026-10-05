@@ -172,8 +172,7 @@ intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 # release to leave it for.
 function infectious_removal_time(iso::Isolation, ind::Individual)
     iso.post_isolation_transmission == 0 || return Inf
-    isfinite(isolation_release_time(ind)) && return Inf
-    return isolation_time(ind)
+    return permanent_removal_time(ind)
 end
 
 """Isolation blocks the parent → contact transmission while the parent's
@@ -182,13 +181,7 @@ isolation is in force: from its isolation time until its
 the end of the infectious period). Residual transmission is governed by
 `post_isolation_transmission`: `block_probability = 1 - post_isolation_transmission`."""
 function competing_risk(iso::Isolation, parent, contact, state)
-    iso_t = isolation_time(parent)
-    isfinite(iso_t) || return nothing
-    return Risk(
-        event_time = iso_t,
-        block_probability = 1.0 - iso.post_isolation_transmission,
-        release_time = isolation_release_time(parent)
-    )
+    return _removal_risks(parent, 1.0 - iso.post_isolation_transmission)
 end
 
 # A finite duration leaves the window open and blocks each contact against the
@@ -201,7 +194,10 @@ end
 # The likelihood reads the stretch a lapsing isolation removed the host for.
 # A duration of `Inf` leaves no stretch to read, the window closing at the
 # isolation's own start, and the layer records nothing extra for it.
-records_removal_gap(iso::Isolation) = !(iso.isolation_duration === Inf)
+function removal_gap_host_times(iso::Isolation)
+    iso.isolation_duration === Inf && return ()
+    return (REMOVAL_STRETCHES_KEY,)
+end
 
 # Leaky isolation's residual block stands in for the removal perfect isolation
 # makes, so it reaches the same routes: those the case is isolated from.
@@ -226,6 +222,11 @@ function reset!(::Isolation, ind::Individual)
     previous = get(ind.state, :_isolation_time_before_isolation, Inf)
     if isfinite(previous)
         previous_release = get(ind.state, :_isolation_release_time_before_isolation, Inf)
+        # The recorded stretches are cleared and the quarantine's own re-recorded,
+        # so this isolation's stretch is not left for a likelihood to take out of
+        # an exposure the simulation never blocked. A quarantine keeps its own
+        # record under its own key, which this does not touch.
+        clear_isolated!(ind)
         set_isolated!(ind, previous; release_time = previous_release)
         get(ind.state, :_isolation_unrecorded_before_isolation, false) &&
             (ind.state[:_isolation_unrecorded] = true)

@@ -408,6 +408,10 @@ infectious period. A finite duration matters for a contact who escapes the
 traced exposure but is infected later through another route: without it, the
 quarantine outlives its cause and keeps blocking that contact's own onward
 transmission forever."""
+# The key a quarantine records its own removals under, apart from the shared
+# history `set_isolated!` keeps, so that its block covers its own days only.
+const QUARANTINE_STRETCHES_KEY = :_quarantine_stretches
+
 struct Quarantine{D} <: TraceAction
     duration::D
 end
@@ -427,6 +431,7 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     release_time = trace_time + _removal_duration(
         q.duration, rng, contact, "`Quarantine`'s `duration`"
     )
+    record_removal!(contact, trace_time, release_time; key = QUARANTINE_STRETCHES_KEY)
     if _isolation_in_force(contact)
         standing = isolation_time(contact)
         was_unrecorded = _isolation_unrecorded(contact)
@@ -667,6 +672,7 @@ function reset!(::ContactTracing, ind::Individual)
     haskey(ind.state, :trace_time) && delete!(ind.state, :trace_time)
     haskey(ind.state, :_ring_remaining) && delete!(ind.state, :_ring_remaining)
     haskey(ind.state, :_ring_propagated) && delete!(ind.state, :_ring_propagated)
+    delete!(ind.state, QUARANTINE_STRETCHES_KEY)
     _isolation_in_force(ind) && clear_isolated!(ind)
     return nothing
 end
@@ -798,17 +804,28 @@ hands the case back once released, as [`Isolation`](@ref)'s does. That covers
 a quarantine released before the contact was infected as well, which never
 reached its infectious window at all."""
 function infectious_removal_time(::ContactTracing, ind::Individual)
-    get(ind.state, :quarantined, false) || return Inf
-    isfinite(isolation_release_time(ind)) && return Inf
-    return isolation_time(ind)
+    return permanent_removal_time(ind, QUARANTINE_STRETCHES_KEY)
 end
 
 # A quarantine writes the same two keys an isolation does. The likelihood reads
 # its lapsing stretch from the same place, and reads none for a duration of
 # `Inf`, whose window closes at the quarantine's own start.
-records_removal_gap(ct::ContactTracing) = records_removal_gap(ct.action)
-records_removal_gap(::TraceAction) = false
-records_removal_gap(q::Quarantine) = !(q.duration === Inf)
+removal_gap_host_times(ct::ContactTracing) = removal_gap_host_times(ct.action)
+removal_gap_host_times(::TraceAction) = ()
+function removal_gap_host_times(q::Quarantine)
+    q.duration === Inf && return ()
+    return (QUARANTINE_STRETCHES_KEY,)
+end
+
+# A quarantine's block is the quarantine's own, never the stretches some other
+# removal put this host in: a leaky `Isolation` composed with tracing would
+# otherwise become a perfect block over days the quarantine had nothing to do
+# with. A quarantine that never releases is honoured by the infectious window
+# instead, as a standing isolation is, which is what keeps it inside a
+# fixed-size pool's single clock.
+risk_depends_on_infector(ct::ContactTracing) = risk_depends_on_infector(ct.action)
+risk_depends_on_infector(::TraceAction) = false
+risk_depends_on_infector(q::Quarantine) = !(q.duration === Inf)
 
 # A quarantine that lapses leaves the window open above. The stretch it removed
 # the case for is blocked per contact here instead. A quarantine with
@@ -816,12 +833,7 @@ records_removal_gap(q::Quarantine) = !(q.duration === Inf)
 # period exactly, and adds no risk here: a model written before durations
 # existed keeps the hazards it had.
 function competing_risk(::ContactTracing, parent, contact, state)
-    get(parent.state, :quarantined, false) || return nothing
-    release = isolation_release_time(parent)
-    isfinite(release) || return nothing
-    iso_t = isolation_time(parent)
-    isfinite(iso_t) || return nothing
-    return Risk(event_time = iso_t, block_probability = 1.0, release_time = release)
+    return _removal_risks(parent, 1.0, QUARANTINE_STRETCHES_KEY)
 end
 
 # A quarantine is a removal, so it reaches only the routes a removal can cut.

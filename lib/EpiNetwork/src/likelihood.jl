@@ -81,7 +81,7 @@ function network_infections(
     columns = _infection_layer_columns(state, model)
     return NetworkInfections(
         adjacency, columns...; obs_end, followup_end,
-        host_times = _host_time_columns(state, _layer_host_time_keys(model, host_times))
+        host_times = _layer_host_times(state, model, host_times)
     )
 end
 

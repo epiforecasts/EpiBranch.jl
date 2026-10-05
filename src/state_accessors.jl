@@ -199,11 +199,93 @@ The time is stored under `:isolation_time`, the release under
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which respects leaky
 isolation. `:isolated` in an `until` refers to a `Transition(:isolated, …)`
 in the natural history."""
+# The key `set_isolated!` records a removal's history under. A component that
+# removes a host through a path of its own records under its own key instead,
+# and names it from `removal_gap_host_times`.
+const REMOVAL_STRETCHES_KEY = :_removal_stretches
+
+const _NO_STRETCHES = Tuple{Float64, Float64}[]
+
 function set_isolated!(ind::Individual, time::Real; release_time::Real = Inf)
     ind.state[:isolated] = true
     delete!(ind.state, :_isolation_unrecorded)
     ind.state[:isolation_time] = time
-    return ind.state[:isolation_release_time] = release_time
+    ind.state[:isolation_release_time] = release_time
+    record_removal!(ind, time, release_time)
+    return release_time
+end
+
+"""
+    record_removal!(ind, start, release; key = :_removal_stretches)
+
+Record that a removal took `ind` out of transmission from `start` until
+`release`, which is `Inf` for one that never releases it.
+[`set_isolated!`](@ref) records under the reserved key, which both built-in
+removals share.
+
+A removal of your own that keeps its own history passes its own `key` and
+names that key from
+[`removal_gap_host_times`](@ref EpiBranch.removal_gap_host_times). A
+likelihood then takes the same stretches out of each pair's exposure as the
+simulator blocked, which is what keeps `simulate` and `loglikelihood` in
+agreement.
+"""
+function record_removal!(
+        ind::Individual, start::Real, release::Real;
+        key::Symbol = REMOVAL_STRETCHES_KEY
+    )
+    (isfinite(start) && release > start) || return nothing
+    stretches = get!(
+        () -> Tuple{Float64, Float64}[], ind.state, key
+    )::Vector{Tuple{Float64, Float64}}
+    push!(stretches, (Float64(start), Float64(release)))
+    sort!(stretches; by = first)
+    ind.state[key] = _merge_stretches(stretches)
+    return nothing
+end
+
+# Overlapping and touching stretches folded into disjoint ones, so that no
+# stretch counts twice. `stretches` must already be sorted by its starts.
+function _merge_stretches(stretches)
+    merged = Tuple{Float64, Float64}[]
+    for (a, b) in stretches
+        if !isempty(merged) && a <= last(merged)[2]
+            merged[end] = (last(merged)[1], max(last(merged)[2], b))
+        else
+            push!(merged, (a, b))
+        end
+    end
+    return merged
+end
+
+# Every stretch a removal has taken this host out for, as sorted disjoint
+# `(start, release)` pairs, a release of `Inf` standing for a removal that
+# never ends. `:isolation_time` and `:isolation_release_time` hold the removal
+# in force, which is what a detection reads; this holds the history, which is
+# what a likelihood needs, since one pair cannot say that a host was
+# quarantined, released, and isolated again later. Read-only.
+function removal_stretches(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
+    return get(ind.state, key, _NO_STRETCHES)::Vector{Tuple{Float64, Float64}}
+end
+
+# The earliest removal of this host that never releases it. Such a removal
+# closes the infectious window, which is where a likelihood takes it out of
+# the exposure, so it is read apart from the stretches that lapse. The merge
+# leaves at most one of them.
+function permanent_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
+    t = Inf
+    for (start, release) in removal_stretches(ind, key)
+        isfinite(release) || (t = min(t, start))
+    end
+    return t
+end
+
+# The first time any removal took this host out, whether or not it released
+# them. A component whose stretches a likelihood cannot read closes the
+# infectious window here instead of holding them.
+function first_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
+    stretches = removal_stretches(ind, key)
+    return isempty(stretches) ? Inf : first(stretches)[1]
 end
 
 """Clear an individual's isolation, the inverse of [`set_isolated!`](@ref)."""
@@ -212,5 +294,6 @@ function clear_isolated!(ind::Individual)
     delete!(ind.state, :_isolation_unrecorded)
     ind.state[:isolation_time] = Inf
     ind.state[:isolation_release_time] = Inf
+    delete!(ind.state, REMOVAL_STRETCHES_KEY)
     return nothing
 end
