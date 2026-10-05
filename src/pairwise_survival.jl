@@ -1225,17 +1225,16 @@ function _component_loglik(
             stop > 0 || continue
             pk = _pair_kernel(kernel, layout, r, data)
             gap = _removal_gap(gaps, i, oi, stop)
-            # As above: the two surviving stretches, so an infinite tail past a
-            # bounded kernel's support never cancels against itself.
+            # As above: the two surviving stretches, with the tail dropped once
+            # the modified cumulative hazard has reached infinity, so that an
+            # infinity never cancels against itself.
             ll -= if gap === nothing
                 _scaled_cumhazard(modifier, pk, oi, stop)
-            elseif gap[2] >= stop
-                _scaled_cumhazard(modifier, pk, oi, gap[1])
             else
-                _scaled_cumhazard(modifier, pk, oi, gap[1]) + (
-                    _scaled_cumhazard(modifier, pk, oi, stop) -
-                        _scaled_cumhazard(modifier, pk, oi, gap[2])
-                )
+                head = _scaled_cumhazard(modifier, pk, oi, gap[1])
+                h_hi = _scaled_cumhazard(modifier, pk, oi, gap[2])
+                isfinite(h_hi) ?
+                    head + (_scaled_cumhazard(modifier, pk, oi, stop) - h_hi) : head
             end
         end
     end
@@ -1494,14 +1493,16 @@ function _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, 
             gap = _removal_gap(gaps, i, oi, stop)
             # Added as the two surviving stretches, never as the whole exposure
             # less the gap: a kernel of bounded support has an infinite
-            # cumulative hazard past its support, and the difference of two
-            # infinities is a `NaN` where the answer is the finite head alone.
+            # cumulative hazard past its support, and subtracting one infinity
+            # from another gives a `NaN` where the head alone is the answer.
+            # Past the time survival reaches zero there is no mass left, so the
+            # stretch after the release contributes nothing at all.
             h = if gap === nothing
                 cumhazard(pk, stop)
-            elseif gap[2] >= stop
-                cumhazard(pk, gap[1])
             else
-                cumhazard(pk, gap[1]) + (cumhazard(pk, stop) - cumhazard(pk, gap[2]))
+                head = cumhazard(pk, gap[1])
+                h_hi = cumhazard(pk, gap[2])
+                isfinite(h_hi) ? head + (cumhazard(pk, stop) - h_hi) : head
             end
             totals = _add!(reduction, totals, j, -h)
         end
