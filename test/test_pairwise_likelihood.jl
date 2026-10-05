@@ -778,84 +778,106 @@ end
     end
 end
 
-@testset "A removal that lapses leaves its stretch out of the exposure" begin
+@testset "Removals that lapse leave their stretches out of the exposure" begin
     # Two hosts in one household: host 1 infectious over [0, 30], host 2 never
     # infected, so the pair is pure escape. An exponential kernel integrates to
     # `exposed / theta`, which makes the subtraction exact to read.
     adj = [1, 1]
     theta = 4.0
     k = Exponential(theta)
+    none = Tuple{Float64, Float64}[]
     layer(host_times) = _GappedInfections(
         adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf, host_times
     )
+    gapped(stretches) = layer((_removal_stretches = [stretches, none],))
 
     @test pairwise_surv_loglik(k, layer((;))) ≈ -30.0 / theta
 
     # Isolated over [4, 11]: seven days out of the thirty.
-    gap = (isolation_time = [4.0, Inf], isolation_release_time = [11.0, Inf])
-    @test pairwise_surv_loglik(k, layer(gap)) ≈ -(30.0 - 7.0) / theta
+    @test pairwise_surv_loglik(k, gapped([(4.0, 11.0)])) ≈ -(30.0 - 7.0) / theta
+
+    # Quarantined over [4, 11], released, then isolated again over [18, 22]:
+    # both stretches come out, and one pair of times could not have held them.
+    @test pairwise_surv_loglik(k, gapped([(4.0, 11.0), (18.0, 22.0)])) ≈
+        -(30.0 - 7.0 - 4.0) / theta
 
     # A removal with no release closes the window at its own start, so the
     # layer's `removal_time` already holds it and there is nothing to subtract.
-    no_release = (isolation_time = [4.0, Inf], isolation_release_time = [Inf, Inf])
-    @test pairwise_surv_loglik(k, layer(no_release)) ≈ -30.0 / theta
+    @test pairwise_surv_loglik(k, gapped([(4.0, Inf)])) ≈ -30.0 / theta
 
-    # A stretch reaching past the end of the exposure is clamped to it.
-    overrun = (isolation_time = [20.0, Inf], isolation_release_time = [40.0, Inf])
-    @test pairwise_surv_loglik(k, layer(overrun)) ≈ -20.0 / theta
+    # A stretch reaching past the end of the exposure is clamped to it, and one
+    # starting after the end takes nothing out.
+    @test pairwise_surv_loglik(k, gapped([(20.0, 40.0)])) ≈ -20.0 / theta
+    @test pairwise_surv_loglik(k, gapped([(4.0, 11.0), (40.0, 50.0)])) ≈
+        -(30.0 - 7.0) / theta
 end
 
 @testset "An infector removed at the infection cannot be the one" begin
     adj = [1, 1]
     k = Exponential(4.0)
-    gap = (isolation_time = [4.0, Inf], isolation_release_time = [11.0, Inf])
+    none = Tuple{Float64, Float64}[]
+    gap = (_removal_stretches = [[(4.0, 11.0), (18.0, 22.0)], none],)
 
     # Host 1 is host 2's only possible infector and was removed at day 7, so
-    # the configuration has density zero.
-    inside = _GappedInfections(
-        adj, [0.0, 7.0], [0.0, 7.0], [30.0, 37.0], [true, false], Inf, Inf, gap
-    )
-    @test pairwise_surv_loglik(k, inside) == -Inf
+    # the configuration has density zero. The same holds inside the second
+    # stretch, which one pair of times would have lost.
+    for t in (7.0, 20.0)
+        inside = _GappedInfections(
+            adj, [0.0, t], [0.0, t], [30.0, 30.0 + t], [true, false], Inf, Inf, gap
+        )
+        @test pairwise_surv_loglik(k, inside) == -Inf
+    end
 
-    # After the release it is an ordinary event.
-    after = _GappedInfections(
-        adj, [0.0, 15.0], [0.0, 15.0], [30.0, 45.0], [true, false], Inf, Inf, gap
-    )
-    @test isfinite(pairwise_surv_loglik(k, after))
+    # Between the two stretches, and after the last, it is an ordinary event.
+    for t in (15.0, 25.0)
+        between = _GappedInfections(
+            adj, [0.0, t], [0.0, t], [30.0, 30.0 + t], [true, false], Inf, Inf, gap
+        )
+        @test isfinite(pairwise_surv_loglik(k, between))
+    end
 end
 
 @testset "A gap past a bounded kernel's support keeps the finite head" begin
     # A kernel of bounded support has an infinite cumulative hazard past it,
-    # and taking the gap out as the whole exposure less the gap would subtract
+    # and taking a gap out as the whole exposure less the gap would subtract
     # an infinity from itself. Once survival reaches zero no mass is left, so
     # the stretch after the release contributes nothing and the head alone is
     # the answer: escape past the support is possible precisely because the
     # host was removed over the tail.
     adj = [1, 1]
-    layer(a, b) = _GappedInfections(
+    none = Tuple{Float64, Float64}[]
+    layer(stretches) = _GappedInfections(
         adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf,
-        (isolation_time = [a, Inf], isolation_release_time = [b, Inf])
+        (_removal_stretches = [stretches, none],)
     )
     head = log(1 - 4 / 10)
 
-    # Each of these has the gap end at or past the support while the exposure
+    # Each of these has a gap end at or past the support while the exposure
     # runs on to day 30, so each is a place the two infinities would meet.
     for (a, b) in ((4.0, 10.0), (4.0, 20.0), (4.0, 40.0))
-        v = pairwise_surv_loglik(Uniform(0, 10), layer(a, b))
+        v = pairwise_surv_loglik(Uniform(0, 10), layer([(a, b)]))
         @test !isnan(v)
         @test v ≈ head
     end
 
+    # Two stretches, the second reaching past the support. What survives is
+    # [0, 4] and [6, 8], both inside it, so the answer stays finite: the
+    # cumulative hazards add to `-log(0.6) - log(0.5)`.
+    v = pairwise_surv_loglik(Uniform(0, 10), layer([(4.0, 6.0), (8.0, 40.0)]))
+    @test !isnan(v)
+    @test v ≈ log(0.3)
+
     # A gap wholly past the support leaves the whole of the kernel's mass in
     # the exposure, so the susceptible cannot escape.
-    @test pairwise_surv_loglik(Uniform(0, 10), layer(15.0, 20.0)) == -Inf
+    @test pairwise_surv_loglik(Uniform(0, 10), layer([(15.0, 20.0)])) == -Inf
 
     # A gap strictly inside the support leaves the tail uncovered, which is
     # impossible to escape for the same reason.
-    @test pairwise_surv_loglik(Uniform(0, 10), layer(2.0, 4.0)) == -Inf
+    @test pairwise_surv_loglik(Uniform(0, 10), layer([(2.0, 4.0)])) == -Inf
 
     # An unbounded kernel takes the ordinary path.
-    @test pairwise_surv_loglik(Exponential(4.0), layer(4.0, 11.0)) ≈ -(30.0 - 7.0) / 4.0
+    @test pairwise_surv_loglik(Exponential(4.0), layer([(4.0, 11.0)])) ≈
+        -(30.0 - 7.0) / 4.0
 end
 
 @testset "A host no removal reached contributes no gap" begin
@@ -863,30 +885,26 @@ end
     # which a quarantine-only model leaves for everyone it did not reach.
     adj = [1, 1]
     theta = 4.0
-    absent = (
-        isolation_time = Union{Missing, Float64}[missing, missing],
-        isolation_release_time = Union{Missing, Float64}[missing, missing],
+    none = Tuple{Float64, Float64}[]
+    column(values) = Union{Missing, Vector{Tuple{Float64, Float64}}}[values...]
+    layer(values) = _GappedInfections(
+        adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf,
+        (_removal_stretches = column(values),)
     )
-    layer = _GappedInfections(
-        adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf, absent
-    )
-    @test pairwise_surv_loglik(Exponential(theta), layer) ≈ -30.0 / theta
+
+    @test pairwise_surv_loglik(Exponential(theta), layer((missing, missing))) ≈
+        -30.0 / theta
 
     # Mixed: host 1 was quarantined, host 2 never reached.
-    mixed = (
-        isolation_time = Union{Missing, Float64}[4.0, missing],
-        isolation_release_time = Union{Missing, Float64}[11.0, missing],
-    )
-    mixed_layer = _GappedInfections(
-        adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf, mixed
-    )
-    @test pairwise_surv_loglik(Exponential(theta), mixed_layer) ≈ -(30.0 - 7.0) / theta
+    @test pairwise_surv_loglik(
+        Exponential(theta), layer(([(4.0, 11.0)], missing))
+    ) ≈ -(30.0 - 7.0) / theta
+
+    # An empty list is the same as a missing column.
+    @test pairwise_surv_loglik(Exponential(theta), layer((none, missing))) ≈
+        -30.0 / theta
 end
 
-# A susceptibility effect that changes nothing: one component, weight 1, a
-# factor of 1 from time 0. It sends its host down the mixture path without
-# altering any hazard, which makes that path's answer comparable with the flat
-# one directly.
 struct _IdentitySusceptibility <: EpiBranch.AbstractIntervention end
 EpiBranch.susceptibility_components(::_IdentitySusceptibility, host) =
     (1.0 => EpiBranch.HazardScaling(0.0, 1.0),)
@@ -902,7 +920,9 @@ EpiBranch.infection_likelihood_compatible(::_IdentitySusceptibility) = true
     layer(host_times) = _GappedInfections(
         adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf, host_times
     )
-    gap = (isolation_time = [4.0, Inf], isolation_release_time = [11.0, Inf])
+    none = Tuple{Float64, Float64}[]
+    gap = (_removal_stretches = [[(4.0, 11.0)], none],)
+    two = (_removal_stretches = [[(4.0, 11.0), (18.0, 22.0)], none],)
 
     flat = pairwise_surv_loglik(Exponential(theta), layer(gap))
     mixed = pairwise_surv_loglik(
@@ -910,6 +930,11 @@ EpiBranch.infection_likelihood_compatible(::_IdentitySusceptibility) = true
     )
     @test flat ≈ -(30.0 - 7.0) / theta
     @test mixed ≈ flat
+
+    # Two stretches on one host, so the path is not reading only the first.
+    @test pairwise_surv_loglik(
+        Exponential(theta), layer(two); susceptibility = _IdentitySusceptibility()
+    ) ≈ -(30.0 - 7.0 - 4.0) / theta
 
     # Without the gap both paths give the whole exposure, so the mixture path
     # is not simply ignoring the host times.
@@ -929,12 +954,7 @@ EpiBranch.infection_likelihood_compatible(::_IdentitySusceptibility) = true
 
     # A bounded kernel reaches the same infinity guard on this path.
     bounded = pairwise_surv_loglik(
-        Uniform(0, 10), layer(
-            (
-                isolation_time = [4.0, Inf],
-                isolation_release_time = [20.0, Inf],
-            )
-        );
+        Uniform(0, 10), layer((_removal_stretches = [[(4.0, 20.0)], none],));
         susceptibility = _IdentitySusceptibility()
     )
     @test !isnan(bounded)

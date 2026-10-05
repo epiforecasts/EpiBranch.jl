@@ -238,10 +238,14 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test !is_traced(contact)
 
         # A quarantined contact reports its quarantine as the time it leaves
-        # onward transmission; an untraced one contributes no removal.
+        # onward transmission; an untraced one contributes no removal. The time
+        # comes from the quarantine's own record, as `apply_trace!` writes it.
         traced = Individual(id = 3)
         traced.state[:quarantined] = true
         set_isolated!(traced, 4.0)
+        EpiBranch.record_removal!(
+            traced, 4.0, Inf; key = EpiBranch.QUARANTINE_STRETCHES_KEY
+        )
         @test EpiBranch.infectious_removal_time(ct, traced) == 4.0
         @test EpiBranch.infectious_removal_time(ct, Individual(id = 4)) == Inf
 
@@ -872,7 +876,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         contact = Individual(id = 1, infection_time = 60.0)
         set_isolated!(contact, 10.0; release_time = 12.0)
 
-        risk = EpiBranch.competing_risk(iso, contact, Individual(id = 2), nothing)
+        risk = only(EpiBranch.competing_risk(iso, contact, Individual(id = 2), nothing))
         @test risk.event_time == 10.0
         @test risk.release_time == 12.0
         @test risk.block_probability == 1.0
@@ -2947,33 +2951,62 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
     end
 
-    @testset "A quarantine blocks per contact only once it can lapse" begin
-        # With no release the window closes at the quarantine's own start,
-        # which blocks the rest of the infectious period exactly, so there is
-        # no per-contact risk to add. A model written before durations existed
-        # keeps the hazards it had.
-        ct = ContactTracing(TraceEveryone(), 1.0, Exponential(1.0), FlagOnly())
+    @testset "A quarantine blocks per contact over its own stretches" begin
+        plain = ContactTracing(TraceEveryone(), 1.0, Exponential(1.0), FlagOnly())
+        quarantining = ContactTracing(
+            TraceEveryone(), 1.0, Exponential(1.0), Quarantine(duration = Dirac(7.0))
+        )
+        key = EpiBranch.QUARANTINE_STRETCHES_KEY
         contact = Individual(id = 2)
 
-        @test EpiBranch.competing_risk(ct, Individual(id = 1), contact, nothing) ===
+        @test EpiBranch.competing_risk(plain, Individual(id = 1), contact, nothing) ===
             nothing
 
-        standing = Individual(id = 3)
-        standing.state[:quarantined] = true
-        set_isolated!(standing, 5.0)
-        @test EpiBranch.competing_risk(ct, standing, contact, nothing) === nothing
+        # The quarantine blocks over its own record, so a stretch another
+        # removal put this host in is not its block to apply: a leaky isolation
+        # composed with tracing would otherwise become a perfect one.
+        isolated = Individual(id = 3)
+        set_isolated!(isolated, 5.0; release_time = 12.0)
+        @test EpiBranch.competing_risk(quarantining, isolated, contact, nothing) ===
+            nothing
 
+        # A quarantine with no release blocks from its start for good, which
+        # the infectious window closes at as well.
+        standing = Individual(id = 4)
+        EpiBranch.record_removal!(standing, 5.0, Inf; key = key)
+        standing_risk = only(
+            EpiBranch.competing_risk(quarantining, standing, contact, nothing)
+        )
+        @test standing_risk.event_time == 5.0
+        @test standing_risk.block_probability == 1.0
+        @test standing_risk.release_time == Inf
+        @test EpiBranch.infectious_removal_time(quarantining, standing) == 5.0
+
+        # One with a release hands the contact back, and a second quarantine
+        # later is held alongside the first rather than replacing it.
         lapsing = Individual(id = 5)
-        lapsing.state[:quarantined] = true
-        set_isolated!(lapsing, 5.0; release_time = 12.0)
-        risk = EpiBranch.competing_risk(ct, lapsing, contact, nothing)
-        @test risk.event_time == 5.0
-        @test risk.block_probability == 1.0
-        @test risk.release_time == 12.0
+        for (a, b) in ((5.0, 12.0), (20.0, 27.0))
+            EpiBranch.record_removal!(lapsing, a, b; key = key)
+        end
+        risks = EpiBranch.competing_risk(quarantining, lapsing, contact, nothing)
+        @test [(r.event_time, r.release_time) for r in risks] ==
+            [(5.0, 12.0), (20.0, 27.0)]
+        @test all(r -> r.block_probability == 1.0, risks)
+        @test EpiBranch.infectious_removal_time(quarantining, lapsing) == Inf
 
-        # A tracing action that quarantines nobody reads no stretch.
-        @test !EpiBranch.records_removal_gap(FlagOnly())
-        @test !EpiBranch.records_removal_gap(ct)
+        # A tracing action that quarantines nobody reads no stretch, and a
+        # quarantine with no release is honoured by the window instead of by a
+        # risk a fixed-size pool cannot take.
+        @test isempty(EpiBranch.removal_gap_host_times(FlagOnly()))
+        @test isempty(EpiBranch.removal_gap_host_times(plain))
+        @test EpiBranch.removal_gap_host_times(quarantining) == (key,)
+        @test !EpiBranch.risk_depends_on_infector(plain)
+        @test !EpiBranch.risk_depends_on_infector(
+            ContactTracing(
+                TraceEveryone(), 1.0, Exponential(1.0), Quarantine(duration = Inf)
+            )
+        )
+        @test EpiBranch.risk_depends_on_infector(quarantining)
     end
 
     @testset "reads_population_state" begin

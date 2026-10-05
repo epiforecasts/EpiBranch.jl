@@ -157,6 +157,26 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         @test isolation_release_time(state.individuals[1]) == 11.0
         @test is_infected(state.individuals[2])
 
+        # The other half of the same seam: a contact due inside [4, 11) is
+        # blocked, which is what the per-contact risk has to do now that the
+        # window no longer closes at the isolation. Without it the release
+        # would hand the case back and block nobody at all.
+        inside_rng = StableRNG(1)
+        inside = EpiBranch.new_state(
+            BranchingProcess(Dirac(1), Dirac(7.0)), prog, attrs, inside_rng
+        )
+        EpiBranch.add_individuals!(inside, 2, [iso])
+        EpiBranch._sellke_race!(
+            inside, [1, 2], inside_rng; from = :infection, until = (:recovered,),
+            interventions = [iso],
+            targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+                ((2, Dirac(7.0)),) : (),
+            seed! = (best, members, r) -> (best[1] = 0.0)
+        )
+        @test isolation_time(inside.individuals[1]) == 4.0
+        @test isolation_release_time(inside.individuals[1]) == 11.0
+        @test !is_infected(inside.individuals[2])
+
         # The generation engine, which already answers this correctly, for the
         # same isolation and the same fixed contact time.
         gen_state = simulate(
