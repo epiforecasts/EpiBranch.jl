@@ -2966,13 +2966,17 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # removal put this host in is not its block to apply: a leaky isolation
         # composed with tracing would otherwise become a perfect one.
         isolated = Individual(id = 3)
+        isolated.state[:quarantined] = true
         set_isolated!(isolated, 5.0; release_time = 12.0)
         @test EpiBranch.competing_risk(quarantining, isolated, contact, nothing) ===
             nothing
 
         # A quarantine with no release blocks from its start for good, which
-        # the infectious window closes at as well.
+        # the infectious window closes at as well. `:quarantined` is what
+        # `apply_trace!` sets, and what tells the hooks a quarantine reached
+        # this contact at all.
         standing = Individual(id = 4)
+        standing.state[:quarantined] = true
         EpiBranch.record_removal!(standing, 5.0, Inf; key = key)
         standing_risk = only(
             EpiBranch.competing_risk(quarantining, standing, contact, nothing)
@@ -2985,6 +2989,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # One with a release hands the contact back, and a second quarantine
         # later is held alongside the first rather than replacing it.
         lapsing = Individual(id = 5)
+        lapsing.state[:quarantined] = true
         for (a, b) in ((5.0, 12.0), (20.0, 27.0))
             EpiBranch.record_removal!(lapsing, a, b; key = key)
         end

@@ -803,18 +803,31 @@ window open and is blocked per contact by the `competing_risk` below, which
 hands the case back once released, as [`Isolation`](@ref)'s does. That covers
 a quarantine released before the contact was infected as well, which never
 reached its infectious window at all."""
-function infectious_removal_time(::ContactTracing, ind::Individual)
-    return permanent_removal_time(ind, QUARANTINE_STRETCHES_KEY)
+function infectious_removal_time(ct::ContactTracing, ind::Individual)
+    get(ind.state, :quarantined, false) || return Inf
+    t = Inf
+    for key in _trace_removal_keys(ct.action)
+        t = min(t, permanent_removal_time(ind, key))
+    end
+    return t
 end
 
-# A quarantine writes the same two keys an isolation does. The likelihood reads
-# its lapsing stretch from the same place, and reads none for a duration of
-# `Inf`, whose window closes at the quarantine's own start.
 removal_gap_host_times(ct::ContactTracing) = removal_gap_host_times(ct.action)
 removal_gap_host_times(::TraceAction) = ()
-function removal_gap_host_times(q::Quarantine)
-    q.duration === Inf && return ()
-    return (QUARANTINE_STRETCHES_KEY,)
+removal_gap_host_times(::Quarantine) = (QUARANTINE_STRETCHES_KEY,)
+
+# Where the action recorded the removals this tracing should honour. An action
+# written outside the package names its own key, as the built-in quarantine
+# does, and both the window and the per-contact risk read it. One that names
+# none and still removes the contact is read from the shared history
+# `set_isolated!` keeps, which is where such an action will have recorded, so
+# its quarantine goes on closing the window as it did before this seam existed.
+# That fallback cannot tell the action's own stretches from another removal's,
+# so an action composed with a leaky `Isolation` blocks the isolation's days
+# fully as well; naming a key is what separates them.
+function _trace_removal_keys(action::TraceAction)
+    keys = removal_gap_host_times(action)
+    return isempty(keys) ? (REMOVAL_STRETCHES_KEY,) : keys
 end
 
 # A quarantine's block is the quarantine's own, never the stretches some other
@@ -827,13 +840,19 @@ risk_depends_on_infector(ct::ContactTracing) = risk_depends_on_infector(ct.actio
 risk_depends_on_infector(::TraceAction) = false
 risk_depends_on_infector(q::Quarantine) = !(q.duration === Inf)
 
-# A quarantine that lapses leaves the window open above. The stretch it removed
-# the case for is blocked per contact here instead. A quarantine with
-# no release still closes the window, which blocks the rest of the infectious
-# period exactly, and adds no risk here: a model written before durations
-# existed keeps the hazards it had.
-function competing_risk(::ContactTracing, parent, contact, state)
-    return _removal_risks(parent, 1.0, QUARANTINE_STRETCHES_KEY)
+# A quarantine that lapses leaves the window open above, and the stretches it
+# removed the case for are blocked per contact here instead. One with no
+# release is blocked here too, from its own start and never released, which is
+# what reduces onward transmission on the generation engine, where there is no
+# window to close.
+function competing_risk(ct::ContactTracing, parent, contact, state)
+    get(parent.state, :quarantined, false) || return nothing
+    risks = ()
+    for key in _trace_removal_keys(ct.action)
+        more = _removal_risks(parent, 1.0, key)
+        more === nothing || (risks = (risks..., more...))
+    end
+    return isempty(risks) ? nothing : risks
 end
 
 # A quarantine is a removal, so it reaches only the routes a removal can cut.
