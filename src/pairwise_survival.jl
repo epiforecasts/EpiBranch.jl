@@ -246,7 +246,7 @@ end
 # removals' keys are already merged into the one column (see
 # `_layer_host_times`), a host removed by either being removed.
 function _removal_gaps(data)
-    times = _host_times(data)
+    times = host_times(data)
     haskey(times, REMOVAL_STRETCHES_KEY) || return nothing
     return times[REMOVAL_STRETCHES_KEY]
 end
@@ -645,13 +645,11 @@ function _layer_host_times(state::SimulationState, model::ModelSpec, host_times)
     gap_keys = _removal_gap_keys(model)
     isempty(gap_keys) && return columns
     merged = map(eachindex(state.individuals)) do i
-        stretches = Tuple{Float64, Float64}[]
-        for key in gap_keys
-            value = columns[key][i]
-            value === missing || append!(stretches, value)
-        end
-        sort!(stretches; by = first)
-        return _merge_stretches(stretches)
+        stretches = mapreduce(
+            key -> coalesce(columns[key][i], _NO_STRETCHES), vcat, gap_keys;
+            init = _NO_STRETCHES
+        )
+        return _merge_stretches(sort(stretches; by = first))
     end
     return merge(columns, NamedTuple{(REMOVAL_STRETCHES_KEY,)}((merged,)))
 end
