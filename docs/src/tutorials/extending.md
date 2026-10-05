@@ -2243,6 +2243,7 @@ function EpiBranch.competing_risk(::Shielding, parent, contact, state)
 end
 
 EpiBranch.removal_gap_host_times(::Shielding) = (SHIELDING_STRETCHES,)
+EpiBranch.binding_release(::Shielding) = true
 EpiBranch.infection_likelihood_compatible(::Shielding) = true
 ```
 
@@ -2250,9 +2251,10 @@ EpiBranch.infection_likelihood_compatible(::Shielding) = true
 with every other removal's stretches, and `loglikelihood(data, spec)` loses
 exactly the days the simulation blocked.
 
-A removal that releases its host should also declare
-[`EpiBranch.binding_release`](@ref EpiBranch.binding_release), as the built-in
-ones do. The continuous-time race reads a `Risk`'s `release_time` only from a
+`EpiBranch.binding_release` is what lets the continuous-time race read the
+release, and leaving it out is not a safe omission: one source that has not
+declared it stops the race reading any release for that pair, so a model that
+ran without this intervention raises with it. The continuous-time race reads a `Risk`'s `release_time` only from a
 component that declares it, because `competing_risk` reads the state and a
 block that looks certain at one proposal may have lifted by the next.
 Recorded stretches are append-only, so their releases bind; a block that comes

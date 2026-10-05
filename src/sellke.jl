@@ -333,7 +333,9 @@ function _next_contact(
                 "`INTERVENTION_REMOVAL` reaches this too when the case's " *
                 "isolation or quarantine is due to lapse, since only a removal " *
                 "that stands for the rest of the infectious period closes the " *
-                "window by itself."
+                "window by itself. A component whose certain block is in force " *
+                "reaches this too until it declares `binding_release`, which is " *
+                "what lets the race read the release it reports."
         )
     )
     return _draw_next_contact(rng, kernel, m, ls, dt)
