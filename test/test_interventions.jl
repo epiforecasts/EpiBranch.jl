@@ -2947,6 +2947,35 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
     end
 
+    @testset "A quarantine blocks per contact only once it can lapse" begin
+        # With no release the window closes at the quarantine's own start,
+        # which blocks the rest of the infectious period exactly, so there is
+        # no per-contact risk to add. A model written before durations existed
+        # keeps the hazards it had.
+        ct = ContactTracing(TraceEveryone(), 1.0, Exponential(1.0), FlagOnly())
+        contact = Individual(id = 2)
+
+        @test EpiBranch.competing_risk(ct, Individual(id = 1), contact, nothing) ===
+            nothing
+
+        standing = Individual(id = 3)
+        standing.state[:quarantined] = true
+        set_isolated!(standing, 5.0)
+        @test EpiBranch.competing_risk(ct, standing, contact, nothing) === nothing
+
+        lapsing = Individual(id = 5)
+        lapsing.state[:quarantined] = true
+        set_isolated!(lapsing, 5.0; release_time = 12.0)
+        risk = EpiBranch.competing_risk(ct, lapsing, contact, nothing)
+        @test risk.event_time == 5.0
+        @test risk.block_probability == 1.0
+        @test risk.release_time == 12.0
+
+        # A tracing action that quarantines nobody reads no stretch.
+        @test !EpiBranch.records_removal_gap(FlagOnly())
+        @test !EpiBranch.records_removal_gap(ct)
+    end
+
     @testset "reads_population_state" begin
         reads = EpiBranch.reads_population_state
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0))

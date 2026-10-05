@@ -917,6 +917,16 @@ EpiBranch.infection_likelihood_compatible(::_IdentitySusceptibility) = true
         Exponential(theta), layer((;)); susceptibility = _IdentitySusceptibility()
     ) ≈ -30.0 / theta
 
+    # An infector removed at the moment of infection is dropped from the
+    # susceptible's log-sum-exp on this path too, so a susceptible whose only
+    # possible infector was isolated then has density zero.
+    inside = _GappedInfections(
+        adj, [0.0, 7.0], [0.0, 7.0], [30.0, 37.0], [true, false], Inf, Inf, gap
+    )
+    @test pairwise_surv_loglik(
+        Exponential(theta), inside; susceptibility = _IdentitySusceptibility()
+    ) == -Inf
+
     # A bounded kernel reaches the same infinity guard on this path.
     bounded = pairwise_surv_loglik(
         Uniform(0, 10), layer(
