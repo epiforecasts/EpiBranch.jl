@@ -82,8 +82,9 @@ println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 
 `isolation_duration` (a `Real`, a `Distribution`, or a function
 `(rng, ind) -> Real`, like `onset_to_isolation_delay`) is required: there is
-no default, since no study isolates indefinitely. `Inf` never releases the
-case; a finite value gives it a release time.
+no default, since indefinite isolation is a choice to make rather than one to
+inherit. `Inf` never releases the case; a finite value gives it a release
+time.
 
 `Inf` and a finite duration read the same only where a case is infectious for
 a bounded period that the duration outlasts, which is how "isolated for the
@@ -96,10 +97,14 @@ the case goes on transmitting.
 The choice matters again where a case is quarantined, released, and only then
 infected through another route, on a network or in a household: a quarantine
 with no end keeps blocking that later transmission. On those models an
-infectious window has one closing time and cannot reopen, so the release
-spares an infection acquired after it and nothing else. A removal still
-standing when the case is infected closes the window for the rest of the
-infectious period, however soon it was due to lapse.
+infectious window has one closing time and cannot reopen, so for a removal
+that takes the case out completely the release spares an infection acquired
+after it and nothing else: a removal still standing when the case is infected
+closes the window for the rest of the infectious period, however soon it was
+due to lapse. Leaky isolation (`post_isolation_transmission > 0`) closes no
+window at all, only reducing each contact's hazard, so there the release ends
+the reduction and the case transmits at full rate again; a finite duration can
+change a leaky model's final size by an order of magnitude.
 
 ### Contact tracing
 
@@ -115,12 +120,18 @@ results = simulate(scenario([iso, ct]), 200; max_cases = 500, rng = rng)
 println("Isolation + tracing: $(round(containment_probability(results), digits=3))")
 ```
 
-Quarantine, like isolation, is never released by default. Pass a `duration`
-to [`Quarantine`](@ref) and give it as the positional `action` argument (e.g.
-`ContactTracing(OnIsolation(), 0.7, Exponential(1.0), Quarantine(duration = Exponential(5.0)))`)
-to give it a release time, so a quarantined contact who is not infected by
-the traced exposure is not left blocked if infected later through another
-route.
+Quarantine, like isolation, is never released by default. Pass
+`quarantine_duration` to give it a release time, so a quarantined contact who
+is not infected by the traced exposure is not left blocked if infected later
+through another route:
+
+```julia
+ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+    quarantine_duration = Exponential(5.0))
+```
+
+The positional form takes the action itself, as
+`ContactTracing(OnIsolation(), 0.7, Exponential(1.0), Quarantine(duration = Exponential(5.0)))`.
 
 #### Who gets traced: eligibility policies
 
@@ -202,8 +213,14 @@ transmission time, it blocks transmission with probability `efficacy`.
 Requires [`ContactTracing`](@ref) in the intervention stack so contacts
 are identified.
 
+The stacks from here on isolate with `isolation_duration = Inf`, so an
+isolated case blocks every later transmission to its contacts. That is what
+makes the comparisons below about the vaccination alone; a finite duration
+would let a traced contact be infected after its trace, which is a separate
+effect and the subject of the warning after the next example.
+
 ```@example interventions
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = Inf)
 ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0))
 rv = RingVaccination(efficacy = 0.8)
 
