@@ -187,7 +187,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
     function total_infection_time(μ)
         model = BranchingProcess(NegBin(2.0, 0.5), LogNormal(μ, 0.5))
         state = simulate(
@@ -245,7 +245,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
         quarantine_on_trace = false, depth = 2
@@ -273,7 +273,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
     ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
     rv = RingVaccination(efficacy = 0.8, onward_efficacy = 0.5)
     function total_infection_time(μ)
@@ -332,7 +332,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
     ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
     process = BranchingProcess(Poisson(2.0), Exponential(5.0))
     run_with(interventions) = simulate(
@@ -386,7 +386,7 @@ end
     )
     iso = Isolation(
         onset_to_isolation_delay = Exponential(1.0),
-        post_isolation_transmission = 0.3
+        post_isolation_transmission = 0.3, isolation_duration = Inf
     )
     ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
     function recorded_effect(make_vaccination, key)

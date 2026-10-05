@@ -14,7 +14,7 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
     )
 
     @testset "Default keyword constructor reproduces previous behaviour" begin
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
         @test iso.eligibility isa SymptomaticOnly
         @test iso.test_sensitivity == 1.0
         @test iso.post_isolation_transmission == 0.0
@@ -27,7 +27,7 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         clin_mixed = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases())
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases(), isolation_duration = Inf)
         rng = StableRNG(42)
         state = simulate(
             ModelSpec(
@@ -47,7 +47,7 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         iso = Isolation(
             onset_to_isolation_delay = Exponential(0.1),
-            test_sensitivity = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0
+            test_sensitivity = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0, isolation_duration = Inf
         )
         rng = StableRNG(13)
         state = simulate(
@@ -70,7 +70,7 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         # group's own event time.
         attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         iso = Isolation(
-            onset_to_isolation_delay = (rng, ind) -> ind.state[:age] >= 50 ? 0.1 : 5.0
+            onset_to_isolation_delay = (rng, ind) -> ind.state[:age] >= 50 ? 0.1 : 5.0, isolation_duration = Inf
         )
         rng = StableRNG(21)
         state = simulate(
@@ -98,21 +98,21 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
     @testset "required_fields dispatches on eligibility" begin
         # Default SymptomaticOnly requires :asymptomatic.
         @test :asymptomatic in EpiBranch.required_fields(
-            Isolation(onset_to_isolation_delay = Exponential(1.0))
+            Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
         )
         # AllCases doesn't.
         @test :asymptomatic ∉ EpiBranch.required_fields(
-            Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases())
+            Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases(), isolation_duration = Inf)
         )
         # Custom eligibility declares its own required fields.
         @test :age in EpiBranch.required_fields(
-            Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = OnlyOlder(50))
+            Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = OnlyOlder(50), isolation_duration = Inf)
         )
     end
 
     @testset "Custom IsolationEligibility integrates end-to-end" begin
         attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.1), eligibility = OnlyOlder(50))
+        iso = Isolation(onset_to_isolation_delay = Exponential(0.1), eligibility = OnlyOlder(50), isolation_duration = Inf)
         rng = StableRNG(17)
         state = simulate(
             ModelSpec(

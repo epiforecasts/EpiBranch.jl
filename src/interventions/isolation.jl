@@ -104,20 +104,29 @@ is `1 - post_isolation_transmission`.
 
 `isolation_duration` is how long the removal lasts before it lapses; it
 accepts a `Real`, a `Distribution`, or a function `(rng, ind) -> Real`
-(drawn per individual, each time isolation is set). The default `Inf` keeps a
-case isolated to the end of its infectious period, and a duration of zero
-isolates nobody. A finite duration gives
-[`isolation_release_time`](@ref) the time the block lapses.
+(drawn per individual, each time isolation is set). There is no default:
+callers must choose, since indefinite isolation is a choice to make rather
+than one to inherit. `Inf` never releases the case; a finite duration gives
+[`isolation_release_time`](@ref) the time the block lapses, and a duration of
+zero isolates nobody.
+
+`Inf` and a finite duration coincide only where the case is infectious for a
+bounded period that the duration outlasts. Where it does not, each contact
+drawn after the release goes through. A removal set before its host was
+infected at all is [`Quarantine`](@ref)'s to release, not this one's: isolation
+follows an onset, so its own release always falls after the infection.
 
 What that changes depends on the engine. On a generation-based process the
 block is a per-contact risk, so a contact after the release is not blocked.
 
-On the continuous-time (Sellke) models an infectious window carries one
-closing time and cannot reopen, so the release matters only when the removal
-had already lapsed before the case was infected: that case is not removed at
-all, which is what the duration exists for. A removal still standing at the
-infection, even one due to lapse a day later, closes the window for the rest
-of the infectious period.
+On the continuous-time (Sellke) models an infectious window holds one closing
+time and cannot reopen, so for a removal that takes the case out completely
+the release matters only when the removal had already lapsed before the case
+was infected: that case is not removed at all, which is what the duration
+exists for. A removal still standing at the infection, even one due to lapse a
+day later, closes the window for the rest of the infectious period. Leaky
+isolation closes no window, so there the release ends the hazard reduction and
+the case transmits at full rate again, on every model.
 
 An isolation time at or after the case's own outcome (recovery, death, or
 any other terminal [`Transition`](@ref)) still removes the case from
@@ -141,10 +150,10 @@ end
 
 function Isolation(;
         onset_to_isolation_delay,
+        isolation_duration,
         eligibility::IsolationEligibility = SymptomaticOnly(),
         test_sensitivity = 1.0,
-        post_isolation_transmission::Real = 0.0,
-        isolation_duration = Inf
+        post_isolation_transmission::Real = 0.0
     )
     return Isolation(
         eligibility, onset_to_isolation_delay, test_sensitivity,
@@ -177,8 +186,8 @@ end
 
 """Isolation blocks the parent → contact transmission while the parent's
 isolation is in force: from its isolation time until its
-[`isolation_release_time`](@ref) (`Inf` by default, so the block lasts until
-the end of the infectious period). Residual transmission is governed by
+[`isolation_release_time`](@ref), which an `isolation_duration` of `Inf`
+leaves infinite. Residual transmission is governed by
 `post_isolation_transmission`: `block_probability = 1 - post_isolation_transmission`."""
 function competing_risk(iso::Isolation, parent, contact, state)
     iso_t = isolation_time(parent)

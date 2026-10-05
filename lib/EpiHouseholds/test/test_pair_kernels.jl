@@ -48,7 +48,7 @@ end
     # must not yet be satisfied for it, whichever household races first.
     clinical = clinical_presentation(incubation_period = Dirac(0.0))
     iso = Scheduled(
-        Isolation(onset_to_isolation_delay = Dirac(0.0));
+        Isolation(onset_to_isolation_delay = Dirac(0.0), isolation_duration = Inf);
         start_after_cases = 4
     )
     kernel(i, j) = i <= 4 ? Dirac(1.0) : Dirac(10.0)

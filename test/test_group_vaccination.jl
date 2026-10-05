@@ -316,7 +316,7 @@ end
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
+        iso = Isolation(onset_to_isolation_delay = Exponential(0.5), isolation_duration = Inf)
         ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
 
         n_group_doses = 0
@@ -354,7 +354,7 @@ end
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.5))
+        iso = Isolation(onset_to_isolation_delay = Exponential(0.5), isolation_duration = Inf)
         ct = ContactTracing(probability = 0.3, isolation_to_trace_delay = Exponential(0.5))
         rv = RingVaccination(efficacy = 0.9)
         gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation())
