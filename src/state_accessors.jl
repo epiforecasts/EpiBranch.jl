@@ -248,10 +248,11 @@ function record_removal!(
         key::Symbol = REMOVAL_STRETCHES_KEY
     )
     (isfinite(start) && release > start) || return nothing
-    stretches = get!(
-        () -> Tuple{Float64, Float64}[], ind.state, key
-    )::Vector{Tuple{Float64, Float64}}
-    push!(stretches, (Float64(start), Float64(release)))
+    # The stretch keeps the individual's own number type, so that an AD dual
+    # isolation time flows through as the time accessors promise.
+    stretch = promote(start, release)
+    stretches = get!(() -> typeof(stretch)[], ind.state, key)
+    push!(stretches, stretch)
     sort!(stretches; by = first)
     ind.state[key] = _merge_stretches(stretches)
     return nothing
@@ -260,7 +261,7 @@ end
 # Overlapping and touching stretches folded into disjoint ones, so that no
 # stretch counts twice. `stretches` must already be sorted by its starts.
 function _merge_stretches(stretches)
-    merged = Tuple{Float64, Float64}[]
+    merged = similar(stretches, 0)
     for (a, b) in stretches
         if !isempty(merged) && a <= last(merged)[2]
             merged[end] = (last(merged)[1], max(last(merged)[2], b))
@@ -271,14 +272,23 @@ function _merge_stretches(stretches)
     return merged
 end
 
-# Every stretch a removal has taken this host out for, as sorted disjoint
-# `(start, release)` pairs, a release of `Inf` standing for a removal that
-# never ends. `:isolation_time` and `:isolation_release_time` hold the removal
-# in force, which is what a detection reads; this holds the history, which is
-# what a likelihood needs, since one pair cannot say that a host was
-# quarantined, released, and isolated again later. Read-only.
+"""
+    removal_stretches(ind, key = :_removal_stretches)
+
+Every stretch a removal has taken `ind` out of transmission for, as sorted
+disjoint `(start, release)` pairs, a release of `Inf` standing for a removal
+that never ends. Recorded by
+[`record_removal!`](@ref EpiBranch.record_removal!), which
+[`set_isolated!`](@ref) calls with the reserved key.
+
+[`isolation_time`](@ref) and [`isolation_release_time`](@ref) hold the removal
+in force, which is what a detection reads; this holds the history, which is
+what a likelihood needs, since one pair of times cannot say that a host was
+quarantined, released, and isolated again later. Treat the returned vector as
+read-only.
+"""
 function removal_stretches(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
-    return get(ind.state, key, _NO_STRETCHES)::Vector{Tuple{Float64, Float64}}
+    return get(ind.state, key, _NO_STRETCHES)
 end
 
 # The earliest removal of this host that never releases it. Such a removal
