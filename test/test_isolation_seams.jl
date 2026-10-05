@@ -127,6 +127,45 @@ EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, 
         end
     end
 
+    @testset "A leaky isolation records no stretch and keeps its window open" begin
+        # Leaky isolation reduces each contact's hazard and removes nobody, so
+        # it has no stretch for a likelihood to take out and no window to
+        # close. A wrapper that cannot read stretches must not narrow the
+        # window for it either, which would turn the reduction into a
+        # permanent, perfect removal.
+        leaky = Isolation(
+            onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(7.0),
+            post_isolation_transmission = 0.5
+        )
+        perfect = Isolation(
+            onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(7.0)
+        )
+        case = Individual(id = 1)
+        set_isolated!(case, 8.0; release_time = 15.0)
+
+        @test isempty(EpiBranch.removal_gap_host_times(leaky))
+        @test EpiBranch.removal_gap_host_times(perfect) ==
+            (EpiBranch.REMOVAL_STRETCHES_KEY,)
+        for wrap in (
+                identity,
+                iv -> Scheduled(iv; start_time = 0.0),
+                iv -> Scheduled(iv; start_time = 0.0, end_time = 10.0),
+                iv -> CapacityConstrained(iv; budget_per_period = 1.0e6),
+            )
+            @test EpiBranch.infectious_removal_time(wrap(leaky), case) == Inf
+        end
+
+        # The same lapsing wrapper does narrow a perfect isolation's window,
+        # which is the conservative answer for a block it can withdraw
+        # part-way through a stretch it recorded.
+        lapsing = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
+        @test EpiBranch.infectious_removal_time(lapsing, case) == 8.0
+
+        # A host no removal reached has no first removal to narrow to.
+        @test EpiBranch.first_removal_time(Individual(id = 2)) == Inf
+        @test EpiBranch.infectious_removal_time(lapsing, Individual(id = 3)) == Inf
+    end
+
     @testset "A lapsed isolation lets the case go again, on every engine" begin
         # Isolated on day 4 for 7 days (released day 11), recovering on day 30,
         # meeting its one contact at a fixed interval of 15 days — after the
