@@ -1805,14 +1805,14 @@ sampling error.
 ## Recording every contact event
 
 A continuous-time (Sellke) race stops proposing contacts for a pair once a
-[`standing_block`](@ref) has settled it for good, because nothing is left to
-gain from asking the model or the kernel again — see the bullet above. The
-transmission outcome is unaffected: the pair still stands in each other's
-contacts; tracing and ring construction read that, not these proposals. The
-dropped pair still costs the later contact *events* between it and its
-infector, and an output built to count them — how many exposures a vaccine
-averted, say, or how much intervention effort went into contacts that failed
-— needs those draws back.
+[`EpiBranch.standing_block`](@ref) has settled it for good, because nothing is
+left to gain from asking the model or the kernel again — see the bullet
+above. The transmission outcome is unaffected: the pair still stands in each
+other's contacts; tracing and ring construction read that, not these
+proposals. The dropped pair still costs the later contact *events* between it
+and its infector, and an output built to count them — how many exposures a
+vaccine averted, say, or how much intervention effort went into contacts
+that failed — needs those draws back.
 
 A [`ContactRecorder`](@ref) attached to the composed model's `recorder` is
 the seam for that. It joins in through one method dispatched on the
