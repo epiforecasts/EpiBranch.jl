@@ -1849,6 +1849,8 @@ pair back under the rejection-continuation guard described above, so a
 model whose window never closes is refused there, exactly as a block that
 was never declared standing would have been.
 
+## Adding an offspring specification
+
 Offspring specifications replace what `BranchingProcess` draws per
 individual. `ClusterMixed(build, mixing)` (per-chain parameter
 variation) is the reference. A new offspring type needs:
