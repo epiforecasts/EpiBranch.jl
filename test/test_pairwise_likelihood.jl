@@ -580,7 +580,12 @@ end
         EpiBranch.host_times(d::_NamedTimes) = d.times
         @test EpiBranch.host_times(layer) == (onset_time = [1.0, 2.0],)
 
-        @test Base.ispublic(EpiBranch, :host_times)
+        if VERSION >= v"1.11"
+            @test Base.ispublic(EpiBranch, :host_times)
+        else
+            @info "Skipping Base.ispublic check on Julia $VERSION"
+            @test_skip true
+        end
     end
 
     @testset "an impossible configuration has a zero gradient" begin
