@@ -19,7 +19,7 @@ end
         )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
-        set_isolated!(confirmed, 5.0)
+        set_isolated!(confirmed, 5.0; release_time = Inf)
         other_a = _group_member(gv, 2, :A, test_positive = false)
         another_a = _group_member(gv, 3, :A, test_positive = false)
         b1 = _group_member(gv, 4, :B, test_positive = false)
@@ -47,7 +47,7 @@ end
         )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
-        set_isolated!(confirmed, 6.0)
+        set_isolated!(confirmed, 6.0; release_time = Inf)
         member = _group_member(gv, 2, :A, test_positive = false)
         new_contacts = [confirmed, member]
         append!(state.individuals, new_contacts)
@@ -72,7 +72,7 @@ end
         )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
-        set_isolated!(confirmed, 6.0)
+        set_isolated!(confirmed, 6.0; release_time = Inf)
         members = [_group_member(gv, i, :A, test_positive = false) for i in 2:20]
         new_contacts = [confirmed; members]
         append!(state.individuals, new_contacts)
@@ -99,7 +99,7 @@ end
         )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
-        set_isolated!(confirmed, 2.0)
+        set_isolated!(confirmed, 2.0; release_time = Inf)
         member = _group_member(gv, 2, :A, test_positive = false)
         new_contacts = [confirmed, member]
         append!(state.individuals, new_contacts)
@@ -125,7 +125,7 @@ end
         )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
-        set_isolated!(confirmed, 2.0)
+        set_isolated!(confirmed, 2.0; release_time = Inf)
         member = _group_member(gv, 2, :A, test_positive = false)
         new_contacts = [confirmed, member]
         append!(state.individuals, new_contacts)
@@ -156,7 +156,7 @@ end
         )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
-        set_isolated!(confirmed, 4.0)
+        set_isolated!(confirmed, 4.0; release_time = Inf)
         first_gen = [confirmed]
         append!(state.individuals, first_gen)
         EpiBranch.apply_post_transmission!(gv, state, first_gen)
@@ -189,7 +189,7 @@ end
         )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
-        set_isolated!(confirmed, 4.0)
+        set_isolated!(confirmed, 4.0; release_time = Inf)
         member = _group_member(gv, 2, :A, test_positive = false)
         first_gen = [confirmed, member]
         append!(state.individuals, first_gen)
@@ -199,7 +199,7 @@ end
         # A later generation's own case is confirmed earlier (isolated at 1),
         # moving the group's trigger earlier still.
         earlier_confirmed = _group_member(gv, 3, :A, test_positive = true)
-        set_isolated!(earlier_confirmed, 1.0)
+        set_isolated!(earlier_confirmed, 1.0; release_time = Inf)
         second_gen = [earlier_confirmed]
         append!(state.individuals, second_gen)
         EpiBranch.apply_post_transmission!(gv, state, second_gen)
@@ -231,7 +231,7 @@ end
 
         # `a` settles first, with a late trigger (isolated at 20).
         a.state[:test_positive] = true
-        set_isolated!(a, 20.0)
+        set_isolated!(a, 20.0; release_time = Inf)
         processed[1] = true
         state.max_infection_time = 5.0
         EpiBranch._apply_continuous_actions!(state, a, [gv], members, processed)
@@ -241,7 +241,7 @@ end
         # `b` settles next, with an earlier trigger (isolated at 8) than
         # `a`'s, despite settling later.
         b.state[:test_positive] = true
-        set_isolated!(b, 8.0)
+        set_isolated!(b, 8.0; release_time = Inf)
         processed[2] = true
         state.max_infection_time = 6.0
         EpiBranch._apply_continuous_actions!(state, b, [gv], members, processed)
@@ -285,7 +285,7 @@ end
         )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
-        set_isolated!(confirmed, 10.0)
+        set_isolated!(confirmed, 10.0; release_time = Inf)
         member = _group_member(gv, 2, :A, test_positive = false)
         new_contacts = [confirmed, member]
         append!(state.individuals, new_contacts)
@@ -400,7 +400,7 @@ end
         )
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
-        set_isolated!(confirmed, 5.0)
+        set_isolated!(confirmed, 5.0; release_time = Inf)
         members = [_group_member(gv, i, :A, test_positive = false) for i in 2:201]
         append!(state.individuals, [confirmed; members])
 
@@ -441,7 +441,7 @@ end
             setup = (ind, i) -> (ind.state[:group] = :A)
         )
         campaign_state.individuals[1].state[:test_positive] = true
-        set_isolated!(campaign_state.individuals[1], 5.0)
+        set_isolated!(campaign_state.individuals[1], 5.0; release_time = Inf)
         EpiBranch.apply_post_transmission!(gv, campaign_state, campaign_state.individuals)
         return campaign_state
     end

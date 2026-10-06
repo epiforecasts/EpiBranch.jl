@@ -178,7 +178,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
 
     @testset "isolation reaches a window only through INTERVENTION_REMOVAL" begin
         ind = Individual(id = 1)
-        set_isolated!(ind, 4.0)
+        set_isolated!(ind, 4.0; release_time = Inf)
         @test is_isolated(ind)
         @test isolation_time(ind) == 4.0
         # `:isolated_time` is left to a `Transition(:isolated, …)`, so a window
@@ -201,7 +201,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         ind = Individual(id = 1)
         ind.infection_time = 0.0
         ind.state[:recovered_time] = 10.0
-        set_isolated!(ind, 3.0)
+        set_isolated!(ind, 3.0; release_time = Inf)
 
         household = RouteWindow(:household; until = (:recovered,), kernel = nothing)
         community = RouteWindow(

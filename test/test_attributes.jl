@@ -331,7 +331,7 @@ end
             people = EpiBranch.add_individuals!(state, 40, [])
             for ind in people
                 ind.state[:test_positive] = true
-                set_isolated!(ind, 2.0)
+                set_isolated!(ind, 2.0; release_time = Inf)
             end
 
             EpiBranch.apply_post_transmission!(gv, state, people)

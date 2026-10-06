@@ -395,7 +395,7 @@ end
         ind.state[:_ring_propagated] = true
         # An isolation in force but never recorded as a detection is still an
         # isolation this trace brought about, so the reset lifts it.
-        set_isolated!(ind, 6.0)
+        set_isolated!(ind, 6.0; release_time = Inf)
         ind.state[:_isolation_unrecorded] = true
         EpiBranch.reset!(ct, ind)
         @test ind.state[:traced] == false
@@ -433,7 +433,7 @@ end
         # isolation must survive either trace untouched.
         for unreachable in (NaN, Inf)
             standing = Individual(id = 3)
-            set_isolated!(standing, 4.0)
+            set_isolated!(standing, 4.0; release_time = Inf)
             EpiBranch.apply_trace!(
                 Quarantine(duration = Inf), standing, state, unreachable, StableRNG(1)
             )
@@ -444,7 +444,7 @@ end
 
             # An unrecorded standing isolation stays unrecorded.
             unrecorded = Individual(id = 4)
-            set_isolated!(unrecorded, 4.0)
+            set_isolated!(unrecorded, 4.0; release_time = Inf)
             unrecorded.state[:_isolation_unrecorded] = true
             EpiBranch.apply_trace!(
                 Quarantine(duration = Inf), unrecorded, state, unreachable, StableRNG(1)

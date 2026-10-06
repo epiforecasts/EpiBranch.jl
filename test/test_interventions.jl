@@ -167,7 +167,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         # Isolation set by another intervention (no provenance marker).
         traced = Individual(id = 1)
-        set_isolated!(traced, 3.0)
+        set_isolated!(traced, 3.0; release_time = Inf)
         @test is_isolated(traced)
         EpiBranch.reset!(iso, traced)
         @test is_isolated(traced)               # preserved
@@ -175,7 +175,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         # An isolation Isolation itself set (marked) is still reset.
         own = Individual(id = 2)
-        set_isolated!(own, 3.0)
+        set_isolated!(own, 3.0; release_time = Inf)
         own.state[:_isolated_by_isolation] = true
         EpiBranch.reset!(iso, own)
         @test !is_isolated(own)
@@ -206,7 +206,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             infector = Individual(id = 1)
             infector.state[:infected] = true
             infector.state[:onset_time] = 1.0
-            set_isolated!(infector, 2.0)
+            set_isolated!(infector, 2.0; release_time = Inf)
             contact = Individual(id = 2)
             EpiBranch.initialise_individual!(ct, contact, state)
             return infector, contact
@@ -244,7 +244,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # onward transmission; an untraced one contributes no removal.
         traced = Individual(id = 3)
         traced.state[:quarantined] = true
-        set_isolated!(traced, 4.0)
+        set_isolated!(traced, 4.0; release_time = Inf)
         @test EpiBranch.infectious_removal_time(ct, traced) == 4.0
         @test EpiBranch.infectious_removal_time(ct, Individual(id = 4)) == Inf
 
@@ -292,7 +292,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             case = state.individuals[1]
             case.state[:infected] = true
             case.infection_time = 0.0
-            set_isolated!(case, 2.0)
+            set_isolated!(case, 2.0; release_time = Inf)
             neighbours = [[2], [1, 3], [2, 4], [3]]
             # Node 3 cannot be reached before time 50, as on a route that
             # opens late.
@@ -358,7 +358,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             ind = Individual(id = id)
             EpiBranch.initialise_individual!(ct, ind, state)
             ind.state[:infected] = true
-            set_isolated!(ind, isolated_at)
+            set_isolated!(ind, isolated_at; release_time = Inf)
             return ind
         end
         function contact(id)
@@ -408,7 +408,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         late = Individual(id = 1)
         late.state[:onset_time] = 2.0
         late.state[:test_positive] = true
-        set_isolated!(late, 50.0)
+        set_isolated!(late, 50.0; release_time = Inf)
         EpiBranch.resolve_individual!(iso, late, state)
         @test isolation_time(late) ≈ 2.0 atol = 1.0e-6
         @test get(late.state, :_isolated_by_isolation, false)
@@ -417,7 +417,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         early = Individual(id = 2)
         early.state[:onset_time] = 40.0
         early.state[:test_positive] = true
-        set_isolated!(early, 1.0)
+        set_isolated!(early, 1.0; release_time = Inf)
         EpiBranch.resolve_individual!(iso, early, state)
         @test isolation_time(early) == 1.0
         @test !get(early.state, :_isolated_by_isolation, false)
@@ -427,7 +427,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         negative = Individual(id = 3)
         negative.state[:onset_time] = 2.0
         negative.state[:test_positive] = false
-        set_isolated!(negative, 50.0)
+        set_isolated!(negative, 50.0; release_time = Inf)
         EpiBranch.resolve_individual!(iso, negative, state)
         @test isolation_time(negative) == 50.0
     end
@@ -467,7 +467,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             ind.state[:onset_time] = 1.0
             ind.state[:test_positive] = true
             ind.state[:outcome_time] = 2.0
-            set_isolated!(ind, 20.0)
+            set_isolated!(ind, 20.0; release_time = Inf)
             EpiBranch.resolve_individual!(iso, ind, state)
             return ind
         end
@@ -525,7 +525,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         quarantined.state[:onset_time] = 1.0
         quarantined.state[:test_positive] = true
         quarantined.state[:outcome_time] = 2.0
-        set_isolated!(quarantined, 50.0)
+        set_isolated!(quarantined, 50.0; release_time = Inf)
         EpiBranch.resolve_individual!(iso, quarantined, state)
         @test isolation_time(quarantined) ≈ 6.0 atol = 1.0e-6
         @test !is_isolated(quarantined)
@@ -659,7 +659,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     @testset "A later quarantine leaves an unrecorded isolation unrecorded" begin
         function unrecorded_isolation()
             ind = Individual(id = 1)
-            set_isolated!(ind, 6.0)
+            set_isolated!(ind, 6.0; release_time = Inf)
             ind.state[:_isolation_unrecorded] = true
             return ind
         end
@@ -702,7 +702,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         # A standing isolation that never lapses is not given an end.
         permanent = Individual(id = 3)
-        set_isolated!(permanent, 10.0)
+        set_isolated!(permanent, 10.0; release_time = Inf)
         EpiBranch.apply_trace!(
             Quarantine(duration = Dirac(2.0)), permanent, nothing, 5.0, rng
         )
@@ -893,7 +893,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         # `set_isolated!`'s own `release_time` keyword still defaults to `Inf`:
         # no release, so the block never lapses.
-        default_release = set_isolated!(Individual(id = 3), 10.0)
+        default_release = set_isolated!(Individual(id = 3), 10.0; release_time = Inf)
         @test isinf(default_release)
     end
 
@@ -950,6 +950,15 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "Quarantine duration has no default" begin
         @test_throws UndefKeywordError Quarantine()
+    end
+
+    @testset "set_isolated! requires a release time" begin
+        # The accessor is where an intervention written outside the package
+        # removes a host, so it is the last place a removal could inherit
+        # "forever" without saying so.
+        @test_throws UndefKeywordError set_isolated!(Individual(id = 1), 4.0)
+        @test isinf(set_isolated!(Individual(id = 2), 4.0; release_time = Inf))
+        @test set_isolated!(Individual(id = 3), 4.0; release_time = 11.0) == 11.0
     end
 
     @testset "ContactTracing requires action" begin

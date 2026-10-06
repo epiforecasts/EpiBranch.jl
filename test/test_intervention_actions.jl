@@ -100,7 +100,7 @@ end
     function traced_contact(id, unrecorded)
         ind = Individual(id = id, state = Dict{Symbol, Any}(:traced => true))
         EpiBranch.initialise_individual!(rv, ind, state)
-        set_isolated!(ind, 5.0)
+        set_isolated!(ind, 5.0; release_time = Inf)
         unrecorded && (ind.state[:_isolation_unrecorded] = true)
         push!(state.individuals, ind)
         return ind
