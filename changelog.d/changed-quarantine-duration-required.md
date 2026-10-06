@@ -1,4 +1,4 @@
-`Quarantine`'s `duration` is now required, with no default: `Quarantine(;
+**Breaking.** `Quarantine`'s `duration` is now required, with no default: `Quarantine(;
 duration = Inf)` reproduced the previous behaviour silently, so a caller who
 did not know the keyword existed got an indefinite quarantine anyway.
 `ContactTracing` now takes its `action` the same way, with no default, on
