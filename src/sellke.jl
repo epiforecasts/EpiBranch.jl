@@ -299,14 +299,26 @@ end
 # multiplier. A kernel whose support ends at or before `dt` has no survival left
 # and so no later contact to give: a degenerate (`Dirac`) contact interval is one
 # such, offering exactly one contact.
-_next_contact(::AbstractRNG, ::Nothing, ::Real, dt, end_dt) = Inf
-function _next_contact(rng::AbstractRNG, kernel, m::Real, dt, end_dt)
+_next_contact(::AbstractRNG, ::Nothing, ::Real, dt, end_dt, certain_until = nothing) = Inf
+function _next_contact(
+        rng::AbstractRNG, kernel, m::Real, dt, end_dt, certain_until = nothing
+    )
     m <= 0 && return Inf
     ls = logccdf(kernel, dt)
     isfinite(ls) || return Inf
     # An opaque risk may block forever. Rejection sampling is supported only
     # when the remaining integrated hazard is finite; a finite time alone is
     # insufficient for a continuous kernel whose support ends in the window.
+    #
+    # A block known to be certain is the exception, `certain_until` holding when
+    # it lapses. Reaching the end of the kernel's own survival, it answers every
+    # proposal that could still happen, so the pair is finished rather than
+    # resampled; lapsing before then, it leaves contacts it does not block, and
+    # the redraws terminate on one of them.
+    if !isfinite(logccdf(kernel, end_dt)) && certain_until !== nothing
+        return isfinite(logccdf(kernel, certain_until)) ?
+            _draw_next_contact(rng, kernel, m, ls, dt) : oftype(ls, Inf)
+    end
     isfinite(logccdf(kernel, end_dt)) || throw(
         ArgumentError(
             "repeated contacts after a blocked proposal require finite remaining " *
@@ -319,10 +331,17 @@ function _next_contact(rng::AbstractRNG, kernel, m::Real, dt, end_dt)
                 "`exclusive_probabilities` for terminal transitions meant to " *
                 "partition the population exactly). A window closed only by " *
                 "`INTERVENTION_REMOVAL` reaches this too when the case's " *
-                "isolation or quarantine lapsed before it was infected, since " *
-                "a removal it never met cannot close it."
+                "isolation or quarantine is due to lapse, since only a removal " *
+                "that stands for the rest of the infectious period closes the " *
+                "window by itself. A component whose certain block is in force " *
+                "also lands here until it declares `binding_release`, which is " *
+                "what lets the race read the release it reports."
         )
     )
+    return _draw_next_contact(rng, kernel, m, ls, dt)
+end
+
+function _draw_next_contact(rng::AbstractRNG, kernel, m::Real, ls, dt)
     nxt = _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
     return nxt > dt ? nxt : Inf
 end
@@ -365,6 +384,29 @@ standing_block(::AbortedInfection) = true
 # value could still give a smaller block to a later exposure.
 standing_block(v::AbstractVaccination) = !supports_waning(effect_mode(v))
 
+"""
+    binding_release(component) -> Bool
+
+Whether a `release_time` this component reports on a [`Risk`](@ref) binds its
+later answers: a block it says lapses at `t` is not still in force after `t`,
+and a block it reports as never releasing has not lifted by the next proposal.
+The default is the conservative `false`.
+
+The continuous-time race reads this where a pair's kernel has unboundedly many
+contacts left in the window, to tell a block that ends the pair from one it
+must go on proposing against. Without the declaration such a block raises
+rather than silently dropping transmission that could still happen, for the
+reason [`standing_block`](@ref EpiBranch.standing_block) gives: `competing_risk`
+reads the state, so a block that looks certain at one proposal may have lifted
+by the next.
+
+The built-in removals declare it, their stretches being append-only state that
+[`record_removal!`](@ref EpiBranch.record_removal!) only ever adds to. A
+[`Scheduled`](@ref) that can close declares it away again, its window closing
+being exactly a block withdrawn before the release it reported.
+"""
+binding_release(component) = false
+
 # Whether a resolved risk is certain and already in force at this proposal: its
 # `event_time`, a plain number rather than one resampled on each ask, has
 # passed, its `block_probability`, also a plain number rather than a waning
@@ -389,6 +431,57 @@ function _any_standing_risk(source, parent, contact, state, transmission_time)
         _standing_risk(risk, transmission_time) && return true
     end
     return false
+end
+
+# Whether a resolved risk is certain and already in force at this proposal,
+# whatever it does later: the weaker half of `_standing_risk`, which adds that
+# the block never lapses.
+function _in_force_certainly(risk::Risk, transmission_time)
+    return risk.event_time isa Real && risk.event_time <= transmission_time &&
+        risk.block_probability isa Real && risk.block_probability >= 1.0 &&
+        risk.release_time isa Real
+end
+
+# The time every certain block now in force against this pair has lapsed, or
+# `Inf` where one never does; `nothing` where no certain block is in force, or
+# where one of them comes from a source whose reported releases do not bind. A
+# pair certainly blocked to that time cannot transmit before it, which is what
+# tells the race whether redrawing can terminate.
+function _certain_block_release(
+        state, parent, contact, transmission_time, model_risks, interventions
+    )
+    release, ok = _certain_release(
+        nothing, AbortedInfection(), parent, contact, state, transmission_time
+    )
+    ok || return nothing
+    for source in model_risks
+        release, ok = _certain_release(
+            release, source, parent, contact, state, transmission_time
+        )
+        ok || return nothing
+    end
+    for iv in interventions
+        release, ok = _certain_release(
+            release, iv, parent, contact, state, transmission_time
+        )
+        ok || return nothing
+    end
+    return release
+end
+
+# The release of every certain block `source` has in force, folded into
+# `release`, and whether its releases bind at all (`binding_release`). One
+# whose do not could be blocking at the next proposal whatever this risk says,
+# so nothing it reports can end the pair, and no other source's release can
+# speak for it either.
+function _certain_release(release, source, parent, contact, state, transmission_time)
+    for risk in _iter_risks(competing_risk(source, parent, contact, state))
+        _in_force_certainly(risk, transmission_time) || continue
+        binding_release(source) || return release, false
+        release = release === nothing ? risk.release_time :
+            max(release, risk.release_time)
+    end
+    return release, true
 end
 
 # Whether the block just resolved for `parent` → `contact` at `transmission_time`
@@ -443,7 +536,11 @@ function _proposal_blocked(
         permanent = blocked && _permanently_blocked(
             state, parent, contact, transmission_time, model_risks, interventions
         )
-        return blocked, permanent
+        release = blocked && !permanent ?
+            _certain_block_release(
+                state, parent, contact, transmission_time, model_risks, interventions
+            ) : nothing
+        return blocked, permanent, release
     finally
         state.max_infection_time = previous_clock
         blocked && (contact.infection_time = previous)
@@ -907,7 +1004,7 @@ function _sellke_race!(
         # defined to start, and is put to no risk at all.
         source = infector_id == 0 ? ind : state.individuals[infector_id]
         if may_block && (infector_id != 0 || introduction !== nothing)
-            blocked, permanent = _proposal_blocked(
+            blocked, permanent, certain_release = _proposal_blocked(
                 state, source, ind, bt, risks,
                 opening.route == 0 ? introduction_interventions :
                     route_interventions[opening.route]
@@ -945,8 +1042,11 @@ function _sellke_race!(
                         close_t = opening.close_t
                         mult = source.infectiousness * ind.susceptibility
                     end
-                    nxt = open_t +
-                        _next_contact(rng, kernel, mult, bt - open_t, close_t - open_t)
+                    nxt = open_t + _next_contact(
+                        rng, kernel, mult, bt - open_t, close_t - open_t,
+                        certain_release === nothing ? nothing :
+                            certain_release - open_t
+                    )
                     proposals[p] = _at(proposals[p], nxt <= close_t ? nxt : T(Inf))
                 end
                 _requeue!(pending, proposals, head, best, represents, j)

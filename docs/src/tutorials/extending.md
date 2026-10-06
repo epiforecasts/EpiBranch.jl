@@ -72,6 +72,8 @@ downstream packages should pick names that do not collide.
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
 | `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block lapses |
+| `:_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `set_isolated!` | Internal. Every `(start, release)` a removal took the host out for, merged and sorted; a release of `Inf` for one that never ends |
+| `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`'s `Quarantine` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history |
 | `:_isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!`; internal |
 | `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
 | `:_isolation_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The time a standing isolation held before this one |
@@ -173,8 +175,11 @@ same simulation is not supported, because they will overwrite each other.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 alongside it for when the block lapses; a release of `Inf`, which is what
-`set_isolated!` assumes when given no `release_time`, never comes. A window
-that isolation
+`set_isolated!` assumes when given no `release_time`, never comes. Those two
+hold the removal in force, which is what a detection reads. The history, which
+a likelihood needs, is the list of stretches under `:_removal_stretches`, since
+one pair of times cannot say that a host was quarantined, released, and
+isolated again later. A window that isolation
 should end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
 [Transmission routes](#Transmission-routes)), which respects leaky isolation.
 `:isolated` in an `until` refers to a `Transition(:isolated, …)` in the natural
@@ -2200,6 +2205,82 @@ for every host, and `loglikelihood(data, spec)` evaluates the effect. The same
 object, or any other effect, can be passed to
 `pairwise_surv_loglik(kernel, data; susceptibility = effect)` directly, which is
 how a candidate efficacy is evaluated in inference.
+
+### Declaring a removal that hands a host back
+
+A removal that takes a host out of transmission for a stretch and hands it
+back leaves the host infectious on both sides of that stretch. The infectious
+window holds one closing time and cannot reopen, so such a removal leaves the
+window alone and blocks each contact over its own stretches instead, through
+`competing_risk`. For the likelihood to agree with the simulator it has to
+take the same stretches out of each pair's exposure, so it reads them from the
+layer's `host_times`.
+
+Record each stretch with
+[`EpiBranch.record_removal!`](@ref EpiBranch.record_removal!) and name the key
+you recorded it under with
+[`EpiBranch.removal_gap_host_times`](@ref EpiBranch.removal_gap_host_times):
+
+```julia
+struct Shielding <: EpiBranch.AbstractIntervention
+    duration::Float64
+end
+const SHIELDING_STRETCHES = :shielding_stretches
+
+function EpiBranch.resolve_individual!(s::Shielding, ind, state)
+    t = EpiBranch.onset_time(ind)
+    isfinite(t) || return nothing
+    EpiBranch.record_removal!(ind, t, t + s.duration; key = SHIELDING_STRETCHES)
+    return nothing
+end
+
+function EpiBranch.competing_risk(::Shielding, parent, contact, state)
+    stretches = EpiBranch.removal_stretches(parent, SHIELDING_STRETCHES)
+    isempty(stretches) && return nothing
+    return Tuple(
+        EpiBranch.Risk(event_time = a, block_probability = 1.0, release_time = b)
+            for (a, b) in stretches
+    )
+end
+
+EpiBranch.removal_gap_host_times(::Shielding) = (SHIELDING_STRETCHES,)
+EpiBranch.binding_release(::Shielding) = true
+EpiBranch.infection_likelihood_compatible(::Shielding) = true
+```
+
+`household_infections` and `network_infections` then record the key, merge it
+with every other removal's stretches, and `loglikelihood(data, spec)` loses
+exactly the days the simulation blocked.
+
+`EpiBranch.binding_release` is what lets the continuous-time race read the
+release. Leaving it out is not a safe omission where a pair's kernel has
+unboundedly many contacts left in the window, such as a truncated generation
+interval: one source that has not declared it stops the race reading any
+release for that pair, and a model that ran without this intervention then
+raises with it. Under an unbounded kernel the omission changes nothing, so the
+failure appears only on the models where it matters most.
+
+A removal that sometimes never releases its host should also define
+[`infectious_removal_time`](@ref EpiBranch.infectious_removal_time), returning
+the start of such a removal as the built-ins do. Its default is `Inf`, which
+leaves the infectious window at the natural-history close, and the likelihood
+then ends the exposure at the stretch's start to match what the simulation
+blocked. The continuous-time race reads a `Risk`'s `release_time` only from a
+component that declares it, because `competing_risk` reads the state and a
+block that looks certain at one proposal may have lifted by the next.
+Recorded stretches are append-only, so their releases bind; a block that comes
+and goes with the state, such as a ward that reopens, does not, and the race
+raises rather than ending a pair whose contacts could still transmit.
+
+Naming the key is not optional for a removal that declares
+`infection_likelihood_compatible`. Name none and the layer records nothing, so
+the likelihood fits on the whole exposure while the simulation blocked part of
+it, which biases the fit without any sign of it. The one component for which
+naming none is right is a wrapper, which can withdraw the inner block
+part-way through a stretch it recorded: a [`Scheduled`](@ref) with an end does
+that, and `InterventionWrapper` narrows the infectious window to the first
+removal instead. That narrowing is the wrapper's own and no plain intervention
+inherits it, the default `infectious_removal_time` being `Inf`.
 
 ### Choosing initial cases in a fixed population
 

@@ -23,7 +23,15 @@ function intervention_time(w::InterventionWrapper, ind::Individual)
 end
 reset!(w::InterventionWrapper, ind::Individual) = reset!(w.intervention, ind)
 function infectious_removal_time(w::InterventionWrapper, ind::Individual)
-    return infectious_removal_time(w.intervention, ind)
+    t = infectious_removal_time(w.intervention, ind)
+    isempty(removal_gap_host_times(w)) || return t
+    # No stretch of a wrapper that can lapse is honoured, so the window closes
+    # at the first removal, as it would for one that never releases. Both sides
+    # then block at least the days the simulation did.
+    for key in removal_gap_host_times(w.intervention)
+        t = min(t, first_removal_time(ind, key))
+    end
+    return t
 end
 traces_contacts(w::InterventionWrapper) = traces_contacts(w.intervention)
 function on_infection_settled!(w::InterventionWrapper, ind, state, rng)
@@ -31,6 +39,12 @@ function on_infection_settled!(w::InterventionWrapper, ind, state, rng)
 end
 _unwrap_scheduled(w::InterventionWrapper) = _unwrap_scheduled(w.intervention)
 
+binding_release(w::InterventionWrapper) = binding_release(w.intervention)
 risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route)
 risk_depends_on_infector(w::InterventionWrapper) = risk_depends_on_infector(w.intervention)
 reads_population_state(w::InterventionWrapper) = reads_population_state(w.intervention)
+# A wrapper that can withdraw the inner block part-way through a stretch
+# already recorded cannot have those stretches read back: one per-host record
+# says nothing about when the gating closed. The default is therefore to
+# declare none, which narrows the infectious window instead (above), and a
+# wrapper whose gating cannot withdraw a block forwards the declaration.

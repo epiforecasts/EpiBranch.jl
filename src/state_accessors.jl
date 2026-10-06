@@ -59,23 +59,6 @@ function isolation_release_time(ind::Individual{T}) where {T}
     return convert(T, get(ind.state, :isolation_release_time, T(Inf)))::T
 end
 
-# Whether the individual's own isolation or quarantine had already lapsed
-# before their infection, so a continuous-time route window never met the
-# removal and should not be shut by it.
-#
-# A removal whose release is at or before its own start lapses without ever
-# being in force, which is how a zero-length duration reads here: it removes
-# nobody, as it does on the generation engine, where `event_t <= t < release_t`
-# blocks nothing.
-#
-# `infection_time` is the earliest a window can open, which makes this test
-# sound but not complete: a window whose `from` is a later state (a latent
-# period's `:onset`, a funeral route) can open after a removal lapsed and
-# still be shut by it. Closing that gap needs the window's own open time where
-# the decision is made, and `infectious_removal_time` is given the individual
-# alone, so it is a change to that hook rather than to this predicate.
-_removal_lapsed_before_infection(ind::Individual) =
-    isolation_release_time(ind) <= max(ind.infection_time, isolation_time(ind))
 
 # Whether an isolation or quarantine stands on the individual, recorded or not.
 # Interventions layering one isolation over another read this.
@@ -220,6 +203,13 @@ is_settled(state, ind::Individual) = get(ind.state, :_settled, false)::Bool
 """Type index for multi-type branching processes (default 1)."""
 individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 
+# The key `set_isolated!` records a removal's history under. A component that
+# removes a host through a path of its own records under its own key instead,
+# and names it from `removal_gap_host_times`.
+const REMOVAL_STRETCHES_KEY = :_removal_stretches
+
+const _NO_STRETCHES = Tuple{Float64, Float64}[]
+
 """Mark an individual as isolated at the given time (any `Real`, so an AD
 dual isolation time flows through), with an optional `release_time` (`Inf`
 by default) from which the block lapses.
@@ -233,7 +223,92 @@ function set_isolated!(ind::Individual, time::Real; release_time::Real = Inf)
     ind.state[:isolated] = true
     delete!(ind.state, :_isolation_unrecorded)
     ind.state[:isolation_time] = time
-    return ind.state[:isolation_release_time] = release_time
+    ind.state[:isolation_release_time] = release_time
+    record_removal!(ind, time, release_time)
+    return release_time
+end
+
+"""
+    record_removal!(ind, start, release; key = :_removal_stretches)
+
+Record that a removal took `ind` out of transmission from `start` until
+`release`, which is `Inf` for one that never releases it.
+[`set_isolated!`](@ref) records under the reserved key, which both built-in
+removals share.
+
+A removal of your own that keeps its own history passes its own `key` and
+names that key from
+[`removal_gap_host_times`](@ref EpiBranch.removal_gap_host_times). A
+likelihood then takes the same stretches out of each pair's exposure as the
+simulator blocked, which is what keeps `simulate` and `loglikelihood` in
+agreement.
+"""
+function record_removal!(
+        ind::Individual, start::Real, release::Real;
+        key::Symbol = REMOVAL_STRETCHES_KEY
+    )
+    (isfinite(start) && release > start) || return nothing
+    # The stretch keeps the individual's own number type, so that an AD dual
+    # isolation time flows through as the time accessors promise.
+    stretch = promote(start, release)
+    stretches = get!(() -> typeof(stretch)[], ind.state, key)
+    push!(stretches, stretch)
+    sort!(stretches; by = first)
+    ind.state[key] = _merge_stretches(stretches)
+    return nothing
+end
+
+# Overlapping and touching stretches folded into disjoint ones, so that no
+# stretch counts twice. `stretches` must already be sorted by its starts.
+function _merge_stretches(stretches)
+    merged = similar(stretches, 0)
+    for (a, b) in stretches
+        if !isempty(merged) && a <= last(merged)[2]
+            merged[end] = (last(merged)[1], max(last(merged)[2], b))
+        else
+            push!(merged, (a, b))
+        end
+    end
+    return merged
+end
+
+"""
+    removal_stretches(ind, key = :_removal_stretches)
+
+Every stretch a removal has taken `ind` out of transmission for, as sorted
+disjoint `(start, release)` pairs, a release of `Inf` standing for a removal
+that never ends. Recorded by
+[`record_removal!`](@ref EpiBranch.record_removal!), which
+[`set_isolated!`](@ref) calls with the reserved key.
+
+[`isolation_time`](@ref) and [`isolation_release_time`](@ref) hold the removal
+in force, which is what a detection reads; this holds the history, which is
+what a likelihood needs, since one pair of times cannot say that a host was
+quarantined, released, and isolated again later. Treat the returned vector as
+read-only.
+"""
+function removal_stretches(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
+    return get(ind.state, key, _NO_STRETCHES)
+end
+
+# The earliest removal of this host that never releases it. Such a removal
+# closes the infectious window, which is where a likelihood takes it out of
+# the exposure, so it is read apart from the stretches that lapse. The merge
+# leaves at most one of them.
+function permanent_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
+    t = Inf
+    for (start, release) in removal_stretches(ind, key)
+        isfinite(release) || (t = min(t, start))
+    end
+    return t
+end
+
+# The first time any removal took this host out, whether or not it released
+# them. A component whose stretches a likelihood cannot read closes the
+# infectious window here instead of holding them.
+function first_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
+    stretches = removal_stretches(ind, key)
+    return isempty(stretches) ? Inf : first(stretches)[1]
 end
 
 """Clear an individual's isolation, the inverse of [`set_isolated!`](@ref)."""
@@ -242,5 +317,6 @@ function clear_isolated!(ind::Individual)
     delete!(ind.state, :_isolation_unrecorded)
     ind.state[:isolation_time] = Inf
     ind.state[:isolation_release_time] = Inf
+    delete!(ind.state, REMOVAL_STRETCHES_KEY)
     return nothing
 end

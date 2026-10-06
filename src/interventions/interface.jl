@@ -262,6 +262,18 @@ function _removal_duration(duration, rng, individual, what)
     return d
 end
 
+# One risk per stretch a removal took the host out for, a release of `Inf`
+# standing for a removal that never ends. A likelihood takes the same
+# stretches out of each pair's exposure, which is what keeps the two in step.
+function _removal_risks(parent, block_probability, key = REMOVAL_STRETCHES_KEY)
+    stretches = removal_stretches(parent, key)
+    isempty(stretches) && return nothing
+    return Tuple(
+        Risk(event_time = a, block_probability = block_probability, release_time = b)
+            for (a, b) in stretches
+    )
+end
+
 # The start and release holding two removals at once. Where they overlap or
 # touch, the smallest interval covering both is their union and loses nothing,
 # and keeping one side's release alone would drop a removal still in force.
