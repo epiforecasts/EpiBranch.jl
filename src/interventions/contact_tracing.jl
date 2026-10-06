@@ -404,7 +404,7 @@ and quarantined while any standing isolation is left as it was.
 `duration` is how long the quarantine lasts before it lapses; it accepts a
 `Real`, a `Distribution`, or a function `(rng, ind) -> Real` (drawn once per
 trace). There is no default: callers must choose, since policies differ on
-how long a quarantine should last. Pass `Inf` to keep a quarantine in force
+how long one should last. Pass `Inf` to keep a quarantine in force
 until the end of the infectious period. Pass a finite duration instead for a
 contact who escapes the traced exposure but is infected later through
 another route, so the quarantine lapses rather than outliving its cause and
