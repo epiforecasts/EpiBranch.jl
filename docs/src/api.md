@@ -85,6 +85,8 @@ NetworkInfections
 
 ```@docs
 Individual
+InfectionEpisode
+close_episode!
 SimulationState
 SimOpts
 AbstractStoppingRule
@@ -195,6 +197,7 @@ EpiBranch.HostSusceptibility
 EpiBranch.InfectorInfectiousness
 EpiBranch.InfectiousSource
 EpiBranch.AbortedInfection
+EpiBranch.HostImmunity
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.apply_post_transmission!
@@ -267,6 +270,7 @@ severity_efficacy
 is_asymptomatic
 is_test_positive
 is_infected
+susceptible_again_time
 individual_type
 set_isolated!
 clear_isolated!
