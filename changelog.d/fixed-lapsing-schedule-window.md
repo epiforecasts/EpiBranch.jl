@@ -4,5 +4,5 @@ removal's own start. The per-contact risk already re-checks the schedule
 at every proposal; a wrapped `isolation_duration` or `Quarantine`
 `duration` now hands the case back on its own terms whatever the schedule
 does later. Only a removal with no release of its own still closes the
-window there — the conservative choice for a block the wrapper has no way
-to speak for.
+window there. That's the conservative choice for a block the wrapper has
+no way to speak for.

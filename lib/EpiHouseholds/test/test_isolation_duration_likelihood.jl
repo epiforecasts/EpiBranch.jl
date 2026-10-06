@@ -106,11 +106,10 @@ end
     ) == (key,)
 
     # A schedule that closes withdraws the block part-way through the stretch,
-    # which the record cannot express. It declares none, but the isolation's
-    # own finite duration still releases the case on its own terms, which the
-    # per-contact risk re-checks against the schedule at every proposal
-    # regardless, so the window stays open rather than closing at the
-    # isolation's own start.
+    # which the record cannot express, so it declares none. The isolation's
+    # own finite duration still releases the case on its own terms: the
+    # per-contact risk re-checks the schedule at every proposal, and the
+    # window stays open rather than narrowing to the isolation's own start.
     lapsing = Scheduled(iso; start_time = 0.0, end_time = 10.0)
     @test EpiBranch.removal_gap_host_times(lapsing) == ()
     case = Individual(id = 1)
