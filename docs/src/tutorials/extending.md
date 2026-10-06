@@ -175,7 +175,8 @@ same simulation is not supported, because they will overwrite each other.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 alongside it for when the block lapses; a release of `Inf`, which is what
-`set_isolated!` requires to be stated, never comes. Those two hold the removal
+`set_isolated!` now requires to be stated explicitly rather than assumed,
+never comes. Those two hold the removal
 in force, which is what a detection reads. The history, which a likelihood
 needs, is the list of stretches under `:_removal_stretches`, since one pair of
 times cannot say that a host was quarantined, released, and isolated again
