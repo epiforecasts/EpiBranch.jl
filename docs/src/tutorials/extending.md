@@ -471,7 +471,11 @@ function resolve_individual!(iso::Isolation, individual, state)
     # A contact traced before its onset was known has only the bare trace
     # time, so hold it back to the onset.
     traced_time = max(get(individual.state, :_traced_isolation_time, Inf), onset_time(individual))
-    set_isolated!(individual, min(iso_time, traced_time))
+    start = min(iso_time, traced_time)
+    duration = _removal_duration(
+        iso.isolation_duration, state.rng, individual, "`isolation_duration`"
+    )
+    set_isolated!(individual, start; release_time = start + duration)
     return nothing
 end
 ```
