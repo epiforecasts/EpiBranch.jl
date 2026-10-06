@@ -130,11 +130,12 @@ results = simulate(scenario([iso, ct]), 200; max_cases = 500, rng = rng)
 println("Isolation + tracing: $(round(containment_probability(results), digits=3))")
 ```
 
-A quarantine is never released by default, where `isolation_duration` has no
-default at all. Pass a `duration` to [`Quarantine`](@ref) and give it as the
-positional `action` argument to give the quarantine a release time, so a
-quarantined contact who is not infected by the traced exposure is not left
-blocked if infected later through another route:
+A quarantine's `duration` must be given explicitly, just as
+`isolation_duration` has no default either. Pass a `duration` to
+[`Quarantine`](@ref) and give it as the positional `action` argument to give
+the quarantine a release time, so a quarantined contact who is not infected by
+the traced exposure is not left blocked if infected later through another
+route:
 
 ```julia
 ContactTracing(OnIsolation(), 0.7, Exponential(1.0),
