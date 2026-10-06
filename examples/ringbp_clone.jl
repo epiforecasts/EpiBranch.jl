@@ -69,7 +69,7 @@ for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan
                     ct = ContactTracing(
                         probability = tracing_prob,
                         isolation_to_trace_delay = Exponential(1.0),
-                        quarantine_on_trace = false
+                        action = FlagOnly()
                     )
                     [iso, ct]
                 else
