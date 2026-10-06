@@ -24,7 +24,8 @@
         @test compatible(
             ContactTracing(
                 probability = 0.5,
-                isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = quarantine
+                isolation_to_trace_delay = Exponential(1.0),
+                action = quarantine ? Quarantine(duration = Inf) : FlagOnly()
             )
         )
     end

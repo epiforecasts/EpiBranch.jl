@@ -1241,7 +1241,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 ct = ContactTracing(
                     probability = 0.8,
                     isolation_to_trace_delay = Exponential(0.5),
-                    quarantine_on_trace = false
+                    action = FlagOnly()
                 )
                 process = BranchingProcess(Poisson(2.2), Exponential(5.0))
                 cases(interventions) = sum(1:40) do seed
@@ -1651,7 +1651,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 ct = ContactTracing(
                     probability = 1.0,
                     isolation_to_trace_delay = Exponential(1.0),
-                    quarantine_on_trace = quarantine
+                    action = quarantine ? Quarantine(duration = Inf) : FlagOnly()
                 )
                 rv = RingVaccination(efficacy = 0.9)
                 state = simulate(
@@ -1683,7 +1683,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             ct = ContactTracing(
                 probability = 1.0,
                 isolation_to_trace_delay = Exponential(1.0),
-                quarantine_on_trace = false
+                action = FlagOnly()
             )
             rv = RingVaccination(efficacy = 0.9)
 
@@ -2023,7 +2023,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             ct = ContactTracing(
                 probability = 0.7,
                 isolation_to_trace_delay = Exponential(1.0),
-                quarantine_on_trace = false
+                action = FlagOnly()
             )
             process = BranchingProcess(Poisson(3.0), Exponential(5.0))
             scen(iv, attrs = clinical) = ModelSpec(
@@ -2783,7 +2783,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
-            quarantine_on_trace = false
+            action = FlagOnly()
         )
 
         state = simulate(
@@ -2816,7 +2816,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
         ct = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Exponential(0.5), quarantine_on_trace = false
+            isolation_to_trace_delay = Exponential(0.5), action = FlagOnly()
         )
         rv = RingVaccination(efficacy = 0.8)
         state = simulate(
@@ -2848,7 +2848,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.4, isolation_duration = Inf)
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
-            quarantine_on_trace = false
+            action = FlagOnly()
         )
 
         state = simulate(

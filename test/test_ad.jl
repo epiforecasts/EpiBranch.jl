@@ -248,7 +248,7 @@ end
     iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
-        quarantine_on_trace = false, depth = 2
+        action = FlagOnly(), depth = 2
     )
     function total_infection_time(μ)
         model = BranchingProcess(NegBin(2.0, 0.5), LogNormal(μ, 0.5))

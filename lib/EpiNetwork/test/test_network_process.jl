@@ -256,7 +256,7 @@ end
             ),
             ContactTracing(
                 probability = 0.7, isolation_to_trace_delay = Exponential(0.2),
-                quarantine_on_trace = false
+                action = FlagOnly()
             ),
             _TraceProtection(),
         ]
@@ -304,7 +304,7 @@ end
         # the race has infected it.
         flag = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Exponential(0.5), quarantine_on_trace = false
+            isolation_to_trace_delay = Exponential(0.5), action = FlagOnly()
         )
         traced_model = ModelSpec(
             NetworkProcess(ring_adjacency(300), Exponential(2.0));

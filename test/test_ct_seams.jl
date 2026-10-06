@@ -64,7 +64,7 @@ end
     end
 
     @testset "quarantine_on_trace = false selects FlagOnly" begin
-        ct = ContactTracing(
+        ct = @test_deprecated ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(0.1),
             quarantine_on_trace = false
         )
@@ -120,11 +120,11 @@ end
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
         fast = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Dirac(0.5), quarantine_on_trace = false
+            isolation_to_trace_delay = Dirac(0.5), action = FlagOnly()
         )
         slow = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Dirac(20.0), quarantine_on_trace = false
+            isolation_to_trace_delay = Dirac(20.0), action = FlagOnly()
         )
 
         # Each tracer draws its own delay, so the two stack orders consume the

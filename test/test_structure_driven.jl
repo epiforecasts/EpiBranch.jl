@@ -143,7 +143,7 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
             ContactTracing(
                 probability = 1.0,
                 isolation_to_trace_delay = Exponential(0.5),
-                quarantine_on_trace = false
+                action = FlagOnly()
             ),
             RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
         ],
@@ -247,7 +247,7 @@ end
             ContactTracing(
                 probability = 1.0,
                 isolation_to_trace_delay = Exponential(0.5),
-                quarantine_on_trace = false
+                action = FlagOnly()
             ),
             RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
             ExposureGenerations(),

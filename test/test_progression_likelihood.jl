@@ -424,7 +424,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
                 Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf),
                 ContactTracing(
                     probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
-                    quarantine_on_trace = false
+                    action = FlagOnly()
                 ),
                 RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0),
             ],

@@ -8,7 +8,7 @@ function test_continuous_vaccine_actions(make_process)
         )
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
-            quarantine_on_trace = false
+            action = FlagOnly()
         )
         progression = [Transition(:recovered; delay = 3.0, terminal = true)]
         build(v) = ModelSpec(
