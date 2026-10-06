@@ -106,14 +106,16 @@ end
     ) == (key,)
 
     # A schedule that closes withdraws the block part-way through the stretch,
-    # which the record cannot express. It declares none, and narrows the
-    # infectious window to the isolation's own start instead, as a duration of
-    # `Inf` would.
+    # which the record cannot express. It declares none, but the isolation's
+    # own finite duration still releases the case on its own terms, which the
+    # per-contact risk re-checks against the schedule at every proposal
+    # regardless, so the window stays open rather than closing at the
+    # isolation's own start.
     lapsing = Scheduled(iso; start_time = 0.0, end_time = 10.0)
     @test EpiBranch.removal_gap_host_times(lapsing) == ()
     case = Individual(id = 1)
     EpiBranch.set_isolated!(case, 8.0; release_time = 15.0)
-    @test EpiBranch.infectious_removal_time(lapsing, case) == 8.0
+    @test EpiBranch.infectious_removal_time(lapsing, case) == Inf
     @test EpiBranch.infectious_removal_time(Scheduled(iso; start_time = 0.0), case) == Inf
 
     clinical = clinical_presentation(incubation_period = Dirac(0.0))
