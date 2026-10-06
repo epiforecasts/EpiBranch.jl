@@ -71,8 +71,8 @@ using Random
         @test one.episodes[1].state[:recovered_time] == 1.0
         @test one.state[:recovered_time] > 1.0
         # Each ping-pong exchange produces exactly one secondary case per
-        # episode; a stale carry-over from the previous episode would
-        # double it up.
+        # episode; a leftover count from the previous episode would show
+        # up as two.
         @test all(length(e.secondary_case_ids) == 1 for e in one.episodes)
         @test all(length(e.secondary_case_ids) == 1 for e in two.episodes)
     end
