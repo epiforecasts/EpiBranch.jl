@@ -449,6 +449,14 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   first trigger found even once a genuinely earlier one turned up. A settled
   member's dose, and a dose another vaccination already gave, still keep
   their date.
+- `Scheduled` built with an `end_time`, or from a predicate, no longer closes
+  the infectious window at a wrapped removal's own start on the
+  continuous-time models. The per-contact risk already re-checks the schedule
+  at every proposal, so a wrapped `isolation_duration` or `Quarantine`
+  `duration` now hands the case back on its own terms whatever the schedule
+  does later; only a removal with no release of its own still closes the
+  window there, which is the conservative answer for a block the wrapper
+  genuinely cannot speak for.
 
 ## [0.1.0] - 2026-06-16
 
