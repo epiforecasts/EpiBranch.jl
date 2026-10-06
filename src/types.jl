@@ -83,6 +83,28 @@ _analytic_offspring(model::TransmissionModel) = single_type_offspring(model)
 # ── Individual state ────────────────────────────────────────────────
 
 """
+A closed infection episode, archived on [`Individual`](@ref) when a later
+infection would otherwise overwrite its live fields. Holds exactly what a
+second infection overwrites: `infection_time`, the position this episode held
+in the transmission tree (`parent_id`, `generation`, `chain_id`), the
+secondary cases it had produced by the time it closed, and a snapshot of
+`state` as the episode left it (natural-history timing, clinical outcome, and
+any intervention state that episode wrote).
+
+See also [`susceptible_again_time`](@ref) for the hook that marks a host
+eligible for a new episode, and [`close_episode!`](@ref) for how an
+episode is archived.
+"""
+struct InfectionEpisode{T <: Real}
+    infection_time::T
+    parent_id::Int
+    generation::Int
+    chain_id::Int
+    secondary_case_ids::Vector{Int}
+    state::Dict{Symbol, Any}
+end
+
+"""
 A single contact in the transmission tree (infected or not).
 
 Core fields (used by the engine):
@@ -121,6 +143,15 @@ intervention state (`:isolated`, `:traced`, `:quarantined`,
 `:vaccinated`, `:test_positive`, `:type`), the `:infected` flag, and
 any user-defined fields.
 
+`episodes::Vector{InfectionEpisode{T}}` holds every infection this individual
+has already recovered from, oldest first: the live fields above describe only
+the current or most recent one. A model that proposes an already-infected
+host as a candidate contact again (once its own progression marks the host
+[`susceptible_again_time`](@ref) in the past) gets a fresh episode rather than
+a silently overwritten one — see [`close_episode!`](@ref). Empty for
+every individual on a model that never revisits a host, which is every
+built-in model today.
+
 # Setting fields at simulation time
 
 Pass an `attributes` argument to [`simulate`](@ref). It runs on every
@@ -152,6 +183,7 @@ mutable struct Individual{T <: Real}
     infectiousness::T
     secondary_case_ids::Vector{Int}
     state::Dict{Symbol, Any}
+    episodes::Vector{InfectionEpisode{T}}
 end
 
 function Individual(;
@@ -166,8 +198,35 @@ function Individual(;
     )
     return Individual{T}(
         id, parent_id, generation, chain_id, convert(T, infection_time),
-        convert(T, susceptibility), convert(T, infectiousness), Int[], state
+        convert(T, susceptibility), convert(T, infectiousness), Int[], state,
+        InfectionEpisode{T}[]
     )
+end
+
+"""
+    InfectionEpisode(ind::Individual)
+
+Snapshot `ind`'s current episode — its `infection_time`, tree position,
+secondary cases so far, and a copy of `state` — as an archivable
+[`InfectionEpisode`](@ref). Used by [`close_episode!`](@ref) to
+record an episode before a new infection overwrites `ind`'s live fields.
+"""
+InfectionEpisode(ind::Individual{T}) where {T} = InfectionEpisode{T}(
+    ind.infection_time, ind.parent_id, ind.generation, ind.chain_id,
+    copy(ind.secondary_case_ids), copy(ind.state)
+)
+
+"""
+    close_episode!(ind::Individual, episode::InfectionEpisode)
+
+Archive `episode` onto `ind.episodes`. `episode` is normally a snapshot taken
+with [`InfectionEpisode`](@ref) before `ind`'s live fields are overwritten by
+a new infection, so the one being closed is not the one on `ind` any more by
+the time this runs.
+"""
+function close_episode!(ind::Individual, episode::InfectionEpisode)
+    push!(ind.episodes, episode)
+    return ind
 end
 
 # ── Simulation state ───────────────────────────────────────────────
