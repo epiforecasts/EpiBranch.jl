@@ -330,7 +330,7 @@ end
 # lets a Scheduled reset undo only Isolation's own effect.
 function _isolate!(iso::Isolation, individual, state, time)
     duration = _removal_duration(
-        iso.duration, state.rng, individual, "`duration`"
+        iso.duration, state.rng, individual, "`Isolation`'s `duration`"
     )
     start, release = time, time + duration
     # A removal already standing is layered under this one by the same rule the

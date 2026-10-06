@@ -478,7 +478,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     traced_time = max(get(individual.state, :_traced_isolation_time, Inf), onset_time(individual))
     start = min(iso_time, traced_time)
     duration = _removal_duration(
-        iso.duration, state.rng, individual, "`duration`"
+        iso.duration, state.rng, individual, "`Isolation`'s `duration`"
     )
     set_isolated!(individual, start; release_time = start + duration)
     return nothing
