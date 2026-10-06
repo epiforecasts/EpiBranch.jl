@@ -1,9 +1,7 @@
-**Breaking.** `Quarantine`'s `duration` is now required, with no default: `Quarantine(;
-duration = Inf)` reproduced the previous behaviour silently, so a caller who
-did not know the keyword existed got an indefinite quarantine anyway.
-`ContactTracing` now takes its `action` the same way, with no default, on
-both the keyword and the terse positional constructor. A contact traced and
-quarantined before it was ever infected should not go on blocking its own
-transmission after a route reaches it later; requiring the duration makes
-that a choice rather than an accident. Pass `Quarantine(duration =
-Inf)` to keep the previous behaviour explicitly.
+**Breaking.** `Quarantine` takes a required `duration` keyword, which 0.1.0 had
+no equivalent of, its `Quarantine` being a singleton. There is no default, since
+an indefinite quarantine is a choice to make rather than one to inherit: pass
+`Inf` to keep 0.1.0's behaviour, or a finite value, distribution or
+`(rng, ind)` callable to give the contact a release time. `ContactTracing`
+requires its `action` on every constructor for the same reason, and
+`quarantine_on_trace` is deprecated in favour of it.

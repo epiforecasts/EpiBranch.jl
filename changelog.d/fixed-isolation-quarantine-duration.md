@@ -5,9 +5,9 @@ lapsed long before. `Isolation` now takes a `duration` and
 `ContactTracing`'s `Quarantine` action a `duration` (a value, a distribution,
 or a function of the individual, matching `onset_to_isolation_delay`), giving
 each removal a release time (`EpiBranch.isolation_release_time`) after which
-the block lapses. `Quarantine`'s `duration` is now required instead of
-defaulting to `Inf`, so reproducing the old never-releasing behaviour takes
-an explicit choice rather than happening by default. `Risk` gained a
+the block lapses. Both are required, 0.1.0 having had no equivalent of either,
+so reproducing its never-releasing behaviour takes an explicit `Inf` rather
+than happening by default. `Risk` gained a
 matching `release_time` field, and the line list reports a
 `date_isolation_release` column once a finite duration is in use, and its
 two-argument positional form still builds a risk that never lapses.
