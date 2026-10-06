@@ -320,14 +320,6 @@ function permanent_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES
     return t
 end
 
-# The first time any removal took this host out, whether or not it released
-# them. A component whose stretches a likelihood cannot read closes the
-# infectious window here instead of holding them.
-function first_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
-    stretches = removal_stretches(ind, key)
-    return isempty(stretches) ? Inf : first(stretches)[1]
-end
-
 """Clear an individual's isolation, the inverse of [`set_isolated!`](@ref)."""
 function clear_isolated!(ind::Individual)
     ind.state[:isolated] = false
