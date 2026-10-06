@@ -268,9 +268,9 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
 
         # The same lapsing wrapper leaves a perfect isolation's window open: the
         # recorded stretch has its own release, which the per-contact risk
-        # re-checks the schedule against at every proposal regardless, so
-        # narrowing here would turn a removal due to lapse into one that never
-        # does (see issue #410).
+        # re-checks the schedule against at every proposal regardless.
+        # Narrowing here would turn a removal due to lapse into one that
+        # never does (see issue #410).
         lapsing = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
         @test EpiBranch.infectious_removal_time(lapsing, case) == Inf
 
@@ -354,8 +354,8 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
     @testset "A schedule that never lapses still hands the case back" begin
         # Wrapping the same isolation in a schedule whose `end_time` is never
         # reached, or a predicate that never turns false, must not change the
-        # answer: the per-contact risk re-checks the schedule at every
-        # proposal regardless, so the release still hands the case back.
+        # answer. The per-contact risk re-checks the schedule at every
+        # proposal regardless, and the release still hands the case back.
         # Before the fix, a wrapper that could lapse closed the window at the
         # isolation's own start whatever its own condition actually did,
         # missing this contact entirely.

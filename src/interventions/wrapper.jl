@@ -25,12 +25,13 @@ reset!(w::InterventionWrapper, ind::Individual) = reset!(w.intervention, ind)
 function infectious_removal_time(w::InterventionWrapper, ind::Individual)
     t = infectious_removal_time(w.intervention, ind)
     isempty(removal_gap_host_times(w)) || return t
-    # A stretch with its own release stays read by the per-contact risk, which
-    # re-checks the wrapper's gate at every proposal and so already honours a
-    # block the wrapper later withdraws; narrowing the window for it here would
-    # turn a removal due to lapse into one that never does. Only a stretch with
-    # no release, standing on the wrapped intervention's own terms, needs the
-    # window closed here, since nothing is left to hand the host back.
+    # A stretch with its own release is still read by the per-contact risk,
+    # which re-checks the wrapper's gate at every proposal and already honours
+    # a block the wrapper later withdraws; narrowing the window for it here
+    # would turn a removal due to lapse into one that never does. Only a
+    # stretch with no release, standing on the wrapped intervention's own
+    # terms, needs the window closed here, since nothing is left to hand the
+    # host back.
     for key in removal_gap_host_times(w.intervention)
         t = min(t, permanent_removal_time(ind, key))
     end

@@ -15,11 +15,11 @@ The batch-hook behaviour below applies to interventions without this protocol.
 A schedule built with an `end_time`, or from a predicate, can withdraw a block
 it has already delivered, which one per-host record of a removal's stretches
 cannot express. On the continuous-time models the per-contact risk re-checks
-the schedule at every proposal regardless, so a wrapped `isolation_duration`
-or `Quarantine` `duration` still hands the case back on its own terms; only a
+the schedule at every proposal regardless; a wrapped `isolation_duration` or
+`Quarantine` `duration` still hands the case back on its own terms. Only a
 removal with no release of its own (`isolation_duration = Inf`) closes the
-infectious window at its start, the wrapper's own withdrawal having nothing
-left to hand back either way.
+infectious window at its start, since there is nothing left for the
+wrapper's own withdrawal to hand back either way.
 
 `Scheduled` is the single entry point for time-based intervention
 scheduling. It enforces start times at two levels:
