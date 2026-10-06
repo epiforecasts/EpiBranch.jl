@@ -222,10 +222,12 @@ InfectionEpisode(ind::Individual{T}) where {T} = InfectionEpisode{T}(
 Archive `episode` onto `ind.episodes`. `episode` is normally a snapshot taken
 with [`InfectionEpisode`](@ref) before `ind`'s live fields are overwritten by
 a new infection, so the one being closed is not the one on `ind` any more by
-the time this runs.
+the time this runs. `ind.secondary_case_ids` is cleared so the next episode
+counts only the secondary cases it produces itself.
 """
 function close_episode!(ind::Individual, episode::InfectionEpisode)
     push!(ind.episodes, episode)
+    empty!(ind.secondary_case_ids)
     return ind
 end
 
