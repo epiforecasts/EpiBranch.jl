@@ -647,7 +647,7 @@ function _resolve_action(action, quarantine_on_trace)
         Base.depwarn(
             "`quarantine_on_trace` is deprecated, pass `action` instead " *
                 "(`Quarantine(duration = ...)` or `FlagOnly()`)",
-            :ContactTracing
+            :ContactTracing; force = true
         )
         return quarantine_on_trace ? Quarantine(duration = Inf) : FlagOnly()
     end
