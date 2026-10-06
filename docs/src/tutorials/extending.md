@@ -478,7 +478,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     traced_time = max(get(individual.state, :_traced_isolation_time, Inf), onset_time(individual))
     start = min(iso_time, traced_time)
     duration = _removal_duration(
-        iso.isolation_duration, state.rng, individual, "`isolation_duration`"
+        iso.duration, state.rng, individual, "`duration`"
     )
     set_isolated!(individual, start; release_time = start + duration)
     return nothing
@@ -712,7 +712,7 @@ clinical_with_region = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     (rng, ind) -> (ind.state[:region] = :only),
 ]
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 bc = BorderClosure(10.0, 0.05)
 model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0));
     interventions = [iso, bc], attributes = clinical_with_region)

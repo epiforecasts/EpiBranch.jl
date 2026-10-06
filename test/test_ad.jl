@@ -187,7 +187,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
     function total_infection_time(μ)
         model = BranchingProcess(NegBin(2.0, 0.5), LogNormal(μ, 0.5))
         state = simulate(
@@ -245,7 +245,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
         action = FlagOnly(), depth = 2
@@ -273,7 +273,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
         action = Quarantine(duration = Inf)
@@ -335,7 +335,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
         action = Quarantine(duration = Inf)
@@ -392,7 +392,7 @@ end
     )
     iso = Isolation(
         onset_to_isolation_delay = Exponential(1.0),
-        post_isolation_transmission = 0.3, isolation_duration = Inf
+        post_isolation_transmission = 0.3, duration = Inf
     )
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Exponential(0.5),

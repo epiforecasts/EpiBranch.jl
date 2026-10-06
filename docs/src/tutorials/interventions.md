@@ -45,7 +45,7 @@ symptom onset using [`Isolation`](@ref). Clinical state on individuals
 is required, set by [`clinical_presentation`](@ref):
 
 ```@example interventions
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
@@ -57,7 +57,7 @@ generation time. Faster isolation truncates more of the infectious period:
 
 ```@example interventions
 for d in [0.5, 2.0, 10.0]
-    let iso = Isolation(onset_to_isolation_delay = Exponential(d), isolation_duration = 7.0),
+    let iso = Isolation(onset_to_isolation_delay = Exponential(d), duration = 7.0),
         rng = StableRNG(42)
         results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
         println("Delay ~ Exp($d): containment = $(round(containment_probability(results), digits=3))")
@@ -71,7 +71,7 @@ With `post_isolation_transmission > 0`, isolated individuals still transmit at
 a reduced rate (e.g. household contacts):
 
 ```@example interventions
-iso_leaky = Isolation(onset_to_isolation_delay = Exponential(2.0), post_isolation_transmission = 0.3, isolation_duration = 7.0)
+iso_leaky = Isolation(onset_to_isolation_delay = Exponential(2.0), post_isolation_transmission = 0.3, duration = 7.0)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso_leaky]), 200; max_cases = 500, rng = rng)
@@ -80,7 +80,7 @@ println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 
 #### Isolation duration
 
-`isolation_duration` (a `Real`, a `Distribution`, or a function
+`duration` (a `Real`, a `Distribution`, or a function
 `(rng, ind) -> Real`, like `onset_to_isolation_delay`) is required: there is
 no default, since indefinite isolation is a choice to make rather than one to
 inherit. `Inf` never releases the case; a finite value gives it a release
@@ -113,12 +113,12 @@ Contacts of isolated cases are identified using [`ContactTracing`](@ref).
 With quarantine, traced contacts are isolated before symptom onset.
 
 From here through the vaccination sections the stacks isolate with
-`isolation_duration = Inf`, so an isolated case blocks every later
+`duration = Inf`, so an isolated case blocks every later
 transmission to its contacts. That keeps the comparisons about the tracing and
 the vaccination rather than about the release.
 
 ```@example interventions
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = Inf)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
 ct = ContactTracing(
     probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
     action = Quarantine(duration = Inf)
@@ -129,7 +129,7 @@ results = simulate(scenario([iso, ct]), 200; max_cases = 500, rng = rng)
 println("Isolation + tracing: $(round(containment_probability(results), digits=3))")
 ```
 
-A quarantine's `duration` has no default, as `isolation_duration` has none. A
+A quarantine's `duration` has no default, as `Isolation`'s has none. A
 finite one releases the contact, so a quarantined contact who escapes the
 traced exposure is not left blocked when a later route infects it:
 
@@ -202,7 +202,7 @@ disease_hard = clinical_presentation(
     incubation_period = LogNormal(1.5, 0.5),
     prob_asymptomatic = 0.3,
 )
-iso_imperfect = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.8, isolation_duration = Inf)
+iso_imperfect = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.8, duration = Inf)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso_imperfect, ct], disease_hard), 200; max_cases = 500, rng = rng)
@@ -219,7 +219,7 @@ Requires [`ContactTracing`](@ref) in the intervention stack so contacts
 are identified.
 
 ```@example interventions
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = Inf)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
 ct = ContactTracing(
     probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
     action = Quarantine(duration = Inf)
@@ -240,7 +240,7 @@ println("Iso + tracing + ring vaccination: $(round(containment_probability(resul
     prevent, with or without quarantine (`action = FlagOnly()`).
     It acts only where a contact can still be infected after being traced:
     under leaky isolation (`post_isolation_transmission > 0`), under a finite
-    `isolation_duration` that releases the infector while the contact is still
+    `duration` that releases the infector while the contact is still
     susceptible, when tracing starts before the infector is isolated (for
     example `eligibility = OnSymptomOnset()`), or in a `depth > 1` ring
     passing through members who keep transmitting after they are traced.
@@ -758,7 +758,7 @@ repeated_campaign = GroupVaccination(efficacy = 0.8,
 
 campaign_model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     attributes = [clinical, groups(3), willingness],
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf),
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
         repeated_campaign])
 ```
 
@@ -898,7 +898,7 @@ must be available at the time the individual would be tested.
 
 ```@example interventions
 # Testing starts on day 10
-iso_delayed = Scheduled(Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0); start_time = 10.0)
+iso_delayed = Scheduled(Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0); start_time = 10.0)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso_delayed]), 200; max_cases = 500, rng = rng)
@@ -915,7 +915,7 @@ fixed time, such as case-count triggers:
 
 ```@example interventions
 # Start contact tracing after 20 cumulative cases
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 ct_triggered = Scheduled(
     ContactTracing(
         probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
@@ -933,7 +933,7 @@ Conditions can be combined:
 
 ```@example interventions
 # Active only between day 5 and day 30
-iso_window = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = 7.0);
+iso_window = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 7.0);
     start_time = 5.0, end_time = 30.0)
 ```
 
@@ -942,7 +942,7 @@ For full flexibility, pass a predicate on [`SimulationState`](@ref):
 ```@example interventions
 # Start isolation from generation 3 onwards
 iso_gen3 = Scheduled(
-    Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0),
+    Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0),
     state -> state.current_generation >= 3,
 )
 ```

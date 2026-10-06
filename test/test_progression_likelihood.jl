@@ -421,7 +421,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         spec = ModelSpec(
             BranchingProcess(Poisson(2.0), Exponential(5.0));
             interventions = [
-                Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf),
+                Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
                 ContactTracing(
                     probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
                     action = FlagOnly()

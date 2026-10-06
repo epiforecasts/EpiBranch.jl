@@ -505,14 +505,14 @@ quarantining it, or quarantine it for any length of time:
 
 ```julia
 # Trace on symptoms (no wait for confirmation)
-ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = Inf))
+ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = 7.0))
 
 # Standard protocol (wait for lab confirmation)
 ContactTracing(OnLabConfirmation(), 0.6, Exponential(2.0), Quarantine(duration = 14.0))
 
 # Belt and braces (trace suspected OR confirmed)
 ContactTracing(
-    OnSymptomOnset() | OnLabConfirmation(), 0.7, Exponential(1.5), Quarantine(duration = Inf)
+    OnSymptomOnset() | OnLabConfirmation(), 0.7, Exponential(1.5), Quarantine(duration = 7.0)
 )
 ```
 
@@ -523,7 +523,7 @@ when only the probability, delay and action vary:
 ```julia
 ContactTracing(
     probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
-    action = Quarantine(duration = Inf)
+    action = Quarantine(duration = 7.0)
 )
 ```
 
@@ -561,7 +561,7 @@ that each case be interviewed only once.
 Pair with [`RingVaccination`](@ref) to vaccinate the whole ring:
 
 ```julia
-[ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = Inf); depth = 2),
+[ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = 7.0); depth = 2),
  RingVaccination(efficacy = 0.9)]
 ```
 

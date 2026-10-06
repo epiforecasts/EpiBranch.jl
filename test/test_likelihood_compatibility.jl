@@ -1,6 +1,6 @@
 @testset "Infection likelihood compatibility" begin
     compatible = EpiBranch.infection_likelihood_compatible
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
     clinical = clinical_presentation(incubation_period = Exponential(1.0))
     @test compatible(NoAttributes())
     @test compatible(clinical)
@@ -17,7 +17,7 @@
     @test !compatible(
         Isolation(
             onset_to_isolation_delay = Exponential(1.0),
-            post_isolation_transmission = 0.5, isolation_duration = Inf
+            post_isolation_transmission = 0.5, duration = Inf
         )
     )
     for quarantine in (false, true)

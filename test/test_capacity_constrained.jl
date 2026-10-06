@@ -238,7 +238,7 @@ end
         @test EpiBranch.capacity_time_key(Scheduled(rv; start_time = 1.0)) ==
             EpiBranch.capacity_time_key(rv)
 
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         @test_throws ArgumentError EpiBranch.capacity_key(iso)
         @test_throws ArgumentError EpiBranch.capacity_time_key(iso)
     end
@@ -459,7 +459,7 @@ end
 
     @testset "Fewer doses under a binding capacity constraint than without one" begin
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = Inf)
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
         ct = ContactTracing(
             probability = 0.9, isolation_to_trace_delay = Exponential(1.0),
             action = Quarantine(duration = Inf)
