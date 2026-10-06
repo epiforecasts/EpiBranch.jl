@@ -948,6 +948,37 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test isolation_release_time(self_reported) == 9.0
     end
 
+    @testset "Quarantine duration has no default" begin
+        @test_throws UndefKeywordError Quarantine()
+    end
+
+    @testset "ContactTracing requires action" begin
+        @test_throws ArgumentError ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5)
+        )
+    end
+
+    @testset "ContactTracing rejects action together with quarantine_on_trace" begin
+        @test_throws ArgumentError ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+            action = FlagOnly(), quarantine_on_trace = false
+        )
+    end
+
+    @testset "quarantine_on_trace is deprecated but still resolves an action" begin
+        ct = @test_deprecated ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+            quarantine_on_trace = true
+        )
+        @test ct.action == Quarantine(duration = Inf)
+
+        flag_only = @test_deprecated ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+            quarantine_on_trace = false
+        )
+        @test flag_only.action == FlagOnly()
+    end
+
     @testset "A Scheduled reset restores a standing isolation's record" begin
         iso = Isolation(onset_to_isolation_delay = Dirac(2.0), isolation_duration = Inf)
         state = EpiBranch.new_state(
