@@ -243,8 +243,8 @@ Reinfection after waning follows the same convention, with nothing extra to
 learn: a progression that lists
 `Transition(:susceptible_again, from = :recovered, delay = Exponential(180))`
 writes `:susceptible_again_time`, which [`susceptible_again_time`](@ref) reads and
-[`EpiBranch.HostImmunity`](@ref) gates on. The piece that is not a
-convention is storage: [`Individual`](@ref)'s live fields describe only the
+[`EpiBranch.HostImmunity`](@ref) gates on. That convention covers the timing
+only; storage is separate: [`Individual`](@ref)'s live fields describe only the
 current episode, so a model whose `contacts_of` offers an already-infected
 host as a candidate again (once `HostImmunity` lets the exposure through)
 gets its closing episode archived onto `episodes` rather than overwritten —

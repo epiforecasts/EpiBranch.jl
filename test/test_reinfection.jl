@@ -23,12 +23,12 @@ using Random
     end
 
     # Two nodes that keep exposing each other every generation. Transmission
-    # always succeeds (no susceptibility/infectiousness block), so the only
-    # thing standing between a recovered node and a fresh exposure is
-    # `HostImmunity`: blocked while `susceptible_again_time` is still ahead of
-    # the exposure, open once it is behind it. `delay = 0.0` on
-    # `:susceptible_again` makes a node eligible again the moment it recovers,
-    # so every ping-pong exposure after the first one is a reinfection.
+    # always succeeds (no susceptibility/infectiousness block), so a
+    # recovered node's only barrier to a fresh exposure is `HostImmunity`:
+    # blocked while `susceptible_again_time` is still ahead of the exposure,
+    # open once it is behind it. `delay = 0.0` on `:susceptible_again` makes
+    # a node eligible again the moment it recovers, hence every ping-pong
+    # exposure after the first one is a reinfection.
     struct PingPongModel <: EpiBranch.TransmissionModel end
     EpiBranch.population_size(::PingPongModel) = EpiBranch.NoPopulation()
     function EpiBranch.initialise_state(

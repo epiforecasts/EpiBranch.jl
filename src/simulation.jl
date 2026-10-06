@@ -624,9 +624,9 @@ infected-or-not: the infector's infectiousness, the contact's susceptibility,
 any risks the model contributes and any interventions all act as competing
 risks on the same footing. A contact is infected if any of its exposing edges
 transmits; the earliest successful edge fixes the infection time. A
-pre-existing node offered again after a prior infection ([`HostImmunity`](@ref
-EpiBranch.HostImmunity) is what makes that exposure survive at all) has its
-closing episode archived rather than overwritten; see
+pre-existing node offered again after a prior infection (only
+[`HostImmunity`](@ref EpiBranch.HostImmunity) lets that exposure survive at
+all) has its closing episode archived rather than overwritten; see
 [`close_episode!`](@ref)."""
 function _resolve!(
         model::TransmissionModel, state::SimulationState,
@@ -1225,8 +1225,8 @@ end
 # applies there. Three are the generation engine's own and can never apply: an
 # infector on those models has settled and so is infected by construction,
 # route censoring is the infectious window's job rather than a tag written on a
-# contact, and a candidate the race proposes is always one not yet settled, so
-# it is never already infected either — the race has nowhere yet to put a
+# contact, and a candidate the race proposes is always one not yet settled,
+# hence never already infected either — the race has nowhere yet to put a
 # second episode even once a model wants to offer one. The other two, the
 # per-individual susceptibility and infectiousness, are rate multipliers on
 # those models rather than per-contact blocks: each one
