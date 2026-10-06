@@ -93,6 +93,10 @@ public calendar_multiplier, next_calendar_break, calendar_shape,
     PiecewiseConstantCalendar, SmoothCalendar
 public infection_likelihood_compatible
 public susceptibility_components, susceptibility_host_times, HazardScaling
+public binding_release
+public removal_gap_host_times
+public record_removal!
+public removal_stretches
 public InterventionAction, intervention_actions, action_draw!, apply_actions!,
     continuous_actions, may_revise, is_settled
 

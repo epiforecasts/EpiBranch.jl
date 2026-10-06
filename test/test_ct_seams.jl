@@ -3,6 +3,35 @@
 struct OddIdSeeds <: EpiBranch.TraceEligibility end
 EpiBranch.is_eligible(::OddIdSeeds, infector, contact, state) = isodd(infector.id)
 
+# A tracing action written outside the package that removes the contact through
+# `set_isolated!` and names no key of its own, as one written before the removal
+# seam existed would.
+struct SharedKeyQuarantine <: EpiBranch.TraceAction end
+function EpiBranch.apply_trace!(::SharedKeyQuarantine, contact, state, trace_time, rng)
+    contact.state[:traced] = true
+    contact.state[:quarantined] = true
+    isfinite(trace_time) && set_isolated!(contact, trace_time; release_time = Inf)
+    return nothing
+end
+
+# One that keeps its own record and names it, which is what the extending guide
+# prescribes.
+const OWN_QUARANTINE_KEY = :own_quarantine_stretches
+struct KeyedQuarantine <: EpiBranch.TraceAction
+    duration::Float64
+end
+function EpiBranch.apply_trace!(q::KeyedQuarantine, contact, state, trace_time, rng)
+    contact.state[:traced] = true
+    contact.state[:quarantined] = true
+    isfinite(trace_time) || return nothing
+    EpiBranch.record_removal!(
+        contact, trace_time, trace_time + q.duration; key = OWN_QUARANTINE_KEY
+    )
+    set_isolated!(contact, trace_time; release_time = trace_time + q.duration)
+    return nothing
+end
+EpiBranch.removal_gap_host_times(::KeyedQuarantine) = (OWN_QUARANTINE_KEY,)
+
 # Traces every case, but from a NaN trigger time when the infector has an even id:
 # a custom trigger time that says nothing about when tracing started.
 struct NaNForEvenIds <: EpiBranch.TraceEligibility end
@@ -499,4 +528,39 @@ end
         @test :traced_by in propertynames(df)
         @test :trace_level in propertynames(df)
     end
+end
+
+@testset "A tracing action's own removal record is what tracing reads" begin
+    ct_shared = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), SharedKeyQuarantine())
+    ct_keyed = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), KeyedQuarantine(7.0))
+
+    # An action naming no key removes the contact through `set_isolated!`, and
+    # the window closes where that removal starts, as it did before the removal
+    # seam existed. It blocks per contact from there too, which is what reaches
+    # the generation engine.
+    shared = Individual(id = 1)
+    EpiBranch.apply_trace!(SharedKeyQuarantine(), shared, nothing, 4.0, StableRNG(1))
+    @test isempty(EpiBranch.removal_gap_host_times(ct_shared))
+    @test EpiBranch.infectious_removal_time(ct_shared, shared) == 4.0
+    shared_risk = only(
+        EpiBranch.competing_risk(ct_shared, shared, Individual(id = 9), nothing)
+    )
+    @test (shared_risk.event_time, shared_risk.release_time) == (4.0, Inf)
+
+    # One naming its own key has both halves of the seam read that key, so the
+    # stretches the likelihood takes out are the ones the simulator blocked.
+    keyed = Individual(id = 2)
+    EpiBranch.apply_trace!(KeyedQuarantine(7.0), keyed, nothing, 4.0, StableRNG(1))
+    @test EpiBranch.removal_gap_host_times(ct_keyed) == (OWN_QUARANTINE_KEY,)
+    risks = EpiBranch.competing_risk(ct_keyed, keyed, Individual(id = 10), nothing)
+    @test [(r.event_time, r.release_time) for r in risks] == [(4.0, 11.0)]
+    # Its removal releases, so the window stays open for the rest of the period.
+    @test EpiBranch.infectious_removal_time(ct_keyed, keyed) == Inf
+
+    # A contact no trace reached is removed by neither.
+    untouched = Individual(id = 3)
+    @test EpiBranch.infectious_removal_time(ct_shared, untouched) == Inf
+    @test EpiBranch.infectious_removal_time(ct_keyed, untouched) == Inf
+    @test EpiBranch.competing_risk(ct_keyed, untouched, Individual(id = 11), nothing) ===
+        nothing
 end

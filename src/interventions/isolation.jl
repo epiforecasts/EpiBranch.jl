@@ -119,14 +119,14 @@ follows an onset, so its own release always falls after the infection.
 What that changes depends on the engine. On a generation-based process the
 block is a per-contact risk, so a contact after the release is not blocked.
 
-On the continuous-time (Sellke) models an infectious window holds one closing
-time and cannot reopen, so for a removal that takes the case out completely
-the release matters only when the removal had already lapsed before the case
-was infected: that case is not removed at all, which is what the duration
-exists for. A removal still standing at the infection, even one due to lapse a
-day later, closes the window for the rest of the infectious period. Leaky
-isolation closes no window on any model, so the release there just ends the
-hazard reduction and the case transmits at full rate again.
+On the continuous-time (Sellke) models a removal that is due to lapse does not
+close the window: it stays open on the case's other removal states, if any,
+and the per-contact competing risk blocks exactly the isolated stretches, so
+the case transmits again from the release time, matching the generation engine.
+Only a removal that never releases closes the window there, which is cheaper
+than leaving it to the per-contact risk and is exact because nothing is left to
+reopen. Leaky isolation closes no window either way, so there the release ends
+the hazard reduction and the case transmits at full rate again.
 
 An isolation time at or after the case's own outcome (recovery, death, or
 any other terminal [`Transition`](@ref)) still removes the case from
@@ -169,19 +169,17 @@ intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 # isolation (`post_isolation_transmission > 0`) only reduces transmission, which
 # the window cannot express, so it contributes no removal in that setting.
 #
-# A window cannot reopen once closed (see `_route_close`): a removal whose
-# release falls inside an already-open window still closes it for good,
-# exactly as before `isolation_duration` existed. A finite duration instead
-# fixes the removal that never meets an open window at all: a quarantine set,
-# and released, before the case was even infected
-# (`_removal_lapsed_before_infection`) contributes no removal, so it cannot
-# shut a window for an infection acquired later through another route.
-# The per-contact `competing_risk` below is release-aware throughout, on every
-# transmission model.
+# A window cannot reopen once closed (see `_route_close`), so a removal that is
+# due to lapse — whether before the case was even infected or partway through
+# an already-open window — must not close it: closing it at the isolation time
+# would take the case out of transmission for good, when the removal itself
+# only takes it out until the release. The per-contact `competing_risk` below
+# is release-aware throughout, on every transmission model, and blocks the
+# isolated interval instead. The window closes here only for a removal with no
+# release to leave it for.
 function infectious_removal_time(iso::Isolation, ind::Individual)
     iso.post_isolation_transmission == 0 || return Inf
-    _removal_lapsed_before_infection(ind) && return Inf
-    return isolation_time(ind)
+    return permanent_removal_time(ind)
 end
 
 """Isolation blocks the parent → contact transmission while the parent's
@@ -190,18 +188,30 @@ isolation is in force: from its isolation time until its
 leaves infinite. Residual transmission is governed by
 `post_isolation_transmission`: `block_probability = 1 - post_isolation_transmission`."""
 function competing_risk(iso::Isolation, parent, contact, state)
-    iso_t = isolation_time(parent)
-    isfinite(iso_t) || return nothing
-    return Risk(
-        event_time = iso_t,
-        block_probability = 1.0 - iso.post_isolation_transmission,
-        release_time = isolation_release_time(parent)
-    )
+    return _removal_risks(parent, 1.0 - iso.post_isolation_transmission)
 end
 
-# Perfect isolation's block starts when the infector's window closes, so a
-# contact drawn from that infector never meets it; only a leaky residual can.
-risk_depends_on_infector(iso::Isolation) = iso.post_isolation_transmission > 0
+# A finite duration leaves the window open and blocks each contact against the
+# infector's own isolated stretch. The block then depends on the infector
+# whatever the residual is.
+function risk_depends_on_infector(iso::Isolation)
+    return iso.post_isolation_transmission > 0 || !(iso.isolation_duration === Inf)
+end
+
+# The likelihood reads the stretch a lapsing isolation removed the host for.
+# A duration of `Inf` leaves no stretch to read, the window closing at the
+# isolation's own start, and the layer records nothing extra for it.
+# A recorded stretch is append-only, so the release it reports binds.
+binding_release(::Isolation) = true
+
+function removal_gap_host_times(iso::Isolation)
+    # Leaky isolation contributes no removal at all, only a reduced hazard, so
+    # it has no stretch for anything to read; a duration of `Inf` has one
+    # stretch and no release, which the infectious window holds instead.
+    iso.post_isolation_transmission == 0 || return ()
+    iso.isolation_duration === Inf && return ()
+    return (REMOVAL_STRETCHES_KEY,)
+end
 
 # Leaky isolation's residual block stands in for the removal perfect isolation
 # makes, so it reaches the same routes: those the case is isolated from.
@@ -226,6 +236,11 @@ function reset!(::Isolation, ind::Individual)
     previous = get(ind.state, :_isolation_time_before_isolation, Inf)
     if isfinite(previous)
         previous_release = get(ind.state, :_isolation_release_time_before_isolation, Inf)
+        # The recorded stretches are cleared and the quarantine's own re-recorded,
+        # so this isolation's stretch is not left for a likelihood to take out of
+        # an exposure the simulation never blocked. A quarantine keeps its own
+        # record under its own key, which this does not touch.
+        clear_isolated!(ind)
         set_isolated!(ind, previous; release_time = previous_release)
         get(ind.state, :_isolation_unrecorded_before_isolation, false) &&
             (ind.state[:_isolation_unrecorded] = true)

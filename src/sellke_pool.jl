@@ -465,7 +465,10 @@ function _sellke_pool!(
                             "reaching one of `until`'s states, or one is reachable but " *
                             "gated so that some cases reach none of them (see " *
                             "`exclusive_probabilities` for terminal transitions meant " *
-                            "to partition the population exactly)."
+                            "to partition the population exactly). A window closed " *
+                            "only by an intervention removal reaches this too when " *
+                            "that removal has a release, since a removal the case is " *
+                            "handed back from cannot close a window for good."
                     )
                 )
                 # The contact did not transmit. Put the susceptible back with the

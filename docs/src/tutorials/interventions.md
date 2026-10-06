@@ -90,23 +90,22 @@ time.
 a bounded period that the duration outlasts, which is how "isolated for the
 rest of the infectious period" came to stand for `Inf`. The models on this
 page have no terminal transition, so their generation times are unbounded and
-the week above is doing real work: on a generation-based process the block is
-a per-contact risk, so a contact drawn after the release is not blocked and
-the case goes on transmitting.
+the week above is doing real work: a contact drawn after the release is not
+blocked and the case goes on transmitting.
 
 A removal set before its host was infected at all belongs to the quarantine
 below rather than to this parameter, isolation following an onset and so
 always releasing after the infection.
 
-On the continuous-time models an infectious window has one closing time and
-cannot reopen, so for a removal that takes the case out completely the release
-spares an infection acquired
-after it and nothing else: a removal still standing when the case is infected
-closes the window for the rest of the infectious period, however soon it was
-due to lapse. Leaky isolation (`post_isolation_transmission > 0`) closes no
-window at all, only reducing each contact's hazard, so there the release ends
-the reduction and the case transmits at full rate again; a finite duration can
-change a leaky model's final size by an order of magnitude.
+A case isolated part-way through its infectious period transmits again once
+released, on the continuous-time models as much as on a generation-based one.
+The one exception is a removal wrapped in a [`Scheduled`](@ref) that can close,
+which on the continuous-time models removes the case for good at the isolation
+instead; the generation engine applies the duration either way. Leaky isolation
+(`post_isolation_transmission > 0`) closes no window at all, only reducing each
+contact's hazard, so there the release ends the reduction and the case
+transmits at full rate again; a finite duration can change a leaky model's
+final size by an order of magnitude.
 
 ### Contact tracing
 
