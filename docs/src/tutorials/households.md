@@ -451,7 +451,7 @@ grid = 2.0:0.5:6.0
 grid[argmax([ll(s) for s in grid])]
 ```
 
-The estimate matches the 4 days the outbreak was simulated with.
+The estimate is close to the 4 days the outbreak was simulated with.
 
 !!! warning "Partial protection changes what is estimated"
     Suppose the model that produced the data had partial protection in place
