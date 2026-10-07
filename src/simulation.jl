@@ -1566,7 +1566,9 @@ Groups are assigned independently of who infected whom, so transmission does
 not cluster within them. To make it cluster, use a multi-type
 [`BranchingProcess`](@ref) with one type per group and a next-generation
 matrix with most transmission within types, and use the type itself as the
-group, for example `GroupVaccination(...; group_key = :type)`.
+group in `GroupVaccination(...; group_key = :type)`. [`group_attribute`](@ref)
+and [`vaccine_acceptance`](@ref) cannot group by type, since population
+characteristics are drawn before a person's type is set.
 
 # Examples
 
