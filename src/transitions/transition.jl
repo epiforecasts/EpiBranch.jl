@@ -11,10 +11,15 @@ and the time stays `Inf`.
 `from` names an earlier state whose time this one is measured from:
 `:infection` (the default) resolves to the individual's `infection_time`;
 any other symbol `s` resolves to `Symbol(s, :_time)` in `ind.state` (so
-`from = :onset` reads `:onset_time`). A `Function (ind) -> Real` is also
-accepted, for anchors held as fields on the `Individual`. If the `from`
-state's time is not finite (the upstream state was never reached, or an
-asymptomatic case has a `NaN` onset), the transition is skipped.
+`from = :onset` reads `:onset_time`), unless `s` already ends in `_time`,
+in which case it is looked up as-is (so `from = :onset_time` works the
+same way). A `Function (ind) -> Real` is also accepted, for anchors held
+as fields on the `Individual`. If the `from` state's time is not finite
+(the upstream state was never reached, or an asymptomatic case has a
+`NaN` onset), the transition is skipped. A `from` that names neither a
+state any step or attribute produces nor an existing key raises an error
+at start-up instead, since such a step would otherwise be silently
+skipped for every case.
 
 The timing is given as exactly one of `delay` or `rate`. `delay` is a fixed
 `Real`, a `Distribution`, or an `(rng, ind) -> Real`, resolved per individual.
@@ -74,19 +79,16 @@ function _transition_delay(delay, rate)
 end
 
 # Time of the `from` state for this individual. `:infection` is the
-# infection time (a field, not a state key); any other state name `s` is
-# `Symbol(s, :_time)` in `ind.state`; a function is evaluated directly.
+# infection time (a field, not a state key); any other state name `s`
+# resolves via `_resolved_key` to its `:*_time` key in `ind.state`; a
+# function is evaluated directly.
 function _state_time(ind::Individual{T}, from::Symbol) where {T}
     from === :infection && return ind.infection_time
-    return convert(T, get(ind.state, Symbol(from, :_time), T(NaN)))
+    return convert(T, get(ind.state, _resolved_key(from), T(NaN)))
 end
 _state_time(ind, from) = float(from(ind))
 
-# `from` states other than `:infection` are usually produced by an upstream
-# transition rather than by `attributes`, so the start-up validator cannot
-# see them; an unreached state simply yields a non-finite time and the
-# transition skips. So no fields are required up front.
-required_fields(::Transition) = Symbol[]
+required_fields(t::Transition) = _from_required(t.from)
 
 function initialise_individual!(t::Transition, individual, state)
     individual.state[t.state] = false
