@@ -188,6 +188,23 @@ is_test_positive(ind::Individual) = get(ind.state, :test_positive, false)::Bool
 is_infected(ind::Individual) = get(ind.state, :infected, true)::Bool
 
 """
+Time at which a resolved infection's immunity has waned enough for the host
+to be at risk of a new one (`Inf` if never, the default); a dual under AD.
+Read by [`EpiBranch.HostImmunity`](@ref), the built-in risk source that keeps
+an already-infected host out of reach of a new infection until this time, for
+any model whose [`contacts_of`](@ref) offers one as a candidate contact
+again.
+
+Set it the same way `:infectious_time` or a progression's other `_time` keys
+are set: list a [`Transition`](@ref) into a waned state in the model's
+progression, timed from the state that starts the clock, e.g.
+`Transition(:susceptible_again, from = :recovered, delay = Exponential(180))`
+writes `:susceptible_again_time`, which this reads."""
+function susceptible_again_time(ind::Individual{T}) where {T}
+    return convert(T, get(ind.state, :susceptible_again_time, T(Inf)))::T
+end
+
+"""
     is_settled(state, ind) -> Bool
 
 Whether `ind`'s own fate in a continuous-time race is already fixed, so that
@@ -303,14 +320,6 @@ function permanent_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES
         isfinite(release) || (t = min(t, start))
     end
     return t
-end
-
-# The first time any removal took this host out, whether or not it released
-# them. A component whose stretches a likelihood cannot read closes the
-# infectious window here instead of holding them.
-function first_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
-    stretches = removal_stretches(ind, key)
-    return isempty(stretches) ? Inf : first(stretches)[1]
 end
 
 """Clear an individual's isolation, the inverse of [`set_isolated!`](@ref)."""

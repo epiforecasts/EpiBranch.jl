@@ -248,6 +248,9 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         perfect = Isolation(
             onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
         )
+        permanent = Isolation(
+            onset_to_isolation_delay = Dirac(1.0), duration = Inf
+        )
         case = Individual(id = 1)
         set_isolated!(case, 8.0; release_time = 15.0)
 
@@ -263,15 +266,25 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
             @test EpiBranch.infectious_removal_time(wrap(leaky), case) == Inf
         end
 
-        # The same lapsing wrapper does narrow a perfect isolation's window,
-        # which is the conservative answer for a block it can withdraw
-        # part-way through a stretch it recorded.
+        # The same lapsing wrapper leaves a perfect isolation's window open: the
+        # recorded stretch has its own release, which the per-contact risk
+        # re-checks the schedule against at every proposal regardless.
+        # Narrowing here would turn a removal due to lapse into one that
+        # never does (see issue #410).
         lapsing = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
-        @test EpiBranch.infectious_removal_time(lapsing, case) == 8.0
+        @test EpiBranch.infectious_removal_time(lapsing, case) == Inf
 
-        # A host no removal reached has no first removal to narrow to.
-        @test EpiBranch.first_removal_time(Individual(id = 2)) == Inf
-        @test EpiBranch.infectious_removal_time(lapsing, Individual(id = 3)) == Inf
+        # A removal with no release of its own leaves nothing for either side
+        # to hand back, so the same lapsing wrapper still narrows its window —
+        # the conservative answer for a block it genuinely cannot speak for.
+        permanent_case = Individual(id = 2)
+        set_isolated!(permanent_case, 8.0; release_time = Inf)
+        lapsing_permanent = Scheduled(permanent; start_time = 0.0, end_time = 10.0)
+        @test EpiBranch.infectious_removal_time(lapsing_permanent, permanent_case) == 8.0
+
+        # A host no removal reached has no permanent removal to narrow to.
+        @test EpiBranch.permanent_removal_time(Individual(id = 3)) == Inf
+        @test EpiBranch.infectious_removal_time(lapsing, Individual(id = 4)) == Inf
     end
 
     @testset "A lapsed isolation lets the case go again, on every engine" begin
@@ -336,5 +349,40 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         secondary = [ind for ind in gen_state.individuals if ind.parent_id != 0]
         @test length(secondary) == 1
         @test is_infected(only(secondary))
+    end
+
+    @testset "A schedule that never lapses still hands the case back" begin
+        # Wrapping the same isolation in a schedule whose `end_time` is never
+        # reached, or a predicate that never turns false, must not change the
+        # answer. The per-contact risk re-checks the schedule at every
+        # proposal regardless, and the release still hands the case back.
+        # Before the fix, a wrapper that could lapse closed the window at the
+        # isolation's own start whatever its own condition actually did,
+        # missing this contact entirely.
+        prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
+        attrs = clinical_presentation(incubation_period = Dirac(3.0))
+        iso = Isolation(
+            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
+        )
+
+        for wrapped in (
+                Scheduled(iso; start_time = 0.0, end_time = 1.0e6),
+                Scheduled(iso, state -> true),
+            )
+            rng = StableRNG(1)
+            state = EpiBranch.new_state(
+                BranchingProcess(Dirac(1), Dirac(15.0)), prog, attrs, rng
+            )
+            EpiBranch.add_individuals!(state, 2, [wrapped])
+            EpiBranch._sellke_race!(
+                state, [1, 2], rng; from = :infection, until = (:recovered,),
+                interventions = [wrapped],
+                targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+                    ((2, Dirac(15.0)),) : (),
+                seed! = (best, members, r) -> (best[1] = 0.0)
+            )
+            @test isolation_release_time(state.individuals[1]) == 11.0
+            @test is_infected(state.individuals[2])
+        end
     end
 end

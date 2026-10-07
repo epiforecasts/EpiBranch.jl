@@ -111,6 +111,7 @@ downstream packages should pick names that do not collide.
 | `:vaccine_acceptance` | `Float64` | — | `vaccine_acceptance` | Init (default key; customisable) |
 | `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
 | `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)` | `resolve_individual!` |
+| `:susceptible_again_time` | `Float64` | `Inf` | `Transition(:susceptible_again, …)` | `resolve_individual!` |
 
 The vaccination keys are namespaced by `dose_label`: the default label
 writes to plain `:vaccinated` / `:vaccination_time` / `:vaccine_efficacy` /
@@ -242,6 +243,20 @@ Infectiousness windows read the same convention: `from = :infectious` reads
 they need to match. `:infectious_time` and `:recovered_time` are the common
 natural-history pair; any other state you transition into produces its own
 `<state>_time` the same way.
+
+Reinfection after waning follows the same convention, with nothing extra to
+learn: a progression that lists
+`Transition(:susceptible_again, from = :recovered, delay = Exponential(180))`
+writes `:susceptible_again_time`, which [`susceptible_again_time`](@ref) reads and
+[`EpiBranch.HostImmunity`](@ref) gates on. That convention covers the timing
+only; storage is separate: [`Individual`](@ref)'s live fields describe only the
+current episode, so a model whose `contacts_of` offers an already-infected
+host as a candidate again (once `HostImmunity` lets the exposure through)
+gets its closing episode archived onto `episodes` rather than overwritten —
+see [`InfectionEpisode`](@ref). No built-in model does this yet; a
+reinfection-aware model implements `contacts_of` to keep offering hosts past
+their first infection, the way the eligibility examples above implement their
+own exclusion instead.
 
 ## Custom interventions
 
@@ -586,7 +601,7 @@ privileges neither, so `competing_risk` is the whole vocabulary for
 gating transmission: a vaccine, a border closure, and the host's own
 susceptibility all speak it.
 
-Four defaults ship, each contributing a block probability:
+Five defaults ship, each contributing a block probability:
 
 - [`EpiBranch.HostSusceptibility`](@ref) — `1 - susceptibility` on the contact.
 - [`EpiBranch.InfectorInfectiousness`](@ref) — `1 - infectiousness` on the parent.
@@ -598,6 +613,13 @@ Four defaults ship, each contributing a block probability:
   infector makes from its `:infection_aborted_time`, so an infection
   ended by [`EpiBranch.abort_infection!`](@ref) stays ended after the
   intervention that aborted it stops being active.
+- [`EpiBranch.HostImmunity`](@ref) blocks every exposure of a contact that
+  already carries a prior infection, until [`susceptible_again_time`](@ref)
+  reads in the past. A no-op for any model whose own `contacts_of` never
+  offers an already-infected host as a candidate contact, which is every
+  built-in model; one that does gets a fresh, separately recorded episode
+  (see [Individual state](@ref "Individual state and reserved keys")) rather
+  than a reinfection silently overwriting the one before it.
 
 A trait of `1.0` contributes no risk, so the defaults are silent unless
 an attributes function sets a susceptibility or infectiousness below one.
@@ -2281,8 +2303,11 @@ the likelihood fits on the whole exposure while the simulation blocked part of
 it, which biases the fit without any sign of it. The one component for which
 naming none is right is a wrapper, which can withdraw the inner block
 part-way through a stretch it recorded: a [`Scheduled`](@ref) with an end does
-that, and `InterventionWrapper` narrows the infectious window to the first
-removal instead. That narrowing is the wrapper's own and no plain intervention
+that, and `InterventionWrapper` then narrows the infectious window only when
+the wrapped removal never releases on its own; a releasing one, such as a
+finite `Isolation` `duration` or a `Quarantine`'s, stays within the
+per-contact competing risk instead, which re-checks the wrapper's gate at
+every proposal. That narrowing is the wrapper's own and no plain intervention
 inherits it, the default `infectious_removal_time` being `Inf`.
 
 ### Choosing initial cases in a fixed population

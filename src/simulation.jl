@@ -546,9 +546,29 @@ function _advance_generation!(
     )
     _prepare_parents!(state, interventions)
     targets, edges, minted, is_new = collect_exposures(model, state)
+    # Snapshotted before anything below moves a live field: `_intervene!`'s
+    # provisional parent assignment overwrites `parent_id`/`infection_time`
+    # unconditionally, on a pre-existing node offered again just as much as on
+    # a fresh one.
+    reinfections = _reinfection_episodes(targets, is_new)
     _intervene!(state, interventions, targets, edges, minted)
-    _resolve!(model, state, interventions, targets, edges, is_new)
+    _resolve!(model, state, interventions, targets, edges, is_new, reinfections)
     return nothing
+end
+
+# A pre-existing target already carrying a prior infection, keyed by its
+# position in `targets` rather than by id, since two targets never share a
+# position. Only a model that offers one past its first infection (through
+# `contacts_of`) ever populates this; empty for every other model, which is
+# every built-in one today.
+function _reinfection_episodes(targets, is_new)
+    episodes = Dict{Int, InfectionEpisode}()
+    for i in eachindex(targets)
+        is_new[i] && continue
+        target = targets[i]
+        is_infected(target) && (episodes[i] = InfectionEpisode(target))
+    end
+    return episodes
 end
 
 """Phase 1 — interventions act on the active infectives before they transmit."""
@@ -603,18 +623,31 @@ Exposure is not infection. Each contact exposed this generation is decided
 infected-or-not: the infector's infectiousness, the contact's susceptibility,
 any risks the model contributes and any interventions all act as competing
 risks on the same footing. A contact is infected if any of its exposing edges
-transmits; the earliest successful edge fixes the infection time."""
+transmits; the earliest successful edge fixes the infection time. A
+pre-existing node offered again after a prior infection (only
+[`HostImmunity`](@ref EpiBranch.HostImmunity) lets that exposure survive at
+all) has its closing episode archived rather than overwritten; see
+[`close_episode!`](@ref)."""
 function _resolve!(
         model::TransmissionModel, state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
         targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
-        is_new
+        is_new, reinfections = Dict{Int, InfectionEpisode}()
     )
     model_risks = transmission_risks(model)
     infected_so_far = 0
     newly_infected = eltype(targets)[]
     for i in eachindex(targets)
         target = targets[i]
+        # A pre-existing node already carrying a prior infection, offered
+        # again as a candidate contact by a model whose host has waned
+        # enough (see `HostImmunity`); its live fields as `_advance_generation!`
+        # snapshotted them, before `_intervene!`'s provisional parent
+        # assignment or the trial edges below moved them. The earlier episode
+        # is either archived (confirmed reinfection) or restored (every edge
+        # failed) rather than lost either way.
+        prior_episode = get(reinfections, i, nothing)
+        reinfection = prior_episode !== nothing
         infected = false
         for (pid, t) in edges[i]
             target.parent_id = pid
@@ -624,8 +657,15 @@ function _resolve!(
                 break
             end
         end
+        if reinfection && !infected
+            target.parent_id = prior_episode.parent_id
+            target.infection_time = prior_episode.infection_time
+            _drop_stale_abort!(target)
+            continue
+        end
         target.state[:infected] = infected
         if infected
+            reinfection && close_episode!(target, prior_episode)
             infected_so_far += 1
             parent = state.individuals[target.parent_id]
             target.generation = parent.generation + 1
@@ -895,7 +935,8 @@ function _create_individual(
     ind = Individual{T}(
         next_id, parent_id,
         state.current_generation + (parent_id == 0 ? 0 : 1),
-        chain_id, convert(T, inf_time), one(T), one(T), Int[], s
+        chain_id, convert(T, inf_time), one(T), one(T), Int[], s,
+        InfectionEpisode{T}[]
     )
 
     _apply_attributes!(state.attributes, state.rng, ind)
@@ -1114,6 +1155,21 @@ function competing_risk(::InfectiousSource, parent, contact, state)
     return is_infected(parent) ? nothing : Risk(block_probability = 1.0)
 end
 
+"""Default risk source: a host already carrying an infection is immune to a
+new one until [`susceptible_again_time`](@ref) reads in the past. `Inf` by
+default, so this blocks every exposure of an already-infected host outright —
+a no-op for every built-in model, none of which ever offers one as a
+candidate contact. A model that does, through its own [`contacts_of`](@ref),
+opts into reinfection purely by giving its progression a transition that
+writes `:susceptible_again_time`; the generation engine then archives the
+closing episode (see [`close_episode!`](@ref)) rather than
+overwriting it when a later exposure succeeds."""
+struct HostImmunity end
+function competing_risk(::HostImmunity, parent, contact, state)
+    is_infected(contact) || return nothing
+    return Risk(block_probability = 1.0, release_time = susceptible_again_time(contact))
+end
+
 """Default risk source: an infectiousness window's censoring. A contact
 whose transmission time falls at or after the earliest of its window's
 `until` states (the infector's death, recovery, burial, …) is blocked: the
@@ -1152,6 +1208,8 @@ end
 function _builtin_risk_blocks(parent, contact, state, transmission_time)
     _risk_blocks(InfectiousSource(), parent, contact, state, transmission_time) &&
         return true
+    _risk_blocks(HostImmunity(), parent, contact, state, transmission_time) &&
+        return true
     _risk_blocks(WindowCensor(), parent, contact, state, transmission_time) &&
         return true
     _risk_blocks(AbortedInfection(), parent, contact, state, transmission_time) &&
@@ -1163,12 +1221,15 @@ function _builtin_risk_blocks(parent, contact, state, transmission_time)
     return false
 end
 
-# The built-in sources the continuous-time models compose. Only one of the five
-# applies there. Two are the generation engine's own and can never apply: an
-# infector on those models has settled and so is infected by construction, and
+# The built-in sources the continuous-time models compose. Only one of the six
+# applies there. Three are the generation engine's own and can never apply: an
+# infector on those models has settled and so is infected by construction,
 # route censoring is the infectious window's job rather than a tag written on a
-# contact. The other two, the per-individual susceptibility and infectiousness,
-# are rate multipliers on those models rather than per-contact blocks: each one
+# contact, and a candidate the race proposes is always one not yet settled,
+# hence never already infected either — the race has nowhere yet to put a
+# second episode even once a model wants to offer one. The other two, the
+# per-individual susceptibility and infectiousness, are rate multipliers on
+# those models rather than per-contact blocks: each one
 # scales the hazard a pair meets at (`_traits_scaled_draw`) or the pressure a
 # susceptible absorbs, so resolving them here again would count them twice.
 function _sellke_builtin_risk_blocks(parent, contact, state, transmission_time)

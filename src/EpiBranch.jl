@@ -131,7 +131,7 @@ include("progression_likelihood.jl")
 
 # Exports — types
 export TransmissionModel, BranchingProcess, Infectiousness, HomogeneousProcess, ModelSpec
-export Individual, SimulationState
+export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
 export AbstractIntervention, Isolation, ContactTracing
@@ -165,7 +165,7 @@ export NoAgeDistribution, NoCases
 export onset_time, incubation_period, outcome_time, is_isolated, isolation_time,
     isolation_release_time, is_traced, is_quarantined
 export is_vaccinated, immunity_time, severity_efficacy, is_asymptomatic, is_test_positive,
-    is_infected
+    is_infected, susceptible_again_time
 export individual_type, set_isolated!, clear_isolated!
 
 # Exports — distributions
