@@ -60,10 +60,10 @@ that died out before reaching that cap (see the
 
 [`Isolation`](@ref) isolates symptomatic cases after a delay from symptom
 onset. `onset_to_isolation_delay = Exponential(2.0)` is a delay with mean 2
-days, and `isolation_duration = 7.0` releases each case after 7 days:
+days, and `duration = 7.0` releases each case after 7 days:
 
 ```@example interventions
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
@@ -75,7 +75,7 @@ secondary cases are infected. Varying the mean delay:
 
 ```@example interventions
 for d in [0.5, 2.0, 10.0]
-    let iso = Isolation(onset_to_isolation_delay = Exponential(d), isolation_duration = 7.0),
+    let iso = Isolation(onset_to_isolation_delay = Exponential(d), duration = 7.0),
         rng = StableRNG(42)
         results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
         println("Mean delay $d days: containment = $(round(containment_probability(results), digits=3))")
@@ -93,7 +93,7 @@ exposed. `post_isolation_transmission = 0.3` makes an isolated case 30% as
 infectious as before. Imperfect isolation like this is called leaky:
 
 ```@example interventions
-iso_leaky = Isolation(onset_to_isolation_delay = Exponential(2.0), post_isolation_transmission = 0.3, isolation_duration = 7.0)
+iso_leaky = Isolation(onset_to_isolation_delay = Exponential(2.0), post_isolation_transmission = 0.3, duration = 7.0)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso_leaky]), 200; max_cases = 500, rng = rng)
@@ -102,31 +102,37 @@ println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 
 ### Isolation duration
 
-`isolation_duration` has no default, because how long cases stay isolated is
-a modelling choice. It takes a number of days, a distribution, or a function
-of the random number generator and the individual, `(rng, ind) -> ...`, in
-the same way as `onset_to_isolation_delay`. `Inf` keeps a case isolated for
-good; a finite value releases them, and a released case transmits again.
+`duration` sets how long a case stays isolated. It has no default, because
+the length of isolation is a modelling choice. It takes a number of days,
+a distribution, or a function of the random number generator and the
+individual, `(rng, ind) -> ...`, in the same way as
+`onset_to_isolation_delay`. `Inf` keeps a case isolated for good. A finite
+value releases them. A released case who is still infectious transmits again:
+a secondary case whose infection would fall after the release is not
+prevented. A duration of 0 stops no transmission at all.
 
 Choosing `Inf` to mean "isolated for the rest of the infectious period" is
 only safe when infectiousness ends before any finite duration would. The
-generation time here has no upper limit, and the 7 days above matter: a
-secondary case whose infection would fall after the release is not
-prevented. Isolation always starts after infection, since it follows onset;
-removing a contact before they are infected is quarantine, below.
+generation time here has no upper limit, so cases released after the 7 days
+above can still infect people. Isolation follows onset and always starts after
+infection. Removing a contact before they are infected is quarantine, below.
+
+With a finite duration, the line list from [`linelist`](@ref) gains a
+`date_isolation_release` column, the date each isolated case was released.
 
 !!! warning "Release ends leaky isolation too"
     A released leaky case goes back to full infectiousness. A finite
     duration can change a leaky model's final outbreak size by an order of
     magnitude.
 
-!!! note "Scheduled isolation on continuous-time models"
-    On the continuous-time models (network, household and homogeneous
-    mixing), an isolation wrapped in a [`Scheduled`](@ref) with an end time
-    or a rule removes the case for good at isolation, whatever
-    `isolation_duration` says. Use a `Scheduled` with only a `start_time`, or
-    no `Scheduled`, where the duration matters. The branching-process model
-    on this page applies the duration either way.
+!!! note "Release on the network, household and homogeneous models"
+    The network, household and homogeneous-mixing models (see
+    [Networks](networks.md), [Households](households.md) and
+    [Homogeneous models](homogeneous.md)) release isolated cases in the same way. The
+    same holds for an isolation switched on or off with [`Scheduled`](@ref),
+    below.
+    A case isolated for a week part-way through a month of infectiousness
+    transmits again for the rest of that month.
 
 ## Contact tracing
 
@@ -135,19 +141,24 @@ with `probability` 0.7, and `isolation_to_trace_delay` (mean 1 day) is the
 time from the infector's isolation until the contact is traced.
 
 Isolation applies to cases; quarantine applies to traced contacts who are not
-yet known to be cases. With `quarantine_on_trace = true` (the default), a
-traced contact is quarantined at the trace and stops transmitting from then
-on, even before any symptoms. With `quarantine_on_trace = false` the contact
-is only flagged as traced: they keep transmitting, and if they develop
-symptoms they are isolated at onset, without the usual onset-to-isolation
-delay.
+yet known to be cases. The `action` keyword, which has no default, says what
+happens to a traced contact:
 
-From here on, isolation lasts indefinitely (`isolation_duration = Inf`), to
-keep the comparisons about tracing.
+- `action = Quarantine(duration = Inf)` quarantines the contact at the trace.
+  They stop transmitting from then on, even before any symptoms.
+- `action = FlagOnly()` only flags the contact as traced. They keep
+  transmitting, and if they develop symptoms they are isolated at onset,
+  without the usual onset-to-isolation delay.
+
+From here on, isolation and quarantine last indefinitely (`duration = Inf`),
+to keep the comparisons about tracing.
 
 ```@example interventions
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = Inf)
-ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = true)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+ct = ContactTracing(
+    probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+    action = Quarantine(duration = Inf)
+)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso, ct]), 200; max_cases = 500, rng = rng)
@@ -157,16 +168,24 @@ println("Isolation + tracing: $(round(containment_probability(results), digits=3
 Quarantine stops transmission from secondary cases before they show
 symptoms, and containment rises above isolation alone.
 
-A quarantine lasts indefinitely by default. A traced contact who escaped
-infection by the traced case but is infected later through another route
-would then stay blocked. To give quarantine a length, pass the trigger, the
-tracing probability, the delay and a [`Quarantine`](@ref) with a `duration`
-in that order:
+[`Quarantine`](@ref)'s `duration` takes the same values as isolation's, and
+has no default either. With `Inf`, a traced contact who escaped infection by
+the traced case but is infected later through another route stays blocked
+for good. A finite duration releases the contact. Once released, an infected
+contact transmits like anyone else. Here each quarantine lasts on
+average 5 days:
 
 ```julia
-ContactTracing(OnIsolation(), 0.7, Exponential(1.0),
-    Quarantine(duration = Exponential(5.0)))
+ContactTracing(
+    probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+    action = Quarantine(duration = Exponential(5.0))
+)
 ```
+
+!!! note "`quarantine_on_trace` is deprecated"
+    Older code may use `quarantine_on_trace = true` or `false`. These still
+    run with a warning: `true` means `action = Quarantine(duration = Inf)` and
+    `false` means `action = FlagOnly()`. Write the `action` instead.
 
 ### What triggers contact tracing
 
@@ -189,7 +208,7 @@ Under `OnSymptomOnset` the delay keeps its keyword name,
 # Begin tracing as soon as the infector shows symptoms, without waiting
 # for a positive test or for isolation.
 ct_fast = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
-    eligibility = OnSymptomOnset())
+    action = Quarantine(duration = Inf), eligibility = OnSymptomOnset())
 nothing # hide
 ```
 
@@ -203,7 +222,7 @@ elig = OnSymptomOnset() | OnLabConfirmation()
 elig_gap = OnSymptomOnset() & !OnIsolation()
 
 ct_combined = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
-    eligibility = elig)
+    action = Quarantine(duration = Inf), eligibility = elig)
 nothing # hide
 ```
 
@@ -222,7 +241,7 @@ disease_hard = clinical_presentation(
     incubation_period = LogNormal(1.5, 0.5),
     prob_asymptomatic = 0.3,
 )
-iso_imperfect = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.8, isolation_duration = Inf)
+iso_imperfect = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.8, duration = Inf)
 rng = StableRNG(42)
 results = simulate(scenario([iso_imperfect, ct], disease_hard), 200; max_cases = 500, rng = rng)
 println("30% asymptomatic, 80% test sensitivity: $(round(containment_probability(results), digits=3))")
@@ -269,7 +288,7 @@ testing was not yet available.
 
 ```@example interventions
 # Testing starts on day 10
-iso_delayed = Scheduled(Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0); start_time = 10.0)
+iso_delayed = Scheduled(Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0); start_time = 10.0)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso_delayed]), 200; max_cases = 500, rng = rng)
@@ -283,9 +302,10 @@ A start can also follow the case count:
 
 ```@example interventions
 # Start contact tracing after 20 cumulative cases
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 ct_triggered = Scheduled(
-    ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0));
+    ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = Inf));
     start_after_cases = 20,
 )
 
@@ -305,7 +325,7 @@ Start and end times can be combined:
 
 ```@example interventions
 # Active only between day 5 and day 30
-iso_window = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = 7.0);
+iso_window = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 7.0);
     start_time = 5.0, end_time = 30.0)
 ```
 
@@ -316,7 +336,7 @@ programme observes but which is useful for exploring the model:
 
 ```@example interventions
 iso_gen3 = Scheduled(
-    Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0),
+    Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0),
     state -> state.current_generation >= 3,
 )
 ```

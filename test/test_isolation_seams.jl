@@ -25,7 +25,7 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
     )
 
     @testset "Default keyword constructor reproduces previous behaviour" begin
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         @test iso.eligibility isa SymptomaticOnly
         @test iso.test_sensitivity == 1.0
         @test iso.post_isolation_transmission == 0.0
@@ -38,7 +38,7 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         clin_mixed = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases(), isolation_duration = Inf)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases(), duration = Inf)
         rng = StableRNG(42)
         state = simulate(
             ModelSpec(
@@ -58,7 +58,7 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         iso = Isolation(
             onset_to_isolation_delay = Exponential(0.1),
-            test_sensitivity = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0, isolation_duration = Inf
+            test_sensitivity = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0, duration = Inf
         )
         rng = StableRNG(13)
         state = simulate(
@@ -81,7 +81,7 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         # group's own event time.
         attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         iso = Isolation(
-            onset_to_isolation_delay = (rng, ind) -> ind.state[:age] >= 50 ? 0.1 : 5.0, isolation_duration = Inf
+            onset_to_isolation_delay = (rng, ind) -> ind.state[:age] >= 50 ? 0.1 : 5.0, duration = Inf
         )
         rng = StableRNG(21)
         state = simulate(
@@ -109,21 +109,21 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
     @testset "required_fields dispatches on eligibility" begin
         # Default SymptomaticOnly requires :asymptomatic.
         @test :asymptomatic in EpiBranch.required_fields(
-            Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         )
         # AllCases doesn't.
         @test :asymptomatic ∉ EpiBranch.required_fields(
-            Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases(), isolation_duration = Inf)
+            Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases(), duration = Inf)
         )
         # Custom eligibility declares its own required fields.
         @test :age in EpiBranch.required_fields(
-            Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = OnlyOlder(50), isolation_duration = Inf)
+            Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = OnlyOlder(50), duration = Inf)
         )
     end
 
     @testset "Custom IsolationEligibility integrates end-to-end" begin
         attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.1), eligibility = OnlyOlder(50), isolation_duration = Inf)
+        iso = Isolation(onset_to_isolation_delay = Exponential(0.1), eligibility = OnlyOlder(50), duration = Inf)
         rng = StableRNG(17)
         state = simulate(
             ModelSpec(
@@ -151,7 +151,7 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         kernel = Uniform(0.0, 10.0)
         function race(duration)
             iso = Isolation(
-                onset_to_isolation_delay = Dirac(1.0), isolation_duration = duration
+                onset_to_isolation_delay = Dirac(1.0), duration = duration
             )
             rng = StableRNG(3)
             state = EpiBranch.new_state(
@@ -189,7 +189,7 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         # declaration a certain block raises rather than silently dropping
         # contacts that could still transmit.
         iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(7.0)
+            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
         )
         @test EpiBranch.binding_release(iso)
         @test EpiBranch.binding_release(Scheduled(iso; start_time = 0.0))
@@ -242,11 +242,14 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         # window for it either, which would turn the reduction into a
         # permanent, perfect removal.
         leaky = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(7.0),
+            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0),
             post_isolation_transmission = 0.5
         )
         perfect = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(7.0)
+            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
+        )
+        permanent = Isolation(
+            onset_to_isolation_delay = Dirac(1.0), duration = Inf
         )
         case = Individual(id = 1)
         set_isolated!(case, 8.0; release_time = 15.0)
@@ -263,15 +266,25 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
             @test EpiBranch.infectious_removal_time(wrap(leaky), case) == Inf
         end
 
-        # The same lapsing wrapper does narrow a perfect isolation's window,
-        # which is the conservative answer for a block it can withdraw
-        # part-way through a stretch it recorded.
+        # The same lapsing wrapper leaves a perfect isolation's window open: the
+        # recorded stretch has its own release, which the per-contact risk
+        # re-checks the schedule against at every proposal regardless.
+        # Narrowing here would turn a removal due to lapse into one that
+        # never does (see issue #410).
         lapsing = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
-        @test EpiBranch.infectious_removal_time(lapsing, case) == 8.0
+        @test EpiBranch.infectious_removal_time(lapsing, case) == Inf
 
-        # A host no removal reached has no first removal to narrow to.
-        @test EpiBranch.first_removal_time(Individual(id = 2)) == Inf
-        @test EpiBranch.infectious_removal_time(lapsing, Individual(id = 3)) == Inf
+        # A removal with no release of its own leaves nothing for either side
+        # to hand back, so the same lapsing wrapper still narrows its window —
+        # the conservative answer for a block it genuinely cannot speak for.
+        permanent_case = Individual(id = 2)
+        set_isolated!(permanent_case, 8.0; release_time = Inf)
+        lapsing_permanent = Scheduled(permanent; start_time = 0.0, end_time = 10.0)
+        @test EpiBranch.infectious_removal_time(lapsing_permanent, permanent_case) == 8.0
+
+        # A host no removal reached has no permanent removal to narrow to.
+        @test EpiBranch.permanent_removal_time(Individual(id = 3)) == Inf
+        @test EpiBranch.infectious_removal_time(lapsing, Individual(id = 4)) == Inf
     end
 
     @testset "A lapsed isolation lets the case go again, on every engine" begin
@@ -283,7 +296,7 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
         iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(7.0)
+            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
         )
 
         # The continuous-time race, which `HouseholdProcess` and `NetworkProcess`
@@ -336,5 +349,40 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         secondary = [ind for ind in gen_state.individuals if ind.parent_id != 0]
         @test length(secondary) == 1
         @test is_infected(only(secondary))
+    end
+
+    @testset "A schedule that never lapses still hands the case back" begin
+        # Wrapping the same isolation in a schedule whose `end_time` is never
+        # reached, or a predicate that never turns false, must not change the
+        # answer. The per-contact risk re-checks the schedule at every
+        # proposal regardless, and the release still hands the case back.
+        # Before the fix, a wrapper that could lapse closed the window at the
+        # isolation's own start whatever its own condition actually did,
+        # missing this contact entirely.
+        prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
+        attrs = clinical_presentation(incubation_period = Dirac(3.0))
+        iso = Isolation(
+            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
+        )
+
+        for wrapped in (
+                Scheduled(iso; start_time = 0.0, end_time = 1.0e6),
+                Scheduled(iso, state -> true),
+            )
+            rng = StableRNG(1)
+            state = EpiBranch.new_state(
+                BranchingProcess(Dirac(1), Dirac(15.0)), prog, attrs, rng
+            )
+            EpiBranch.add_individuals!(state, 2, [wrapped])
+            EpiBranch._sellke_race!(
+                state, [1, 2], rng; from = :infection, until = (:recovered,),
+                interventions = [wrapped],
+                targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+                    ((2, Dirac(15.0)),) : (),
+                seed! = (best, members, r) -> (best[1] = 0.0)
+            )
+            @test isolation_release_time(state.individuals[1]) == 11.0
+            @test is_infected(state.individuals[2])
+        end
     end
 end

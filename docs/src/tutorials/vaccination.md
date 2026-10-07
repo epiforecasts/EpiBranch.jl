@@ -25,14 +25,17 @@ clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 scenario(interventions = AbstractIntervention[], attributes = clinical) =
     ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0)); interventions, attributes)
 
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = Inf)
-ct = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+ct = ContactTracing(
+    probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+    action = Quarantine(duration = Inf)
+)
 nothing # hide
 ```
 
 `iso` isolates symptomatic cases a mean of 2 days after onset, for good. `ct`
 traces 70% of their contacts a mean of 1 day after the infector's isolation
-and quarantines them.
+and quarantines them, also for good.
 
 ## How a dose protects
 
@@ -85,7 +88,7 @@ println("Isolation + tracing + ring vaccination: $(round(containment_probability
 
     `efficacy` matters only where a contact can still be exposed after being
     traced: under leaky isolation (`post_isolation_transmission > 0`), with a
-    finite `isolation_duration` that releases the infector while the contact
+    finite isolation `duration` that releases the infector while the contact
     is still susceptible, when tracing starts before the infector is isolated
     (for example `eligibility = OnSymptomOnset()`), or in a ring wider than
     direct contacts (`depth > 1`) that passes through people who keep
@@ -100,7 +103,7 @@ dose acts:
 ```@example vaccination
 ct_onset = ContactTracing(probability = 0.7,
     isolation_to_trace_delay = Exponential(1.0),
-    eligibility = OnSymptomOnset(), quarantine_on_trace = false)
+    eligibility = OnSymptomOnset(), action = FlagOnly())
 
 for (label, interventions) in (
         ("no vaccination", [iso, ct_onset]),
@@ -154,7 +157,10 @@ are followed one step further so the ring can extend past them. The same
 `RingVaccination` vaccinates everyone in the ring:
 
 ```@example vaccination
-ct2 = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0), depth = 2)
+ct2 = ContactTracing(
+    probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+    action = Quarantine(duration = Inf), depth = 2
+)
 
 rng = StableRNG(42)
 state = simulate(scenario([iso, ct2, rv]); condition = 50:200, max_cases = 200, rng = rng)
@@ -200,7 +206,7 @@ own contacts were simulated before the run stopped:
 
 ```@example vaccination
 ct_noquarantine = ContactTracing(probability = 0.7,
-    isolation_to_trace_delay = Exponential(1.0), quarantine_on_trace = false)
+    isolation_to_trace_delay = Exponential(1.0), action = FlagOnly())
 
 function secondary_per_traced(runs)
     mean(count(id -> is_infected(s.individuals[id]), ind.secondary_case_ids)
@@ -571,7 +577,7 @@ repeated_campaign = GroupVaccination(efficacy = 0.8,
 
 campaign_model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     attributes = [clinical, groups(3), willingness],
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf),
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
         repeated_campaign])
 
 println("Reached among willing people: $(round(campaign_reach, digits = 3)); ",

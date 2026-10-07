@@ -11,7 +11,7 @@
     process = HouseholdProcess(fill(5, 120), Exponential(0.4))
 
     finite = Isolation(
-        onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(7.0)
+        onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
     )
     m = ModelSpec(process; progression, attributes = clinical, interventions = [finite])
     state = simulate(m; rng = StableRNG(17))
@@ -48,7 +48,7 @@
 
     # A duration of `Inf` records nothing extra, its window closing at the
     # isolation's own start as before.
-    forever = Isolation(onset_to_isolation_delay = Dirac(1.0), isolation_duration = Inf)
+    forever = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf)
     m_inf = ModelSpec(
         process; progression, attributes = clinical, interventions = [forever]
     )
@@ -94,7 +94,7 @@ end
 
 @testset "A wrapper forwards its stretches only when it cannot withdraw them" begin
     iso = Isolation(
-        onset_to_isolation_delay = Dirac(1.0), isolation_duration = Dirac(7.0)
+        onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
     )
     key = EpiBranch.REMOVAL_STRETCHES_KEY
 
@@ -106,14 +106,15 @@ end
     ) == (key,)
 
     # A schedule that closes withdraws the block part-way through the stretch,
-    # which the record cannot express. It declares none, and narrows the
-    # infectious window to the isolation's own start instead, as a duration of
-    # `Inf` would.
+    # which the record cannot express, so it declares none. The isolation's
+    # own finite duration still releases the case on its own terms: the
+    # per-contact risk re-checks the schedule at every proposal, and the
+    # window stays open rather than narrowing to the isolation's own start.
     lapsing = Scheduled(iso; start_time = 0.0, end_time = 10.0)
     @test EpiBranch.removal_gap_host_times(lapsing) == ()
     case = Individual(id = 1)
     EpiBranch.set_isolated!(case, 8.0; release_time = 15.0)
-    @test EpiBranch.infectious_removal_time(lapsing, case) == 8.0
+    @test EpiBranch.infectious_removal_time(lapsing, case) == Inf
     @test EpiBranch.infectious_removal_time(Scheduled(iso; start_time = 0.0), case) == Inf
 
     clinical = clinical_presentation(incubation_period = Dirac(0.0))
@@ -158,7 +159,7 @@ end
         Transition(:recovered; from = :infection, delay = 30.0, terminal = true),
     ]
     process = HouseholdProcess(fill(5, 60), Exponential(6.0))
-    iso = Isolation(onset_to_isolation_delay = Dirac(1.0), isolation_duration = Inf)
+    iso = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf)
     m = ModelSpec(process; progression, attributes = clinical, interventions = [iso, ct])
     state = simulate(m; rng = StableRNG(5))
     data = household_infections(state, m)

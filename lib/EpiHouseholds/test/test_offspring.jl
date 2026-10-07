@@ -246,7 +246,7 @@ end
             interventions = [
                 Isolation(
                     onset_to_isolation_delay = Exponential(1.0),
-                    eligibility = AllCases(), isolation_duration = Inf
+                    eligibility = AllCases(), duration = Inf
                 ),
             ]
         )
@@ -371,7 +371,7 @@ end
                 Scheduled(
                     Isolation(
                         onset_to_isolation_delay = Exponential(1.0),
-                        eligibility = AllCases(), isolation_duration = Inf
+                        eligibility = AllCases(), duration = Inf
                     ); start_after_cases = 10
                 ),
             ]
