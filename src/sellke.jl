@@ -369,7 +369,8 @@ reads the current state, so a block that is certain at one contact may have
 lifted by the next (a ward that reopens, a campaign that ends, a quarantine
 that expires), and a `Risk` holding plain numbers looks the same in both cases.
 Declare `true` only for a source whose certain block, once in force for a pair,
-never lifts. A simulation with no time limit needs that declaration to finish;
+never lifts. A simulation in which a case's infectious period may never end
+(no `until` state that every case reaches) needs that declaration to finish;
 without it, a certain block raises an `ArgumentError` instead of silently
 dropping transmission that could still happen.
 """
