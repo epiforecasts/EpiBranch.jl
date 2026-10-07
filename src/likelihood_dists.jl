@@ -126,7 +126,8 @@ end
 
 Without interventions, and with a single-type offspring distribution, this is
 the exact chain-size distribution (`Borel` or `GammaBorel`, adjusted for the
-observation model), also when `seeds` or `prob_concluded` is given. With
+observation model). It stays exact with `prob_concluded`, and with `seeds`
+unless cases are under-reported (`PerCaseObservation`). With
 interventions, or an offspring distribution that is not single-type, the
 probability of the data is estimated from simulated outbreaks.
 
@@ -137,7 +138,8 @@ Keyword arguments:
 - `prob_concluded`: for each cluster, the probability that it is over, so its
   observed size is its final size (for real-time data with clusters still
   growing; see [`end_of_outbreak_probability`](@ref)). Only available with the
-  exact distribution, so not with interventions.
+  exact distribution, so not with interventions. The model's observation
+  model is not applied when `prob_concluded` is given.
 - `n_sim`, `n_initial`, `max_cases`, `max_generations`, `max_time`,
   `stopping_rules` and `rng`: control the simulation used when no exact
   formula applies. Interventions come from the model; add them with a
