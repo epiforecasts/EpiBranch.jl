@@ -147,12 +147,12 @@ first(r_df, 5)
 ## Analytical functions
 
 Some quantities have closed-form solutions — no simulation needed. They
-read a spec's interventions too, but only ones whose effect on the
-offspring law is itself exact in closed form; `spec` above carries
-`Isolation`, whose effect on R depends on how its timing overlaps the
-generation-time distribution, so calling them on `spec` would refuse
-rather than silently ignore it. The underlying `model` carries no such
-intervention:
+read a spec's interventions too, but only when an intervention's effect
+on the offspring law is itself exact in closed form. `spec` above
+carries `Isolation`, whose effect on R depends on how its timing
+overlaps the generation-time distribution, so these functions refuse to
+run on it rather than silently ignoring it. The underlying `model`
+carries no such intervention:
 
 ```@example gettingstarted
 println("P(extinction): $(round(extinction_probability(model), digits=3))")
