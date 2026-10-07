@@ -188,9 +188,11 @@ An [`Isolation`](@ref) that leaves some transmission after isolating
 (`post_isolation_transmission > 0`) reduces transmission in the same way.
 
 !!! warning "Contact tracing and vaccination do not apply"
-    Contact tracing needs named contacts, and the built-in vaccinations dose
-    people as transmission reaches them; a well-mixed population has
-    neither. [`ContactTracing`](@ref), [`MassVaccination`](@ref) and
+    Contact tracing needs named contacts, which a well-mixed population does
+    not have. The built-in vaccinations dose each new contact as the
+    simulation creates it, but this model starts with the whole population
+    in place and never creates new contacts, so nobody is dosed.
+    [`ContactTracing`](@ref), [`MassVaccination`](@ref) and
     [`GroupVaccination`](@ref) are not applied to a `HomogeneousProcess`;
     `simulate` warns if you include one. Isolation, reduced susceptibility or
     infectiousness, and events in the natural history all apply. To model
