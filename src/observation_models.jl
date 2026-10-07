@@ -11,8 +11,8 @@ How true cases become observed data: which cases are detected, how long
 reporting takes, or which outbreaks are recorded at all. Pass one to a model
 as `observation = ...`. Built in: [`NoObservation`](@ref) (every case seen),
 [`PerCaseObservation`](@ref) (each case detected with some probability, after
-a reporting delay) and [`MinimumSize`](@ref) (only chains above a size are
-recorded).
+a reporting delay) and [`MinimumSize`](@ref) (only chains of at least a given size
+are recorded).
 
 To write a new one, define [`observe`](@ref) (for the likelihood) and
 [`apply_observation!`](@ref EpiBranch.apply_observation!) (for simulation)
