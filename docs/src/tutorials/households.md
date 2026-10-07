@@ -325,6 +325,19 @@ a household model, where a case's contacts are their housemates. Each
 housemate is traced separately, with the same probability and delay as any
 other contact. Tracing does not reach a whole household at once.
 
+!!! warning "Limits on interventions in households"
+    - Mass vaccination is not supported. When a model has an intervention
+      that the household model cannot apply, `simulate` warns and runs as if
+      that intervention were absent.
+    - Ring vaccination works only without an `eligibility_window` (the
+      default). With a window set, `simulate` warns and ignores the ring
+      vaccination.
+    - Tracing is forward only: it reaches housemates infected after the case,
+      not the person who infected them.
+    - `household_offspring` does not accept an intervention wrapped in
+      `Scheduled`. To see what switching a policy on does, compute R\* once
+      without the intervention and once with it in place from the start.
+
 ### The outbreak within one household
 
 [`household_final_size`](@ref) gives the exact distribution of how many
