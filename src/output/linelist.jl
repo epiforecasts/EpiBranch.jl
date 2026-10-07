@@ -1,21 +1,27 @@
 """
     event_time_metadata(::Val{key})
 
-Describe a state key used as an event date by [`linelist`](@ref). Return
-`(column = :date_name, requires_infection = true)` or `nothing` for an ordinary
-state column. By default, keys ending in `_time` become `date_` columns and
-require infection. Non-finite or non-numeric event times produce `missing`.
+How a recorded event time appears as a date column in [`linelist`](@ref). Use
+it when a custom intervention or progression step records its own event times
+and you want them shown as dates.
 
-An event producer can declare a date that also applies to uninfected people:
+Returns `(column = :date_name, requires_infection = true)`, or `nothing` for a
+column that is not a date. By default, any time recorded under a name ending
+in `_time` becomes a `date_` column (`:onset_time` becomes `date_onset`) and
+is shown only for infected people. Times that are infinite or not numbers
+become `missing`.
+
+An event that can happen to people who were never infected (an appointment,
+say) declares that its date applies to them too:
 
 ```julia
 EpiBranch.event_time_metadata(::Val{:appointment_time}) =
     (column = :date_appointment, requires_infection = false)
 ```
 
-Tracing, vaccination and immunity dates, including labelled doses, are independent
-of infection. Isolation dates retain the recorded quarantine time when a
-provisional onset replaced it. Metadata affects output only.
+Tracing, vaccination and immunity dates, including those of named doses, are
+shown whether or not the person was infected. This setting changes only the
+line list, not the simulation.
 """
 function event_time_metadata(::Val{key}) where {key}
     name = String(key)
@@ -47,35 +53,65 @@ end
     linelist(state::SimulationState; reference_date=Date(2020, 1, 1),
              infected_only=true)
 
-Return a DataFrame with one row per case. The core columns (`id`,
-`parent_id`, `generation`, `chain_id`, `date_infection`) are always
-present; any other typed field or `state` entry becomes a column too.
-Keys ending in `_time` are converted to dates using `reference_date`, so
-`:onset_time` ends up as `date_onset`.
+The line list of a simulated outbreak: a DataFrame with one row per case,
+with event times converted to calendar dates counted from `reference_date`
+(simulation day 0).
 
-With `infected_only = false`, the table has a row for every individual in
-`state` and an extra `infected` column. On a structure-driven model such as
-`NetworkProcess` or `HouseholdProcess` this is the whole population; on an
-offspring-driven model such as `BranchingProcess` it is the cases plus every
-contact they exposed who was not infected. An uninfected row has `missing` for
-`date_infection` and for every date derived from it (onset, reporting,
-admission, outcome, a traced isolation held back to onset, and custom
-events whose metadata requires infection). Dates of events that happen to a person whether or not they
-are infected are kept: `date_trace`, `date_vaccination`, `date_immunity`, and
-`date_isolation` (with `date_isolation_release`, when a finite duration is
-configured on `Isolation` or on a `Quarantine`) when the
-isolation is a quarantine on tracing. Where [`Isolation`](@ref) derived the
-isolation from a provisional onset, both columns report the quarantine they
-replaced, if there was one, and `missing` otherwise. The `isolated`,
-`date_isolation` and `date_isolation_release` columns report an isolation
-only when it is recorded as a detection (see [`is_isolated`](@ref)).
-Use [`event_time_metadata`](@ref) to declare additional event dates.
-Columns that are not dates are reported as stored.
+Columns always present:
 
-To add a column, write the field during the simulation. `linelist`
-reads whatever is on `state`, except a key starting with an underscore, which
-marks an intervention's own bookkeeping (as `:_intervention_actions` does) and
-never becomes a column.
+| Column | Meaning |
+|:--- | :--- |
+| `id` | case identifier |
+| `parent_id` | `id` of the infector (0 for an index case) |
+| `generation` | generation number (index cases are generation 0) |
+| `chain_id` | which index case the case descends from |
+| `date_infection` | date of infection |
+
+Further columns depend on the model and are added whenever any case has the
+information: for example `date_onset` and `asymptomatic` from
+[`clinical_presentation`](@ref), `age` and `sex` from [`demographics`](@ref),
+`isolated` and `date_isolation` from [`Isolation`](@ref) (with
+`date_isolation_release` when isolation or quarantine has a finite
+`duration`), `date_reporting` from [`Reporting`](@ref), and `outcome` and
+`date_outcome` from [`Death`](@ref) and [`Recovery`](@ref). Any time recorded under a name ending
+in `_time` becomes a `date_` column (`:onset_time` becomes `date_onset`);
+other information appears as recorded. Names starting with an underscore are
+internal to an intervention and never shown. To add your own date columns see
+[`event_time_metadata`](@ref).
+
+`isolated`, `date_isolation` and `date_isolation_release` show an isolation
+only when it counted as a detection (see [`is_isolated`](@ref)).
+
+# Including people who were not infected
+
+With `infected_only = false`, the table has a row for every person in the
+simulation and an extra `infected` column. For a model with a fixed
+population, such as `NetworkProcess` or `HouseholdProcess`, that is everyone;
+for `BranchingProcess` it is the cases plus every contact they exposed who was
+not infected.
+
+An uninfected person has `missing` for `date_infection` and every date that
+depends on infection (onset, reporting, admission, outcome, custom dates that
+require infection). Dates of events that can happen without infection are
+kept: `date_trace`, `date_vaccination`, `date_immunity`, and, for a traced
+contact put in quarantine, `date_isolation` (with `date_isolation_release`
+when the isolation or quarantine has a finite duration). If [`Isolation`](@ref)
+later replaced a quarantine with an isolation based on an onset that never
+happened, these two columns show the original quarantine, or `missing` if
+there was none.
+
+# Examples
+
+```julia
+using Dates
+model = ModelSpec(
+    BranchingProcess(NegBin(2.5, 0.16), Gamma(2.0, 3.0));
+    attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+)
+state = simulate(model; max_cases = 100)
+ll = linelist(state; reference_date = Date(2024, 3, 1))
+first(ll, 5)
+```
 """
 function linelist(
         state::SimulationState;
@@ -111,9 +147,29 @@ end
 """
     contacts(state::SimulationState; reference_date=Date(2020, 1, 1))
 
-Return a DataFrame with one row per contact event (infected and
-non-infected), with columns `from`, `to`, `infected`, `generation`,
-`infection_time`, `date_infection`.
+Who exposed whom in a simulated outbreak: a DataFrame with one row per
+exposure of a person by an infectious case, whether or not it led to
+infection. Filter on `infected` to keep only the transmission tree.
+
+Only the generation-based models, such as [`BranchingProcess`](@ref), record
+exposures. The continuous-time models (`HomogeneousProcess`,
+`NetworkProcess`, `RoutedNetwork`, `HouseholdProcess`) return an empty table;
+for them, who infected whom is the `parent_id` column of [`linelist`](@ref).
+
+Columns: `from` (`id` of the case), `to` (`id` of the person exposed),
+`infected` (whether that exposure infected them), `generation` (generation of
+the person exposed), `infection_time` (day of exposure, which is the day of
+infection when `infected` is true) and `date_infection` (the same as a date
+counted from `reference_date`).
+
+# Examples
+
+```julia
+state = simulate(ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Gamma(2.0, 3.0)));
+    max_cases = 100)
+ct = contacts(state)
+tree = ct[ct.infected, :]   # infector-infectee pairs
+```
 """
 function contacts(
         state::SimulationState;

@@ -1,32 +1,34 @@
 """
     Transition(state; from = :infection, delay = …, rate = …, probability = 1.0, terminal = false)
 
-A timed transition in a case's natural history: the case reaches `state`
-a `delay` after it reached `from`, with probability `probability`. On each
-individual it writes `state => true` and `Symbol(state, :_time) =>
-from_time + delay`. When the transition does not happen — the probability
-gate fails, or the `from` state was never reached — the flag stays `false`
-and the time stays `Inf`.
+One step in a case's natural history, such as becoming infectious after a
+latent period or recovering after an infectious period: the case reaches
+`state` a `delay` (in days) after it reached `from`, with probability
+`probability`. If the step does not happen, because it was not drawn or the
+case never reached `from`, the case simply never reaches `state`.
 
-`from` names an earlier state whose time this one is measured from:
-`:infection` (the default) resolves to the individual's `infection_time`;
-any other symbol `s` resolves to `Symbol(s, :_time)` in `ind.state` (so
-`from = :onset` reads `:onset_time`). A `Function (ind) -> Real` is also
-accepted, for anchors held as fields on the `Individual`. If the `from`
-state's time is not finite (the upstream state was never reached, or an
-asymptomatic case has a `NaN` onset), the transition is skipped.
+- `from`: the earlier state the delay is measured from. `:infection` (the
+  default) is the time of infection; `from = :onset` measures from symptom
+  onset, and in general `from = :s` measures from the time recorded for state
+  `s`. A function of the individual returning a time is also accepted. If the
+  case never reached `from` (including asymptomatic cases, whose onset time is
+  `NaN`), the step is skipped.
+- `delay` or `rate` (give exactly one): `delay` is a fixed number of days, a
+  distribution, or a function of the random number generator and the
+  individual, `(rng, ind) -> ...`, drawn for each case. `rate = r` is the
+  compartmental-model alternative, an exponentially distributed delay with
+  mean `1 / r` days (`delay = Exponential(1 / r)`).
+- `probability`: the chance the step happens, a number or a function
+  `(rng, ind) -> ...`.
+- `terminal = true` marks a step that ends the case. When a case can reach
+  several terminal steps, the earliest becomes its outcome (`:outcome`,
+  `:outcome_time`).
 
-The timing is given as exactly one of `delay` or `rate`. `delay` is a fixed
-`Real`, a `Distribution`, or an `(rng, ind) -> Real`, resolved per individual.
-`rate = r` is the compartmental alternative: an exponential (Markovian)
-transition with hazard `r`, i.e. `delay = Exponential(1 / r)` (mean `1 / r`).
-`probability` is a `Real` or `(rng, ind) -> Real`, resolved per individual.
-
-`terminal = true` marks the transition as ending the case: it joins the
-competing-terminal arbitration, where `:outcome` and `:outcome_time` take
-the earliest terminal that happened. This generalises [`Reporting`](@ref),
-[`Death`](@ref) and the rest, which are this transition with a fixed state
-and bespoke key names.
+Each case records `state` as reached (`true`/`false`) and the time it was
+reached (`Inf` if never), under the name `Symbol(state, :_time)`, so
+`Transition(:infectious, ...)` gives `:infectious_time`. [`Reporting`](@ref),
+[`Hospitalisation`](@ref), [`Recovery`](@ref) and [`Death`](@ref) are ready-made
+versions of this step with fixed names.
 
 # Examples
 

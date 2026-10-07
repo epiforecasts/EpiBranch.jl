@@ -141,26 +141,28 @@ end
     reproduction_number(model)
     reproduction_number(offspring)
 
-Reproduction number of a branching process, computed from its offspring
-specification.
+Basic reproduction number implied by the model's offspring distribution: the
+mean number of secondary cases per case in a fully susceptible population
+without interventions. It is not the time-varying reproduction number Rt.
 
-A single-type model gives the mean of the offspring distribution.
-For [`ClusterMixed`](@ref) offspring, the result is that mean averaged over the
-mixing distribution. A multi-type model built from an offspring matrix gives R*, the
-dominant eigenvalue (spectral radius) of the mean next-generation matrix, whose
-`[i, j]` entry is the expected number of type-`i` offspring from a type-`j`
-parent.
+- Single-type model: the mean of the offspring distribution.
+- [`ClusterMixed`](@ref) offspring: that mean averaged over the chains'
+  mixing distribution.
+- Multi-type model built from a next-generation matrix `M` (`M[i, j]` is the
+  expected number of type-`i` cases infected by one type-`j` case): R*, the
+  largest eigenvalue of `M`.
 
-In the single-type and multi-type cases an outbreak can grow with positive
-probability only if the reproduction number exceeds 1. The `ClusterMixed`
-average is not a growth threshold: each chain's growth depends on its own
-mixing draw, and a mixture with mean below 1 can still produce chains that take
-off. Use [`extinction_probability`](@ref) for the probability of extinction.
+For single-type and multi-type models, an outbreak can grow only if the
+reproduction number exceeds 1. The `ClusterMixed` average is not such a
+threshold: each chain grows or not according to its own reproduction number,
+so chains can take off even when the average is below 1. Use
+[`extinction_probability`](@ref) for the probability that transmission dies
+out.
 
-When the types cannot all infect one another, R* above 1 indicates that some
-group of types can sustain growth. An outbreak from an index case whose type
-cannot reach that group still dies out with certainty.
-[`extinction_probability`](@ref) gives the probability for each type.
+When not every type can infect every other, R* above 1 means some group of
+types can sustain transmission, but an outbreak started by a type that cannot
+reach that group still dies out. [`extinction_probability`](@ref) gives the
+probability for each type of index case.
 
 # Examples
 
@@ -181,30 +183,26 @@ end
 """
     extinction_probability(o::MultiTypeOffspring; tol=1e-10, max_iter=1000)
 
-Extinction probability of a multi-type branching process, one entry per type:
-element `j` is the probability that an outbreak started by a single type-`j`
-case dies out.
-
-It is the smallest fixed point in `[0, 1]` of the vector PGF,
-`q_j = G_j(Σ_i a_ij q_i)`, where `G_j` is the PGF of `dist_fn(R_j)` and
-`a_ij = M[i, j] / R_j` the proportions in which a type-`j` parent's offspring
-are split across types. Fixed-point iteration from zero converges to it.
-
-A type-`j` outbreak can grow only if transmission from type-`j` cases can reach
-a group of types that infect each other with a reproduction number above 1.
-The function returns exactly 1 for types without such a path, and for every
-type when [`reproduction_number`](@ref) is at most 1. These rules assume the
-offspring count varies. For example, `Dirac(1)` at R = 1 gives every case exactly
-one offspring and the chain persists indefinitely. This remains true whether
-the type forms its own class or receives infections from other types; returning
-1 is incorrect for this deterministic law.
-
-Iteration that has not converged by `max_iter` warns; that happens when the
-reproduction number is close to 1.
-
-To use it on a model built with
-`BranchingProcess(offspring_matrix, dist_fn, generation_time)`, call
+Probability that transmission dies out in a multi-type branching process,
+one value per type: element `j` is the probability that an outbreak started
+by a single type-`j` case dies out. Call it on a model as
 `extinction_probability(model)`.
+
+It is 1 for types whose cases cannot lead, directly or through other types,
+to a group of types that sustain transmission among themselves (reproduction
+number above 1), and for every type when [`reproduction_number`](@ref) is at
+most 1. A warning is given if the calculation has not converged after
+`max_iter` iterations, which happens when the reproduction number is close to
+1.
+
+!!! note "How it is calculated"
+    The result is the smallest solution in `[0, 1]` of
+    `q_j = G_j(Σ_i a_ij q_i)`, where `G_j` is the probability generating
+    function of `dist_fn(R_j)` and `a_ij = M[i, j] / R_j` is the share of a
+    type-`j` case's secondary cases that are of type `i`. The rules above
+    assume the number of secondary cases varies between cases; a fixed
+    offspring count such as `Dirac(1)` at R = 1 gives chains that never end,
+    for which returning 1 is wrong.
 """
 function extinction_probability(
         o::MultiTypeOffspring; tol::Real = 1.0e-10,

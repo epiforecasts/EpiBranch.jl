@@ -24,12 +24,24 @@ end
 """
     extinction_probability(R::Real, k::Real; tol=1e-10, max_iter=1000)
 
-Compute the extinction probability of a branching process with
-Negative Binomial offspring distribution parameterised by mean `R`
-and dispersion `k`.
+Probability that transmission from a single introduced case dies out without
+a major outbreak, when each case infects a negative binomial number of others
+with mean `R` and dispersion `k` (`NegBin(R, k)`; smaller `k` means more
+superspreading). It is 1 when `R ≤ 1`. Interventions are not included; for
+those, see [`probability_contain`](@ref) or simulate and use
+[`containment_probability`](@ref).
 
-Fixed-point iteration on the probability generating function is used.
-For R ≤ 1, returns 1.0 (certain extinction).
+The result is the smallest solution of `q = G(q)`, where `G` is the
+probability generating function of the offspring distribution, found by
+iteration to tolerance `tol`. Convergence is slow when `R` is close to 1: a
+warning is given if `max_iter` iterations are reached.
+
+# Examples
+
+```julia
+extinction_probability(2.5, 0.16)   # strong superspreading: about 0.79
+extinction_probability(2.5, 100.0)  # little superspreading: about 0.11
+```
 """
 function extinction_probability(R::Real, k::Real; tol::Real = 1.0e-10, max_iter::Int = 1000)
     R > 0 || throw(ArgumentError("R must be positive, got $R"))
@@ -51,13 +63,13 @@ function extinction_probability(R::Real, k::Real; tol::Real = 1.0e-10, max_iter:
 end
 
 """
-    extinction_probability(d::Distribution; tol=1e-10, max_iter=1000)
+    extinction_probability(d::Poisson; tol=1e-10, max_iter=1000)
+    extinction_probability(d::NegativeBinomial; tol=1e-10, max_iter=1000)
 
-Compute extinction probability for any discrete offspring distribution
-via fixed-point iteration on the PGF.
-
-For Poisson(λ): the PGF exp(λ(s-1)) is used.
-For NegativeBinomial: R and k are extracted and the closed-form PGF is applied.
+Probability that transmission from a single introduced case dies out without
+a major outbreak, for a Poisson or negative binomial offspring distribution
+`d`, such as `NegBin(2.5, 0.16)`. Computed as for
+`extinction_probability(R, k)`.
 """
 function extinction_probability(d::Poisson; tol::Real = 1.0e-10, max_iter::Int = 1000)
     mean(d) <= 1.0 && return 1.0
@@ -81,8 +93,8 @@ end
 """
     epidemic_probability(R::Real, k::Real; kwargs...)
 
-Probability that a single introduction leads to a major epidemic.
-Complement of extinction probability.
+Probability that a single introduced case leads to a major epidemic, with
+`NegBin(R, k)` offspring: one minus [`extinction_probability`](@ref).
 """
 function epidemic_probability(R::Real, k::Real; kwargs...)
     return 1.0 - extinction_probability(R, k; kwargs...)
@@ -92,10 +104,14 @@ end
     epidemic_probability(offspring; kwargs...)
     epidemic_probability(model; kwargs...)
 
-Probability that a single introduction leads to a major epidemic, one minus
-[`extinction_probability`](@ref), for any offspring specification or model that
-function accepts. For a multi-type model the result has one entry per type of
-index case.
+Probability that a single introduced case leads to a major epidemic: one
+minus [`extinction_probability`](@ref), for an offspring distribution or a
+model. For a multi-type model there is one value per type of index case.
+
+Given a model, only its offspring distribution is used: interventions,
+population characteristics and the observation model are ignored. Use
+[`probability_contain`](@ref) for simple control measures, or simulate and
+use [`containment_probability`](@ref).
 """
 function epidemic_probability(offspring; kwargs...)
     return 1.0 .- extinction_probability(offspring; kwargs...)
@@ -106,12 +122,13 @@ end
 """
     extinction_probability(model::TransmissionModel; kwargs...)
 
-Extinction probability for a transmission model, computed from the model's
-offspring specification. For a single-type model the result is a number,
-computed from the law returned by `single_type_offspring`; this covers
-`BranchingProcess` and wrappers that delegate that accessor (e.g. `Observed`).
-For a multi-type model built from an offspring matrix the result is a vector
-with one entry per type of index case.
+Probability that transmission from a single introduced case dies out, from
+the model's offspring distribution. Interventions, population characteristics
+and the observation model are ignored; use [`probability_contain`](@ref) for
+simple control measures, or simulate and use
+[`containment_probability`](@ref). For a single-type model the
+result is one number; for a multi-type model built from an offspring matrix it
+has one value per type of index case.
 """
 function extinction_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
     return extinction_probability(_analytic_offspring(model); kwargs...)
@@ -122,26 +139,37 @@ end
 """
     probability_contain(R, k; n_initial=1, ind_control=0.0, pop_control=0.0)
 
-Probability that an outbreak is contained (goes extinct), accounting for
-individual-level and population-level control measures and multiple initial
-infections.
+Closed-form probability that an outbreak is contained (dies out), with
+`NegBin(R, k)` offspring, under two simple kinds of control and with several
+introductions. It is the closed-form counterpart of the simulation estimate
+[`containment_probability`](@ref), and reduces to
+[`extinction_probability`](@ref) with no control and one introduction.
 
-- `ind_control`: probability each case is individually controlled (removed
-  before transmitting), e.g. through case isolation
-- `pop_control`: population-level reduction in R, e.g. through social
-  distancing. Effective R becomes `(1 - pop_control) * R`
-- `n_initial`: number of initial independent introductions
+- `ind_control`: the probability that each case is controlled individually,
+  for example isolated, before it infects anyone.
+- `pop_control`: the proportional reduction in R from population-wide
+  measures such as social distancing; the effective R is
+  `(1 - pop_control) * R`.
+- `n_initial`: the number of independent introductions.
 
-The containment probability for a single introduction is:
+For one introduction, the containment probability `q` solves
 
-    q = ind_control + (1 - ind_control) * pgf(q)
+    q = ind_control + (1 - ind_control) * G(q)
 
-where `pgf` is the PGF of the offspring distribution with effective R.
-For `n_initial` independent introductions, the probability is `q^n_initial`.
+where `G` is the probability generating function of the offspring
+distribution with the effective R. For `n_initial` introductions it is
+`q^n_initial`.
 
 This is a port of `probability_contain` (and the `probability_extinct`
-self-consistency equation it builds on) in superspreading (Lambert et al.,
+equation it builds on) in the R package superspreading (Lambert et al.,
 https://github.com/epiverse-trace/superspreading, MIT).
+
+# Examples
+
+```julia
+# isolating half of cases before they transmit, three introductions
+probability_contain(2.5, 0.16; ind_control = 0.5, n_initial = 3)
+```
 """
 function probability_contain(
         R::Real, k::Real;
@@ -182,7 +210,10 @@ end
 """
     probability_contain(d::Distribution; n_initial=1, ind_control=0.0, pop_control=0.0)
 
-Containment probability for a given offspring distribution.
+Closed-form containment probability for a Poisson or negative binomial
+offspring distribution, with the same keywords as
+`probability_contain(R, k)`. Poisson offspring is treated as negative
+binomial with very large `k`.
 """
 function probability_contain(d::NegativeBinomial; kwargs...)
     return probability_contain(mean(d), d.r; kwargs...)
@@ -199,9 +230,10 @@ end
 """
     probability_contain(model::TransmissionModel; kwargs...)
 
-Containment probability for a single-type transmission model. Delegates
-through `single_type_offspring`, so wrappers such as `Observed`
-work too.
+Closed-form containment probability for a single-type model, from its
+offspring distribution, with the same keywords as `probability_contain(R, k)`.
+The model's own interventions are not included; express control through
+`ind_control` and `pop_control`.
 """
 function probability_contain(model::Union{TransmissionModel, ModelSpec}; kwargs...)
     return probability_contain(single_type_offspring(model); kwargs...)

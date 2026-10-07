@@ -1,16 +1,28 @@
 """
     chain_statistics(state::SimulationState)
 
-Compute chain size and length for each transmission chain.
-Only infected individuals are counted. Returns a DataFrame with
-columns: `chain_id`, `size`, `length`.
+Size and length of each transmission chain in one simulated outbreak, one row
+per chain. A chain is all the cases descended from one index case. Only
+infected people are counted.
 
-`size` is the number of cases in the chain. `length` is the number of
-generations of onward transmission — the maximum generation index reached,
-so a lone seed that never transmits has `length = 0` and `size = 1`. This is
-the same 0-based convention as [`ChainLengths`](@ref); note it is offset by one
-from epichains, whose `chain_length` counts generations inclusively (1 for a
-single-case chain).
+Returns a DataFrame with columns `chain_id`, `size` (number of cases in the
+chain) and `length` (number of generations of onward transmission: the
+highest generation reached, so an index case that infects nobody has
+`size = 1` and `length = 0`).
+
+!!! note "Chain length is one less than in epichains"
+    `length` here, as in [`ChainLengths`](@ref), counts generations of
+    transmission after the index case. epichains' `chain_length` counts
+    generations including the index case, so a single-case chain has length
+    1 there and 0 here. Add 1 to compare with epichains.
+
+# Examples
+
+```julia
+model = ModelSpec(BranchingProcess(NegBin(0.8, 0.5), Gamma(2.0, 3.0)))
+state = simulate(model; n_initial = 20)
+chain_statistics(state)   # one row per index case
+```
 """
 function chain_statistics(state::SimulationState)
     # Single-pass aggregation: track size and max generation per chain
@@ -37,8 +49,10 @@ end
 """
     chain_statistics(states::Vector{<:SimulationState})
 
-Compute chain statistics across multiple simulations.
-A DataFrame with columns sim_id, chain_id, size, length is returned.
+Chain sizes and lengths across several simulated outbreaks, such as the
+output of `simulate(model, n)`. Returns a DataFrame with columns `sim_id`
+(which simulation), `chain_id`, `size` and `length`, defined as for a single
+outbreak above.
 """
 function chain_statistics(states::Vector{<:SimulationState})
     sim_ids = Int[]

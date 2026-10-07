@@ -51,17 +51,38 @@ end
 """
     ModelSpec(process; progression, interventions, attributes, observation, recorder)
 
-Compose a transmission `process` with the modelling layers
-that force and observe it: the within-host `progression`, the `interventions`,
-the per-individual `attributes`, the `observation` model, and the `recorder`
-([`ContactRecorder`](@ref)) that tells a continuous-time race which
-standing-blocked pairs to keep drawing. Each keyword defaults to the value
-already on `process`, so `ModelSpec(process)` wraps it faithfully and the
-keywords override layer by layer.
+Combine a transmission model (who infects whom, and when) with the rest of
+an outbreak scenario. Pass the result to [`simulate`](@ref), or to
+`loglikelihood(data, model)` to compare it with observed data (the data are
+not stored in the model).
 
-`simulate(spec)` runs it; `loglikelihood(data, spec)` evaluates observed `data`
-against it. The observations themselves stay outside the spec, as the
-likelihood argument.
+- `progression`: the natural history of a case, as a vector of
+  [`Transition`](@ref)s and other steps such as [`Recovery`](@ref) and
+  [`Death`](@ref): latent period, symptom onset, hospitalisation, outcome.
+- `interventions`: control measures, such as [`Isolation`](@ref),
+  [`ContactTracing`](@ref) and [`RingVaccination`](@ref).
+- `attributes`: population characteristics drawn for each person, such as
+  [`clinical_presentation`](@ref) (incubation period, asymptomatic fraction)
+  and [`demographics`](@ref) (age, sex). Give one, or several in a vector.
+- `observation`: how cases are reported, such as
+  [`PerCaseObservation`](@ref) (detection probability and reporting delay).
+- `recorder`: rarely needed; see [`ContactRecorder`](@ref).
+
+Every keyword left out keeps the value the transmission model already has,
+so `ModelSpec(process)` behaves exactly like `process`.
+
+# Examples
+```julia
+using EpiBranch, Distributions
+
+model = ModelSpec(
+    BranchingProcess(NegBin(2.5, 0.16), Gamma(2.5, 2.0));
+    attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0),
+        duration = 14.0)],
+)
+state = simulate(model; max_cases = 500)
+```
 """
 function ModelSpec(
         process::TransmissionModel;

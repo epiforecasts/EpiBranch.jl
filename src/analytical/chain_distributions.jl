@@ -1,16 +1,18 @@
 """
     Borel(μ)
 
-The Borel distribution with parameter `μ > 0`.
+Chain size distribution when each case infects a Poisson number of others with
+mean `μ`: the probability that a chain started by one case has `n` cases in
+total,
 
-P(X = n) = (μn)^(n-1) * exp(-μn) / n!  for n = 1, 2, ...
+    P(X = n) = (μn)^(n-1) * exp(-μn) / n!  for n = 1, 2, ...
 
-This is the chain size distribution for a Poisson(μ) branching process.
-For `μ > 1` (supercritical) the PMF is still valid at each `n`, but its
-total mass is less than 1: chains are infinite with positive probability.
-We keep the PMF defined in the supercritical region so that integrating
-chain size PMFs over a mixing distribution that spans both sides of 1
-works pointwise.
+[`chain_size_distribution`](@ref)`(Poisson(μ))` returns it.
+
+When `μ > 1` some chains grow without end, so the probabilities of the finite
+sizes add up to less than 1; the missing probability is that of a major
+outbreak. The formula stays valid for each `n`, which lets chain-size
+probabilities be averaged over values of `μ` either side of 1.
 """
 struct Borel{T <: Real} <: DiscreteUnivariateDistribution
     μ::T
@@ -79,12 +81,20 @@ end
 """
     GammaBorel(k, R)
 
-Chain size distribution for a NegativeBinomial(k, R) branching process,
-derived via Lagrange inversion.
+Chain size distribution when each case infects a negative binomial number of
+others with dispersion `k` and mean `R`: the probability that a chain started
+by one case has `n` cases in total. [`chain_size_distribution`](@ref)`(NegBin(R, k))`
+returns it. It matches `.nbinom_size_ll` in epichains.
 
-For `R > 1` (supercritical) the PMF is still valid at each `n`, but its
-total mass is less than 1: chains are infinite with positive
-probability.
+!!! warning "Argument order is (k, R)"
+    `GammaBorel(k, R)` takes the dispersion first, the reverse of
+    [`NegBin`](@ref)`(R, k)`. `GammaBorel(0.5, 0.8)` is the chain size
+    distribution for `NegBin(0.8, 0.5)`. Building it through
+    `chain_size_distribution(NegBin(R, k))` avoids the mix-up.
+
+When `R > 1` some chains grow without end, so the probabilities of the finite
+sizes add up to less than 1; the missing probability is that of a major
+outbreak.
 """
 struct GammaBorel{T <: Real} <: DiscreteUnivariateDistribution
     k::T
@@ -155,14 +165,15 @@ const NegativeBinomialChainSize = GammaBorel
 """
     PoissonGammaChainSize(k, R)
 
-Chain size distribution when the per-chain offspring distribution is
-`Poisson(λ)` with `λ ~ Gamma(shape = k, mean = R)`. This corresponds
-to rate heterogeneity at the chain (cluster) level rather than the
-individual level, and matches the `gborel` likelihood in `epichains`.
+Chain size distribution when the reproduction number varies between chains
+rather than between cases: each chain draws its own rate `λ` from a Gamma
+distribution with shape `k` and mean `R`, and every case in that chain infects
+a Poisson(`λ`) number of others. It matches the `gborel` likelihood in
+epichains. Like [`GammaBorel`](@ref EpiBranch.GammaBorel), it takes `k` first.
 
-Note: this is different from `GammaBorel`, which is the chain size
-distribution for `NegativeBinomial` offspring (Gamma-Poisson mixing
-at the individual level).
+This differs from `GammaBorel`, where each case has its own reproduction
+number (negative binomial offspring). [`chain_size_distribution`](@ref)
+returns it for `ClusterMixed(Poisson, Gamma(...))`.
 """
 struct PoissonGammaChainSize{T <: Real} <: DiscreteUnivariateDistribution
     k::T
@@ -280,14 +291,37 @@ end
 """
     chain_size_distribution(offspring::Poisson)
 
-Analytical chain size distribution for Poisson offspring.
+Exact chain size distribution, the probability that a chain started by one
+case has `n` cases in total, when each case infects a Poisson number of
+others: a [`Borel`](@ref) distribution. When R > 1 the probabilities of
+finite sizes add up to less than 1, the rest being the probability of a major
+outbreak.
+
+# Examples
+
+```julia
+d = chain_size_distribution(Poisson(0.8))
+pdf(d, 3)   # probability a chain has exactly 3 cases
+```
 """
 chain_size_distribution(d::Poisson) = Borel(mean(d))
 
 """
     chain_size_distribution(offspring::NegativeBinomial)
 
-Analytical chain size distribution for NegativeBinomial offspring.
+Exact chain size distribution, the probability that a chain started by one
+case has `n` cases in total, when each case infects a negative binomial
+number of others (a [`GammaBorel`](@ref EpiBranch.GammaBorel) distribution).
+When R > 1 the probabilities of finite sizes add up to less than 1, the rest
+being the probability of a major outbreak.
+
+# Examples
+
+```julia
+d = chain_size_distribution(NegBin(0.8, 0.5))
+pdf(d, 3)                   # probability a chain has exactly 3 cases
+sum(pdf(d, n) for n in 1:10)  # probability a chain has at most 10 cases
+```
 """
 chain_size_distribution(d::NegativeBinomial) = GammaBorel(d.r, mean(d))
 
@@ -298,28 +332,27 @@ chain_size_distribution(d::NegativeBinomial) = GammaBorel(d.r, mean(d))
 """
     IndexChainSize(index_offspring, offspring)
 
-Chain-size distribution for a chain whose index case draws its number of
-secondary cases from `index_offspring`, while every later case draws from
-`offspring`. Useful when the index case's opportunity to transmit differs
-from that of a locally infected case — for example a chain seeded by an
-introduced case who arrives part-way through their infectious period or is
+Chain size distribution when the index case has a different offspring
+distribution from later cases: the index case infects a number drawn from
+`index_offspring`, and every later case a number drawn from `offspring`. Use
+it when an introduced case transmits less than locally infected cases, for
+example because they arrive part-way through their infectious period or are
 quarantined on arrival.
 
-    P(N = n) = P(J = 0) 1{n = 1} + Σ_{j ≥ 1} P(J = j) P(chains from j seeds have n - 1 cases)
+Only chains started by a single index case are supported (`seeds == 1` in
+[`ChainSizes`](@ref)).
 
-where `J ~ index_offspring` is the index case's secondary case count and the
-`j`-seed term is the multi-seed chain-size law built from `offspring` via
-[`chain_size_distribution`](@ref) (the same closed form used for
-multi-seed [`ChainSizes`](@ref)). This requires `chain_size_distribution(offspring)`
-to have a multi-seed closed form: `Poisson`, `NegativeBinomial`, and
-`ClusterMixed(Poisson, ::Gamma)` all resolve to one, but a general
-[`ClusterMixed`](@ref) without a closed form resolves to
-[`ChainSizeMixture`](@ref), which has none, and `logpdf`/`pdf` throw once
-`n` is large enough that the sum reaches a `j ≥ 2` term.
+!!! note
+    The probability of a chain of `n` cases sums over the number `j` the index
+    case infected, each starting its own chain:
 
-Only single-index-case chains are supported (`seeds == 1` in
-[`ChainSizes`](@ref)): the multi-seed formula for a cluster with several
-independently introduced cases is not defined here.
+        P(N = n) = P(J = 0) 1{n = 1} + Σ_{j ≥ 1} P(J = j) P(chains from j cases have n - 1 cases)
+
+    This needs the chain size distribution of `offspring` from several
+    starting cases, which exists for `Poisson`, `NegativeBinomial` and
+    `ClusterMixed(Poisson, ::Gamma)`. For other [`ClusterMixed`](@ref)
+    offspring, `pdf` and `logpdf` give an error once `n` is large enough to
+    need it.
 
 # Examples
 
@@ -376,9 +409,9 @@ end
 
 """
 Sample a chain size: draw the index case's secondary-case count `j`, then
-sum `j` independent draws from the non-index chain-size law (the total size
+sum `j` independent draws from the non-index chain size distribution (the total size
 of `j` independent chains is the sum of `j` iid single-seed chain sizes).
-Throws if `dist` is supercritical, as for `rand` on the underlying laws.
+Throws if `dist` is supercritical, as for `rand` on the underlying distributions.
 """
 function Base.rand(rng::AbstractRNG, d::IndexChainSize)
     j = rand(rng, d.index_offspring)
@@ -389,11 +422,16 @@ end
 """
     TruncatedChainSize(base, min_size)
 
-Chain-size law of a cluster recorded only once it reaches `min_size` cases:
-`P(N = n | N ≥ min_size) = P(N = n) / P(N ≥ min_size)` under `base`, and zero
-density below `min_size`. [`observe`](@ref) builds it from a
-[`MinimumSize`](@ref) observation, and the conditioning follows each cluster's
-own seed count through the multi-seed helpers.
+Chain size distribution for clusters recorded only once they reach
+`min_size` cases (for example when only clusters of two or more cases are
+investigated): the distribution `base`, conditioned on the size being at
+least `min_size`,
+
+    P(N = n | N ≥ min_size) = P(N = n) / P(N ≥ min_size)
+
+and zero below `min_size`. [`observe`](@ref) builds it from a
+[`MinimumSize`](@ref) observation model. Clusters with several index cases are
+conditioned using their own number of index cases.
 """
 struct TruncatedChainSize{D <: DiscreteUnivariateDistribution} <:
     DiscreteUnivariateDistribution

@@ -11,12 +11,14 @@
     NetworkInfections(contacts, infection_time, infectious_time, removal_time, is_index;
                       obs_end = Inf, followup_end = Inf, host_times = (;))
 
-The [`InfectionLayer`](@ref) of a network outbreak. Its contact structure is the
-adjacency the outbreak spread over: `contacts[i]` lists the nodes `i` can
-infect, as for [`NetworkProcess`](@ref), and a node's possible infectors are its
-in-neighbours. The per-node vectors, `obs_end`, `followup_end` and `host_times`
-are as described for `InfectionLayer`. Read one out of a simulation with
-[`network_infections`](@ref), or augment it in inference.
+Network outbreak data for the pairwise likelihood: for each person, when they
+were infected, when their infectious period started and ended, and whether
+they were infected from outside the network. `contacts[i]` lists the people
+`i` can infect, as for [`NetworkProcess`](@ref), and a person's possible
+infectors are those who list them. The per-person vectors, `obs_end`,
+`followup_end` and `host_times` are as described for [`InfectionLayer`](@ref).
+Read one from a simulation with [`network_infections`](@ref), or build it from
+data, imputing unobserved infection times in inference.
 """
 struct NetworkInfections{T <: Real, H <: NamedTuple} <: InfectionLayer
     contacts::Vector{Vector{Int}}
@@ -54,16 +56,23 @@ EpiBranch.contact_structure(d::NetworkInfections) = d.contacts
                        host_times = ()) -> NetworkInfections
     network_infections(state, process::NetworkProcess) -> NetworkInfections
 
-Read the [`InfectionLayer`](@ref) out of a `state` simulated from `model`, with
-the model's adjacency as the contact structure. The infectious windows are read
-as described for `InfectionLayer`. Additional hazard modifications require an
-effective kernel when evaluating; extraction records the windows only. A bare `NetworkProcess` is accepted too (its window opens at
-`:infection`, and it has no interventions). `host_times` names further per-node
-times to record, such as `(:onset_time,)`, read from each node's state (`missing`
-where a node has none) for a live [`PairKernel`](@ref) to read. The times the
-model's interventions read through
-[`susceptibility_host_times`](@ref EpiBranch.susceptibility_host_times), such as a
-vaccination's `:immunity_time`, are recorded as well.
+Collect who was infected when from a network outbreak simulated from `model`
+(infection times, start and end of each infectious period, index cases), in
+the form the pairwise likelihood needs, with the model's network as the
+contact structure. The infectious periods are the ones the simulation used, as
+described for [`InfectionLayer`](@ref). Besides the infectious periods, the
+event times listed below are recorded, and `loglikelihood` applies
+interventions that change susceptibility, such as vaccination, from them. Any
+other effect on transmission must be built into the kernel passed to the
+likelihood. A bare `NetworkProcess` is accepted too (its
+infectious period starts at `:infection`, and it has no interventions).
+
+`host_times` names further per-person event times to record, such as
+`(:onset_time,)`, read from each person's state (`missing` where a person has
+none), for a [`PairKernel`](@ref) to use. The times the model's interventions
+need (see [`susceptibility_host_times`](@ref
+EpiBranch.susceptibility_host_times)), such as a vaccinee's
+`:immunity_time`, are recorded as well.
 """
 function network_infections(
         state::SimulationState,
@@ -94,12 +103,12 @@ end
                   susceptibility = nothing) -> Real
     loglikelihood(data::NetworkInfections, model::ModelSpec{<:NetworkProcess}) -> Real
 
-The contact-process log-density of `model`'s kernel given the infection layer
-`data`: `pairwise_surv_loglik(model.edge_kernel, data; external_hazard =
-model.external_hazard, susceptibility)`. A per-edge kernel must be parallel to
-`data.contacts`. For a `ModelSpec`, `susceptibility` is the model's
-interventions, so a composed vaccination is evaluated from the immunity times
-[`network_infections`](@ref) recorded.
+Log-likelihood of network outbreak data under `model`'s contact interval and
+community hazard:
+`pairwise_surv_loglik(model.edge_kernel, data; external_hazard = model.external_hazard, susceptibility)`.
+A per-contact kernel must be parallel to `data.contacts`. For a `ModelSpec`,
+`susceptibility` is the model's interventions, so a vaccination in the model
+is evaluated from the immunity times [`network_infections`](@ref) recorded.
 """
 function Distributions.loglikelihood(
         data::NetworkInfections, model::NetworkProcess;

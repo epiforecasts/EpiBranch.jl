@@ -1,10 +1,33 @@
 """
     containment_probability(states::Vector{<:SimulationState}; max_cases=nothing)
 
-Fraction of simulations that went extinct (i.e. the outbreak was contained).
+Containment probability: the proportion of simulated outbreaks that died out,
+from a vector of simulations such as `simulate(model, n)`. An outbreak still
+going when the simulation stopped (at `max_cases`, `max_time` or
+`max_generations`) counts as not contained.
 
-If `max_cases` is provided, simulations that hit the case cap are not
-considered extinct (they are assumed to have continued growing).
+With `max_cases`, an outbreak that reached that many cases also counts as not
+contained, even if it then died out. Pass the cap used in `simulate`, so that
+outbreaks large enough to reach it count as uncontrolled, as in ringbp.
+
+This is the simulation estimate. [`probability_contain`](@ref) gives the
+closed-form value for negative binomial offspring with simple control
+(`ind_control`, `pop_control`), and
+[`extinction_probability`](@ref) the probability that transmission dies out
+from a single case.
+
+# Examples
+
+```julia
+model = ModelSpec(
+    BranchingProcess(NegBin(2.5, 0.16), Gamma(2.0, 3.0));
+    attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0),
+        duration = Inf)]
+)
+states = simulate(model, 1000; max_cases = 5000)
+containment_probability(states; max_cases = 5000)
+```
 """
 function containment_probability(
         states::Vector{<:SimulationState};
@@ -24,16 +47,29 @@ _check_max_cases(state::SimulationState, cap::Int) = state.cumulative_cases >= c
 """
     is_extinct(state::SimulationState; by_week=nothing, max_cases=nothing)
 
-Extinction classification for a single simulation with optional criteria.
+Whether one simulated outbreak died out.
 
-- No keyword args: returns `state.extinct`
-- `by_week::Int`: extinct if no case has its onset in that week
-- `by_week::UnitRange{Int}`: extinct if no case has its onset in that week range
-- `max_cases::Int`: outbreaks hitting this cap are not considered extinct
+- With no keywords: `true` if the outbreak ended with no cases left to infect
+  anyone before the simulation stopped.
+- `by_week = 12`: `true` if no case has symptom onset in week 12;
+  `by_week = 12:16`: none in weeks 12 to 16.
+- `max_cases`: an outbreak that reached this many cases counts as not extinct.
 
-Weeks are 7-day blocks numbered from `t = 0` (week 1 is days 0–6), binned on
-onset time with a fall-back to infection time for any case without a recorded
-onset — the same timing field as [`weekly_incidence`](@ref).
+Weeks are 7-day blocks counted from day 0 of the simulation (week 1 is days 0
+to 6). A case without an onset time, such as an asymptomatic case, is placed
+by its infection time instead, as in [`weekly_incidence`](@ref).
+
+# Examples
+
+```julia
+using Statistics
+model = ModelSpec(
+    BranchingProcess(NegBin(1.2, 0.5), Gamma(2.0, 3.0));
+    attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+)
+states = simulate(model, 100; max_time = 140.0)
+mean(is_extinct.(states; by_week = 12:20))   # share with no onsets in weeks 12-20
+```
 """
 function is_extinct(
         state::SimulationState;
@@ -60,17 +96,15 @@ end
 """
     generation_R(state::SimulationState)
 
-Realised per-generation offspring ratio: for each generation `g`,
-the number of cases in generation `g+1` divided by the number of cases
-in generation `g`. A DataFrame with columns `generation` and
-`offspring_ratio` is returned.
+Not Rt: the ratio of the number of cases in each generation to the number in
+the generation before, in one simulated outbreak. Returns a DataFrame with
+columns `generation` (`g`) and `offspring_ratio` (cases in generation `g + 1`
+divided by cases in generation `g`).
 
-This is not the time-varying effective reproduction number `Rt`
-typically estimated from an incidence time series — it is a
-generation-indexed average that only coincides with `Rt` under
-strong assumptions. Use it as a within-simulation diagnostic of
-how transmission is being reduced generation-by-generation
-(e.g. by depletion or by interventions), not as an `Rt` proxy.
+This differs from the time-varying reproduction number `Rt` estimated from an
+incidence time series; the two coincide only under strong assumptions. Use it
+to see how transmission falls from one generation to the next in a
+simulation, for example through depletion of susceptibles or interventions.
 """
 function generation_R(state::SimulationState)
     # Single-pass: count infected individuals per generation
@@ -103,25 +137,21 @@ end
     weekly_incidence(state::SimulationState; by=:onset,
                      reference_date::Date=Date(2020, 1, 1))
 
-Compute weekly case counts from a single simulation.
-A DataFrame with columns `week` (Date) and `cases` (Int) is returned.
+Weekly case counts from one simulated outbreak, the epidemic curve a
+surveillance system would plot. Returns a DataFrame with columns `week` (the
+date of the Monday starting each week, counted from `reference_date` as
+simulation day 0) and `cases`. Weeks with no cases are left out.
 
-`by` selects the timing field to bin on:
+`by` chooses which date places a case in a week:
 
-- `:onset` (default) — uses `:onset_time` from individual state, which is
-  what a surveillance epicurve plots. Falls back to `:infection_time`
-  for any case whose `:onset_time` is missing or `NaN` (e.g.
-  asymptomatic cases under `clinical_presentation`).
-- `:infection` — uses `infection_time` directly. This is what was
-  previously the only behaviour, but it is not directly observable in
-  real surveillance and produces an epicurve that is shifted earlier
-  by roughly one incubation period.
-- `:reporting` — uses `:reporting_time` (set by the `Reporting`
-  transition or `PerCaseObservation`); cases without a reporting time
-  are excluded.
-
-Pass a `Symbol` from `ind.state` to bin on any other field
-(e.g. `:admission_time`).
+- `:onset` (default): symptom onset, as on a surveillance epidemic curve. A
+  case without an onset time (for example an asymptomatic case from
+  `clinical_presentation`) is placed by its infection time.
+- `:infection`: infection time. This is not observed in real surveillance,
+  and the curve comes out earlier by roughly one incubation period.
+- `:reporting`: reporting time, set by [`Reporting`](@ref). Cases never
+  reported are left out.
+- any other recorded time, such as `:admission_time`.
 """
 function weekly_incidence(
         state::SimulationState;
@@ -174,26 +204,18 @@ end
 """
     scenario_sweep(params::Dict{Symbol, Vector}; n_sim=500, rng=Random.default_rng(), sim_kwargs...)
 
-Run a parameter sweep over all combinations of parameters and return a
-DataFrame of results. Each row contains the parameter values and the
-containment probability.
+Containment probability for every combination of scenarios. Each row of the
+returned DataFrame holds one combination of the listed values and its
+[`containment_probability`](@ref) over `n_sim` simulated outbreaks of a
+[`BranchingProcess`](@ref).
 
-`params` must include `:offspring` (vector of offspring distributions) and may
-include `:generation_time`, `:interventions`, `:attributes` and
-`:population_size` — the only recognised sweep axes. An unrecognised key is
-rejected rather than silently producing a column that does not affect the run.
-`:interventions` values should be vectors of intervention stacks (each element
-is a `Vector{<:AbstractIntervention}`). The swept process is a
-[`BranchingProcess`](@ref); a simulation control such as `max_cases` is not a
-sweep axis — pass it once through `sim_kwargs`.
+`params` maps each setting to the values to try. It must include
+`:offspring` (offspring distributions) and may include `:generation_time`,
+`:interventions` (each value is a vector of interventions applied together),
+`:attributes` and `:population_size`. Other settings are rejected, since they
+would not change the simulation. Settings that apply to every run, such as
+`max_cases`, are passed once as keywords.
 
-```julia
-results = scenario_sweep(Dict(
-    :offspring => [NegBin(2.5, 0.16), NegBin(1.5, 0.5)],
-    :interventions => [[Isolation(onset_to_isolation_delay=Exponential(d), duration=7.0)] for d in [1.0, 2.0, 5.0]],
-    :generation_time => [LogNormal(1.6, 0.5)],
-))
-```
 """
 function scenario_sweep(
         params::Dict{Symbol, <:AbstractVector};

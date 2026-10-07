@@ -14,63 +14,16 @@
 """
     RoutedNetwork(windows; from = nothing, external_hazard = 0.0, obs_end = Inf)
 
-Network transmission over several routes at once.
-
-`windows` is a collection of [`RouteWindow`](@ref)s. Each carries
-
-- `reach`: an adjacency list giving that route's edges, so different routes can
-  connect different pairs of the same nodes;
-- `kernel`: the contact-interval distribution along those edges — a shared
-  `Distributions.jl` distribution, a callable `(infector, susceptible) ->
-  Distribution` for covariate models, a [`PairKernel`](@ref), which also reads
-  the infector's infection time, may hold a calendar schedule and may read host
-  records through a projection, or a per-edge vector parallel to `reach`,
-  resolved per pair exactly as on [`NetworkProcess`](@ref). Each route declares
-  the host records its own kernel reads, so a record that moves redraws the
-  pending contacts of the routes reading it and leaves the others alone;
-- `until`: the states that end this route, which is what lets one route be cut
-  and another left alone. Include `EpiBranch.INTERVENTION_REMOVAL` for a route
-  that a composed `Isolation` should end;
-- `from`: where the route's infectiousness starts. Leave it at the default
-  `nothing` to take the model's `from`, or, if that is also `nothing`, the start
-  the progression implies (`:infectious` when a latent period produces it).
-  Name `:infection` for a route open from the moment of infection, or a later
-  state for a route that opens later, such as a funeral route from `:died`.
-- `contacts_from`: when the route's neighbours become the case's contacts for
-  tracing. Leave it at `:infection` for standing relationships, which tracing
-  reaches as on `NetworkProcess`; give a funeral route `contacts_from = :died`
-  so its contacts are traced only if the funeral happened, and not before it.
-- `traceable`: the probability that a case can name a neighbour on this route.
-  Contact tracing reaches only named neighbours. Keep the default `1.0` for
-  people a case can always name, such as its household, and lower it for a
-  route of casual contact.
-
-The model decides naming once for each pair of case and neighbour, when it
-passes the case's contacts to tracing. A neighbour reachable on several routes
-is named with the highest of their `traceable` probabilities: someone a case
-both lives with and sees in the community can be named because they live
-together. The model draws a single uniform number `u` from the simulation's
-random number generator, and the neighbour is nameable on every route whose
-`traceable` exceeds `u`. It can be traced from the earliest `contacts_from` time
-among those routes. Each route on its own therefore names the neighbour with its
-own probability, and together they name it with the highest. The intervention
-then traces a named neighbour with its own probability, so the two multiply. A
-neighbour reachable only on routes at `1.0` or `0.0` needs no draw, so routes
-left at the default use no random numbers for naming.
-
-All routes run over the same node set, so every adjacency must have the same
-length.
-
-A case infected on one of these routes records the route's `name` in its
-`:infection_route`. A community introduction records `:external`. Both appear
-in [`linelist`](@ref), so a run's cases break down by setting with no need to
-reconstruct one from the population structure and the timing.
+Transmission over a contact network with several routes, such as household and
+community, each with its own contacts, timing and response to control
+measures. Isolation can then end a case's community transmission while they go
+on infecting the people they live with.
 
 # Example
 
-Households as cliques, community contact as a sparser graph over the same
-people. Self-isolation ends community transmission and leaves the household
-route running:
+Households as fully connected groups, community contact as a sparser network
+over the same people. Self-isolation ends community transmission and leaves the
+household route running:
 
 ```julia
 using EpiNetwork, EpiBranch, Distributions
@@ -88,15 +41,57 @@ model = ModelSpec(RoutedNetwork([household, community]);
     attributes = clinical_presentation(incubation_period = LogNormal(1.0, 0.3)))
 ```
 
-Because the household route does not list the intervention removal, a case that
-isolates keeps infecting its household to the end of its infectious period,
-which is what self-isolation at home actually does. `R` is unchanged by any of
-this: it stays what the case would achieve if never removed, and the realised
-figure falls out of which routes were cut.
+Because the household route does not list `INTERVENTION_REMOVAL`, a case who
+isolates keeps infecting their household to the end of their infectious
+period, as self-isolation at home does. Each route's kernel describes
+transmission as if the case were never removed; the realised number of
+secondary cases falls according to which routes isolation cuts.
 
-With contact tracing, `traceable = 0.2` on the community route means a case can
-name only one community contact in five, while it can name everyone it lives
-with. A household member who is also a community contact is always nameable.
+# Routes
+
+`windows` is a collection of [`RouteWindow`](@ref)s, each with:
+
+- `reach`: the route's contact list (`reach[i]` lists the people `i` can
+  infect on this route), so different routes can connect different pairs of the
+  same people;
+- `kernel`: the contact interval along those contacts, in days, in any of the
+  forms [`NetworkProcess`](@ref) accepts (one distribution, a function
+  `(infector, susceptible) -> Distribution`, a [`PairKernel`](@ref), or a
+  per-contact vector parallel to `reach`). A `PairKernel` that reads people's
+  records lists them in its `watches`, and only the routes reading a record
+  that changes have their contacts redrawn;
+- `until`: the states that end transmission on this route, so one route can be
+  cut and another left alone. Include `EpiBranch.INTERVENTION_REMOVAL` for a
+  route that isolation or quarantine should end;
+- `from`: when the route's infectiousness starts. The default, `nothing`, takes
+  the model's `from` or, if that is also `nothing`, the start the progression
+  implies (`:infectious` when a latent period produces it). Name `:infection`
+  for a route infectious from the moment of infection, or a later state for one
+  that starts later, such as a funeral route from `:died`;
+- `contacts_from`: when the route's contacts become the case's contacts for
+  tracing. Leave it at `:infection` for standing relationships; give a funeral
+  route `contacts_from = :died` so its contacts are traced only once the
+  funeral has happened;
+- `traceable`: the probability that a case can name a contact on this route.
+  Contact tracing reaches only named contacts. Keep the default `1.0` for
+  people a case can always name, such as their household, and lower it for
+  casual contact.
+
+All routes cover the same people, so every `reach` must have the same length.
+`external_hazard` and `obs_end` are as for [`NetworkProcess`](@ref).
+
+Whether a case names a given contact is decided once, when the case's
+contacts are passed to tracing. A contact reachable on several routes is
+named with the highest of those routes' `traceable` probabilities, and can be
+traced from the earliest `contacts_from` time among the routes that name
+them; for example, with `traceable = 0.2` on the community route, a case can
+name one community contact in five but everyone they live with, including
+household members they also meet in the community. The intervention then traces a named contact with
+its own probability, so the two multiply.
+
+A case infected on one of these routes records the route's `name` in its
+`:infection_route`, and a community introduction records `:external`. Both
+appear in [`linelist`](@ref), so cases can be broken down by setting.
 """
 struct RoutedNetwork{W <: AbstractVector, E} <: TransmissionModel
     windows::W                       # RouteWindows; each `reach` is an adjacency list

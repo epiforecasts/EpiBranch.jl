@@ -8,14 +8,24 @@
 """
     TraceEligibility
 
-Trait deciding whether a infector → contact pair is eligible to be
-traced. Implementations override
-[`is_eligible(eligibility, infector, contact, state)`](@ref).
+Rule for which cases have their contacts traced, and from when. Built in:
+[`OnSymptomOnset`](@ref), [`OnLabConfirmation`](@ref), [`OnIsolation`](@ref),
+[`SymptomaticParent`](@ref) (the default), [`PreviouslyTraced`](@ref),
+[`TraceEveryone`](@ref) and [`TraceNobody`](@ref). Combine them with `&`
+(and), `|` (or) and `!` (not), for example
+`OnSymptomOnset() | OnLabConfirmation()` to trace suspected or confirmed
+cases.
+
+To write a new rule, define a subtype and a method of
+[`is_eligible`](@ref EpiBranch.is_eligible).
 """
 abstract type TraceEligibility end
 
 """
     is_eligible(eligibility, infector, contact, state) -> Bool
+
+Whether `contact` of the case `infector` is traced under this rule (`true` by
+default).
 """
 is_eligible(::TraceEligibility, infector, contact, state) = true
 
@@ -27,42 +37,43 @@ is_eligible(::TraceEligibility, infector, contact, state) = true
 # not yet isolated". Keeping predicates atomic is what makes that
 # composition read correctly.
 
-"""Trace when the infector is symptomatic (clinical suspicion), timed
-from symptom onset, so tracing can start before lab confirmation, or
-without it. See [`trigger_time`](@ref EpiBranch.trigger_time)."""
+"""Trace contacts of symptomatic cases (clinical suspicion), starting from
+symptom onset, so tracing can begin before lab confirmation or without it.
+See [`trigger_time`](@ref EpiBranch.trigger_time)."""
 struct OnSymptomOnset <: TraceEligibility end
 is_eligible(::OnSymptomOnset, infector, contact, state) = _develops_symptoms(infector)
 
-"""Trace when the infector has tested positive (lab confirmation)."""
+"""Trace contacts of cases that tested positive (lab confirmation), starting
+from the case's isolation."""
 struct OnLabConfirmation <: TraceEligibility end
 function is_eligible(::OnLabConfirmation, infector, contact, state)
     return get(infector.state, :test_positive, false)
 end
 
-"""Trace when the infector has been isolated."""
+"""Trace contacts of cases that have been isolated, starting from isolation."""
 struct OnIsolation <: TraceEligibility end
 is_eligible(::OnIsolation, infector, contact, state) = is_isolated(infector)
 
-"""Trace every contact, regardless of infector status."""
+"""Trace the contacts of every case, whatever its status, starting from the
+case's isolation."""
 struct TraceEveryone <: TraceEligibility end
 is_eligible(::TraceEveryone, infector, contact, state) = true
 
-"""Never trace any contacts."""
+"""Trace no contacts."""
 struct TraceNobody <: TraceEligibility end
 is_eligible(::TraceNobody, infector, contact, state) = false
 
-"""Trace only from a case that was itself traced as someone else's contact.
-Negate it to stop a case that was reached as a ring member from being
-interviewed again once it becomes a case itself:
-`SymptomaticParent() & !PreviouslyTraced()`. Re-interviewing is the default,
-since a ring member that turns out to be a case is a case like any other and
-the engine agrees with the generation-based one about that."""
+"""Trace contacts only of cases that were themselves traced as someone
+else's contact. Negate it to stop a traced contact who later becomes a case
+from being interviewed again: `SymptomaticParent() & !PreviouslyTraced()`.
+By default such a case is interviewed like any other, on every transmission
+model."""
 struct PreviouslyTraced <: TraceEligibility end
 is_eligible(::PreviouslyTraced, infector, contact, state) = is_traced(infector)
 
-"""Original default gate: infector symptomatic *and* isolated. Equivalent
-to `OnSymptomOnset() & OnIsolation()`; kept as a named type for
-backwards compatibility (it is the default `eligibility`)."""
+"""Trace contacts of cases that are symptomatic and isolated, starting from
+isolation. This is the default `eligibility` of [`ContactTracing`](@ref), and
+the same as `OnSymptomOnset() & OnIsolation()`."""
 struct SymptomaticParent <: TraceEligibility end
 function is_eligible(::SymptomaticParent, infector, contact, state)
     return _develops_symptoms(infector) && is_isolated(infector)
@@ -71,10 +82,10 @@ end
 # `AlwaysEligible` and `NoTracing` were the previous names for tracing
 # everyone / no-one; their semantics are identical to the new policies,
 # so they are aliases.
-"""Alias for [`TraceEveryone`](@ref): every contact is eligible."""
+"""Another name for [`TraceEveryone`](@ref): every contact is traced."""
 const AlwaysEligible = TraceEveryone
 
-"""Alias for [`TraceNobody`](@ref): no contact is eligible."""
+"""Another name for [`TraceNobody`](@ref): no contact is traced."""
 const NoTracing = TraceNobody
 
 # ── Composition ────────────────────────────────────────────────────
@@ -86,7 +97,7 @@ const NoTracing = TraceNobody
 #     OnSymptomOnset() | OnLabConfirmation()    # suspected or confirmed
 #     OnSymptomOnset() & !OnIsolation()         # symptomatic, not isolated
 
-"""Eligible if **any** wrapped policy is. Build with `|`."""
+"""Trace if any of the listed conditions holds. Usually written `a | b`."""
 struct AnyOf{T <: Tuple} <: TraceEligibility
     conditions::T
     AnyOf(conditions...) = new{typeof(conditions)}(conditions)
@@ -99,7 +110,7 @@ function is_eligible(e::AnyOf, infector, contact, state)
     return false
 end
 
-"""Eligible only if **all** wrapped policies are. Build with `&`."""
+"""Trace only if all of the listed conditions hold. Usually written `a & b`."""
 struct AllOf{T <: Tuple} <: TraceEligibility
     conditions::T
     AllOf(conditions...) = new{typeof(conditions)}(conditions)
@@ -112,9 +123,8 @@ function is_eligible(e::AllOf, infector, contact, state)
     return true
 end
 
-"""Eligible only if **none** of the wrapped policies are. `!policy` is
-the single-policy shorthand. (Named `NoneOf` to parallel `AnyOf`/`AllOf`
-and to avoid colliding with `DataFrames.Not`.)"""
+"""Trace only if none of the listed conditions holds. `!a` is the
+shorthand for a single condition."""
 struct NoneOf{T <: Tuple} <: TraceEligibility
     conditions::T
     NoneOf(conditions...) = new{typeof(conditions)}(conditions)
@@ -149,91 +159,79 @@ Base.:!(a::TraceEligibility) = NoneOf(a)
 # holds has no event to time it either, so it sets no time inside an
 # `AllOf`.
 
+# How combined rules are timed, in full. Each wrapped condition is either
+# not met, met at a time, or met with no time of its own (a negation that
+# holds). A negation that does not hold is not met. A negated combinator is
+# timed as its De Morgan form, so `!(a & b)` is timed as `!a | !b`, and `!!a`
+# as `a`. `AllOf` is not met if any condition is not met; otherwise it is met
+# at the latest time among its timed conditions, or with no time if none is
+# timed. `AnyOf` is not met if no condition is met; if one of its met
+# conditions has no time, so does the `AnyOf` (and inside an `AllOf` it sets
+# no time); otherwise it is met at the earliest time among its met
+# conditions. A policy met with no time starts at the default trigger time
+# (isolation, as for `TraceEveryone`) or earlier if a timed branch is met
+# earlier, so `OnSymptomOnset() | !OnIsolation()` traces a never-isolated case
+# from onset. A `NaN` time from a wrapped condition counts as never met.
+#
+# Two met policies get the same time if one is rewritten into the other by De
+# Morgan's laws, double negation, commutativity, associativity or
+# distributing `&` over `|` outside a negation, and `TraceNobody() | p` is
+# timed as `p`; the exception is a policy whose own time is `NaN`, which
+# gives `Inf` once wrapped. Other logically equal policies can differ, since
+# a rewrite that adds or removes an untimed negation, or `TraceEveryone()`
+# (timed at isolation), changes which times count. With `S = OnSymptomOnset()`,
+# `L = OnLabConfirmation()`, `I = OnIsolation()` and a case with onset at 4,
+# isolated at 9 and never lab-confirmed:
+#
+# - distributing inside a negation: `!(L & (!I | !S))` triggers at 9 and
+#   `!((L & !I) | (L & !S))` at 4;
+# - absorption by an untimed branch: `!L | (!L & S)` triggers at 4, `!L` at 9;
+# - a condition joined with its negation: `S & (I | !I)` triggers at 9, `S`
+#   at 4;
+# - joining `TraceEveryone()`: `S & TraceEveryone()` at 9 and `S` at 4;
+#   `S | TraceEveryone()` at 4 and `TraceEveryone()` at 9;
+# - `!TraceNobody()` behaves as `TraceEveryone()` only at the top level:
+#   `S & !TraceNobody()` at 4 and `S & TraceEveryone()` at 9.
+#
+# The four-argument form checks each wrapped condition against the contact
+# and times it with its four-argument method. The three-argument form times
+# each with its three-argument method and checks it with `nothing` for the
+# contact, so `trigger_time(p, ...)`, `trigger_time(!!p, ...)` and
+# `trigger_time(AllOf(p), ...)` agree for any met `p` whose own time is not
+# `NaN`.
 """
     trigger_time(eligibility, infector, contact, state) -> Float64
     trigger_time(eligibility, infector, state) -> Float64
 
-The time tracing from `infector` starts under this eligibility policy,
-for `contact` in the four-argument form; [`ContactTracing`](@ref) adds
-its delay to it.
-Defaults to the infector's isolation time, or `Inf` for an isolation that
-is not recorded as a detection (see [`is_isolated`](@ref)).
-[`OnSymptomOnset`](@ref) overrides this to onset time, so suspicion-based
-tracing starts at symptom onset instead of waiting for isolation or
-confirmation.
+The time (in days) from which contacts of the case `infector` are traced
+under this eligibility rule; [`ContactTracing`](@ref) adds its
+`isolation_to_trace_delay` on top. By default this is the case's isolation
+time, or `Inf` (never) if the isolation does not count as a detection (see
+[`is_isolated`](@ref)). [`OnSymptomOnset`](@ref) uses the onset time instead,
+so suspicion-based tracing starts at symptom onset rather than waiting for
+isolation or confirmation.
 
-`ContactTracing` calls the four-argument form with the contact being
-traced, as it does for [`is_eligible`](@ref EpiBranch.is_eligible),
-[`traces`](@ref EpiBranch.traces) and
-[`draw_trace_delay`](@ref EpiBranch.draw_trace_delay). For a single
-policy the four-argument form defaults to the three-argument one. A
-custom policy timed from another event of the infector defines a
-three-argument method, and one timed from the contact defines a
-four-argument method.
+Combined rules take their time from the conditions they combine. `a & b`
+starts at the latest time among its conditions, so
+`OnSymptomOnset() & !OnIsolation()` traces from onset; `a | b` starts at the
+earliest time among the conditions that hold. A negation that holds, such as
+`!OnIsolation()` for a case not yet isolated, has no time of its own: it does
+not move the time of an `&`, and a rule with no timed condition starts at the
+case's isolation time (or earlier if a timed branch of an `|` holds). A
+combined rule that does not hold gives `Inf`.
 
-The combinators take their time from the wrapped conditions, as decided
-by [`is_eligible`](@ref EpiBranch.is_eligible). Each condition is either
-not met, met at a time, or met with no time of its own:
+Rules that are logically equal usually give the same time, but not always,
+because untimed negations and `TraceEveryone()` (timed at isolation) can add
+or remove times. For example, `S & TraceEveryone()` with `S = OnSymptomOnset()`
+starts at isolation while `S` alone starts at onset.
 
-- A negation that holds, such as `!OnIsolation()` for an infector not yet
-  isolated, is met with no time of its own. A negation that does not hold
-  is not met. A negated combinator is timed as its De Morgan form, so
-  `!(a & b)` is timed as `!a | !b`, and `!!a` as `a`.
-- [`AllOf`](@ref) is not met if any condition is not met. Otherwise it is
-  met at the latest time among its timed conditions, so
-  `OnSymptomOnset() & !OnIsolation()` traces from onset. If none of its
-  conditions is timed, the `AllOf` is met with no time of its own.
-- [`AnyOf`](@ref) is not met if no condition is met. If one of its
-  conditions is met with no time of its own, so is the `AnyOf`, and inside
-  an `AllOf` it sets no time. Otherwise it is met at the earliest time
-  among its met conditions.
-- A policy met with no time of its own starts the trace at the default
-  trigger time, the infector's isolation as for [`TraceEveryone`](@ref),
-  or earlier if one of its timed branches is met earlier. So
-  `OnSymptomOnset() | !OnIsolation()` traces a case that is never
-  isolated from its onset.
-
-A combinator that is not met gives `Inf` (never), and a `NaN` trigger
-time from a wrapped condition counts as never met. A single policy's
-`trigger_time` does not check [`is_eligible`](@ref EpiBranch.is_eligible),
-so for a policy that is not met it still returns the policy's usual time.
-`ContactTracing` only times a contact once `is_eligible` holds.
-
-Two policies that are met get the same trigger time if one is rewritten
-into the other by De Morgan's laws, double negation, commutativity,
-associativity or distributing `&` over `|` outside a negation, and
-`TraceNobody() | p` is timed as `p`. The exception is a
-policy whose own trigger time is `NaN`, which gives `Inf` once wrapped in
-a combinator.
-
-Other logically equal policies can differ, for two reasons. A negation
-that holds has no time of its own, so a rewrite that adds or removes such
-a branch changes which times count, and `TraceEveryone()` is timed at
-isolation, so adding or removing it can move the time. With
-`S = OnSymptomOnset()`, `L = OnLabConfirmation()` and `I = OnIsolation()`,
-for a case with onset at 4 that is isolated at 9 and never lab-confirmed:
-
-- Distributing inside a negation: `!(L & (!I | !S))` triggers at 9 and
-  `!((L & !I) | (L & !S))` at 4.
-- Absorption by a branch with no time of its own: `!L | (!L & S)`
-  triggers at 4 and `!L` at 9.
-- A condition joined with its negation: `S & (I | !I)` triggers at 9 and
-  `S` at 4.
-- Joining `TraceEveryone()`: `S & TraceEveryone()` triggers at 9 and `S`
-  at 4, and `S | TraceEveryone()` triggers at 4 and `TraceEveryone()`
-  at 9.
-- `!TraceNobody()` behaves as `TraceEveryone()` only at the top level:
-  `S & !TraceNobody()` triggers at 4 and `S & TraceEveryone()` at 9.
-
-The four-argument form checks each wrapped condition against the contact
-and times it with its four-argument method. The three-argument form times
-each wrapped condition with its three-argument method and checks it with
-`nothing` in place of the contact, so `trigger_time(p, infector, state)`,
-`trigger_time(!!p, infector, state)` and
-`trigger_time(AllOf(p), infector, state)` agree for any policy `p` that
-is met and whose own trigger time is not `NaN`. A combinator that wraps
-a policy whose `is_eligible` reads the contact therefore cannot be
-evaluated through the three-argument form; use the four-argument form.
+For extension authors: a rule timed from another event of the case defines a
+three-argument method; one timed from the contact defines a four-argument
+method (the four-argument form falls back to the three-argument one).
+`ContactTracing` calls the four-argument form, and only once
+[`is_eligible`](@ref EpiBranch.is_eligible) holds. A single rule's
+`trigger_time` does not itself check eligibility. A combined rule containing a
+condition that reads the contact must be timed with the four-argument form.
 """
 trigger_time(::TraceEligibility, infector, state) = _recorded_isolation_time(infector)
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
@@ -344,18 +342,20 @@ end
 """
     TraceRate
 
-Trait deciding whether tracing happens for an eligible
-contact. Implementations override
-[`traces(rate, infector, contact, state, rng)`](@ref).
+Rule for whether an eligible contact is actually found by tracing. Built in:
+[`ConstantRate`](@ref), a fixed probability per contact. To write a new rule,
+define a subtype and a method of [`traces`](@ref EpiBranch.traces).
 """
 abstract type TraceRate end
 
 """
     traces(rate, infector, contact, state, rng) -> Bool
+
+Whether this eligible contact is successfully traced (randomly, using `rng`).
 """
 traces(::TraceRate, infector, contact, state, rng) = false
 
-"""Bernoulli with constant probability `p`."""
+"""Each eligible contact is traced with the same probability `p`."""
 struct ConstantRate <: TraceRate
     p::Float64
 end
@@ -364,18 +364,23 @@ traces(r::ConstantRate, infector, contact, state, rng) = rand(rng) < r.p
 """
     TraceDelay
 
-Trait giving the delay between the infector's isolation and the
-contact being traced. Implementations override
-[`draw_trace_delay(delay, infector, contact, state, rng)`](@ref).
+Rule for the delay, in days, from the case's tracing start (its isolation by
+default; see [`trigger_time`](@ref EpiBranch.trigger_time)) to its contact
+being reached. Built in: [`ConstantDelay`](@ref), one distribution for every
+contact. To write a new rule, define a subtype and a method of
+[`draw_trace_delay`](@ref EpiBranch.draw_trace_delay).
 """
 abstract type TraceDelay end
 
 """
     draw_trace_delay(delay, infector, contact, state, rng) -> Float64
+
+Draw the delay in days before this contact is reached.
 """
 draw_trace_delay(::TraceDelay, infector, contact, state, rng) = 0.0
 
-"""Delay drawn from a fixed distribution."""
+"""Every contact's tracing delay (days) is drawn from the same distribution
+`dist`."""
 struct ConstantDelay{D <: Distribution} <: TraceDelay
     dist::D
 end
@@ -384,14 +389,16 @@ draw_trace_delay(d::ConstantDelay, infector, contact, state, rng) = float(rand(r
 """
     TraceAction
 
-Trait describing what happens to a contact once tracing happens.
-Implementations override
-[`apply_trace!(action, contact, state, trace_time, rng)`](@ref).
+What happens to a contact once traced: [`Quarantine`](@ref) or
+[`FlagOnly`](@ref). To write a new action, define a subtype and a method of
+[`apply_trace!`](@ref EpiBranch.apply_trace!).
 """
 abstract type TraceAction end
 
 """
     apply_trace!(action, contact, state, trace_time, rng)
+
+Act on `contact`, traced at `trace_time` (days); changes `contact` in place.
 """
 apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
 
@@ -399,20 +406,23 @@ apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
 # history `set_isolated!` keeps, so that its block covers its own days only.
 const QUARANTINE_STRETCHES_KEY = :_quarantine_stretches
 
-"""Quarantine the traced contact: set `:traced`, `:quarantined`, and
-isolate them at the trace time (or the earlier of the trace time and
-any pre-existing self-reporting isolation time). A trace with no arrival time
-reaches the contact without isolating it, so the contact is recorded as traced
-and quarantined while any standing isolation is left as it was.
+"""
+    Quarantine(; duration)
 
-`duration` is how long the quarantine lasts before it lapses; it accepts a
-`Real`, a `Distribution`, or a function `(rng, ind) -> Real` (drawn once per
-trace). There is no default: callers must choose, since policies differ on
-how long one should last. Pass `Inf` to keep a quarantine in force
-until the end of the infectious period. Pass a finite duration instead for a
-contact who escapes the traced exposure but is infected later through
-another route, so the quarantine lapses rather than outliving its cause and
-blocking that contact's own onward transmission forever."""
+Quarantine a traced contact from the time they are reached (or from their own
+isolation, if that is earlier), so they cannot infect others while
+quarantined. A trace that never arrives (trace time `Inf`) marks the contact
+as traced and quarantined without changing any isolation already in place.
+
+`duration` (required) is how long the quarantine lasts, in days: a number, a
+distribution or a function of the random number generator and the individual,
+`(rng, ind) -> ...`, drawn once per trace. There is no default, because
+policies differ on how long quarantine should last. `Inf` keeps the contact
+quarantined until the end of their infectious period. A finite duration
+matters for a contact who escapes the traced exposure and is infected later
+through another route: that person transmits normally once the quarantine
+ends.
+"""
 struct Quarantine{D} <: TraceAction
     duration::D
 end
@@ -451,12 +461,11 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     return nothing
 end
 
-"""Flag the contact as traced without quarantining them, and record a
-`:_traced_isolation_time` so [`Isolation`](@ref) can later pick the earlier of
-self-reporting and tracing. The recorded time is the later of the trace time
-and the contact's onset, or the trace time alone while the onset is not yet
-known. An asymptomatic contact has no onset to isolate at, so none is
-recorded."""
+"""Record the contact as traced without quarantining them: they keep
+transmitting until they would be isolated as a case. If they develop
+symptoms, [`Isolation`](@ref) then isolates them at whichever comes first,
+their own self-reported isolation or the later of the trace time and their
+symptom onset. An asymptomatic contact is never isolated this way."""
 struct FlagOnly <: TraceAction end
 function apply_trace!(::FlagOnly, contact, state, trace_time, rng)
     contact.state[:traced] = true
@@ -478,85 +487,65 @@ end
 # ── ContactTracing intervention ──────────────────────────────────────
 
 """
-Trace contacts based on when the infector becomes eligible for tracing.
+    ContactTracing(eligibility, probability, isolation_to_trace_delay, action;
+                   depth = 1)
+    ContactTracing(; probability, isolation_to_trace_delay, action,
+                   eligibility = SymptomaticParent(), depth = 1)
 
-## Eligibility policies
+Trace the contacts of cases, and quarantine (or just record) the contacts
+found. Isolation applies to cases ([`Isolation`](@ref)); quarantine applies to
+traced contacts who are not yet known cases.
 
-Atomic predicates on the infector:
+# Arguments
+- `eligibility`: which cases have their contacts traced and from when, for
+  example [`OnSymptomOnset`](@ref) (clinical suspicion, from onset),
+  [`OnLabConfirmation`](@ref), [`OnIsolation`](@ref), [`TraceEveryone`](@ref)
+  or [`TraceNobody`](@ref). Combine with `&`, `|` and `!`. The keyword form
+  defaults to [`SymptomaticParent`](@ref) (symptomatic and isolated).
+- `probability`: share of an eligible case's contacts that tracing finds.
+- `isolation_to_trace_delay`: distribution of days from when tracing of the
+  case starts (its isolation by default, onset for `OnSymptomOnset`) to each
+  contact being reached.
+- `action` (required): what happens to a contact who is found,
+  [`Quarantine`](@ref) for a given `duration` or [`FlagOnly`](@ref) to record
+  the trace without quarantining. There is no default, because policies differ
+  in whether and for how long traced contacts are quarantined.
+- `depth`: how far tracing reaches: 1 (default) traces contacts, 2 also
+  contacts of contacts, and so on. Must be at least 1.
 
-- `OnSymptomOnset()` — infector is symptomatic
-- `OnLabConfirmation()` — infector has tested positive
-- `OnIsolation()` — infector has been isolated
-- `TraceEveryone()` / `TraceNobody()` — trace all / none
+The keyword `quarantine_on_trace` is deprecated: `quarantine_on_trace = true`
+means `action = Quarantine(duration = Inf)` and `false` means
+`action = FlagOnly()`. It still works but gives a deprecation warning.
 
-Combine them with the boolean operators `&`, `|`, `!`:
-
+# Examples
 ```julia
-OnSymptomOnset() | OnLabConfirmation()    # suspected or confirmed
-OnSymptomOnset() & !OnIsolation()         # symptomatic, not yet isolated
-```
-
-## Examples
-
-The terse positional form takes an eligibility policy, a trace
-probability, a delay distribution, and an action, with no default for
-the last, since a plausible policy might flag a contact without
-quarantining it, or quarantine it for any length of time:
-
-```julia
-# Trace on symptoms (no wait for confirmation)
+# Trace on symptoms, without waiting for confirmation; quarantine for 7 days
 ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = 7.0))
 
-# Standard protocol (wait for lab confirmation)
+# Wait for lab confirmation; quarantine for 14 days
 ContactTracing(OnLabConfirmation(), 0.6, Exponential(2.0), Quarantine(duration = 14.0))
 
-# Belt and braces (trace suspected OR confirmed)
+# Trace suspected or confirmed cases
 ContactTracing(
     OnSymptomOnset() | OnLabConfirmation(), 0.7, Exponential(1.5), Quarantine(duration = 7.0)
 )
-```
 
-The keyword form keeps the original default eligibility
-(`SymptomaticParent`, i.e. symptomatic and isolated) and is convenient
-when only the probability, delay and action vary:
-
-```julia
+# Keyword form with the default eligibility (symptomatic and isolated)
 ContactTracing(
     probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
     action = Quarantine(duration = 7.0)
 )
 ```
 
-## Custom eligibility
+# Ring depth
 
-Users can define custom eligibility types. Per-individual attributes
-live in `infector.state` (see [`clinical_presentation`](@ref) /
-[`demographics`](@ref)), so read them with `get`:
-
-```julia
-struct SymptomaticOver65 <: TraceEligibility end
-
-function is_eligible(::SymptomaticOver65, infector, contact, state)
-    !is_asymptomatic(infector) && get(infector.state, :age, 0) >= 65
-end
-```
-
-## Ring depth
-
-`depth` sets how many contact hops out the trace reaches (default `1`,
-direct contacts only; must be at least `1`). With `depth = 2` the traced contacts of a case
-keep generating their own contacts, which are traced in turn: the
-contacts-of-contacts that a level-2 ring vaccination targets. Each
-infected, eligible case seeds a fresh ring of radius `depth`; uninfected
-ring members stay active for one more generation so the ring can grow
-past them (see [`keep_active`](@ref EpiBranch.keep_active)), without
-infecting their contacts (the [`InfectiousSource`](@ref
-EpiBranch.InfectiousSource) default).
-
-A case first reached as someone else's contact seeds its own fresh ring once it
-becomes an infected, eligible case: it is a case like any other, so the two
-engines agree about it. `!PreviouslyTraced()` in the eligibility asks instead
-that each case be interviewed only once.
+With `depth = 2` the traced contacts of a case have their own contacts traced
+in turn: the contacts of contacts that level-2 ring vaccination targets. Each
+infected, eligible case starts a fresh ring of radius `depth`. Uninfected ring
+members are followed for one more generation so the ring can extend past them,
+but they do not infect anyone. A traced contact who later becomes an eligible
+case starts its own ring like any other case; add `!PreviouslyTraced()` to the
+eligibility to interview each case only once.
 
 Pair with [`RingVaccination`](@ref) to vaccinate the whole ring:
 
@@ -565,14 +554,28 @@ Pair with [`RingVaccination`](@ref) to vaccinate the whole ring:
  RingVaccination(efficacy = 0.9)]
 ```
 
-Needs `:asymptomatic`, `:onset_time` from `clinical_presentation()` and optionally
-`:isolated`, `:isolation_time`, `:test_positive` depending on eligibility type.
-Sets `:traced`, `:quarantined` and `:trace_time`, the time the contact was
-reached, from which interventions acting on traced contacts are timed. With
-`depth > 1` it also sets `:_ring_remaining`, which lets the ring grow outward,
-and `:_ring_propagated` once a member has spent that budget on its own
-contacts, so a later walk reaching the same member widens the ring rather
-than retracing it.
+# Requirements and output
+
+Needs symptom onset and the asymptomatic flag from
+[`clinical_presentation`](@ref), and, depending on the eligibility, isolation
+or test results from [`Isolation`](@ref). Each contact records whether it was
+traced and quarantined, and `trace_time`, the day it was reached, from which
+interventions acting on traced contacts are timed.
+
+# Custom eligibility
+
+A new eligibility rule is a subtype of [`TraceEligibility`](@ref) with a
+method of [`is_eligible`](@ref EpiBranch.is_eligible). Case characteristics
+set by [`clinical_presentation`](@ref) or [`demographics`](@ref) are in
+`infector.state`:
+
+```julia
+struct SymptomaticOver65 <: TraceEligibility end
+
+function EpiBranch.is_eligible(::SymptomaticOver65, infector, contact, state)
+    return !is_asymptomatic(infector) && get(infector.state, :age, 0) >= 65
+end
+```
 """
 struct ContactTracing{
         E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction,
@@ -801,11 +804,10 @@ end
 
 traces_contacts(::ContactTracing) = true
 
-"""Trace the contacts a case reaches on the continuous-time path. The
-generation engine reads each contact's infector off its `parent_id`; here the
-nodes pre-exist and the infector is the case the race has just finalised, so it
-is passed in and the same per-pair policy applied, with each contact traced no
-earlier than its `not_before` time when one is given."""
+"""Trace the contacts of `infector` in a continuous-time model, applying the
+same eligibility, probability, delay and action as in a branching process.
+Each contact is traced no earlier than its `not_before` time when one is
+given."""
 function trace_contacts!(
         ct::ContactTracing, state, infector, contacts, not_before = nothing
     )
@@ -826,17 +828,12 @@ function trace_contacts!(
     return nothing
 end
 
-"""A quarantined contact is out of onward transmission from its quarantine
-time, which is how tracing reaches the infectious window on the continuous-time
-models. Contacts merely flagged (`FlagOnly`) write `:_traced_isolation_time`
-instead, and [`Isolation`](@ref) turns that into the removal, exactly as on the
-generation-based path.
-
-A quarantine with a release (see [`Quarantine`](@ref)'s `duration`) leaves the
-window open and is blocked per contact by the `competing_risk` below, which
-hands the case back once released, as [`Isolation`](@ref)'s does. That covers
-a quarantine released before the contact was infected as well, which never
-reached its infectious window at all."""
+"""A quarantined contact stops transmitting from its quarantine time. A
+contact recorded with `FlagOnly` is removed only once [`Isolation`](@ref)
+isolates it. A quarantine that is never released ends the person's
+infectious period. With a finite `duration` (see [`Quarantine`](@ref)) each of
+their contacts during quarantine is blocked and they transmit again once
+released, as with [`Isolation`](@ref)."""
 function infectious_removal_time(ct::ContactTracing, ind::Individual)
     get(ind.state, :quarantined, false) || return Inf
     t = Inf
@@ -919,12 +916,10 @@ reads_population_state(::TraceRate) = false
 reads_population_state(::TraceDelay) = false
 reads_population_state(::TraceAction) = false
 
-"""Keep uninfected ring members generating contacts so the ring can
-reach contacts-of-contacts. A traced contact with ring budget left
-stays active for one more generation; the [`InfectiousSource`](@ref
-EpiBranch.InfectiousSource) default keeps it from infecting those
-contacts. Infected cases stay active regardless, so only the uninfected
-fringe is returned. Empty for `depth == 1` (direct contacts only)."""
+"""With `depth > 1`, keep following uninfected traced contacts for one more
+generation so tracing can reach their contacts. They do not infect those
+contacts. Returns the ids of those uninfected ring members (none for
+`depth == 1`)."""
 function keep_active(ct::ContactTracing, state, targets, is_new)
     ct.depth > 1 || return ()
     ids = Int[]

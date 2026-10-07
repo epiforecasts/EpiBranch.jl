@@ -1,157 +1,113 @@
 """
-Base type for vaccination interventions. A vaccination has an
-`efficacy` (the probability of blocking an exposure once immunity is in
-place, or under `AllOrNothingMode` of responding at all) and a
-`delay_to_immunity` (time between vaccination and protection).
+Parent type of the vaccination interventions: [`RingVaccination`](@ref)
+(traced contacts), [`GroupVaccination`](@ref) (everyone in a case's group)
+and [`MassVaccination`](@ref) (the population on a schedule). They differ in
+who is vaccinated and when; the dose's effects are the same for all three and are set by these keywords (collected in a [`VaccineEffect`](@ref)):
 
-Concrete subtypes differ only in eligibility — who gets vaccinated
-when. The parameters describing what a dose does (`efficacy`,
-`severity_efficacy`, `delay_to_immunity`, `mode`, `dose_label`) are a
-[`VaccineEffect`](@ref), which each subtype holds and returns from
-[`vaccine_effect`](@ref EpiBranch.vaccine_effect); shared code reads these
-parameters only through that method. An effect only some vaccinations have,
-such as `RingVaccination`'s `post_exposure_efficacy`, stays on the type that
-has it and records its per-dose draw through the `_record_effect_draws!` hook.
-Subtypes share the [`competing_risk`](@ref) machinery: a vaccinated
-contact whose immunity has developed by their transmission time has
-their infection blocked with probability `efficacy` under `LeakyMode`, and
-with certainty if they responded under `AllOrNothingMode`.
+| Effect | What it does | Keyword |
+|:-------|:-------------|:--------|
+| Against infection | Probability that an exposure of a vaccinated person does not infect them, once immune | `efficacy` |
+| Against severe disease | Probability that a vaccinated person's own illness is milder, once immune | `severity_efficacy` |
+| Delay | Days from vaccination to immunity | `delay_to_immunity` |
+| Waning | Fraction of protection left a given number of days after immunity | `waning` |
+| Leaky or all-or-nothing | How `efficacy` acts | `mode` |
+| Dose name | Tells doses of a multi-dose schedule apart | `dose_label` |
 
-`severity_efficacy` is a fourth effect, alongside `efficacy` (contact
-susceptibility) and `onward_efficacy`/`post_exposure_efficacy` on
-[`RingVaccination`](@ref) (parent infectiousness / abort of an existing
-infection): the probability that a vaccinated individual's own disease
-course is milder, e.g. a lower chance of death or of severe symptoms,
-once their immunity has developed. It has no counterpart in the
-competing-risks machinery those act through, because it does not gate
-transmission — it is consulted from the `probability` of a
-[`Transition`](@ref) (or [`Death`](@ref), [`Hospitalisation`](@ref), or
-any other clinical transition in a `progression`) via the
-[`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors, the
-same idiom [`Hospitalisation`](@ref) documents for prerequisite-gated
-admission. See [`RingVaccination`](@ref) for a worked example.
+[`RingVaccination`](@ref) adds two effects on infections a contact already
+has: `post_exposure_efficacy` (stopping the infection) and `onward_efficacy`
+(reducing onward transmission).
 
-`efficacy` and `delay_to_immunity` each accept a `Real`, a
-`Distribution`, or a function `(rng, ind) -> Real`. The function/
-distribution forms sample once per vaccinated individual at vaccination
-time and store the result on the contact; the competing risk reads the
-stored value, so a single individual keeps the same immunity delay and
-efficacy against every exposure it faces.
+`efficacy`, `severity_efficacy` and `delay_to_immunity` each take a number, a
+distribution or a function of the random number generator and the individual,
+`(rng, ind) -> ...`. A distribution or function is drawn once per vaccinated
+person when the dose is given, so the same person keeps the same efficacy and
+immunity delay against every exposure.
 
-`mode` is an [`AbstractEffectMode`](@ref): [`LeakyMode`](@ref) (the
-default) reduces each exposure's success probability by `efficacy`,
-while [`AllOrNothingMode`](@ref) draws, once per vaccinated individual
-when the dose is recorded, whether that individual is a full responder
-(fully protected against infection at every exposure from their immunity
-time on) or gains no protection against infection, with responder
-probability `efficacy`. The mode acts on `efficacy` alone: the same dose's
-`severity_efficacy`, and `RingVaccination`'s `post_exposure_efficacy` and
-`onward_efficacy`, apply to responders and non-responders alike. The
-draw is stored alongside the other per-dose state, so it is made once
-and read back at every exposure the individual faces, however many
-there are. A new mode subtypes `AbstractEffectMode` and implements
-[`realised_efficacy`](@ref EpiBranch.realised_efficacy) and
-[`realise_prior_dose!`](@ref EpiBranch.realise_prior_dose!); see the
-Extending guide for a worked example. `AllOrNothingMode` cannot yet be
-combined with `waning` (see below); a `VaccineEffect` combining them raises
-an `ArgumentError`.
+# Leaky and all-or-nothing vaccines
 
-`waning` is an optional function `dt -> Real` giving the fraction of
-`efficacy` still in force `dt` time units after immunity develops
-(`dt = 0` at immunity onset). It multiplies `efficacy` (and, on
+With `mode = LeakyMode()` (the default) every exposure of a vaccinated
+person is prevented with probability `efficacy`. With
+`mode = AllOrNothingMode()` a share `efficacy` of vaccinated people are fully
+protected against infection from their immunity date on and the rest get no
+protection against infection. The mode acts on `efficacy` alone:
+`severity_efficacy`, `post_exposure_efficacy` and `onward_efficacy` apply to
+everyone vaccinated. `AllOrNothingMode` cannot yet be combined with `waning`
+(this raises an error).
+
+!!! note "The two modes differ only with repeated exposure"
+    In a branching process each contact is a separate person exposed once,
+    so the two modes give the same infection probability per contact
+    (though not the same random draws). They differ in the homogeneous,
+    household and network models, where a person can be exposed more than
+    once: under all-or-nothing a protected person stays protected against
+    every exposure, while a leaky vaccine is worn down by repeated
+    exposure.
+
+# Severity
+
+`severity_efficacy` does not stop transmission. It acts only where a
+clinical transition in `progression` (such as [`Death`](@ref) or
+[`Hospitalisation`](@ref)) reads it through the [`severity_efficacy`](@ref)
+and [`immunity_time`](@ref) functions in its `probability`;
+[`RingVaccination`](@ref) has a worked example.
+
+# Waning
+
+`waning` is a function of the days `dt` since the person became immune,
+giving the fraction of protection left (`dt = 0` at immunity), or `nothing`
+(default) for constant protection. It multiplies `efficacy` (and, for
 [`RingVaccination`](@ref), `onward_efficacy` and `post_exposure_efficacy`)
-when checked against a transmission: a dose that would otherwise block at
-strength `efficacy` blocks at `efficacy * waning(dt)` instead. Use it
-where protection decays, for pre-emptively vaccinated individuals whose
-exposure comes months after their immunity developed, say. `dt` is the
-time from that individual's own immunity onset to the exposure under
-evaluation, and it scales the value that individual was given; a dose
-drawn per individual therefore decays from its own level on its own
-clock. `waning` takes only the elapsed time, one shape of decay for the
-whole dose, and the per-individual variation lives in the draws it
-scales. A post-exposure abort happens the moment immunity arrives and
-uses `post_exposure_efficacy * waning(0)`, which differs from
-`post_exposure_efficacy` only for a `waning` that does not start at 1.
-`waning` does not apply to `severity_efficacy`, which stays at the value
-sampled at vaccination for the whole run; [`RingVaccination`](@ref) shows
-how to apply a decay to it in the clinical transition that reads it.
-Defaults to `nothing`, which keeps protection constant once immunity
-develops. A dose with its own `dose_label` in a multi-dose
-schedule decays from its own immunity time, independently of any other
-dose's. Doses still compose as competing risks, each blocking an exposure
-on its own, so a schedule leaves an exposure unblocked with probability
-`prod(1 - eff_i * w_i)` over its doses, where `eff_i` is the efficacy
-dose `i` was given and `w_i` the fraction it retains at that exposure. A
-prime at 0.6 and a boost at 0.7, both at full strength, block 0.88
-between them.
+at each exposure, scaling each person's own drawn efficacy from their own
+immunity date. It matters most when vaccination comes long before exposure.
+Post-exposure protection acts at the moment of immunity and so uses
+`waning(0)`. `waning` does not apply to `severity_efficacy`;
+[`RingVaccination`](@ref) shows how to make that wane too.
 
-!!! note "The two modes agree only where every exposure is unique"
-    Every contact in a branching process is a unique exposure, so
-    per-exposure and per-individual semantics give the **same**
-    per-contact infection probability there, and `LeakyMode` and
-    `AllOrNothingMode` agree in distribution, though not draw for draw:
-    `AllOrNothingMode` takes one extra random draw per dose. The two
-    modes diverge once a susceptible can be exposed more than once, by
-    the same infector or by several, which happens on every model other
-    than the branching process — the homogeneous, household, network and
-    routed-network processes: there, a responder under `AllOrNothingMode`
-    is protected against every such exposure and a non-responder against
-    none, whereas `LeakyMode` blocks each exposure independently and so is
-    worn down by repeated exposure.
+# Multi-dose schedules
 
-# Multi-dose vaccination
-
-A `dose_label::Symbol` (default `:default`) namespaces the per-contact
-state so multiple vaccinations can stack without colliding. Two
-`MassVaccination`s with `dose_label = :prime` and `dose_label = :boost`
-write to `:vaccinated_prime` / `:vaccinated_boost` and contribute
-independent competing risks. Each dose's protection is composed by
-the engine via the standard competing-risks product.
-
-When `dose_label = :default` (single-dose, the common case), state is
-written to plain `:vaccinated` / `:vaccination_time` for backwards
-compatibility with the `is_vaccinated` accessor.
+Give each dose its own `dose_label` (default `:default`), for example
+`:prime` and `:boost`. Each dose then has its own vaccination record and
+wanes from its own immunity date. The doses act independently, so an
+exposure gets through all of them with probability `prod(1 - eff_i * w_i)`,
+where `eff_i` is dose `i`'s efficacy and `w_i` the fraction it retains: a
+prime at 0.6 and a boost at 0.7, both at full strength, together prevent
+0.88 of exposures. [`is_vaccinated`](@ref) reports the dose with the default
+label; pass its `dose_label` keyword to check another.
 """
 abstract type AbstractVaccination <: AbstractIntervention end
 
 """
-Effect mode for a vaccination: how `efficacy` translates into
-per-exposure infection probability.
+How a vaccine's `efficacy` acts: [`LeakyMode`](@ref) (each exposure is
+prevented with probability `efficacy`) or [`AllOrNothingMode`](@ref) (a share
+`efficacy` of vaccinated people are fully protected, the rest not at all).
 
-Concrete subtypes:
-
-- [`LeakyMode`](@ref): every exposure of a vaccinated individual is
-  reduced by `efficacy` (per-exposure semantics).
-- [`AllOrNothingMode`](@ref): a fraction `efficacy` of vaccinated
-  individuals are fully protected against infection for all exposures; the
-  rest gain no protection against infection (per-individual semantics).
-
-A new mode is two methods, dispatched on it: [`EpiBranch.realised_efficacy`](@ref)
-and [`EpiBranch.realise_prior_dose!`](@ref). See the Extending guide for a
-worked example.
+For extension authors: a new mode defines
+[`EpiBranch.realised_efficacy`](@ref), and
+[`EpiBranch.realise_prior_dose!`](@ref) only if a dose recorded before the
+simulation should be handled differently; see "A custom effect mode" on the
+Writing an intervention page of the Extending EpiBranch guide.
 """
 abstract type AbstractEffectMode end
 
-"""Per-exposure efficacy: each exposure's transmission is blocked
-independently with probability `efficacy`. Default mode."""
+"""Leaky vaccine (the default): each exposure of a vaccinated person is
+prevented independently with probability `efficacy`."""
 struct LeakyMode <: AbstractEffectMode end
 
-"""Per-individual efficacy: a Bernoulli draw made once per individual when
-the dose is recorded decides, with probability `efficacy`, whether they
-are a full responder (fully protected against infection at every exposure
-from their immunity time on) or gain no protection against infection. The
-dose's other effects, such as `severity_efficacy`, do not depend on it."""
+"""All-or-nothing vaccine: each vaccinated person is, with probability
+`efficacy`, fully protected against infection at every exposure from their
+immunity date on, and otherwise not protected against infection at all. The
+dose's other effects, such as `severity_efficacy`, apply to everyone
+vaccinated."""
 struct AllOrNothingMode <: AbstractEffectMode end
 
 """
     supports_waning(mode::AbstractEffectMode) -> Bool
 
-Whether `waning` has a meaning under `mode`: it decays a per-exposure block,
-which a mode with no such block (`AllOrNothingMode`'s per-individual
-responder draw) has nothing to apply to. `VaccineEffect`'s constructor
-rejects `waning` together with a mode for which this is `false`, so a custom
-`AbstractEffectMode` that is similarly all-or-nothing need only override this
-to get the same rejection. Default: `true`.
+Whether `waning` can be used with this vaccine `mode`. Waning reduces the
+per-exposure protection of a leaky vaccine; an all-or-nothing vaccine has no
+such protection to reduce, so `AllOrNothingMode` returns `false` and
+[`VaccineEffect`](@ref) rejects `waning` with it. Default: `true`. A new
+all-or-nothing style mode returns `false` to get the same check.
 """
 supports_waning(::AbstractEffectMode) = true
 supports_waning(::AllOrNothingMode) = false
@@ -160,32 +116,29 @@ supports_waning(::AllOrNothingMode) = false
     VaccineEffect(; efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
         waning = nothing, mode = LeakyMode(), dose_label = :default)
 
-The parameters every [`AbstractVaccination`](@ref) shares: what a dose does
-once it is given, whoever receives it and whenever. A vaccination type holds
-one `VaccineEffect` and adds only the fields deciding who is vaccinated and
-when. Shared code reads these parameters through
-[`vaccine_effect`](@ref EpiBranch.vaccine_effect) and the accessors built on
-it, whatever the concrete type.
+What a vaccine dose does once given, whoever receives it and whenever: the
+effects shared by every vaccination intervention. The built-in vaccinations
+take these as keywords and build the `VaccineEffect` themselves; build one
+directly only when writing a new vaccination intervention (see "A custom
+vaccination" on the Writing an intervention page of the Extending EpiBranch
+guide).
 
-- `efficacy`: under `LeakyMode`, the probability of blocking each exposure once
-  immunity has developed; under `AllOrNothingMode`, the probability of
-  responding, a responder being protected against every exposure from then on.
-- `severity_efficacy`: probability that the vaccinated individual's own
-  disease course is milder once immunity has developed.
-- `delay_to_immunity`: time from vaccination to protection.
-- `waning`: a function of time since immunity, or `nothing` for constant protection.
-  Not yet supported together with `mode = AllOrNothingMode()`.
-- `mode`: an [`AbstractEffectMode`](@ref).
-- `dose_label`: namespaces the per-individual state the dose writes (see
-  [`AbstractVaccination`](@ref)).
+- `efficacy`: for a leaky vaccine, the probability that each exposure is
+  prevented once immune; for an all-or-nothing vaccine, the probability of
+  being fully protected.
+- `severity_efficacy`: probability that the vaccinated person's own illness
+  is milder once immune (default 0).
+- `delay_to_immunity`: days from vaccination to immunity (default 0).
+- `waning`: a function of days since immunity giving the fraction of
+  protection left, or `nothing` (default) for constant protection. Not yet
+  available with `mode = AllOrNothingMode()`.
+- `mode`: [`LeakyMode`](@ref) (default) or [`AllOrNothingMode`](@ref).
+- `dose_label`: name of the dose, so several doses can be told apart
+  (default `:default`).
 
-The first three each accept a `Real`, a `Distribution`, or a function
-`(rng, ind) -> Real`, drawn once per vaccinated individual when the dose is
-given.
-
-The built-in vaccinations take these as keywords and produce the
-`VaccineEffect` themselves; construct one directly for a custom vaccination
-type (see the Extending guide).
+The first three each take a number, a distribution or a function
+`(rng, ind) -> ...`, drawn once per vaccinated person when the dose is given.
+See [`AbstractVaccination`](@ref) for how the effects combine.
 """
 struct VaccineEffect{E, SV, D, W, M <: AbstractEffectMode}
     efficacy::E
@@ -220,44 +173,43 @@ end
 """
     vaccine_effect(v::AbstractVaccination) -> VaccineEffect
 
-The [`VaccineEffect`](@ref) a vaccination gives. Every `AbstractVaccination`
-subtype defines this method; the shared machinery (recording a dose, the
-susceptibility competing risk, dose schedules) reads efficacy, delay, mode and
-dose label only through it.
+The [`VaccineEffect`](@ref) of a vaccination: what its dose does. Every
+vaccination intervention defines this, and the package reads efficacy, delay,
+mode and dose label through it.
 """
 function vaccine_effect end
 
-"""Efficacy of the vaccination's dose, in any of the forms
-[`VaccineEffect`](@ref) accepts: a per-exposure block under `LeakyMode`, a
-probability of responding under `AllOrNothingMode`."""
+"""Efficacy of the vaccination's dose against infection, as given to
+[`VaccineEffect`](@ref): per exposure for a leaky vaccine, the probability of
+full protection for an all-or-nothing one."""
 efficacy(v::AbstractVaccination) = vaccine_effect(v).efficacy
 
-"""Severity efficacy of the vaccination's dose, in any of the forms
-[`VaccineEffect`](@ref) accepts. The method on an `Individual` reads the value
-drawn for one individual."""
+"""Efficacy of the vaccination's dose against severe disease, as given to
+[`VaccineEffect`](@ref). The method for an individual returns the value drawn
+for that person."""
 severity_efficacy(v::AbstractVaccination) = vaccine_effect(v).severity_efficacy
 
-"""Time between vaccination and the onset of protective immunity, in any of the
-forms [`VaccineEffect`](@ref) accepts: a `Real`, a `Distribution` or a function.
-`_immunity_time` turns it into the event time of the competing risk. A `Real` is
-added to the vaccination time; a varying delay is drawn once when the dose is
-given and read back from the stored `:immunity_time`."""
+"""Days from vaccination to immunity, as given to [`VaccineEffect`](@ref): a
+number, a distribution or a function. A distribution or function is drawn once
+per person when the dose is given."""
 delay_to_immunity(v::AbstractVaccination) = vaccine_effect(v).delay_to_immunity
 
-"""The vaccination's [`AbstractEffectMode`](@ref)."""
+"""Whether the vaccination is leaky or all-or-nothing (its
+[`AbstractEffectMode`](@ref))."""
 effect_mode(v::AbstractVaccination) = vaccine_effect(v).mode
-"""Waning function `dt -> Real` for this dose, or `nothing` if its
-protection does not decay. See [`AbstractVaccination`](@ref)."""
+"""The dose's waning function (fraction of protection left `dt` days after
+immunity), or `nothing` if protection does not wane. See
+[`AbstractVaccination`](@ref)."""
 waning(v::AbstractVaccination) = vaccine_effect(v).waning
 
-"""Label of the dose a contact must already have received before this
-vaccination is given, or `nothing` when it requires no earlier dose."""
+"""Name of the dose a person must already have received before this
+vaccination is given, or `nothing` if no earlier dose is needed."""
 required_dose(::AbstractVaccination) = nothing
 
-"""Label namespacing the vaccination's per-contact state (`:vaccinated`,
-`:vaccination_time`, `:vaccine_efficacy`, `:immunity_time`,
-`:severity_efficacy`). `:default` writes to the unsuffixed keys for
-backwards compatibility; other labels write to `:vaccinated_<label>` etc."""
+"""Name of the dose (for example `:prime` or `:boost`), so several doses can
+be told apart. Each person's record of the dose is stored under keys that include the name (`:vaccinated_prime`, `:vaccination_time_prime` and so on); the
+default `:default` uses the plain keys (`:vaccinated`, `:vaccination_time`,
+`:vaccine_efficacy`, `:immunity_time`, `:severity_efficacy`)."""
 dose_label(v::AbstractVaccination) = vaccine_effect(v).dose_label
 
 # The built-in vaccinations expose the effect parameters as properties
@@ -403,16 +355,13 @@ function _maybe_positive(d::Distribution)
 end
 _maybe_positive(x) = true
 
-"""Set the default (unvaccinated) state for a dose, without disturbing a
-prior dose an `attributes` function already recorded — for example a
-campaign that ran before the simulation starts. `get!` only writes the
-default when the key is absent, so an individual created already carrying
-`:vaccinated = true` keeps that dose, and its `:vaccination_time`.
+"""Record a person as not yet vaccinated with this dose, unless the model's
+`attributes` already gave them the dose (for example from a campaign before the
+simulation starts), in which case that dose and its date are kept.
 
-Under `AllOrNothingMode` a prior dose's recorded efficacy is turned into this
-individual's responder status here, once, as `_record_vaccination!` does for a
-dose given during the run. A recorded efficacy of 0 or 1 is already a responder
-status and is kept as it is."""
+For an all-or-nothing vaccine, such an earlier dose's efficacy is turned into
+full or no protection here, once, as for a dose given during the simulation.
+A recorded efficacy of 0 or 1 is kept as it is."""
 function initialise_individual!(v::AbstractVaccination, individual, state)
     label = dose_label(v)
     get!(individual.state, _vaccinated_key(label), false)
@@ -424,17 +373,15 @@ end
 """
     realise_prior_dose!(mode::AbstractEffectMode, individual, label, state)
 
-Re-apply [`realised_efficacy`](@ref) to a dose an `attributes` function
-recorded on `individual` before the simulation started, never seen by
-`_record_vaccination!`, so that a dose recorded outside a run gets the same
-per-individual draw one recorded during a run would. Mutates
-`individual.state` in place.
+For a dose the model's `attributes` gave a person before the simulation
+started, apply [`realised_efficacy`](@ref EpiBranch.realised_efficacy) to its
+recorded efficacy, so it gets the same per-person draw as a dose given during
+the simulation. Changes `individual.state` in place.
 
-A new mode needs no method of its own: the default applies the mode's own
-[`realised_efficacy`](@ref) to whatever efficacy is already recorded, which is
-what [`AllOrNothingMode`](@ref) needs to turn a raw value into a one-time
-responder draw. [`LeakyMode`](@ref) overrides it to do nothing, since the raw
-efficacy it was given is already the value it stores.
+A new mode usually needs no method of its own: the default applies the mode's
+`realised_efficacy` to the recorded efficacy, which is what
+[`AllOrNothingMode`](@ref) needs. [`LeakyMode`](@ref) does nothing, since its
+recorded efficacy is already the value it uses.
 """
 function realise_prior_dose!(mode::AbstractEffectMode, individual, label, state)
     key = _vaccine_efficacy_key(label)
@@ -488,17 +435,12 @@ end
 """
     realised_efficacy(mode::AbstractEffectMode, eff, rng) -> Real
 
-Turn a dose's sampled `efficacy` `eff` (a `Real`, a draw from a
-`Distribution`, or a call to a function — already resolved by
-`_sample_value`) into the value `_record_vaccination!` stores on the
-contact and `_susceptibility_risk` reads back unchanged at every exposure.
-Called once, when the dose is recorded. [`LeakyMode`](@ref) stores `eff`
-itself, so every exposure is blocked with that same probability;
-[`AllOrNothingMode`](@ref) draws a `Bernoulli(eff)` once, so the stored
-value becomes `1.0` for a responder (certain block once immune) or `0.0`
-for a non-responder (no risk built at all — `_susceptibility_risk` skips a
-non-positive efficacy). A new mode implements this to describe how it
-turns a sampled efficacy into a stored block probability.
+Turn a vaccinated person's drawn efficacy `eff` into the probability that
+each of their exposures is prevented once immune. Called once, when the dose
+is given; the result applies at every exposure. [`LeakyMode`](@ref) keeps
+`eff`. [`AllOrNothingMode`](@ref) draws once whether the person is protected,
+giving `1.0` (fully protected) with probability `eff` and `0.0` (no
+protection) otherwise. A new mode defines this method.
 """
 realised_efficacy(::LeakyMode, eff, rng) = eff
 realised_efficacy(::AllOrNothingMode, eff, rng) = float(rand(rng, Bernoulli(eff)))
@@ -541,116 +483,121 @@ _record_effect_draws!(::AbstractVaccination, contact, label, rng) = nothing
 # ── RingVaccination ──────────────────────────────────────────────────
 
 """
-Vaccinate traced contacts. Applied to contacts that have been traced
-(`:traced == true`, set by [`ContactTracing`](@ref)).
+    RingVaccination(; efficacy, coverage = 1.0, delay_to_immunity = 0.0,
+                    post_exposure_efficacy = 0.0, onward_efficacy = 0.0,
+                    severity_efficacy = 0.0, eligibility_window = Inf,
+                    dose_delay = 0.0, requires_dose = nothing, waning = nothing,
+                    mode = LeakyMode(), dose_label = :default)
 
-For post-exposure prophylaxis (PEP, cf.
-[pepbp](https://github.com/sophiemeakin/pepbp)), set
-`delay_to_immunity = 0.0` (the default); `post_exposure_efficacy` and
-`onward_efficacy` (below) set what it does to an infection the contact
-already has. For ring vaccination with a vaccine that takes
-time to confer protection, set `delay_to_immunity` to the appropriate
-delay.
+Vaccinate the contacts found by [`ContactTracing`](@ref) (ring vaccination),
+including post-exposure prophylaxis (PEP, as in
+[pepbp](https://github.com/sophiemeakin/pepbp)). Needs `ContactTracing`
+among the interventions, listed first.
 
-`coverage` is the per-contact probability that a traced contact
-actually receives the vaccine, capturing programme reach (consent
-refusal, absence, exclusion criteria, logistical gaps). Defaults to
-`1.0`. Accepts a `Real`, `Distribution`, or `Function`
-`(rng, contact) -> Real` for per-individual coverage (e.g.
-age-dependent), or reading a value set by
-[`vaccine_acceptance`](@ref) to cluster refusal by group.
+# Examples
+```julia
+# Ring vaccination of contacts and contacts of contacts
+[ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = 7.0); depth = 2),
+ RingVaccination(efficacy = 0.9, delay_to_immunity = 10.0, coverage = 0.8)]
 
-`eligibility_window` skips vaccination when the time since the
-contact's exposure exceeds the window — typical of filovirus-type
-protocols where post-exposure vaccination beyond ~21 days is
-operationally pointless. Defaults to `Inf` (no window). Accepts a
-`Real` or `Function` `(rng, contact) -> Real`. Eligibility is checked
-at vaccination time, not at immunity-onset time, so a contact
-vaccinated near the window's end with a long `delay_to_immunity` is
-still recorded as vaccinated (whether immunity arrives before that
-contact's own transmission time is then decided by competing risks).
+# Post-exposure prophylaxis: a dose that takes effect before onset
+# stops the infection with probability 0.6
+RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.6)
+```
+
+# Arguments
+- `efficacy`: probability that each later exposure of the vaccinated contact
+  is prevented once immune (see [`AbstractVaccination`](@ref) for leaky and
+  all-or-nothing vaccines).
+- `coverage`: probability that a traced contact is actually vaccinated
+  (consent, absence, exclusion criteria, logistics). Default 1. A number, a
+  distribution or a function `(rng, contact) -> ...`, for example age
+  dependent, or reading [`vaccine_acceptance`](@ref) to cluster refusal by
+  group.
+- `delay_to_immunity`: days from vaccination to immunity. Default 0, as for
+  PEP; set it for a vaccine that takes time to protect.
+- `post_exposure_efficacy`: probability that the dose stops an infection the
+  contact already has (default 0). Needs `incubation_period` from
+  [`clinical_presentation`](@ref).
+- `onward_efficacy`: probability that each onward transmission by the
+  vaccinated contact is prevented once immune (default 0).
+- `severity_efficacy`: probability that the vaccinated contact's own illness is
+  milder once immune (default 0). See "Severity" below.
+- `eligibility_window`: days after exposure beyond which a contact is no longer
+  vaccinated (default `Inf`), as in filovirus protocols where vaccination
+  more than about 21 days after exposure is pointless. A number or a function
+  `(rng, contact) -> ...`.
+- `dose_delay`, `requires_dose`: for second and later doses (below).
+- `waning`, `mode`, `dose_label`: see [`AbstractVaccination`](@ref).
+
+`delay_to_immunity`, `post_exposure_efficacy`, `onward_efficacy` and
+`severity_efficacy` take the same forms as `efficacy` (a number, a
+distribution or a function `(rng, ind) -> ...`), drawn once per contact when
+the dose is given. `dose_delay` is drawn once when the dose is scheduled.
+
+The window is checked on the day of vaccination, so a contact vaccinated just
+inside it with a long `delay_to_immunity` is still vaccinated, and whether
+immunity comes in time is then decided at each exposure.
 
 !!! warning "The window is measured to *this* dose, `dose_delay` included"
-    A second dose is administered `dose_delay` days after the trace, and
-    the window is checked against that time. Copying a prime's
-    `eligibility_window` onto a boost therefore rejects almost every
-    boost, since `dose_delay` alone usually exceeds the window. A window
-    belongs on the dose whose timing it describes, so leave a later dose
-    at the default `Inf` unless the protocol has a deadline on the second
-    dose itself.
+    A second dose is given `dose_delay` days after the trace, and the window
+    is checked against that day. Copying a first dose's
+    `eligibility_window` onto a booster therefore rejects almost every
+    booster, since `dose_delay` alone usually exceeds the window. Leave a
+    later dose at the default `Inf` unless the protocol has a deadline on
+    that dose itself.
 
-`post_exposure_efficacy` is the probability that a dose aborts an
-infection the contact already has. It can do so when immunity
-(vaccination + `delay_to_immunity`) arrives after the exposure but
-before the contact's symptom onset. An aborted infection runs until
-immunity arrives and ends there: the contact transmits as usual before
-then and not at all afterwards. It has no symptom onset, so nothing
-triggered by onset happens (isolation, tracing, onset-timed transitions).
-Its clinical course stops at the abort: no transition in the
-`progression` takes effect at or after that time, whatever it is timed
-from, so there is no later hospitalisation, death or other outcome. A
-transition that took effect before immunity arrived stands. An aborted
-infection is still a case, counted in [`chain_statistics`](@ref) and
-listed by [`linelist`](@ref) with no onset date and a
-`date_infection_aborted` column (from `:infection_aborted_time`). Where
-immunity is already in place at the exposure, the dose instead blocks the
-infection with the same probability, which is all it can do for a contact
-with no onset to race (asymptomatic, `NaN` incubation period). Unlike
-`efficacy`, `post_exposure_efficacy` acts when a contact is traced after
-its infector isolates, provided the trace does not quarantine it (see the
-warning below). Defaults to `0.0`. Requires `:incubation_period`, set by
-[`clinical_presentation`](@ref).
+# Post-exposure and onward effects
 
-`post_exposure_efficacy` already blocks every exposure that `efficacy`
-would. Set one or the other: setting both composes the two blocks
-independently, which double-counts.
+`post_exposure_efficacy` can stop an infection when immunity (vaccination
+plus `delay_to_immunity`) arrives after the exposure but before the contact's
+symptom onset. A stopped infection transmits as usual until immunity arrives
+and not at all afterwards. It never has symptoms, so nothing triggered by
+onset happens (isolation, tracing, onset-timed transitions), and no
+transition in the `progression` takes effect at or after that time, so there
+is no later hospitalisation, death or other outcome; transitions before it
+stand. A stopped infection is still a case: it is counted by
+[`chain_statistics`](@ref) and listed by [`linelist`](@ref) with no onset date
+and a `date_infection_aborted` column. Where immunity is already in place at
+the exposure, the dose instead prevents the infection with the same
+probability. That is all it does for a contact who never has symptoms, so such
+a contact exposed before immunity is not protected. `post_exposure_efficacy`
+therefore already covers every exposure `efficacy` would; set one or the
+other, since setting both counts the protection twice.
 
-`onward_efficacy` is the per-exposure probability that a *vaccinated
-parent's* onward transmission is blocked once the parent's
-vaccine-induced immunity has developed, so it also averts onward cases
-from contacts already exposed when vaccinated. Defaults to `0.0` (no
-onward effect). Unlike `post_exposure_efficacy`, it leaves the infection
-and its disease in place: each transmission after immunity is blocked
-with this probability whenever the contact's onset falls.
-`post_exposure_efficacy` ends the whole infection, and only for contacts
-whose immunity arrives before their onset. The two compose independently,
-giving a vaccine that aborts some infections and reduces the infectiousness
-of the rest. `efficacy` (the susceptibility-side block applied when the
-*contact* is vaccinated) also applies independently; setting it and
-`onward_efficacy` to the same value gives a vaccine that acts
-symmetrically on susceptibility and infectiousness.
+`onward_efficacy` leaves the contact's infection and illness in place but
+prevents each of their transmissions after immunity with this probability,
+whenever their onset is. It therefore also reduces onward cases from contacts
+already infected when vaccinated. `post_exposure_efficacy` and
+`onward_efficacy` act independently, giving a vaccine that stops some
+infections and reduces the infectiousness of the rest. Setting `efficacy` and
+`onward_efficacy` to the same value gives a vaccine that acts equally on
+susceptibility and infectiousness.
 
-Requires `:traced` (set by [`ContactTracing`](@ref)).
+!!! warning "`efficacy` changes nothing when contacts are traced after their infector is isolated"
+    By default `ContactTracing` reaches a contact once its infector has
+    been isolated, and perfect `Isolation` already prevents every later
+    transmission to that contact. A dose acting only through `efficacy`
+    then leaves results unchanged, with or without quarantine
+    (`action = FlagOnly()`). `efficacy` has infections to prevent
+    only when a contact can still be infected after being traced: with
+    leaky isolation (`post_isolation_transmission > 0`), when tracing
+    starts before isolation (for example `eligibility = OnSymptomOnset()`),
+    or in a `depth > 1` ring through people who keep transmitting after
+    being traced. `onward_efficacy` acts on the contact's own later
+    transmission, which quarantine already prevents, so it matters when
+    tracing does not quarantine; `post_exposure_efficacy` acts on the
+    infection the contact already has. Under quarantine,
+    `post_exposure_efficacy` can lower containment, because a stopped
+    infection never has symptoms and so no longer triggers tracing of the
+    people it infected before the dose.
 
-!!! warning "`efficacy` is redundant when contacts are traced after their infector isolates"
-    `ContactTracing` by default traces a contact once its infector has been
-    isolated, and a non-leaky `Isolation` then already blocks every later
-    transmission to the contact. A dose acting only through `efficacy`
-    leaves the results unchanged, with or without quarantine
-    (`action = FlagOnly()`). `efficacy` has infections left to
-    prevent only when a contact can still be infected after being traced:
-    under leaky isolation (`post_isolation_transmission > 0`), when tracing
-    starts before the infector is isolated (for example
-    `eligibility = OnSymptomOnset()`), or in a `depth > 1` ring passing
-    through members who keep transmitting after they are traced.
-    `onward_efficacy` acts on the traced contact's own later transmission,
-    which a quarantine already blocks, so it acts under tracing without
-    quarantine. So does `post_exposure_efficacy`, which acts on the
-    infection the contact already has. Under quarantine
-    `post_exposure_efficacy` can lower containment, because an aborted case
-    never has symptoms and so no longer triggers tracing of the contacts it
-    infected before its dose.
+# Severity
 
-`severity_efficacy` is the probability that the vaccinated *contact's own*
-disease course is milder once their immunity has developed — lower
-mortality, a lower chance of a severe outcome, or whatever a clinical
-transition's `probability` reads it for. Unlike `efficacy`,
-`onward_efficacy` and `post_exposure_efficacy`, it does not gate
-transmission and so is not one of the risks [`competing_risk`](@ref)
-returns: it has no effect until a transition in `progression` consults it,
-via the [`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors,
-same as any other prerequisite a clinical transition's `probability` gates
-on:
+`severity_efficacy` does not change transmission. It acts only where a
+transition in the `progression` reads it, through the
+[`severity_efficacy`](@ref) and [`immunity_time`](@ref) functions, for example
+a lower case fatality ratio among vaccinated cases:
 
 ```julia
 Death(delay = LogNormal(2.5, 0.4),
@@ -659,22 +606,14 @@ Death(delay = LogNormal(2.5, 0.4),
               0.7 * (1 - severity_efficacy(ind)) : 0.7)
 ```
 
-`immunity_time(ind) <= onset_time(ind)` is the check that a dose whose
-immunity has not yet developed by the outcome it would affect confers no
-protection — comparing against `:vaccinated` alone, as a naive closure
-might, would count a not-yet-immune dose as protective. Defaults to `0.0`
-(no severity effect). Accepts a `Real`, `Distribution`, or `Function`
-`(rng, ind) -> Real`, sampled once per vaccinated contact alongside
-`efficacy`.
+The check `immunity_time(ind) <= onset_time(ind)` gives protection only to a
+person immune by their onset; checking `is_vaccinated` alone would count a
+dose whose immunity had not yet developed.
 
-`severity_efficacy` does not wane. [`severity_efficacy`](@ref) returns the
-value sampled at vaccination for the whole run, and `waning` does not
-apply to it: a transition's `probability` sees only the individual, and
-cannot reach the dose or its `waning` function. A dose with `waning` set
-therefore protects against infection less and less over time while its
-protection against severe outcomes stays at full strength. To let the
-latter fade too, apply the decay inside the closure, from immunity onset
-to the individual's own onset:
+`severity_efficacy` does not wane: `waning` applies only to the protection
+against infection, so with `waning` set, protection against infection fades
+while protection against severe outcomes stays. To make it fade too, apply
+the decay in the transition, from immunity to onset:
 
 ```julia
 decay(dt) = exp(-dt / 180)
@@ -685,23 +624,16 @@ Death(delay = LogNormal(2.5, 0.4),
       end)
 ```
 
-`dt >= 0` is the same immunity check as above; it is also false for an
-individual with no onset (`NaN`), who then keeps the unvaccinated
-probability. Passing `decay` as the dose's `waning` as well makes both
-effects fade at the same rate.
-
-Per-contact state keys are `:vaccinated`, `:vaccination_time`,
-`:vaccine_efficacy`, `:immunity_time`, and `:severity_efficacy` for the
-default dose label, plus `:post_exposure_efficacy` and `:onward_efficacy`
-where those are given as a distribution or function. With a non-default
-`dose_label`, the keys carry the label as a suffix.
+`dt >= 0` is the same immunity check, and is false for a person with no onset
+(`NaN`), who keeps the unvaccinated probability. Passing `decay` as the
+dose's `waning` too makes both effects fade at the same rate.
 
 # Second and later doses
 
 A dose is given at the trace, or `dose_delay` days after it.
-`requires_dose` names a dose label the contact must have received by the
-time this dose falls due; a contact without it does not get this dose. A
-prime-boost schedule is two `RingVaccination`s:
+`requires_dose` names a dose the contact must have received by the time this
+dose is due; a contact without it does not get this dose. A prime-boost
+schedule is two `RingVaccination`s:
 
 ```julia
 [
@@ -713,46 +645,38 @@ prime-boost schedule is two `RingVaccination`s:
 ]
 ```
 
-The boost is given, on average, five weeks after the trace to 90% of
-those primed (the remaining 10% being lost to follow-up), and protects
-14 days later. List a dose after the dose it requires: the stack is
-applied in order, so a boost placed first would see no prime and never
-be given. The required
+The boost is given on average five weeks after the trace to 90% of those
+primed (the other 10% lost to follow-up) and protects 14 days later. Doses
+act independently, so reaching 80% protection in total from a 60% prime
+needs `efficacy = 0.5` on the boost (`(0.8 - 0.6) / (1 - 0.6)`), the
+protection it adds among those the prime left unprotected.
+
+List a dose after the dose it requires: interventions are applied in order,
+so a boost listed first would find no prime and never be given. The required
 dose may come from any vaccination, such as a [`MassVaccination`](@ref)
-prime; a contact whose prime falls after the boost's due date is not
-boosted. Between two ring doses, a `dose_delay` shorter than the required
-dose's is rejected when the `ModelSpec` is built, since such a boost could
-never be given. A `dose_delay` drawn from a distribution is judged on its
-support: the boost is rejected when even its longest delay falls before
-the required dose's shortest, and warned about when the two supports
-overlap, because contacts whose draws come out in the wrong order go
-without the boost. A function, or a distribution that reports no
-support, cannot be checked when the `ModelSpec` is built; a dose whose
-draw falls before the required dose is then declined for that contact.
+prime; a contact whose prime falls after the boost is due is not boosted.
+Between two ring doses, a boost `dose_delay` shorter than the prime's is
+rejected when the [`ModelSpec`](@ref) is built, since the boost could never
+be given. A `dose_delay` drawn from a distribution is rejected when even its
+longest delay falls before the prime's shortest, and gives a warning when the
+two ranges overlap, because contacts whose draws come out in the wrong order
+go without the boost. A function, or a distribution without a known range,
+cannot be checked in advance; a dose whose draw falls before the required dose
+is then skipped for that contact.
 
-Doses compose as competing risks, so a schedule reaching 80% protection
-in total from a prime at 60% needs `efficacy = 0.5` on the boost
-(`(0.8 - 0.6) / (1 - 0.6)`), the protection the second dose adds among
-those the first left unprotected.
+A dose is recorded when it is due, whether or not the contact was infected
+in the meantime, so counts of later doses are counts of doses scheduled.
 
-A dose is recorded when it falls due, whether or not the contact was
-infected in the meantime, because infection is resolved after the doses
-are given. Dose counts for later doses are therefore counts of doses
-scheduled.
+`waning` scales `efficacy`, `post_exposure_efficacy` and `onward_efficacy` by
+the time since this contact became immune. Post-exposure protection acts the
+moment immunity arrives and uses `waning(0)`, so a `waning` that builds up
+first, such as `dt -> min(1, dt / 14)`, stops no infections.
 
-`delay_to_immunity`, `post_exposure_efficacy`, and `onward_efficacy`
-accept the same `Real | Distribution | Function` forms as `efficacy`, drawn
-once per contact when the dose is given (see [`AbstractVaccination`](@ref)).
-So does `dose_delay`, drawn once when the dose is scheduled.
-
-`waning` is the exception: it is a function `dt -> Real` of the time since
-this contact's immunity developed, and one shape of decay serves the whole
-dose, because it already scales each contact's own draw (see
-[`AbstractVaccination`](@ref)). It scales `efficacy`, `post_exposure_efficacy`
-and `onward_efficacy`, and leaves `severity_efficacy` alone. The
-post-exposure abort acts the moment immunity arrives and uses `waning(0)`:
-a decay that builds up first, such as `dt -> min(1, dt / 14)`, therefore
-aborts nothing.
+For extension authors: each contact's dose is recorded in `ind.state` under
+`:vaccinated`, `:vaccination_time`, `:vaccine_efficacy`, `:immunity_time` and
+`:severity_efficacy` (with the `dose_label` as a suffix for a non-default
+label), plus `:post_exposure_efficacy` and `:onward_efficacy` when those vary
+between people.
 """
 struct RingVaccination{V <: VaccineEffect, C, DD, W, PE, OE} <: AbstractVaccination
     effect::V
@@ -1112,53 +1036,53 @@ end
 # ── GroupVaccination ─────────────────────────────────────────────────
 
 """
-Vaccinate every member of the group a confirmed case belongs to — the
-fallback an outbreak response reaches for when no ring can be built, such
-as a community, a health area, or a household. Individuals carry their
-group under `group_key` (`:group` by default; see [`groups`](@ref)), and
-every member sharing a triggering case's group is vaccinated at the
-trigger time plus `dose_delay`, whether or not it has any traced
-connection to that case.
+    GroupVaccination(; efficacy, eligibility = OnLabConfirmation(),
+                     coverage = 1.0, dose_delay = 0.0, group_key = :group,
+                     severity_efficacy = 0.0, delay_to_immunity = 0.0,
+                     waning = nothing, mode = LeakyMode(), dose_label = :default)
 
-`eligibility` is a [`TraceEligibility`](@ref) policy, exactly as
-[`ContactTracing`](@ref) uses it, but tested against a case itself rather
-than an infector–contact pair: `OnLabConfirmation()` (the default) triggers
-once a case in the group has tested positive, `OnSymptomOnset()` triggers on
-suspicion alone, and the boolean operators `&`, `|`, `!` combine them the
-same way. The policy's [`trigger_time`](@ref EpiBranch.trigger_time) sets
-when the group is deemed to have a case in it; `dose_delay` is added on
-top, standing in for the time a vaccination team takes to reach the
-group once notified.
+Vaccinate everyone in a case's group (a community, health area or household)
+once a case there is confirmed or suspected: the usual fallback when no ring
+of contacts can be traced. Every member is vaccinated, whether or not they
+have any traced link to the case. Groups come from the [`groups`](@ref)
+population characteristic (stored under `group_key`, default `:group`).
 
-A group is vaccinated as soon as any of its members meets `eligibility`,
-at the *earliest* such member's trigger time — later confirmations in the
-same group do not push the dose out further. Members created after the
-trigger (a case infected later in the same group) are vaccinated at that
-same trigger time plus `dose_delay` when they appear, so they are
-protected only from exposures after that point, exactly as an
-already-present member is. Because the campaign reaches the whole group,
-doses scale with group size where [`RingVaccination`](@ref) doses scale
-with ring size.
+# Examples
+```julia
+# Vaccinate the whole community 2 days after a case there is lab-confirmed
+GroupVaccination(efficacy = 0.7, eligibility = OnLabConfirmation(), dose_delay = 2.0)
+```
 
-`coverage`, `efficacy`, `severity_efficacy`, `delay_to_immunity`,
-`waning`, `mode`, and `dose_label` mean what they do for
-[`RingVaccination`](@ref). Pairing `coverage` with
-[`vaccine_acceptance`](@ref) on the same `group_key` clusters refusal in
-that group. `severity_efficacy` defaults to `0.0` (no severity effect)
-and acts only through a clinical transition that reads it via the
-[`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors;
-`waning` does not apply to it.
-`dose_delay` accepts the same forms, drawn once per member, so members of one
-group can be reached at different times.
+# Arguments
+- `eligibility`: which cases trigger vaccination of their group, using the
+  same rules as [`ContactTracing`](@ref) but applied to the case:
+  `OnLabConfirmation()` (default) once a case has tested positive,
+  `OnSymptomOnset()` on suspicion alone, combined with `&`, `|` and `!`. The
+  rule's [`trigger_time`](@ref EpiBranch.trigger_time) sets when the group
+  counts as having a case.
+- `dose_delay`: days from that trigger to vaccination, for example the time a
+  vaccination team needs to reach the group. A number, a distribution or a
+  function, drawn once per member, so members can be reached on different
+  days.
+- `coverage`, `efficacy`, `severity_efficacy`, `delay_to_immunity`, `waning`,
+  `mode`, `dose_label`: as for [`RingVaccination`](@ref). Pairing `coverage`
+  with [`vaccine_acceptance`](@ref) on the same `group_key` clusters refusal by
+  group. `severity_efficacy` acts only through a clinical transition that
+  reads it and does not wane.
 
-# Fallback composition
+A group is vaccinated at the trigger time of its *earliest* eligible case;
+later cases in the same group do not move the date. Members who appear later
+(a case infected later in the same group) are vaccinated at that same date
+plus `dose_delay`, so they are protected only from exposures after that, as
+for members already present. Doses grow with group size, where
+[`RingVaccination`](@ref) doses grow with ring size.
+
+# Group vaccination as a fallback to ring vaccination
 
 Listing a [`RingVaccination`](@ref) before a `GroupVaccination` with the
-same `dose_label` makes the group dose a pure fallback: `coverage`,
-`efficacy`, and vaccination state are namespaced by `dose_label` (see
-[`AbstractVaccination`](@ref)), so a member the ring already reached is
-recorded as vaccinated by the time `GroupVaccination` runs and is
-skipped, leaving the group dose to reach only those the ring did not:
+same `dose_label` makes the group dose a fallback: a member the ring has
+already vaccinated is skipped, so the group dose reaches only those the ring
+did not:
 
 ```julia
 [ContactTracing(OnLabConfirmation(), 0.7, Exponential(1.0), Quarantine(duration = 7.0)),
@@ -1166,41 +1090,31 @@ skipped, leaving the group dose to reach only those the ring did not:
  GroupVaccination(efficacy = 0.6)]
 ```
 
-Requires `:group` (or `group_key`) and whatever `eligibility` requires,
-e.g. `:test_positive` for the default `OnLabConfirmation()`.
+Needs the group characteristic and whatever `eligibility` needs, such as the
+test result from [`Isolation`](@ref) for the default `OnLabConfirmation()`.
 
-!!! note "Seed cases on the generation engine"
+!!! note "Index cases in a branching process"
     Like [`RingVaccination`](@ref) and [`MassVaccination`](@ref),
-    `GroupVaccination` acts through `apply_post_transmission!`, which the
-    engine calls only on newly created contacts. A run's seed cases are
-    created directly, not through that hook, so a seed is reached only once
-    another member of its group is created later and re-triggers the sweep;
-    a seed whose chain goes extinct without ever sharing a group with a
-    later case is not vaccinated even if it is itself confirmed.
+    `GroupVaccination` acts on new contacts as they are made. In a
+    branching process the index cases are not contacts, so an index case
+    is vaccinated only once another member of its group appears later; an
+    index case whose chain dies out without anyone else in its group being
+    infected is not vaccinated, even if it is itself confirmed.
 
-On network and household races, group actions are discovered after each case is
-finalised, including seed cases. They can reach the current case and pending
-members, subject to scheduling and capacity admission. Cases settle in order
-of infection there, not in order of eligibility, so a member can be found
-eligible earlier than one that infected it. A member the race has not yet
-settled has its dose moved to a trigger discovered later that turns out to be
-earlier than the one it was first given; a settled member's dose keeps its
-date, as does a dose another vaccination already gave.
+In network and household models, a group is checked after each case's
+infection is settled, index cases included, and the dose can reach that case
+and members not yet infected, subject to scheduling and capacity. Cases there
+are settled in order of infection, not of eligibility, so a member can turn
+out eligible earlier than the person who infected them. A member whose
+infection is not yet settled has their dose moved earlier if an earlier
+trigger is found later; a member already settled keeps their dose date, as
+does a dose another vaccination already gave.
 
 For a campaign with repeat visits, `coverage` is the final probability of being
-reached, and `dose_delay` can describe the first successful visit. A failed
-coverage draw does not itself identify refusal: store willingness in an
-individual attribute when that distinction matters. See [Repeat campaign visits](@ref)
-for a composition using these existing inputs.
-
-# Examples
-
-Vaccinate the whole community once a case there is lab-confirmed, 2 days
-later:
-
-```julia
-GroupVaccination(efficacy = 0.7, eligibility = OnLabConfirmation(), dose_delay = 2.0)
-```
+reached, and `dose_delay` can describe the first successful visit. A person
+not covered is not marked as having refused: record willingness as a
+population characteristic when that distinction matters. See
+[Repeat campaign visits](@ref) for an example using these inputs.
 """
 struct GroupVaccination{V <: VaccineEffect, E <: TraceEligibility, C, DD} <:
     AbstractVaccination
@@ -1292,48 +1206,36 @@ end
 # ── MassVaccination ──────────────────────────────────────────────────
 
 """
-Vaccinate the population on a rolling schedule, independent of contact
-tracing. Each contact draws an eligibility time when they are created;
-if that time is finite they are recorded as vaccinated. Whether
-vaccination actually blocks transmission for that contact is then
-decided by the competing-risks resolution, which checks whether the
-eligibility time plus `delay_to_immunity` falls before the contact's
-own transmission time.
+    MassVaccination(; efficacy, eligibility_time, severity_efficacy = 0.0,
+                    delay_to_immunity = 0.0, waning = nothing,
+                    mode = LeakyMode(), dose_label = :default)
 
-`eligibility_time` accepts:
+Vaccinate the population on a schedule, independently of contact tracing.
 
-- a `Real`: every contact becomes eligible at this absolute time.
-- a `Distribution`: each contact draws its eligibility time
-  independently (e.g. `Exponential(60.0)` for a slow random rollout).
-- a `Function` `(rng, ind) -> Real`: per-individual rule; use for
-  age-stratified rollout or any other state-dependent schedule.
-  Return `Inf` for individuals who never become eligible. Reading a
-  value set by [`vaccine_acceptance`](@ref) here clusters refusal by
-  group, e.g. `(rng, ind) -> ind.state[:vaccine_acceptance] > 0.5 ? 30.0 : Inf`
-  declines a whole group whose propensity is at most `0.5`; uptake is then
-  `P(propensity > 0.5)`.
+# Arguments
+- `eligibility_time`: the day each person is vaccinated; `Inf` means never. A
+  number (everyone on that day), a distribution such as `Exponential(60.0)`
+  for a slow random rollout (drawn per person), or a function
+  `(rng, ind) -> ...` for an age-stratified or other rule. Reading
+  [`vaccine_acceptance`](@ref) here clusters refusal by group: for example
+  `(rng, ind) -> ind.state[:vaccine_acceptance] > 0.5 ? 30.0 : Inf` leaves out
+  whole groups whose acceptance is at most 0.5, so uptake is
+  `P(acceptance > 0.5)`.
+- `efficacy`, `delay_to_immunity`, `severity_efficacy`: take the same forms,
+  drawn once per vaccinated person, for example an age-dependent efficacy or
+  immunity taking one to three weeks. See [`AbstractVaccination`](@ref).
+- `waning`: decline of protection against infection from the day of immunity
+  (see [`AbstractVaccination`](@ref)); matters most when people are vaccinated
+  long before exposure. It does not apply to `severity_efficacy`, which acts
+  only through a clinical transition that reads it, as for
+  [`RingVaccination`](@ref).
+- `mode`, `dose_label`: see [`AbstractVaccination`](@ref). Use two
+  `MassVaccination`s with different `dose_label`s for a multi-dose rollout.
 
-`efficacy` and `delay_to_immunity` accept the same set, drawn once per
-vaccinated contact (see [`AbstractVaccination`](@ref)), for example an
-age-dependent efficacy or immunity that takes one to three weeks to develop.
-
-`severity_efficacy` accepts the same set and, like on
-[`RingVaccination`](@ref), sets how much milder a vaccinated individual's
-own disease course is once their immunity has developed — a clinical
-transition's `probability` reads it via the [`severity_efficacy`](@ref)
-and [`immunity_time`](@ref) accessors. Defaults to `0.0` (no severity
-effect).
-
-`waning` decays `efficacy` from immunity onset as described under
-[`AbstractVaccination`](@ref), which matters most for a rollout that
-vaccinates well ahead of any exposure. It does not apply to
-`severity_efficacy`.
-
-Per-contact state keys are `:vaccinated`, `:vaccination_time`,
-`:vaccine_efficacy`, `:immunity_time`, and `:severity_efficacy` for the
-default dose label. With a non-default `dose_label`, the keys carry the
-label as a suffix — pass two `MassVaccination`s with different labels for
-a multi-dose rollout.
+Each contact's vaccination day is drawn when a branching process creates
+the contact (index cases are not vaccinated), and they count as vaccinated
+if it is finite. They are protected against an exposure only if their
+vaccination day plus `delay_to_immunity` comes before it.
 
 # Examples
 
@@ -1363,7 +1265,7 @@ MassVaccination(
 )
 ```
 
-Prime-and-boost schedule (compose two instances with different labels):
+Prime-and-boost schedule (two doses with different labels):
 
 ```julia
 [

@@ -5,8 +5,10 @@ import Distributions: loglikelihood
 """
     loglikelihood(data::OffspringCounts, offspring::Distribution)
 
-Log-likelihood of observed secondary case counts under a given
-offspring distribution.
+Log-likelihood of observed numbers of secondary cases when every case's count
+follows the offspring distribution `offspring`, such as `NegBin(R, k)`.
+Maximise it over R and k to estimate them; see [`OffspringCounts`](@ref) for
+an example.
 """
 function loglikelihood(data::OffspringCounts, offspring::Distribution)
     return sum(logpdf(offspring, x) for x in data.data)
@@ -15,14 +17,15 @@ end
 """
     loglikelihood(data::OffspringCounts, offspring::AbstractVector{<:Distribution})
 
-Log-likelihood of observed secondary case counts under a per-case offspring
-distribution, e.g. `NegBin.(exp.(X * β), k)` for a case-level covariate
-matrix `X`. `offspring` must have one distribution per observation in
-`data`.
+Log-likelihood of observed numbers of secondary cases when each case has its
+own offspring distribution, one per count in `data`. Use it to let R depend on
+case characteristics, as in a regression: `NegBin.(exp.(X * β), k)` for a
+matrix `X` of case characteristics and coefficients `β`. The dot after a
+function name applies it to each element, like vectorised R code.
 
-For data that list only cases with at least one secondary case, pass
-`truncated.(offspring, 1, Inf)`, or a scalar `truncated(dist, 1, Inf)` to the
-single-distribution method.
+For data that list only cases who infected at least one person, condition on
+that with `truncated.(offspring, 1, Inf)` (or `truncated(dist, 1, Inf)` with a
+single distribution).
 
 # Examples
 
@@ -45,26 +48,33 @@ end
 """
     loglikelihood(data::ChainSizes, offspring::Distribution; prob_concluded = nothing)
 
-Log-likelihood of observed chain sizes under the analytical chain size
-distribution implied by the offspring distribution. Multi-seed clusters
-are handled via the `seeds` field of [`ChainSizes`](@ref).
+Log-likelihood of observed chain sizes under the exact chain-size distribution
+for the offspring distribution `offspring`. Clusters with several index cases
+are handled through the `seeds` of [`ChainSizes`](@ref).
 
-With `prob_concluded === nothing` (default), every cluster is treated as
-concluded and the likelihood is the standard final-size sum
-`Σ_i log P(X = x_i | seeds_i)`.
+By default every cluster is assumed to be over, and each contributes the
+probability of its final size, `log P(X = x_i | seeds_i)`.
 
-With `prob_concluded::AbstractVector` (length `length(data.data)`, values in
-`[0, 1]`), cluster `i` contributes the real-time mixture
+For real-time data, `prob_concluded` gives for each cluster the probability
+`π_i` that it is over. A cluster that may still grow contributes
 
     L_i = π_i · P(X = x_i | seeds_i) + (1 − π_i) · P(X ≥ x_i | seeds_i)
 
-where `π_i = prob_concluded[i]` is the probability that cluster `i` is
-finished (observed size = final size). See `end_of_outbreak_probability` for a
-principled `prob_concluded` based on the generation-time distribution.
+that is, its final size is either the observed size or larger.
+[`end_of_outbreak_probability`](@ref) computes `π_i` from the generation-time
+distribution and the time since the last case.
 
-Data recorded only once a chain reaches a given size are evaluated by passing a
-law [`observe`](@ref) has conditioned, as
-`observe(chain_size_distribution(offspring), MinimumSize(k))`.
+For data recorded only once a chain reaches a given size, pass
+`observe(chain_size_distribution(offspring), MinimumSize(k))` instead of
+`offspring`.
+
+# Examples
+
+```julia
+data = ChainSizes([1, 1, 3, 1, 5, 2, 1, 8])
+Rs = 0.05:0.05:0.95
+R_hat = Rs[argmax([loglikelihood(data, NegBin(R, 0.5)) for R in Rs])]
+```
 """
 function loglikelihood(
         data::ChainSizes, offspring::Distribution;
@@ -100,10 +110,8 @@ end
 """
     loglikelihood(data::ChainSizes, d::IndexChainSize; prob_concluded = nothing)
 
-Log-likelihood of observed chain sizes under an [`IndexChainSize`](@ref)
-law, i.e. an index case with its own offspring distribution. `d` is already
-the chain-size law, so this routes directly to [`_chain_size_loglik`](@ref)
-rather than through `chain_size_distribution`.
+Log-likelihood of observed chain sizes when the index case has its own
+offspring distribution, as described by an [`IndexChainSize`](@ref).
 """
 function loglikelihood(
         data::ChainSizes, d::IndexChainSize;
@@ -115,9 +123,9 @@ end
 """
     loglikelihood(data::ChainSizes, d::TruncatedChainSize; prob_concluded = nothing)
 
-Log-likelihood of chain sizes recorded only at or above a minimum size, under
-the law a [`MinimumSize`](@ref) observation produces. `d` is already the
-chain-size law, so this routes directly to [`_chain_size_loglik`](@ref).
+Log-likelihood of chain sizes recorded only at or above a minimum size, as
+described by a [`TruncatedChainSize`](@ref) (what [`observe`](@ref) returns
+for a [`MinimumSize`](@ref) observation).
 """
 function loglikelihood(
         data::ChainSizes, d::TruncatedChainSize;
@@ -129,10 +137,9 @@ end
 """
     _chain_size_loglik(dist, data::ChainSizes; prob_concluded = nothing)
 
-Per-cluster chain-size log-likelihood. With `prob_concluded === nothing` every
-cluster contributes its concluded PMF
-`log P(X = x_i | seeds_i)`; with `prob_concluded::AbstractVector` the mixture
-`π_i · P(X = x_i) + (1 − π_i) · P(X ≥ x_i)` is summed.
+Sum over clusters of the chain-size log-likelihood under `dist`: each
+cluster's `log P(X = x_i | seeds_i)`, or with `prob_concluded` the mixture
+`π_i · P(X = x_i) + (1 − π_i) · P(X ≥ x_i)` for clusters that may still grow.
 """
 function _chain_size_loglik(
         dist, data::ChainSizes;
@@ -177,13 +184,14 @@ function _logsumexp2(a, b)
     return m + log(exp(a - m) + exp(b - m))
 end
 
+# AD-compatible chain length: Poisson — PGF iteration on G(s) = exp(λ(s − 1)).
 """
     loglikelihood(data::ChainLengths, offspring::Distribution)
 
-Analytical log-likelihood of observed chain lengths. Only defined for
-subcritical processes (R < 1).
+Log-likelihood of observed chain lengths under the exact chain-length
+distribution for Poisson or negative binomial offspring. Only defined when R
+is below 1, since above it chains can go on for ever.
 """
-# AD-compatible chain length: Poisson — PGF iteration on G(s) = exp(λ(s − 1)).
 function loglikelihood(data::ChainLengths, offspring::Poisson{T}) where {T}
     λ = mean(offspring)
     λ < 1 ||
@@ -197,13 +205,8 @@ function loglikelihood(data::ChainLengths, offspring::NegativeBinomial{T}) where
     return _chain_length_ll_negbin(data.data, offspring)
 end
 
-"""
-    loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
-    loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
-
-Simulation-based log-likelihood under any transmission model, optionally
-with interventions.
-"""
+# Simulation estimate of the chain-size or chain-length log-likelihood under
+# any transmission model, with its interventions.
 function _sim_loglikelihood(
         observed, process, column::Symbol, min_val::Int;
         interventions, attributes, progression, observation, recorder,
@@ -252,12 +255,19 @@ end
     loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
     loglikelihood(data::ChainSizes, spec::ModelSpec; kwargs...)
 
-Log-likelihood of observed chain sizes. With no interventions and a
-single-type offspring law, uses the analytical chain-size distribution
-transformed by the observation ([`observe`](@ref)); otherwise simulates
-and compares the reported chain sizes against the data. The interventions,
-attributes and observation come from the process for a bare model, or from
-the spec for a [`ModelSpec`](@ref).
+Log-likelihood of observed chain sizes under a model, including its
+interventions and observation model. Without interventions and with a
+single-type offspring distribution it is exact (the chain-size distribution
+adjusted by [`observe`](@ref)), unless some cluster has more than one index
+case and no exact formula covers that, as with under-reported cases
+([`PerCaseObservation`](@ref)). Otherwise it is estimated by simulating
+`n_sim` outbreaks and comparing their observed chain sizes with the data; the
+simulated chains each start from one index case, so `seeds` is ignored (see
+[`chain_size_distribution`](@ref)).
+
+Keywords control that simulation: `n_sim`, `n_initial`, `max_cases`,
+`max_generations`, `max_time`, `stopping_rules` and `rng`. Simulated
+outbreaks that reach `max_cases` count as at least that large.
 """
 function loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
     return _chain_size_model_loglik(
@@ -327,11 +337,12 @@ end
     loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
     loglikelihood(data::ChainLengths, spec::ModelSpec; kwargs...)
 
-Log-likelihood of observed chain lengths. Only defined with no observation
-(per-case detection does not give a well-defined chain length); uses the
-analytical chain-length distribution with no interventions, otherwise a
-simulation estimate. The interventions, attributes and observation come
-from the process for a bare model, or from the spec for a [`ModelSpec`](@ref).
+Log-likelihood of observed chain lengths under a model, including its
+interventions. Exact when there are no interventions, the offspring
+distribution is Poisson or negative binomial, and R is below 1; otherwise
+estimated from `n_sim` simulated outbreaks (keywords as for chain sizes).
+Not available with an observation model, since a chain with undetected
+cases has no well-defined observed length.
 """
 function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
     return _chain_length_model_loglik(

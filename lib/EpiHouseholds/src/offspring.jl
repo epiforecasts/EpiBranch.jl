@@ -29,33 +29,34 @@
 const _OffspringLaw = DiscreteNonParametric{Int, Float64, Vector{Int}, Vector{Float64}}
 
 """
-The household-level offspring specification of a household-structured model:
-how many *households* one infected household infects. Returned by
+The spread of infection between households, treating each infected household
+as one "case": the distribution of how many other households one infected
+household infects, from which the household reproduction number R* and the
+probability that transmission between households dies out follow. Returned by
 [`household_offspring`](@ref).
 
-A household's type in the branching process over households is set by what its
-within-household epidemic depends on. With one contact-interval distribution
-shared by every pair that is its size. With a kernel that varies by pair, it is
-the household's own members: households are the same type only when their
-kernels agree pair for pair, and otherwise each is a type of its own. The fields
-hold one entry per type, in increasing size order:
+Households are grouped into types that share the same within-household
+epidemic. With one contact-interval distribution shared by every pair, the
+type is the household size. With a kernel that varies by pair, households are
+the same type only when their kernels agree pair for pair; otherwise each is a
+type of its own. The fields hold one entry per type, in increasing size order:
 
 - `sizes`: the household size of each type.
 - `households`: the ids of the model's households of each type.
 - `mixing`: the probability that a community contact reaches a household of
-  each type. A contact reaches a person and with them their household, so this
-  is proportional to the number of people in households of that type.
-- `laws`: the offspring law of a household of each type, as a
-  `DiscreteNonParametric` over the number of households it infects.
-- `means`: the mean of each of those laws, exact where the final-size recursion
-  gives the mean within-household person-time accurately, and taken from the
-  simulated households otherwise (see [`household_offspring`](@ref)).
-- `global_rate`: the community contact rate the law was derived with.
+  each type. A contact reaches a person, and with them their household, so this
+  is proportional to the number of people living in households of that type.
+- `laws`: for each type, the distribution of the number of households it
+  infects, as a `DiscreteNonParametric`.
+- `means`: the mean of each of those distributions, exact where the
+  within-household calculation is, and taken from the simulated households
+  otherwise (see [`household_offspring`](@ref)).
+- `global_rate`: the community contact rate used.
 
 [`reproduction_number`](@ref) gives R*, [`extinction_probability`](@ref) the
-probability that a chain started by one infected household of each type dies
-out, and [`household_offspring_law`](@ref) the offspring law itself as a
-`Distributions.jl` distribution.
+probability that transmission started by one infected household of each type
+dies out, and [`household_offspring_law`](@ref) the offspring distribution
+itself as a `Distributions.jl` distribution.
 """
 struct HouseholdOffspring
     sizes::Vector{Int}
@@ -75,64 +76,30 @@ end
 """
     household_offspring(model; global_rate, n_samples = 10_000, rng, tol, max_offspring)
 
-The household-level offspring law of a household-structured `model` (a
-[`HouseholdProcess`](@ref) or a `ModelSpec` wrapping one): how many households
-one infected household infects, one law per household type (its size, or its
-members when the kernel varies by pair).
+Spread between households in the early phase of an epidemic: how many other
+households one infected household goes on to infect. From the result,
+[`reproduction_number`](@ref) gives the household reproduction number R* (the
+epidemic can grow between households only if R* > 1) and
+[`extinction_probability`](@ref) the chance that transmission between
+households dies out. `model` is a [`HouseholdProcess`](@ref), or a
+`ModelSpec` with one.
 
-`global_rate` is the rate at which an infectious individual makes contacts
-*outside* its own household. Early in an epidemic each such contact reaches a
-susceptible person in a fresh household, so the number of households one
-infected household infects is Poisson with mean `global_rate` times the total
-infectious person-time of its within-household epidemic. The returned
-[`HouseholdOffspring`](@ref) holds that compound law per type, together with
-the size-biased probabilities that a contact reaches each type.
+`global_rate` is the rate (per day) at which an infectious person makes
+contacts *outside* their household. Early in an epidemic each such contact
+reaches a susceptible person in a household not yet infected, so the number of
+households one infected household infects is Poisson with mean `global_rate`
+times the total time its members spend infectious. The result is a
+[`HouseholdOffspring`](@ref) with that distribution for each household type,
+and the probability that a community contact reaches each type (proportional
+to the number of people in households of that type).
 
-The household sizes come from the model, so the mixing weights follow the
-population it describes. The model's own layers apply: the infectious window is
-the one its `progression` and `interventions` produce, so isolation shortens each
-case's community-infectious period and lowers R* exactly as it lowers
-transmission in a simulation. Households are seeded with a single index case, as
-a newly infected household is, so the process must have no `external_hazard`.
-The index case is the member the community contact reached, uniformly at random
-among the household's members.
+The household sizes come from the model, as do the natural history and
+interventions: isolation shortens each case's infectious period in the
+community and lowers R* as it lowers transmission in a simulation. Each newly
+infected household starts with one index case, a member chosen at random, so
+the process must have no `external_hazard`.
 
-A covariate kernel `(infector, susceptible) -> Distribution` makes the derivation
-simulate the model itself, so the kernel and every other layer see the model's
-own individuals and each household's epidemic follows the covariates of its
-actual members. Households whose kernels agree pair for pair, in member order,
-share a type, and its law pools all of them; the rest are types of their own.
-With a shared kernel, size is the type and each size's households are simulated
-on stand-in individuals, so the other layers must treat all members alike. A progression or
-attributes that read an individual's covariates need the kernel given as a
-function, even a constant one such as `(i, j) -> Exponential(3.0)`.
-Each household's epidemic runs on its own clock, so interventions cannot be
-wrapped in `Scheduled`. To see what switching a policy on does, derive the law
-twice, once without the intervention and once with it unwrapped: the two R*
-values are the reproduction numbers before and after the switch.
-
-The within-household epidemic is resolved exactly where a closed form exists,
-and by simulating households otherwise. An exponential contact-interval kernel
-and an exponential infectious window, with no interventions, make the household
-a Markov chain. With a shared kernel `n_samples` households of each size
-are simulated. A covariate kernel has no closed form and is always simulated:
-the whole model is simulated as many times as it takes to reach `n_samples`
-households, and at least once. When every household is a type of its own, as
-with a continuous individual covariate, each type's law comes from those few
-runs and is rough, while the mixture law and R* average over all of them.
-Whichever route is taken, the Poisson compounding is analytical, so the Monte
-Carlo error of the simulated route sits only in the within-household epidemic.
-With a shared kernel the mean is exact whenever the infectious window is a
-single delay of the progression, because the mean total infectious person-time
-is then the mean final size times the mean window (a case's own window does not
-bear on whether it was infected). The exception is a large, weakly transmitting
-household with a random window, where the final-size recursion loses accuracy
-and the mean comes from the simulated households instead.
-
-`tol` bounds the offspring-law tail left outside the returned support and
-`max_offspring` caps it.
-
-# Examples
+# Example
 
 ```julia
 using EpiBranch, EpiHouseholds, Distributions
@@ -144,8 +111,46 @@ model = ModelSpec(HouseholdProcess(fill(4, 1000), Exponential(1 / 0.5));
 offspring = household_offspring(model; global_rate = 0.15)
 reproduction_number(offspring)        # R*
 extinction_probability(offspring)     # one per household type
-household_offspring_law(offspring)    # the law a contacted household follows
+household_offspring_law(offspring)    # distribution for a household reached by a community contact
 ```
+
+# How it is calculated
+
+The epidemic within each household is calculated exactly where a closed form
+exists, and by simulating households otherwise. An exponential contact
+interval and an exponential infectious period, with no interventions, give an
+exact result. With a shared kernel, `n_samples` households of each size are
+simulated. A covariate kernel `(infector, susceptible) -> Distribution` has no
+closed form: the whole model is simulated as many times as it takes to reach
+`n_samples` households (at least once), so each household's epidemic follows
+the covariates of its actual members. Households whose kernels agree pair for
+pair, in member order, share a type; the rest are types of their own. When
+every household is its own type, as with a continuous individual covariate,
+each type's distribution comes from those few runs and is rough, while the
+overall distribution and R* average over all of them. The step from household
+epidemic to number of households infected is exact either way, so simulation
+error enters only through the within-household epidemic.
+
+With a shared kernel the mean is exact whenever the infectious period is a
+single delay in the progression, because the mean total time infectious is
+then the mean final size times the mean infectious period. The exception is a
+large household with weak transmission and a random infectious period, where
+the exact calculation loses accuracy and the mean comes from the simulated
+households instead.
+
+With a shared kernel the households of each size are simulated with
+interchangeable members, so the natural history and interventions must treat
+all members alike. A progression or attributes that read an individual's
+covariates need the kernel given as a function, even a constant one such as
+`(i, j) -> Exponential(3.0)`.
+
+Each household is simulated on its own timeline, so interventions cannot be
+wrapped in `Scheduled`. To see what switching a policy on does, calculate this
+twice, once without the intervention and once with it (unwrapped): the two R*
+values are the reproduction numbers before and after the switch.
+
+`tol` bounds the probability left in the tail beyond the returned range of
+household counts, and `max_offspring` caps that range.
 """
 function household_offspring(
         spec::ModelSpec{<:HouseholdProcess};
@@ -278,32 +283,33 @@ end
 """
     reproduction_number(offspring::HouseholdOffspring)
 
-R*, the mean number of households infected by one infected household: the mean
-offspring count of each household type, averaged over the size-biased
-probabilities that a community contact reaches that type. The epidemic can grow
-between households only if it exceeds 1.
+R*, the household reproduction number: the mean number of other households
+infected by one infected household early in the epidemic. Transmission between
+households can grow only if R* exceeds 1. It averages the mean of each
+household type over the probability that a community contact reaches that type.
 
-A household's type bears on how many households it infects, and leaves their
-types alone: whatever infects them, they are reached through a contact with one
-of their members. The next-generation matrix over household types therefore has
-rank one, and its dominant eigenvalue is this single weighted sum.
+Every household after the first is reached through a community contact with
+one of its members, so its type does not depend on the type of the household
+that infected it. The next-generation matrix over household types therefore
+has rank one, and its dominant eigenvalue is this single weighted sum.
 """
 EpiBranch.reproduction_number(o::HouseholdOffspring) = sum(o.mixing .* o.means)
 
 """
     extinction_probability(offspring::HouseholdOffspring; tol = 1e-10, max_iter = 1000)
 
-The probability that a chain of household-to-household transmission started by
-one infected household dies out, one entry per household type (see
-[`HouseholdOffspring`](@ref)).
+The probability that transmission between households, started by one infected
+household, dies out without a major epidemic: one entry per household type
+(see [`HouseholdOffspring`](@ref)).
 
 Every household infected after the first is reached by a community contact, so
-its type is drawn from the size-biased mixing weights whatever its parent's type
-was. The probability `s` that such a household's line dies out is therefore the
-same for all of them and solves `s = Σₙ mixing[n] · Gₙ(s)`, where `Gₙ` is the
-probability generating function of the offspring law of type `n`. The answer
-for a household of type `n` is then `Gₙ(s)`, which differs across types only
-through how many households that first one infects.
+its type is drawn from the mixing probabilities whatever the type of the
+household that infected it. The probability `s` that transmission from such a
+household dies out is therefore the same for all of them and solves
+`s = Σₙ mixing[n] · Gₙ(s)`, where `Gₙ` is the probability generating function of
+the offspring distribution of type `n`. The answer for a first household of
+type `n` is `Gₙ(s)`, which differs across types only through how many
+households that first one infects.
 """
 function EpiBranch.extinction_probability(
         o::HouseholdOffspring;
@@ -322,8 +328,9 @@ end
 """
     epidemic_probability(offspring::HouseholdOffspring; kwargs...)
 
-The probability that one infected household of each type in `offspring` starts a
-chain of household-to-household transmission that does not die out.
+The probability that one infected household of each type in `offspring` starts
+transmission between households that does not die out (one minus
+[`extinction_probability`](@ref)).
 """
 function EpiBranch.epidemic_probability(o::HouseholdOffspring; kwargs...)
     return 1 .- extinction_probability(o; kwargs...)
@@ -333,16 +340,17 @@ end
     household_offspring_law(offspring::HouseholdOffspring)
     household_offspring_law(offspring::HouseholdOffspring, size)
 
-The household-level offspring law as a `Distributions.jl` distribution: the
-number of households infected by one infected household of the given `size`, or,
-with no size, by a household reached through a community contact: the
-size-biased mixture, the law every household after the first one
-follows. When several types share a size, as they can with a covariate kernel,
-the law for that size is their mixture, weighted as a contact reaches them.
+The distribution of the number of other households infected by one infected
+household, as a `Distributions.jl` distribution: for a household of the given
+`size`, or, with no size, for a household reached through a community contact,
+which is the distribution every household after the first follows. When
+several types share a size, as they can with a covariate kernel, the
+distribution for that size mixes them, weighted by how likely a contact is to
+reach each.
 
-The mixture is the offspring distribution of the branching process over
-households as a single-type process, so it can be handed straight to
-`BranchingProcess` to simulate chains of infected households.
+The distribution without a size treats households as the cases of a
+single-type branching process, so it can be passed to `BranchingProcess` to
+simulate chains of infected households.
 """
 household_offspring_law(o::HouseholdOffspring) = _mixture(o.mixing, o.laws)
 

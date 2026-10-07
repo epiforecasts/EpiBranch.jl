@@ -1,13 +1,15 @@
 """
     PairContext(infector, susceptible, infector_infection_time)
 
-Information available to a pair kernel in both simulation and an infection-layer
-likelihood. `infector` and `susceptible` are population IDs. The infector's infection
-time retains its number type, including automatic-differentiation values.
+What a [`PairKernel`](@ref) function knows about one infector and the person
+they may infect, in simulation and in the likelihood alike: the two people's
+numbers in the population (`infector`, `susceptible`) and the infector's
+infection time (days since the start of the outbreak).
 
-The susceptible's eventual infection time is excluded: it is unknown when
-simulation selects the contact-interval distribution. Fixed host covariates can
-be indexed by either ID in tables captured by the kernel callback.
+The susceptible person's own infection time is left out because it is not yet
+known when their contact interval is drawn. To use fixed characteristics such
+as age or household, look them up by person number in a table the function
+refers to.
 """
 struct PairContext{T <: Real}
     infector::Int
@@ -18,17 +20,27 @@ end
 """
     Steps(breaks, values)
 
-A piecewise-constant multiplier on calendar time: `values[1]` before
-`breaks[1]`, `values[k+1]` from `breaks[k]` (inclusive) to `breaks[k+1]`, and
-`values[end]` from `breaks[end]` onwards. `breaks` must be finite and strictly
-increasing, and every value non-negative; a value of zero switches transmission
-off from that point on.
+A change in transmission on given calendar days, such as a lockdown or school
+closure that scales everyone's rate of infecting others. `breaks` are the days
+(since the start of the outbreak) on which the multiplier changes and `values`
+the multipliers: `values[1]` before `breaks[1]`, `values[k+1]` from `breaks[k]`
+(inclusive) up to `breaks[k+1]`, and `values[end]` from `breaks[end]` onwards.
+`breaks` must be finite and strictly increasing, and every value non-negative;
+a value of zero stops transmission until the next break, or for good if it
+is the last value.
 
-Used as the `calendar` a [`PairKernel`](@ref) multiplies its contact-interval
-hazard by, on the calendar-time axis rather than time since infectious opening.
-It is the piecewise-constant implementation of the calendar schedule interface,
-[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) and
-[`next_calendar_break`](@ref EpiBranch.next_calendar_break).
+Pass it as the `calendar` of a [`PairKernel`](@ref), which multiplies the
+contact-interval hazard by the value in force on each calendar day.
+
+# Example
+
+Transmission halves from day 30:
+
+```julia
+using EpiBranch, Distributions
+lockdown = Steps([30.0], [1.0, 0.5])
+kernel = PairKernel(ctx -> Exponential(2.0); calendar = lockdown)
+```
 """
 struct Steps{T <: Real}
     breaks::Vector{T}
@@ -58,10 +70,11 @@ end
 """
     calendar_multiplier(schedule, t)
 
-The non-negative multiplier a calendar `schedule` applies to a
-[`PairKernel`](@ref)'s contact-interval hazard at calendar time `t`.
+The multiplier a calendar `schedule` applies to transmission on day `t`
+(non-negative; 1 leaves it unchanged). [`PairKernel`](@ref) multiplies its
+contact-interval hazard by it.
 
-Every schedule implements this. A new schedule is a type with this method and,
+Every schedule defines this. A new schedule is a type with this method and,
 depending on its [`calendar_shape`](@ref EpiBranch.calendar_shape), either
 [`next_calendar_break`](@ref EpiBranch.next_calendar_break) (piecewise
 constant, the default) or a `calendar_shape` method declaring it smooth.
@@ -72,12 +85,11 @@ calendar_multiplier(s::Steps, t::Real) = s.values[searchsortedlast(s.breaks, t) 
 """
     next_calendar_break(schedule, t)
 
-The first calendar time strictly after `t` at which a piecewise-constant
-`schedule` changes value, or `Inf` if it stays constant from `t` onwards.
+The first day strictly after `t` on which a piecewise-constant `schedule`
+changes value, or `Inf` if it stays constant from `t` onwards.
 
-Simulation and the likelihood integrate a piecewise-constant schedule exactly,
-one constant segment at a time, so they rely on this to find where each segment
-ends. A smooth schedule has no breaks and does not implement it.
+Simulation and the likelihood use it to find where each constant stretch of the
+schedule ends. A smooth schedule has no breaks and does not define it.
 """
 function next_calendar_break(s::Steps, t::Real)
     idx = searchsortedlast(s.breaks, t) + 1
@@ -87,35 +99,32 @@ end
 """
     PiecewiseConstantCalendar()
 
-The [`calendar_shape`](@ref EpiBranch.calendar_shape) of a schedule that is
-constant between the breaks [`next_calendar_break`](@ref
-EpiBranch.next_calendar_break) reports. Its cumulative hazard is the exact sum
-of scaled differences of the profile's own, one per segment.
+Marks a calendar schedule as constant between the days
+[`next_calendar_break`](@ref EpiBranch.next_calendar_break) reports, like
+[`Steps`](@ref). This is the default [`calendar_shape`](@ref
+EpiBranch.calendar_shape), and its effect on transmission is computed exactly.
 """
 struct PiecewiseConstantCalendar end
 
 """
     SmoothCalendar()
 
-The [`calendar_shape`](@ref EpiBranch.calendar_shape) of a schedule with no
-breaks, whose multiplier may change continuously. Its cumulative hazard is the
-integral of the multiplier times the profile's hazard, computed by adaptive
-Gauss–Kronrod quadrature, and a contact interval is drawn by bisecting that
-integral for the target log-survival. The schedule's multiplier should be
-smooth enough to integrate accurately and is evaluated many times per draw.
-The cumulative hazard over an unbounded horizon is taken to be infinite, so a
-smooth multiplier is assumed not to switch transmission off for good.
+Marks a calendar schedule whose multiplier changes continuously, such as a
+seasonal curve, as its [`calendar_shape`](@ref EpiBranch.calendar_shape). Its
+effect on transmission is computed numerically, so the multiplier should be
+smooth. It is assumed never to stop transmission for good.
 """
 struct SmoothCalendar end
 
 """
     calendar_shape(schedule)
 
-How a calendar `schedule` is integrated: [`PiecewiseConstantCalendar`](@ref
-EpiBranch.PiecewiseConstantCalendar), the default, which needs
-[`next_calendar_break`](@ref EpiBranch.next_calendar_break), or
-[`SmoothCalendar`](@ref EpiBranch.SmoothCalendar), which a smooth schedule
-declares for its own type:
+Whether a calendar `schedule` changes in steps or smoothly:
+[`PiecewiseConstantCalendar`](@ref EpiBranch.PiecewiseConstantCalendar), the
+default, which needs [`next_calendar_break`](@ref
+EpiBranch.next_calendar_break), or [`SmoothCalendar`](@ref
+EpiBranch.SmoothCalendar), which a smooth schedule declares for its own type.
+A seasonal multiplier, for example:
 
 ```julia
 struct Seasonal{T <: Real}
@@ -130,47 +139,51 @@ calendar_shape(schedule) = PiecewiseConstantCalendar()
 """
     PairKernel(callback; state = nothing, calendar = nothing, watches = nothing)
 
-A pair kernel: `callback` returns the contact-interval profile, measured from
-the infector's infectious opening, and optionally a calendar schedule that
-multiplies the rate on the calendar. Supported by `NetworkProcess`,
-`HouseholdProcess`, and the `InfectionLayer` forms of
-[`pairwise_surv_loglik`](@ref).
+A contact interval that depends on who the two people are or when the contact
+happens: for example, faster transmission from older cases, or a lockdown that
+halves transmission from day 30. `callback` returns the contact-interval
+distribution (in days, measured from the start of the infector's infectious
+period), and `calendar` optionally scales the rate of transmission by calendar
+day. It works with `NetworkProcess`, `HouseholdProcess` and the
+[`InfectionLayer`](@ref) forms of [`pairwise_surv_loglik`](@ref), so the same
+kernel can be simulated and fitted.
 
-With `state = nothing`, `callback(context::PairContext)` returns a
-contact-interval distribution, or a `(profile, calendar)` named tuple. This is
-the case where a kernel reads only fixed covariates and the infector's
-infection time:
+With `state = nothing`, `callback(context::PairContext)` receives a
+[`PairContext`](@ref) (the two people's numbers and the infector's infection
+time) and returns a distribution, or a `(profile = ..., calendar = ...)` named
+tuple. Use this when the kernel reads only fixed characteristics and the
+infector's infection time:
 
 ```julia
 kernel = PairKernel(context -> Exponential(exp(0.1 * context.infector_infection_time)))
 ```
 
-With `state` given, `callback(context, source, target)` also receives each
-host's record: `state(individual)` selects it in simulation, from an
-`EpiBranch.Individual`. For likelihood evaluation, supply a vector of records
-indexed by population ID as `state`, or use [`record_kernel`](@ref) to extract
-them after simulation; the callback is identical in both paths.
+With `state` given, `callback(context, source, target)` also receives a record
+for each of the two people. In simulation, `state` is a function of the
+individual that builds this record. For the likelihood, pass a vector of
+records indexed by person number as `state`, or extract them from a simulation
+with [`record_kernel`](@ref); the callback is the same in both.
 
-`watches` names every `individual.state` key the projection reads, as a tuple
-of `Symbol`s, and is what [`EpiBranch.watched_records`](@ref) reports. A race
-redraws a case's pending contacts when one of these keys moves on a host it
-reads, so a key left out is a hazard that changes without the contacts
-following it — declare each one the projection reads, whether or not anything
-in today's model writes it. It is required with a projection, since no default
-is safe; `()` is for a projection that reads no state key, such as one indexing
-a table by `ind.id`. Only `individual.state` is followed, so anything that can
-move has to be read from there rather than from a field such as
-`ind.susceptibility`. With no `state`, or with a vector of records, there is
-nothing that can move and so nothing to declare: `watches` is refused there
-rather than ignored.
+`watches` lists every key of `individual.state` that the `state` function
+reads, as a tuple of `Symbol`s (see [`EpiBranch.watched_records`](@ref)).
+When one of these values changes for a person during a simulation, for example
+when they are vaccinated, the contacts not yet made that depend on them are
+redrawn under the new rate, so a key left out of `watches` is a change in
+transmission the simulation ignores. List every key the function reads, even if nothing in the current
+model sets it. `watches` is required when `state` is a function; pass `()`
+when the function reads no state key (for example one that looks people up by
+`ind.id`). Anything that can change during the outbreak must be read from
+`individual.state`, which is the only place changes are followed, and not from
+a field such as `ind.susceptibility`. With no `state`, or with a vector of
+records, nothing can change, and passing a non-empty `watches` is an error.
 
-`calendar`, a [`Steps`](@ref) schedule or any type implementing
-[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier), multiplies the
-returned profile's hazard by the schedule's value at the calendar date (the infector's infectious
-opening plus time elapsed). A pair whose schedule differs from the shared one —
-because it depends on a host's record — returns it instead from the callback,
-as `(profile = ..., calendar = ...)`; that overrides the kernel's own
-`calendar` for that pair.
+`calendar`, a [`Steps`](@ref) schedule or any type with a
+[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) method, multiplies
+the transmission rate by the schedule's value on the calendar day (the start of
+the infector's infectious period plus the time since). A pair whose schedule
+depends on a person's record returns it from the callback instead, as
+`(profile = ..., calendar = ...)`, which overrides the shared `calendar` for
+that pair.
 
 ```julia
 PairKernel((ctx, source, target) -> Gamma(2.0, 1.5);
@@ -186,29 +199,26 @@ PairKernel((ctx, source, target) ->
            watches = (:policy_time,))
 ```
 
-The pair's hazard is the profile's hazard at time since opening, multiplied by
-the schedule's value on the calendar day. For a piecewise-constant schedule
-such as `Steps`, simulation and the likelihood both compute this exactly,
-splitting the cumulative hazard into segments at the schedule's breakpoints. A
-schedule declaring [`SmoothCalendar`](@ref EpiBranch.SmoothCalendar) is
-integrated by quadrature in both.
+The rate at which one person infects another is the contact-interval
+distribution's hazard at the time since the infector became infectious, times
+the schedule's value on that calendar day. For a step schedule such as `Steps`
+both simulation and the likelihood compute this exactly.
 
-Callbacks must describe a predictable hazard: adding an event at time `t` must
-not change the hazard before `t`. A final vaccinated flag alone is insufficient;
-retain its date and the earlier hazard. State changes occur through the existing
-case-resolution and intervention hooks. The callback and projection must not
-mutate state, and a kernel may read host state only through its projection,
-since that record is all the likelihood is given.
+!!! warning "Records must keep their history"
+    The callback must describe a hazard that only changes forwards in time:
+    recording an event at day `t` must not change the hazard before `t`. A
+    final "vaccinated" flag is not enough; keep the vaccination date, so the
+    rate before it is unchanged. Neither the callback nor the `state` function
+    may change anything, and the kernel may read a person's information only
+    through `state`, since those records are all the likelihood is given.
 
-Simulation keeps contacts consistent with the hazards in force as records
-change, and a run whose records never change follows the same distribution as
-an ordinary kernel. A kernel that declares watched records puts every
-household of a household model on one clock, so that a policy can read cases in
-other households, which draws the same outbreak from a different random
-stream.
+A simulation in which no watched record changes draws outbreaks from the same
+distribution as an ordinary kernel. In a household model, a kernel with
+`watches` simulates all households together on one timeline, so that a policy
+can depend on cases in other households; this gives the same distribution of
+outbreaks from a different sequence of random numbers.
 
-A plain distribution remains the simplest kernel and needs no `PairKernel`
-wrapper.
+A plain distribution remains the simplest kernel and needs no `PairKernel`.
 """
 struct PairKernel{F, S, C, W <: Tuple}
     callback::F
@@ -265,16 +275,17 @@ end
 """
     LayerHost
 
-One host of an [`InfectionLayer`](@ref) as a live [`PairKernel`](@ref)
-projection sees it in a likelihood: its population `id`, its `infection_time`
-(`NaN` if never infected), and a `state` holding the layer's per-host times
-under their keys. `state` reads like an individual's: `state[key]` and
+One person of an [`InfectionLayer`](@ref), as a [`PairKernel`](@ref) `state`
+function sees them when the likelihood is evaluated. It mirrors a simulated
+individual: its population `id`, its `infection_time` (`NaN` if never
+infected), and a `state` holding the person's recorded event times under their
+keys. `state` reads like an individual's: `state[key]` and
 `get(state, key, default)` give the recorded time, including a recorded `NaN`,
-and a host whose entry is `missing` has none, so `get` returns the default and
+and a person whose entry is `missing` has none, so `get` returns the default and
 `state[key]` throws.
-Reading a key the layer did not record throws an `ArgumentError`, so a
-projection cannot silently fall back to a default for a time the likelihood
-was never given.
+Reading a key the infection record does not hold throws an `ArgumentError`,
+so a `state` function cannot silently fall back to a default for a time the
+likelihood was never given.
 """
 struct LayerHost{T, S}
     id::Int
@@ -319,15 +330,14 @@ _pair_state(records::AbstractVector, individual) = records[individual.id]
 """
     watched_records(kernel)
 
-The `individual.state` keys `kernel`'s hazards depend on, as a tuple of
-`Symbol`s. `()`, the default, is a kernel whose hazards are fixed for a run.
+The keys of `individual.state` that `kernel`'s transmission rate depends on,
+as a tuple of `Symbol`s. The default, `()`, is a kernel whose rates are fixed
+for the whole outbreak.
 
-A continuous-time race keeps drawn contacts consistent with the hazards in
-force: when one of these keys moves on a host, the contacts drawn from a kernel
-declaring that key are drawn again, conditioned on the exposure already
-elapsed. The race watches the union of the keys its routes declare and compares
-only the hosts a pending or future draw reads, so a key no kernel declares
-costs nothing and a route that declares nothing is never redrawn.
+When one of these values changes for a person during a simulation (a
+vaccination date being set, say), the contacts already drawn from a kernel that
+lists that key are drawn again under the new rate, given the exposure that has
+already happened. A kernel that lists nothing is never redrawn.
 
 Declare every key the kernel reads, whether or not anything in a given model
 writes it, and read anything that can move from `individual.state` rather than
@@ -417,15 +427,15 @@ end
     pair_kernel(kernel, infector, susceptible, infector_infection_time, infectious_time,
         state)
 
-Resolve a contact-interval distribution for an ordered pair. A shared continuous
-distribution is returned unchanged; an ordinary callable receives the two IDs;
-a [`PairKernel`](@ref) receives a [`PairContext`](@ref) and, when it has host
-state, each host's record. The five-argument form supplies the infectious
-opening required by a `PairKernel` with a calendar schedule. The six-argument
-form also passes the `SimulationState`, from which a live `PairKernel` reads
-both hosts' records; simulation must use it, since the shorter forms are for
-likelihoods and throw for a live kernel. Every other kernel returns what the
-five-argument form does.
+The contact-interval distribution for one infector and one susceptible person.
+A shared distribution is returned unchanged; a function receives the two
+people's numbers; a [`PairKernel`](@ref) receives a [`PairContext`](@ref) and,
+when it has a `state`, each person's record. The five-argument form adds the
+start of the infector's infectious period, which a `PairKernel` with a calendar
+schedule needs. The six-argument form also passes the `SimulationState`, from
+which a `PairKernel` with a `state` function reads both people's records;
+simulation must use it, and the shorter forms, meant for the likelihood, throw
+for such a kernel. Every other kernel returns what the five-argument form does.
 """
 pair_kernel(k::ContinuousUnivariateDistribution, i, j, infection_time) = k
 pair_kernel(k, i, j, infection_time) = k(i, j)
@@ -442,18 +452,19 @@ end
 """
     record_kernel(kernel, state::SimulationState)
 
-Return a kernel with the same callback and calendar and a vector of host
-records extracted from a finished simulation. For a live [`PairKernel`](@ref)
-(one whose `state` is a projection function), apply the projection to each
-individual and copy the results so later simulation mutations cannot change the
-record. Other kernels are returned unchanged.
+Prepare a [`PairKernel`](@ref) for fitting to a simulated outbreak: returns a
+kernel with the same callback and calendar whose `state` is the vector of each
+person's record at the end of `state`. Each record is copied, so later changes
+to the simulation do not alter it. Other kernels are returned unchanged.
 
-The projection must retain event dates or full histories when hazards change.
-This is extraction, not automatic history logging: overwritten past values cannot
-be recovered. The resulting likelihood evaluates the transmission contribution along these
-histories. Include separate attribute/intervention models when their probabilities
-also belong in the joint likelihood. During inference, construct
-`PairKernel(callback; state = records)` with the current latent records on each call.
+Only what the `state` function returns at the end of the run is kept, and
+values that were overwritten during the run are lost. Where rates change, the
+function must return event dates or full histories. The likelihood then gives
+the transmission part along these histories; the probabilities of the
+characteristics and intervention events themselves need their own terms if
+they belong in the joint likelihood. During inference, build
+`PairKernel(callback; state = records)` from the current values of unobserved
+records at each evaluation.
 """
 record_kernel(k, state::SimulationState) = k
 record_kernel(k::PairKernel{F, Nothing}, state::SimulationState) where {F} = k

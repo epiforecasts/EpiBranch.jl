@@ -1,27 +1,30 @@
 """
-Cases are reported with probability `probability` after a `delay`
-drawn per case, measured from `from`. `from` defaults to `:onset_time`,
-but can be any `Symbol` (looked up in `ind.state`, e.g. `:test_time`,
-`:admission_time`) or a `Function (ind) -> Real` (use this to anchor on
-fields like `ind.infection_time` that live on the `Individual` rather
-than `ind.state`). If the anchor is not finite, the transition is
-skipped — either the `from` state was never reached (its `:*_time` key
-still at its `Inf` default), or the anchor is `NaN`, most commonly an
-asymptomatic case under [`clinical_presentation`](@ref) whose
-`:onset_time` is `NaN`.
+    Reporting(; delay, probability = 1.0, from = :onset_time)
 
-`probability` is a `Real` or a `Function (rng, ind) -> Real` for
-per-individual heterogeneity (e.g. risk-group-specific detection).
-`delay` is a `Distribution` or a `Function (rng, ind) -> Real`.
+Case reporting: each case is reported with probability `probability`, `delay`
+days after symptom onset (or after `from`, if given). Each case records
+`:reported` (`true`/`false`) and `:reporting_time` (`Inf` if never reported).
 
-Initialises: `:reported = false`, `:reporting_time = Inf`.
+- `delay`: a distribution, a fixed number of days, or a function of the random
+  number generator and the individual, `(rng, ind) -> ...`.
+- `probability`: the chance a case is reported, a number or a function
+  `(rng, ind) -> ...` (for example a different detection probability per risk
+  group).
+- `from`: the time the delay is measured from. Symptom onset by default;
+  another recorded time such as `:test_time` or `:admission_time`; or a
+  function of the individual, such as `ind -> ind.infection_time`.
 
-When `from = :onset_time` (the default) the simulation start-up
-validator requires `:onset_time` to be set by `attributes`. For other
-anchors the requirement is dropped — typically the anchor key is set
-by an upstream transition rather than by an attributes function, so
-the validator can't catch it; instead it'll be non-finite at resolve
-time and the transition skips, which is the correct behaviour.
+Cases that never reached `from` are not reported. With the default `from`,
+this includes asymptomatic cases from [`clinical_presentation`](@ref), whose
+onset time is `NaN`. Measuring from onset requires the model's `attributes`
+to set onset times, and the simulation checks for this when it starts.
+
+# Examples
+
+```julia
+# report 80% of symptomatic cases, on average 3 days after onset
+Reporting(delay = Gamma(2.0, 1.5), probability = 0.8)
+```
 """
 Base.@kwdef struct Reporting{D, P, F} <: AbstractClinicalTransition
     delay::D

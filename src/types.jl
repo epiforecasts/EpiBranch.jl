@@ -2,24 +2,26 @@
 # These replace Union{T, Nothing} patterns throughout the codebase,
 # enabling dispatch instead of runtime nothing-checks.
 
-"""Sentinel indicating no population size constraint (infinite population)."""
+"""Placeholder meaning no limit on the population size (an unbounded
+population)."""
 struct NoPopulation end
 
-"""Sentinel indicating no attributes function is provided."""
+"""Placeholder meaning no population characteristics are drawn."""
 struct NoAttributes end
 
-"""Sentinel indicating no type labels for multi-type models."""
+"""Placeholder meaning the types of a multi-type model have no names."""
 struct NoTypeLabels end
 
-"""Sentinel indicating no age distribution is provided."""
+"""Placeholder meaning no age distribution is given (ages are uniform over
+the age range)."""
 struct NoAgeDistribution end
 
-"""Sentinel indicating no case cap for extinction/containment checks."""
+"""Placeholder meaning no case cap when deciding whether an outbreak was
+contained."""
 struct NoCases end
 
-"""Sentinel indicating no generation time distribution. Used by
-[`BranchingProcess`](@ref) for pure chain-statistics models where
-timing is irrelevant."""
+"""Placeholder meaning no generation time: a [`BranchingProcess`](@ref)
+without timing, used for chain sizes and lengths only."""
 struct NoGenerationTime end
 
 # Abstract supertype for clinical-state transitions (defined here so
@@ -31,33 +33,31 @@ abstract type AbstractClinicalTransition end
 # ── Transmission models ─────────────────────────────────────────────
 
 """
-Abstract supertype for transmission models. A concrete subtype defines
-the latent dynamics; see `models/branching_process.jl` for the
-canonical implementation and the [Extending guide](@ref "Extending
-EpiBranch") for the protocol new subtypes must implement.
+The parent type of all transmission models: [`BranchingProcess`](@ref),
+[`HomogeneousProcess`](@ref), `NetworkProcess`,
+`RoutedNetwork` and `HouseholdProcess`. Needed only to write
+a new kind of model; the New transmission structures page of the Extending
+EpiBranch guide lists what a new model defines.
 """
 abstract type TransmissionModel end
 
-"""Interface methods with defaults for any TransmissionModel."""
+"""The number of people who can be infected in `model`, or
+`NoPopulation()` if unlimited (the default)."""
 population_size(::TransmissionModel) = NoPopulation()
 
 """
     single_type_offspring(model::TransmissionModel)
 
-Extract the offspring specification from a single-type transmission
-model. Returns whatever the model stores in `offspring` (typically a
-`Distribution`, but can also be any type for which
-`chain_size_distribution` is defined — e.g. `ClusterMixed`).
+The offspring distribution of a single-type model: usually a distribution
+such as `NegBin(R, k)`, or anything else [`chain_size_distribution`](@ref)
+accepts, such as [`ClusterMixed`](@ref). Raises an error for a multi-type
+model.
 
-This is the canonical extension point for custom transmission models:
-analytical helpers (`extinction_probability`, `epidemic_probability`,
-`probability_contain`, `proportion_transmission`,
-`chain_size_distribution`) all route through it. A new
-`<: TransmissionModel` type that defines a method here gets all of
-those helpers for free.
-
-Throws for multi-type (function-based) offspring, which the single-type
-accessor cannot sensibly return.
+The closed-form results ([`extinction_probability`](@ref),
+[`epidemic_probability`](@ref), [`probability_contain`](@ref),
+[`proportion_transmission`](@ref), [`chain_size_distribution`](@ref)) read
+the offspring distribution through this function, so a new transmission
+model that defines it can use all of them.
 """
 function single_type_offspring(model::TransmissionModel)
     hasproperty(model, :offspring) || throw(
@@ -83,17 +83,15 @@ _analytic_offspring(model::TransmissionModel) = single_type_offspring(model)
 # ── Individual state ────────────────────────────────────────────────
 
 """
-A closed infection episode, archived on [`Individual`](@ref) when a later
-infection would otherwise overwrite its live fields. Holds exactly what a
-second infection overwrites: `infection_time`, the position this episode held
+A past infection of a person who has since been reinfected, kept on the
+[`Individual`](@ref). It records that infection's `infection_time`, its place
 in the transmission tree (`parent_id`, `generation`, `chain_id`), the
-secondary cases it had produced by the time it closed, and a snapshot of
-`state` as the episode left it (natural-history timing, clinical outcome, and
-any intervention state that episode wrote).
+secondary cases it caused, and the person's `state` as it was when that
+infection ended (natural-history times, outcome, and what interventions
+recorded).
 
-See also [`susceptible_again_time`](@ref) for the hook that marks a host
-eligible for a new episode, and [`close_episode!`](@ref) for how an
-episode is archived.
+See also [`susceptible_again_time`](@ref), the time from which a person can
+be infected again, and [`close_episode!`](@ref).
 """
 struct InfectionEpisode{T <: Real}
     infection_time::T
@@ -105,59 +103,48 @@ struct InfectionEpisode{T <: Real}
 end
 
 """
-A single contact in the transmission tree (infected or not).
+One person in a simulation: for a [`BranchingProcess`](@ref), a case or a
+contact they exposed; for models with a fixed population, anyone in it.
 
-Core fields (used by the engine):
+- `id`: the person's number, which is also their position in
+  `state.individuals`.
+- `parent_id`: the `id` of their infector (0 for an index case).
+- `generation`: 0 for index cases, 1 for the people they infect, and so on.
+- `chain_id`: which index case's transmission chain they belong to.
+- `infection_time`: when they were exposed, in days since the start of the
+  outbreak.
+- `susceptibility`, between 0 and 1: the probability that they are infected
+  when exposed.
+- `infectiousness`, between 0 and 1: the factor applied to their onward
+  transmission once infected (each of their contacts is infected only with
+  this probability).
+- `secondary_case_ids`: the `id`s of the contacts they exposed, infected or
+  not. Only the generation-based models fill it; the continuous-time models
+  below leave it empty.
+- `state`: everything else recorded about them, such as symptom onset
+  (`:onset_time`), `:asymptomatic`, `:age`, `:sex`, whether they were
+  `:isolated`, `:traced`, `:quarantined` or `:vaccinated`, `:test_positive`,
+  their `:type` in a multi-type model, whether they were `:infected`, and any
+  population characteristics you add.
+- `episodes`: past infections, oldest first, for a person who has been
+  infected more than once (see [`close_episode!`](@ref)). The fields above
+  describe the current or latest infection. None of the built-in models
+  reinfects anyone, so this is empty there.
 
-- `id`, `parent_id`, `generation`, `chain_id` — identity and position in
-  the tree. `id` is the 1-based index into `state.individuals`; this
-  invariant is relied on for O(1) parent lookups.
-- `infection_time::T` — time at which this contact was exposed.
-- `susceptibility::T` ∈ `[0, 1]` — per-contact probability of
-  being infected given exposure. Applied as a built-in competing risk
-  by the engine during infection resolution.
-- `infectiousness::T` ∈ `[0, 1]` — multiplicative modifier on
-  this individual's onward transmission, applied when they become a
-  parent.
-
-On the continuous-time models (`HomogeneousProcess`, and `NetworkProcess`,
-`RoutedNetwork` and `HouseholdProcess` in the companion packages) both traits
-instead multiply the transmission hazard: they scale the rate at which a pair
-meets, and in the mass-action pool the pressure a susceptible absorbs and the
-weight an infective adds to the force. They then reduce the chance of infection
-only within a finite infectious window: a pair whose window never closes
-eventually transmits for any positive value, later on average, and a contact
-interval that is certain to fall inside the window (a `Dirac`, say) transmits
-whatever the multiplier, since no scaling thins an infinite hazard.
-
-The timing and hazard fields share a real element type `T` (`Float64` by
-default). Under automatic differentiation the whole run carries a dual
-type, so a gradient flows through the timing parameters; ids and counts
-stay `Int`.
-- `secondary_case_ids::Vector{Int}` — ids of contacts (infected and
-  uninfected) generated by this individual.
-
-`state::Dict{Symbol, Any}` holds everything else: clinical state
-(`:onset_time`, `:asymptomatic`), demographics (`:age`, `:sex`),
-intervention state (`:isolated`, `:traced`, `:quarantined`,
-`:vaccinated`, `:test_positive`, `:type`), the `:infected` flag, and
-any user-defined fields.
-
-`episodes::Vector{InfectionEpisode{T}}` holds every infection this individual
-has already recovered from, oldest first: the live fields above describe only
-the current or most recent one. A model that proposes an already-infected
-host as a candidate contact again (once its own progression marks the host
-[`susceptible_again_time`](@ref) in the past) gets a fresh episode rather than
-a silently overwritten one — see [`close_episode!`](@ref). Empty for
-every individual on a model that never revisits a host, which is every
-built-in model today.
+In the continuous-time models ([`HomogeneousProcess`](@ref),
+`NetworkProcess`, `RoutedNetwork`, `HouseholdProcess`),
+`susceptibility` and `infectiousness` instead multiply the rate of
+transmission. They then lower the chance of infection only over an
+infectious period of limited length: if the infectious period never ends,
+any positive value leads to infection eventually, only later on average, and
+a contact certain to fall within the infectious period (a fixed delay such as
+`Dirac(2.0)`) infects whatever the value.
 
 # Setting fields at simulation time
 
-Pass an `attributes` argument to [`simulate`](@ref). It runs on every
-new individual at creation. EpiBranch provides builders for clinical
-presentation, demographics, and transmission traits, layered by passing
-a list applied in order:
+Give `attributes` to a [`ModelSpec`](@ref); they are drawn for every new
+person when they are created. Several can be listed, and are applied in
+order:
 
 ```julia
 attributes = [
@@ -167,8 +154,8 @@ attributes = [
 ]
 ```
 
-For fields without a dedicated builder, write your own closure
-`(rng, ind) -> ...` and include it in the list with the others.
+For anything else, add your own function of the random number generator and
+the individual, `(rng, ind) -> ...`, to the list.
 
 See also [`clinical_presentation`](@ref),
 [`demographics`](@ref), [`transmission_traits`](@ref).
@@ -206,10 +193,10 @@ end
 """
     InfectionEpisode(ind::Individual)
 
-Snapshot `ind`'s current episode — its `infection_time`, tree position,
-secondary cases so far, and a copy of `state` — as an archivable
-[`InfectionEpisode`](@ref). Used by [`close_episode!`](@ref) to
-record an episode before a new infection overwrites `ind`'s live fields.
+Record `ind`'s current infection (its infection time, place in the
+transmission tree, secondary cases so far and a copy of `state`) as an
+[`InfectionEpisode`](@ref), so it can be kept with [`close_episode!`](@ref)
+before a reinfection replaces it.
 """
 InfectionEpisode(ind::Individual{T}) where {T} = InfectionEpisode{T}(
     ind.infection_time, ind.parent_id, ind.generation, ind.chain_id,
@@ -219,11 +206,10 @@ InfectionEpisode(ind::Individual{T}) where {T} = InfectionEpisode{T}(
 """
     close_episode!(ind::Individual, episode::InfectionEpisode)
 
-Archive `episode` onto `ind.episodes`. `episode` is normally a snapshot taken
-with [`InfectionEpisode`](@ref) before `ind`'s live fields are overwritten by
-a new infection, so the one being closed is not the one on `ind` any more by
-the time this runs. `ind.secondary_case_ids` is also cleared, leaving the
-next episode to count only its own secondary cases.
+Keep a past infection of `ind` in `ind.episodes` when they are reinfected.
+`episode` is usually recorded with [`InfectionEpisode`](@ref) before the new
+infection replaces `ind`'s current fields. `ind.secondary_case_ids` is
+emptied, so the new infection counts only its own secondary cases.
 """
 function close_episode!(ind::Individual, episode::InfectionEpisode)
     push!(ind.episodes, episode)
@@ -234,18 +220,25 @@ end
 # ── Simulation state ───────────────────────────────────────────────
 
 """
-State of a running or completed simulation.
+One simulated outbreak, as returned by [`simulate`](@ref). Turn it into
+tables with [`linelist`](@ref) (one row per case), [`contacts`](@ref) (one
+row per exposure), [`chain_statistics`](@ref) or [`weekly_incidence`](@ref).
 
-`transitions` is the per-run vector of clinical transitions (set by
-`simulate`). It is held on the state so individual-creation paths can
-apply transitions without threading a parameter through every signature.
+Useful fields:
 
-`scratch` is per-run working space an intervention can keep its own
-derived state in, as `Individual.state` is for per-individual state, with
-keys named as the extending guide describes for both. It holds nothing the
-engine reads, so the engine needs no knowledge of what an intervention puts
-there, and it is discarded with the state. `GroupVaccination`'s
-group-to-members index is the worked example (see `EpiBranch._group_members`).
+- `individuals`: one [`Individual`](@ref) per person in the simulation: the
+  cases and the contacts they exposed for a [`BranchingProcess`](@ref),
+  everyone for models with a fixed population.
+- `cumulative_cases`: the total number of cases.
+- `extinct`: whether transmission had died out when the run stopped.
+- `current_generation`: the last generation simulated.
+
+For extension authors: `transitions` holds the natural-history steps of the
+model, and `scratch` is space in which an intervention can keep its own
+working information for the run (as `Individual.state` is for each person),
+named as the Extension reference page of the Extending EpiBranch guide
+describes. The simulation never reads `scratch`. `GroupVaccination` keeps its
+list of each group's members there.
 """
 mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     individuals::Vector{Individual{T}}
@@ -275,8 +268,8 @@ function SimulationState(
     )
 end
 
-"""The real element type carrying timing and hazard values in `state`
-(`Float64` by default; a dual type under automatic differentiation)."""
+"""The number type used for times and rates in `state` (`Float64` by
+default)."""
 _timetype(::SimulationState{T}) where {T} = T
 
 function Base.show(io::IO, s::SimulationState)

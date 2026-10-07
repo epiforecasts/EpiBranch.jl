@@ -14,47 +14,47 @@
     HomogeneousProcess(; transmission_rate, population_size,
                        from = nothing, until = (:recovered, :died, :isolated))
 
-A closed population of `population_size` individuals that mix homogeneously:
-every infectious person exerts the same force of infection on every susceptible.
-It is simulated by the Sellke threshold construction, which reproduces the exact
-stochastic SIR final-size law. Transmission is the per-infective rate
-`transmission_rate` (β, so β/N to each susceptible).
+A stochastic SIR or SEIR epidemic in a closed population of
+`population_size` people who mix homogeneously. Each infectious person
+infects each susceptible at rate `transmission_rate / population_size`, so
+`transmission_rate` is β, the rate at which one infectious person makes
+infectious contacts (per day). Each person can be infected at most once. The
+simulation is exact (it uses Sellke's construction) and gives infection
+times as well as the final size.
 
-The process describes the transmission alone. The natural history is a
-`progression` of [`Transition`](@ref)s attached with a [`ModelSpec`](@ref),
-exactly as for [`BranchingProcess`](@ref): a latent period is a transition to
-`:infectious`, an infectious period a terminal removal transition (to
-`:recovered`, say). `from` is the state the infectious window opens at; left as
-`nothing` it is derived from the progression (`:infectious` when a latent period
-produces it, otherwise `:infection`). `until` names the removal states that
-close the window.
+The natural history comes from the `progression` of a [`ModelSpec`](@ref),
+as for a [`BranchingProcess`](@ref). With only a recovery step,
+`Transition(:recovered; rate = γ, terminal = true)`, this is an SIR model;
+adding a latent period (a step to `:infectious`) makes it SEIR. Further steps
+(onset, hospitalisation, death) appear in the line list.
 
-How detailed the course of infection is is up to you: with just a recovery
-transition this is an SIR model; adding a latent transition makes it SEIR, and
-onset, hospitalisation and death come from further transitions in the
-progression and appear in the line list. The model holds to two assumptions: a
-closed population, and one infection per person.
+- `from`: the state at which a case becomes infectious. Left as `nothing`, it
+  is `:infectious` when the progression has a latent period, otherwise
+  `:infection`.
+- `until`: the states that end infectiousness, by default
+  `(:recovered, :died, :isolated)`.
 
-Interventions attach through two seams. An intervention that removes a case from
-transmission, such as `Isolation`, shortens its infectious window and curtails
-spread; one whose effect is a per-contact block, such as a leaky isolation or a
-vaccine's efficacy, is resolved against each contact the pool delivers, and a
-blocked contact leaves the susceptible waiting for the next, so blocking a
-fraction of the contacts thins the force of infection by the same fraction.
-Per-individual susceptibility and infectiousness reach that thinning directly:
-they scale the pressure a susceptible absorbs and the weight an infective adds
-to the force. An intervention that finds
-its targets only among newly created contacts — `MassVaccination`'s rollout,
-`GroupVaccination`, or `ContactTracing`, which has no contact structure to act
-along in a mass-action pool — is reported with a warning rather than applied. Control expressed as a
-removal `Transition` in the progression always applies.
+Interventions:
 
-The pool is simulated over its fixed population until extinction or `max_time`,
-whichever comes first; with `max_time`, individuals whose infection would fall
-later stay uninfected. The other `simulate` termination controls
-(`max_cases`, `max_generations`, `stopping_rules` other than `MaxTime`) do not
-apply, and `simulate` warns if you set one. This holds for the structure-driven
-models generally.
+- [`Isolation`](@ref) and other measures that remove a case end its
+  infectious period.
+- Measures that prevent each infection with some probability (leaky
+  isolation, vaccine efficacy) reduce the force of infection by that
+  proportion. Per-person susceptibility and infectiousness (see
+  [`transmission_traits`](@ref)) scale it in the same way.
+- [`MassVaccination`](@ref), [`RingVaccination`](@ref),
+  [`GroupVaccination`](@ref) and [`ContactTracing`](@ref) give no doses and
+  trace no one during the outbreak, and `simulate` warns: there are no
+  individual contacts to trace or vaccinate in a homogeneously mixing
+  population. Doses people already have when the outbreak starts still
+  protect them.
+- Control written as a removal step in the progression always applies.
+
+!!! note
+    The epidemic runs until no one is infectious or until `max_time` (days);
+    with `max_time`, anyone whose infection would come later stays
+    uninfected. `max_cases`, `max_generations` and stopping rules other than
+    [`MaxTime`](@ref) do not apply, and `simulate` warns if one is set.
 
 # Example
 

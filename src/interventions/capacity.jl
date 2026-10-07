@@ -2,47 +2,59 @@
     CapacityConstrained(intervention; budget_per_period, period=Inf,
                         carry_over=true, priority=default_capacity_priority)
 
-Limit admissions to an intervention using a shared resource budget. Ring,
-group and mass vaccination expose their candidate actions before admission;
-group candidates include every eligible member of a triggered group. External
-producers implement `intervention_actions` and the `capacity_key` protocol.
-Legacy batch interventions still receive admitted candidates one at a time.
+Limit how many people an intervention can reach, such as a fixed number of
+vaccine doses per day: `budget_per_period` people every `period` days.
 
-Candidates are ordered by `priority(individual, state)`, lower first, with
-stable ties. The default uses trace time; candidates without one retain their
-incoming order. Priority is evaluated once per candidate. A rejected action
-uses no budget, and a completed action is not charged again.
-
-`budget_per_period` becomes available every `period` units on the admission
-clock, `state.max_infection_time`. With `carry_over=true`, unused allowances
-accumulate. Otherwise each period has a separate allowance. `period=Inf` is a
-single lifetime budget. Fractional remaining capacity cannot admit a whole
-action.
-
-This budget counts admissions. An admitted action can have a future delivery
-date, so it may be recorded in a different calendar period. Usage from another
-intervention with the same `capacity_key` counts against the shared budget;
-when it has no admission stamp, its delivery time determines the period.
-Use distinct dose labels for independent budgets. [`capacity_usage`](@ref)
-reports the used and available allowances.
-
-[`Scheduled`](@ref) and this wrapper compose in either order. For action
-producers, the schedule tests each candidate's action time while the budget
-uses the admission clock. Candidates denied admission are not queued, but
-later discovery may offer them again with their cached draws.
-
-Network and household races execute supported ring and group actions through
-this protocol. Mass vaccination and legacy batch-only interventions remain
-unsupported there. Ring delivery on these races requires an infinite eligibility
-window and zero post-exposure efficacy; pending infection times are unknown.
-The homogeneous pool has no contact-tracing action path.
-
+# Examples
 ```julia
-CapacityConstrained(RingVaccination(efficacy = 0.8);
-    budget_per_period = 5.0, period = 1.0)
-CapacityConstrained(GroupVaccination(efficacy = 0.8);
-    budget_per_period = 200.0)
+# Ring vaccination with 5 doses a day
+CapacityConstrained(RingVaccination(efficacy = 0.8); budget_per_period = 5.0, period = 1.0)
+
+# Group vaccination with 200 doses in total
+CapacityConstrained(GroupVaccination(efficacy = 0.8); budget_per_period = 200.0)
 ```
+
+# Arguments
+- `budget_per_period`: number of people that can be served per period.
+- `period`: length of a period in days, measured on the simulation clock (the
+  latest infection time so far). `Inf` (default) gives a single budget for
+  the whole outbreak.
+- `carry_over`: whether unused capacity is added to later periods
+  (default `true`); with `false` each period has its own allowance.
+- `priority`: function `(individual, state) -> number` ordering who is served
+  first, lowest first, with ties kept in order. The default,
+  [`default_capacity_priority`](@ref), serves traced contacts in the order
+  they were traced.
+
+People turned away use no capacity and are not queued, though they may be
+offered the intervention again if reached again later. Only whole people are
+served, so a fraction of remaining capacity serves nobody. Capacity is
+counted when a person is accepted, which can be before the dose is given (for
+example after a delay), so it may fall in an earlier period than the dose.
+Interventions with the same dose label share one budget, and doses given by
+another intervention under that label count against it; use different
+labels for separate budgets. [`capacity_usage`](@ref) reports the capacity
+used and available.
+
+[`Scheduled`](@ref) and `CapacityConstrained` can be combined in either
+order: the schedule checks each person's action time, while capacity uses the
+simulation clock.
+
+!!! note "Supported models"
+    In network and household models, ring and group vaccination can be
+    capacity-limited, but ring vaccination then needs an infinite
+    `eligibility_window`. Mass vaccination and interventions written without
+    [`intervention_actions`](@ref EpiBranch.intervention_actions) cannot be
+    capacity-limited there. A [`HomogeneousProcess`](@ref) does not trace
+    contacts, so ring vaccination cannot act in it. Contact tracing itself
+    cannot be capacity-limited in any model.
+
+For extension authors: a new intervention can be capacity-limited by defining
+[`intervention_actions`](@ref EpiBranch.intervention_actions) and
+[`capacity_key`](@ref EpiBranch.capacity_key). Group vaccination offers every
+eligible member of a triggered group as a separate person to serve.
+Interventions without `intervention_actions` are offered the accepted people
+one at a time.
 """
 struct CapacityConstrained{I <: AbstractIntervention, F} <: InterventionWrapper
     intervention::I
@@ -71,10 +83,9 @@ end
 """
     default_capacity_priority(individual, state) -> Float64
 
-Default [`CapacityConstrained`](@ref) ordering: first-come-first-served by
-`:trace_time`. A candidate with no recorded trace time (not traced, for a
-tracing-driven intervention) sorts last, so it is admitted only once every
-timed candidate in the same call has been.
+Default order in which [`CapacityConstrained`](@ref) serves people: first
+come, first served by the day they were traced. Someone who was not traced
+comes last, after everyone traced at the same point of the simulation.
 """
 function default_capacity_priority(individual, state)
     t = get(individual.state, :trace_time, NaN)
@@ -84,15 +95,13 @@ end
 """
     capacity_key(intervention) -> Symbol
 
-The `Individual.state` flag [`CapacityConstrained`](@ref) counts to measure
-how much of `intervention`'s shared resource has been used so far. Defined
-for [`RingVaccination`](@ref) and [`MassVaccination`](@ref) (the dose flag
-for their `dose_label`). Define this — together with
-[`capacity_time_key`](@ref) unless `carry_over = true` is always used — for
-a custom intervention to make it capacity-constrained the same way.
-
-[`GroupVaccination`](@ref) uses the same dose keys. Its action discovery expands
-a triggered group before the wrapper admits individual members.
+For extension authors: the key in `ind.state` that marks a person as having
+used one unit of `intervention`'s capacity (for vaccination, received the dose
+with its `dose_label`). [`CapacityConstrained`](@ref) counts it to measure how
+much capacity has been used. Defined for [`RingVaccination`](@ref),
+[`MassVaccination`](@ref) and [`GroupVaccination`](@ref). Define it, and
+[`capacity_time_key`](@ref EpiBranch.capacity_time_key) unless only
+`carry_over = true` is used, to make a new intervention capacity-limited.
 """
 function capacity_key(iv::AbstractIntervention)
     throw(
@@ -107,10 +116,11 @@ end
 """
     capacity_time_key(intervention) -> Symbol
 
-The `Individual.state` key holding *when* [`capacity_key`](@ref) was set,
-read by [`CapacityConstrained`](@ref) when `carry_over = false` to place
-usage it did not itself admit — a dose given by some other intervention
-sharing the same [`capacity_key`](@ref) — in a period.
+For extension authors: the key in `ind.state` holding the day the
+[`capacity_key`](@ref EpiBranch.capacity_key) was set (for vaccination, the
+vaccination day). With `carry_over = false`, [`CapacityConstrained`](@ref)
+uses it to place a dose given by another intervention sharing the same
+capacity in the right period.
 """
 function capacity_time_key(iv::AbstractIntervention)
     throw(
@@ -220,17 +230,14 @@ end
 """
     capacity_usage(cc::CapacityConstrained, state::SimulationState) -> (used, available)
 
-Doses (or whatever `cc` rations) used and available at the point `state` has
-reached: `used` is drawn from `state.individuals` via
-[`capacity_key`](@ref EpiBranch.capacity_key). With `carry_over = true`
-(the default), `available` is the lifetime allowance implied by
-`state.max_infection_time`, `budget_per_period` and `period`, and `used` is
-counted over the whole run. With `carry_over = false`, both are scoped to
-the period `state.max_infection_time` falls in: `available` is a single
-`budget_per_period`, and `used` counts the doses `cc` admitted during that
-period together with any dose another intervention sharing the same
-[`capacity_key`](@ref EpiBranch.capacity_key) timestamped
-([`capacity_time_key`](@ref EpiBranch.capacity_time_key)) within it.
+The number of doses (or other units of capacity) given so far, and the number
+that could have been given by now, at the end of a simulation or at the point
+`state` has reached. With `carry_over = true` (the default) both count the
+whole outbreak: `available` is `budget_per_period` for every period begun so
+far. With `carry_over = false` both refer to the current period only:
+`available` is one `budget_per_period`, and `used` counts the people accepted
+in that period, whatever day their dose falls on, and the doses given in that
+period by another intervention sharing the same capacity.
 """
 function capacity_usage(cc::CapacityConstrained, state::SimulationState)
     return _capacity_usage(cc, state)

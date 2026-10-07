@@ -16,18 +16,19 @@
     _simulate(model::HouseholdProcess, sim_opts; interventions, attributes,
               progression, observation, recorder, rng, condition, max_attempts)
 
-Simulate `model` by the Sellke construction in continuous time — the exact
-generative model of the pairwise likelihood — with the modelling layers supplied
-by the caller (a bare process, or a `ModelSpec`). The infectious window's `from`
-state is derived from the composed `progression`. Returns an EpiBranch
-`SimulationState`; `linelist(state)` renders the one-row-per-case DataFrame.
+Simulate a household outbreak exactly in continuous time; this is the model
+the pairwise likelihood describes. The natural history and interventions come
+from the caller (a bare process, or a `ModelSpec`), and the start of the
+infectious period (`from`) is taken from the `progression`. Returns an EpiBranch
+`SimulationState`; `linelist(state)` turns it into a table with one row per
+case.
 
-With no external hazard each household is seeded with one index at time 0 and
-spreads only within the household. With an `external_hazard` — a positive scalar
-or a calendar-time distribution — community introductions emerge over
-`[0, model.obs_end]`; give the process a finite `obs_end` in that case. Chosen
-`initial_cases` are seeded at time 0 regardless; any external hazard still acts
-on the rest of the population from time 0.
+With no external hazard each household starts with one index case at day 0
+and spreads only within the household. With an `external_hazard` (a positive
+rate or a distribution of the time of infection from outside), community
+introductions happen over the first `model.obs_end` days, which must be
+finite. Chosen `initial_cases` are infected at day 0 regardless, and any
+external hazard still acts on everyone else from day 0.
 """
 function _simulate(
         model::HouseholdProcess, sim_opts::SimOpts;

@@ -1,65 +1,70 @@
 """
-Wrap an intervention in a condition on the simulation state. Individuals are
-always initialised, so fields exist before the policy activates. Scheduling
-gates delivery; effects declaring `persistent_competing_risks` retain their
-recorded protection while the delivery policy is inactive.
+    Scheduled(intervention; start_time = nothing, end_time = nothing,
+              start_after_cases = nothing)
+    Scheduled(intervention, condition)
 
-# Time-based scheduling
+Start (and optionally stop) an intervention at a given day or once the
+outbreak has reached a given number of cases, for example a policy introduced
+two weeks into an outbreak.
 
-For interventions implementing `intervention_actions`, scheduling tests each
-proposed action time before delivery. Predicates see that time as
-`state.max_infection_time`; case counts and generation remain at discovery.
-Capacity admission uses the original simulation clock in either wrapper order.
-The batch-hook behaviour below applies to interventions without this protocol.
-
-A schedule built with an `end_time`, or from a predicate, can withdraw a block
-it has already delivered, which one per-host record of a removal's stretches
-cannot express. On the continuous-time models the per-contact risk re-checks
-the schedule at every proposal regardless; a wrapped `Isolation`'s `duration`
-or a `Quarantine`'s still hands the case back on its own terms. Only a removal
-with no release of its own (`duration = Inf`) closes the infectious window at
-its start, since there is nothing left for the wrapper's own withdrawal to
-hand back either way.
-
-`Scheduled` is the single entry point for time-based intervention
-scheduling. It enforces start times at two levels:
-
-- **Population-level gate** — `is_active(::Scheduled, state)` skips
-  `resolve_individual!` and `apply_post_transmission!` until the
-  condition returns `true`.
-- **Individual-level reset** — after each per-individual hook runs,
-  `Scheduled` checks whether the individual's `intervention_time` falls
-  before `start_time` and, if so, calls `reset!` to undo the effect.
-  This handles the case where the population gate has opened but a
-  specific individual's sampled action time would still fall before the
-  policy began (e.g. an isolation date computed from `onset + delay`
-  that lands pre-policy).
-
-Individual interventions therefore no longer carry a `start_time` field
-of their own — wrap them with `Scheduled` to schedule them in time.
-
-# Keyword constructor
-
-Any combination of `start_time`, `end_time`, and `start_after_cases` is
-accepted.  They are combined with `&&`:
-
+# Examples
 ```julia
-Scheduled(Isolation(onset_to_isolation_delay=Exponential(2.0), duration=7.0); start_time=14.0)
-Scheduled(ContactTracing(probability=0.5, isolation_to_trace_delay=Exponential(1.0), action=Quarantine(duration=7.0)); start_after_cases=50)
-Scheduled(iso; start_time=10.0, end_time=30.0)
-```
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 
-# Predicate constructor
+# Isolation from day 14
+Scheduled(iso; start_time = 14.0)
 
-Pass any `f(::SimulationState) -> Bool`:
+# Tracing once there have been 50 cases
+Scheduled(
+    ContactTracing(
+        probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = 7.0),
+    );
+    start_after_cases = 50,
+)
 
-```julia
+# Isolation between days 10 and 30
+Scheduled(iso; start_time = 10.0, end_time = 30.0)
+
+# Any condition on the simulation, here from the third generation on
 Scheduled(iso, state -> state.current_generation >= 3)
 ```
 
-The predicate form does not perform per-individual reset (there is no
-`start_time` to compare against). Use the keyword form when you need
-that behaviour.
+# Arguments
+- `start_time`, `end_time`: days (as decimals, such as `14.0`) between which
+  the intervention acts, measured on the simulation clock (the latest
+  infection time so far). For vaccinations, the window and `condition` are
+  checked against each dose's date rather than the current simulation day.
+- `start_after_cases`: number of cases after which it acts.
+- `condition`: a function of the simulation state returning `true` while the
+  intervention should act.
+
+Give at least one; several keywords must all hold. A case whose isolation (or
+other action) would fall before `start_time` is not acted on, even if the
+case itself appears after the start. The `condition` form has no start time
+to compare against and does not do this check.
+
+Isolation and quarantine already in place end when the schedule ends (after
+`end_time`, or once `condition` returns `false`). The exception is the
+network, household and homogeneous models, where a perfect isolation
+(`post_isolation_transmission = 0`) with no end (`duration = Inf`), or a
+quarantine with no end, keeps the case out of transmission for good.
+Only protection the
+intervention keeps, such as vaccination, continues (see
+[`persistent_competing_risks`](@ref EpiBranch.persistent_competing_risks)).
+Everyone still records the intervention's starting information, such as "not
+isolated", before it starts.
+
+A finite isolation or quarantine `duration` can end it before the schedule
+does, never later.
+
+For extension authors: an intervention that proposes its actions through
+[`intervention_actions`](@ref EpiBranch.intervention_actions) has each action
+checked against the schedule at the action's own time (seen by the condition
+as `state.max_infection_time`). Other interventions are skipped while the
+schedule is inactive, and an effect whose
+[`intervention_time`](@ref EpiBranch.intervention_time) falls before
+`start_time` is undone with [`reset!`](@ref EpiBranch.reset!).
 """
 struct Scheduled{I <: AbstractIntervention, F} <: InterventionWrapper
     intervention::I
@@ -162,11 +167,15 @@ end
 """
     persistent_competing_risks(intervention) -> Bool
 
-Whether recorded intervention effects continue when a delivery schedule is
-inactive. The default is `false`; vaccination returns `true`, and wrappers
-delegate to their inner intervention. An extension opting in must derive its
-risks from recorded effects and their dates, returning `nothing` before any
-effect has been recorded. `Scheduled` still controls delivery and other hooks.
+Whether protection already given (for example to a vaccinated person)
+continues after a [`Scheduled`](@ref) campaign has stopped. The default is
+`false`; vaccination returns `true`, and `Scheduled` and
+[`CapacityConstrained`](@ref) answer for the intervention they contain.
+`Scheduled` still controls who newly receives the intervention.
+
+For extension authors: an intervention returning `true` must base its
+[`competing_risk`](@ref EpiBranch.competing_risk) on the effects it has
+recorded and their dates, returning `nothing` before any effect is recorded.
 """
 persistent_competing_risks(::AbstractIntervention) = false
 persistent_competing_risks(::AbstractVaccination) = true
