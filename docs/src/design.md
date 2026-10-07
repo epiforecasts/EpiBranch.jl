@@ -265,7 +265,9 @@ On the closed-form side, two kinds of addition fit in:
 Some combinations have closed forms. Poisson offspring with a
 gamma-distributed rate gives the `gborel` chain-size distribution from
 epichains, and the closed form is chosen automatically for that combination.
-Otherwise the chain-size distribution is computed numerically.
+When the offspring parameters vary between chains in another way, the
+chain-size distribution is integrated numerically over that variation; other
+offspring distributions without a closed form use simulation.
 
 ### Which sampler to use
 
