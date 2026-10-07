@@ -329,8 +329,9 @@ specification needs:
    [`extinction_probability`](@ref)`(offspring)`, so the model-level functions
    answer for models built from the type. `src/analytical/cluster_mixed.jl` and
    `src/analytical/multi_type.jl` are examples.
-4. A `BranchingProcess` constructor, so the type can be stored in the
-   `offspring` field.
+4. For use without a generation time, a one-argument `BranchingProcess`
+   constructor that wraps the type in an `Infectiousness` window.
+   `BranchingProcess(offspring, generation_time)` already accepts any type.
 
 `src/analytical/cluster_mixed.jl` shows the full pattern, including how
 `ClusterMixed` stores each chain's parameters on its index case and passes them
