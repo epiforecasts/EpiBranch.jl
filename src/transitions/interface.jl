@@ -20,7 +20,7 @@ are the built-in pair, but the framework is open: a user-defined
 in by adding the same two methods and dropping the struct into the
 transitions vector. Competing-risks arbitration handles the rest. Also
 implement [`terminal_target`](@ref) so a window's `until`-coverage check
-can see the new terminal state (see the Extending guide for a worked
+can see the new terminal state (see [Competing clinical outcomes](@ref) for a worked
 example); without it, the check simply cannot tell the state apart from
 one no transition reaches.
 

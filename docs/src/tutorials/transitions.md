@@ -492,7 +492,7 @@ end
 `t.probability` directly would be wrong for a gate built by
 [`exclusive_probabilities`](@ref), whose siblings share one draw, and for a
 case whose infection was aborted before the transition could take effect; the
-[extending guide](@ref "Extending EpiBranch") spells both out.
+section [The likelihood of a custom transition](@ref) spells both out.
 
 That's the whole extension surface. Three ingredients (the shared
 `ind.state` dict, callable probability/delay, optional terminal
