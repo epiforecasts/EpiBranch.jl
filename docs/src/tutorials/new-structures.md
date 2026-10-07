@@ -296,11 +296,10 @@ model = BranchingProcess(MyOffspring(...), Exponential(5.0))
 ```
 
 The simulation calls `rand(rng, offspring)`, so any distribution with a `rand`
-method works. To make the analytical functions (`extinction_probability`,
-`chain_size_distribution`, `proportion_transmission`) work as well, add a
-method of `chain_size_distribution` for your type, returning a distribution
-over chain sizes, for example by iterating the offspring distribution's
-probability generating function:
+method works. To get the chain-size distribution and the closed-form
+chain-size likelihood as well, add a method of `chain_size_distribution` for
+your type, returning a distribution over chain sizes, for example by iterating
+the offspring distribution's probability generating function:
 
 ```julia
 function EpiBranch.chain_size_distribution(d::MyOffspring)
@@ -309,6 +308,8 @@ end
 ```
 
 Simulation works without it; only the closed-form results need it.
+[`extinction_probability`](@ref) needs its own method for the type, as
+`src/analytical/cluster_mixed.jl` and `src/analytical/multi_type.jl` define.
 
 ### Offspring specifications
 
