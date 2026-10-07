@@ -161,24 +161,13 @@ profile against its analytical likelihood.
 
 ## A seasonal contact rate
 
-A schedule need not be a step function. Any type with a
-[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) method can be a
-`calendar`, and one that declares itself smooth through
-[`calendar_shape`](@ref EpiBranch.calendar_shape) is integrated by quadrature
-instead of segment by segment. Here contact rates rise and fall over a year:
+A schedule need not be a step function. [`Seasonal`](@ref) is the smooth
+schedule the package provides, rising and falling once a year around a peak
+day. A seasonal network or household model needs only this one extra keyword:
 
 ```@example calendar
-struct Seasonal{T <: Real}
-    amplitude::T
-    peak_day::Float64
-end
-function EpiBranch.calendar_multiplier(s::Seasonal, t)
-    return 1 + s.amplitude * cos(2π * (t - s.peak_day) / 365)
-end
-EpiBranch.calendar_shape(::Seasonal) = EpiBranch.SmoothCalendar()
-
 seasonal_kernel = PairKernel(context -> Exponential(4.0);
-    calendar = Seasonal(0.6, 30.0))
+    calendar = Seasonal(amplitude = 0.6, peak_day = 30.0))
 ```
 
 The cumulative hazard over two days from the start of an infectious
@@ -201,9 +190,37 @@ seasonal_state = simulate(seasonal_model; rng = Xoshiro(235))
 loglikelihood(network_infections(seasonal_state, seasonal_model), seasonal_model)
 ```
 
+A plain callable `t -> multiplier` is read as a smooth schedule too, for
+seasonal forcing of any other shape:
+
+```@example calendar
+seasonal(t) = 1 + 0.6 * cos(2π * (t - 30) / 365)
+plain_kernel = PairKernel(context -> Exponential(4.0); calendar = seasonal)
+EpiBranch.cumhazard(EpiBranch.pair_kernel(plain_kernel, 1, 2, 0.0, 100.0), 2.0) ==
+    EpiBranch.cumhazard(seasonal_interval, 2.0)
+```
+
+[`Seasonal`](@ref) and a plain callable cover most seasonal forcing. Beyond
+either, any type with its own
+[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) method can still be
+a `calendar`, and one that declares itself smooth through
+[`calendar_shape`](@ref EpiBranch.calendar_shape) is integrated by quadrature
+instead of segment by segment, exactly as `Seasonal` itself is:
+
+```julia
+struct TwoPeakSeasonal{T <: Real}
+    amplitude::T
+    first_peak::Float64
+end
+function EpiBranch.calendar_multiplier(s::TwoPeakSeasonal, t)
+    return 1 + s.amplitude * cos(4π * (t - s.first_peak) / 365)
+end
+EpiBranch.calendar_shape(::TwoPeakSeasonal) = EpiBranch.SmoothCalendar()
+```
+
 With a unit-rate profile, `Exponential(1.0)`, the multiplier is the pair's
 hazard on the calendar. Any calendar-time hazard can therefore be written as a
-schedule. The schedule's fields are typed so that the likelihood can be
+schedule. `Seasonal`'s fields are typed so that the likelihood can be
 differentiated through them, as with `Steps`.
 
 ## Characteristics recorded during simulation
