@@ -115,6 +115,13 @@ Fit R under the reporting you believe applies: assuming complete reporting
 when some cases are missed makes clusters look smaller than they are, and
 biases the estimate of R downwards.
 
+!!! warning "Clusters with no detected case"
+    A cluster in which no case was detected never appears in the data, and the
+    likelihood should allow for that. At present it does not, so it penalises
+    every observed cluster more the lower the detection probability, and a fit
+    of R and `detection_prob` together will favour detection that is too high
+    (see [issue #416](https://github.com/epiforecasts/epiBranch.jl/issues/416)).
+
 ### Offspring counts
 
 If you know who infected whom, put the number of secondary cases each case

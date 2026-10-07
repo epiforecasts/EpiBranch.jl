@@ -85,7 +85,8 @@ are used in the same place below.
     If you give it a model that includes interventions, they are ignored. If
     your offspring counts come from a period with isolation or quarantine in
     place, the R you estimate is the R under those interventions, not the R
-    without them.
+    without them (see
+    [issue #421](https://github.com/epiforecasts/epiBranch.jl/issues/421)).
 
 ### Maximum likelihood
 

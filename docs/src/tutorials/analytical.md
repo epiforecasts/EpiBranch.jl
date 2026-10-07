@@ -67,6 +67,15 @@ println("Model:          P(ext) = $(round(extinction_probability(model), digits=
 The model's answer depends only on its offspring distribution and matches
 `extinction_probability(2.5, 0.16)`; the generation time does not change it.
 
+!!! warning "Interventions are not included"
+    These functions also accept a [`ModelSpec`](@ref), but they read only its
+    offspring distribution. Isolation, contact tracing or vaccination in the
+    model are left out, so the answer is for the outbreak without any of them
+    (see [issue #421](https://github.com/epiforecasts/epiBranch.jl/issues/421)).
+    For the chance of containing an outbreak under interventions, simulate the
+    model and use [`containment_probability`](@ref), as in
+    [Interventions](@ref).
+
 ## Superspreading: proportion of transmission
 
 What fraction of transmission comes from the most infectious 20% of cases? This
