@@ -127,9 +127,11 @@ end
 Without interventions, and with a single-type offspring distribution, this is
 the exact chain-size distribution (`Borel` or `GammaBorel`, adjusted for the
 observation model). It stays exact with `seeds` or `prob_concluded`, with the
-limits in the box below. With interventions, or an offspring distribution
-that is not single-type, the probability of the data is estimated from
-simulated outbreaks.
+limits in the box below. With interventions, the probability of the data is
+estimated from simulated outbreaks. A model whose offspring distribution is
+not single-type (several types of case, or several routes of transmission)
+is simulated too, but only when a simulation keyword such as `n_sim` is
+given; without one, this function raises an error.
 
 !!! warning
     When the probability is estimated from simulated outbreaks, `seeds` is
