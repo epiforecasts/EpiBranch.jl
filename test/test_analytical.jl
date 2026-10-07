@@ -856,7 +856,7 @@
         end
 
         @testset "With interventions" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
             ll = loglikelihood(
                 ChainSizes([1, 1, 2, 1]),
                 ModelSpec(
@@ -878,7 +878,7 @@
             # fallback accessed model.offspring, which the Observed
             # wrapper does not have. The intervention path now simulates
             # the wrapped process, thins chain sizes per case, and compares.
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
             ll = loglikelihood(
                 ChainSizes([1, 1, 2, 1]),
                 ModelSpec(
@@ -900,7 +900,7 @@
             # With interventions present the likelihood is empirical, and the
             # observation has to drop the simulated clusters below its minimum
             # there as well, so both paths condition the same way.
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
             ll = loglikelihood(
                 ChainSizes([2, 3, 2]),
                 ModelSpec(

@@ -177,7 +177,7 @@ while it lasts. The incubation period is log-normal with a median of about
 4.5 days.
 
 ```@example chains
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 
 model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     interventions = [iso],
