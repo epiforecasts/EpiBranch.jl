@@ -387,10 +387,10 @@ progression_loglik(model, state)
 
 The result is a log-likelihood: comparing it across parameter values shows
 which fit the timelines better, with higher values fitting better.
-[`pairwise_surv_loglik`](@ref) gives the likelihood of who infected whom and
-when. The two added together are the log-likelihood of the whole outbreak:
-infection times, the transmission tree and clinical timelines, including the
-parts that are not directly observed. Cases that never reached the event an
+[`pairwise_surv_loglik`](@ref) gives the likelihood of who was infected and
+when, summed over everyone who could have infected each case. The two added
+together are the log-likelihood of the whole outbreak, infection times and
+clinical timelines, including the parts that are not directly observed. Cases that never reached the event an
 event is timed from (an asymptomatic case for an event timed from onset)
 contribute nothing.
 
