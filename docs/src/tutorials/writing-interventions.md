@@ -53,7 +53,7 @@ many people each case infects](@ref).
 
 | Hook | Called | Receives | Returns |
 |---|---|---|---|
-| `initialise_individual!(iv, individual, state)` | Once, when each person is created | An `Individual` whose `state` holds only `:infected = false` and the values its population characteristics set; use `get!` for a key a characteristic may already have set | `nothing`; sets values in `individual.state` |
+| `initialise_individual!(iv, individual, state)` | Once, when each person is created | An `Individual` whose `state` holds `:infected = false`, the values its population characteristics set and any the model sets, such as `:type` or `:household`; use `get!` for a key that may already be set | `nothing`; sets values in `individual.state` |
 | `resolve_individual!(iv, individual, state)` | Once per active case at the start of each generation, before its contacts are drawn | The infector for the coming step | `nothing`; sets values in `individual.state` |
 | `apply_post_transmission!(iv, state, new_contacts)` | Once per generation, after every active case's contacts for that generation exist | A `Vector{Individual}` of the new contacts | `nothing`; sets values on any of the contacts |
 | `competing_risk(iv, parent, contact, state)` | Per infector–contact pair: on branching processes when infection is decided, after `apply_post_transmission!`; on continuous-time models as each infection is proposed | The infector and one contact | `nothing`, one [`Risk`](@ref), or a tuple of `Risk`s for an intervention that blocks transmission in more than one way |
