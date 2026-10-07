@@ -194,8 +194,10 @@ InfectionEpisode
 
 Network and household models stop simulating contacts with a person an
 intervention has protected for good, such as a vaccinated contact. A contact
-recorder keeps those contacts in the simulation. Exposures that did not
-infect are listed by [`contacts`](@ref) without one.
+recorder, a type you write with
+[`records_contacts`](@ref EpiBranch.records_contacts), keeps simulating them
+and can log each one. For a [`BranchingProcess`](@ref), [`contacts`](@ref)
+already lists exposures that did not infect, and no recorder is needed.
 
 ```@docs
 ContactRecorder
