@@ -101,14 +101,16 @@ days. Each case is then infectious for 7 days. With a mean contact interval of
 all.
 
 A matrix works too: `NetworkProcess(A, kernel)` treats any nonzero `A[i, j]`
-as a contact between `i` and `j`. Values in the matrix are ignored; the matrix
-only says who is in contact, and every contact shares the same
-contact-interval distribution.
+as a two-way contact between `i` and `j`, whatever `A[j, i]` holds. Values in
+the matrix are ignored; the matrix only says who is in contact, and every
+contact shares the same contact-interval distribution.
 
 !!! note "One-way contacts"
     The network can be directed, for one-way contacts such as a carer visiting
     a patient. Then person `i`'s list holds the people `i` can infect, who
-    need not be the people who can infect `i`.
+    need not be the people who can infect `i`. The matrix form always makes
+    contacts two-way, so build one-way contacts as a list or as a directed
+    Graphs.jl graph.
 
 ## Generating a network with Graphs.jl
 
