@@ -73,7 +73,7 @@
         # With no latent transition the window opens at :infection.
         sir = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
         @test EpiBranch.infectious_from(sir) === :infection
-        # A latent transition anchors the window at :infectious.
+        # A latent transition moves the window's open state to :infectious.
         seir = [
             Transition(:infectious; from = :infection, delay = 1.0),
             Transition(:recovered; from = :infectious, delay = 1.0, terminal = true),

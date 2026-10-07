@@ -70,8 +70,8 @@ end
 
 # Shared by both `simulate` methods (a bare process and a `ModelSpec`): run
 # `simulate_once` once, or repeat it through `_retry_for_condition` when a
-# `condition` is set. Pulled out so the two entry points don't each carry
-# their own copy of the retry branch.
+# `condition` is set. Pulled out so the two entry points don't each duplicate
+# the retry branch.
 function _run_once_or_retry(model, sim_opts, condition, max_attempts; kwargs...)
     run = () -> simulate_once(model, sim_opts; kwargs...)
     condition === nothing && return run()

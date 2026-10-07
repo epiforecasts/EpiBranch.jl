@@ -15,9 +15,9 @@
                  from = nothing, until = (:recovered, :died, :isolated))
 
 A closed population of `population_size` individuals, split into mixing
-groups by `mixing_by`, a tuple of attribute keys each individual already
-carries (`:age_band`, `:ses`, `:patch`; set by the composed `attributes`, not
-by this process). A susceptible's group is the tuple of those attribute
+groups by `mixing_by`, a tuple of attribute keys already set on each
+individual (`:age_band`, `:ses`, `:patch`; set by the composed `attributes`,
+not by this process). A susceptible's group is the tuple of those attribute
 values; `mixing_by = ()` puts everyone in the single group `()`, recovering
 `HomogeneousProcess`.
 
