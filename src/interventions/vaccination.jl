@@ -82,8 +82,9 @@ prevented with probability `efficacy`) or [`AllOrNothingMode`](@ref) (a share
 `efficacy` of vaccinated people are fully protected, the rest not at all).
 
 For extension authors: a new mode defines
-[`EpiBranch.realised_efficacy`](@ref) and
-[`EpiBranch.realise_prior_dose!`](@ref); see "A custom effect mode" on the
+[`EpiBranch.realised_efficacy`](@ref), and
+[`EpiBranch.realise_prior_dose!`](@ref) only if a dose recorded before the
+simulation should be handled differently; see "A custom effect mode" on the
 Writing an intervention page of the Extending EpiBranch guide.
 """
 abstract type AbstractEffectMode end
