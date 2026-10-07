@@ -21,7 +21,7 @@
 
 Simulation side of the observation protocol: apply `obs` to a finished
 `SimulationState` in place (e.g. mark `:reported` cases and set
-`:report_time`). Called by [`simulate`](@ref) after the run. The default
+`:reporting_time`). Called by [`simulate`](@ref) after the run. The default
 [`NoObservation`](@ref) leaves the latent cases untouched.
 """
 apply_observation!(::NoObservation, state, rng) = state
@@ -38,8 +38,11 @@ function apply_observation!(o::PerCaseObservation, state, rng)
         ρ = _sample_value(o.detection_prob, rng, ind)
         d = _sample_value(o.delay, rng, ind)
         anchor = _percase_anchor(o.from, ind)
-        ind.state[:reported] = rand(rng) < ρ
-        ind.state[:report_time] = anchor + d
+        reported = rand(rng) < ρ
+        ind.state[:reported] = reported
+        # Shares :reporting_time with the Reporting transition, which leaves
+        # it at Inf for a case that was never reported.
+        ind.state[:reporting_time] = reported ? anchor + d : Inf
     end
     return state
 end
