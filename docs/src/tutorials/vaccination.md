@@ -428,6 +428,10 @@ mv = MassVaccination(efficacy = 0.85, eligibility_time = 30.0,
     delay_to_immunity = 14.0)
 
 rng = StableRNG(42)
+results = simulate(scenario(), 200; max_cases = 500, rng = rng)
+println("No interventions: $(round(containment_probability(results), digits=3))")
+
+rng = StableRNG(42)
 results = simulate(scenario([mv]), 200; max_cases = 500, rng = rng)
 println("Mass vaccination from day 30: $(round(containment_probability(results), digits=3))")
 ```
