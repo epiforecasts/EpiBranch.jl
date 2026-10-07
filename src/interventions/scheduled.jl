@@ -45,8 +45,9 @@ to compare against and does not do this check.
 
 Isolation and quarantine already in place end when the schedule ends (after
 `end_time`, or once `condition` returns `false`). The exception is the
-network, household and homogeneous models, where an isolation or quarantine
-with no end (`duration = Inf`) keeps the case out of transmission for good.
+network, household and homogeneous models, where a perfect isolation
+(`post_isolation_transmission = 0`) or a quarantine with no end
+(`duration = Inf`) keeps the case out of transmission for good.
 Only protection the
 intervention keeps, such as vaccination, continues (see
 [`persistent_competing_risks`](@ref EpiBranch.persistent_competing_risks)).
