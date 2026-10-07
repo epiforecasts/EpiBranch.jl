@@ -137,6 +137,10 @@ simulated outbreaks.
     `n_initial` index cases, whatever the number of index cases in each
     observed cluster.
 
+    With `prob_concluded`, the observation model is ignored: cluster sizes are
+    treated as fully observed, with no under-reporting and no minimum cluster
+    size.
+
 Keyword arguments:
 
 - `seeds`: number of index cases in each cluster, for clusters started by
@@ -144,8 +148,7 @@ Keyword arguments:
 - `prob_concluded`: for each cluster, the probability that it is over, so its
   observed size is its final size (for real-time data with clusters still
   growing; see [`end_of_outbreak_probability`](@ref)). Only available with the
-  exact distribution, so not with interventions. The model's observation
-  model is not applied when `prob_concluded` is given.
+  exact distribution, so not with interventions.
 - `n_sim`, `n_initial`, `max_cases`, `max_generations`, `max_time`,
   `stopping_rules` and `rng`: control the simulation used when no exact
   formula applies. Interventions come from the model; add them with a
