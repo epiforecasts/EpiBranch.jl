@@ -42,10 +42,10 @@ Interventions:
   isolation, vaccine efficacy) reduce the force of infection by that
   proportion. Per-person susceptibility and infectiousness (see
   [`transmission_traits`](@ref)) scale it in the same way.
-- [`MassVaccination`](@ref), [`GroupVaccination`](@ref) and
-  [`ContactTracing`](@ref) are not applied, and `simulate` warns: there are
-  no individual contacts to trace or vaccinate in a homogeneously mixing
-  population.
+- [`MassVaccination`](@ref), [`RingVaccination`](@ref),
+  [`GroupVaccination`](@ref) and [`ContactTracing`](@ref) are not applied,
+  and `simulate` warns: there are no individual contacts to trace or
+  vaccinate in a homogeneously mixing population.
 - Control written as a removal step in the progression always applies.
 
 !!! note
