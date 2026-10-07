@@ -340,9 +340,10 @@ function of your own called `should_stop` that the simulation never calls.
 Type the state argument as `state::SimulationState`, as above, so your method
 does not clash with the package's default one.
 
-!!! note "Stopping rules on network and household models"
-    The network and household models do not check `should_stop` as they go:
-    they run until transmission dies out or a time limit is reached. A rule
+!!! note "Stopping rules on continuous-time models"
+    The network, household and homogeneous models do not check `should_stop`
+    as they go: they run until transmission dies out or a time limit is
+    reached. A rule
     that should be able to end such a run also defines
     [`EpiBranch.time_bound`](@ref)`(rule)`, the latest infection time at which
     it could still want the simulation to continue, as [`MaxTime`](@ref) does.
