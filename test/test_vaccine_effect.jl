@@ -197,13 +197,60 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
         @test all(s -> s.cumulative_cases == 1, results)
     end
 
+    @testset "A user-defined vaccination uses the public action protocol" begin
+        v = _TestCampaignVaccination(VaccineEffect(efficacy = 0.7), 5.0)
+        function EpiBranch.intervention_actions(v::_TestCampaignVaccination, state, candidates)
+            return [EpiBranch.dose_action(v, ind, v.campaign_time) for ind in candidates]
+        end
+        EpiBranch.capacity_key(v::_TestCampaignVaccination) = EpiBranch._vaccinated_key(:default)
+        function EpiBranch.capacity_time_key(v::_TestCampaignVaccination)
+            return EpiBranch._vaccination_time_key(:default)
+        end
+
+        contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
+        EpiBranch.initialise_individual!(v, contact, nothing)
+        @test !is_vaccinated(contact)
+
+        actions = EpiBranch.intervention_actions(v, nothing, [contact])
+        @test only(actions) isa EpiBranch.InterventionAction
+        state = (; rng = StableRNG(1))
+        EpiBranch.apply_actions!(v, state, [contact])
+        @test is_vaccinated(contact)
+        @test contact.state[:vaccination_time] == 5.0
+
+        # `record_dose!`, unlike `_record_vaccination!`, skips a person already
+        # given this dose rather than redrawing their efficacy.
+        stored_efficacy = vaccine_efficacy(contact)
+        EpiBranch.record_dose!(v, contact, 9.0, StableRNG(2))
+        @test vaccine_efficacy(contact) == stored_efficacy
+        @test contact.state[:vaccination_time] == 5.0
+
+        # A custom vaccination built on `intervention_actions` is admitted by
+        # `CapacityConstrained` exactly as `MassVaccination` is.
+        cc = CapacityConstrained(
+            _TestCampaignVaccination(VaccineEffect(efficacy = 0.7), 5.0);
+            budget_per_period = 1.0
+        )
+        contacts = [Individual(id = i, parent_id = 1, infection_time = 10.0) for i in 1:3]
+        for ind in contacts
+            EpiBranch.initialise_individual!(cc.intervention, ind, nothing)
+        end
+        cc_state = EpiBranch.new_state(
+            BranchingProcess(Poisson(0.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+        append!(cc_state.individuals, contacts)
+        EpiBranch.apply_actions!(cc, cc_state, contacts)
+        @test count(is_vaccinated, contacts) == 1
+    end
+
     @testset "AllOrNothingMode draws a responder once, at dose time" begin
         # At efficacy 1.0 every dose makes a responder: certain block from
         # immunity time on, exactly as LeakyMode would give at that efficacy.
         full = RingVaccination(efficacy = 1.0, mode = AllOrNothingMode())
         responder = Individual(id = 2, parent_id = 1, infection_time = 10.0)
         EpiBranch._record_vaccination!(full, responder, 0.0, StableRNG(1))
-        @test EpiBranch._vaccine_efficacy(full, responder) == 1.0
+        @test vaccine_efficacy(responder) == 1.0
         risk = EpiBranch.competing_risk(full, Individual(id = 1), responder, nothing)
         @test risk.block_probability == 1.0
         # A responder's block never fades (`waning` is disallowed under this
@@ -216,7 +263,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
         none = RingVaccination(efficacy = 0.0, mode = AllOrNothingMode())
         non_responder = Individual(id = 3, parent_id = 1, infection_time = 10.0)
         EpiBranch._record_vaccination!(none, non_responder, 0.0, StableRNG(1))
-        @test EpiBranch._vaccine_efficacy(none, non_responder) == 0.0
+        @test vaccine_efficacy(non_responder) == 0.0
         @test EpiBranch.competing_risk(none, Individual(id = 1), non_responder, nothing) ===
             nothing
 
@@ -227,7 +274,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
         draws = map(1:1000) do i
             contact = Individual(id = i, parent_id = 0, infection_time = 10.0)
             EpiBranch._record_vaccination!(half, contact, 0.0, StableRNG(i))
-            EpiBranch._vaccine_efficacy(half, contact)
+            vaccine_efficacy(contact)
         end
         @test all(x -> x == 0.0 || x == 1.0, draws)
         @test 0.4 < count(==(1.0), draws) / length(draws) < 0.6
@@ -237,7 +284,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
         leaky = RingVaccination(efficacy = 0.5, mode = LeakyMode())
         contact = Individual(id = 1, parent_id = 0, infection_time = 10.0)
         EpiBranch._record_vaccination!(leaky, contact, 0.0, StableRNG(1))
-        @test EpiBranch._vaccine_efficacy(leaky, contact) == 0.5
+        @test vaccine_efficacy(contact) == 0.5
         # Not declared standing even at efficacy 1.0: a waning value could
         # still give a smaller block to a later exposure.
         @test !EpiBranch.standing_block(RingVaccination(efficacy = 1.0, mode = LeakyMode()))
@@ -258,31 +305,31 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
         draws = map(1:1000) do i
             ind = prior(0.5)
             EpiBranch.initialise_individual!(all_or_nothing, ind, (; rng = StableRNG(i)))
-            EpiBranch._vaccine_efficacy(all_or_nothing, ind)
+            vaccine_efficacy(ind)
         end
         @test all(x -> x == 0.0 || x == 1.0, draws)
         @test 0.4 < count(==(1.0), draws) / length(draws) < 0.6
         for status in (0.0, 1.0)
             ind = prior(status)
             EpiBranch.initialise_individual!(all_or_nothing, ind, (; rng = StableRNG(1)))
-            @test EpiBranch._vaccine_efficacy(all_or_nothing, ind) == status
+            @test vaccine_efficacy(ind) == status
         end
         leaky = RingVaccination(efficacy = 0.5, mode = LeakyMode())
         ind = prior(0.5)
         EpiBranch.initialise_individual!(leaky, ind, (; rng = StableRNG(1)))
-        @test EpiBranch._vaccine_efficacy(leaky, ind) == 0.5
+        @test vaccine_efficacy(ind) == 0.5
     end
 
     @testset "Custom AbstractEffectMode defined outside the package" begin
         above = RingVaccination(efficacy = 0.6, mode = _TestThresholdMode(0.5))
         responder = Individual(id = 2, parent_id = 1, infection_time = 10.0)
         EpiBranch._record_vaccination!(above, responder, 0.0, StableRNG(1))
-        @test EpiBranch._vaccine_efficacy(above, responder) == 1.0
+        @test vaccine_efficacy(responder) == 1.0
 
         below = RingVaccination(efficacy = 0.4, mode = _TestThresholdMode(0.5))
         non_responder = Individual(id = 3, parent_id = 1, infection_time = 10.0)
         EpiBranch._record_vaccination!(below, non_responder, 0.0, StableRNG(1))
-        @test EpiBranch._vaccine_efficacy(below, non_responder) == 0.0
+        @test vaccine_efficacy(non_responder) == 0.0
 
         # A dose recorded before the run (via `attributes`) is re-realised too.
         prior = Individual(
@@ -292,7 +339,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
             )
         )
         EpiBranch.initialise_individual!(above, prior, (; rng = StableRNG(1)))
-        @test EpiBranch._vaccine_efficacy(above, prior) == 1.0
+        @test vaccine_efficacy(prior) == 1.0
     end
 
     @testset "waning has no AllOrNothingMode meaning yet" begin
