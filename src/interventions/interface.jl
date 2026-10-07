@@ -38,7 +38,8 @@ apply_post_transmission!(::AbstractIntervention, state, new_contacts) = nothing
     trace_contacts!(intervention, state, infector, contacts[, not_before])
 
 Act on the people `infector` has been in contact with, in a continuous-time
-model (homogeneous, network or household), for example by tracing them. It is
+model that knows each case's contacts (network or household, not
+[`HomogeneousProcess`](@ref)), for example by tracing them. It is
 the continuous-time counterpart of
 [`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!).
 In these models everyone in the population exists from the start and infection
