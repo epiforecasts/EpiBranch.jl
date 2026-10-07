@@ -296,11 +296,14 @@ may begin on day 14, or contact tracing once cases pass a threshold.
 in this section go back to the 7-day isolation from the start of the page,
 and compare with its result.
 
-What matters is when the action would happen, not when the person was
-infected. Someone infected on day 8 with symptom onset on day 9 and a 2-day
-delay would be isolated on day 11. If testing starts on day 10, they are
-isolated. Someone whose isolation would fall on day 9 is not, because
-testing was not yet available.
+Mostly, what matters is when the action would happen, not when the person
+was infected. Someone infected on day 8 with symptom onset on day 9 and a
+2-day delay would be isolated on day 11. If testing starts on day 10, they
+are isolated. Someone whose isolation would fall on day 9 is not, because
+testing was not yet available. The schedule is also checked when the
+simulation first works out a case's course, so a case worked out before day
+10, such as an early index case, can be missed even if their isolation would
+fall later.
 
 ```@example interventions
 # Testing starts on day 10
