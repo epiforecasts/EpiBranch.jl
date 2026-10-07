@@ -353,7 +353,7 @@ Models in which every contact is a new person, such as a branching process,
 define [`generate_offspring`](@ref) instead. In both cases the simulation
 applies interventions, natural history and the infection decision itself.
 Calling `contacts_of` on a model that does not define it raises an error
-explaining what to define; the `EpiNetwork` package has a worked example.
+explaining what to define.
 """
 function contacts_of(model::TransmissionModel, parent, state::SimulationState)
     throw(
