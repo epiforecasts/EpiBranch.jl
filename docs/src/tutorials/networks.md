@@ -520,7 +520,7 @@ println("Cases: ", size(df, 1),
 
 The line list's `index` column is `true` for cases with no infector in the
 network: here, the community introductions. The other cases were infected
-along the network, after an introduction reached their household.
+along the network, by someone in their own household or a neighbouring one.
 
 ## Fitting on a network
 
