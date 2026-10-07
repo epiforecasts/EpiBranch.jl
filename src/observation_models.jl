@@ -109,10 +109,11 @@ end
     MinimumSize(min_size)
 
 Only chains of at least `min_size` cases are recorded, as when only clusters
-of two or more cases are investigated. In the likelihood, chain sizes are
-then conditioned on being at least `min_size` ([`TruncatedChainSize`](@ref));
-in simulation, smaller chains are left out of the chain-size data. Both
-therefore describe the same recorded data.
+of two or more cases are investigated. The exact likelihood conditions chain
+sizes on being at least `min_size` ([`TruncatedChainSize`](@ref)), and the
+simulation-based likelihood leaves out simulated chains below it, so both
+describe the same recorded data. [`simulate`](@ref) and
+[`chain_statistics`](@ref) still return every chain.
 
 It acts on whole chains rather than on individual cases, so it leaves the
 simulated cases themselves unchanged. A model has one observation model, so
