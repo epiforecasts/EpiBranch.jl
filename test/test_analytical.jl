@@ -112,6 +112,14 @@
             @test d.R == 0.8
             @test_throws ArgumentError GammaBorel(-1.0, 0.5)
             @test_throws ArgumentError GammaBorel(0.5, -0.5)
+
+            # R == 0 is the degenerate "no onward transmission" boundary,
+            # reached when k swamps R in floating point (see the extreme
+            # dispersion regression tests below).
+            d_degenerate = GammaBorel(0.5, 0.0)
+            @test d_degenerate.R == 0.0
+            @test pdf(d_degenerate, 1) == 1.0
+            @test pdf(d_degenerate, 2) == 0.0
         end
 
         @testset "PMF sums to ≈ 1 for subcritical" begin
@@ -265,6 +273,35 @@
         @testset "NegBin offspring" begin
             ll = loglikelihood(ChainSizes([1, 2, 1, 3, 1]), NegBin(0.8, 0.5))
             @test isfinite(ll)
+        end
+
+        @testset "Extreme dispersion stays finite" begin
+            # Regression: k ≳ 1e16·R swamps R in the floating-point sum
+            # k + R inside NegBin's p = k / (k + R), so R rounds to exactly 0
+            # and GammaBorel(k, 0) — the degenerate "no onward transmission"
+            # law — is the best the stored NegativeBinomial can give. The
+            # likelihood must land there rather than throwing, returning NaN,
+            # or silently falling back to simulation.
+            data = ChainSizes([1, 2, 3])
+            huge_k = NegBin(0.5, 1.0e16)
+            @test loglikelihood(data, huge_k) == -Inf
+            @test loglikelihood(ChainSizes([1]), huge_k) == 0.0
+            d_huge = chain_size_distribution(huge_k)
+            @test d_huge isa GammaBorel && d_huge.k == 1.0e16 && d_huge.R == 0.0
+            @test loglikelihood(data, BranchingProcess(huge_k)) == -Inf
+
+            # Regression: k ≲ 1e-16·R previously hit a spurious Gamma-function
+            # pole from catastrophic cancellation in k * x + x - s at x == s,
+            # giving +Inf instead of a finite log-likelihood.
+            tiny_k = NegBin(0.5, 1.0e-17)
+            @test isfinite(loglikelihood(data, tiny_k))
+
+            # Well before that floating-point boundary, large k must still
+            # approach the Poisson/Borel limit rather than jump straight from
+            # "matches Poisson" to "degenerate".
+            data2 = ChainSizes([1, 2, 3, 1, 4])
+            @test loglikelihood(data2, NegBin(0.5, 1.0e8)) ≈
+                loglikelihood(data2, Poisson(0.5)) atol = 1.0e-4
         end
 
         @testset "Supercritical Poisson uses the actual mean (no clamp)" begin
