@@ -515,9 +515,10 @@ check convergence (for example the R-hat values in `summarize(chain)`).
     together with the parameters, from symptom onsets and test results and the
     delays in the disease timeline (data augmentation), with
     `pairwise_surv_loglik` giving the likelihood of each set of infection
-    times. Prepare the layout once with `compile_household_pairs`, outside the
-    model, and reuse it: it stays valid as long as the households and the set
-    of people ever infected stay the same. There is no worked example of this
+    times. Unless you use `EarliestInfected()` (below), prepare the layout
+    once with `compile_household_pairs`, outside the model, and reuse it: it
+    stays valid as long as the households and the set of people ever
+    infected stay the same. There is no worked example of this
     in the documentation yet.
 
 !!! warning "Data that stop before the outbreak ends (right-censoring)"
@@ -539,8 +540,8 @@ check convergence (for example the R-hat values in `summarize(chain)`).
     Use `compile_household_pairs(data; condition_on = EarliestInfected())` to
     take as given whichever member has the earliest infection time. That
     person can change from one set of estimated infection times to the next,
-    and the layout is then rebuilt at every evaluation, which is slower.
-    Passing `condition_on = EarliestInfected()` to
+    so call it inside the model at every evaluation instead of reusing one
+    layout, which is slower. Passing `condition_on = EarliestInfected()` to
     `loglikelihood(data, model)` does the same without building the layout
     yourself.
 
