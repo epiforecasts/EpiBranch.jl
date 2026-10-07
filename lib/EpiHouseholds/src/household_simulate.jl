@@ -13,8 +13,8 @@
 # and the result is an EpiBranch `SimulationState` that `linelist` renders.
 
 """
-    _simulate(model::HouseholdProcess, sim_opts; interventions, attributes,
-              progression, observation, recorder, rng, condition, max_attempts)
+    simulate_once(model::HouseholdProcess, sim_opts; interventions, attributes,
+                  progression, observation, recorder, rng)
 
 Simulate `model` by the Sellke construction in continuous time — the exact
 generative model of the pairwise likelihood — with the modelling layers supplied
@@ -29,20 +29,11 @@ or a calendar-time distribution — community introductions emerge over
 `initial_cases` are seeded at time 0 regardless; any external hazard still acts
 on the rest of the population from time 0.
 """
-function _simulate(
+function simulate_once(
         model::HouseholdProcess, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, recorder, rng,
-        condition, max_attempts
+        interventions, attributes, progression, observation, recorder, rng
     )
-    condition !== nothing && return _retry_for_condition(
-        () -> _simulate(
-            model, sim_opts; interventions, attributes, progression,
-            observation, recorder, rng, condition = nothing, max_attempts
-        ),
-        condition, max_attempts
-    )
-
-    from = _resolve_infectious_from(model.from, progression)
+    from = something(model.from, infectious_from(progression))
     Tobs = model.obs_end
 
     # A community hazard over an unbounded window would introduce every member;
@@ -78,13 +69,18 @@ function _simulate(
     # kernel's watched records say otherwise.
     races = any(EpiBranch.reads_population_state, interventions) ?
         (collect(eachindex(model.household_of)),) : race_groups(model, model.kernel)
+    # One race per household, each reconciled against the whole state once the
+    # loop is done rather than per race: `sellke_race!`'s per-call reconciliation
+    # scans every individual, which would cost O(households × population) here
+    # instead of O(population) for the one reconciliation a single-race model
+    # gets from the wrapper.
+    max_time = EpiBranch._max_time(sim_opts)
     extinct = true
     for mem in races
         extinct &= EpiBranch._sellke_race!(
             state, mem, rng;
             from = from, until = model.until, interventions = interventions,
-            max_time = EpiBranch._max_time(sim_opts),
-            risks = EpiBranch.transmission_risks(model),
+            max_time = max_time, risks = EpiBranch.transmission_risks(model),
             watches = (watched,), recorder = recorder,
             seed! = (best, members, r) -> _seed_household_race!(
                 best, members, model, state, Tobs, r, initial_cases
@@ -104,7 +100,7 @@ function _simulate(
         )
     end
 
-    _reconcile_sellke_bookkeeping!(state, extinct)
+    EpiBranch._reconcile_sellke_bookkeeping!(state, extinct)
     # Apply the observation model (under-reporting, report delays), as core
     # `simulate` does. A no-op for the default `NoObservation`.
     apply_observation!(observation, state, rng)

@@ -58,7 +58,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         @test m.external_hazard == 0.0
 
         # with no latent transition the window opens at :infection
-        @test EpiBranch._resolve_infectious_from(m.from, _sir(6.0)) === :infection
+        @test EpiBranch.infectious_from(_sir(6.0)) === :infection
 
         # a latent transition anchors the window at :infectious
         seir = [
@@ -68,7 +68,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
                 terminal = true
             ),
         ]
-        @test EpiBranch._resolve_infectious_from(nothing, seir) === :infectious
+        @test EpiBranch.infectious_from(seir) === :infectious
 
         # a scalar and a distribution external hazard are both accepted
         @test HouseholdProcess([2], Exponential(1.0); external_hazard = 0.05) isa
