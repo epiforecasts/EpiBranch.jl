@@ -19,7 +19,7 @@ matrix by `θ`.
     `dist_fn` must take a mean if the column sums are meant to be the
     reproduction numbers. Use `R -> NegBin(R, k)` (mean `R`, dispersion `k`).
     `R -> NegativeBinomial(R, 0.3)` from Distributions.jl reads `R` as a
-    number of failures, not a mean: with it, a matrix whose dominant
+    number of successes, not a mean: with it, a matrix whose dominant
     eigenvalue is 1.045 gives a process with reproduction number 2.44.
     [`reproduction_number`](@ref) reports the reproduction number the model
     actually has.
