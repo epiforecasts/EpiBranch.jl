@@ -5,6 +5,11 @@ struct _PolicyEnabled
 end
 (p::_PolicyEnabled)(state) = p.enabled
 
+# A `Scheduled` trigger written outside the package, declaring nothing: used
+# to check `trigger_can_lapse`'s conservative default.
+struct _AlwaysOpenTrigger <: EpiBranch.AbstractTrigger end
+EpiBranch.is_triggered!(::_AlwaysOpenTrigger, state) = true
+
 # An isolation eligibility that records a detection arriving after the case's
 # outcome, which the default declines.
 struct _DetectAfterOutcome <: EpiBranch.IsolationEligibility end
@@ -2868,6 +2873,103 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 containment_probability(results_scheduled)
         end
 
+        @testset "Infections and ReportedCases triggers" begin
+            inds = [Individual(id = i) for i in 1:5]
+            state = SimulationState(
+                inds, Int[], 0, StableRNG(1), 3, false, nothing, 10.0, nothing,
+                AbstractClinicalTransition[]
+            )
+
+            # `Infections` reads the running case count directly, exactly as
+            # `start_after_cases` does.
+            @test EpiBranch.is_triggered!(Infections(3), state)
+            @test !EpiBranch.is_triggered!(Infections(4), state)
+            @test !EpiBranch.trigger_can_lapse(Infections(3))
+
+            # Two reports dated at or before the clock (10.0), one dated after
+            # it, and one case never reported.
+            inds[1].state[:reported] = true
+            inds[1].state[:reporting_time] = 2.0
+            inds[2].state[:reported] = true
+            inds[2].state[:reporting_time] = 9.0
+            inds[3].state[:reported] = true
+            inds[3].state[:reporting_time] = 15.0
+            inds[4].state[:reported] = false
+
+            @test EpiBranch.is_triggered!(ReportedCases(2), state)
+            @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+            @test !EpiBranch.trigger_can_lapse(ReportedCases(2))
+
+            # A user's own trigger is conservatively assumed able to lapse,
+            # exactly as an opaque `Scheduled` predicate is.
+            @test EpiBranch.trigger_can_lapse(_AlwaysOpenTrigger())
+        end
+
+        @testset "start_after = ReportedCases matches start_after_cases under certain, instant reporting" begin
+            # With every case reported at its own infection time, a
+            # report-gated and a case-gated trigger see the same count at
+            # every step.
+            progression = [
+                Reporting(delay = Dirac(0.0), probability = 1.0, from = ind -> ind.infection_time),
+                Recovery(delay = Dirac(5.0)),
+            ]
+            iso_cases = Scheduled(
+                Isolation(onset_to_isolation_delay = Dirac(0.0), isolation_duration = Inf);
+                start_after_cases = 10
+            )
+            iso_reports = Scheduled(
+                Isolation(onset_to_isolation_delay = Dirac(0.0), isolation_duration = Inf);
+                start_after = ReportedCases(10)
+            )
+
+            results_cases = simulate(
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    progression, interventions = [iso_cases], attributes = clinical
+                ),
+                50; max_cases = 100, rng = StableRNG(11)
+            )
+            results_reports = simulate(
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    progression, interventions = [iso_reports], attributes = clinical
+                ),
+                50; max_cases = 100, rng = StableRNG(11)
+            )
+
+            @test containment_probability(results_cases) ==
+                containment_probability(results_reports)
+        end
+
+        @testset "start_after = ReportedCases delays activation past Infections" begin
+            # Only a fifth of cases are ever reported, each after a delay, so
+            # at the moment `Infections(n)` would open — the n'th infection's
+            # own time — fewer than `n` reports are dated by that clock yet:
+            # `ReportedCases(n)` must still be closed.
+            progression = [
+                Reporting(delay = Exponential(2.0), probability = 0.2),
+                Recovery(delay = Exponential(5.0)),
+            ]
+            model = ModelSpec(
+                BranchingProcess(NegBin(2.0, 0.5), Exponential(5.0));
+                progression, attributes = clinical
+            )
+            state = simulate(model; max_cases = 300, rng = StableRNG(3))
+
+            n = 10
+            infection_times = sort(
+                [ind.infection_time for ind in state.individuals if is_infected(ind)]
+            )
+            @test length(infection_times) >= n
+            infections_open_at = infection_times[n]
+
+            reported_due = count(
+                ind -> get(ind.state, :reporting_time, Inf) <= infections_open_at,
+                state.individuals
+            )
+            @test reported_due < n
+        end
+
         @testset "custom predicate" begin
             iso = Scheduled(
                 Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf),
@@ -3038,8 +3140,16 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test !reads(Scheduled(iso; start_time = 5.0))
         @test !reads(Scheduled(iso; end_time = 20.0))
         @test reads(Scheduled(iso; start_after_cases = 10))
+        @test reads(Scheduled(iso; start_after = ReportedCases(10)))
         # An opaque predicate could read anything, so it stays conservative.
         @test reads(Scheduled(iso, state -> true))
+
+        # `Scheduled` reads `can_lapse` from the trigger: `Infections` and
+        # `ReportedCases` count something that can only rise, so neither makes
+        # the schedule lapse; a trigger with no opinion conservatively does.
+        @test !Scheduled(iso; start_after = Infections(10)).can_lapse
+        @test !Scheduled(iso; start_after = ReportedCases(10)).can_lapse
+        @test Scheduled(iso; start_after = _AlwaysOpenTrigger()).can_lapse
 
         # A shared budget is read across every individual.
         @test reads(CapacityConstrained(ring; budget_per_period = 5.0))
