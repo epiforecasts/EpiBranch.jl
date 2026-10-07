@@ -81,12 +81,12 @@ All routes cover the same people, so every `reach` must have the same length.
 `external_hazard` and `obs_end` are as for [`NetworkProcess`](@ref).
 
 Whether a case names a given contact is decided once, when the case's
-contacts are passed to tracing. A contact reachable on several routes is named with the
-highest of those routes' `traceable` probabilities, and can be traced from
-the earliest of their `contacts_from` times; for example, with
-`traceable = 0.2` on the community route, a case can name one community
-contact in five but everyone they live with, including household members they
-also meet in the community. The intervention then traces a named contact with
+contacts are passed to tracing. A contact reachable on several routes is
+named with the highest of those routes' `traceable` probabilities, and can be
+traced from the earliest `contacts_from` time among the routes that name
+them; for example, with `traceable = 0.2` on the community route, a case can
+name one community contact in five but everyone they live with, including
+household members they also meet in the community. The intervention then traces a named contact with
 its own probability, so the two multiply.
 
 A case infected on one of these routes records the route's `name` in its
