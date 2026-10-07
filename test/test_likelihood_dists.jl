@@ -40,7 +40,7 @@
         # prob_concluded has no closed form under interventions: refuse rather
         # than silently drop them.
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         d_iv = chain_size_distribution(
             ModelSpec(bp; interventions = [iso], attributes = clinical);
             seeds = seeds, prob_concluded = pc

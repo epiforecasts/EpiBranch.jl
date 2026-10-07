@@ -131,8 +131,8 @@ Naming and tracing are two steps. A route's `traceable` is the chance that the
 case can identify a contact at all. The tracing intervention's own probability
 (its `TraceRate`) is the chance that the programme then reaches a contact it
 has been told about. A contact is traced only if both succeed, and the
-probabilities multiply: with a community route at `traceable = 0.5` and
-`ContactTracing(probability = 0.8)`, 40% of the contacts a case meets only in
+probabilities multiply: with a community route at `traceable = 0.5` and a
+tracing probability of `0.8`, 40% of the contacts a case meets only in
 the community are traced. Set each probability for what it describes. A limit
 on naming belongs in `traceable` alone; counting it again in the tracing
 probability would reduce tracing twice.

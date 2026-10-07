@@ -155,8 +155,8 @@ them. On the continuous-time models the infection time is final by the time
 ### Isolation keys
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
-for when it ends; a release of `Inf`, which `set_isolated!` assumes when given
-no `release_time`, never comes. These two describe the removal in force, which
+for when it ends. `set_isolated!` requires that release as its `release_time`
+keyword; a release of `Inf` means the isolation never ends. These two describe the removal in force, which
 is what a detection reads. The full history, which a likelihood needs, is the
 list of stretches under `:_removal_stretches`, because one pair of times cannot
 record that a person was quarantined, released and later isolated again. A
@@ -532,9 +532,12 @@ instead of ending a pair whose contacts could still transmit.
 
 The one part for which naming no key is right is one that holds another
 intervention and can withdraw its block partway through a recorded stretch: a
-[`Scheduled`](@ref) with an end does that, and `InterventionWrapper` narrows the
-infectious period to the first removal instead. That narrowing belongs to the
-wrapping type and is not passed to plain interventions, whose default
+[`Scheduled`](@ref) with an end does that. `InterventionWrapper` instead
+narrows the infectious period to the first removal, but only when the
+intervention it holds never releases anyone by itself. One that does, such as an
+`Isolation` or `Quarantine` with a finite `duration`, stays a per-contact
+competing risk, which checks the wrapper's on/off condition again at every
+contact. That narrowing belongs to the wrapping type and is not passed to plain interventions, whose default
 `infectious_removal_time` is `Inf`.
 
 ## Custom clinical transitions: further details

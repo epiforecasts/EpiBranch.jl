@@ -228,7 +228,7 @@ isolation does.
 ```@example networks
 clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
     prob_asymptomatic = 0.0)
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 1.0, isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 1.0, duration = 7.0)
 
 ws = watts_strogatz(400, 6, 0.1; rng = StableRNG(1))
 build(ivs) = ModelSpec(NetworkProcess(ws, Exponential(16.0));
@@ -242,7 +242,10 @@ meansize(ivs) = sum(simulate(build(ivs); n_initial = 1,
 println("no control:              ", round(meansize(AbstractIntervention[]), digits = 1))
 println("isolation:               ", round(meansize([iso]), digits = 1))
 for p in (0.5, 1.0)
-    ct = ContactTracing(probability = p, isolation_to_trace_delay = Exponential(1.0))
+    ct = ContactTracing(
+        probability = p, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = Inf)
+    )
     println("isolation + $(round(Int, 100p))% tracing:  ", round(meansize([iso, ct]), digits = 1))
 end
 ```
@@ -296,7 +299,7 @@ hh_adj, comm_adj = households_and_community(150, 4, StableRNG(99))
 
 clinical2 = clinical_presentation(incubation_period = LogNormal(0.5, 0.3),
     prob_asymptomatic = 0.0)
-iso2 = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 1.0, isolation_duration = 7.0)
+iso2 = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 1.0, duration = 7.0)
 REM = EpiBranch.INTERVENTION_REMOVAL
 
 # The household route differs from the community route in one tuple: whether
@@ -344,8 +347,11 @@ live with can be named whether or not you also meet them elsewhere.
 ```@example networks
 # Slower isolation and more community contact than above, so that tracing has
 # transmission left to prevent.
-iso3 = Isolation(onset_to_isolation_delay = Exponential(4.0), test_sensitivity = 1.0, isolation_duration = 7.0)
-ct3 = ContactTracing(probability = 0.9, isolation_to_trace_delay = Exponential(0.5))
+iso3 = Isolation(onset_to_isolation_delay = Exponential(4.0), test_sensitivity = 1.0, duration = 7.0)
+ct3 = ContactTracing(
+    probability = 0.9, isolation_to_trace_delay = Exponential(0.5),
+    action = Quarantine(duration = Inf)
+)
 traced_routes(community_traceable) = [
     RouteWindow(:household; until = (:recovered, REM),
         kernel = Weibull(1.5, 4.0), reach = hh_adj),
@@ -355,10 +361,14 @@ traced_routes(community_traceable) = [
 
 println("isolation only:                          ",
     round(mean_size(traced_routes(1.0), [iso3]), digits = 1))
-for p in (0.0, 0.5, 1.0)
-    println("isolation + tracing, community traceable $p: ",
-        round(mean_size(traced_routes(p), [iso3, ct3]), digits = 1))
+traced = [mean_size(traced_routes(p), [iso3, ct3]) for p in (0.0, 0.5, 1.0)]
+for (p, size) in zip((0.0, 0.5, 1.0), traced)
+    println("isolation + tracing, community traceable $p: ", round(size, digits = 1))
 end
+issorted(traced; rev = true) && last(traced) < first(traced) / 2 ||  # hide
+    error("the paragraph below reads these numbers as falling with " *  # hide
+        "traceability, and they no longer do: $traced")  # hide
+nothing  # hide
 ```
 
 Tracing household contacts alone already helps, and the more community contacts

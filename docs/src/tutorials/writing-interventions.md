@@ -211,7 +211,9 @@ end
 
 `resolve_individual!`: `Isolation` works out when the case about to transmit
 is isolated, from its onset time plus a sampled delay, and takes an earlier
-isolation time if contact tracing found the case first. `x || return nothing`
+isolation time if contact tracing found the case first. It then draws how
+long the isolation lasts from its `duration` and passes the end to
+`set_isolated!` as `release_time`. `x || return nothing`
 means "stop here unless `x` is true".
 
 ```julia
@@ -225,7 +227,11 @@ function resolve_individual!(iso::Isolation, individual, state)
     # A contact traced before its onset was known has only the bare trace
     # time, so hold it back to the onset.
     traced_time = max(get(individual.state, :_traced_isolation_time, Inf), onset_time(individual))
-    set_isolated!(individual, min(iso_time, traced_time))
+    start = min(iso_time, traced_time)
+    duration = _removal_duration(
+        iso.duration, state.rng, individual, "`Isolation`'s `duration`"
+    )
+    set_isolated!(individual, start; release_time = start + duration)
     return nothing
 end
 ```

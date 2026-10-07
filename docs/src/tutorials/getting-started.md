@@ -98,10 +98,13 @@ applies them:
 
 ```@example gettingstarted
 # Symptomatic cases isolate on average 2 days after onset, for 7 days
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 # Each contact of an isolated case is traced with probability 0.5, on average
-# 1.5 days after the case isolates
-ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.5))
+# 1.5 days after the case isolates, and quarantined for 7 days
+ct = ContactTracing(
+    probability = 0.5, isolation_to_trace_delay = Exponential(1.5),
+    action = Quarantine(duration = 7.0)
+)
 
 spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
@@ -115,12 +118,16 @@ println("Isolated or quarantined: $(count(is_isolated, outbreak.individuals))")
 println("Traced: $(count(is_traced, outbreak.individuals))")
 ```
 
-`Exponential(θ)` has mean θ, here in days. By default traced contacts are
-quarantined, which stops them transmitting from the time they are traced even
-before they have symptoms. `count(is_isolated, outbreak.individuals)` counts the
-people for whom `is_isolated` is true; it includes quarantined contacts, whether
-or not they were infected. `Extinct` shows whether the measures ended
-transmission in this outbreak before it reached the cap.
+`Exponential(θ)` has mean θ, here in days. The `action` says what happens to a
+traced contact: here they are quarantined, which stops them transmitting from
+the time they are traced, even before they have symptoms. `duration` sets how
+long isolation and quarantine last. When it ends the person is released, and
+one who is still infectious can transmit again. Use `duration = Inf` for
+isolation or quarantine that is never lifted.
+`count(is_isolated, outbreak.individuals)` counts the people who were isolated
+or quarantined at some point, including quarantined contacts who were never
+infected. `Extinct` shows whether the measures ended transmission in this
+outbreak before it reached the cap.
 
 ## Estimating the containment probability
 
@@ -176,7 +183,8 @@ first(ll, 3)  # like head(ll, 3) in R
 
 Simulated times are in days from the start of the outbreak; `reference_date`
 sets the calendar date of day 0 and gives the line list dates, as in
-surveillance data.
+surveillance data. When isolation or quarantine has a finite duration, as
+here, the line list also gives the release date in `date_isolation_release`.
 
 ```@example gettingstarted
 # Contacts table: one row per infector and potential secondary case,

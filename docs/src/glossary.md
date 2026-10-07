@@ -66,6 +66,14 @@ symptom onset. See [Interventions](tutorials/interventions.md).
 transmission from the time they are traced. Quarantine reaches contacts before
 they have symptoms, and those who were never infected.
 
+**Isolation and quarantine duration.** How long isolation or quarantine lasts,
+set with `duration` on [`Isolation`](@ref) and [`Quarantine`](@ref): a number
+of days, a distribution or a function of the individual. When it ends the
+person is released, and one who is still infectious can transmit again.
+`duration = Inf` means they are never released. When a
+duration is finite, the line list records the release date in
+`date_isolation_release`.
+
 **Interventions.** The control measures in a model: isolation, contact tracing,
 ring and mass vaccination, post-exposure prophylaxis, and others. Each
 potential infection goes ahead only if no measure prevents it first; survival
