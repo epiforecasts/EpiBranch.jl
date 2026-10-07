@@ -11,7 +11,8 @@ contained, even if it then died out. Pass the cap used in `simulate`, so that
 outbreaks large enough to reach it count as uncontrolled, as in ringbp.
 
 This is the simulation estimate. [`probability_contain`](@ref) gives the
-closed-form value for a model without interventions, and
+closed-form value for negative binomial offspring with simple control
+(`ind_control`, `pop_control`), and
 [`extinction_probability`](@ref) the probability that transmission dies out
 from a single case.
 
