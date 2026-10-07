@@ -13,7 +13,8 @@ much you write:
 - **Configure a built-in intervention** — add an existing control measure
   (`Isolation`, `ContactTracing`, `RingVaccination`, `MassVaccination`) to a
   model by keyword. This is applied, end-user work and lives in
-  [Interventions](interventions.md), not here.
+  [Isolation and contact tracing](interventions.md) and
+  [Vaccination](vaccination.md), not here.
 - **Write a custom intervention** — subtype `AbstractIntervention` and implement
   its hooks to add a risk the built-ins don't cover. A new *behaviour* on an
   existing process. Covered below.
