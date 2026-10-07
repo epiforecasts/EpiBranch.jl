@@ -191,8 +191,10 @@ InfectionEpisode
 
 ## Recording contacts
 
-Keep a record of every contact a case makes, including contacts who were not
-infected.
+Network and household models stop simulating contacts with a person an
+intervention has protected for good, such as a vaccinated contact. A contact
+recorder keeps those contacts in the simulation. Exposures that did not
+infect are listed by [`contacts`](@ref) without one.
 
 ```@docs
 ContactRecorder
