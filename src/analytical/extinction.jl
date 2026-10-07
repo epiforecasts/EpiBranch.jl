@@ -115,8 +115,8 @@ For a multi-type model built from an offspring matrix the result is a vector
 with one entry per type of index case.
 
 For a `ModelSpec`, the offspring law is folded through every intervention's
-[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec carrying an
-intervention without one throws, naming the simulation-based alternative,
+[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec with an
+intervention that has none throws, naming the simulation-based alternative,
 rather than returning the bare process's extinction probability as if the
 interventions were not there.
 """
@@ -217,8 +217,8 @@ through `single_type_offspring`, so wrappers such as `Observed`
 work too.
 
 For a `ModelSpec`, the offspring law is folded through every intervention's
-[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec carrying an
-intervention without one throws, naming the simulation-based alternative,
+[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec with an
+intervention that has none throws, naming the simulation-based alternative,
 rather than returning the bare process's containment probability as if the
 interventions were not there.
 """

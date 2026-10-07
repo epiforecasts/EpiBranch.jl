@@ -330,7 +330,7 @@ The effect `intervention` has on a case's offspring specification (a
 a multi-type one), when that effect is exact in closed form on its own — not
 an approximation, and not one that depends on how the intervention's own
 event times interact with the model's generation-time distribution, which
-the offspring draw does not carry and is generally not integrable in closed
+the offspring draw does not capture and is generally not integrable in closed
 form at all (isolation's effect on R, for one, depends on exactly that
 overlap, so `Isolation` has no method here). Given the offspring
 specification a bare process would use, returns the one a case under
@@ -344,7 +344,7 @@ generic method below, which refuses. [`extinction_probability`](@ref),
 [`epidemic_probability`](@ref), [`probability_contain`](@ref),
 [`reproduction_number`](@ref), [`proportion_transmission`](@ref) and
 [`offspring_distribution`](@ref), called on a [`ModelSpec`](@ref) that
-carries such an intervention, therefore refuse too rather than return a
+has such an intervention, therefore refuse too rather than return a
 number that silently ignores it.
 """
 function analytic_offspring_effect(iv::AbstractIntervention, offspring)

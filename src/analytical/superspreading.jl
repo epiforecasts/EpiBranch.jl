@@ -61,8 +61,8 @@ Proportion of transmission from the most infectious fraction of cases,
 extracted from the model's offspring distribution (must be NegativeBinomial).
 
 For a `ModelSpec`, the offspring law is folded through every intervention's
-[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec carrying an
-intervention without one throws, naming the simulation-based alternative,
+[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec with an
+intervention that has none throws, naming the simulation-based alternative,
 rather than returning the bare process's proportion as if the interventions
 were not there.
 """

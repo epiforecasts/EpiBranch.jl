@@ -161,7 +161,7 @@ end
 # each read an offspring law off a spec. Folding it through every
 # intervention's `analytic_offspring_effect` keeps that law honest: a spec
 # whose interventions all declare a closed-form effect gets it applied, and
-# one carrying an intervention that declares none has that trait's own
+# one with an intervention that declares none has that trait's own
 # generic method refuse, rather than quietly handing back the bare process's
 # law as if the interventions were not there.
 function _offspring_through_interventions(spec::ModelSpec, offspring)

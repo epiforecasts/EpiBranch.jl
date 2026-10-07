@@ -1,6 +1,6 @@
 `extinction_probability`, `epidemic_probability`, `probability_contain`,
 `reproduction_number`, `proportion_transmission` and `offspring_distribution`
-read only the offspring law of a `ModelSpec`'s process, so a spec carrying
+read only the offspring law of a `ModelSpec`'s process, so a spec with
 interventions got the same answer as the same spec without them. They now
 refuse on a spec whose interventions have no declared closed-form effect on
 the offspring law (`EpiBranch.analytic_offspring_effect`, a new dispatched
