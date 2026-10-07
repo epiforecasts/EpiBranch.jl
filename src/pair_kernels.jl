@@ -26,7 +26,8 @@ closure that scales everyone's rate of infecting others. `breaks` are the days
 the multipliers: `values[1]` before `breaks[1]`, `values[k+1]` from `breaks[k]`
 (inclusive) up to `breaks[k+1]`, and `values[end]` from `breaks[end]` onwards.
 `breaks` must be finite and strictly increasing, and every value non-negative;
-a value of zero stops transmission from that day on.
+a value of zero stops transmission until the next break, or for good if it
+is the last value.
 
 Pass it as the `calendar` of a [`PairKernel`](@ref), which multiplies the
 contact-interval hazard by the value in force on each calendar day.
