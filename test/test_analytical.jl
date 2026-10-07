@@ -643,7 +643,7 @@
             gt = Gamma(2.0, 2.5)
 
             # simulate(::Observed) decorates each individual with
-            # :reported and :report_time so downstream code can filter
+            # :reported and :reporting_time so downstream code can filter
             # to observed reports.
             using StableRNGs
             sim_state = simulate(
@@ -654,10 +654,10 @@
                 rng = StableRNG(42)
             )
             @test all(haskey(ind.state, :reported) for ind in sim_state.individuals)
-            @test all(haskey(ind.state, :report_time) for ind in sim_state.individuals)
+            @test all(haskey(ind.state, :reporting_time) for ind in sim_state.individuals)
             @test all(
-                ind.state[:report_time] >= ind.infection_time
-                    for ind in sim_state.individuals
+                ind.state[:reporting_time] >= ind.infection_time
+                    for ind in sim_state.individuals if ind.state[:reported]
             )
         end
 
