@@ -68,8 +68,7 @@ A column appears only if the simulation recorded that information. Drop the
 `Hospitalisation` step and `date_admission` disappears. Drop
 `clinical_presentation` and there is no symptom onset. The reporting,
 admission and outcome delays are measured from onset, so `simulate` then stops
-with an error asking for `clinical_presentation`. To use these steps without
-onset, measure each delay from another event with `from`.
+with an error asking for `clinical_presentation`.
 
 ## Demographics
 
