@@ -173,9 +173,9 @@ clinical transition (which sets them from a probability gate) and
 `PerCaseObservation` (which sets them post-simulation from a
 detection-probability draw). Both routes leave `:reporting_time` at `Inf`
 for a case that was not reported, so [`weekly_incidence`](@ref)'s
-`by = :reporting` counts reported cases the same way under either.
-Composing both in the same simulation is not supported, because they will
-overwrite each other.
+`by = :reporting` counts reported cases the same way whichever route
+produced them. Composing both in the same simulation is not supported,
+because they will overwrite each other.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 alongside it for when the block lapses; `set_isolated!` takes that release as
