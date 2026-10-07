@@ -336,9 +336,9 @@ end
 Log-likelihood of observed chain lengths under a model, including its
 interventions. Exact when there are no interventions, the offspring
 distribution is Poisson or negative binomial, and R is below 1; otherwise
-estimated from `n_sim` simulated outbreaks (keywords as for chain sizes). Not available
-with an observation model, since a chain with undetected cases has no
-well-defined observed length.
+estimated from `n_sim` simulated outbreaks (keywords as for chain sizes).
+Not available with an observation model, since a chain with undetected
+cases has no well-defined observed length.
 """
 function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
     return _chain_length_model_loglik(

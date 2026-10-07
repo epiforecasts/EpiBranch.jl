@@ -26,10 +26,11 @@ different routes, such as community and funeral transmission of Ebola.
 - `kernel`: the time in days from `from` to each infection: a distribution,
   a function of the individual returning a distribution, `(ind) -> ...`, or
   `NoGenerationTime()` to place every infection at the `from` time. With the
-  default `from = :infection` and no `until`, this is the generation time. With `until` it is the contact
-  interval (the time to a contact that would infect if nothing stopped it),
-  and the generation time follows from which comes first, the contact or the
-  end of transmission, so do not also shorten it by hand.
+  default `from = :infection` and no `until`, this is the generation time.
+  With `until` it is the contact interval (the time to a contact that would
+  infect if nothing stopped it), and the generation time follows from which
+  comes first, the contact or the end of transmission, so do not also
+  shorten it by hand.
 
 # Examples
 ```julia
