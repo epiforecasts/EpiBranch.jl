@@ -84,7 +84,7 @@ fast path, rather than each catching the error `single_type_offspring` throws
 for a multi-type or multi-window model.
 
 The default calls `single_type_offspring` and conservatively reports `false`
-— fall back to simulation — for anything it throws an `ArgumentError` or
+(fall back to simulation) for anything it throws an `ArgumentError` or
 `MethodError` over, so a custom `TransmissionModel` need not specialise this
 to get correct, if not always fastest, behaviour.
 """
