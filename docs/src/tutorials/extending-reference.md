@@ -74,10 +74,10 @@ underscore are internal.
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
-| `:death_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
-| `:recovery_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
-| `:outcome` | `Symbol` | — | `Outcome` transition | `resolve_individual!` (terminal) |
-| `:outcome_time` | `Float64` | — | `Outcome` transition | `resolve_individual!` (terminal) |
+| `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |
+| `:recovery_candidate_time` | `Float64` | `Inf` | `Recovery` transition | `resolve_individual!` |
+| `:outcome` | `Symbol` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
+| `:outcome_time` | `Float64` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
 | `:reported` | `Bool` | `false` | `PerCaseObservation` *or* `Reporting` transition | After the simulation / `resolve_individual!` |
 | `:report_time` | `Float64` | — | `PerCaseObservation` | After the simulation |
 | `:cluster_theta` | `Float64` | — | `ClusterMixed` | First read in a simulation |
