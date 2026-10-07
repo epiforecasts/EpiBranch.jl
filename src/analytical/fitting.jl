@@ -184,6 +184,7 @@ function _logsumexp2(a, b)
     return m + log(exp(a - m) + exp(b - m))
 end
 
+# AD-compatible chain length: Poisson — PGF iteration on G(s) = exp(λ(s − 1)).
 """
     loglikelihood(data::ChainLengths, offspring::Distribution)
 
@@ -191,7 +192,6 @@ Log-likelihood of observed chain lengths under the exact chain-length
 distribution for Poisson or negative binomial offspring. Only defined when R
 is below 1, since above it chains can go on for ever.
 """
-# AD-compatible chain length: Poisson — PGF iteration on G(s) = exp(λ(s − 1)).
 function loglikelihood(data::ChainLengths, offspring::Poisson{T}) where {T}
     λ = mean(offspring)
     λ < 1 ||

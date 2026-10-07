@@ -1089,6 +1089,46 @@ function _kernel_partype(kernel, layout, data, ::Type{T}) where {T}
     return T
 end
 
+# Validation and type promotion shared by the layout-based forms of
+# `pairwise_surv_loglik`: the community-hazard survival distribution, the time
+# to truncate at, and the number type the reduction runs in, promoted against
+# the kernel's parameter type so AD values in a fitted kernel survive it.
+function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_hazard)
+    external = _ext_active(external_hazard)
+    external == layout.external ||
+        throw(ArgumentError("layout.external = $(layout.external) but external_hazard = $external_hazard"))
+    # The @inbounds passes index the time vectors by host id up to the population
+    # the layout was compiled for; guard against a `data` with fewer individuals.
+    min(
+        length(data.infection_time), length(data.infectious_time),
+        length(data.removal_time)
+    ) >= layout.nhosts ||
+        throw(
+        DimensionMismatch(
+            "data covers fewer individuals than the layout " *
+                "was compiled for ($(layout.nhosts))"
+        )
+    )
+    extdist = external ? _ext_survival(external_hazard) : kernel
+
+    tfollow = followup_end(data)
+    (!isnan(tfollow) && tfollow >= 0) || throw(
+        ArgumentError(
+            "followup_end must be a non-negative number (Inf allowed), got $tfollow"
+        )
+    )
+    Tdata = promote_type(
+        eltype(data.infection_time),
+        eltype(data.infectious_time),
+        eltype(data.removal_time),
+        typeof(tfollow),
+        Float64
+    )
+    Text = external ? Distributions.partype(extdist) : Union{}
+    T = promote_type(Tdata, _kernel_partype(kernel, layout, data, Tdata), Text)
+    return extdist, convert(Tdata, tfollow), T
+end
+
 """
     pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairsLayout;
                          external_hazard = 0.0, susceptibility = nothing) -> Real
@@ -1192,46 +1232,6 @@ grid[argmax(ll.(grid))]   # close to the true mean of 4 days
     community can explain and `T` is the total time people are exposed to it.
     In `log α` this is a straight line of slope `k`.
 """
-# Validation and type promotion shared by the layout-based forms of
-# `pairwise_surv_loglik`: the community-hazard survival distribution, the time
-# to truncate at, and the number type the reduction runs in, promoted against
-# the kernel's parameter type so AD values in a fitted kernel survive it.
-function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_hazard)
-    external = _ext_active(external_hazard)
-    external == layout.external ||
-        throw(ArgumentError("layout.external = $(layout.external) but external_hazard = $external_hazard"))
-    # The @inbounds passes index the time vectors by host id up to the population
-    # the layout was compiled for; guard against a `data` with fewer individuals.
-    min(
-        length(data.infection_time), length(data.infectious_time),
-        length(data.removal_time)
-    ) >= layout.nhosts ||
-        throw(
-        DimensionMismatch(
-            "data covers fewer individuals than the layout " *
-                "was compiled for ($(layout.nhosts))"
-        )
-    )
-    extdist = external ? _ext_survival(external_hazard) : kernel
-
-    tfollow = followup_end(data)
-    (!isnan(tfollow) && tfollow >= 0) || throw(
-        ArgumentError(
-            "followup_end must be a non-negative number (Inf allowed), got $tfollow"
-        )
-    )
-    Tdata = promote_type(
-        eltype(data.infection_time),
-        eltype(data.infectious_time),
-        eltype(data.removal_time),
-        typeof(tfollow),
-        Float64
-    )
-    Text = external ? Distributions.partype(extdist) : Union{}
-    T = promote_type(Tdata, _kernel_partype(kernel, layout, data, Tdata), Text)
-    return extdist, convert(Tdata, tfollow), T
-end
-
 function pairwise_surv_loglik(
         kernel, data::InfectionLayer, layout::ContactPairsLayout;
         external_hazard = 0.0, susceptibility = nothing
