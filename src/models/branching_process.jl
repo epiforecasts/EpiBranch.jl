@@ -79,8 +79,10 @@ outbreak grows as a tree from the index cases. A negative binomial,
 
 `generation_time` is the distribution of the time in days from a case's
 infection to the infection of each of its secondary cases. Leave it out to
-study only chain sizes and lengths, without timing. `population_size` limits
-the number of people who can be infected (unlimited by default).
+study only chain sizes and lengths, without timing. `population_size` sets a
+finite population: each potential infection succeeds with probability equal
+to the share of people not yet infected, so transmission slows as cases
+accumulate (unlimited by default).
 
 The transmission model describes only who infects whom and when. Add the
 natural history, interventions, population characteristics and reporting
