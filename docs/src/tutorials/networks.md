@@ -187,7 +187,7 @@ your own (see [Extending EpiBranch](extending.md)).
       With a window set, `simulate` warns and ignores the ring vaccination.
     - Tracing is forward only. It can reach the contacts who had not been
       infected by the time the case was. Contacts infected before the case,
-      including the person who infected them, are not reached: backward
+      including the case's own infector, are not reached: backward
       (source) tracing is not supported.
     - Whether a contact is protected when exposed depends on whether they had
       been traced or vaccinated by then. Once a contact has been given a ring

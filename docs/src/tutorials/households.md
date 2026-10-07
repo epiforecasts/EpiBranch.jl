@@ -334,7 +334,7 @@ other contact. Tracing does not reach a whole household at once.
       vaccination.
     - Tracing is forward only. It can reach the housemates who had not been
       infected by the time the case was. Housemates infected before the case,
-      including the person who infected them, are not reached: backward
+      including the case's own infector, are not reached: backward
       (source) tracing is not supported.
     - `household_offspring` does not accept an intervention wrapped in
       `Scheduled`. To see what switching a policy on does, compute R\* once
