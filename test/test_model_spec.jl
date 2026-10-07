@@ -234,7 +234,7 @@ EpiBranch.intervention_actions(::_ActionsOnly, state, candidates) = nothing
             bp; interventions = [Scheduled(BlockWrongArity(); start_time = 1.0)]
         )
         # A hook outside `competing_risk`, at the right arity, is enough to
-        # stay silent — the check reads the full set, not a subset of it.
+        # stay silent: the check reads the full set, not just `competing_risk`.
         @test_logs ModelSpec(bp; interventions = [_ActionsOnly()])
         # `Isolation` implements several hooks properly and stays silent too.
         iso = Isolation(
