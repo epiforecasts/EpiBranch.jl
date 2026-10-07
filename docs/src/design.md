@@ -92,17 +92,19 @@ contacts traced, vaccines given or tests used is counted.
 ### Why this separation matters
 
 Because the offspring distribution does not depend on time or control
-measures, it can be analysed with standard tools: extinction probability from
-the dominant eigenvalue, chain-size distributions, closed-form likelihoods.
+measures, it can be analysed with standard tools: the epidemic threshold from
+the dominant eigenvalue, extinction probability from the probability
+generating function, chain-size distributions, closed-form likelihoods.
 These can also be used with gradient-based fitting. Interventions act on the
 timing and on whether a transmission is blocked, never on the offspring
 distribution: isolation removes the later part of the infectious period,
 contact tracing moves that removal earlier, and vaccination lowers
 susceptibility. The cumulative generation-time distribution evaluated at an
-intervention time *is* the survival function. The same quantities therefore appear in
-simulation and in Kenah's pairwise likelihood, and the effectiveness of an
-intervention can be estimated from observed generation times using the
-quantities used to simulate.
+intervention time is the probability that a transmission happens before the
+intervention, and one minus it is the survival function. The same quantities
+therefore appear in simulation and in Kenah's pairwise likelihood, and the
+effectiveness of an intervention can be estimated from observed generation
+times using the quantities used to simulate.
 
 ## The five parts of a model
 
