@@ -74,7 +74,7 @@ The model's answer depends only on its offspring distribution and matches
     (see [issue #421](https://github.com/epiforecasts/epiBranch.jl/issues/421)).
     For the chance of containing an outbreak under interventions, simulate the
     model and use [`containment_probability`](@ref), as in
-    [Interventions](@ref).
+    [Interventions](interventions.md).
 
 ## Superspreading: proportion of transmission
 
