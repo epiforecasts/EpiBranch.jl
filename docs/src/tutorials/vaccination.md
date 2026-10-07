@@ -278,7 +278,7 @@ nothing is left.
     blocking at exposure is all it can do. `post_exposure_efficacy` needs an
     incubation period, set by [`clinical_presentation`](@ref).
 
-!!! warning "Stopped infections are not traced"
+!!! warning "Contacts of stopped infections are not traced"
     Under quarantine neither `post_exposure_efficacy` nor `onward_efficacy`
     has transmission left to block, and `post_exposure_efficacy` can even
     lower containment. A contact whose infection is stopped never develops
