@@ -353,8 +353,11 @@ but people within one still decide individually.
 A community's acceptance lasts the whole outbreak, so a community that
 refuses keeps refusing in later generations. Give [`GroupVaccination`](@ref)
 the same `coverage` function to cluster refusal within the groups it
-vaccinates, or use the value in [`MassVaccination`](@ref)'s `eligibility_time`
-in the same way.
+vaccinates. [`MassVaccination`](@ref) has no `coverage`; its
+`eligibility_time` returns a day instead, and `Inf` means never vaccinated, so
+`(rng, ind) -> rand(rng) < ind.state[:vaccine_acceptance] ? 30.0 : Inf`
+vaccinates each person on day 30 with their community's acceptance as the
+probability.
 
 ### Clustered refusal and containment
 
