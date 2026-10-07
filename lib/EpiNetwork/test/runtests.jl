@@ -15,4 +15,3 @@ end
 include("test_likelihood_composition.jl")
 include("test_actions.jl")
 include("test_pair_kernels.jl")
-include("test_tutorial_claims.jl")

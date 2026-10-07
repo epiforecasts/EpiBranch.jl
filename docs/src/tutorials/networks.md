@@ -361,10 +361,13 @@ traced_routes(community_traceable) = [
 
 println("isolation only:                          ",
     round(mean_size(traced_routes(1.0), [iso3]), digits = 1))
-for p in (0.0, 0.5, 1.0)
-    println("isolation + tracing, community traceable $p: ",
-        round(mean_size(traced_routes(p), [iso3, ct3]), digits = 1))
+traced = [mean_size(traced_routes(p), [iso3, ct3]) for p in (0.0, 0.5, 1.0)]
+for (p, size) in zip((0.0, 0.5, 1.0), traced)
+    println("isolation + tracing, community traceable $p: ", round(size, digits = 1))
 end
+issorted(traced; rev = true) && last(traced) < first(traced) / 2 ||  # hide
+    error("the paragraph below reads these numbers as falling with " *  # hide
+        "traceability, and they no longer do: $traced")  # hide
 ```
 
 Tracing household contacts alone already helps, and the more community contacts
