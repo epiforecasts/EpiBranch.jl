@@ -12,7 +12,7 @@
 #
 # Post-isolation transmission stays a scalar parameter — it modifies
 # the competing risk's block probability without changing the
-# intervention's policy shape. `isolation_duration` (a scalar / distribution /
+# intervention's policy shape. `duration` (a scalar / distribution /
 # function, drawn whenever isolation is set) is the same kind of parameter: it
 # modifies the competing risk's release time, so the block it contributes can
 # lapse rather than last forever.
@@ -102,7 +102,7 @@ switching the delay once a household's first case has been detected.
 probability after isolation. The competing risk's `block_probability`
 is `1 - post_isolation_transmission`.
 
-`isolation_duration` is how long the removal lasts before it lapses; it
+`duration` is how long the removal lasts before it lapses; it
 accepts a `Real`, a `Distribution`, or a function `(rng, ind) -> Real`
 (drawn per individual, each time isolation is set). There is no default:
 callers must choose, since indefinite isolation is a choice to make rather
@@ -145,19 +145,19 @@ struct Isolation{E <: IsolationEligibility, D, S, U} <: AbstractIntervention
     onset_to_isolation_delay::D
     test_sensitivity::S
     post_isolation_transmission::Float64
-    isolation_duration::U
+    duration::U
 end
 
 function Isolation(;
         onset_to_isolation_delay,
-        isolation_duration,
+        duration,
         eligibility::IsolationEligibility = SymptomaticOnly(),
         test_sensitivity = 1.0,
         post_isolation_transmission::Real = 0.0
     )
     return Isolation(
         eligibility, onset_to_isolation_delay, test_sensitivity,
-        Float64(post_isolation_transmission), isolation_duration
+        Float64(post_isolation_transmission), duration
     )
 end
 
@@ -184,7 +184,7 @@ end
 
 """Isolation blocks the parent → contact transmission while the parent's
 isolation is in force: from its isolation time until its
-[`isolation_release_time`](@ref), which an `isolation_duration` of `Inf`
+[`isolation_release_time`](@ref), which a `duration` of `Inf`
 leaves infinite. Residual transmission is governed by
 `post_isolation_transmission`: `block_probability = 1 - post_isolation_transmission`."""
 function competing_risk(iso::Isolation, parent, contact, state)
@@ -195,7 +195,7 @@ end
 # infector's own isolated stretch. The block then depends on the infector
 # whatever the residual is.
 function risk_depends_on_infector(iso::Isolation)
-    return iso.post_isolation_transmission > 0 || !(iso.isolation_duration === Inf)
+    return iso.post_isolation_transmission > 0 || !(iso.duration === Inf)
 end
 
 # The likelihood reads the stretch a lapsing isolation removed the host for.
@@ -209,7 +209,7 @@ function removal_gap_host_times(iso::Isolation)
     # it has no stretch for anything to read; a duration of `Inf` has one
     # stretch and no release, which the infectious window holds instead.
     iso.post_isolation_transmission == 0 || return ()
-    iso.isolation_duration === Inf && return ()
+    iso.duration === Inf && return ()
     return (REMOVAL_STRETCHES_KEY,)
 end
 
@@ -325,12 +325,12 @@ function resolve_individual!(iso::Isolation, individual, state)
     return nothing
 end
 
-# Remove the case from transmission at `time`, until `time + isolation_duration`,
+# Remove the case from transmission at `time`, until `time + duration`,
 # recording it as a detection only if the eligibility does. The provenance mark
 # lets a Scheduled reset undo only Isolation's own effect.
 function _isolate!(iso::Isolation, individual, state, time)
     duration = _removal_duration(
-        iso.isolation_duration, state.rng, individual, "`isolation_duration`"
+        iso.duration, state.rng, individual, "`Isolation`'s `duration`"
     )
     start, release = time, time + duration
     # A removal already standing is layered under this one by the same rule the

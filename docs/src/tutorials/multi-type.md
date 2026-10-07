@@ -166,7 +166,7 @@ case isolates after a delay from symptom onset with mean 2 days
 period, from infection to onset, has a mean of about 5 days:
 
 ```@example multitype
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 model = ModelSpec(BranchingProcess(M, R_j -> NegBin(R_j, 0.5), LogNormal(1.6, 0.5));
     interventions = [iso],
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))

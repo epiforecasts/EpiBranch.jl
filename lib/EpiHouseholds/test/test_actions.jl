@@ -6,11 +6,11 @@ test_continuous_vaccine_actions(k -> HouseholdProcess([4], k))
     clinical = clinical_presentation(incubation_period = Dirac(0.0))
     iso = Isolation(
         onset_to_isolation_delay = Dirac(1.0),
-        post_isolation_transmission = 1.0, isolation_duration = Inf
+        post_isolation_transmission = 1.0, duration = Inf
     )
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
-        quarantine_on_trace = false
+        action = FlagOnly()
     )
     rv = RingVaccination(efficacy = 0.0, dose_delay = 2.0)
     build(p, v) = ModelSpec(
