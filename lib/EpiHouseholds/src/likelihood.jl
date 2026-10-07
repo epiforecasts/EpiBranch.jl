@@ -11,11 +11,14 @@
     HouseholdInfections(household_of, infection_time, infectious_time, removal_time, is_index;
                         obs_end = Inf, followup_end = Inf, host_times = (;))
 
-The [`InfectionLayer`](@ref) of a household outbreak. Its contact structure is
-`household_of`, the household of each individual: household-mates are each
-other's possible infectors. The per-individual vectors, `obs_end`, `followup_end`
-and `host_times` are as described for `InfectionLayer`. Read one out of a
-simulation with [`household_infections`](@ref), or augment it in inference.
+Household outbreak data for the pairwise likelihood: for each person, their
+household, when they were infected, when their infectious period started and
+ended, and whether they were an index case. Household members are each other's
+possible infectors. `household_of` gives each person's household; the other
+per-person vectors, `obs_end`, `followup_end` and `host_times` are as described
+for [`InfectionLayer`](@ref). Read one from a simulation with
+[`household_infections`](@ref), or build it from data, imputing unobserved
+infection times in inference.
 """
 struct HouseholdInfections{T <: Real, H <: NamedTuple} <: InfectionLayer
     household_of::Vector{Int}
@@ -48,16 +51,21 @@ EpiBranch.contact_structure(d::HouseholdInfections) = d.household_of
     household_infections(state, model::ModelSpec; obs_end = model.process.obs_end,
                          followup_end = Inf, host_times = ()) -> HouseholdInfections
 
-Read the [`InfectionLayer`](@ref) out of a `state` simulated from `model`, with
-each member's household as the contact structure. The infectious windows are
-read as described for `InfectionLayer`. Additional hazard modifications require
-an effective kernel when evaluating; extraction records the windows only. A bare `HouseholdProcess` is
-accepted too (its window opens at `:infection`, and it has no interventions).
-`host_times` names further per-member times to record, such as `(:onset_time,)`,
-read from each member's state (`missing` where a member has none) for a live
-[`PairKernel`](@ref) to read. The times the model's interventions read
-through [`susceptibility_host_times`](@ref EpiBranch.susceptibility_host_times),
-such as a vaccination's `:immunity_time`, are recorded as well.
+Collect who was infected when from a household outbreak simulated from
+`model` (infection times, start and end of each infectious period, index
+cases), in the form the pairwise likelihood needs. The infectious periods are
+the ones the simulation used, as described for [`InfectionLayer`](@ref). Only
+the infectious periods are recorded, so any other effect on transmission must
+be built into the kernel passed to the likelihood. A bare `HouseholdProcess` is
+accepted too (its infectious period starts at `:infection`, and it has no
+interventions).
+
+`host_times` names further per-person event times to record, such as
+`(:onset_time,)`, read from each person's state (`missing` where a person has
+none), for a [`PairKernel`](@ref) to use. The times the model's interventions
+need (see [`susceptibility_host_times`](@ref
+EpiBranch.susceptibility_host_times)), such as a vaccinee's
+`:immunity_time`, are recorded as well.
 """
 function household_infections(
         state::SimulationState,
@@ -82,34 +90,38 @@ end
 """
     ConditionOn
 
-Supertype for the rule choosing which host in each household the likelihood
-does not need to explain. [`RecruitedIndex`](@ref) and
-[`EarliestInfected`](@ref) are the two supplied; a rule of your own needs a
-[`condition_mask`](@ref EpiHouseholds.condition_mask) method and nothing else.
+How the household likelihood conditions on the index case: which member of
+each household is taken as given rather than explained by transmission within
+the household. [`RecruitedIndex`](@ref) and [`EarliestInfected`](@ref) are the
+two supplied; a rule of your own needs only a [`condition_mask`](@ref
+EpiHouseholds.condition_mask) method.
 """
 abstract type ConditionOn end
 
 """
     RecruitedIndex()
 
-Condition each household on its recruited index, `data.is_index`, as read.
+Condition each household on its recruited index case, `data.is_index`, as
+recorded.
 """
 struct RecruitedIndex <: ConditionOn end
 
 """
     EarliestInfected()
 
-Condition each household on whichever member has the lowest `infection_time`,
-ties keeping the lowest host id. Resolved from `data` on every call, so the
-host can change between augmented draws.
+Condition each household on whichever member has the earliest
+`infection_time` (on a tie, the lowest person number). This is worked out from
+`data` on every call, so the conditioned member can change as imputed
+infection times change.
 """
 struct EarliestInfected <: ConditionOn end
 
 """
     condition_mask(rule::ConditionOn, data::HouseholdInfections) -> AbstractVector{Bool}
 
-The `is_index`-shaped mask `rule` conditions on: `true` for each household's
-conditioned host, `false` elsewhere. One method per rule.
+Which person in each household `rule` conditions on: a vector shaped like
+`data.is_index`, `true` for each household's conditioned member and `false`
+elsewhere. One method per rule.
 """
 condition_mask(::RecruitedIndex, data::HouseholdInfections) = data.is_index
 function condition_mask(::EarliestInfected, data::HouseholdInfections)
@@ -124,12 +136,13 @@ end
     loglikelihood(data::HouseholdInfections, model::ModelSpec{<:HouseholdProcess};
                   condition_on = RecruitedIndex()) -> Float64
 
-The contact-process log-density of `model`'s kernel given the infection layer
-`data`, on the layout [`compile_household_pairs`](@ref) builds for
-`condition_on` (see there): `pairwise_surv_loglik(model.kernel, data, layout;
-external_hazard = model.external_hazard, susceptibility)`. For a `ModelSpec`,
-`susceptibility` is the model's interventions, so a composed vaccination is
-evaluated from the immunity times [`household_infections`](@ref) recorded.
+Log-likelihood of household outbreak data under `model`'s contact interval and
+community hazard, conditioning on index cases as `condition_on` says (see
+[`compile_household_pairs`](@ref)). It is
+`pairwise_surv_loglik(model.kernel, data, layout; external_hazard = model.external_hazard, susceptibility)`.
+For a `ModelSpec`, `susceptibility` is the model's interventions, so a
+vaccination in the model is evaluated from the immunity times
+[`household_infections`](@ref) recorded.
 """
 function Distributions.loglikelihood(
         data::HouseholdInfections, model::HouseholdProcess;
@@ -159,12 +172,10 @@ end
 """
     HouseholdPairsLayout
 
-The compiled pair layout for a household population. It is another name for
-EpiBranch's [`ContactPairsLayout`](@ref), used when the layout is built from a
-household partition. Each row is one ordered (susceptible, household-mate) pair
-that the likelihood covers.
-
-Build it with [`compile_household_pairs`](@ref).
+The list of who could have infected whom in a household population, for the
+pairwise likelihood: each row is one ordered (susceptible, household member)
+pair. It is another name for EpiBranch's [`ContactPairsLayout`](@ref), built
+from households. Build it with [`compile_household_pairs`](@ref).
 """
 const HouseholdPairsLayout = ContactPairsLayout
 
@@ -172,24 +183,25 @@ const HouseholdPairsLayout = ContactPairsLayout
     compile_household_pairs(household_of, is_index, infected; external=false)
     compile_household_pairs(data::HouseholdInfections; external=false, condition_on=RecruitedIndex())
 
-[`compile_contact_pairs`](@ref) on a household partition, where household-mates
-are each other's possible infectors. The arguments and the layout are as
-described there. Evaluate the result with
+List once who could have infected whom in a household population, where
+household members are each other's possible infectors; this is
+[`compile_contact_pairs`](@ref) for households, with the arguments described
+there. Evaluate the result with
 `pairwise_surv_loglik(kernel, data, layout; external_hazard)`.
 
-`condition_on` is a [`ConditionOn`](@ref) rule choosing which host in each
-household the likelihood does not need to explain, when there is no community
-hazard (`external = false`; with one every host is explained and the rule has
-no effect). [`RecruitedIndex`](@ref), the default, conditions on the recruited
-index, `data.is_index`, fixed at read time. [`EarliestInfected`](@ref)
-conditions on whichever household member has the lowest `infection_time` in
-`data`, resolved afresh on every call. Use it when the recruited index need not
-be the first household member infected, which is expected in real recruited
-households and can otherwise turn an infection time augmented below the
-recruited index's into an impossible (`-Inf`) configuration. Because the
-conditioned host can change between calls, compile a fresh layout for
-`EarliestInfected` on every evaluation rather than reusing one across augmented
-draws.
+`condition_on` is a [`ConditionOn`](@ref) rule saying how to condition on the
+index case: which member of each household the likelihood takes as given,
+when there is no community hazard (`external = false`; with one, every
+infection is explained and the rule has no effect). [`RecruitedIndex`](@ref),
+the default, conditions on the recruited index case, `data.is_index`, fixed
+when the data are read. [`EarliestInfected`](@ref) conditions on the household
+member with the earliest `infection_time` in `data`, worked out on every call.
+Use it when the recruited index case need not be the first member infected,
+which is expected in real recruited households; otherwise an imputed infection
+time earlier than the recruited index case's makes the likelihood impossible
+(`-Inf`). Because the conditioned member can change between calls, build a
+fresh layout for `EarliestInfected` on every evaluation rather than reusing
+one across imputed infection times.
 """
 function compile_household_pairs(
         household_of::AbstractVector{<:Integer},

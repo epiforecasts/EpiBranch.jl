@@ -14,17 +14,19 @@
     _simulate(model::NetworkProcess, sim_opts; interventions, attributes,
               progression, observation, recorder, rng, condition, max_attempts)
 
-Simulate `model` by the Sellke construction in continuous time, with the
-modelling layers supplied by the caller (a bare process, or a `ModelSpec`). The
-infectious window's `from` state is derived from the composed `progression`.
-Returns an EpiBranch `SimulationState`; `linelist(state)` renders it.
+Simulate a network outbreak exactly in continuous time, with the natural
+history and interventions supplied by the caller (a bare process, or a
+`ModelSpec`). The start of the infectious period (`from`) is taken from the
+`progression`. Returns an EpiBranch `SimulationState`; `linelist(state)` turns
+it into a table.
 
-With no external hazard, `sim_opts.n_initial` distinct nodes are seeded at time
-0 and the outbreak spreads along the edges. With an `external_hazard` — a
-positive scalar or a calendar-time distribution — community introductions emerge
-over `[0, model.obs_end]`, so a finite `obs_end` is required (an unbounded window
-would seed every node). Chosen `initial_cases` are seeded at time 0 regardless;
-any external hazard still acts on the rest of the network from time 0.
+With no external hazard, `sim_opts.n_initial` different people are infected at
+day 0 and the outbreak spreads along the network. With an `external_hazard` (a
+positive rate or a distribution of the time of infection from outside),
+community introductions happen over the first `model.obs_end` days, which must
+be finite (otherwise everyone would eventually be infected from outside).
+Chosen `initial_cases` are infected at day 0 regardless, and any external
+hazard still acts on everyone else from day 0.
 """
 function _simulate(
         model::NetworkProcess, sim_opts::SimOpts;

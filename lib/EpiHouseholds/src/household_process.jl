@@ -18,72 +18,79 @@
     HouseholdProcess(sizes, kernel; from = nothing, until = (:recovered, :died, :isolated),
                      external_hazard = 0.0, obs_end = Inf)
 
-Household-structured transmission. `sizes` gives the size of each household (so
-`sum(sizes)` individuals in `length(sizes)` households) and `kernel` is the
-within-household **contact interval** — the one required input — any continuous
-`Distributions.jl` distribution on the positive reals, or a callable
-`(infector, susceptible) -> Distribution` for covariate models, or a
-[`PairKernel`](@ref) that also reads the infector's infection time and,
-with sampled attributes and dated histories, each host's record. The kernel times
-each infectious contact from the infector's `from` state.
+Transmission within households: each infectious person infects their household
+members after a random delay, provided they are still infectious by then, and
+infections from outside the household arrive at a community rate. `sizes`
+gives the size of each household, so there are `sum(sizes)` people in
+`length(sizes)` households.
 
-The process describes the transmission alone. The natural history is a `progression`
-of EpiBranch `Transition`s attached with a [`ModelSpec`](@ref): a latent period
-is `Transition(:infectious; from = :infection, delay = …)`, an infectious period
-a terminal removal transition, and onset, testing and the rest are further
-transitions the line list reads. `from` is the state the kernel times contacts
-from; left as `nothing` it is derived from the progression (`:infectious` when a
-latent period produces it, otherwise `:infection`). `until` names the removal
-states that close the infectious window.
+`kernel` is the within-household **contact interval**, the delay in days from
+a person becoming infectious to their infecting contact with a household
+member. It can be any continuous distribution on the positive reals, a function
+`(infector, susceptible) -> Distribution` of the two people's numbers for
+covariates, or a [`PairKernel`](@ref), which can also use the infector's
+infection time and each person's attributes and history.
 
-`external_hazard` is the community force of infection — a scalar for a constant
-hazard or a calendar-time distribution for a time-varying one — and `obs_end`
-bounds the window `[0, obs_end]` over which those community introductions emerge.
+The natural history is a `progression` of `Transition`s attached with a
+[`ModelSpec`](@ref). A latent period is
+`Transition(:infectious; from = :infection, delay = …)` and the infectious
+period ends with a terminal removal transition; onset, testing and the rest are
+further transitions that the line list reports. `from` is the state from which
+the contact interval is measured. Left as `nothing`, it is `:infectious` when a
+latent period produces that state and `:infection` otherwise. `until` names
+the states that end the infectious period.
+
+`external_hazard` is infection from the community: a constant rate per person
+per day, or a distribution of the time (in days) at which each person would be
+infected from outside, for a rate that changes over time. These introductions
+happen only in the first `obs_end` days, which must be finite when
+`external_hazard` is used. Without an external hazard, each household starts
+with one index case at day 0.
 
 !!! warning "What isolation means here"
     The only transmission this process represents is *within* a household;
-    community infection enters as unstructured `external_hazard`
-    introductions, and there is no between-household contact. So an
-    intervention that closes a case's infectious window here stops it
-    infecting its own household-mates, which physically means removing it
-    from the household — hospitalisation, or transfer to an isolation
-    facility. It does **not** model self-isolation at home, which would
-    leave household transmission running and, in most settings, raise it.
-    Nor is there a community route for a case to be isolated *from* while it
-    stays infectious to the people it lives with, which is what
-    self-isolation actually does. Representing that needs transmission
-    separated into a household route and a community route, so a control
-    measure can cut one and leave the other; see the route windows in the
+    community infection enters as `external_hazard` introductions, and there is
+    no contact between households. An intervention that ends a case's
+    infectious period here therefore stops them infecting their own household,
+    which physically means removing them from the household: hospitalisation,
+    or transfer to an isolation facility. It does **not** model self-isolation
+    at home, which would leave household transmission going and, in most
+    settings, increase it. Nor is there a community route for a case to be
+    isolated *from* while they stay infectious to the people they live with,
+    which is what self-isolation does. Representing that needs transmission
+    split into a household route and a community route, so a control measure
+    can cut one and leave the other; see the route windows in the
     [design notes](@ref "Host timeline and transmission-route windows").
     Read isolation and quarantine on this process as removal from the
-    household, and size the parameters accordingly.
+    household, and choose the parameters accordingly.
 
-With that reading, interventions attach through the infectious window. An
-`Isolation` intervention removes a case at its isolation time, shortening the
-window and cutting secondary cases. `ContactTracing` also applies: a case's
-household-mates are its contacts, and quarantining a traced contact closes that
-contact's window in turn. Because a case's trace time is only known once the
-race has settled its timeline, tracing reaches the contacts that are not yet
-themselves settled, which in a fast-mixing household means the ones infected
-later. An intervention whose effect is a per-contact competing risk, such as a
-leaky isolation or a vaccine's efficacy, is resolved against each infection the
-race proposes between household members; a blocked proposal is declined and the
-pair goes on meeting, so blocking a fraction of the contacts thins that pair's
-hazard by the same fraction. Per-individual susceptibility and infectiousness
-reach the same thinning through the contact-interval draw, which turns a pair's
-survival `S(t)` into `S(t)^m`. Ring and group vaccination use candidate actions,
-including scheduling and capacity admission, and a ring dose's
-`post_exposure_efficacy` can abort a household member's own latent infection on
-this path, exactly as it does on the generation engine: a dose given while the
-member was still pending is reconsidered once its infection settles. With
-several households, capacity requires `period = Inf`: each household runs on
-its own clock, which prevents chronological accounting of a shared periodic
-budget. Ring delivery requires an infinite eligibility window: exposure-dependent
-eligibility needs a member's own infection time, which is not yet known while
-it is still pending. Mass vaccination remains unsupported on this path.
-Existing protection can also use host traits,
-a composed kernel or a user-defined competing risk. Non-pharmaceutical control expressed as a removal
-`Transition` in the progression always applies.
+Interventions on this process:
+
+- `Isolation` removes a case at their isolation time, ending their infectious
+  period and cutting their secondary cases. Leaky isolation reduces each
+  household contact's chance of infecting by the same fraction.
+- `ContactTracing` treats a case's household members as their contacts;
+  quarantining a traced contact ends that contact's infectious period in turn.
+  Tracing can only reach household members infected after the case's own
+  course of infection is known, which in a fast-spreading household means the
+  ones infected later.
+- A vaccine's efficacy, and per-person susceptibility and infectiousness, reduce
+  each household contact's chance of infecting.
+- `RingVaccination` and `GroupVaccination` work, including with `Scheduled`
+  and `CapacityConstrained`, and a ring dose's `post_exposure_efficacy` can stop
+  a household member's own infection before onset.
+- A removal `Transition` in the progression always applies.
+
+Limits:
+
+- `MassVaccination` is not supported.
+- With several households, `CapacityConstrained` needs `period = Inf`, because
+  each household is simulated on its own timeline and a budget that renews
+  every period cannot be shared between them in calendar order.
+- `RingVaccination` needs `eligibility_window = Inf`, because a household
+  member's own infection time is not yet known when the dose is decided.
+- Existing protection can instead be given through `transmission_traits`, a
+  [`PairKernel`](@ref), or an intervention with its own `competing_risk`.
 
 # Example
 

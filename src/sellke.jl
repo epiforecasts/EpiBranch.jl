@@ -358,19 +358,20 @@ end
 """
     standing_block(source) -> Bool
 
-Whether a certain block `source` composes stands for every later proposal on
-the same pair, so a continuous-time race can stop proposing for that pair
-instead of redrawing towards an answer it already has. `false` by default.
+For intervention authors: whether a block that is certain for an infector and
+contact (probability 1) stays in force for good once it applies, for example
+permanent immunity. When it does, a continuous-time simulation (households,
+networks) stops proposing further contacts between the pair. `false` by
+default.
 
-A source is asked this because the `Risk` it returns cannot answer it.
-`competing_risk` reads the state, so a block that is certain at one proposal
-may have lifted by the next — a ward that reopens, a campaign that ends, a
-quarantine that expires — and a `Risk` holding plain numbers looks identical in
-both cases. Declare `true` only for a source whose certain block, once in
-force for a pair, is in force for good. A race over an unbounded window needs
-that declaration to terminate; without it a certain block raises
-`ArgumentError` rather than silently dropping transmission that could still
-happen.
+The [`Risk`](@ref) a source returns cannot say this itself. `competing_risk`
+reads the current state, so a block that is certain at one contact may have
+lifted by the next (a ward that reopens, a campaign that ends, a quarantine
+that expires), and a `Risk` holding plain numbers looks the same in both cases.
+Declare `true` only for a source whose certain block, once in force for a pair,
+never lifts. A simulation with no time limit needs that declaration to finish;
+without it, a certain block raises an `ArgumentError` instead of silently
+dropping transmission that could still happen.
 """
 standing_block(source) = false
 standing_block(w::InterventionWrapper) = standing_block(w.intervention)
@@ -387,23 +388,22 @@ standing_block(v::AbstractVaccination) = !supports_waning(effect_mode(v))
 """
     binding_release(component) -> Bool
 
-Whether a `release_time` this component reports on a [`Risk`](@ref) binds its
-later answers: a block it says lapses at `t` is not still in force after `t`,
-and a block it reports as never releasing has not lifted by the next proposal.
-The default is the conservative `false`.
+For intervention authors: whether the `release_time` this intervention reports
+on a [`Risk`](@ref) can be relied on. A block it says ends on day `t` is not
+still in force after `t`, and a block it reports as never ending has not lifted
+by the next contact. The default is `false`, the cautious answer.
 
-The continuous-time race reads this where a pair's kernel has unboundedly many
-contacts left in the window, to tell a block that ends the pair from one it
-must go on proposing against. Without the declaration such a block raises
-rather than silently dropping transmission that could still happen, for the
-reason [`standing_block`](@ref EpiBranch.standing_block) gives: `competing_risk`
-reads the state, so a block that looks certain at one proposal may have lifted
-by the next.
+A continuous-time simulation (households, networks) asks this where a pair
+could go on having contacts indefinitely, to tell a block that ends the pair's
+transmission from one it must keep testing contacts against. Without the
+declaration such a block raises an error instead of silently dropping
+transmission that could still happen, for the reason
+[`standing_block`](@ref EpiBranch.standing_block) gives.
 
-The built-in removals declare it, their stretches being append-only state that
-[`record_removal!`](@ref EpiBranch.record_removal!) only ever adds to. A
-[`Scheduled`](@ref) that can close declares it away again, its window closing
-being exactly a block withdrawn before the release it reported.
+The built-in isolation and quarantine declare it, because the periods
+[`record_removal!`](@ref EpiBranch.record_removal!) records are only ever added
+to. A [`Scheduled`](@ref) intervention that can end withdraws the declaration,
+since ending it lifts a block before the release it reported.
 """
 binding_release(component) = false
 
@@ -550,24 +550,22 @@ end
 """
     INTERVENTION_REMOVAL
 
-The reserved state a [`RouteWindow`](@ref) lists in its `until` to be cut by
-whatever the composed interventions remove the case at.
+List this in a [`RouteWindow`](@ref)'s `until` to let control measures end
+transmission along that route: the route then stops when the model's
+interventions (isolation, quarantine after tracing) remove the case.
 
-Route censoring is otherwise expressed in states the natural history writes, so
-a route ends when the case recovers, dies, or is buried. An intervention
-removal cannot be read off a state key alone, because whether it removes at all
-depends on the intervention: perfect isolation takes a case out of transmission
-entirely, whereas leaky isolation only reduces it and an infectious window
-cannot express that. `infectious_removal_time` is what resolves this, and this
-pseudo-state is how a window opts into it.
+Other states in `until` come from the natural history, so a route ends when
+the case recovers, dies or is buried. Removal by an intervention is different
+because whether it removes the case at all depends on the intervention:
+perfect isolation takes the case out of transmission entirely, whereas leaky
+isolation only reduces it. Listing `INTERVENTION_REMOVAL` asks each
+intervention when it removes the case (through `infectious_removal_time`).
 
-Listing it is what makes a route one that control measures can cut. A community
-route lists it, so isolating a case ends its community transmission; a
-household route does not, so the case goes on infecting the people it lives
-with. That difference is the whole reason routes are separated. The same holds
-for the per-contact risk of a leaky isolation, but not for a vaccine's
-protection, which applies on every route; see [`risk_applies`](@ref
-EpiBranch.risk_applies).
+This is what makes routes worth separating. A community route lists it, so
+isolating a case ends their community transmission; a household route does
+not, so the case goes on infecting the people they live with. The same applies
+to the reduction from leaky isolation, but not to a vaccine's protection, which
+applies on every route; see [`risk_applies`](@ref EpiBranch.risk_applies).
 """
 const INTERVENTION_REMOVAL = :intervention_removal
 
@@ -642,12 +640,12 @@ _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
 """
     supplies_contacts(model) -> Bool
 
-Whether a continuous-time model can name the contacts each case reached, so
-that [`trace_contacts!`](@ref EpiBranch.trace_contacts!) has something to act
-on. True for the structure-driven processes, whose contacts are a node's
-neighbours or a household's members; false by default, and in particular for
-the mass-action pool, which has no pairwise contact structure. A model that
-returns `true` must pass a `contacts` closure to `_sellke_race!`.
+Whether a continuous-time model knows each case's contacts (household members
+or network neighbours), so that contact tracing has people to act on (see
+[`trace_contacts!`](@ref EpiBranch.trace_contacts!)). True for the household
+and network processes; false by default, and for `HomogeneousProcess`, whose
+random mixing has no list of contacts. A model returning `true` must pass a
+`contacts` function to `_sellke_race!`.
 """
 supplies_contacts(::TransmissionModel) = false
 
@@ -1160,14 +1158,11 @@ end
 """
     race_groups(model, kernel)
 
-The races `model` runs its `_sellke_race!` construction over for `kernel`:
-disjoint groups of population ids, each raced independently in its own call
-with its own RNG stream. A model with more than one natural grouping —
-`HouseholdProcess`, over its households — defines this to say how
-many races it needs and which members fall in each, so the choice is the
-model's own rather than inlined in whichever loop calls `_sellke_race!`
-repeatedly. A new kernel type can override the method for a given model to
-pick a different partition outright.
+For model authors: the groups of people a continuous-time model simulates
+separately, as disjoint groups of population ids, each simulated in its own
+call to `_sellke_race!` with its own random number stream. `HouseholdProcess`
+defines this to simulate each household on its own. A new kernel type can
+define a method for a given model to choose a different grouping.
 """
 function race_groups(model::TransmissionModel, kernel)
     throw(
