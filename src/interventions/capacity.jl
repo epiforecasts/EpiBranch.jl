@@ -43,11 +43,11 @@ simulation clock.
 !!! note "Supported models"
     In network and household models, ring and group vaccination can be
     capacity-limited, but ring vaccination then needs an infinite
-    `eligibility_window`. Mass vaccination and
-    interventions written without
+    `eligibility_window`. Mass vaccination and interventions written without
     [`intervention_actions`](@ref EpiBranch.intervention_actions) cannot be
-    capacity-limited there, and contact tracing cannot be capacity-limited in
-    a [`HomogeneousProcess`](@ref).
+    capacity-limited there. A [`HomogeneousProcess`](@ref) does not trace
+    contacts, so ring vaccination cannot act in it. Contact tracing itself
+    cannot be capacity-limited in any model.
 
 For extension authors: a new intervention can be capacity-limited by defining
 [`intervention_actions`](@ref EpiBranch.intervention_actions) and
