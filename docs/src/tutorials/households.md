@@ -216,7 +216,9 @@ therefore the mixing probability of type `i` times the mean of type `j`:
 
 ```@example households
 M = sized.mixing * sized.means'   # (i, j) entry: mixing[i] * means[j]
-# Poisson offspring with the mean the matrix gives
+# Poisson offspring with the mean the matrix gives; the time between infected
+# households has mean 5 days, which R* and the extinction probability do not
+# depend on
 household_bp = BranchingProcess(M, R -> Poisson(R), Exponential(5.0))
 (exact = reproduction_number(sized), multitype = reproduction_number(household_bp))
 ```
