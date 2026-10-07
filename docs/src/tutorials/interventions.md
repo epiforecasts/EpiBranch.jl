@@ -955,7 +955,7 @@ Everything above this point is *configuration* — combining the interventions
 that ship with EpiBranch, which is the common case and needs no Julia beyond
 keyword arguments. This section is *extension*: writing a new intervention in
 Julia. That is developer work, alongside [adding a transmission
-model](extending.md#Adding-a-transmission-model) — see [Extending
+model](@ref "Adding a transmission model") — see [Extending
 EpiBranch](extending.md) for the full picture of the extension points.
 
 Custom interventions are defined as structs subtyping [`AbstractIntervention`](@ref).
