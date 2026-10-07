@@ -205,7 +205,11 @@ the trigger:
 | [`OnSymptomOnset`](@ref) | develops symptoms | symptom onset |
 | [`OnLabConfirmation`](@ref) | has tested positive | isolation |
 | [`OnIsolation`](@ref) | has been isolated | isolation |
-| [`TraceEveryone`](@ref) / [`TraceNobody`](@ref) | always / never | isolation |
+| [`TraceEveryone`](@ref) / [`TraceNobody`](@ref) | has been isolated / never | isolation |
+
+Every trigger except `OnSymptomOnset` waits for the infector's isolation, so
+even under `TraceEveryone` the contacts of an infector who is never isolated
+(asymptomatic, or missed by the test) are not traced.
 
 Under `OnSymptomOnset` the delay keeps its keyword name,
 `isolation_to_trace_delay`, but counts from onset:
