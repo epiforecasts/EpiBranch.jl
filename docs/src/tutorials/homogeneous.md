@@ -165,4 +165,5 @@ an intervention that finds its targets among freshly created contacts,
 rate. When mixing is uneven, for example age bands, spatial patches or
 demographic strata that contact each other at different rates, the same
 Sellke pool takes a contact structure without rewriting the simulation.
-The [Extending](extending.md) guide shows how to write such a model.
+[Age- or group-structured mixing in a closed population](@ref) shows how to
+write such a model.

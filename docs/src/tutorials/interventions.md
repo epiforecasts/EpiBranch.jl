@@ -878,7 +878,7 @@ the whole population rather than the generation's batch, so it raises an
 error rather than silently doing nothing; a custom intervention becomes
 capacity-constrained the same way `RingVaccination` and `MassVaccination`
 are by defining [`capacity_key`](@ref EpiBranch.capacity_key) for itself —
-see [Extending EpiBranch](extending.md).
+see [Capacity limits](@ref).
 
 ## Time-dependent policies
 
