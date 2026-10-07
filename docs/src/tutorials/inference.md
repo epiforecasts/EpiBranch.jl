@@ -414,9 +414,10 @@ isolation and the cap on outbreak size.
 ## Clusters started by more than one case
 
 Some clusters start from more than one introduced case: for example, two
-travellers arriving together. The `seeds` argument of [`ChainSizes`](@ref)
-gives the number of index cases in each cluster. All clusters are assumed to
-have finished, and the exact formula still applies.
+travellers arriving together. Passing `seeds`, the number of index cases in
+each cluster, to `chain_size_distribution` accounts for this (or to
+[`ChainSizes`](@ref) when you call `loglikelihood` directly). All clusters are
+assumed to have finished, and the exact formula still applies.
 
 ```@example inference
 true_R, true_k = 0.6, 0.2
@@ -428,7 +429,6 @@ size_per_index_case = chain_size_distribution(NegBin(true_R, true_k))
 # each cluster's size is the sum of the chains started by each of its index cases
 sizes = [sum(rand(rng, size_per_index_case) for _ in 1:s) for s in seeds]
 
-data = ChainSizes(sizes; seeds = seeds)
 println("Clusters: $(length(sizes)) (one / two index cases: " *
         "$(count(==(1), seeds)) / $(count(==(2), seeds)))")
 
