@@ -10,10 +10,12 @@
 """
     progression_loglik(spec::ModelSpec, individuals) -> Float64
 
-The log-likelihood of the cases' clinical timelines (symptom onset given
-infection, reporting given onset, death or recovery, and so on) under the
-model's `progression`. Use it to estimate natural-history parameters, such as
-a reporting delay, from a line list with infection and event times.
+The log-likelihood of the cases' clinical timelines under the steps of the
+model's `progression` (reporting, hospitalisation, death or recovery, each
+measured from the time it starts from). Use it to estimate the delays in
+those steps, such as a reporting delay, from a line list with event times.
+An incubation period drawn by [`clinical_presentation`](@ref) is not
+included unless onset is itself a step of the progression.
 
 `individuals` is a vector of [`Individual`](@ref) or a [`SimulationState`](@ref)
 from [`simulate`](@ref), or a hand-built equivalent holding the times each
