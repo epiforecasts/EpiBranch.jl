@@ -204,7 +204,7 @@ cs
 
 [`generation_R`](@ref) divides the number of cases in each generation by the
 number in the generation before, a rough within-simulation measure of how
-transmission falls as the measures take effect. It is not the time-varying
+transmission changes as the measures take effect. It is not the time-varying
 reproduction number Rt estimated from incidence data.
 
 ```@example gettingstarted
@@ -212,8 +212,10 @@ r_df = generation_R(outbreak)
 r_df
 ```
 
-With few cases per generation and strong superspreading the ratio jumps about,
-but in a contained outbreak it settles below 1 in the later generations.
+This outbreak escaped control and reached the case cap, and its ratio stays
+above 1. In an outbreak the measures contain, the ratio falls below 1 in the
+later generations. With few cases per generation and strong superspreading it
+also jumps about from one generation to the next.
 
 ## Exact results
 
