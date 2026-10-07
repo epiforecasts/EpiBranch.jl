@@ -1388,10 +1388,11 @@ moved, and nothing reports it.
 
 A [`PairKernel`](@ref)'s `calendar` multiplies its contact-interval hazard by a
 function of calendar time. [`Steps`](@ref) is the piecewise-constant schedule
-the package provides; any other schedule is a type with a
-[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) method returning
-the non-negative multiplier at a calendar time. How simulation and the
-likelihood integrate it is set by
+the package provides, and [`Seasonal`](@ref) the smooth one; any other
+schedule is a type with a [`calendar_multiplier`](@ref
+EpiBranch.calendar_multiplier) method returning the non-negative multiplier at
+a calendar time, or a plain callable `t -> multiplier`, read as smooth. How
+simulation and the likelihood integrate a type's own schedule is set by
 [`calendar_shape`](@ref EpiBranch.calendar_shape):
 
 - **Piecewise constant**, the default: also define
@@ -1405,19 +1406,23 @@ likelihood integrate it is set by
   for its target log-survival.
 
 ```julia
-struct Seasonal{T <: Real}
+struct TwoPeakSeasonal{T <: Real}
     amplitude::T
+    first_peak::Float64
 end
-EpiBranch.calendar_multiplier(s::Seasonal, t) = 1 + s.amplitude * sin(2π * t / 365)
-EpiBranch.calendar_shape(::Seasonal) = EpiBranch.SmoothCalendar()
+function EpiBranch.calendar_multiplier(s::TwoPeakSeasonal, t)
+    return 1 + s.amplitude * cos(4π * (t - s.first_peak) / 365)
+end
+EpiBranch.calendar_shape(::TwoPeakSeasonal) = EpiBranch.SmoothCalendar()
 
-kernel = PairKernel(context -> Exponential(4.0); calendar = Seasonal(0.5))
+kernel = PairKernel(context -> Exponential(4.0); calendar = TwoPeakSeasonal(0.5, 15.0))
 ```
 
 Simulation and the likelihood read a schedule only through these methods, so
 both compute the same hazard. Parameterise the schedule's fields by type, as
-`Seasonal{T}` does, to differentiate the likelihood through them. A worked
-seasonal example is in [Covariates and time-varying transmission](covariate-transmission.md).
+`Seasonal`'s own fields are, to differentiate the likelihood through them. A
+worked seasonal example is in [Covariates and time-varying
+transmission](covariate-transmission.md).
 
 ## Adding a transmission model
 
