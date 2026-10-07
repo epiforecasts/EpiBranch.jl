@@ -61,6 +61,7 @@ by its infection time instead, as in [`weekly_incidence`](@ref).
 # Examples
 
 ```julia
+using Statistics
 model = ModelSpec(
     BranchingProcess(NegBin(1.2, 0.5), Gamma(2.0, 3.0));
     attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
