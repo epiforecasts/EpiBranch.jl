@@ -190,9 +190,9 @@ What an intervention can rely on:
 - Interventions apply in the order of `interventions = [...]`. For
   `apply_post_transmission!` and `competing_risk`, each sees what earlier
   interventions wrote in the same generation.
-- On the continuous-time models a case is traced when its infection becomes
-  final, before it proposes any infection of its own, so a risk can read what
-  `trace_contacts!` wrote on a contact. Ring and group vaccination actions are
+- On the continuous-time models a case's contacts are traced when the case's
+  infection becomes final, before it proposes any infection of its own, so a
+  risk can read what `trace_contacts!` wrote on a contact. Ring and group vaccination actions are
   found after tracing and then pass through their scheduling and capacity
   limits.
 
