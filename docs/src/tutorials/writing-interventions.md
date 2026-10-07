@@ -57,7 +57,7 @@ many people each case infects](@ref).
 | `resolve_individual!(iv, individual, state)` | Once per active case at the start of each generation, before its contacts are drawn | The infector for the coming step | `nothing`; sets values in `individual.state` |
 | `apply_post_transmission!(iv, state, new_contacts)` | Once per generation, after every active case's contacts for that generation exist | A `Vector{Individual}` of the new contacts | `nothing`; sets values on any of the contacts |
 | `competing_risk(iv, parent, contact, state)` | Per infector–contact pair: on branching processes when infection is decided, after `apply_post_transmission!`; on continuous-time models as each infection is proposed | The infector and one contact | `nothing`, one [`Risk`](@ref), or a tuple of `Risk`s for an intervention that blocks transmission in more than one way |
-| `keep_active(iv, state, targets, is_new)` | Once per generation after infection is decided, while the next generation's active people are chosen | This generation's contacts and an `is_new` flag for each | The ids of contacts that should keep generating contacts in the next generation (default: none) |
+| `keep_active(iv, state, targets, is_new)` | On branching processes, once per generation after infection is decided, while the next generation's active people are chosen; on network and household models, during a tracing walk, with `is_new` all `false` | This generation's contacts and an `is_new` flag for each | The ids of contacts that should keep generating contacts in the next generation (default: none) |
 | `trace_contacts!(iv, state, infector, contacts[, not_before])` | Continuous-time models only: once per case, when its infection time is final | The case, the contacts it reached whose infection is not yet final, and, from a model whose contacts can arise after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing`; sets values on the contacts |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to collect a case's contacts at all | Nothing | `true` if this intervention has a `trace_contacts!` method (default `false`) |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious period is closed | A person | The time this intervention removes them from onward transmission (default `Inf`) |
@@ -100,7 +100,7 @@ on that, as can the end of the infectious period.
 | `on_infection_settled!` | not called | yes | not called |
 | `trace_contacts!` | not called | yes | no contacts to trace |
 | `apply_post_transmission!` | yes | not called | not called |
-| `keep_active` | yes | not called | not called |
+| `keep_active` | yes | when tracing: chooses which traced contacts a ring grows from | not called |
 
 In practice:
 
