@@ -292,9 +292,11 @@ method fails silently. Three checks:
 
 A custom intervention combines with the built-in ones. Here the border closure
 from [Extending EpiBranch](@ref "A custom intervention: closing a border") is added
-to isolation of symptomatic cases, with the incubation period
+to isolation of symptomatic cases. Each case infects a number of people drawn
+from `NegBin(2.5, 0.16)` (mean R = 2.5, dispersion k = 0.16), the generation
+time is `Exponential(5.0)` (mean 5 days), the incubation period is
 `LogNormal(1.5, 0.5)` (mean and standard deviation of the log, in days) and
-isolation 2 days after onset on average:
+isolation starts 2 days after onset on average:
 
 ```@example interventions_dev
 using EpiBranch
