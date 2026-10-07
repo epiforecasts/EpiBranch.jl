@@ -458,10 +458,10 @@ to set up its starting population. The helpers listed after it create the
 
 ```@docs
 EpiBranch.draw_offspring
-EpiBranch.generate_offspring
-EpiBranch.contacts_of
-EpiBranch.collect_exposures
-EpiBranch.gather_by_target
+generate_offspring
+contacts_of
+collect_exposures
+gather_by_target
 EpiBranch.model_generation_time
 EpiBranch.transmission_risks
 EpiBranch.race_groups
@@ -504,7 +504,7 @@ EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.risk_depends_on_infector
 EpiBranch.standing_block
-EpiBranch.intervention_time
+intervention_time
 EpiBranch.reset!
 EpiBranch.abort_infection!
 EpiBranch.infection_aborted_time
@@ -515,7 +515,7 @@ clear_isolated!
 #### Isolation and contact tracing rules
 
 ```@docs
-EpiBranch.is_eligible_for_isolation
+is_eligible_for_isolation
 EpiBranch.records_isolation
 EpiBranch.is_eligible
 EpiBranch.trigger_time
