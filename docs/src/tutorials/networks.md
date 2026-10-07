@@ -18,7 +18,8 @@ The model works as follows:
   period to a contact with that person that would transmit if nothing
   intervened.
 - Transmission happens only if that contact falls inside the infector's
-  infectious period. If the infector recovers or is isolated first, the
+  infectious period. If the infector has recovered by then, or is in
+  isolation at the time, the
   contact does not infect.
 
 The contact interval is a waiting time for one pair of people. It is not the
@@ -159,7 +160,7 @@ characteristics attach in the same way whatever the source of the graph.
 
 | Intervention | What it does on a network |
 |:-- | :-- |
-| Isolation of cases: [`Isolation`](@ref), or an `:isolated` transition | Ends the case's infectious period at isolation ([below](#Isolation-curtails-onward-spread)). |
+| Isolation of cases: [`Isolation`](@ref), or an `:isolated` transition | Stops the case transmitting while they are isolated. An `:isolated` transition, or `Isolation(duration = Inf)`, ends their infectious period; with a finite `duration` a case still infectious when released transmits again ([below](#Isolation-curtails-onward-spread)). |
 | Partial protection: leaky isolation, a vaccine's efficacy | Blocks a fraction of the infecting contacts. The pair keeps meeting, and blocking a fraction `p` of contacts lowers the rate of infecting contacts along that link by the factor `1 - p`. |
 | Individual differences in susceptibility or infectiousness | Multiply the rate of infecting contacts along each of that person's links by the person's factor. |
 | [`ContactTracing`](@ref) | Traces a case's contacts in the network and quarantines them ([below](#Contact-tracing-on-a-network)). |
@@ -292,14 +293,17 @@ contacts. The same person can be named by several cases, and in a clustered
 network tracing often finds people who have already been found.
 
 [`ContactTracing`](@ref) works on a network as it does elsewhere. A traced
-contact is quarantined when they are traced. If they are infected, or become
-infected later, they stop transmitting from that time.
+contact is quarantined when they are traced, for the `duration` given to
+the `Quarantine` action. If they are infected, or become infected later, they
+do not transmit while in quarantine.
 
 In the example below, cases develop symptoms after an incubation period with a
 median of about 3 days (`LogNormal(1.0, 0.3)`) and isolate after a further
-delay with a mean of 2 days. With probability `p`, each of an isolated case's
+delay with a mean of 2 days. Isolation lasts 7 days (`duration = 7.0`), and every
+case is still isolated when their 7-day infectious period ends. With probability `p`, each of an isolated case's
 contacts is traced and quarantined, after a delay with a mean of 1 day from
-the case's isolation. The network is a small world of 400 people with 6
+the case's isolation, and stays in quarantine for good
+(`Quarantine(duration = Inf)`). The network is a small world of 400 people with 6
 contacts each. With a mean contact interval of 16 days and a 7-day infectious
 period, each contact is infected with probability 1 - exp(-7/16), about a
 third. Each case then infects around two people if nothing intervenes.
@@ -308,7 +312,7 @@ third. Each case then infects around two people if nothing intervenes.
 clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3),
     prob_asymptomatic = 0.0)
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 1.0,
-    isolation_duration = 7.0)
+    duration = 7.0)
 
 ws = watts_strogatz(400, 6, 0.1; rng = StableRNG(1))
 
@@ -330,7 +334,8 @@ no_interventions = AbstractIntervention[]   # an empty list of interventions
 println("no control:               ", mean_final_size(no_interventions))
 println("isolation:                ", mean_final_size([iso]))
 for p in (0.5, 1.0)
-    ct = ContactTracing(probability = p, isolation_to_trace_delay = Exponential(1.0))
+    ct = ContactTracing(probability = p, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = Inf))
     println("isolation + $(round(Int, 100 * p))% tracing:  ", mean_final_size([iso, ct]))
 end
 ```
@@ -359,7 +364,10 @@ transmission on this route?
   For a household route this is self-isolation at home. The trailing comma is
   needed to make a list of one item.
 - `until = (:recovered, EpiBranch.INTERVENTION_REMOVAL)`: yes. Transmission
-  ends at recovery or isolation, whichever comes first.
+  on this route stops while the case is isolated or quarantined, and ends at
+  recovery. With `duration = Inf` isolation ends it for good; with a finite
+  `duration`, a case who is still infectious when released transmits on this
+  route again.
 
 The population below has 150 households of four, in which everyone is in
 contact with everyone else, plus a sparser random network of community
@@ -395,7 +403,7 @@ hh_adj, comm_adj = households_and_community(150, 4, StableRNG(99))
 clinical2 = clinical_presentation(incubation_period = LogNormal(0.5, 0.3),
     prob_asymptomatic = 0.0)
 iso2 = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 1.0,
-    isolation_duration = 7.0)
+    duration = Inf)
 
 stopped_by_isolation = (:recovered, EpiBranch.INTERVENTION_REMOVAL)
 not_stopped_by_isolation = (:recovered,)
@@ -430,7 +438,8 @@ println("self-isolation at home:                     ",
 The household contact interval is `Weibull(1.5, 4.0)` (shape 1.5 and scale 4
 days, a mean of about 3.6 days). The community contact interval has a mean of
 30 days, which makes each community link much less likely to transmit than a
-household one.
+household one. Isolation lasts for the rest of the infectious period
+(`duration = Inf`).
 
 Self-isolation at home prevents fewer cases than isolation away from home,
 because household transmission continues. A model with a single infectious
@@ -457,8 +466,9 @@ elsewhere.
 # Slower isolation and more community contact than above, so that tracing has
 # transmission left to prevent.
 iso3 = Isolation(onset_to_isolation_delay = Exponential(4.0), test_sensitivity = 1.0,
-    isolation_duration = 7.0)
-ct3 = ContactTracing(probability = 0.9, isolation_to_trace_delay = Exponential(0.5))
+    duration = Inf)
+ct3 = ContactTracing(probability = 0.9, isolation_to_trace_delay = Exponential(0.5),
+    action = Quarantine(duration = Inf))
 traced_routes(community_traceable) = [
     RouteWindow(:household; until = stopped_by_isolation,
         kernel = Weibull(1.5, 4.0), reach = hh_adj),
@@ -468,10 +478,14 @@ traced_routes(community_traceable) = [
 
 println("isolation only:                               ",
     mean_size(traced_routes(1.0), [iso3]))
-for p in (0.0, 0.5, 1.0)
-    println("isolation + tracing, community traceable $p: ",
-        mean_size(traced_routes(p), [iso3, ct3]))
+traced = [mean_size(traced_routes(p), [iso3, ct3]) for p in (0.0, 0.5, 1.0)]
+for (p, size) in zip((0.0, 0.5, 1.0), traced)
+    println("isolation + tracing, community traceable $p: ", size)
 end
+issorted(traced; rev = true) && last(traced) < first(traced) / 2 ||  # hide
+    error("the paragraph below reads these numbers as falling with " *  # hide
+        "traceability, and they no longer do: $traced")  # hide
+nothing  # hide
 ```
 
 Tracing household contacts alone already helps. The more community contacts a
@@ -513,7 +527,8 @@ A `NetworkProcess` model can be fitted to data as well as simulated.
 - the contact network;
 - who was infected and when;
 - for each case, when their infectious period started and when it ended, by
-  recovery or isolation.
+  recovery or isolation, and any stretch of isolation or quarantine they were
+  released from before it ended.
 
 You do not need to know who infected whom.
 
@@ -532,9 +547,10 @@ values it was simulated with.
 
 [`network_infections`](@ref) extracts these data from a simulated outbreak,
 and [`pairwise_surv_loglik`](@ref) evaluates the log-likelihood of a given
-contact-interval distribution. If the model's interventions isolate a case,
-the data record that case's infectious period as ending at isolation. Their
-contacts are then at risk from them only until isolation.
+contact-interval distribution. If the model's interventions isolate or
+quarantine a case, the data record when that happened, and their contacts
+are not at risk from them during it. A case isolated for good counts as infectious only
+up to isolation.
 
 There is no one-call fitting function. Here we evaluate the log-likelihood at
 a grid of mean contact intervals and take the best one, the maximum likelihood

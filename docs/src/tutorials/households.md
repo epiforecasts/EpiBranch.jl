@@ -21,7 +21,8 @@ The model works as follows:
   for one pair; the generation time and serial interval also depend on the
   latent and infectious periods.
 - Transmission happens only if that contact falls inside the infector's
-  infectious period. If the infector recovers or is isolated first, the
+  infectious period. If the infector has recovered by then, or is in
+  isolation at the time, the
   contact does not infect.
 - A simulation starts each household from one index case. Infection between
   households is not simulated person by person: it is either summarised by R\*
@@ -33,7 +34,8 @@ The model works as follows:
     case therefore stops all of their transmission, including to the people
     they live with. Read isolation and quarantine on this model as removal
     from the household, such as hospitalisation or a stay in an isolation
-    facility. Self-isolation at home, where household transmission continues,
+    facility, for as long as the `duration` lasts. A case released while still
+    infectious goes back to infecting their housemates. Self-isolation at home, where household transmission continues,
     needs household and community contact as separate routes; see
     [Several routes at once](@ref) on the network page.
 
@@ -283,8 +285,8 @@ fast households infect more others.
 
 ### Interventions and R\*
 
-Interventions apply here too. Isolating a case ends their infectious period
-early. That reduces both the housemates they infect and their community
+Interventions apply here too. Isolating a case for good
+(`duration = Inf`) ends their infectious period early. That reduces both the housemates they infect and their community
 contacts, and lowers R\*. Here every case isolates after a delay with a mean
 of 1 day from symptom onset, which comes 1 day after infection. `AllCases()`
 makes every case eligible for isolation; the default isolates only cases with
@@ -295,14 +297,22 @@ isolated = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
     progression = [Transition(:onset; from = :infection, delay = 1.0),
         Transition(:recovered; from = :infection, delay = 6.0, terminal = true)],
     interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0),
-        eligibility = AllCases(), isolation_duration = 7.0)])
+        eligibility = AllCases(), duration = Inf)])
 (without_isolation = reproduction_number(offspring),
     with_isolation = reproduction_number(household_offspring(isolated;
         global_rate = 0.1, rng = StableRNG(7))))
 ```
 
-Isolation lowers R\*, though with these delays not below 1. As the box at the
-top of the page says, isolation here also stops transmission to housemates.
+Isolation brings R\* below 1. As the box at the top of the page says,
+isolation here also stops transmission to housemates.
+
+!!! warning "R\* with a finite isolation duration"
+    `household_offspring` counts each case's time in the community up to
+    recovery, or up to an isolation that never ends. It does not subtract the
+    time spent in an isolation with a finite `duration`, so R\* comes out too
+    high, even when isolation outlasts the infectious period. When isolation
+    lasts at least as long as cases stay infectious, use `duration = Inf` to
+    compute R\*.
 
 [`ContactTracing`](@ref) (see [Interventions](interventions.md)) also works on
 a household model, where a case's contacts are their housemates. Each
