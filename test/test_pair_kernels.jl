@@ -299,19 +299,19 @@ seasonal_integral(s::Seasonal, t) =
     @test_throws ArgumentError Seasonal(amplitude = 1.5, peak_day = 30.0)
     @test_throws ArgumentError Seasonal(amplitude = -0.1, peak_day = 30.0)
     s = Seasonal(amplitude = 0.6, peak_day = 30.0)
-    @test s.period == 365.0
+    @test s.period == 365.2425
     @test EpiBranch.calendar_shape(s) === EpiBranch.SmoothCalendar()
     @test EpiBranch.calendar_multiplier(s, 30.0) ≈ 1.6
-    @test EpiBranch.calendar_multiplier(s, 30.0 + 365.0 / 2) ≈ 0.4
+    @test EpiBranch.calendar_multiplier(s, 30.0 + 365.2425 / 2) ≈ 0.4
 
     kernel = PairKernel(context -> Exponential(4.0); calendar = s)
     interval = EpiBranch.pair_kernel(kernel, 1, 2, 0.0, 100.0)
     @test EpiBranch.cumhazard(interval, 2.0) ≈
         0.25 * (seasonal_integral(s, 102.0) - seasonal_integral(s, 100.0))
-    @test EpiBranch.cumhazard(interval, 2.0) ≈ 0.6024661699608378
+    @test EpiBranch.cumhazard(interval, 2.0) ≈ 0.6026949328797594
 
     # A plain callable reproduces the same hazard, read as a smooth schedule.
-    seasonal(t) = 1 + 0.6 * cos(2π * (t - 30.0) / 365.0)
+    seasonal(t) = 1 + 0.6 * cos(2π * (t - 30.0) / 365.2425)
     @test EpiBranch.calendar_shape(seasonal) === EpiBranch.SmoothCalendar()
     plain_kernel = PairKernel(context -> Exponential(4.0); calendar = seasonal)
     plain_interval = EpiBranch.pair_kernel(plain_kernel, 1, 2, 0.0, 100.0)

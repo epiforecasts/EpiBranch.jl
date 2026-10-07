@@ -132,7 +132,7 @@ callable `t -> multiplier` is read as a smooth schedule too, with no
 calendar_shape(schedule) = PiecewiseConstantCalendar()
 
 """
-    Seasonal(; amplitude, peak_day, period = 365.0)
+    Seasonal(; amplitude, peak_day, period = 365.2425)
 
 A smoothly oscillating multiplier on calendar time: `1 + amplitude *
 cos(2π * (t - peak_day) / period)`. `amplitude` must be between 0 and 1, which
@@ -157,7 +157,7 @@ struct Seasonal{T <: Real}
         return new{T}(amplitude, peak_day, period)
     end
 end
-function Seasonal(; amplitude, peak_day, period = 365.0)
+function Seasonal(; amplitude, peak_day, period = 365.2425)
     T = promote_type(typeof(amplitude), typeof(peak_day), Float64)
     return Seasonal{T}(T(amplitude), T(peak_day), Float64(period))
 end

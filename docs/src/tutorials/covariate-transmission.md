@@ -176,8 +176,8 @@ of the multiplier times the profile's constant rate of 0.25 per day:
 
 ```@example calendar
 seasonal_interval = EpiBranch.pair_kernel(seasonal_kernel, 1, 2, 0.0, 100.0)
-exact = 0.25 * (2 + 0.6 * 365 / 2π *
-    (sin(2π * (102 - 30) / 365) - sin(2π * (100 - 30) / 365)))
+exact = 0.25 * (2 + 0.6 * 365.2425 / 2π *
+    (sin(2π * (102 - 30) / 365.2425) - sin(2π * (100 - 30) / 365.2425)))
 (EpiBranch.cumhazard(seasonal_interval, 2.0), exact)
 ```
 
@@ -194,7 +194,7 @@ A plain callable `t -> multiplier` is read as a smooth schedule too, for
 seasonal forcing of any other shape:
 
 ```@example calendar
-seasonal(t) = 1 + 0.6 * cos(2π * (t - 30) / 365)
+seasonal(t) = 1 + 0.6 * cos(2π * (t - 30) / 365.2425)
 plain_kernel = PairKernel(context -> Exponential(4.0); calendar = seasonal)
 EpiBranch.cumhazard(EpiBranch.pair_kernel(plain_kernel, 1, 2, 0.0, 100.0), 2.0) ==
     EpiBranch.cumhazard(seasonal_interval, 2.0)
