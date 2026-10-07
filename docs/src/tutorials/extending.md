@@ -2058,9 +2058,7 @@ delay callback; `Reporting` and `Hospitalisation` set their flags afterwards.
 To let [`progression_loglik`](@ref) evaluate `FollowupVisit`, add a
 [`EpiBranch.transition_loglik`](@ref) method reading back the same keys:
 the delay's log-density if the event occurred, the gate's log-probability
-either way, and `0.0` when the starting event was never reached — see the
-[`AntiviralTreatment` example](@ref "Writing a non-terminal custom transition")
-in the transitions tutorial.
+either way, and `0.0` when the starting event was never reached.
 
 Two cases need more than reading the keys back, and
 [`EpiBranch.transition_term`](@ref) handles both: call it for the gate rather
