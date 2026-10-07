@@ -1704,8 +1704,7 @@ so refusal clusters in the same unit [`GroupVaccination`](@ref) vaccinates.
 List the entry that sets `group_key` before this one; a person without it
 raises an error.
 
-Use the value as a vaccination's `coverage` (or `MassVaccination`'s
-`eligibility_time`) with a function such as
+Use the value as a vaccination's `coverage` with a function such as
 `coverage = (rng, ind) -> ind.state[:vaccine_acceptance]`.
 
 `propensity` is a number, a distribution or a function
