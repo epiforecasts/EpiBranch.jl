@@ -9,9 +9,9 @@ Distributions.jl.
 
 !!! warning
     `NegativeBinomial(r, p)` from Distributions.jl takes a number of
-    successes and a success probability, not a mean and dispersion, so
-    `NegativeBinomial(R, k)` gives a different distribution without any
-    error. Use `NegBin(R, k)`.
+    successes and a success probability, not a mean and dispersion.
+    `NegativeBinomial(R, k)` therefore gives a different distribution,
+    without any error when `k` is at most 1. Use `NegBin(R, k)`.
 
 # Examples
 ```julia
