@@ -195,13 +195,14 @@ ContactTracing(
 
 ### What triggers contact tracing
 
-By default, tracing starts when the infector is isolated, which only happens
-to symptomatic infectors, and the delay counts from the isolation. Real
+By default, a contact is traced once their infector has developed symptoms
+and been isolated, and the delay counts from the isolation. Real
 programmes start tracing on different events. The `eligibility` keyword sets
 the trigger:
 
 | Trigger | Traces once the infector… | Delay counts from |
 |---|---|---|
+| [`SymptomaticParent`](@ref) (default) | has developed symptoms and been isolated | isolation |
 | [`OnSymptomOnset`](@ref) | develops symptoms | symptom onset |
 | [`OnLabConfirmation`](@ref) | has tested positive | isolation |
 | [`OnIsolation`](@ref) | has been isolated | isolation |
@@ -209,7 +210,7 @@ the trigger:
 
 Every trigger except `OnSymptomOnset` waits for the infector's isolation, so
 even under `TraceEveryone` the contacts of an infector who is never isolated
-(asymptomatic, or missed by the test) are never quarantined or isolated
+(asymptomatic and not traced, or missed by the test) are never quarantined or isolated
 through tracing. [`is_traced`](@ref) still marks them as traced.
 
 Under `OnSymptomOnset` the delay keeps its keyword name,
