@@ -8,8 +8,9 @@ feature in a few lines of Julia, in your own script, without editing the
 package.
 
 If what you need is already built in (isolation, contact tracing, ring or mass
-vaccination), start with [Interventions](interventions.md) instead: using the
-built-in measures needs nothing beyond keyword arguments.
+vaccination), start with [Isolation and contact tracing](interventions.md) or
+[Vaccination](vaccination.md) instead: using the built-in measures needs
+nothing beyond keyword arguments.
 
 The recipes below assume a little Julia: writing a function, and the
 `(rng, ind) -> ...` form of an anonymous function. [Julia for R
