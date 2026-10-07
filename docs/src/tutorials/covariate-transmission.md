@@ -99,7 +99,7 @@ layout = compile_contact_pairs(network_data)
 pairwise_surv_loglik(kernel, network_data, layout)
 ```
 
-The result matches the log-likelihood above. Gradients of the likelihood with
+The result matches the network log-likelihood printed in the first example. Gradients of the likelihood with
 respect to the parameters and the infection times are available for
 gradient-based fitting, such as Hamiltonian Monte Carlo in Turing, provided the
 contact interval distribution supports them.
