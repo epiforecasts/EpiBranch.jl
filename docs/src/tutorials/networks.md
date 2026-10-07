@@ -43,7 +43,9 @@ The network models live in the companion `EpiNetwork` package.
 `NetworkProcess` takes the contact network and the contact-interval
 distribution. The network is a list with one entry per person, numbered from
 1: entry `i` holds the numbers of the people person `i` is in contact with.
-Every link shares the same contact-interval distribution.
+In the examples on this page every link shares the same contact-interval
+distribution; it can also depend on who is in contact with whom (see
+[Fitting on a network](#Fitting-on-a-network)).
 
 The disease timeline is a `progression` of [`Transition`](@ref)s, attached
 with a [`ModelSpec`](@ref):
