@@ -151,6 +151,11 @@ Who exposed whom in a simulated outbreak: a DataFrame with one row per
 exposure of a person by an infectious case, whether or not it led to
 infection. Filter on `infected` to keep only the transmission tree.
 
+Only the generation-based models, such as [`BranchingProcess`](@ref), record
+exposures. The continuous-time models (`HomogeneousProcess`,
+`NetworkProcess`, `RoutedNetwork`, `HouseholdProcess`) return an empty table;
+for them, who infected whom is the `parent_id` column of [`linelist`](@ref).
+
 Columns: `from` (`id` of the case), `to` (`id` of the person exposed),
 `infected` (whether that exposure infected them), `generation` (generation of
 the person exposed), `infection_time` (day of exposure, which is the day of

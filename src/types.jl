@@ -119,7 +119,8 @@ but not infected.
   transmission once infected (each of their contacts is infected only with
   this probability).
 - `secondary_case_ids`: the `id`s of the contacts they exposed, infected or
-  not.
+  not. Only the generation-based models fill it; the continuous-time models
+  below leave it empty.
 - `state`: everything else recorded about them, such as symptom onset
   (`:onset_time`), `:asymptomatic`, `:age`, `:sex`, whether they were
   `:isolated`, `:traced`, `:quarantined` or `:vaccinated`, `:test_positive`,
