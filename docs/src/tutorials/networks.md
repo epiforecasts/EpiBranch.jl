@@ -532,7 +532,9 @@ A `NetworkProcess` model can be fitted to data as well as simulated.
 - who was infected and when;
 - for each case, when their infectious period started and when it ended, by
   recovery or isolation, and any stretch of isolation or quarantine they were
-  released from before it ended.
+  released from before it ended;
+- which cases started the outbreak (the index cases), unless you fit a
+  community hazard.
 
 You do not need to know who infected whom.
 
