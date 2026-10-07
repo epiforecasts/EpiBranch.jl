@@ -23,7 +23,7 @@ people, give a function that takes the infector and the susceptible and returns
 a distribution, `(infector, susceptible) -> Distribution`, as the [households
 tutorial](@ref "The pairwise likelihood") shows. For anything more,
 [`PairKernel`](@ref) describes the rule for each pair (the transmission kernel,
-called the kernel below): a contact interval that depends on when the infector
+called the rule below): a contact interval that depends on when the infector
 was infected, a contact rate that changes on the calendar, and characteristics
 or events recorded on each person during the outbreak.
 
@@ -107,13 +107,13 @@ contact interval distribution supports them.
 ## A policy starting on a calendar day
 
 To model a policy that changes transmission from a fixed date, such as a
-lockdown, give the kernel a `calendar`. Transmission is multiplied by a factor
+lockdown, give the rule a `calendar`. Transmission is multiplied by a factor
 that depends on the calendar day. [`Steps`](@ref) gives a factor that changes
 at given days: `Steps([3.0], [0.4, 0.1])` is 0.4 before day 3 and 0.1 from
 day 3, one more value than there are change days.
 
 Suppose the rate of infectious contact is 0.4 per day before day 3 and 0.1
-per day afterwards, a 75% reduction. The kernel's own distribution,
+per day afterwards, a 75% reduction. The rule's own distribution,
 `Exponential(1.0)`, has a constant rate of 1 per day, and the calendar factor
 sets the actual rate:
 
@@ -164,7 +164,7 @@ PairKernel(context -> edges[context.infector][findfirst(==(context.susceptible),
 
 To give each pair its own policy date, for example the lockdown date in the
 susceptible's region, return both the distribution and the calendar from the
-function, as `(profile = ..., calendar = ...)`. This replaces the kernel's
+function, as `(profile = ..., calendar = ...)`. This replaces the rule's
 shared `calendar` for that pair. Here the policy day is read from the
 susceptible's covariate. The contact interval is a Weibull distribution
 (`Weibull(shape, scale)`) whose scale grows with the infector's day of
@@ -291,7 +291,7 @@ contact interval of 4 days against 1.5, but it checks only whether a
 vaccination date exists, so it is not a model of vaccine protection to fit:
 the [checklist](@ref "Checklist for time-varying transmission") below explains
 why. [`EpiBranch.watched_records`](@ref) shows what a
-kernel watches:
+rule watches:
 
 ```@example stateful
 dosed_kernel = PairKernel(
@@ -306,7 +306,7 @@ dosed_kernel = PairKernel(
 EpiBranch.watched_records(dosed_kernel)
 ```
 
-This kernel scales each person's contact rate by a fixed value looked up by
+This rule scales each person's contact rate by a fixed value looked up by
 their number, `ind.id`, and reads nothing that can change:
 
 ```@example stateful
@@ -333,9 +333,9 @@ pairwise_surv_loglik(recorded, data, layout)
 For observed data, build `PairKernel(contact_law; state = records)` directly
 from a list of measured characteristics, one record per person. When the
 characteristics are unobserved or depend on parameters being fitted, rebuild
-the kernel from the current records at each likelihood evaluation; the
+the rule from the current records at each likelihood evaluation; the
 prepared contact structure (`layout`) can be reused. The likelihood throws an
-error for a kernel with a `state` function whose records have not been
+error for a rule with a `state` function whose records have not been
 extracted, unless the infection data hold the times the function reads, as in
 the next section.
 
@@ -377,7 +377,7 @@ loglikelihood(onset_data, onset_model.process)
 
 When onsets are not observed, they are estimated alongside the infection
 times. Rebuild the infection data with the current onsets at each evaluation;
-the kernel stays the same.
+the rule stays the same.
 
 ## A policy triggered during an outbreak
 
@@ -396,7 +396,7 @@ This needs a small custom intervention (see
    return nothing` reads "stop here unless this is the second case". For the
    second case, it records the policy start, its infection time plus half a
    day, on every person as `:policy_time`.
-3. The kernel reads `:policy_time` from the susceptible's record. Before any
+3. The rule reads `:policy_time` from the susceptible's record. Before any
    policy date is set it returns a rate of 0.4 per day; afterwards it returns a
    calendar that switches from 0.4 to 0.1 on the policy date.
 
@@ -427,7 +427,7 @@ pairwise_surv_loglik(policy_records, policy_data)
 Transmission to each susceptible follows the rate in force at each time, so a
 policy that starts partway through someone's infectious period changes only the
 rest of that period. A run in which no policy is ever triggered follows the
-same distribution as the kernel without the policy.
+same distribution as the rule without the policy.
 
 In a household model, a policy can depend on cases in other households, and a
 vaccine dose limit can be shared between households, as a single stock or as
