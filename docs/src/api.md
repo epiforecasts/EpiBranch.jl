@@ -248,6 +248,7 @@ terminal_target
 exclusive_probabilities
 EpiBranch.resolve_transitions!
 EpiBranch.transition_time
+EpiBranch.censor_after_outcome!
 progression_loglik
 EpiBranch.transition_loglik
 EpiBranch.transition_term

@@ -68,6 +68,7 @@ public transmission_time
 public transition_time
 public resolve_transitions!
 public transition_loglik, transition_term
+public censor_after_outcome!
 
 # Apply the model's observation to a finished state (the simulation side of the
 # observation protocol; `observe` is the exported analytical side). The engine

@@ -59,6 +59,33 @@ println("reported = ", ind.state[:reported], " at ", ind.state[:reporting_time])
 println("outcome = ", ind.state[:outcome], " at ", ind.state[:outcome_time])
 ```
 
+`Reporting` and `Hospitalisation` draw their own time independently of
+`Death` and `Recovery`, so a draw can fall after the case's outcome — a
+report or an admission cannot happen to a person who has already died or
+recovered. The engine resets such an event to "did not occur"
+(`:reported`/`:admitted` back to `false`, their time back to `Inf`): see
+[`censor_after_outcome!`](@ref EpiBranch.censor_after_outcome!).
+
+Where admission is meant to change the outcome rather than sit alongside
+it, chain `Death`/`Recovery` onto `Hospitalisation` with `from =
+:admission_time` instead, so the outcome delay is measured from admission:
+
+```@example transitions
+progression_post_admission = [
+    Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.2),
+    Death(delay = LogNormal(1.5, 0.4), probability = 0.1, from = :admission_time),
+    Recovery(delay = LogNormal(2.0, 0.4)),
+]
+model = ModelSpec(
+    BranchingProcess(Poisson(2.0), Exponential(5.0));
+    progression = progression_post_admission, attributes = clinical
+)
+state = simulate(model; max_cases = 200, rng = StableRNG(42))
+```
+
+A case not admitted still recovers from onset as before; `Death`'s own
+anchor is simply unreached for it, so it never enters that race.
+
 The check that decides which cases see clinical transitions is
 `isnan(:onset_time)`. Cases without a recorded onset are skipped;
 they were never clinically observed. For diseases with asymptomatic
@@ -493,6 +520,20 @@ end
 [`exclusive_probabilities`](@ref), whose siblings share one draw, and for a
 case whose infection was aborted before the transition could take effect; the
 [extending guide](@ref "Extending EpiBranch") spells both out.
+
+Alongside a terminal transition, `AntiviralTreatment` should also implement
+[`EpiBranch.censor_after_outcome!`](@ref) so a treatment drawn after the case's
+outcome reads as not having happened, the same way the built-ins do:
+
+```julia
+function EpiBranch.censor_after_outcome!(::AntiviralTreatment, ind)
+    if ind.state[:treatment_time] > ind.state[:outcome_time]
+        ind.state[:treated] = false
+        ind.state[:treatment_time] = Inf
+    end
+    return nothing
+end
+```
 
 That's the whole extension surface. Three ingredients (the shared
 `ind.state` dict, callable probability/delay, optional terminal

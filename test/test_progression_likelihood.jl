@@ -44,12 +44,17 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
             get(ind.state, :infected, false) || continue
             onset = onset_time(ind)
             isfinite(onset) || continue
+            # Recovery is unconditional, so it is always the outcome: a report
+            # not reaching this individual either failed its own gate or would
+            # have landed after recovery and was censored there, which the
+            # general formula covers either way.
+            elapsed = ind.state[:recovery_candidate_time] - onset
             expected += if ind.state[:reported]
                 log(0.7) + logpdf(reporting_delay, ind.state[:reporting_time] - onset)
             else
-                log(0.3)
+                log1p(-0.7 * cdf(reporting_delay, elapsed))
             end
-            expected += logpdf(recovery_delay, ind.state[:recovery_candidate_time] - onset)
+            expected += logpdf(recovery_delay, elapsed)
         end
         @test expected < 0  # sanity: the hand-computed sum is a genuine log-likelihood
         @test progression_loglik(spec, state) ≈ expected
@@ -145,6 +150,41 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test loglik(true, 3.5) ≈ log(0.2) + logpdf(admission_delay, 2.5)
         # Not admitted: the gate alone, with no delay to evaluate.
         @test loglik(false, Inf) ≈ log(1 - 0.2)
+    end
+
+    @testset "a non-terminal event after the outcome is censored there" begin
+        # The outcome right-censors a non-terminal transition the same way an
+        # abort does: an admission that did not happen by the outcome is read
+        # as censored at it, rather than as a gate that plainly failed.
+        admission_delay = LogNormal(1.0, 0.4)
+        recovery_delay = Exponential(3.0)
+        hosp = Hospitalisation(delay = admission_delay, probability = 0.6)
+        recovery = Recovery(delay = recovery_delay)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.0));
+            progression = [hosp, recovery], attributes = clinical
+        )
+        function loglik(admitted, admission_time)
+            ind = Individual(id = 1, infection_time = 0.0)
+            ind.state[:infected] = true
+            ind.state[:onset_time] = 1.0
+            ind.state[:admitted] = admitted
+            ind.state[:admission_time] = admission_time
+            ind.state[:recovery_candidate_time] = 5.0
+            ind.state[:outcome] = :recovered
+            ind.state[:outcome_time] = 5.0
+            return progression_loglik(spec, [ind])
+        end
+        recovery_term = logpdf(recovery_delay, 4.0)
+
+        # Admitted at 3.5, two and a half days after onset, before the outcome.
+        @test loglik(true, 3.5) ≈ log(0.6) + logpdf(admission_delay, 2.5) + recovery_term
+        # Recorded as not admitted: the gate failing, or passing but landing
+        # past the outcome, censored there.
+        @test loglik(false, Inf) ≈ log1p(-0.6 * cdf(admission_delay, 4.0)) + recovery_term
+        # A hand-built individual whose own flag says it occurred, after the
+        # outcome, reads the same way: `:admitted` alone is not enough.
+        @test loglik(true, 6.0) ≈ loglik(false, Inf)
     end
 
     @testset "a fixed numeric delay has zero log-density at its value and rules out any other" begin
