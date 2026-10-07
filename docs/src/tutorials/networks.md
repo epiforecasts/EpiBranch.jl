@@ -185,9 +185,10 @@ your own (see [Extending EpiBranch](extending.md)).
       default). Checking whether a contact was exposed recently enough needs
       their infection time, which is not yet known when they are vaccinated.
       With a window set, `simulate` warns and ignores the ring vaccination.
-    - Tracing is forward only. When a case is detected, the people they are in
-      contact with can be traced. Backward (source) tracing, to find the
-      person who infected the case, is not supported.
+    - Tracing is forward only. It can reach the contacts who had not been
+      infected by the time the case was. Contacts infected before the case,
+      including the person who infected them, are not reached: backward
+      (source) tracing is not supported.
     - Whether a contact is protected when exposed depends on whether they had
       been traced or vaccinated by then. Once a contact has been given a ring
       vaccination date, tracing them again later does not change it. A case
