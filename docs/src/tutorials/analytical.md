@@ -52,8 +52,9 @@ offspring distribution is close to Poisson and most introductions take off.
 
 ### Using a distribution or a model instead of R and k
 
-Every analytical function also accepts an offspring distribution from
-Distributions.jl, or a [`BranchingProcess`](@ref) model, in place of R and k:
+Every analytical function also accepts a Poisson or negative binomial
+offspring distribution from Distributions.jl, or a [`BranchingProcess`](@ref)
+model, in place of R and k:
 
 ```@example analytical
 println("Poisson(2.0):   P(ext) = $(round(extinction_probability(Poisson(2.0)), digits=4))")
