@@ -33,7 +33,8 @@ Scheduled(iso, state -> state.current_generation >= 3)
 # Arguments
 - `start_time`, `end_time`: days (as decimals, such as `14.0`) between which
   the intervention acts, measured on the simulation clock (the latest
-  infection time so far).
+  infection time so far). For vaccinations, the window and `condition` are
+  checked against each dose's date rather than the current simulation day.
 - `start_after_cases`: number of cases after which it acts.
 - `condition`: a function of the simulation state returning `true` while the
   intervention should act.
