@@ -10,22 +10,21 @@
 """
     progression_loglik(spec::ModelSpec, individuals) -> Float64
 
-The log-likelihood of `individuals`' clinical timelines under `spec`'s
-`progression`: the sum, over every infected individual and every transition
-in `progression`, of [`transition_loglik`](@ref EpiBranch.transition_loglik).
+The log-likelihood of the cases' clinical timelines (symptom onset given
+infection, reporting given onset, death or recovery, and so on) under the
+model's `progression`. Use it to estimate natural-history parameters, such as
+a reporting delay, from a line list with infection and event times.
 
-`individuals` is a vector of [`Individual`](@ref) (or a [`SimulationState`](@ref),
-whose `individuals` field is read directly) holding the state each transition
-in `progression` wrote in `resolve_individual!` — the augmented data a
-simulation produces, or a hand-built equivalent for inference. An individual
-never infected (`get(ind.state, :infected, false) == false`) contributes
-nothing, matching the transitions engine, which never resolves one.
+`individuals` is a vector of [`Individual`](@ref) or a [`SimulationState`](@ref)
+from [`simulate`](@ref), or a hand-built equivalent holding the times each
+progression step records. People who were exposed but never infected add
+nothing. The result is the sum over cases and steps of
+[`transition_loglik`](@ref EpiBranch.transition_loglik).
 
-This is a natural-history term only: it excludes the infection layer, which
-[`pairwise_surv_loglik`](@ref) evaluates, and any observation model. Added to
-that pairwise likelihood, it gives the full log-likelihood of an outbreak's
-augmented data — infection times, order and clinical timelines together —
-under `spec`.
+It covers natural history only. Who infected whom and when is the transmission
+part, evaluated by [`pairwise_surv_loglik`](@ref); add the two for the full
+log-likelihood of an outbreak with known infection times. Neither includes an
+observation model.
 
 # Examples
 

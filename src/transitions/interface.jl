@@ -1,58 +1,46 @@
 """
-Base type for clinical-state transitions. Subtypes implement
-`initialise_individual!` (set default state on a new case) and
-`resolve_individual!` (draw the transition's timing and probability).
+Parent type of the steps in a case's natural history: [`Transition`](@ref),
+[`Reporting`](@ref), [`Hospitalisation`](@ref), [`Recovery`](@ref) and
+[`Death`](@ref). List several in a model's `progression`; each case passes
+through them in order when it is created, after its population
+characteristics and interventions have been set.
 
-A transition writes its outcome to one or more keys on `individual.state`,
-under names it owns. Other transitions and the line-list projection read
-from these keys. Transitions are composable: stack them in a vector and
-the engine applies them in order at case-creation time, after attributes
-and interventions have run.
+Steps that end a case, such as death or recovery, are called terminal. When a
+case could reach several terminal steps, the earliest one becomes its outcome
+(`:outcome` and `:outcome_time` in the line list), so death and recovery
+compete and whichever comes first wins.
 
-Terminal transitions — those that end the case — declare themselves by
-returning `true` from [`is_terminal`](@ref) and implement
-[`terminal_event`](@ref). After all transitions resolve for an
-individual, the engine collects every terminal candidate (across every
-transition that declared itself terminal) and assigns `:outcome` and
-`:outcome_time` from the earliest. [`Death`](@ref) and [`Recovery`](@ref)
-are the built-in pair, but the framework is open: a user-defined
-`LostToFollowUp`, `MovedAway`, or disease-specific terminal state plugs
-in by adding the same two methods and dropping the struct into the
-transitions vector. Competing-risks arbitration handles the rest. Also
-implement [`terminal_target`](@ref) so a window's `until`-coverage check
-can see the new terminal state (see the Extending guide for a worked
-example); without it, the check simply cannot tell the state apart from
-one no transition reaches.
+Interventions are the policy applied to a case ([`AbstractIntervention`](@ref));
+progression steps are the biology that happens to it. To write a new kind of
+step, such as loss to follow-up, see the Extending guide.
 
-See also [`AbstractIntervention`](@ref) — transitions are the clinical
-analogue: where interventions are policy applied to a case, transitions
-are biology happening to a case.
+# For extension authors
 
-The abstract type itself is declared in `src/types.jl` to allow
-`SimulationState` to hold a typed `transitions` vector; the interface
-methods live here.
+A new step defines `initialise_individual!` (set default state on a new case)
+and `resolve_individual!` (draw whether and when the step happens, and write
+the result to `individual.state` under keys it owns). A terminal step also
+returns `true` from [`is_terminal`](@ref), implements
+[`terminal_event`](@ref), and should implement [`terminal_target`](@ref) so the
+check that every infectious window closes can see the new end state.
 """
 AbstractClinicalTransition
 
-"""Set up transition-specific fields on a newly created individual. Default: no-op."""
+"""Set the step's default state on a newly created case. Does nothing by default."""
 initialise_individual!(::AbstractClinicalTransition, individual, state) = nothing
 
-"""Draw the transition's timing/probability and write its outcome to state. Default: no-op."""
+"""Draw whether and when this step happens to the case, and record it. Does nothing by default."""
 resolve_individual!(::AbstractClinicalTransition, individual, state) = nothing
 
-"""Whether this transition is terminal (i.e. ends the case). Default: false."""
+"""Whether this step ends the case (as death or recovery do). `false` by default."""
 is_terminal(::AbstractClinicalTransition) = false
 
 """
     terminal_target(transition::AbstractClinicalTransition) -> Union{Nothing, Symbol}
 
-The state label a terminal transition writes, known without an
-individual (unlike [`terminal_event`](@ref), which needs one to resolve
-the *time*). The `until`-coverage check in a process's progression
-validation reads this to warn when a terminal state is missing from a
-window's `until`; a terminal transition that does not override this
-(default `nothing`) is simply not checkable there and stays silently
-exempt from that warning. Non-terminal transitions never need it.
+The end state a terminal step records, such as `:died`, known before any case
+is simulated. Model checks use it to warn when an infectious window's `until`
+misses an end state a case can reach. A terminal step that leaves this at the
+default `nothing` is skipped by that warning. Non-terminal steps never need it.
 """
 terminal_target(::AbstractClinicalTransition) = nothing
 
@@ -77,18 +65,15 @@ _certain_probability(p) = missing
 """
     terminal_event(transition, individual) -> Union{Nothing, Tuple{Float64, Symbol}}
 
-For terminal transitions, return `(time, label)` if this transition would
-end the case (e.g. `(11.3, :died)`), or `nothing` if it does not occur for
-this case. Called after all `resolve_individual!`s have run. The engine
-takes the earliest terminal candidate across all transitions and writes
-`:outcome` (Symbol) and `:outcome_time` (Float64) to the individual's
-state.
-
-Non-terminal transitions never see this method called.
+For a terminal step, the time (days since the start of the simulation) and
+end state at which it would end this case, such as `(11.3, :died)`, or
+`nothing` if it does not happen to this case. The earliest across all terminal
+steps becomes the case's outcome, recorded as `:outcome` and `:outcome_time`.
+Only called for terminal steps, after every step has been drawn.
 """
 terminal_event(::AbstractClinicalTransition, individual) = nothing
 
-"""Fields a transition requires on individuals (set by `attributes`). Default: none."""
+"""Case information a step needs set by the model's `attributes` (for example `:onset_time`). None by default."""
 required_fields(::AbstractClinicalTransition) = Symbol[]
 
 # ── Heterogeneity helpers ───────────────────────────────────────────
@@ -189,18 +174,17 @@ end
 """
     transition_term(probability, delay, individual, anchor, occurred)
 
-A transition's gate term for [`transition_loglik`](@ref
-EpiBranch.transition_loglik), given whether the transition happened: the
-log-probability of the gate either way, to which the caller adds the delay
-density when it did.
+The log-probability that a step happened or did not happen to a case, for use
+inside [`transition_loglik`](@ref EpiBranch.transition_loglik); when it
+happened, add the log-density of its delay.
 
-Call it rather than reading `probability` directly. It handles the two cases a
-custom transition would otherwise get wrong: a gate built by
-[`exclusive_probabilities`](@ref) contributes the width of the bucket its
-group's shared draw selected, not the 0 or 1 the gate itself returns; and a
-transition an abort undid is censored at
-[`infection_aborted_time`](@ref EpiBranch.infection_aborted_time) rather than
-read as a gate that failed.
+Use it rather than reading `probability` directly. It gives the right answer
+in two cases a custom step would otherwise get wrong: outcomes split with
+[`exclusive_probabilities`](@ref), which contribute the probability of the
+outcome the case drew, and steps undone because the infection was stopped
+early (for example by post-exposure prophylaxis), which count as not yet
+having happened by the time the infection was stopped
+([`infection_aborted_time`](@ref EpiBranch.infection_aborted_time)).
 """
 function transition_term(probability, delay, ind, anchor, occurred)
     occurred && return _probability_loglik(probability, true, ind)
@@ -241,18 +225,16 @@ _delay_logccdf(f, t) = _delay_loglik(f, t)
 """
     transition_loglik(t::AbstractClinicalTransition, individual) -> Float64
 
-The log-likelihood contribution of `individual`'s outcome under transition
-`t`: the probability of the gate it passed or failed, plus the delay density
-at the time the transition occurred. Called by [`progression_loglik`](@ref) once per
-transition per individual; `0.0` when the transition's anchor was never
-reached (it took no part in the individual's history).
+The log-likelihood of what a step did to one case: the log-probability that
+the step happened (or did not), plus the log-density of its delay when it did.
+[`progression_loglik`](@ref) calls it once per step per case. It is `0.0` when
+the case never reached the state the step starts from.
 
-Implemented for the built-in transitions ([`Transition`](@ref),
-[`Reporting`](@ref), [`Hospitalisation`](@ref), [`Death`](@ref),
-[`Recovery`](@ref)). A custom `<: AbstractClinicalTransition` used with
-[`progression_loglik`](@ref) needs its own method, reading back the state
-keys its `resolve_individual!` writes; `delay` must be a `Distribution` or a
-fixed `Real` — a raw `Function` delay has no density.
+Defined for the built-in steps ([`Transition`](@ref), [`Reporting`](@ref),
+[`Hospitalisation`](@ref), [`Death`](@ref), [`Recovery`](@ref)). A custom step
+used with [`progression_loglik`](@ref) needs its own method that reads back
+what its `resolve_individual!` recorded. Its `delay` must be a `Distribution`
+or a fixed number, since a function of the individual has no density.
 """
 function transition_loglik(t::AbstractClinicalTransition, individual)
     throw(
@@ -267,39 +249,25 @@ end
 """
     exclusive_probabilities(ps::AbstractVector{<:Real}) -> Vector
 
-Build matched `probability` callables for `length(ps)` sibling transitions
-whose outcomes are meant to be mutually exclusive — an exact case-fatality
-ratio split between death and recovery, say.
+Split cases between mutually exclusive outcomes in fixed proportions, for
+example exactly 64% die and 36% recover. Returns one value per outcome, to
+pass as each outcome's `probability`.
 
-Passing raw probabilities straight to each sibling's own `probability` field
-draws an *independent* Bernoulli per transition (`_transition_selected`
-consumes its own `rand(rng)`): two terminal transitions gated at `p` and
-`1 - p` then both occur (resolved by whichever candidate time comes first) on
-about `p(1 - p)` of cases, and neither occurs — leaving `:outcome` unset — on
-another `p(1 - p)`.
+Giving each outcome a plain probability instead draws them independently: with
+death at `p` and recovery at `1 - p`, about `p(1 - p)` of cases would qualify
+for both (and take whichever comes first) and another `p(1 - p)` for neither,
+so the realised case fatality ratio drifts from `p`. With
+`exclusive_probabilities`, each case falls into exactly one outcome.
 
-Each gate this returns reads a single shared uniform draw per case instead:
-the first sibling to resolve draws it and caches it on the individual, and
-every sibling reads the same value. The case's draw lands in exactly one of the
-`ps`-sized buckets, so the outcomes partition the population in the given
-proportions, with no case counted twice and none dropped except by design
-(see below).
+`ps` must be non-negative and sum to at most 1. Any shortfall below 1 is the
+probability that none of the outcomes happens; pair it with an unconditional
+terminal step, or expect some cases to have no outcome.
 
-Assign each gate to its sibling's `probability` as it comes. A gate wrapped in
-a callable of your own is a plain 0-or-1 probability to the rest of the
-package: the likelihood reads that instead of the bucket's width, and an
-aborted infection drops the group's draw. Fold a per-individual modifier into
-`ps` instead of around the gate.
-
-`ps` must be non-negative and sum to at most `1`; a shortfall between
-`sum(ps)` and `1` is the (intentional) probability that none of the siblings
-occurs — pair it with an unconditional terminal transition, or expect some
-cases to reach no terminal state.
-
-[`progression_loglik`](@ref) evaluates such a group as one event: the bucket the
-draw selected contributes the log of its own width, and the siblings it passed
-over contribute nothing. A group with a shortfall also needs the draw a
-simulation cached, so keep every one of its gates in the `progression`.
+Pass each returned value straight to `probability`. Wrapping it in a function
+of your own makes it an ordinary 0-or-1 probability, which loses the shared
+split in the likelihood; fold any per-case modifier into `ps` instead. Keep
+every outcome of the group in the `progression`, since
+[`progression_loglik`](@ref) evaluates the group as one event.
 
 # Examples
 
@@ -382,15 +350,19 @@ _exclusive_selected(g::_ExclusiveGate, ind) = g.lo <= _exclusive_draw(g, ind) < 
 """
     transition_time(rng, individual, start_time, delay; probability = nothing)
 
-Sample a clinical event time from a finite `start_time`, returning `nothing`
-when the event is absent. `delay` accepts a real number, distribution or callable
-`(rng, individual) -> Real`. `probability` accepts a real number or callable with
-the same arguments. A supplied probability consumes one uniform draw, including
-when it is zero or one; `nothing` skips that draw. An absent starting event
-(non-finite `start_time`) consumes no random draws.
+Draw the time of a clinical event that follows `start_time` (days since the
+start of the simulation) by `delay` days, or `nothing` if the event does not
+happen. For writing new progression steps.
 
-The caller resolves the starting event and writes the returned time to its own
-state keys. Terminal-event arbitration remains the caller's responsibility.
+`delay` is a number, a distribution or a function of the random number
+generator and the individual, `(rng, ind) -> ...`. `probability`, if given, is
+the chance the event happens (a number or such a function). When the starting
+event never happened (`start_time` is not finite) the result is `nothing`.
+
+Each supplied `probability` uses one random draw, even when it is 0 or 1, and
+`probability = nothing` uses none; keep this in mind if reproducing a run's
+random numbers matters. The caller records the returned time and decides which
+of several terminal events comes first.
 """
 function transition_time(rng, individual, start_time, delay; probability = nothing)
     _transition_selected(rng, individual, start_time, probability) || return nothing
