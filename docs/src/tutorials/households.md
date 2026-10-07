@@ -320,7 +320,7 @@ isolation here also stops transmission to housemates.
     lasts at least as long as cases stay infectious, use `duration = Inf` to
     compute R\*.
 
-[`ContactTracing`](@ref) (see [Interventions](interventions.md)) also works on
+[`ContactTracing`](@ref) (see [Isolation and contact tracing](interventions.md)) also works on
 a household model, where a case's contacts are their housemates. Each
 housemate is traced separately, with the same probability and delay as any
 other contact. Tracing does not reach a whole household at once.
