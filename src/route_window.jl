@@ -39,8 +39,10 @@ in the network.
   interventions (isolation, or quarantine after being traced) should end.
 - `kernel` is the contact interval on this route: the time in days from the
   route opening to a contact that would infect if the route were still open.
-- `reach` names the set of people the route reaches in the model's contact
-  structure, such as one kind of tie in a network. Defaults to `name`.
+- `reach` tells the model who the route reaches. [`RoutedNetwork`](@ref)
+  needs the route's contact list here (`reach[i]` lists the people `i` can
+  infect on this route); a model of your own can read another value, such as
+  the default, `name`.
 - `contacts_from` is the state from which the people the route reaches are the
   case's contacts, which is what contact tracing acts on. The default,
   `:infection`, suits a route over standing relationships such as a household,
@@ -64,14 +66,18 @@ in the network.
 
 # Examples
 
+In these examples `community_contacts`, `household_contacts` and
+`funeral_contacts` are contact lists, one vector of people per person.
+
 A case that stops mixing in the community when it isolates but keeps infecting
 the people it lives with:
 
 ```julia
 community = RouteWindow(:community; from = :infectious,
-    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL), kernel = Exponential(4.0))
+    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL), kernel = Exponential(4.0),
+    reach = community_contacts)
 household = RouteWindow(:household; from = :infectious,
-    until = (:recovered,), kernel = Weibull(1.5, 3.0))
+    until = (:recovered,), kernel = Weibull(1.5, 3.0), reach = household_contacts)
 ```
 
 Ebola transmission at funerals, a route that only opens once the case has died
@@ -79,7 +85,7 @@ and closes at burial:
 
 ```julia
 funeral = RouteWindow(:funeral; from = :died, until = (:buried,),
-    kernel = Exponential(1.0), contacts_from = :died)
+    kernel = Exponential(1.0), contacts_from = :died, reach = funeral_contacts)
 ```
 
 A case that recovers never opens the funeral route, and with
@@ -92,7 +98,7 @@ one in five:
 ```julia
 community = RouteWindow(:community;
     until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
-    kernel = Exponential(4.0), traceable = 0.2)
+    kernel = Exponential(4.0), traceable = 0.2, reach = community_contacts)
 ```
 """
 struct RouteWindow{K, R}
