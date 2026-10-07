@@ -1,5 +1,5 @@
 Three places where core tested a concrete type or a field's presence instead
-of dispatching now read a trait instead, per `docs/src/design.md`'s
+of dispatching now read a trait instead, per `docs/src/contributing.md`'s
 extension-by-dispatch rule:
 
 - A structure-driven (Sellke) run's end time now reads a new `time_bound(rule)`

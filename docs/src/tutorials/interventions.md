@@ -241,7 +241,7 @@ nothing # hide
 ```
 
 To write a trigger of your own, such as one that depends on the infector's
-age, see [Extending EpiBranch](extending.md).
+age, see [Who triggers contact tracing](@ref).
 
 ## Asymptomatic cases and test sensitivity
 
@@ -383,4 +383,4 @@ iso_gen3 = Scheduled(
 ## Writing your own intervention
 
 To write an intervention that is not built in, or to see how the built-in
-ones work, see [Extending EpiBranch](extending.md).
+ones work, see [Writing an intervention](writing-interventions.md).

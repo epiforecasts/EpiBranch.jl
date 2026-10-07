@@ -33,8 +33,8 @@ abstract type AbstractClinicalTransition end
 """
 Abstract supertype for transmission models. A concrete subtype defines
 the latent dynamics; see `models/branching_process.jl` for the
-canonical implementation and the [Extending guide](@ref "Extending
-EpiBranch") for the protocol new subtypes must implement.
+canonical implementation and [Adding a transmission model](@ref) for the
+protocol new subtypes must implement.
 """
 abstract type TransmissionModel end
 

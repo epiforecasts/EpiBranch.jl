@@ -39,10 +39,16 @@ makedocs(;
                 "Analytical functions" => "tutorials/analytical.md",
                 "Inference" => "tutorials/inference.md",
             ],
-            "Extending EpiBranch" => "tutorials/extending.md",
+            "Extending EpiBranch" => [
+                "Extending EpiBranch" => "tutorials/extending.md",
+                "Writing an intervention" => "tutorials/writing-interventions.md",
+                "New transmission structures" => "tutorials/new-structures.md",
+                "Extension reference" => "tutorials/extending-reference.md",
+            ],
         ],
         "Design" => "design.md",
         "Glossary" => "glossary.md",
+        "Notes for contributors" => "contributing.md",
         "API reference" => "api.md",
     ]
 )

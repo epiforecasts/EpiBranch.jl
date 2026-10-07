@@ -286,5 +286,12 @@ discarding the rest, and returns that one.
   - [Chain statistics](chains.md): chain size and length, and their likelihoods
   - [Analytical functions](analytical.md): exact results without simulation
   - [Inference](inference.md): estimating parameters from outbreak data
-- [Extending EpiBranch](extending.md) (for developers): writing your own
-  intervention or transmission model
+- Extending EpiBranch:
+  - [Extending EpiBranch](extending.md): which tool fits what you want to
+    model, and changes that need no new code structure
+  - [Writing an intervention](writing-interventions.md): control measures and
+    clinical events of your own
+  - [New transmission structures](new-structures.md): contact structures,
+    routes and transmission models of your own
+  - [Extension reference](extending-reference.md): the details an extension
+    has to respect

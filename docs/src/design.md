@@ -1,395 +1,298 @@
-# EpiBranch.jl — Design
+# Design
 
-This page is the high-level design: the ideas the package is built on and
-the reasons for them. It deliberately avoids type signatures, field
-layouts, and API names, which live with the code and in the
-[Extending guide](@ref "Extending EpiBranch") and [API reference](api.md).
-The design principles below are the basis on which the shape here is
-judged.
-
-## Design principles
-
-These are the principles EpiBranch is meant to satisfy. They should
-be revisited when adding anything substantial, and the architecture
-should be reviewed against them periodically.
-
-### 1. Simple but rigorous
-
-Express only what we need. A new mechanism earns its place only when an
-analysis we actually do can't be done without it. Prefer closed-form
-likelihoods over simulation when both are available and equivalent. One
-verb (`loglikelihood`, `simulate`) does the dispatch, without
-specialised wrapper functions per data type or model variant.
-
-### 2. Self-explanatory
-
-Type names, function names, and signatures should match the intuition
-the epidemiology gives for what they do. If a user has to read
-source to understand what a public name means, the name is wrong. The
-mathematical names (`Borel`, `GammaBorel`) are fair when they match
-the literature the user comes from; the operational names should
-match how the epidemiology describes what's happening.
-
-### 3. Cleanly separable concerns
-
-Process model, observation model, data, inference, simulation, and
-output each own one thing. Their interfaces are explicit. A new
-alternative (a network model, multi-stream observation, time-varying
-reporting, aggregated counts) slots in by implementing the relevant
-interface rather than by editing core code. Each concern is replaceable
-independently.
-
-### 4. Extensible from outside
-
-A user can add their own transmission model, observation model,
-intervention, or data type as a separate package or script, reusing
-all framework infrastructure. The contracts they have to satisfy are
-documented and small. Adding a custom piece does not require editing
-EpiBranch.
-
-### 5. Documented with examples
-
-Principle 4 is empty without 5. Every public extension point has a
-worked example. Tutorials are checked at build time so the prose
-stays consistent with the code.
+This page explains, in epidemiological terms, how EpiBranch represents an
+outbreak: how each case's potential infections, their timing and the control
+measures that stop them are generated, and why simulating an outbreak and
+fitting a model to data use the same model. How to write new pieces in Julia is
+in [Extending EpiBranch](@ref); the principles and rules for changing the
+package itself are in [Notes for contributors](contributing.md).
 
 ## Core idea
 
-The offspring draw is completely decoupled from timing and from
-interventions. Who infects whom is a pure probabilistic object; when
-transmission happens, and whether a control measure stops it, are separate
-layers laid on top. This separation is what connects the package to
-survival analysis: the competing-risks framework on the transmission
-hazard is the same mechanism as Kenah's pairwise survival analysis and
-dynamic survival analysis.
+A contact causes infection unless something stops it first, and the earliest
+blocker wins.
 
-## The model is a composition of layers
+Each case first gets a number of potential secondary cases from the offspring
+distribution, with mean R and dispersion k, and with no reference to time or
+control measures. Each potential infection is then given a time, from the
+generation-time distribution. Finally, anything that could prevent it is
+considered: the infector being isolated before that time, the contact having
+been vaccinated, the contact being less susceptible or the infector less
+infectious. The infection happens only if none of these blocks it.
 
-A *model* is the whole generative specification of how data arises, built by
-composing a transmission process with the modelling layers laid on top of it.
-The transmission process is the between-host mechanism alone — how
-infection spreads — and it carries nothing else. Onto it compose four layers:
+Because these steps are separate, the offspring distribution can be analysed
+on its own, and extinction probabilities and chain-size distributions can be
+written down exactly where the distribution allows, with no simulation. Control
+measures become removals before a given time, as in survival analysis: treating
+the blockers as competing risks on the hazard of transmission is the same
+mechanism as Kenah's pairwise survival analysis and dynamic survival analysis.
 
-- **disease** — the within-host natural history: the timed states a case moves
-  through (latent, infectious, onset, severe, recovered or died), with
-  treatment expressible as a step it may pass through;
-- **attributes** — who the people are (age, susceptibility, infectiousness),
-  which can bear on transmission, on the disease course, and on how
-  interventions find their targets;
-- **interventions** — what is done about it (isolation, tracing, vaccination);
-- **observation** — how cases are seen (under-reporting, reporting delays).
+## Three steps for every potential transmission
 
-These match how the epidemiology decomposes an outbreak: a pathogen spreads,
-infection causes disease, in a population of people, under a response, watched
-through surveillance. Keeping the five distinct — rather than folding the
-disease or the policy into the process — is what lets each be replaced on its
-own and lets the same layer sit on any process.
+Every potential transmission goes through the same three steps. Only the first
+depends on the transmission model; the other two work the same way for every
+model.
 
-The *composed* model, not the bare process, is what both entry points read, so
-"what could this produce?" (`simulate`) and "how likely was this data?"
-(`loglikelihood`) can never disagree: a simulation-based likelihood reproduces
-the same generative specification that produced the data. If isolation
-suppressed transmission in the observed outbreak, the likelihood of those chain
-sizes is only correct because the same composition applies isolation. A
-scenario sweep is a map over compositions, each scenario the same process under
-a different response; a counterfactual is a fresh composition with the layer
-you want. There is no in-place "swap one input" helper, so a model's layers are
-always explicit.
+As an illustration, an index case gets three potential secondary cases, at days
+3, 6 and 9 after infection. It is isolated on day 5. The first infection goes
+ahead, the other two are blocked by isolation, and the case has one secondary
+case.
 
-The layers are interlinked by nature — attributes bear on transmission,
-disease, and targeting at once; the infectious window is defined by disease
-states; a transmission rate expressed as a reproduction number depends on the
-mean infectious period. The composition is what gives each layer access to the
-others it needs, resolving those couplings where both sides are in hand rather
-than by fusing the tiers. A structure-driven process, for one, derives its
-infectious window — and, where transmission is given as a reproduction number,
-its rate — from the composed disease when the model is simulated or evaluated,
-so the process stays purely the transmission and the disease stays a single,
-separately specified layer.
+### 1. Who could be infected (depends on the model)
 
-## Three separated stages
+For a branching process this is a draw from the offspring distribution: a
+single count, or a count per type for a multi-type model. The mean (R) and
+dispersion (k) come from that distribution, as in `NegBin(2.5, 0.16)` for
+R = 2.5 and k = 0.16. If a contact matrix is supplied, it sets the mixing
+between types.
 
-The engine resolves every transmission in three stages. Only the first is
-model-specific; the other two run the same way for every model.
+This is the only step a transmission model defines, and it does so in one of
+two ways. A branching process and its variants (**offspring-driven** models)
+draw a number of potential secondary cases for each case. Network, household
+and metapopulation models (**structure-driven** models) cannot, because a
+susceptible can be exposed by several infectious neighbours at once and
+infections use up a fixed population. They list instead the people each
+infectious person is in contact with, and a person exposed by several cases in
+the same generation is considered once, with all of those exposures. The
+companion `EpiNetwork.jl` package's network model is an example. Either way the
+model only says who is in contact with whom.
 
-### 1. Offspring draw (model-specific)
+### 2. When (the same for every model)
 
-Pure branching process: no time, no interventions. For a parent, contacts
-are drawn from an offspring distribution: a single count, or a count per
-type for a multi-type model. The mean (R) and overdispersion (k) come from
-that distribution; if a contact matrix is supplied, it sets the mixing
-pattern across types.
+Each potential infection is given a transmission time from the infector's
+infectiousness profile, the generation-time distribution. That distribution can
+be the same for everyone or built for each case, so the timing can depend on
+anything known about the case: its incubation period, or any other value
+recorded about it. This is the *potential* time of transmission, from the
+hazard h(t) in survival-analysis terms (see [Connection to survival
+analysis](@ref)).
 
-This is the only stage a transmission model defines, and it does so in one
-of two ways. An **offspring-driven** model (the branching process and its
-variants) can produce its candidates one parent at a time, returning a
-count. A **structure-driven** model (a network, household, or
-metapopulation process) cannot, because a susceptible may be reachable by
-several infectious neighbours at once and infections deplete a fixed pool;
-it instead names the candidate contacts each infectious node reaches, and
-the engine resolves a node reached several times in one generation once.
-The companion `EpiNetwork.jl` package's network process is the worked
-example. Either way the model only says who contacts whom.
+### 3. Whether anything stops it (the same for every model)
 
-### 2. Timing (shared)
+Each potential infection is decided on its own, infected or not, by checking
+everything that could block it. A contact is infected only if nothing blocks
+it: the earliest removal before the transmission time wins. Possible blockers
+are:
 
-Each candidate is given a transmission time from the parent's
-infectiousness profile (the generation-time distribution). That
-distribution can be fixed or built per individual, so the timing can read
-any per-individual quantity: the parent's incubation period, or anything
-an attributes function has stored. This is the *potential* time of
-transmission: h(t) in survival-analysis terms.
+- the infector being less infectious (a value below 1);
+- the contact being less susceptible (a value below 1);
+- the infector having been isolated, or otherwise removed, before the
+  transmission time;
+- any intervention, such as vaccination of the contact;
+- a probability of transmission that belongs to the pair rather than to either
+  person, such as the transmission probability of a network contact.
 
-### 3. Competing risks (shared)
+Susceptibility and infectiousness are checked in the same way as interventions,
+with no special treatment, and so is the end of an infectious period.
 
-Each candidate is resolved independently to infected or not, by a single
-per-pair decision composed of a list of risk sources. Parent
-infectiousness and contact susceptibility are not privileged engine checks:
-they are default risk sources on the same surface an intervention uses, and
-isolation truncation or any risk an intervention contributes joins the same
-list. A model can contribute its own sources here too, for a transmission
-term that belongs to the *edge* rather than a node (a network's per-edge
-probability): the per-node susceptibility and infectiousness terms cannot
-carry a per-pair quantity without forcing one shared value across a node's
-edges, so it goes here instead. A contact is infected only if no risk blocks
-it, so the earliest removal before the contact's time wins, with no special
-min-logic.
-
-Contacts that fail a check are still stored. They are contacts that were
-made but did not transmit, and they carry the contact-tracing table and
-intervention-effort tracking (contacts traced, vaccines administered, tests
-used) with no extra bookkeeping.
+Contacts who were exposed but not infected are kept in the output, because
+contact tracing and vaccination reach them too. This is also how the number of
+contacts traced, vaccines given or tests used is counted.
 
 ### Why this separation matters
 
-Because the offspring distribution is a pure probabilistic object, it can
-be analysed with standard tools: extinction probability from the dominant
-eigenvalue, chain-size distributions, analytical likelihoods. None of these
-depends on timing or interventions, and the draw stays differentiable
-where the distribution permits. Interventions act on the timing and
-competing-risks layers, not the offspring layer: isolation truncates the
-hazard, contact tracing shifts the truncation earlier, vaccination lowers
-susceptibility. The generation-time CDF evaluated at an intervention time
-*is* the survival function, so the same objects appear in simulation and in
-Kenah's pairwise likelihood, and intervention effectiveness can be
-estimated from observed generation times using the quantities used to
-simulate.
+Because the offspring distribution does not depend on time or control
+measures, it can be analysed with standard tools: the epidemic threshold from
+the dominant eigenvalue, extinction probability from the probability
+generating function, chain-size distributions, closed-form likelihoods.
+These can also be used with gradient-based fitting. Interventions act on the
+timing and on whether a transmission is blocked, never on the offspring
+distribution: isolation removes the later part of the infectious period,
+contact tracing moves that removal earlier, and vaccination lowers
+susceptibility. The cumulative generation-time distribution evaluated at an
+intervention time is the probability that a transmission happens before the
+intervention, and one minus it is the survival function. The same quantities
+therefore appear in simulation and in Kenah's pairwise likelihood, and the
+effectiveness of an intervention can be estimated from observed generation
+times using the quantities used to simulate.
 
-## Extension by dispatch
+## The five parts of a model
 
-New behaviour is added by defining a new type and a method, not by growing
-options on an existing struct. A user wanting a variant should be able to
-write a small struct plus one or two methods, with no edits to the package
-source and no copy-pasting of existing function bodies. A `Union` field
-whose members trigger different branches, a `Symbol` that switches
-behaviour inside a function, or a `Bool` that selects a policy are all
-signals that a seam is in the wrong place and should become a dispatched-on
-type.
+A model is the whole description of how the data arise. It has five parts:
 
-This holds on every axis:
+- **transmission**: how infection spreads between people, and nothing else;
+- **disease**: the natural history within each case, the timed states it moves
+  through (latent, infectious, onset, severe, recovered or died), with
+  treatment as a step it may pass through;
+- **population characteristics**: who the people are (age, susceptibility,
+  infectiousness), which can affect transmission, the course of disease, and
+  whom interventions reach;
+- **interventions**: what is done about it (isolation, tracing, vaccination);
+- **observation**: how cases are seen (under-reporting, reporting delays).
 
-- **Transmission models** — spatial, network, and immunity dynamics enter
-  through new model subtypes or reusable wrapper types, not flags on the
-  branching process.
-- **Interventions** are orchestrators of smaller dispatched pieces. An
-  intervention struct is a thin shell wiring together independently
-  dispatched components (eligibility, rate, delay, effect), each a
-  type with a method. The intervention body holds no hardcoded policy
-  branching. Composition then works at two levels: between interventions
-  (the stack the model carries) and within each intervention (its pieces).
-- **Output, observation, and outcome rules** follow the same shape:
-  mortality, hospitalisation, reporting, stopping conditions, and line-list
-  columns are typed objects with methods, not closed sets of fields.
-- **Engine loops** should ask the composed layers and never decide for them. A
-  stepping loop or continuous-time race that decides what a named intervention
-  does to whom, reads a state key an intervention owns (see
-  [Individual state](@ref)), or keeps its own record of what has already been
-  done to whom has taken a policy decision into core, where nothing a user
-  writes can reach it. The varying part belongs behind the hook the layer
-  already implements, and the loop's own bookkeeping should be about running
-  the simulation.
+These match how epidemiologists describe an outbreak: a pathogen spreads,
+infection causes disease, in a population of people, under a response, watched
+through surveillance. Keeping the five separate, instead of folding the disease
+or the policy into the transmission model, means each can be replaced on its
+own, and the same disease, interventions or observation can be used with any
+transmission model.
 
-  A loop does sometimes need a fact about an intervention: whether it can be
-  honoured at all, whether its effects are exact enough for a fast path. The
-  shape for that is a documented trait with a conservative default, which an
-  intervention opts out of for itself, as
-  [`infection_likelihood_compatible`](@ref EpiBranch.infection_likelihood_compatible)
-  is asked of a composed component and
-  [`watched_records`](@ref EpiBranch.watched_records) of a pair kernel, which
-  says which host records its hazards depend on in place of the race guessing
-  that only an intervention can move one. A method on a concrete type is then that
-  type's author declaring something about it, available to anyone who writes a
-  type, where a method the engine keeps on its own built-ins is reachable only
-  from inside the package.
+The parts depend on each other. Population characteristics affect
+transmission, disease and who interventions reach; the infectious period is
+defined by the disease states; and a transmission rate given as a reproduction
+number depends on the mean infectious period. These links are worked out when
+a model is simulated or evaluated, and each part is specified only once. A network or
+household model, for example, takes the start of infectiousness, and its rate
+when given as a reproduction number, from the disease part of the model.
 
-  This axis is the one the engine has not finished moving onto. Several loops
-  still dispatch on a built-in intervention type or read a key a layer owns,
-  which is why the rule above is written as the target rather than as a
-  description of the current code.
+### Who each person is
 
-The test of correctness for any component: can a plausible new variant be
-added without editing the component's source? If not, the component is
-doing too much, and the varying part should be lifted into a dispatched-on
-trait. The concrete contracts (which methods each axis requires, with
-worked examples) are in the [Extending guide](@ref "Extending EpiBranch").
+Each simulated person has their place in the transmission tree, their
+infection time, their susceptibility and their infectiousness, plus a
+free-form set of further values (age, isolation time, vaccination status, and
+so on) that population characteristics, interventions and clinical transitions
+read and write. The values the package uses are listed in [Individual state and
+reserved keys](@ref).
 
-## Individual state
+### How interventions act
 
-Each individual carries a small typed core that the engine reads, plus an
-open dictionary for everything else. The core holds its place in the
-transmission tree, its infection time, and the two universal modifiers
-(susceptibility and infectiousness). The dictionary is the deliberate
-extension hatch: interventions, attributes builders, clinical transitions,
-and observation models each own a small set of keys, and the engine never
-inspects them.
+An intervention acts in one of three ways:
 
-A typed core would couple the struct to every intervention's state shape
-and would break the dose-label namespacing that lets multi-dose
-vaccination schedules coexist. The dictionary keeps the individual
-independent of which pieces a user composes. The keys the package itself
-reserves, and the convention for naming keys added from other packages, are
-listed in the [Extending guide](@ref "Extending EpiBranch").
+- it lowers a person's **susceptibility**, the probability of infection given
+  exposure (vaccination, prior immunity);
+- it lowers a case's **infectiousness**, its onward transmission (treatment);
+- it **removes** a case from transmission from a given time (isolation,
+  quarantine), cutting short the infectious period.
 
-## Interventions
+A contact is infected only if it passes all three: the infector's
+infectiousness, its own susceptibility, and the timing against any removal.
+This is step 3 above.
 
-All interventions map onto two numbers: **susceptibility**
-(probability of infection given exposure, reduced by vaccination, prior
-immunity, or population depletion) and **infectiousness** (a modifier on
-onward transmission, reduced by isolation, treatment, or asymptomatic
-status). A contact is infected only if it survives the parent's
-infectiousness check, its own susceptibility check, and the timing check
-(generation time versus isolation time), the competing-risks resolution of
-stage 3.
+Interventions are applied in the order they are listed. A policy that starts on
+a given date, or stops after a number of cases, is described by wrapping the
+intervention in [`Scheduled`](@ref) instead of giving every intervention its
+own start date. With isolation starting on day 14, the policy acts once the
+outbreak has reached day 14, and an isolation that would have started before
+day 14 is then undone.
+How to write an intervention is in [Writing an
+intervention](tutorials/writing-interventions.md).
 
-Interventions are stacked and applied in order, each owning its own state
-and declaring the fields it requires. Time-dependent policies (start on day
-14, stop after N cases) are expressed by wrapping an intervention in a
-schedule rather than by giving every intervention its own start-time field;
-the gate is on the *action* time, so an individual infected before a policy
-starts can still be affected if the time they would be tested falls after
-it. The hook contract and a worked example are in the
-[Extending guide](@ref "Extending EpiBranch").
+### Multi-type branching processes
 
-## Multi-type branching processes
+Several types (age groups, risk groups, spatial patches) are supported in the
+draw of secondary cases, as in a stratified model. For an infector of type `j`,
+the numbers of secondary cases of each type are drawn together, with the mixing
+between types from a contact matrix and the form of the distribution from the
+offspring distribution. Each contact is given a type. Interventions and output
+are unchanged, because they act on individual people, not on types.
 
-Multiple types (age groups, risk groups, spatial patches) are supported
-in the offspring draw: for a parent of type `j`, offspring counts per type
-are drawn from a joint distribution, with the mixing pattern from a contact
-matrix and the count family from the offspring distribution. Each contact
-is allocated to a type, and interventions and output are unchanged because
-they operate on individual-level state, not on types.
+## Host timeline and transmission-route windows
 
-## Analytical and simulation duality
+!!! note "Planned"
+    The continuous-time half of this is built: `RouteWindow` records a route's
+    opening state, the states that end it, its contact-interval distribution
+    and whom it reaches, and the continuous-time simulation handles several
+    routes per case, each ended separately, for any model that supplies them.
+    Branching processes also simulate several windows per case (see
+    [Infectiousness windows](@ref)). What is designed but not yet built is the
+    mixture distribution of secondary cases and its closed forms, so exact
+    results are not yet available for models with several routes.
 
-Where a closed form exists, EpiBranch uses it; simulation covers the rest,
-and the two are kept consistent.
+Some diseases spread by several routes, each open over a different part of a
+case's illness. Ebola spreads in the community while a case is ill, in
+hospital between admission and discharge, and at funerals between death and
+burial. Isolation cuts the community route short but not the others.
 
-The simulation side is extended through the intervention and model
-protocols above. The analytical side uses dispatch on the existing model
-types, with no new abstract type. Two kinds of extension plug in:
+The simplest model has one offspring distribution and one generation-time
+distribution. The general version treats a case's natural history as a
+**host timeline**, a sequence of timed states from infection (infectious,
+onset, severe, died or recovered, buried), and transmission as a set of
+**route windows** on that timeline. A route window has its own offspring
+distribution, a state at which infectiousness begins, the states that end it,
+and a contact-interval distribution for the timing within it. Because the
+timeline is the disease part of the model, the state at which a window opens is
+taken from the model's disease part, not fixed in the transmission model.
 
-- **Offspring specifications** replace what a branching process draws per
-  individual, for example letting the offspring parameters vary from chain
-  to chain. They participate in simulation through the offspring draw and in
-  analytics by returning a chain-size distribution.
-- **Observation models** capture how the latent process generates data. An
-  observation returns a *transformed distribution* of the latent
-  chain-size law, so it goes through the same likelihood path as the latent
-  law and needs no bespoke likelihood method; each observation is written
-  once, as a transform. On the simulation side it marks observed cases on a
-  finished run.
+This brings several mechanisms under one. A funeral route runs between death
+and burial, a hospital route between admission and discharge, and isolation
+lowering R is a route cut short by removal. The community route is the
+simplest window (from infection, never cut short), which gives the plain
+branching process. The latent period becomes the transition from infection to
+infectiousness, the generation time is the latent period plus the
+contact-interval draw, and isolation is one removal state among death, recovery
+and burial.
+
+All of this happens in steps 2 and 3; step 1 stays the same, and can still be
+analysed on its own. R remains the reproduction number a case would have if
+never removed, and the realised R follows from the removals: shortening the
+infectious period blocks more contacts and lowers it. k remains the dispersion
+of the number of secondary cases, deliberately not tied to the length of the
+infectious period. The number of secondary cases is never drawn from a
+duration, and step 1 stays independent of timing.
+
+A window contributes contacts only once its opening state has happened, so a
+survivor never has funeral contacts and no contact is created only to be
+removed. The distribution of secondary cases that drives outbreak size is then
+a mixture: community contacts for everyone, plus funeral contacts for the
+proportion who die. Once built, it will have a closed form when each part is a
+negative binomial and fall back to simulation otherwise, so exact results and
+simulation will still agree.
+
+The same quantities let a household or metapopulation model reuse this at a
+smaller scale: a household is one route window limited to its members, with
+the contact-interval distribution as the window's timing and the infectious
+period as its end.
+
+## One model for simulating and fitting
+
+`simulate` (generate outbreaks) and `loglikelihood` (score data against a
+model) read the same model, with all five parts. Simulating forward and
+fitting to data therefore always use the same assumptions. If isolation reduced
+transmission in the outbreak that produced the data, the likelihood of the
+observed chain sizes is only correct because the same model applies isolation
+too. To compare scenarios, build one model per scenario, each the same
+transmission model under a different response; a counterfactual is a new model
+with the part you want changed.
+
+### Exact results and simulation
+
+Where a closed form exists, EpiBranch uses it; simulation covers the rest, and
+the two give the same answers.
+
+New simulation behaviour comes from new interventions and transmission models.
+On the closed-form side, two kinds of addition fit in:
+
+- **Offspring specifications** replace what a branching process draws for each
+  case, for example letting the offspring parameters vary from chain to chain.
+  They are used in simulation for the draw of secondary cases and in closed-form
+  results through their chain-size distribution.
+- **Observation models** describe how the true outbreak becomes data. An
+  observation model turns the distribution of true chain sizes into a
+  distribution of observed ones, so it uses the same likelihood as the true
+  sizes and needs no likelihood of its own. In simulation it marks the observed
+  cases on a finished run.
 
 Some combinations have closed forms. Poisson offspring with a
-Gamma-distributed rate gives the `gborel` law from epichains, and these
-plug in by specialising the chain-size distribution on the relevant type
-combination, so dispatch picks the closed form without the user asking. The
-generic case falls back to quadrature.
-
-Any extension with both an analytical chain-size distribution and a
-simulation path should have a regression test confirming they agree; the
-test suite provides a helper for this.
+gamma-distributed rate gives the `gborel` chain-size distribution from
+epichains, and the closed form is chosen automatically for that combination.
+When the offspring parameters vary between chains in another way, the
+chain-size distribution is integrated numerically over that variation; other
+offspring distributions without a closed form use simulation.
 
 ### Which sampler to use
 
-Analytical likelihoods are deterministic scalar functions of the
-parameters: they work with any AD backend and with gradient-based samplers
-like NUTS. Simulation-based likelihoods draw random numbers, so the output
-is a noisy estimate and the gradient of a single realisation is not a
-useful estimate of the gradient of the expected likelihood, so
-gradient-based samplers should not be used. Use gradient-free samplers
-(Metropolis–Hastings, particle methods) instead, as the inference tutorial
-shows.
-
-### Why mutate in place
-
-The engine works in place, one generation at a time. Copying the whole
-state every generation would be far too expensive for an unbounded tree, so
-the engine mutates on purpose.
+Closed-form likelihoods are deterministic functions of the parameters. They
+work with automatic differentiation, which computes their gradients, and therefore
+with gradient-based samplers such as the No-U-Turn Sampler (NUTS), a form of
+Hamiltonian Monte Carlo. Simulation-based likelihoods use random numbers, and
+each evaluation is a noisy estimate, and the gradient of a single simulation is
+not a useful estimate of the gradient of the expected likelihood.
+Gradient-based samplers should therefore not be used with them; use
+gradient-free samplers (Metropolis–Hastings, particle methods) instead, as the
+[Inference](tutorials/inference.md) tutorial shows.
 
 ## Connection to survival analysis
 
 The generation-time distribution g(t) = h(t)/R is the normalised
-infectiousness profile, and its CDF G(t) is the cumulative hazard. When
-isolation occurs at time t_iso, P(transmission before isolation) = G(t_iso)
-and P(transmission after) = 1 − G(t_iso): the transmission process is
-right-censored. The generation-time distribution connects to the population
-growth rate through the Euler–Lotka equation R = 1/M_g(−r). The same two
-objects, the generation-time distribution and the censoring time, appear
-in both simulation and Kenah's pairwise likelihood, so inference built on
-this framework fits the same quantities it simulates from.
-
-## Host timeline and transmission-route windows
-
-!!! note "State of implementation"
-    The continuous-time half of this is built: `RouteWindow` carries a route's
-    `from` state, the states that end it, its kernel and its reach, and the
-    continuous-time race resolves several routes per case with per-route
-    censoring for any model that supplies them. What remains designed but unbuilt is the offspring-driven half —
-    the fate-mixture offspring law and its closed forms — so the analytical side
-    of the duality below does not yet carry over to multi-route models.
-
-The three stages above describe the simplest model: one offspring law, one
-generation-time distribution. The branching process generalises this against a
-**host timeline** (the disease layer: the case's natural history as a sequence
-of timed states from infection — infectious, onset, severe, died or recovered,
-buried) composed onto it, treating transmission as a set of **route windows**
-keyed off that timeline. A route window is an offspring law, a `from` state
-where infectiousness begins, the states that end it, and a survival kernel for
-the timing within it. Because the timeline is a separate layer, the window's
-`from` state is resolved against the composed disease rather than fixed on the
-process.
-
-This is what lets several mechanisms become one. A funeral route runs
-between death and burial; a nosocomial route between admission and
-discharge; isolation lowering R is a route cut short by a removal state.
-The community route is the simplest window (from infection, no censoring),
-which recovers today's model unchanged. The latent period becomes the
-infection→infectious transition, the generation interval is derived from
-the latent period plus the kernel draw, and isolation truncation becomes
-one removal state among death, recovery, and burial.
-
-The generalisation lands entirely in stages 2 and 3; stage 1 stays the
-pure, analysable layer. R remains the intrinsic reproduction number a case
-would make if never removed, and the realised R falls out of the censoring:
-shortening the infectious window blocks more contacts and lowers it. k
-remains the intrinsic offspring dispersion and is deliberately not the
-shape of the infectious period, so the count is never drawn from a
-duration, which would couple stage 1 to timing and break the
-branch-first decoupling the engine rests on.
-
-A window contributes contacts only once its `from` state has occurred, so a
-survivor never materialises funeral contacts and nothing is created only to
-be censored. The offspring law driving outbreak size is therefore a
-fate-mixture (community offspring for everyone, plus funeral offspring for
-the fraction who die), which stays closed-form when each branch is a
-negative binomial and falls back to simulation otherwise, so the
-analytical/simulation duality carries over.
-
-This is also the seam through which a household- or
-metapopulation-structured model in the wider ecosystem reuses the same
-survival objects at a smaller scale: a household is one route window scoped
-to a clique, with the contact-interval kernel as the window kernel and the
-infectious period as its censoring.
+infectiousness profile, and its cumulative distribution G(t) is the cumulative
+hazard divided by R. When isolation happens at time t_iso, the probability that
+a given transmission falls before isolation is G(t_iso) and after it is
+1 − G(t_iso): transmission is right-censored at isolation. The generation-time
+distribution is linked to the epidemic growth rate r by the Euler–Lotka
+equation R = 1/M_g(−r), where M_g is its moment generating function. The same
+two quantities, the generation-time distribution and the censoring time, appear
+both in simulation and in Kenah's pairwise likelihood. Inference within this
+framework therefore fits the same quantities it simulates from.
 
 ## References
 
