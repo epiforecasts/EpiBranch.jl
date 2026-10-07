@@ -162,12 +162,17 @@ ct = ContactTracing(
 )
 
 rng = StableRNG(42)
+results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
+println("Isolation alone: $(round(containment_probability(results), digits=3))")
+
+rng = StableRNG(42)
 results = simulate(scenario([iso, ct]), 200; max_cases = 500, rng = rng)
 println("Isolation + tracing: $(round(containment_probability(results), digits=3))")
 ```
 
 Quarantine stops transmission from secondary cases before they show
-symptoms, and containment rises above isolation alone.
+symptoms, and containment rises above isolation alone with the same
+indefinite isolation.
 
 [`Quarantine`](@ref)'s `duration` takes the same values as isolation's, and
 has no default either. With `Inf`, a traced contact who escaped infection by
