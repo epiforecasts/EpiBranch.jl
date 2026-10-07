@@ -1511,14 +1511,15 @@ function _set_onset_from_incubation!(ind::Individual)
 end
 
 """
-    demographics(; age_distribution=nothing, age_range=(0, 90), prob_female=0.5)
+    demographics(; age_distribution, age_range=(0, 90), prob_female=0.5)
 
 Give each person an age (`:age`, whole years) and a sex (`:sex`, `:female`
 or `:male`). Pass the result as `attributes` to [`ModelSpec`](@ref); list it
 before any population characteristic that reads the age.
 
 - `age_distribution`: distribution of ages. Draws are rounded down and kept
-  within `age_range`. Without one, ages are drawn uniformly from `age_range`.
+  within `age_range`. If it is left out, ages are drawn uniformly from
+  `age_range`.
 - `age_range`: youngest and oldest age as a tuple (default `(0, 90)`).
 - `prob_female`: probability that a person is female (default 0.5).
 
