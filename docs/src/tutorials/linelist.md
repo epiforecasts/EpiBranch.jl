@@ -66,9 +66,10 @@ calendar date of time 0, from which all dates are counted.
 
 A column appears only if the simulation recorded that information. Drop the
 `Hospitalisation` step and `date_admission` disappears. Drop
-`clinical_presentation` and there is no symptom onset. Then `date_onset`,
-`date_reporting`, `date_admission`, `date_outcome` and `outcome` all disappear:
-the reporting, admission and outcome delays are measured from onset.
+`clinical_presentation` and there is no symptom onset. The reporting,
+admission and outcome delays are measured from onset, so `simulate` then stops
+with an error asking for `clinical_presentation`. To use these steps without
+onset, measure each delay from another event with `from`.
 
 ## Demographics
 
