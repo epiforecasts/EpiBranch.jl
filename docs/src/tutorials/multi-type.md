@@ -162,7 +162,8 @@ println("Cases: $(state.cumulative_cases)")
 
 Interventions apply to every case, whatever its type. Here each symptomatic
 case isolates after a delay from symptom onset with mean 2 days
-(`Exponential(θ)` has mean θ) and stays isolated for 7 days; the incubation
+(`Exponential(θ)` has mean θ) and stays isolated for 7 days (`duration`),
+after which a case that is still infectious can transmit again; the incubation
 period, from infection to onset, has a mean of about 5 days:
 
 ```@example multitype
