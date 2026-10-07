@@ -325,8 +325,9 @@ chain_state = simulate(
 maximum(ind.generation for ind in chain_state.individuals; init = 0)
 ```
 
-The simulation stopped when the fifth generation was reached. `init = 0` gives
-the maximum a value when there are no individuals.
+The printed value is the last generation reached: 5 if the rule stopped the
+run, fewer if transmission died out first. `init = 0` gives the maximum a
+value when there are no individuals.
 
 [`Extinction`](@ref) is added automatically unless your `stopping_rules`
 already include it. A simulation therefore still ends when transmission dies out:
