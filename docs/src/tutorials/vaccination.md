@@ -14,6 +14,8 @@ infection. All times are in days, counted from the infection of the first
 index case. Each scenario simulates a number of outbreaks, stopped at
 `max_cases` cases, and [`containment_probability`](@ref) is the proportion
 that died out before reaching that cap (see the [glossary](../glossary.md)).
+If Julia syntax such as `x -> ...`, `do` blocks or `c ? a : b` is new, see
+[Julia for R users](../julia-for-r-users.md).
 
 ```@example vaccination
 using EpiBranch
