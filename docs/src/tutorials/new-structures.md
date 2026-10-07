@@ -405,7 +405,7 @@ set. This runs the clinical transitions (placed on the state by
 (`:onset_time`, `:outcome_time`, ...) that the line list and the likelihoods
 read. Such a model receives the other model parts as arguments: define
 `EpiBranch._simulate(m::MyModel, sim_opts; interventions, attributes,
-progression, observation, rng, condition, max_attempts)`, read the parts from
+progression, observation, recorder, rng, condition, max_attempts)`, read the parts from
 the arguments, and work out anything you need (the start of the infectious
 period, say) from `progression` there. `ModelSpec` passes `simulate` and
 `loglikelihood` to that method.
