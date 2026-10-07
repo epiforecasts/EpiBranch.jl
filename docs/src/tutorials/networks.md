@@ -96,9 +96,9 @@ model = ModelSpec(NetworkProcess(adjacency, Exponential(3.0));
 Here the latent period is `LogNormal(1.6, 0.5)`, whose parameters are the mean
 and standard deviation of the *log* of the delay, giving a median of about 5
 days. Each case is then infectious for 7 days. With a mean contact interval of
-3 days, a case infects any one of its contacts with probability 1
-- exp(-7/3), about 90%, if nothing intervenes. Most links transmit, but not
-  all.
+3 days, a case infects any one of its contacts with probability
+1 - exp(-7/3), about 90%, if nothing intervenes. Most links transmit, but not
+all.
 
 A matrix works too: `NetworkProcess(A, kernel)` treats any nonzero `A[i, j]`
 as a contact between `i` and `j`. Values in the matrix are ignored; the matrix
