@@ -495,3 +495,23 @@ function _sellke_pool!(
     end
     return
 end
+
+"""
+    sellke_pool!(state, members, rng, sim_opts; kwargs...) -> state
+
+Public wrapper around [`EpiBranch._sellke_pool!`](@ref): resolves the pool's
+`max_time` from `sim_opts`'s stopping rules, then reconciles `state`'s
+aggregate bookkeeping (`cumulative_cases`, `max_infection_time`, `extinct`)
+before returning `state`. A model with its own simulation loop calls this
+rather than `_sellke_pool!` itself, so it never has to resolve `max_time` or
+reconcile the bookkeeping by hand. `kwargs` are `_sellke_pool!`'s own
+(`mixing_by`, `force`, `n_initial`, `from`, `until`, `interventions`, `risks`)
+— everything but `max_time`, which this wrapper sets.
+"""
+function sellke_pool!(
+        state::SimulationState, members::AbstractVector{Int},
+        rng::AbstractRNG, sim_opts::SimOpts; kwargs...
+    )
+    extinct = _sellke_pool!(state, members, rng; max_time = _max_time(sim_opts), kwargs...)
+    return _reconcile_sellke_bookkeeping!(state, extinct)
+end

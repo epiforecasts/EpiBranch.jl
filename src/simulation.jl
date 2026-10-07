@@ -60,42 +60,49 @@ function simulate(
         stopping_rules
     )
     _validate_initial_cases(model, sim_opts)
-    return _simulate(
-        model, sim_opts; interventions = interventions(model),
-        attributes = attributes(model), progression = _progression(model),
-        observation = observation(model), recorder = recorder(model), rng,
-        condition, max_attempts
+    return _run_once_or_retry(
+        model, sim_opts, condition, max_attempts;
+        interventions = interventions(model), attributes = attributes(model),
+        progression = _progression(model), observation = observation(model),
+        recorder = recorder(model), rng
     )
 end
 
-# Internal single run against a built `SimOpts`. The forcing layers
-# (interventions, attributes, progression, observation, recorder) are passed
-# in explicitly, so a `ModelSpec` can supply its own while the process stays
-# the dispatched model. The public methods read them off a bare process, or
-# off the spec. `recorder` is read only by the continuous-time (Sellke) race;
-# the generation-based engine below never drops a pair for a standing block,
-# so it has nothing to ask one.
-function _simulate(
-        model::TransmissionModel, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, recorder, rng,
-        condition, max_attempts
-    )
-    if condition !== nothing
-        for _ in 1:max_attempts
-            state = _simulate(
-                model, sim_opts; interventions, attributes,
-                progression, observation, recorder, rng, condition = nothing,
-                max_attempts
-            )
-            state.cumulative_cases in condition && return state
-        end
-        throw(
-            ErrorException(
-                "No simulation produced an outbreak of size $condition within $max_attempts attempts"
-            )
-        )
-    end
+# Shared by both `simulate` methods (a bare process and a `ModelSpec`): run
+# `simulate_once` once, or repeat it through `_retry_for_condition` when a
+# `condition` is set. Pulled out so the two entry points don't each carry
+# their own copy of the retry branch.
+function _run_once_or_retry(model, sim_opts, condition, max_attempts; kwargs...)
+    run = () -> simulate_once(model, sim_opts; kwargs...)
+    condition === nothing && return run()
+    return _retry_for_condition(run, condition, max_attempts)
+end
 
+"""
+    simulate_once(model, sim_opts; interventions, attributes, progression,
+                  observation, recorder, rng)
+
+Run a single outbreak simulation against a built [`SimOpts`](@ref), with the
+modelling layers (`interventions`, `attributes`, `progression`, `observation`,
+`recorder`) supplied explicitly rather than read off `model`. `simulate` reads
+them off a bare process, or off a [`ModelSpec`](@ref), and wraps this in a
+retry loop when a `condition` is given; this method itself takes no
+`condition`.
+
+The default method runs the generation-based engine. A model with its own
+simulation loop — one driven by a continuous-time race rather than stepping
+generation by generation, such as the network, household and homogeneous-pool
+processes — defines its own method instead, reading the layers off the
+arguments and deriving any window state it needs (the infectious window's
+`from`, say, via [`infectious_from`](@ref)) from the composed `progression`.
+`recorder` is read only by the continuous-time (Sellke) race; the
+generation-based engine never drops a pair for a standing block, so it has
+nothing to ask one.
+"""
+function simulate_once(
+        model::TransmissionModel, sim_opts::SimOpts;
+        interventions, attributes, progression, observation, recorder, rng
+    )
     state = initialise_state(
         model, sim_opts, interventions, progression, attributes, rng
     )
@@ -159,19 +166,17 @@ function _simulate_n(
         results = Vector{SimulationState}(undef, n)
         Threads.@threads for i in 1:n
             local_rng = Random.Xoshiro(seeds[i])
-            results[i] = _simulate(
+            results[i] = simulate_once(
                 model, sim_opts; interventions, attributes,
-                progression, observation, recorder, rng = local_rng,
-                condition = nothing, max_attempts = 10_000
+                progression, observation, recorder, rng = local_rng
             )
         end
         return results
     else
         return [
-            _simulate(
+            simulate_once(
                 model, sim_opts; interventions, attributes, progression,
-                observation, recorder, rng, condition = nothing,
-                max_attempts = 10_000
+                observation, recorder, rng
             )
                 for _ in 1:n
         ]
@@ -179,10 +184,13 @@ function _simulate_n(
 end
 
 # ── Shared helpers for the structure-driven (continuous-time) models ────
-# The homogeneous, household and network `_simulate` methods run their own
-# Sellke loop rather than the generation engine, so they share the same two
-# concerns: retrying until a `condition` is met, and reconciling the aggregate
-# bookkeeping the engine would otherwise maintain.
+# The homogeneous, household and network `simulate_once` methods run their own
+# Sellke loop rather than the generation engine, so they share one concern:
+# reconciling the aggregate bookkeeping the engine would otherwise maintain. A
+# single-race model gets this from the public `sellke_race!`/`sellke_pool!`
+# wrappers; a model with several independent races (a household process, over
+# its households) reconciles once after its own loop instead, directly through
+# `_reconcile_sellke_bookkeeping!` below.
 
 # Whether a model's simulation honours the termination controls (`max_cases`,
 # `max_generations`, `max_time`, `stopping_rules`). The generation-based engine
