@@ -45,7 +45,8 @@ per day, or a distribution of the time (in days) at which each person would be
 infected from outside, for a rate that changes over time. These introductions
 happen only in the first `obs_end` days, which must be finite when
 `external_hazard` is used. Without an external hazard, each household starts
-with one index case at day 0.
+with one index case at day 0, unless `initial_cases` is given, in which case
+only those people are infected at day 0.
 
 !!! warning "What isolation means here"
     The only transmission this process represents is *within* a household;
