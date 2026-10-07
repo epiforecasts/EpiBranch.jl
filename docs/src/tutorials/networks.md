@@ -368,6 +368,7 @@ end
 issorted(traced; rev = true) && last(traced) < first(traced) / 2 ||  # hide
     error("the paragraph below reads these numbers as falling with " *  # hide
         "traceability, and they no longer do: $traced")  # hide
+nothing  # hide
 ```
 
 Tracing household contacts alone already helps, and the more community contacts
