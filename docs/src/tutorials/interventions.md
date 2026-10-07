@@ -357,10 +357,16 @@ a few percentage points either way is within simulation noise.
 Start and end times can be combined:
 
 ```@example interventions
-# Active only between day 5 and day 30
+# Isolation for cases set up between day 5 and day 30
 iso_window = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 7.0);
     start_time = 5.0, end_time = 30.0)
 ```
+
+The end is checked when each case is set up, against the outbreak's latest
+infection so far. Isolation reaches a case set up while that is still on or
+before day 30, even if their own isolation falls later, and misses a case set
+up after it, even if their isolation would fall earlier. A scheduled
+vaccination instead checks each dose's own date.
 
 For any other trigger, pass a function of the [`SimulationState`](@ref) that
 returns `true` while the intervention should be on. This one switches
