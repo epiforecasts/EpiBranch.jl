@@ -290,6 +290,7 @@ function _simulate(
         state, collect(1:model.n), rng;
         routes = routes, interventions = interventions,
         watches = Tuple(EpiBranch.watched_records(w.kernel) for w in windows),
+        projections = Tuple(EpiBranch.kernel_projection(w.kernel) for w in windows),
         max_time = EpiBranch._max_time(sim_opts),
         risks = EpiBranch.transmission_risks(model), recorder = recorder,
         seed! = (best, members, r) -> _seed_network!(
