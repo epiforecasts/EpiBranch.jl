@@ -173,8 +173,9 @@ EpiBranch.INTERVENTION_REMOVAL
 
 [`simulate`](@ref) runs one outbreak or many. Stopping rules end a run early,
 for example after a maximum number of cases or days. A run returns a
-[`SimulationState`](@ref) holding one [`Individual`](@ref) per case or exposed
-contact.
+[`SimulationState`](@ref) holding one [`Individual`](@ref) per person in the
+simulation: the cases and the contacts they exposed for a
+[`BranchingProcess`](@ref), everyone for models with a fixed population.
 
 ```@docs
 simulate
