@@ -235,9 +235,9 @@ that could have been given by now, at the end of a simulation or at the point
 `state` has reached. With `carry_over = true` (the default) both count the
 whole outbreak: `available` is `budget_per_period` for every period begun so
 far. With `carry_over = false` both refer to the current period only:
-`available` is one `budget_per_period`, and `used` counts the doses given in
-that period, including doses given by another intervention sharing the same
-capacity.
+`available` is one `budget_per_period`, and `used` counts the people accepted
+in that period, whatever day their dose falls on, and the doses given in that
+period by another intervention sharing the same capacity.
 """
 function capacity_usage(cc::CapacityConstrained, state::SimulationState)
     return _capacity_usage(cc, state)
