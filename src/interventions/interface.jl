@@ -3,7 +3,8 @@ Parent type of all interventions: [`Isolation`](@ref),
 [`ContactTracing`](@ref), [`RingVaccination`](@ref),
 [`MassVaccination`](@ref) and [`GroupVaccination`](@ref). Wrap one in
 [`Scheduled`](@ref) to start or stop it at a given time or case count, or in
-[`CapacityConstrained`](@ref) to limit how many people it can reach per day.
+[`CapacityConstrained`](@ref) to limit how many people it can reach, per
+period or in total.
 Pass a vector of them as `interventions` to [`ModelSpec`](@ref).
 
 Measures that limit the number of secondary cases directly (a cap per case, a
