@@ -7,7 +7,7 @@ characteristics and interventions have been set.
 
 Steps that end a case, such as death or recovery, are called terminal. When a
 case could reach several terminal steps, the earliest one becomes its outcome
-(`:outcome` and `:outcome_time` in the line list), so death and recovery
+(`outcome` and `date_outcome` in the line list), so death and recovery
 compete and whichever comes first wins.
 
 Interventions are the policy applied to a case ([`AbstractIntervention`](@ref));
