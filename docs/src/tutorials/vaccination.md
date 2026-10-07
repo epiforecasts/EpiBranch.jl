@@ -382,8 +382,9 @@ Under `ct`, ring vaccination cannot change whether an outbreak is contained
 (see the warning in [Ring vaccination](@ref)). Measuring the effect of
 clustering on containment needs a scenario where vaccination acts. Here tracing does not
 quarantine, and `onward_efficacy` reduces a vaccinated contact's own onward
-transmission. Every scenario draws the same population characteristics, leaving
-vaccination as the only difference between them:
+transmission. Every scenario uses the same population characteristics
+(`clinical`, `community`, `acceptance`), so vaccination is the only difference
+in how they are set up:
 
 ```@example vaccination
 rv_clustered_onward = RingVaccination(efficacy = 0.8, onward_efficacy = 0.8,
