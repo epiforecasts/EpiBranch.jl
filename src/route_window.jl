@@ -22,8 +22,8 @@
 
 A route of transmission, such as community, household or funeral, with its
 own start, end and timing over a case's natural history. Used with
-[`RoutedNetwork`](@ref), where each route reaches a different set of people
-in the network.
+`RoutedNetwork` (in `EpiNetwork`), where each route reaches a different set of
+people in the network.
 
 - `name` labels the route (`:community`, `:household`, `:funeral`, …).
 - `from` is the state at which this route's infectiousness begins. `:infection`
@@ -39,7 +39,7 @@ in the network.
   interventions (isolation, or quarantine after being traced) should end.
 - `kernel` is the contact interval on this route: the time in days from the
   route opening to a contact that would infect if the route were still open.
-- `reach` tells the model who the route reaches. [`RoutedNetwork`](@ref)
+- `reach` tells the model who the route reaches. `RoutedNetwork`
   needs the route's contact list here (`reach[i]` lists the people `i` can
   infect on this route); a model of your own can read another value, such as
   the default, `name`.
