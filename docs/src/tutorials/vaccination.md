@@ -46,7 +46,7 @@ default). It has up to three effects, each a probability:
 |---|---|---|
 | `efficacy` | the vaccinated person being infected | before the exposure |
 | `onward_efficacy` | the vaccinated person infecting others | before each of their transmissions |
-| `post_exposure_efficacy` | an infection the person already has | after the exposure but before symptom onset |
+| `post_exposure_efficacy` | an infection the person already has | before symptom onset (if before the exposure, it blocks the infection itself) |
 
 `efficacy` is leaky by default: each exposure after protection starts is
 blocked with that probability. `mode = AllOrNothingMode()` instead makes that
