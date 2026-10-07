@@ -191,14 +191,18 @@ summarise_posterior(posterior, :R)
 summarise_posterior(posterior, :k)
 ```
 
-Before using the estimates, check that the sampler has converged. The summary
-table reports, for each parameter, `rhat` (R-hat, which should be close to 1,
-say below 1.01, when the chains agree) and `ess_bulk` and `ess_tail` (effective
-sample sizes, which should be in the hundreds at least):
+Before using the estimates, check that the sampler has converged. For each
+parameter, `rhat` (R-hat) should be close to 1, say below 1.01, when the chains
+agree, and the effective sample sizes `ess_bulk` and `ess_tail` should be in the
+hundreds at least:
 
 ```@example inference
-using Turing.FlexiChains: summarystats
-summarystats(posterior)
+using Turing.FlexiChains: rhat, ess
+for name in (:R, :k)
+    println("$name: rhat = $(round(rhat(posterior[name]), digits = 3)), " *
+            "ess_bulk = $(round(Int, ess(posterior[name]; kind = :bulk))), " *
+            "ess_tail = $(round(Int, ess(posterior[name]; kind = :tail)))")
+end
 ```
 
 `maximum_a_posteriori` gives the posterior mode in the same way that
