@@ -1511,7 +1511,7 @@ function _set_onset_from_incubation!(ind::Individual)
 end
 
 """
-    demographics(; age_distribution, age_range=(0, 90), prob_female=0.5)
+    demographics(; age_distribution=NoAgeDistribution(), age_range=(0, 90), prob_female=0.5)
 
 Give each person an age (`:age`, whole years) and a sex (`:sex`, `:female`
 or `:male`). Pass the result as `attributes` to [`ModelSpec`](@ref); list it
