@@ -10,7 +10,7 @@ struct SharedKeyQuarantine <: EpiBranch.TraceAction end
 function EpiBranch.apply_trace!(::SharedKeyQuarantine, contact, state, trace_time, rng)
     contact.state[:traced] = true
     contact.state[:quarantined] = true
-    isfinite(trace_time) && set_isolated!(contact, trace_time)
+    isfinite(trace_time) && set_isolated!(contact, trace_time; release_time = Inf)
     return nothing
 end
 
@@ -52,7 +52,10 @@ end
     )
 
     @testset "Default constructor lowers kwargs to trait form" begin
-        ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.0))
+        ct = ContactTracing(
+            probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+            action = Quarantine(duration = Inf)
+        )
         @test ct.eligibility isa SymptomaticParent
         @test ct.trace_rate isa ConstantRate
         @test ct.trace_rate.p == 0.5
@@ -61,7 +64,7 @@ end
     end
 
     @testset "quarantine_on_trace = false selects FlagOnly" begin
-        ct = ContactTracing(
+        ct = @test_deprecated ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(0.1),
             quarantine_on_trace = false
         )
@@ -71,8 +74,11 @@ end
     @testset "Default ContactTracing reproduces existing behaviour" begin
         # Tracing on isolated symptomatic parents, with quarantine.
         rng = StableRNG(42)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
-        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+            action = Quarantine(duration = Inf)
+        )
         state = simulate(
             ModelSpec(
                 BranchingProcess(Poisson(2.0), Exponential(5.0));
@@ -90,7 +96,7 @@ end
         # intervention without any further hook changes.
         ct = ContactTracing(
             WithinChain(), ConstantRate(0.5),
-            ConstantDelay(Exponential(1.0)), Quarantine()
+            ConstantDelay(Exponential(1.0)), Quarantine(duration = Inf)
         )
         @test ct.eligibility isa WithinChain
         @test EpiBranch.is_eligible(
@@ -111,14 +117,14 @@ end
         # A contact reached by two tracing systems was reached when the
         # first of them got there, so the recorded trace time must not
         # depend on the order the interventions sit in the stack.
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         fast = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Dirac(0.5), quarantine_on_trace = false
+            isolation_to_trace_delay = Dirac(0.5), action = FlagOnly()
         )
         slow = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Dirac(20.0), quarantine_on_trace = false
+            isolation_to_trace_delay = Dirac(20.0), action = FlagOnly()
         )
 
         # Each tracer draws its own delay, so the two stack orders consume the
@@ -150,8 +156,8 @@ end
     @testset "A NaN trace time is never recorded" begin
         # A trigger time can be NaN, and `min` propagates NaN, so such a
         # time must not be written at all.
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
-        ct = ContactTracing(NaNForEvenIds(), 1.0, Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        ct = ContactTracing(NaNForEvenIds(), 1.0, Exponential(1.0), Quarantine(duration = Inf))
         state = simulate(
             ModelSpec(
                 BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -178,35 +184,40 @@ end
     )
 
     @testset "depth defaults to 1" begin
-        @test ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5)).depth == 1
+        @test ContactTracing(
+            OnSymptomOnset(), 1.0, Exponential(0.5), Quarantine(duration = Inf)
+        ).depth == 1
         @test ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Exponential(0.5)
+            isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
         ).depth == 1
     end
 
     @testset "depth is settable through every constructor" begin
-        @test ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2).depth == 2
         @test ContactTracing(
-            probability = 1.0,
-            isolation_to_trace_delay = Exponential(0.5), depth = 3
+            OnSymptomOnset(), 1.0, Exponential(0.5), Quarantine(duration = Inf); depth = 2
+        ).depth == 2
+        @test ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+            action = Quarantine(duration = Inf), depth = 3
         ).depth == 3
         @test ContactTracing(
             OnSymptomOnset(), ConstantRate(1.0),
-            ConstantDelay(Exponential(0.5)), Quarantine(); depth = 2
+            ConstantDelay(Exponential(0.5)), Quarantine(duration = Inf); depth = 2
         ).depth == 2
     end
 
     @testset "depth below 1 is rejected" begin
         @test_throws ArgumentError ContactTracing(
-            OnSymptomOnset(), 1.0, Exponential(0.5); depth = 0
+            OnSymptomOnset(), 1.0, Exponential(0.5), Quarantine(duration = Inf); depth = 0
         )
         @test_throws ArgumentError ContactTracing(
-            probability = 1.0, isolation_to_trace_delay = Exponential(0.5), depth = -1
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+            action = Quarantine(duration = Inf), depth = -1
         )
         @test_throws ArgumentError ContactTracing(
             OnSymptomOnset(), ConstantRate(1.0),
-            ConstantDelay(Exponential(0.5)), Quarantine(); depth = 0
+            ConstantDelay(Exponential(0.5)), Quarantine(duration = Inf); depth = 0
         )
     end
 
@@ -224,9 +235,9 @@ end
         # itself reached at a finite time, whatever its own isolation.
         iso = Isolation(
             onset_to_isolation_delay = Exponential(1.0),
-            test_sensitivity = 0.5, isolation_duration = Inf
+            test_sensitivity = 0.5, duration = Inf
         )
-        ct = ContactTracing(OddIdSeeds(), 1.0, Exponential(0.5); depth = 2)
+        ct = ContactTracing(OddIdSeeds(), 1.0, Exponential(0.5), Quarantine(duration = Inf); depth = 2)
         checked = 0
         for s in 1:20
             state = simulate(
@@ -249,7 +260,9 @@ end
     end
 
     @testset "depth 1 traces direct contacts only; the fringe does not grow" begin
-        ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 1)
+        ct = ContactTracing(
+            OnSymptomOnset(), 1.0, Exponential(0.5), Quarantine(duration = Inf); depth = 1
+        )
         state = simulate(
             ModelSpec(
                 BranchingProcess((rng, ind) -> 4, Exponential(5.0));
@@ -266,8 +279,12 @@ end
     end
 
     @testset "depth 2 reaches contacts-of-contacts past the uninfected fringe" begin
-        ct1 = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 1)
-        ct2 = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
+        ct1 = ContactTracing(
+            OnSymptomOnset(), 1.0, Exponential(0.5), Quarantine(duration = Inf); depth = 1
+        )
+        ct2 = ContactTracing(
+            OnSymptomOnset(), 1.0, Exponential(0.5), Quarantine(duration = Inf); depth = 2
+        )
         s1 = simulate(
             ModelSpec(
                 BranchingProcess((rng, ind) -> 4, Exponential(5.0));
@@ -305,7 +322,9 @@ end
         # depth 2: a contact two hops from any infected case (its parent
         # is an uninfected ring member) carries no remaining budget, so
         # the ring stops there rather than running away.
-        ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
+        ct = ContactTracing(
+            OnSymptomOnset(), 1.0, Exponential(0.5), Quarantine(duration = Inf); depth = 2
+        )
         state = simulate(
             ModelSpec(
                 BranchingProcess((rng, ind) -> 4, Exponential(5.0));
@@ -326,7 +345,9 @@ end
     end
 
     @testset "RingVaccination vaccinates the depth-2 ring" begin
-        ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
+        ct = ContactTracing(
+            OnSymptomOnset(), 1.0, Exponential(0.5), Quarantine(duration = Inf); depth = 2
+        )
         rv = RingVaccination(efficacy = 0.9)
         state = simulate(
             ModelSpec(
@@ -394,7 +415,7 @@ end
     @testset "reset! clears traced_by and trace_level" begin
         ct = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Exponential(1.0)
+            isolation_to_trace_delay = Exponential(1.0), action = Quarantine(duration = Inf)
         )
         ind = Individual(id = 1)
         ind.state[:traced] = true
@@ -403,7 +424,7 @@ end
         ind.state[:_ring_propagated] = true
         # An isolation in force but never recorded as a detection is still an
         # isolation this trace brought about, so the reset lifts it.
-        set_isolated!(ind, 6.0)
+        set_isolated!(ind, 6.0; release_time = Inf)
         ind.state[:_isolation_unrecorded] = true
         EpiBranch.reset!(ct, ind)
         @test ind.state[:traced] == false
@@ -420,7 +441,7 @@ end
         # The trace still reaches the contact — it is pending, not refused —
         # but an isolation at `Inf` would remove it from nothing while
         # reporting it as isolated and detected.
-        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine())
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
         infector = Individual(id = 1)
         infector.state[:infected] = true
         contact = Individual(id = 2)
@@ -441,8 +462,10 @@ end
         # isolation must survive either trace untouched.
         for unreachable in (NaN, Inf)
             standing = Individual(id = 3)
-            set_isolated!(standing, 4.0)
-            EpiBranch.apply_trace!(Quarantine(), standing, state, unreachable, StableRNG(1))
+            set_isolated!(standing, 4.0; release_time = Inf)
+            EpiBranch.apply_trace!(
+                Quarantine(duration = Inf), standing, state, unreachable, StableRNG(1)
+            )
             @test is_traced(standing)
             @test isolation_time(standing) == 4.0
             @test !EpiBranch._isolation_unrecorded(standing)
@@ -450,10 +473,10 @@ end
 
             # An unrecorded standing isolation stays unrecorded.
             unrecorded = Individual(id = 4)
-            set_isolated!(unrecorded, 4.0)
+            set_isolated!(unrecorded, 4.0; release_time = Inf)
             unrecorded.state[:_isolation_unrecorded] = true
             EpiBranch.apply_trace!(
-                Quarantine(), unrecorded, state, unreachable, StableRNG(1)
+                Quarantine(duration = Inf), unrecorded, state, unreachable, StableRNG(1)
             )
             @test is_traced(unrecorded)
             @test isolation_time(unrecorded) == 4.0
@@ -467,7 +490,9 @@ end
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
         )
         attrs = [clinical, transmission_traits(susceptibility = 0.5)]
-        ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5); depth = 2)
+        ct = ContactTracing(
+            OnSymptomOnset(), 1.0, Exponential(0.5), Quarantine(duration = Inf); depth = 2
+        )
         state = simulate(
             ModelSpec(
                 BranchingProcess((rng, ind) -> 4, Exponential(5.0));

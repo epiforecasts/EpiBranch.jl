@@ -197,7 +197,7 @@ end
         baseline = ModelSpec(NetworkProcess(ring, kernel); progression = prog)
         isolating = ModelSpec(
             NetworkProcess(ring, kernel); progression = prog,
-            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.2), isolation_duration = Inf)]
+            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.2), duration = Inf)]
         )
 
         @test n_infected(simulate(isolating; rng = StableRNG(3))) <
@@ -252,11 +252,11 @@ end
         ivs = [
             Isolation(
                 onset_to_isolation_delay = Exponential(0.5), test_sensitivity = 1.0,
-                post_isolation_transmission = 1.0, isolation_duration = Inf
+                post_isolation_transmission = 1.0, duration = Inf
             ),
             ContactTracing(
                 probability = 0.7, isolation_to_trace_delay = Exponential(0.2),
-                quarantine_on_trace = false
+                action = FlagOnly()
             ),
             _TraceProtection(),
         ]
@@ -279,7 +279,7 @@ end
         clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
         iso = Isolation(
             onset_to_isolation_delay = Exponential(1.0),
-            test_sensitivity = 1.0, isolation_duration = Inf
+            test_sensitivity = 1.0, duration = Inf
         )
         m = ModelSpec(
             NetworkProcess(ring_adjacency(200), Exponential(2.0));
@@ -304,7 +304,7 @@ end
         # the race has infected it.
         flag = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Exponential(0.5), quarantine_on_trace = false
+            isolation_to_trace_delay = Exponential(0.5), action = FlagOnly()
         )
         traced_model = ModelSpec(
             NetworkProcess(ring_adjacency(300), Exponential(2.0));
@@ -324,7 +324,7 @@ end
         # checks that the trace is still recorded and turned into isolation.
         no_test = Isolation(
             onset_to_isolation_delay = Exponential(1.0),
-            test_sensitivity = 0.0, isolation_duration = Inf
+            test_sensitivity = 0.0, duration = Inf
         )
         flag_only = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), FlagOnly())
         untested = ModelSpec(
@@ -442,12 +442,15 @@ end
             )
             return sum(infected(simulate(m; rng = StableRNG(s))) for s in 1:5) / 5
         end
-        ct = ContactTracing(probability = 1.0, isolation_to_trace_delay = Exponential(0.5))
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+            action = Quarantine(duration = Inf)
+        )
         plain = introductions(AbstractIntervention[])
         for residual in (0.0, 0.5)
             iso = Isolation(
                 onset_to_isolation_delay = Exponential(1.0),
-                test_sensitivity = 1.0, post_isolation_transmission = residual, isolation_duration = Inf
+                test_sensitivity = 1.0, post_isolation_transmission = residual, duration = Inf
             )
             @test isapprox(introductions([iso, ct]), plain; rtol = 0.05)
         end
@@ -589,7 +592,7 @@ end
         )
         iso = Isolation(
             onset_to_isolation_delay = Exponential(2.0),
-            test_sensitivity = 1.0, isolation_duration = Inf
+            test_sensitivity = 1.0, duration = Inf
         )
         hk, ck = Weibull(1.5, 4.0), Exponential(20.0)
         REM = EpiBranch.INTERVENTION_REMOVAL
@@ -817,10 +820,10 @@ end
             Transition(:recovered; from = :infection, delay = 12.0, terminal = true),
         ]
         ivs = [
-            Isolation(onset_to_isolation_delay = Exponential(0.5), isolation_duration = Inf),
+            Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf),
             ContactTracing(
                 probability = 1.0,
-                isolation_to_trace_delay = Exponential(0.5)
+                isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
             ),
         ]
         routed = RoutedNetwork(
@@ -1035,10 +1038,10 @@ end
             Transition(:recovered; from = :infection, delay = 12.0, terminal = true),
         ]
         ivs = [
-            Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf),
+            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
             ContactTracing(
                 probability = 1.0,
-                isolation_to_trace_delay = Exponential(0.5)
+                isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
             ),
         ]
         on_route = RoutedNetwork(
@@ -1091,10 +1094,10 @@ end
             RoutedNetwork([household, funeral]);
             progression = _sir(10.0), attributes = clinical,
             interventions = [
-                Isolation(onset_to_isolation_delay = Exponential(0.5), isolation_duration = Inf),
+                Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf),
                 ContactTracing(
                     probability = 1.0,
-                    isolation_to_trace_delay = Exponential(0.5)
+                    isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
                 ),
             ]
         )
@@ -1126,10 +1129,10 @@ end
                 Transition(:died; from = :infection, delay = 8.0, terminal = true),
             ],
             interventions = [
-                Isolation(onset_to_isolation_delay = Exponential(0.5), isolation_duration = Inf),
+                Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf),
                 ContactTracing(
                     probability = 1.0,
-                    isolation_to_trace_delay = Exponential(0.5)
+                    isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
                 ),
             ]
         )
@@ -1249,11 +1252,11 @@ end
         ivs = [
             Isolation(
                 onset_to_isolation_delay = Exponential(1.0),
-                test_sensitivity = 1.0, isolation_duration = Inf
+                test_sensitivity = 1.0, duration = Inf
             ),
             ContactTracing(
                 probability = 1.0,
-                isolation_to_trace_delay = Exponential(0.5)
+                isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
             ),
         ]
         build(p) = ModelSpec(
@@ -1300,11 +1303,11 @@ end
         ivs = [
             Isolation(
                 onset_to_isolation_delay = Exponential(0.5),
-                test_sensitivity = 1.0, isolation_duration = Inf
+                test_sensitivity = 1.0, duration = Inf
             ),
             ContactTracing(
                 probability = 0.5,
-                isolation_to_trace_delay = Exponential(0.5)
+                isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
             ),
         ]
         m = ModelSpec(
@@ -1344,11 +1347,11 @@ end
         )
         iso = Isolation(
             onset_to_isolation_delay = Exponential(2.0),
-            test_sensitivity = 1.0, isolation_duration = Inf
+            test_sensitivity = 1.0, duration = Inf
         )
         ct = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Exponential(0.5)
+            isolation_to_trace_delay = Exponential(0.5), action = Quarantine(duration = Inf)
         )
 
         build(ivs) = ModelSpec(
@@ -1382,7 +1385,7 @@ end
         # be no worse than isolation alone.
         late = ContactTracing(
             probability = 1.0,
-            isolation_to_trace_delay = Exponential(500.0)
+            isolation_to_trace_delay = Exponential(500.0), action = Quarantine(duration = Inf)
         )
         @test meansize([iso, late]) <= meansize([iso]) * 1.05
 
@@ -1443,8 +1446,8 @@ end
                 ),
             ],
             interventions = [
-                Isolation(onset_to_isolation_delay = Dirac(1.0), isolation_duration = Inf),
-                ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 2),
+                Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf),
+                ContactTracing(OnIsolation(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth = 2),
                 RingVaccination(efficacy = 0.9),
             ]
         )
@@ -1460,8 +1463,8 @@ end
             proc;
             attributes = model.attributes, progression = model.progression,
             interventions = [
-                Isolation(onset_to_isolation_delay = Dirac(1.0), isolation_duration = Inf),
-                ContactTracing(OnIsolation(), 1.0, Dirac(0.0); depth = 1),
+                Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf),
+                ContactTracing(OnIsolation(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth = 1),
                 RingVaccination(efficacy = 0.9),
             ]
         )
@@ -1497,7 +1500,7 @@ end
                         ),
                     ],
                     interventions = [
-                        Isolation(onset_to_isolation_delay = Dirac(1.0), isolation_duration = Inf),
+                        Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf),
                         ContactTracing(eligibility, 1.0, Dirac(0.0), action; depth = 2),
                     ]
                 )

@@ -22,7 +22,7 @@ model = ModelSpec(
     BranchingProcess(NegBin(2.5, 0.16), Gamma(2.0, 3.0));
     attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
     interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0),
-        isolation_duration = Inf)]
+        duration = Inf)]
 )
 states = simulate(model, 1000; max_cases = 5000)
 containment_probability(states; max_cases = 5000)

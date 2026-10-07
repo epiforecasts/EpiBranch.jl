@@ -109,7 +109,8 @@ for example vaccine efficacy that depends on age, or a quarantine's duration.
 
 Leave `event_time = -Inf` (the default) for protection that does not start at
 a particular time, such as reduced susceptibility. Leave `release_time = Inf`
-(the default) for protection that never lapses.
+(the default) for protection that never lapses, such as isolation or
+quarantine with an infinite duration.
 
 Returned by [`competing_risk`](@ref).
 """
@@ -170,8 +171,9 @@ intervention_time(::AbstractIntervention, ::Individual) = -Inf
 The time (days) at which this intervention ends `individual`'s infectious
 period for good. Continuous-time models ([`HomogeneousProcess`](@ref) and the
 network and household models) end a case's infectious period at the earliest
-such time across interventions: `Isolation` at the isolation time,
-`ContactTracing` at a quarantined contact's trace time. The default `Inf`
+such time across interventions: `Isolation` at the isolation time and
+`ContactTracing` at a quarantined contact's trace time, when the isolation or
+quarantine has no end (`duration = Inf`). The default `Inf`
 (no removal) suits an intervention that reduces transmission per contact,
 such as a leaky vaccine, which acts through
 [`competing_risk`](@ref EpiBranch.competing_risk) instead. Branching processes

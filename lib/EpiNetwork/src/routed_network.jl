@@ -37,7 +37,7 @@ community = RouteWindow(:community;
 model = ModelSpec(RoutedNetwork([household, community]);
     progression = [Transition(:recovered; from = :infection, delay = 7.0,
         terminal = true)],
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)],
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)],
     attributes = clinical_presentation(incubation_period = LogNormal(1.0, 0.3)))
 ```
 

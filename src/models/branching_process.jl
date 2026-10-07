@@ -102,7 +102,7 @@ BranchingProcess(M, R -> NegBin(R, 0.16), LogNormal(1.6, 0.5))
 # add isolation with a ModelSpec
 ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
     attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)])
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)])
 ```
 
 For transmission by several routes, or starting and stopping at points in

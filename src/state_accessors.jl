@@ -243,15 +243,16 @@ const REMOVAL_STRETCHES_KEY = :_removal_stretches
 
 const _NO_STRETCHES = Tuple{Float64, Float64}[]
 
-"""Record that a person is isolated from `time` (days), and released at
-`release_time` (`Inf`, never, by default). Used by interventions that isolate
-or quarantine people.
+"""Record that a person is isolated from `time` (days) until `release_time`.
+Used by interventions that isolate or quarantine people. `release_time` is
+required: pass `Inf` for isolation that never ends, so that indefinite
+isolation is always a stated choice.
 
 A transmission route that isolation should end lists
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which also allows
 for leaky isolation. `:isolated` in an `until` instead refers to a
 `Transition(:isolated, …)` step in the natural history."""
-function set_isolated!(ind::Individual, time::Real; release_time::Real = Inf)
+function set_isolated!(ind::Individual, time::Real; release_time::Real)
     ind.state[:isolated] = true
     delete!(ind.state, :_isolation_unrecorded)
     ind.state[:isolation_time] = time
@@ -330,14 +331,6 @@ function permanent_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES
         isfinite(release) || (t = min(t, start))
     end
     return t
-end
-
-# The first time any removal took this host out, whether or not it released
-# them. A component whose stretches a likelihood cannot read closes the
-# infectious window here instead of holding them.
-function first_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
-    stretches = removal_stretches(ind, key)
-    return isempty(stretches) ? Inf : first(stretches)[1]
 end
 
 """Undo a person's isolation, reversing [`set_isolated!`](@ref)."""

@@ -237,8 +237,9 @@ and [`ContactTracing`](@ref) uses the quarantine's own key for any
 exposure where it starts. An intervention of your own names the key it records
 under, whose value is a vector of `(start, release)` pairs. A wrapper that can
 lift the removal part-way through a period, such as a [`Scheduled`](@ref) with
-an end time, names none and ends the infectious period at the first removal
-instead.
+an end time, names none. The infectious period then ends at the first removal
+only if that removal has no release of its own; one with a release still ends
+on time.
 """
 removal_gap_host_times(component) = ()
 

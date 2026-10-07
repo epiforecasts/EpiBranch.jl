@@ -494,7 +494,7 @@ among the interventions, listed first.
 # Examples
 ```julia
 # Ring vaccination of contacts and contacts of contacts
-[ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0); depth = 2),
+[ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = 7.0); depth = 2),
  RingVaccination(efficacy = 0.9, delay_to_immunity = 10.0, coverage = 0.8)]
 
 # Post-exposure prophylaxis that stops 60% of infections before onset
@@ -574,7 +574,7 @@ susceptibility and infectiousness.
     been isolated, and perfect `Isolation` already prevents every later
     transmission to that contact. A dose acting only through `efficacy`
     then leaves results unchanged, with or without quarantine
-    (`quarantine_on_trace = false`). `efficacy` has infections to prevent
+    (`action = FlagOnly()`). `efficacy` has infections to prevent
     only when a contact can still be infected after being traced: with
     leaky isolation (`post_isolation_transmission > 0`), when tracing
     starts before isolation (for example `eligibility = OnSymptomOnset()`),
@@ -1080,7 +1080,7 @@ already vaccinated is skipped, so the group dose reaches only those the ring
 did not:
 
 ```julia
-[ContactTracing(OnLabConfirmation(), 0.7, Exponential(1.0)),
+[ContactTracing(OnLabConfirmation(), 0.7, Exponential(1.0), Quarantine(duration = 7.0)),
  RingVaccination(efficacy = 0.9),
  GroupVaccination(efficacy = 0.6)]
 ```

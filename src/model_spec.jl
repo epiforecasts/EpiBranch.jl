@@ -79,7 +79,7 @@ model = ModelSpec(
     BranchingProcess(NegBin(2.5, 0.16), Gamma(2.5, 2.0));
     attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
     interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0),
-        isolation_duration = 14.0)],
+        duration = 14.0)],
 )
 state = simulate(model; max_cases = 500)
 ```

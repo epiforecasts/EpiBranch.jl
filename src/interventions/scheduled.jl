@@ -9,14 +9,17 @@ two weeks into an outbreak.
 
 # Examples
 ```julia
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 
 # Isolation from day 14
 Scheduled(iso; start_time = 14.0)
 
 # Tracing once there have been 50 cases
 Scheduled(
-    ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.0));
+    ContactTracing(
+        probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = 7.0),
+    );
     start_after_cases = 50,
 )
 
@@ -46,14 +49,9 @@ intervention keeps it (vaccination does; see
 Everyone still records the intervention's starting information, such as "not
 isolated", before it starts.
 
-!!! note "Release from isolation under a schedule that ends"
-    In continuous-time models (homogeneous, network, household), a
-    schedule with an `end_time` or a `condition` ends an isolated or
-    quarantined case's infectious period at the isolation time, so a finite
-    `isolation_duration` or `Quarantine` `duration` does not release the
-    case. Use a schedule with only `start_time`, or no schedule, for the
-    duration to apply there. Branching processes apply the duration either
-    way.
+A finite isolation or quarantine `duration` releases the case on time
+whatever the schedule does later, including a schedule with an `end_time` or
+a `condition`.
 
 For extension authors: an intervention that proposes its actions through
 [`intervention_actions`](@ref EpiBranch.intervention_actions) has each action
