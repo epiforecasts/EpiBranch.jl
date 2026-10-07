@@ -1,21 +1,54 @@
 # Household models
 
-`HouseholdProcess` spreads infection within households. The population is
-partitioned into households; within a household every infectious member can
-infect every susceptible household-mate, with the timing of infectious contact
-drawn from a **contact-interval** kernel (Kenah 2011). It is a structure-driven
-model like [`NetworkProcess`](@ref), and like it is simulated by the **Sellke
-construction** in continuous time (the exact generative model of its pairwise
-likelihood) rather than by the generation-based engine; a household is a small,
-depleting clique rather than a fixed graph.
+How far does an infection spread within a household once it gets in, and does
+an outbreak of infected households grow or die out? `HouseholdProcess`
+simulates transmission within households, and the household reproduction
+number R\* and the probability that an introduction dies out follow from it.
 
-It lives in the companion `EpiHouseholds` package.
+The model works as follows:
+
+- The population is divided into households.
+- Within a household, every infectious person can infect every susceptible
+  person they live with.
+- Each person can be infected once, and a household can run out of people to
+  infect.
+- For each pair of housemates, the time until an infectious person would make
+  an infecting contact with the other is drawn from a **contact-interval
+  distribution** (passed as the `kernel` argument). The contact interval runs
+  from the start of the infector's infectious period to a contact that would
+  transmit if nothing intervened ([Kenah,
+  2011](https://doi.org/10.1093/biostatistics/kxq068)). It is a waiting time
+  for one pair; the generation time and serial interval also depend on the
+  latent and infectious periods.
+- Transmission happens only if that contact falls inside the infector's
+  infectious period. If the infector has recovered by then, or is in
+  isolation at the time, the
+  contact does not infect.
+- Without `external_hazard`, a simulation starts each household from one
+  index case. Infection between households is not simulated person by person:
+  it is either summarised by R\* (see
+  [below](#The-reproduction-number-between-households)) or added as
+  introductions from the community (`external_hazard`). With
+  `external_hazard`, households are infected only by these introductions,
+  some not at all, and the process needs a finite `obs_end`.
+
+!!! warning "What isolation means here"
+    A household model has a single infectious period per case. Isolating a
+    case therefore stops all of their transmission, including to the people
+    they live with. Read isolation and quarantine on this model as removal
+    from the household, such as hospitalisation or a stay in an isolation
+    facility, for as long as the `duration` lasts. A case released while still
+    infectious goes back to infecting their housemates. Self-isolation at home, where household transmission continues,
+    needs household and community contact as separate routes; see
+    [Several routes at once](@ref) on the network page.
+
+The household models live in the companion `EpiHouseholds` package.
 
 ## Defining a household model
 
-The contact-interval kernel is the one required input to `HouseholdProcess`.
-`sizes` gives the size of each household. The disease's natural history is a
-`progression` attached with a [`ModelSpec`](@ref).
+`HouseholdProcess` takes the size of each household and the contact-interval
+distribution. The disease timeline is a `progression` of
+[`Transition`](@ref)s, attached with a [`ModelSpec`](@ref).
 
 ```@example households
 using EpiBranch
@@ -23,73 +56,312 @@ using EpiHouseholds
 using Distributions
 using StableRNGs
 
-# 300 households of four, a Weibull contact interval, a six-day infectious period
+# fill(4, 300) is a list of 300 fours: 300 households of four people
 model = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
     progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])
 ```
 
+The contact interval is a Weibull distribution with shape 1.5 and scale 3
+days, a mean of about 2.7 days. Each case is infectious for 6 days from
+infection, long enough to infect most housemates.
+
 ## Simulating
 
-`simulate` returns a `SimulationState`, and [`linelist`](@ref) renders the
-one-row-per-case table. Each household is seeded with one index, and the
-outbreak spreads within it.
+[`simulate`](@ref) runs the outbreak, and [`linelist`](@ref) turns the result
+into a table with one row per case. Each household starts with one index case,
+and the outbreak spreads within it.
 
 ```@example households
 state = simulate(model; rng = StableRNG(1))
 df = linelist(state)
-(cases = size(df, 1), indexes = count(df.index))
+(cases = size(df, 1), index_cases = count(df.index),
+    secondary_cases = size(df, 1) - count(df.index))
 ```
 
-## A flexible natural history
+There are 300 index cases, one per household, and the secondary cases are the
+housemates infected after them.
 
-The infectious timeline is a `progression` of [`Transition`](@ref)s on the
-[`ModelSpec`](@ref), exactly as for [`BranchingProcess`](@ref). A latent period is
-a `Transition(:infectious; from = :infection, …)`; an infectious period is a
-terminal removal transition timed from the state before it. The progression's
-states become line-list columns, so symptom onset, testing and recovery come
-straight out of the simulation. The kernel times each infectious contact from the
-infectious window's start; with a latent period present, that `from` state is
-derived as `:infectious`, otherwise `:infection`.
+## The disease timeline
+
+The disease timeline works as for [`BranchingProcess`](@ref):
+
+- a latent period is `Transition(:infectious; from = :infection, …)`;
+- the infectious period ends in recovery, marked `terminal = true`;
+- symptom onset, testing and other events are further transitions.
+
+Contact intervals are timed from the start of the infectious period: from
+becoming infectious if you give a latent period, otherwise from infection.
+Each state in the timeline becomes a `date_...` column of the line list.
 
 ```@example households
+using DataFrames
+
 clinical = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
     progression = [
-        Transition(:infectious; from = :infection, delay = LogNormal(1.2, 0.4)),  # infection → infectiousness
-        Transition(:recovered; from = :infectious, delay = Gamma(6, 1),           # infectiousness → recovery
+        Transition(:infectious; from = :infection, delay = LogNormal(1.2, 0.4)),  # latent period
+        Transition(:recovered; from = :infectious, delay = Gamma(6, 1),           # infectious period
             terminal = true)])
-sort(propertynames(linelist(simulate(clinical; rng = StableRNG(2)))))
+names(linelist(simulate(clinical; rng = StableRNG(2))))
 ```
 
-`date_infectious` and `date_recovered` appear because the progression writes
-`:infectious_time` and `:recovered_time` onto each case.
+The latent period `LogNormal(1.2, 0.4)` takes the mean and standard deviation
+of the *log* of the delay, giving a median of about 3.3 days. The infectious
+period `Gamma(6, 1)` (shape 6, scale 1 day) has a mean of 6 days. The table
+gets `date_infectious` and `date_recovered` columns for the two states.
 
 ## The reproduction number between households
 
-A household model describes what happens inside a household. Transmission
-*between* them is a branching process of its own, whose unit is a whole
-household: an infected household infects other households through the community
-contacts of its members, and the epidemic grows only if one infected household
-infects more than one other on average. That threshold is R*.
+A household model describes what happens inside a household. Spread *between*
+households is a branching process of its own, in which the unit is a whole
+household: an infected household infects other households through its members'
+contacts in the community. Its reproduction number is the **household
+reproduction number R\***: the mean number of other households that one
+infected household infects. An epidemic of households can grow only if
+R\* > 1. R\* is not the same as the individual reproduction number, because
+it counts the community infections made by everyone infected in the
+household.
 
-[`household_offspring`](@ref) gives the law those households follow. It needs
-one number the household process does not have, the rate at which an infectious
-individual makes contact outside its own household. Early in an epidemic each
-such contact reaches a susceptible person in a fresh household, so a household
-infects a Poisson number of others with mean that rate times the total infectious
-person-time of its own outbreak. That person-time is random, because the
-household outbreak is.
+[`household_offspring`](@ref) gives the distribution of the number of other
+households one infected household infects. It needs one number that the
+household model does not have:
+
+- `global_rate`: the rate, per day, at which an infectious person makes
+  infecting contacts with people outside their household.
+
+Early in an epidemic, each such contact reaches a susceptible person in a
+household with no infection yet. The number of households one household
+infects is then Poisson, with mean `global_rate` times the total number of
+person-days that its members are infectious. That total varies from one
+household to the next, because the outbreak within the household is random.
 
 ```@example households
 offspring = household_offspring(model; global_rate = 0.1, rng = StableRNG(5))
 reproduction_number(offspring)
 ```
 
-### Households of one
+With 0.1 infecting community contacts per day, each infected person makes on
+average 0.6 over their 6 infectious days. Most of the household is infected,
+which makes R\* several times larger than that.
 
-A household of one member has nobody to infect at home, so its offspring law is
-one case's community contacts and the construction reduces to an ordinary
-branching process. With a fixed six-day infectious window those contacts arrive
-at a constant rate, so the law should be Poisson:
+The distribution itself is a `Distributions.jl` distribution, so it can be
+plotted, sampled, or used as the offspring distribution of a
+[`BranchingProcess`](@ref) to simulate chains of infected households. Here are
+the probabilities that an infected household infects 0, 1 or 2 others:
+
+```@example households
+law = household_offspring_law(offspring)
+(pdf(law, 0), pdf(law, 1), pdf(law, 2))
+```
+
+!!! warning "The early phase of an epidemic only"
+    R\* assumes that every community contact reaches a household with no
+    infection yet. This holds while infected households are a small share of
+    the total. The supply of uninfected households never runs out. The model
+    therefore covers the early phase: R\*, and the probability that a single
+    introduction dies out. It cannot give the peak of the epidemic or its
+    final size in the whole population, which need a finite number of
+    households that can run out.
+
+### Households of different sizes
+
+With households of different sizes, this is a multi-type branching process in
+which a household's type is its size. A community contact reaches a *person*,
+and with them their household. Larger households are therefore reached more
+often than their share of households would suggest (size-biased sampling).
+They then go on to infect more households, because more of their members are
+infected. Both effects are in the result:
+
+```@example households
+mixed = ModelSpec(HouseholdProcess([fill(2, 400); fill(5, 200)], Weibull(1.5, 12.0));
+    progression = [Transition(:recovered; from = :infection, delay = 6.0,
+        terminal = true)])
+sized = household_offspring(mixed; global_rate = 0.1, rng = StableRNG(6))
+(sizes = sized.sizes, mixing = sized.mixing, means = sized.means)
+```
+
+For each household type:
+
+- `sizes` is the household size;
+- `mixing` is the probability that a community contact lands in a household of
+  that type;
+- `means` is the mean number of other households that a household of that type
+  infects.
+
+Here 400 households have two people and 200 have five, and the contact
+interval is slower (Weibull scale 12 days, a mean of about 11 days), and not
+every housemate is infected. Two-person households are two thirds of the
+households but hold under half of the people. Community contacts reach them
+less than half the time, and each five-person household infects more others.
+
+[`extinction_probability`](@ref) answers the question most often asked of a
+household model: if one household is infected, how likely is it that
+transmission dies out without an epidemic? It gives one probability per type
+of the first household, since only the first household's type is not set by
+who community contacts reach.
+
+```@example households
+extinction_probability(sized)
+```
+
+Introductions into larger households are less likely to die out.
+
+### Comparing with a multi-type branching process
+
+The same process can be written as a multi-type [`BranchingProcess`](@ref)
+through its mean offspring matrix: entry `(i, j)` is the expected number of
+households of type `i` infected by one household of type `j`. A household's
+type sets how many households it infects, and the mixing probabilities set
+which types those are, whatever the infecting household's type. Each entry is
+therefore the mixing probability of type `i` times the mean of type `j`:
+
+```@example households
+M = sized.mixing * sized.means'   # (i, j) entry: mixing[i] * means[j]
+# Poisson offspring with the mean the matrix gives; the time between infected
+# households has mean 5 days, which R* and the extinction probability do not
+# depend on
+household_bp = BranchingProcess(M, R -> Poisson(R), Exponential(5.0))
+(exact = reproduction_number(sized), multitype = reproduction_number(household_bp))
+```
+
+R\* agrees, because it depends only on the means. The extinction probability
+depends on the whole offspring distribution, and here the multi-type process
+assumes a Poisson number of households infected. The household model uses the
+exact distribution, which is not Poisson:
+
+```@example households
+(exact = extinction_probability(sized),
+    poisson_approximation = extinction_probability(household_bp))
+```
+
+Take R\* from either, and the extinction probability from
+[`household_offspring`](@ref).
+
+### When households differ in who lives in them
+
+If transmission differs between people, two households of the same size need
+not behave alike. The contact-interval distribution can then be a function of
+the infector's and the susceptible person's numbers, `(infector, susceptible)
+-> Distribution`. The offspring distribution is built from the model's own
+households, each started from a member picked at random. Households whose
+contact-interval distributions are the same for every pair of members count as
+one type.
+
+In this example every third household transmits faster than the rest, giving
+two types of each size. First, record which household each person lives in:
+
+```@example households
+sizes = [fill(2, 400); fill(5, 200)]   # 400 two-person and 200 five-person households
+
+household_of = Int[]                   # household_of[i] is person i's household
+for (h, n) in enumerate(sizes)         # h counts households, n is their size
+    append!(household_of, fill(h, n))
+end
+```
+
+Next, mark the fast households and write the contact-interval distribution as
+a function of the infector and the susceptible person. The mean contact
+interval is about 3.6 days in a fast household (Weibull scale 4) and about 11
+days otherwise (scale 12):
+
+```@example households
+fast_household = [h % 3 == 0 for h in eachindex(sizes)]   # every third household
+
+function contact_interval(infector, susceptible)
+    if fast_household[household_of[infector]]
+        return Weibull(1.5, 4.0)
+    else
+        return Weibull(1.5, 12.0)
+    end
+end
+nothing # hide
+```
+
+Finally, build the model and the offspring distribution as before:
+
+```@example households
+covariate = ModelSpec(HouseholdProcess(sizes, contact_interval);
+    progression = [Transition(:recovered; from = :infection, delay = 6.0,
+        terminal = true)])
+typed = household_offspring(covariate; global_rate = 0.1, rng = StableRNG(8))
+(sizes = typed.sizes, mixing = typed.mixing, means = typed.means)
+```
+
+Each size now appears twice, once for slow and once for fast households. The
+fast households infect more others.
+
+### Interventions and R\*
+
+Interventions apply here too. Isolating a case for good
+(`duration = Inf`) ends their infectious period early. That reduces both the housemates they infect and their community
+contacts, and lowers R\*. Here every case isolates after a delay with a mean
+of 1 day from symptom onset, which comes 1 day after infection. `AllCases()`
+makes every case eligible for isolation; the default isolates only cases with
+symptoms, which needs a [`clinical_presentation`](@ref).
+
+```@example households
+isolated = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
+    progression = [Transition(:onset; from = :infection, delay = 1.0),
+        Transition(:recovered; from = :infection, delay = 6.0, terminal = true)],
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0),
+        eligibility = AllCases(), duration = Inf)])
+(without_isolation = reproduction_number(offspring),
+    with_isolation = reproduction_number(household_offspring(isolated;
+        global_rate = 0.1, rng = StableRNG(7))))
+```
+
+Isolation brings R\* below 1. As the box at the top of the page says,
+isolation here also stops transmission to housemates.
+
+!!! warning "R\* with a finite isolation duration"
+    `household_offspring` counts each case's time in the community up to
+    recovery, or up to an isolation that never ends. It does not subtract the
+    time spent in an isolation with a finite `duration`, so R\* comes out too
+    high, even when isolation outlasts the infectious period. When isolation
+    lasts at least as long as cases stay infectious, use `duration = Inf` to
+    compute R\*.
+
+[`ContactTracing`](@ref) (see [Interventions](interventions.md)) also works on
+a household model, where a case's contacts are their housemates. Each
+housemate is traced separately, with the same probability and delay as any
+other contact. Tracing does not reach a whole household at once.
+
+!!! warning "Limits on interventions in households"
+    - Mass vaccination is not supported. When a model has an intervention
+      that the household model cannot apply, `simulate` warns and runs as if
+      that intervention were absent.
+    - Ring vaccination works only without an `eligibility_window` (the
+      default). With a window set, `simulate` warns and ignores the ring
+      vaccination.
+    - Tracing is forward only. It can reach the housemates who had not been
+      infected by the time the case was. Housemates infected before the case,
+      including the case's own infector, are not reached: backward
+      (source) tracing is not supported.
+    - `household_offspring` does not accept an intervention wrapped in
+      `Scheduled`. To see what switching a policy on does, compute R\* once
+      without the intervention and once with it in place from the start.
+
+### The outbreak within one household
+
+[`household_final_size`](@ref) gives the exact distribution of how many
+members of a household are infected in the end. Its arguments are the
+household size, the contact-interval distribution and the infectious period in
+days:
+
+```@example households
+d = household_final_size(4, Weibull(1.5, 12.0), 6.0)
+(mean_infected = mean(d), probability_all_four = pdf(d, 4))
+```
+
+With this slow contact interval, an outbreak that starts with one case in a
+household of four infects on average about half of the household, and infects
+all four in about one household in five.
+
+### Check: households of one
+
+In a household of one, the number of households infected is just that one
+case's community contacts, and the model reduces to an ordinary branching
+process. With a fixed 6-day infectious period, those contacts arrive at a
+constant rate and their number should be Poisson:
 
 ```@example households
 lone = ModelSpec(HouseholdProcess(fill(1, 1), Exponential(1.0));
@@ -98,19 +370,23 @@ lone = ModelSpec(HouseholdProcess(fill(1, 1), Exponential(1.0));
 lone_law = household_offspring_law(household_offspring(lone; global_rate = 0.1,
     rng = StableRNG(9)))
 R_lone = mean(lone_law)
+# largest difference from a Poisson distribution with the same mean
 maximum(abs(pdf(lone_law, k) - pdf(Poisson(R_lone), k)) for k in support(lone_law))
 ```
 
-The law is held as a truncated table of probabilities, so it is a
-`DiscreteNonParametric` and the agreement stops at the truncation error. The
-number of households infected then follows `Borel`:
+The difference is tiny. It is not exactly zero because the distribution is
+stored as a table of probabilities cut off at a maximum number of households.
+The total number of households infected in the chain then follows the Borel
+distribution, the standard chain-size distribution for Poisson offspring:
 
 ```@example households
 chain_size_distribution(BranchingProcess(Poisson(R_lone)))
 ```
 
-An exponential window makes the infectious period random. A Poisson count
-compounded over it is geometric, so the chain size is `GammaBorel`:
+With an exponentially distributed infectious period, the number of contacts is
+geometric instead: a negative binomial with dispersion k = 1. The chain size
+then follows a Gamma-Borel distribution. `NegBin(R, k)` is the negative
+binomial with mean R and dispersion k:
 
 ```@example households
 lone_exp = ModelSpec(HouseholdProcess(fill(1, 1), Exponential(1.0));
@@ -121,284 +397,205 @@ R_lone_exp = reproduction_number(household_offspring(lone_exp; global_rate = 0.1
 chain_size_distribution(BranchingProcess(NegBin(R_lone_exp, 1.0)))
 ```
 
-Larger households have no such closed form: the compounding runs over the
-household's own final-size distribution, which belongs to no named family, and
-[`chain_size_distribution`](@ref) dispatches only on `Poisson` and
-`NegativeBinomial`. [`reproduction_number`](@ref) and
-[`extinction_probability`](@ref) still apply, since they never assumed a family.
+Larger households have no closed-form chain-size distribution, because the
+number of households infected depends on the household's own final-size
+distribution, which is not a standard one. [`chain_size_distribution`](@ref)
+works only for Poisson and negative binomial offspring; use simulation for
+chain sizes with larger households. [`reproduction_number`](@ref) and
+[`extinction_probability`](@ref) work for any household size.
 
-The law itself is a `Distributions.jl` distribution, so it can be plotted, sampled,
-or handed to a [`BranchingProcess`](@ref) to simulate chains of infected households:
+### Exact results and simulation noise
 
-```@example households
-law = household_offspring_law(offspring)
-(pdf(law, 0), pdf(law, 1), pdf(law, 2))
-```
+When the contact interval and the infectious period are both exponential and
+there are no interventions, the offspring distribution is computed exactly.
+Otherwise `household_offspring` simulates households of each size
+(`n_samples`, 10,000 by default), and its results have Monte Carlo error. To
+reduce it, increase `n_samples`; to make results reproducible, fix `rng`. With
+a contact-interval distribution that depends on who lives in the household,
+the whole model is simulated until at least `n_samples` households have run.
 
-One household differs from another by its size, so size is the type of this
-branching process. A community contact reaches a *person*, and with them
-their household: larger households are therefore reached more often than their
-share of households alone would suggest. They then make more onward infections,
-because more of their members are infected. Both effects are in the answer:
+The model is the two-level mixing model of [Ball, Mollison and Scalia-Tomba
+(1997)](https://doi.org/10.1214/aoap/1034625252), and R\* is their R\*. The
+final size within a household comes from the recursion of [Ball
+(1986)](https://doi.org/10.2307/1427301).
 
-```@example households
-mixed = ModelSpec(HouseholdProcess([fill(2, 400); fill(5, 200)], Weibull(1.5, 12.0));
-    progression = [Transition(:recovered; from = :infection, delay = 6.0,
-        terminal = true)])
-sized = household_offspring(mixed; global_rate = 0.1, rng = StableRNG(6))
-(sizes = sized.sizes, reached = sized.mixing, offspring = sized.means)
-```
+## Estimating transmission from household data
 
-[`extinction_probability`](@ref) answers the question a household model is usually
-asked: an infected household appears, how likely is that the end of it? It gives
-one probability per household type, because the first household's type is the one
-thing that is not drawn from the mixing weights.
+If you know who was infected in each household and when, you can estimate the
+contact-interval distribution, which sets how fast infection spreads within
+households.
 
-```@example households
-extinction_probability(sized)
-```
+**Data you need:**
 
-### As a multi-type `BranchingProcess`
+- the household each person belongs to;
+- who was infected and when;
+- for each case, when their infectious period started and ended;
+- which case in each household was the index case, through whom the household
+  was found.
 
-A household's type decides how many other households it infects, while which
-households those are comes from the size-biased mixing weights whatever the
-parent's type. The offspring matrix is therefore rank one,
-`M[i, j] = mixing[i] * means[j]`, and the multi-type
-[`BranchingProcess`](@ref) methods apply to it directly:
+You do not need to know who infected whom.
 
-```@example households
-M = sized.mixing * sized.means'
-household_bp = BranchingProcess(M, R -> Poisson(R), Exponential(5.0))
-(exact = reproduction_number(sized), multitype = reproduction_number(household_bp))
-```
+**What you can estimate:** the parameters of the contact-interval
+distribution, such as its mean, and, if you include one, the rate of community
+introductions.
 
-R\* agrees, because it depends on the matrix alone. Extinction depends on the
-whole offspring law, and `Poisson` here is a guess that `sized` never makes,
-since it uses the household's own law:
+### The pairwise likelihood
 
-```@example households
-(exact = extinction_probability(sized),
-    poisson_approximation = extinction_probability(household_bp))
-```
+The method is the pairwise survival likelihood of Kenah (2011). Each person is
+at risk from each infectious housemate for as long as that housemate is
+infectious. For each case, the likelihood counts the combined risk from all
+housemates who were infectious at the time they were infected. The simulation
+is the same model as the likelihood, and fitting a simulated outbreak should
+recover the values it was simulated with.
 
-Take R\* from the matrix and extinction from [`household_offspring`](@ref)'s law.
-
-With a covariate kernel, households of one size need not be alike: who the
-members are decides how fast the household outbreak runs. The law is then built
-from the model's own households, each starting from a member picked uniformly at
-random, and the type is the household itself. Households whose kernels agree pair
-for pair share a type, so here, where one in three households transmits faster,
-there are two types of each size:
-
-```@example households
-fast_household = [h % 3 == 0 for h in 1:600]
-household_of = reduce(vcat, [fill(h, n) for (h, n) in
-    enumerate([fill(2, 400); fill(5, 200)])])
-covariate = ModelSpec(
-    HouseholdProcess([fill(2, 400); fill(5, 200)],
-        (infector, susceptible) -> Weibull(1.5,
-            fast_household[household_of[infector]] ? 4.0 : 12.0));
-    progression = [Transition(:recovered; from = :infection, delay = 6.0,
-        terminal = true)])
-typed = household_offspring(covariate; global_rate = 0.1, rng = StableRNG(8))
-(sizes = typed.sizes, reached = typed.mixing, offspring = typed.means)
-```
-
-The model's own layers apply throughout. An isolation intervention shortens each
-case's infectious window, which cuts both the household members it infects and the
-community contacts it makes, so R* follows from the censoring:
-
-```@example households
-isolated = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
-    progression = [Transition(:onset; from = :infection, delay = 1.0),
-        Transition(:recovered; from = :infection, delay = 6.0, terminal = true)],
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0),
-        eligibility = AllCases(), duration = 7.0)])
-reproduction_number(household_offspring(isolated; global_rate = 0.1,
-    rng = StableRNG(7)))
-```
-
-### Scope
-
-The global level is as analytic as the plain branching process it specialises.
-R\* and `extinction_probability` come from the same fixed-point machinery, and an
-intervention on the household layer feeds through into the global offspring law
-with no separate global parameter to recalibrate. The cost sits at the household
-level, where the kernel is resolved exactly when it is Markovian and by
-simulating households otherwise, which leaves Monte Carlo error in the mean
-passed upwards once an intervention has individual-level timing.
-
-Every community contact is assumed to reach a household the outbreak has not
-touched, which holds while infected households are a small fraction of the
-total. Nothing depletes, so the model covers the early phase: R\*, and the chance
-that a single introduction dies out. An epidemic peak and a whole-population
-final size need a finite, depleting pool of households.
-
-Between-household contact tracing is the `ContactTracing` from
-[Isolation and contact tracing](interventions.md) attached to
-[`HouseholdProcess`](@ref), where a
-case's household-mates are already its contacts. It finds them one at a time
-through the same competing-risk resolution as any other contact, so a household
-whose members share one exposure gains nothing from being flagged together.
-
-The within-household epidemic behind all of these is available on its own.
-[`household_final_size`](@ref) gives the exact distribution of how many of a
-household's members are ultimately infected, for any contact-interval kernel and
-infectious window:
-
-```@example households
-d = household_final_size(4, Weibull(1.5, 12.0), 6.0)
-(mean = mean(d), all_four = pdf(d, 4))
-```
-
-Where the household epidemic has a closed form, which an exponential contact
-interval racing an exponential infectious window gives when no intervention
-applies, the offspring law is solved exactly and no simulation runs. Otherwise
-households of each size are simulated (`n_samples`, 10,000 by default; with a
-covariate kernel, the whole model is simulated until that many households have
-run, and at least once), and the Monte Carlo error then sits only in the
-within-household epidemic. The Poisson compounding on top of it is analytical,
-and so, with a shared kernel, is the mean whenever the infectious window is a
-single delay of the progression (except in a large, weakly transmitting
-household with a random window, where the final-size recursion loses accuracy
-and the mean comes from the simulated households).
-
-The construction is the classical two-level-mixing model of Ball, Mollison and
-Scalia-Tomba (1997), and R* is their R*. The within-household final size comes
-from Ball's (1986) recursion.
-
-## The pairwise likelihood
-
-Infections are latent: the model generates them, and the progression maps each to
-its observable outcomes. [`pairwise_surv_loglik`](@ref) is the contact-process
-density of that **infection layer**, which [`household_infections`](@ref) reads out
-of a simulation. Because the Sellke construction is the likelihood's generative
-model, `simulate → loglikelihood` is an exact round trip, so the simulated outbreak
-recovers the kernel.
-
-!!! note "Per-contact risks thin the hazard"
-    A model that also carries per-contact competing risks — a per-individual
-    susceptibility or infectiousness, a leaky isolation, a vaccine's efficacy —
-    blocks some of the contacts the race proposes, and the pair goes on meeting
-    afterwards. Blocking a fraction `p` of contacts thins each pair's hazard to
-    `(1 - p)` of it, which for an exponential contact interval is the same
-    process at a rate scaled by `1 - p`. The round trip then holds against the
-    scaled kernel rather than the one the model was given, and only for a risk
-    that is in place throughout: an isolation, or a dose a trace gives, arrives
-    partway through a window and has no term in the pairwise likelihood at all.
+[`household_infections`](@ref) extracts these data from a simulated outbreak,
+and [`pairwise_surv_loglik`](@ref) evaluates the log-likelihood of a given
+contact-interval distribution. Here we evaluate it at a grid of mean contact
+intervals and take the best one, the maximum likelihood estimate, for an
+outbreak in 500 households of four simulated with a mean contact interval of 4
+days:
 
 ```@example households
 truth = ModelSpec(HouseholdProcess(fill(4, 500), Exponential(4.0));
     progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])
 data = household_infections(simulate(truth; rng = StableRNG(3)), truth)
 
+# log-likelihood of an exponential contact interval with mean `scale` days
 ll(scale) = pairwise_surv_loglik(Exponential(scale), data)
 grid = 2.0:0.5:6.0
-grid[argmax([ll(s) for s in grid])]   # ≈ the true scale, 4.0
+grid[argmax([ll(s) for s in grid])]
 ```
 
-The kernel can also be a callable `(infector, susceptible) -> Distribution` that
-takes host ids, which allows covariate models such as adults transmitting faster
-than children. The simulator and every `pairwise_surv_loglik` form that takes
-household data call it with the ids in that order. One callable therefore works for
-both simulation and fitting, and fitting the simulated outbreak recovers each of its
-parameters.
+The estimate is close to the 4 days the outbreak was simulated with.
 
-[Covariates and time-varying transmission](@ref) covers contact intervals that
-also depend on the infector's infection date, on the calendar, or on events
-recorded during the outbreak.
+!!! warning "Partial protection changes what is estimated"
+    Suppose the model that produced the data had partial protection in place
+    throughout, such as a vaccine's efficacy or differences in
+    susceptibility or infectiousness. Each blocks a fraction
+    `p` of contacts and lowers the rate of infecting contacts by the factor
+    `1 - p`. Fitting then estimates that lower rate instead of the rate the
+    model was given. Fitting with `loglikelihood(data, model)`, where `model`
+    includes the vaccination, allows for a vaccine's efficacy against
+    infection. Isolation or quarantine that stops all transmission is
+    recorded in the data, and the likelihood allows for it. Isolation that
+    still lets some transmission through is not in the likelihood:
+    `loglikelihood(data, model)` stops with an error for such a model, and
+    `pairwise_surv_loglik` ignores it.
 
-## Fitting with Turing
+The contact-interval distribution can also depend on who infects whom, for
+example adults transmitting faster than children, through a function
+`(infector, susceptible) -> Distribution` of the two people's numbers, as in
+[the example above](#When-households-differ-in-who-lives-in-them). The same
+function works for simulating and for fitting, and fitting a simulated
+outbreak recovers each of its parameters.
+[Covariates and time-varying transmission](@ref) covers contact intervals
+that also depend on the infector's infection date, on the calendar, or on
+events recorded during the outbreak.
 
-When the infection layer is observed (here it comes directly from the simulation),
-the likelihood slots into a Turing `@model`. Put a prior on the log contact rate
-and add the pairwise log-density to the target. The household structure is fixed
-across draws, so [`compile_household_pairs`](@ref) captures the pair layout once
-and each evaluation reuses it — no per-sample rebuild:
+### Fitting with Turing
+
+For Bayesian inference, add the log-likelihood to a model in
+[Turing](https://turinglang.org/). The example below puts a prior on the log
+of the contact rate (1 over the mean contact interval) and samples it with
+NUTS, a Hamiltonian Monte Carlo sampler. [`compile_household_pairs`](@ref)
+prepares the household structure once, outside the model, so that each
+evaluation is faster; the result is the same.
 
 ```@example households
 using Turing
 
-layout = compile_household_pairs(data)   # the fixed pair structure, compiled once
+layout = compile_household_pairs(data)   # household structure, prepared once
 
 @model function household_fit(data, layout)
-    logβ ~ Normal(-1, 1)                # log within-household contact rate
-    Turing.@addlogprob! pairwise_surv_loglik(Exponential(1 / exp(logβ)), data, layout)
+    log_rate ~ Normal(-1, 1)             # prior: log of the within-household contact rate
+    mean_interval = 1 / exp(log_rate)    # mean contact interval in days
+    Turing.@addlogprob! pairwise_surv_loglik(Exponential(mean_interval), data, layout)
 end
 
 chain = sample(StableRNG(4), household_fit(data, layout), NUTS(), 300; progress = false)
-exp(-mean(chain[:logβ]))                # posterior mean contact-interval scale, ≈ 4.0
+
+# posterior median and 95% credible interval of the mean contact interval
+mean_interval = exp.(-vec(chain[:log_rate]))
+quantile(mean_interval, [0.025, 0.5, 0.975])
 ```
 
-The plain `pairwise_surv_loglik(kernel, data; external_hazard)` form re-derives the
-pair structure (a bucketed pass over households, one susceptible-grouped row list)
-on every call. [`HouseholdPairsLayout`](@ref) hoists that structural work out of the
-gradient loop: [`compile_household_pairs`](@ref) enumerates the ordered
-(susceptible, infector) rows once — everything that doesn't depend on the sampled
-parameters — and the three-argument `pairwise_surv_loglik(kernel, data, layout)`
-then evaluates the density in two allocation-free passes, reading the (possibly
-augmented) times on the fly. The two forms agree up to row order. The layout is
-EpiBranch's [`ContactPairsLayout`](@ref), built by
-[`compile_contact_pairs`](@ref) from the household partition. Both work for any
-contact structure, and a contact network is fitted the same way (see
-[Fitting on a network](@ref "Fitting on a network")).
+The posterior median is close to the true 4 days. 300 draws from one chain
+keep this example fast; for a real analysis, run several chains for longer and
+check convergence (for example the R-hat values in `summarize(chain)`).
 
-In real data the infection times are unobserved. A household `@model` then augments
-them and conditions the observed onsets and tests through the progression's delays,
-with `pairwise_surv_loglik` supplying the contact-process density of the augmented
-configuration. The layout stays valid across draws as long as the household
-structure and the set of ever-infected hosts are fixed, because only the latent
-times move. Compile it once, outside the model, and reuse it.
+### Real data
 
-Data collected up to a date describe an outbreak that may still be going. Give
-`HouseholdInfections` that date as `followup_end` and the density ignores
-infections and exposure after it; a case still infectious at the end of
-follow-up keeps a removal time of `Inf`. An impossible configuration, such as a
-case infected when none of its household-mates is infectious and no community
-hazard can reach it, has zero density, and `pairwise_surv_loglik` returns `-Inf`
-for it. Without a community hazard the density conditions on index cases, and
-they need no possible infector. The `-Inf` comes with a zero gradient, since
-whether a configuration is possible at all depends on the times alone.
+!!! warning "Infection times are not observed"
+    In real data you do not see infection times. They have to be estimated
+    together with the parameters, from symptom onsets and test results and the
+    delays in the disease timeline (data augmentation), with
+    `pairwise_surv_loglik` giving the likelihood of each set of infection
+    times. Unless you use `EarliestInfected()` (below), prepare the layout
+    once with `compile_household_pairs`, outside the model, and reuse it: it
+    stays valid as long as the households and the set of people ever
+    infected stay the same. There is no worked example of this
+    in the documentation yet.
 
-The recruited index need not be the first household member infected, and
-augmenting infection times can move an earlier one onto a household-mate from
-one draw to the next; conditioning on the fixed recruited index then makes that
-draw's configuration impossible.
-`compile_household_pairs(data; condition_on = EarliestInfected())` conditions
-each household on whichever member currently has the lowest infection time
-instead, resolved from `data` on the call. That host can change between draws,
-so this layout has to be recompiled every evaluation rather than reused like
-the one above. Passing `condition_on = EarliestInfected()` to
-`loglikelihood(data, model)` has the same effect without building the layout by
-hand.
+!!! warning "Data that stop before the outbreak ends (right-censoring)"
+    If your data stop at a date, outbreaks in some households may still be
+    going. Pass that date as `followup_end` to `household_infections` (or to
+    `HouseholdInfections` when you build the data yourself). Infections and
+    exposure after that date are then ignored, and cases still infectious at
+    that date are treated as not yet recovered.
+
+!!! warning "Index-case ascertainment"
+    Households are usually found through their first detected case, the
+    recruited index case. Without a community hazard, the likelihood takes
+    each household's index case as given: they need no infector. But the first
+    detected case need not be the first infected. When infection times are
+    estimated, a housemate can be given an earlier infection time than the
+    index case. That housemate then has nobody who could have infected
+    them, and those infection times are impossible.
+
+    Use `compile_household_pairs(data; condition_on = EarliestInfected())` to
+    take as given whichever member has the earliest infection time. That
+    person can change from one set of estimated infection times to the next,
+    so call it inside the model at every evaluation instead of reusing one
+    layout, which is slower. Passing `condition_on = EarliestInfected()` to
+    `loglikelihood(data, model)` does the same without building the layout
+    yourself.
+
+If the log-likelihood is `-Inf`, the data contain a case the model cannot
+explain, such as someone infected when none of their housemates was infectious
+and there is no community hazard.
 
 ### Fitting a community hazard
 
-A positive `external_hazard` and no community hazard are different conditionings,
-and the density jumps between them at `α = 0`. With a constant rate `α > 0` an
-index case infected at time `t` contributes `log(α) - α t`, which falls to
-`-Inf` as `α → 0`: a model that admits community introductions has to
-explain the ones it saw, and vanishingly rare introductions explain them
-vanishingly badly. At exactly `external_hazard = 0` index cases are conditioned on
-instead and contribute nothing, and the value stays finite. Each is correct for
-what it conditions on.
+`external_hazard` is the rate, per person per day, of infection from the
+community (outside the household). It can be fitted too, with one caution: a
+model with some community transmission and a model with none cannot be
+compared by letting `external_hazard` shrink towards zero. Fit the two
+separately and compare them.
 
-For fitting, this means a likelihood ratio between "some community transmission"
-and "none" cannot be read off by letting `α` approach zero. Evaluate the two models
-separately.
+The two models treat index cases differently. With `external_hazard = 0`,
+index cases are taken as given and add nothing to the likelihood. With any
+positive `external_hazard`, written α, the model has to explain the index
+cases as community introductions: an index case infected at time `t` adds
+`log(α) - α t` to the log-likelihood. As α shrinks towards zero, introductions
+become so rare that the observed ones are explained ever worse, and the
+log-likelihood falls towards `-Inf`. The log-likelihood therefore jumps at α =
+0, and a likelihood ratio between "some community transmission" and "none"
+cannot be read off near zero.
 
-The discontinuity is only at that one point, and the density behaves regularly
-as `α` approaches it. Drop the terms free of `α` and the log-density near zero is
-`k log α - α T`, where `k` counts the cases the community alone can explain and
-`T` is the total time the population is exposed to it. In `log α` that is a
-straight line of slope `k`. On 400 households of four with `k = 401`,
-`d ll / d log α` is 401.0 at `α = 1e-6` and 393.5 at `1e-3`, falling to zero at
-the mode near `α = 0.052`.
+!!! details "The log-likelihood near zero"
+    Away from that one point, the log-likelihood behaves regularly. Dropping
+    the terms that do not involve α, near zero it is `n_ext log(α) - α T`,
+    where `n_ext` is the number of cases only the community can explain and
+    `T` is the total time the population is exposed to the community. On the
+    log(α) scale this is a straight line of slope `n_ext`. The slope stays
+    close to `n_ext` while α is small and falls to zero at the maximum
+    likelihood estimate.
 
-ForwardDiff cannot differentiate a `Gamma`, whether it is the community hazard or
-the contact-interval kernel. Its cumulative hazard calls
-`SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual` method, and the
-resulting `MethodError` comes from there rather than from this package. Fit a
-`Gamma` with a reverse-mode backend, `NUTS(; adtype = AutoMooncake())`.
-`Weibull` and `Exponential`, the kernels used above, differentiate under either
-mode.
+!!! note "Gamma distributions with Turing"
+    To fit a `Gamma` contact interval or community hazard with Turing, use
+    `NUTS(; adtype = AutoMooncake())`, after adding the Mooncake package to
+    your environment and loading it with `using Mooncake`. The default sampler
+    settings fail for
+    `Gamma` with a `MethodError` that comes from a dependency of this package.
+    `Exponential` and `Weibull`, the distributions used above, work with the
+    defaults.

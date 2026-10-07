@@ -1,27 +1,52 @@
 # Covariates and time-varying transmission
 
-In [network](@ref "Network models") and [household](@ref "Household models")
-models, transmission between two people is described by the contact interval:
-the time from the infector becoming infectious to an infectious contact with
-the other person. Often that interval depends on who the two people are, on
-when contact happens, or on events during the outbreak such as vaccination or a
-change in policy. This page shows how to model each of these, in simulation and
-in the pairwise likelihood.
+How does transmission change with who is in contact, with the time of year, or
+with a policy introduced during the outbreak? In [network](@ref "Network models")
+and [household](@ref "Household models") models, transmission between each pair
+of people is described by the contact interval. This page shows how to make it
+depend on the two people, on the calendar date, and on events during the
+outbreak, both in simulation and in the pairwise likelihood used for fitting.
 
-The simplest case needs no extra machinery. A callable
-`(infector, susceptible) -> Distribution` gives each ordered pair its own
-contact interval from fixed covariates indexed by population ID, as the
-[households tutorial](@ref "The pairwise likelihood") shows. The rest of this
-page uses [`PairKernel`](@ref) for the cases a callable cannot express: a
-contact interval that depends on the infector's infection date, a contact rate
-that changes on the calendar, and characteristics or events recorded on each
-person during the outbreak.
+The contact interval is the waiting time from the start of the infector's
+infectious period until the infector would infect a given contact, if that
+contact is still susceptible and the infector is still infectious. A shorter
+contact interval means more transmission. It differs from the generation time
+in two ways. The generation time runs from the infector's infection and
+includes the latent period. It is also observed only for contacts that were
+actually infected: a contact interval that ends after the infector has
+recovered, or after the contact has already been infected by someone else,
+never becomes a generation time. This is the pairwise survival approach to
+transmission: each pair has a hazard of infectious contact over time.
+
+When the contact interval depends only on fixed characteristics of the two
+people, give a function that takes the infector and the susceptible and returns
+a distribution, `(infector, susceptible) -> Distribution`, as the [households
+tutorial](@ref "The pairwise likelihood") shows. For anything more,
+[`PairKernel`](@ref) describes the rule for each pair (the transmission kernel,
+called the rule below): a contact interval that depends on when the infector
+was infected, a contact rate that changes on the calendar, and characteristics
+or events recorded on each person during the outbreak.
 
 ## Covariates and the infector's infection date
 
-Here the mean contact interval depends on a fixed covariate of the susceptible
-and on the date the infector was infected. The covariate vector is indexed by
-population ID and stays fixed throughout simulation and likelihood evaluation.
+Here each person has a fixed covariate, such as a relative risk score. People
+are numbered from 1, and `covariates[3]` is person 3's value. The contact
+interval is exponential, with a mean that depends on the susceptible's
+covariate and on the day the infector was infected:
+
+```math
+\text{mean contact interval} = \exp(0.1 \times \text{infector's infection day} + 0.2 \times \text{susceptible's covariate})
+```
+
+Positive coefficients lengthen the contact interval, which reduces
+transmission: here, people with higher covariate values are less likely to be
+infected, and infectors infected later in the outbreak transmit more slowly.
+
+`PairKernel` takes a function of `context`, which holds information about the
+pair: `context.infector` and `context.susceptible` are the two people's
+numbers, and `context.infector_infection_time` is the day the infector was
+infected. The network here has three people, all connected:
+`adjacency[1] = [2, 3]` says person 1 is in contact with persons 2 and 3.
 
 ```@example contextual
 using EpiBranch, EpiNetwork, EpiHouseholds, Distributions, Random
@@ -31,6 +56,7 @@ kernel = PairKernel(context -> Exponential(exp(
     0.1 * context.infector_infection_time +
     0.2 * covariates[context.susceptible])))
 
+# infectious 0.75 days after infection, recovered 5 days later
 progression = [Transition(:infectious; delay = 0.75),
     Transition(:recovered; from = :infectious, delay = 5.0, terminal = true)]
 adjacency = [[2, 3], [1, 3], [1, 2]]
@@ -40,7 +66,13 @@ network_data = network_infections(network_state, network_model)
 loglikelihood(network_data, network_model)
 ```
 
-The same kernel works for a household model and its likelihood:
+`ModelSpec(...; progression)` is Julia shorthand for
+`progression = progression`. [`network_infections`](@ref) extracts who was
+infected and when, the data the likelihood needs. The printed number is the
+log-likelihood of that outbreak under the model; fitting compares it across
+parameter values.
+
+The same rule works for a household model and its likelihood:
 
 ```@example contextual
 household_model = ModelSpec(HouseholdProcess([3], kernel); progression)
@@ -49,42 +81,41 @@ household_data = household_infections(household_state, household_model)
 loglikelihood(household_data, household_model)
 ```
 
-`context.infector_infection_time` is the infection date, even when a latent period
-starts the infectious period later. The returned distribution still measures time
-from the start of the infectious period. `context.infector` and
-`context.susceptible` are population IDs. Without a `state` argument, the callback
-takes only this context. With one, it also receives a record for each of the two
-people, as later sections show.
+`context.infector_infection_time` is the day of infection, even when a latent
+period means the infectious period starts later. The contact interval is
+still measured from the start of the infectious period.
 
-## Inference
+## Fitting
 
-A compiled layout stores the contact structure. Each evaluation reads the
-infector's infection time from the supplied data, including when latent infection
-times change during inference:
+To estimate parameters such as the coefficients above, evaluate the likelihood
+at candidate values and maximise it, or sample from the posterior.
+[`compile_contact_pairs`](@ref) prepares the contact structure once, so that
+repeated evaluations are fast. Each evaluation reads the infection times from
+the data it is given. Unobserved infection times can therefore be estimated
+alongside the other parameters:
 
 ```@example contextual
 layout = compile_contact_pairs(network_data)
 pairwise_surv_loglik(kernel, network_data, layout)
 ```
 
-Forward- and reverse-mode automatic differentiation can include both kernel
-parameters and infection times, subject to the chosen distribution's own
-differentiation support.
-
-The lower-level `PairwiseSurvivalData` representation contains counting-process
-rows but lacks infector IDs and their infection dates. Its callable kernels still
-receive a row index. Use an `InfectionLayer` with a `PairKernel`, or supply the
-needed information through a row-indexed callback yourself.
+The result matches the network log-likelihood printed in the first example. Gradients of the likelihood with
+respect to the parameters and the infection times are available for
+gradient-based fitting, such as Hamiltonian Monte Carlo in Turing, provided the
+contact interval distribution supports them.
 
 ## A policy starting on a calendar day
 
-The `calendar` argument multiplies the contact rate by a schedule on the
-calendar. With a [`Steps`](@ref) schedule the multiplier is a step function of
-the date. A policy can then change transmission during someone's infectious
-period, including when their latent period was sampled during simulation.
+To model a policy that changes transmission from a fixed date, such as a
+lockdown, give the rule a `calendar`. Transmission is multiplied by a factor
+that depends on the calendar day. [`Steps`](@ref) gives a factor that changes
+at given days: `Steps([3.0], [0.4, 0.1])` is 0.4 before day 3 and 0.1 from
+day 3, one more value than there are change days.
 
-Suppose the contact rate is 0.4 per day before day 3 and 0.1 afterwards. A flat,
-unit-hazard profile multiplied by a single step at day 3 is exactly this policy:
+Suppose the rate of infectious contact is 0.4 per day before day 3 and 0.1
+per day afterwards, a 75% reduction. The rule's own distribution,
+`Exponential(1.0)`, has a constant rate of 1 per day, and the calendar factor
+sets the actual rate:
 
 ```@example calendar
 using EpiBranch, EpiNetwork, EpiHouseholds, Distributions, Random
@@ -96,23 +127,12 @@ kernel = PairKernel(context -> Exponential(1.0);
     calendar = Steps([policy_day], [before_rate, after_rate]))
 ```
 
-The cumulative hazard splits into a segment before the policy day and a segment
-after it, and both simulation and the likelihood compute it exactly for any
-profile.
-
-Consider a person who becomes infectious on day 2. By day 4, the cumulative
-hazard is `0.4 × 1 + 0.1 × 1 = 0.5`, and the pair's contact interval has exactly
-that cumulative hazard after two days:
-
-```@example calendar
-interval = EpiBranch.pair_kernel(kernel, 1, 2, 0.0, 2.0)
-EpiBranch.cumhazard(interval, 2.0)
-```
-
-The last two arguments are the infector's infection date and the start of its
-infectious period.
-The process supplies these automatically. Here is a network simulation with a
-sampled latent period and its infection likelihood:
+A policy can change transmission partway through someone's infectious period.
+For a person infectious from day 2, the cumulative hazard of infecting a given
+contact by day 4 is 0.4 × 1 day (days 2 to 3) + 0.1 × 1 day (days 3 to 4) =
+0.5. Simulation and the likelihood both compute this exactly. Here is a
+network simulation with a latent period drawn uniformly between 0.4 and 0.8
+days, and its likelihood:
 
 ```@example calendar
 progression = [Transition(:infectious; delay = Uniform(0.4, 0.8)),
@@ -124,9 +144,16 @@ data = network_infections(state, model)
 loglikelihood(data, model)
 ```
 
-A per-edge vector of distributions does not take a `calendar` schedule. To apply
-one, look the pair's distribution up inside a `PairKernel` callback and pass the
-schedule there:
+For a household model, replace `NetworkProcess(adjacency, kernel)` with
+`HouseholdProcess([3], kernel)` and use `household_infections`. Both
+likelihoods take the start of each infectious period as given in the data.
+Unobserved latent periods must be estimated as parameters; the likelihood reads
+their current values at each evaluation.
+
+If each contact has its own distribution, set in a list per network edge, a
+calendar cannot be added to that list. Look up the pair's distribution inside
+a `PairKernel` instead, and add the calendar there. `findfirst(==(j), v)`
+finds the position of `j` in `v`, like `match(j, v)` in R:
 
 ```julia
 edges = [[Exponential(1.0), Exponential(2.0)] for _ in adjacency]
@@ -135,17 +162,13 @@ PairKernel(context -> edges[context.infector][findfirst(==(context.susceptible),
     calendar = Steps([3.0], [1.0, 0.25]))   # rate falls to a quarter on day 3
 ```
 
-Replace `NetworkProcess(adjacency, kernel)` with `HouseholdProcess([3], kernel)`
-and extract `household_infections` to use the same policy in a household model.
-Both likelihoods condition on the observed start of each infectious period. A
-compiled layout reads those times again at every evaluation, allowing them to
-change during inference.
-
-A pair whose schedule differs from the shared one instead returns it from the
-callback, as `(profile = ..., calendar = ...)`, overriding the kernel's own
-`calendar` for that pair. For example, this calendar hazard depends on a fixed
-recipient covariate and the source's infection date, with the policy day itself
-read from the recipient's covariate:
+To give each pair its own policy date, for example the lockdown date in the
+susceptible's region, return both the distribution and the calendar from the
+function, as `(profile = ..., calendar = ...)`. This replaces the rule's
+shared `calendar` for that pair. Here the policy day is read from the
+susceptible's covariate. The contact interval is a Weibull distribution
+(`Weibull(shape, scale)`) whose scale grows with the infector's day of
+infection:
 
 ```@example calendar
 covariates = [1.0, 2.0, 4.0]
@@ -154,18 +177,33 @@ covariate_kernel = PairKernel(context ->
      calendar = Steps([covariates[context.susceptible]], [1.0, 0.25])))
 ```
 
-Automatic differentiation through a schedule's rates and breakpoints, and
-through the start of each infectious period, uses the profile's own differentiation support.
-The tests check forward and reverse derivatives for a step-scaled Weibull
-profile against its analytical likelihood.
+The rates and change days of a schedule, and the start of each infectious
+period, can be estimated: the likelihood has gradients with respect to them,
+provided the contact interval distribution supports them.
 
 ## A seasonal contact rate
 
-A schedule need not be a step function. Any type with a
-[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) method can be a
-`calendar`, and one that declares itself smooth through
-[`calendar_shape`](@ref EpiBranch.calendar_shape) is integrated by quadrature
-instead of segment by segment. Here contact rates rise and fall over a year:
+For transmission that changes smoothly over the year, such as seasonality,
+define your own schedule. Here the contact rate follows a cosine curve over
+365 days, peaking on day 30 at 1.6 times its average and falling to 0.4 times
+it half a year later:
+
+```math
+\text{multiplier on day } t = 1 + 0.6 \cos\left(2\pi \frac{t - 30}{365}\right)
+```
+
+A schedule is written in three steps, each a few lines of Julia:
+
+1. `struct Seasonal ... end` defines a new kind of object that holds the
+   schedule's parameters, the amplitude and the peak day, like a named list
+   in R with fixed elements. `{T <: Real}` lets `amplitude` hold any kind of
+   number, which gradient-based fitting needs.
+2. `EpiBranch.calendar_multiplier(s::Seasonal, t) = ...` tells EpiBranch how
+   to compute the multiplier on day `t` for a `Seasonal` schedule. `s::Seasonal`
+   means "when `s` is a `Seasonal`"; `s.amplitude` reads its amplitude.
+3. `EpiBranch.calendar_shape(::Seasonal) = EpiBranch.SmoothCalendar()` says that
+   the multiplier changes continuously, without steps. The package then
+   integrates it numerically.
 
 ```@example calendar
 struct Seasonal{T <: Real}
@@ -181,19 +219,10 @@ seasonal_kernel = PairKernel(context -> Exponential(4.0);
     calendar = Seasonal(0.6, 30.0))
 ```
 
-The cumulative hazard over two days from the start of an infectious
-period on day 100 is the integral
-of the multiplier times the profile's constant rate of 0.25 per day:
-
-```@example calendar
-seasonal_interval = EpiBranch.pair_kernel(seasonal_kernel, 1, 2, 0.0, 100.0)
-exact = 0.25 * (2 + 0.6 * 365 / 2π *
-    (sin(2π * (102 - 30) / 365) - sin(2π * (100 - 30) / 365)))
-(EpiBranch.cumhazard(seasonal_interval, 2.0), exact)
-```
-
-Simulation draws contact intervals by inverting that same integrated hazard,
-which keeps the network simulation consistent with its likelihood:
+`Exponential(4.0)` has a mean contact interval of 4 days: a rate of 0.25 per
+day, scaled up and down by the seasonal multiplier. Simulation and the
+likelihood use the same integrated hazard. Simulated outbreaks can therefore
+be used to check a fit:
 
 ```@example calendar
 seasonal_model = ModelSpec(NetworkProcess(adjacency, seasonal_kernel); progression)
@@ -201,22 +230,33 @@ seasonal_state = simulate(seasonal_model; rng = Xoshiro(235))
 loglikelihood(network_infections(seasonal_state, seasonal_model), seasonal_model)
 ```
 
-With a unit-rate profile, `Exponential(1.0)`, the multiplier is the pair's
-hazard on the calendar. Any calendar-time hazard can therefore be written as a
-schedule. The schedule's fields are typed so that the likelihood can be
-differentiated through them, as with `Steps`.
+With `Exponential(1.0)`, whose rate is 1 per day, the multiplier is itself the
+rate of infectious contact on each calendar day. Any rate that varies with the
+calendar can be written as a schedule this way.
 
 ## Characteristics recorded during simulation
 
-The `state` argument selects what the kernel reads from each person. Its
-callback then also receives a record for each of the two people. Here, each
-person receives a sampled contact-scale attribute:
+Transmission can depend on characteristics each person is given during
+simulation. Here each person has a random contact level, drawn uniformly
+between 0.5 and 1.5, and the mean contact interval between two people is the
+sum of their two levels.
+
+The `state` argument is a function that picks out what the rule needs from each
+person. The rule then takes three arguments: the pair's `context`, the
+infector's record (here called `source`) and the susceptible's record (`target`).
+`watches` lists the person-level variables the `state` function reads; the
+next section explains why it matters. `::Float64` asserts that the value is a
+`Float64` (a decimal number); an integer or other number type there gives an
+error.
 
 ```@example stateful
 using EpiBranch, EpiNetwork, Distributions, Random
 
+# each person gets a contact level between 0.5 and 1.5
 attributes = (rng, ind) -> (ind.state[:contact_scale] = rand(rng, Uniform(0.5, 1.5)))
+# the record the rule reads for each person
 project(ind) = (scale = ind.state[:contact_scale]::Float64,)
+# source = infector, target = susceptible
 contact_law(context, source, target) = Exponential(source.scale + target.scale)
 kernel = PairKernel(contact_law; state = project, watches = (:contact_scale,))
 adjacency = [[2, 3], [1, 3], [1, 2]]
@@ -225,21 +265,37 @@ model = ModelSpec(NetworkProcess(adjacency, kernel); attributes, progression)
 state = simulate(model; initial_cases = [1], rng = Xoshiro(235))
 ```
 
-The rate at which a case infects its contacts can change during its infectious
-period: a post-exposure dose takes effect, or symptoms begin and the case is
-isolated. When the kernel reads one of those dates from the record, simulation
-has already drawn the times of that case's contacts at the rate in force then,
-and has to draw them again at the new rate. `watches` names the
-records to watch for: the `individual.state` keys the `state` function reads. Above,
-that is the one key the attributes builder sets.
+### Transmission that changes during the infectious period
 
-Name every key the `state` function reads, even one that nothing in this model
-writes:
+A case's transmission can change during its infectious period: a post-exposure
+vaccine dose takes effect in a contact, or symptoms begin and the case is
+isolated. The simulation then has to update the timing of that case's future
+contacts. `watches` lists the person-level variables, by their names in
+`ind.state`, whose changes should trigger that update. In the example above,
+that is `:contact_scale`, the one variable the `state` function reads.
+
+!!! warning "List every variable the `state` function reads in `watches`"
+    If a variable the `state` function reads is missing from `watches`, a
+    change to it during the outbreak does not update the contacts already
+    timed. The simulation then silently uses the old transmission rate. There
+    is no error or warning. List every variable the `state` function reads,
+    even one that nothing in your current model changes. When in doubt,
+    include it. A `state` function that reads none, such as one that looks
+    a value up by the person's number, takes `watches = ()`.
+
+The next rule shows `watches` at work. Its `state` function reads the
+vaccination date, which [`RingVaccination`](@ref) records (`Inf` means never
+vaccinated), and the onset date, which [`clinical_presentation`](@ref) records.
+Both are listed in `watches`. The rule gives a vaccinated susceptible a mean
+contact interval of 4 days against 1.5, but it checks only whether a
+vaccination date exists, so it is not a model of vaccine protection to fit:
+the [checklist](@ref "Checklist for time-varying transmission") below explains
+why. [`EpiBranch.watched_records`](@ref) shows what a
+rule watches:
 
 ```@example stateful
-# Two keys read, both declared: the dose date a `RingVaccination` writes and
-# the onset `clinical_presentation` sets.
 dosed_kernel = PairKernel(
+    # vaccinated susceptible: longer time to infectious contact
     (context, source, target) -> Exponential(isfinite(target.dosed) ? 4.0 : 1.5);
     state = ind -> (
         dosed = get(ind.state, :vaccination_time, Inf)::Float64,
@@ -250,8 +306,9 @@ dosed_kernel = PairKernel(
 EpiBranch.watched_records(dosed_kernel)
 ```
 
-A `state` function that reads no record at all declares `()`. This one scales each
-person's contact rate by a fixed covariate, indexed by their own id:
+This rule sets each infector's mean contact interval to a fixed value looked
+up by their number, `ind.id` (a larger value means slower transmission), and
+reads nothing that can change:
 
 ```@example stateful
 scale_by_id = [1.0, 2.0, 0.5]
@@ -262,13 +319,10 @@ by_id_kernel = PairKernel(
 EpiBranch.watched_records(by_id_kernel)
 ```
 
-Leave a key out and the contacts keep the rate they were drawn at after the
-record changes, with nothing to report it. Name a key that never changes and
-simulation pays one comparison per case. When in doubt, name it.
+### The likelihood with recorded characteristics
 
-After simulation, extract the records and use the same callback in the
-likelihood. `record_kernel` copies each person's record into a vector indexed
-by population ID:
+After simulation, [`record_kernel`](@ref) extracts each person's record, and
+the same rule then gives the likelihood:
 
 ```@example stateful
 data = network_infections(state, model)
@@ -278,23 +332,28 @@ pairwise_surv_loglik(recorded, data, layout)
 ```
 
 For observed data, build `PairKernel(contact_law; state = records)` directly
-from measured covariates. When attributes are latent or contain fitted
-parameters, build that kernel from the current records on each likelihood
-evaluation. The compiled layout can be reused. Records retain their numeric
-types, including AD values. A kernel whose records have not been extracted
-raises an error in the likelihood, unless the infection layer holds the times
-it reads, as in the next section.
+from a list of measured characteristics, one record per person. When the
+characteristics are unobserved or depend on parameters being fitted, rebuild
+the rule from the current records at each likelihood evaluation; the
+prepared contact structure (`layout`) can be reused. The likelihood throws an
+error for a rule with a `state` function whose records have not been
+extracted, unless the infection data hold the times the function reads, as in
+the next section.
 
 ## Infectiousness timed from symptom onset
 
-If infectiousness starts at symptom onset, set `from = :onset` on the process
-and add an onset transition to the progression. Simulation and the likelihood
-then both measure the contact interval from each case's onset, and an ordinary
-distribution or callable is enough.
+If infectiousness starts at symptom onset, give the process `from = :onset`,
+for example `NetworkProcess(adjacency, kernel; from = :onset)`, and give cases
+an onset with [`clinical_presentation`](@ref). Simulation and the likelihood
+then both measure the contact interval from each case's onset. An ordinary
+distribution is enough.
 
-A kernel can also read the onset itself, for a contact rate that depends on it
-in other ways. Here the record holds the onset, and the callback shifts the
-contact interval by the time from infection to onset:
+A rule can also read the onset itself, for transmission that depends on it in
+other ways. Here no one is infected before the infector's symptom onset: the
+contact interval, measured from infection, is the incubation period plus an
+exponential waiting time with mean 1 day. The incubation period is
+`Gamma(2.0, 1.0)` (shape 2, scale 1, so a mean of 2 days). Adding a number to a
+distribution shifts it by that number.
 
 ```@example stateful
 onset_state(ind) = (onset = get(ind.state, :onset_time, NaN),)
@@ -307,26 +366,40 @@ onset_model = ModelSpec(NetworkProcess(adjacency, onset_kernel);
 onset_run = simulate(onset_model; initial_cases = [1], rng = Xoshiro(237))
 ```
 
-Simulation sets each case's onset before it draws that case's contacts, and the
-record reads it directly. In the likelihood, the onsets belong in the infection
-layer. `host_times` records them alongside the infection times. The likelihood
-then builds the same record for each person as a [`LayerHost`](@ref):
+Simulation sets each case's onset before timing that case's contacts. For the
+likelihood, the onset dates go into the infection data alongside the infection
+times, with `host_times`. The likelihood then gives the rule the same record
+for each person:
 
 ```@example stateful
 onset_data = network_infections(onset_run, onset_model; host_times = (:onset_time,))
 loglikelihood(onset_data, onset_model.process)
 ```
 
-In inference the onsets are augmented with the infection times. Build the layer
-with the current onsets as `host_times` on each evaluation, and the kernel stays
-unchanged.
+When onsets are not observed, they are estimated alongside the infection
+times. Rebuild the infection data with the current onsets at each evaluation;
+the rule stays the same.
 
 ## A policy triggered during an outbreak
 
-Suppose the second case triggers a policy half a day later. The intervention
-records that date on each person. The kernel's per-pair calendar reads it back
-and switches the rate from that date, leaving the hazard of an earlier exposure
-unchanged:
+Policies are often triggered by the outbreak itself, for example once
+cumulative cases reach a threshold. Here, the policy starts half a day after
+the second case is infected, and cuts the rate of infectious contact from 0.4
+to 0.1 per day. Transmission before the policy keeps the old rate.
+
+This needs a small custom intervention (see
+[Extending EpiBranch](extending.md) for writing your own):
+
+1. `struct TwoCasePolicy <: AbstractIntervention end` defines a new kind of
+   intervention with no parameters.
+2. `EpiBranch.resolve_individual!(::TwoCasePolicy, ind, state)` is run for each case once its infection time is known (the `!` marks a
+   function that changes its arguments). `state.cumulative_cases == 2 ||
+   return nothing` reads "stop here unless this is the second case". For the
+   second case, it records the policy start, its infection time plus half a
+   day, on every person as `:policy_time`.
+3. The rule reads `:policy_time` from the susceptible's record. Before any
+   policy date is set it returns a rate of 0.4 per day; afterwards it returns a
+   calendar that switches from 0.4 to 0.1 on the policy date.
 
 ```@example stateful
 struct TwoCasePolicy <: AbstractIntervention end
@@ -352,39 +425,48 @@ policy_records = record_kernel(policy_kernel, policy_run)
 pairwise_surv_loglik(policy_records, policy_data)
 ```
 
-A contact drawn before a policy took effect still follows the hazard in force
-once it has. Simulation keeps pending contacts consistent with the records as
-they change. A run whose records never change follows the same distribution as
-an ordinary kernel.
+Transmission to each susceptible follows the rate in force at each time, so a
+policy that starts partway through someone's infectious period changes only the
+rest of that period. A run in which no policy is ever triggered follows the
+same distribution as the rule without the policy.
 
-A policy can depend on cases in other households. The existing restriction on
-periodic shared capacity budgets still applies.
+In a household model, a policy can depend on cases in other households, and a
+vaccine dose limit can be shared between households, as a single stock or as
+a daily or weekly allowance. All households then run on one shared calendar,
+so doses are counted in the order they are given.
 
-## Requirements for simulation and inference
+## Checklist for time-varying transmission
 
-The kernel must define a predictable hazard. An event recorded at time `t` may
-change the hazard at or after `t`; it must preserve the earlier hazard. Store
-dates or event histories instead of using a final vaccinated or quarantined flag
-to change the whole infectious window. The `state` function and the callback must be
-free of side effects. State updates occur in the existing case-resolution and
-intervention hooks; scheduled future effects must be encoded in the returned
-hazard law.
+Simulation and the likelihood both rely on a few rules. A model that breaks
+them still runs, but fits a different model from the one you meant.
 
-`record_kernel` extracts the history your `state` function retains. It cannot
-recover past values that an intervention overwrote. For several changes, retain
-all relevant dates and values and construct a distribution whose hazard follows
-them. An intervention that also contributes a built-in risk must not have that
-same effect counted again in the kernel.
-
-The likelihood evaluates the transmission contribution along the supplied
-histories. A joint model of sampled attributes or stochastic intervention
-assignment also needs their probability models. Unobserved histories need to be
-augmented or integrated out. When changing infection times changes an endogenous
-policy's trigger date, reconstruct that history at each likelihood evaluation;
-reusing the final simulated dates would fit a different model.
-
-The susceptible's eventual infection time is unknown when simulation chooses its
-contact distribution. Neither the `state` function nor the callback may read
-future outcomes from an external table. Community introductions from outside the
-network or households are modelled by `external_hazard`. The kernels on this page describe transmission within the
-network or household.
+- Transmission at time t may depend only on what has happened up to time t.
+  Use the date of an event, not a flag for whether it ever happened. For
+  example, record a vaccination date and reduce transmission from that date
+  on. A flag saying "vaccinated" by the end of the outbreak would also reduce
+  transmission before the dose was given.
+- The `state` function and the rule must only read values, never change
+  them. Changes to people, such as a vaccination or a policy date, belong in
+  interventions or in the natural history.
+- Keep every date your rule needs. [`record_kernel`](@ref) extracts only what
+  the `state` function returns at the end of the simulation, and cannot
+  recover a value that was later overwritten. For a rate that changes more
+  than once, keep each date and value, and return a distribution or calendar
+  that follows them.
+- Do not count an effect twice. If an intervention already reduces
+  transmission, for example a leaky [`Isolation`](@ref), do not reduce it in
+  the rule as well.
+- The likelihood here covers transmission only, given the recorded histories.
+  If characteristics or intervention assignments are random, their own
+  probability models must be added for a joint model.
+- Unobserved quantities, such as infection or onset dates, must be estimated
+  alongside the other parameters or integrated out. Anything that depends on
+  them, such as the trigger date of an outbreak-driven policy, must be
+  recalculated at each likelihood evaluation. Reusing the final simulated
+  dates fits a different model.
+- The rule cannot use future outcomes, such as when the susceptible will
+  eventually be infected, or read them from an outside table.
+- Infections from outside the network or households, such as community
+  introductions, use `external_hazard` (see
+  [Community introductions](@ref)). The rules on this page describe
+  transmission within the network or household.
