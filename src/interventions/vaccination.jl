@@ -497,7 +497,8 @@ among the interventions, listed first.
 [ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = 7.0); depth = 2),
  RingVaccination(efficacy = 0.9, delay_to_immunity = 10.0, coverage = 0.8)]
 
-# Post-exposure prophylaxis that stops 60% of infections before onset
+# Post-exposure prophylaxis: a dose that takes effect before onset
+# stops the infection with probability 0.6
 RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.6)
 ```
 
