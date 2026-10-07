@@ -117,10 +117,10 @@ public realise_prior_dose!
 
 # Custom vaccinations: every `AbstractVaccination` defines `vaccine_effect`.
 # `dose_action` is the `InterventionAction` a custom `intervention_actions`
-# method returns per candidate; `record_dose!` records a dose directly, for
-# recording one outside the action protocol. `record_effect_draws!` is the
-# hook for an effect only some vaccinations have, drawing and storing it
-# through `store_draw!` and reading it back through `dose_value`.
+# method returns per candidate; `record_dose!` records a dose directly,
+# outside the action protocol. `record_effect_draws!` is the hook for an
+# effect only some vaccinations have, drawing and storing it through
+# `store_draw!` and reading it back through `dose_value`.
 public vaccine_effect
 public dose_action
 public record_dose!
