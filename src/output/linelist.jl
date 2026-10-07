@@ -62,8 +62,8 @@ contact they exposed who was not infected. An uninfected row has `missing` for
 admission, outcome, a traced isolation held back to onset, and custom
 events whose metadata requires infection). Dates of events that happen to a person whether or not they
 are infected are kept: `date_trace`, `date_vaccination`, `date_immunity`, and
-`date_isolation` (with `date_isolation_release`, when a finite
-`Isolation`'s `duration` or a `Quarantine`'s is configured) when the
+`date_isolation` (with `date_isolation_release`, when a finite duration is
+configured on `Isolation` or on a `Quarantine`) when the
 isolation is a quarantine on tracing. Where [`Isolation`](@ref) derived the
 isolation from a provisional onset, both columns report the quarantine they
 replaced, if there was one, and `missing` otherwise. The `isolated`,
