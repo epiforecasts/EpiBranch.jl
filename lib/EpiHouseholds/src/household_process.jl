@@ -68,9 +68,9 @@ Interventions on this process:
 
 - `Isolation` removes a case from their isolation time for its `duration`,
   cutting their secondary cases; with `duration = Inf` this ends their
-  infectious period. Leaky isolation reduces the rate at which each
-  household contact is infected by the same fraction, which lowers their
-  chance of infection by less.
+  infectious period. Leaky isolation multiplies the rate at which each
+  household contact is infected by `post_isolation_transmission` from the
+  isolation time, which lowers their chance of infection by less than that.
 - `ContactTracing` treats a case's household members as their contacts;
   quarantining a traced contact stops that contact's transmission for the
   quarantine's `duration`.
