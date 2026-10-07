@@ -181,7 +181,7 @@ struct IndexCasesOnly <: TraceEligibility end
 EpiBranch.is_eligible(::IndexCasesOnly, infector, contact, state) =
     infector.generation == 0
 
-ct = ContactTracing(IndexCasesOnly(), 0.5, Exponential(1.5))
+ct = ContactTracing(IndexCasesOnly(), 0.5, Exponential(1.5), Quarantine(duration = Inf))
 ```
 
 `struct IndexCasesOnly <: TraceEligibility end` creates a new kind of tracing
