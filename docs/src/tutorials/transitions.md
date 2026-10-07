@@ -1,90 +1,90 @@
 # Clinical transitions
 
-Interventions are policy: isolation, contact tracing, vaccination.
-Clinical transitions are the case's own progression: symptoms,
-reporting, maybe admission, and recovery or death. **EpiBranch.jl**
-models them as transitions between case states. The natural history is a
-layer on the model: attach it as the `progression` of a
-[`ModelSpec`](@ref) that wraps the transmission process. A
-structure-driven process derives its infectious-window `from` state
-from this progression.
+What happens to each case after infection: when do symptoms start, when is the
+case reported, is it admitted to hospital, and does it recover or die? Each
+case follows a disease timeline of events, each happening a delay after an
+earlier one. You describe the timeline as a list of events called
+`progression` and give it to a [`ModelSpec`](@ref) alongside the transmission
+process. Control measures (isolation, contact tracing, vaccination) go in the
+model's `interventions`; the course of disease goes in its `progression`.
 
-Transitions use the same two hooks as interventions
-([`initialise_individual!`](@ref EpiBranch.initialise_individual!),
-[`resolve_individual!`](@ref EpiBranch.resolve_individual!)) but sit
-under their own abstract type, [`AbstractClinicalTransition`](@ref).
-This keeps the concerns tidy: the spec's `interventions` for policy, its
-`progression` for biology. Each [`Transition`](@ref) takes either a
-`rate` (an exponential, Markovian step with mean `1/rate`) or a
-`delay` (a fixed scalar or a distribution).
+Each event takes its timing as either a `delay` or a `rate`. A `delay` is a
+fixed number of days or a distribution of days. A `rate` r gives an
+exponentially distributed waiting time with mean 1/r days, as in a
+compartmental model; only the general [`Transition`](@ref) event below takes
+a `rate`.
 
-## Built-in transitions
+## Built-in events
 
-Four transitions are included in the package:
+The package has four ready-made events, each timed from symptom onset by
+default:
 
-- [`Reporting`](@ref): reports symptomatic cases after a delay from
-  onset, with optional probability below 1.
-- [`Hospitalisation`](@ref): admits a fraction of cases after a delay
-  from onset.
-- [`Death`](@ref): terminal. Cases die with a given probability; delay
-  from onset.
-- [`Recovery`](@ref): terminal. Always draws a recovery time for
-  symptomatic cases.
+- [`Reporting`](@ref): a symptomatic case is reported after a delay, with a
+  probability that can be below 1.
+- [`Hospitalisation`](@ref): a proportion of cases are admitted after a delay.
+- [`Death`](@ref): a case dies after a delay, with a given probability.
+- [`Recovery`](@ref): every symptomatic case gets a recovery time.
 
-Build the vector explicitly; each transition has its own delay
-distribution and probability, with no shared parameters underneath:
+Death and recovery are final outcomes: each case ends with one of them (see
+[Competing outcomes](@ref) below). Each event has its own delay distribution
+and probability:
 
 ```@example transitions
 using EpiBranch
 using Distributions
 using StableRNGs
 
+# incubation period, infection to onset: mean about 5 days
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
 progression = [
-    Reporting(delay = LogNormal(1.0, 0.3)),
-    Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.2),
-    Death(delay = LogNormal(2.5, 0.4), probability = 0.05),
-    Recovery(delay = LogNormal(2.0, 0.4)),
+    Reporting(delay = LogNormal(1.0, 0.3)),                         # onset to report
+    Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.2), # onset to admission
+    Death(delay = LogNormal(2.5, 0.4), probability = 0.05),          # onset to death
+    Recovery(delay = LogNormal(2.0, 0.4)),                           # onset to recovery
 ]
 
-model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = clinical)
+model = ModelSpec(
+    BranchingProcess(Poisson(2.0), Exponential(5.0));  # R = 2, generation time mean 5 days
+    progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 200, rng = rng)
 
-ind = state.individuals[end]
-println("onset = ", ind.state[:onset_time])
-println("reported = ", ind.state[:reported], " at ", ind.state[:reporting_time])
-println("outcome = ", ind.state[:outcome], " at ", ind.state[:outcome_time])
+cases = linelist(state)
+first(cases[:, [:id, :date_infection, :date_onset, :date_reporting,
+    :date_admission, :outcome, :date_outcome]], 5)
 ```
 
-The check that decides which cases see clinical transitions is
-`isnan(:onset_time)`. Cases without a recorded onset are skipped;
-they were never clinically observed. For diseases with asymptomatic
-cases, [`clinical_presentation`](@ref)`(prob_asymptomatic = 0.x)`
-sets onset to `NaN` for the asymptomatic fraction and the transitions
-skip them. For diseases without an asymptomatic concept, the default
-`prob_asymptomatic = 0.0` works. Or, if you don't need the
-`:asymptomatic` flag for anything else, a minimal attributes function
-that only sets `:onset_time` is enough:
+`LogNormal(μ, σ)` takes the mean and standard deviation of the logarithm of
+the delay in days, not of the delay itself: `LogNormal(1.0, 0.3)` has a mean
+of about 2.8 days. `Exponential(θ)` has mean θ days. Each row of the line list
+is a case, with the date of each event it reached and its final outcome.
 
-```julia
-attributes = (rng, ind) -> ind.state[:onset_time] =
-    ind.infection_time + rand(rng, LogNormal(1.5, 0.5))
-```
+!!! note "Events are drawn separately"
+    Each event is drawn on its own. An admission date can therefore fall after
+    the date of recovery. To tie one event to another, make its probability
+    depend on the earlier event (see
+    [Events that depend on an earlier event](@ref)) or time it from that
+    event (see [Measuring delays from an earlier event](@ref)).
 
-No `:asymptomatic` flag needed.
+## Asymptomatic cases
 
-## Heterogeneity via callables
+Only cases with a symptom onset go through events timed from onset. Cases
+without an onset, because they are asymptomatic or never observed, are
+skipped. [`clinical_presentation`](@ref) makes a proportion of cases
+asymptomatic with `prob_asymptomatic`, for example
+`clinical_presentation(incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.3)`.
+The default of 0 gives every case an onset.
 
-`probability` and `delay` on every transition accept three shapes:
+## Probabilities and delays that depend on the person
 
-- `Real` / `Distribution`: a constant or one shared distribution.
-- `Function (rng, ind) -> value`: a per-individual rule.
-
-The function form covers age-conditional CFRs, vulnerability-dependent
-delays, risk-group-specific reporting, and similar cases.
+`probability` and `delay` also accept a function of the random number
+generator and the person, `(rng, ind) -> value`.
+`ind.state[:age]` is the person's age, set by [`demographics`](@ref). This
+covers age-specific case fatality, delays that differ by risk group, and
+reporting that differs between groups. `c ? a : b` is Julia for "if `c` then
+`a`, otherwise `b`", like `ifelse` in R.
 
 ```@example transitions
 attrs = [
@@ -92,20 +92,21 @@ attrs = [
     demographics(age_distribution = Uniform(0, 90)),
 ]
 
-# Age-conditional CFR: 30% for 80+, 2% otherwise.
+# Probability of death among symptomatic cases: 30% for 80+, 2% otherwise.
 death_age = Death(
     delay = LogNormal(2.5, 0.4),
     probability = (rng, ind) -> ind.state[:age] >= 80 ? 0.3 : 0.02,
 )
 
-# Age-conditional admission delay: faster for under-30s.
+# Onset to admission: 1 day for under-30s, 5 days otherwise.
 hosp_age = Hospitalisation(
     delay = (rng, ind) -> ind.state[:age] < 30 ? 1.0 : 5.0,
     probability = 0.2,
 )
 
 progression = [hosp_age, death_age, Recovery(delay = LogNormal(2.0, 0.4))]
-model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = attrs)
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+    progression = progression, attributes = attrs)
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 300, rng = rng)
@@ -117,133 +118,103 @@ end
 println("Deaths: $n_died, of which 80+: $n_died_80plus")
 ```
 
-Nothing in the package special-cases age. The closure reading
-`ind.state[:age]` is the only mechanism, and the same pattern works
-for risk groups, comorbidities, or any user-defined state field set
-via the `attributes` list.
+People aged 80 and over are about one in nine of the population here, yet
+they account for most of the few deaths. Age is one example: any
+characteristic you give people through `attributes` (risk group,
+comorbidity, vaccination status) can be used the same way.
 
-## Gated transitions
+## Events that depend on an earlier event
 
-Sometimes a transition should only happen when a prerequisite is
-met: admit only if reported, treat only if tested. Use the same
-callable form for `probability`, returning `0.0` when the gate is
-closed:
+Some events happen only after another: only reported cases are admitted, only
+tested cases are treated. Make the probability of the later event 0 for
+everyone who has not had the earlier one. List the events in the order they
+happen, because an event can only depend on events listed before it.
 
 ```@example transitions
-gated_hosp = Hospitalisation(
+# Only reported cases can be admitted; 20% of them are.
+reported_hosp = Hospitalisation(
     delay = LogNormal(2.0, 0.5),
     probability = (rng, ind) -> get(ind.state, :reported, false) ? 0.2 : 0.0,
 )
 
 progression = [
     Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5),
-    gated_hosp,
+    reported_hosp,
 ]
-model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = clinical)
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+    progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 200, rng = rng)
 
-# Admitted ⊆ Reported, by construction.
-for ind in state.individuals
-    ind.state[:admitted] && @assert ind.state[:reported]
-end
-println("No bespoke `requires_*` field needed. The gate lives in the closure.")
+n_admitted = count(ind -> ind.state[:admitted], state.individuals)
+n_admitted_unreported = count(ind -> ind.state[:admitted] && !ind.state[:reported],
+    state.individuals)
+println("Admitted: $n_admitted, of which not reported: $n_admitted_unreported")
 ```
 
-Composite conditions work the same way: admit if reported *and* not
-vaccinated, only happen after contact tracing, and so on. The
-closure sees the full `ind.state` dict, so any upstream event or
-user-set attribute is reachable.
+No unreported case was admitted. `get(ind.state, :reported, false)` reads
+whether the case was reported, treating it as not reported if the value is
+missing. Conditions can be combined, for example admitting only cases that
+were reported and are not vaccinated.
 
-## Sequential transitions: chaining via `from`
+## Measuring delays from an earlier event
 
-The delay anchor on every built-in transition defaults to
-`:onset_time`, but `from` is a kwarg accepting any `Symbol` (looked up
-in `ind.state`) or `Function (ind) -> Real`. That lets you chain
-transitions: anchor each step on the previous event's time instead of
-always on onset.
-
-Suppose reporting depends on testing. The positive test triggers the
-report, and the reporting delay is measured from the test rather
-than from onset. Define a `Testing` transition that writes
-`:test_time`, then anchor the built-in `Reporting` on it:
+By default each built-in event is timed from symptom onset. The `from`
+argument times it from another event instead. Suppose cases are reported
+after a positive test, with the reporting delay measured from the test
+and not from onset. The general [`Transition`](@ref) event describes the
+test: `Transition(:tested; from = :onset, ...)` means that a case is tested
+a delay after onset, here with probability 0.9 (the proportion of
+symptomatic cases who get a positive test). It records whether the case was
+tested as `:tested`, and when as `:tested_time`. Reporting is then timed from
+the test with `from = :tested_time`:
 
 ```@example transitions
-struct Testing <: AbstractClinicalTransition
-    delay::Distribution
-    sensitivity::Float64
-end
-
-EpiBranch.required_fields(::Testing) = [:onset_time]
-
-function EpiBranch.initialise_individual!(::Testing, ind, state)
-    ind.state[:tested] = false
-    ind.state[:test_time] = Inf
-    return nothing
-end
-
-function EpiBranch.resolve_individual!(t::Testing, ind, state)
-    ot = onset_time(ind); isnan(ot) && return nothing
-    rand(state.rng) < t.sensitivity || return nothing
-    ind.state[:tested] = true
-    ind.state[:test_time] = ot + rand(state.rng, t.delay)
-    return nothing
-end
-
-testing = Testing(LogNormal(0.5, 0.3), 0.9)
-reporting_post_test = Reporting(
-    delay = LogNormal(0.0, 0.2),
-    from = :test_time,
-)
+testing = Transition(:tested; from = :onset, delay = LogNormal(0.5, 0.3),
+    probability = 0.9)
+reporting_post_test = Reporting(delay = LogNormal(0.0, 0.2), from = :tested_time)
 
 progression = [testing, reporting_post_test]
-model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = clinical)
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+    progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 100, rng = rng)
 
-ind = state.individuals[end]
-println("onset = ", onset_time(ind))
-println("tested = ", ind.state[:tested], " at ", ind.state[:test_time])
-println("reported at ", ind.state[:reporting_time])
+first(linelist(state)[:, [:id, :date_onset, :tested, :date_tested, :date_reporting]], 5)
 ```
 
-`Reporting` skips cases whose anchor (`:test_time`) is still `Inf`
-because the case was never tested. This is the same NaN/Inf check
-that excludes asymptomatic cases under the default `:onset_time`
-anchor. Order matters: `resolve_individual!` is called in vector
-order, so any downstream transition that reads an upstream key needs
-the upstream transition to come first.
+Cases without a test have no report. In each row, the test date follows
+onset and the report date follows the test.
 
-### Anchoring on infection time (no onset modelled)
+The general `Transition` covers any event in the timeline: it takes the name
+of the event, `from` (the earlier event it is timed from, by default
+infection), a `delay` or `rate`, a `probability`, and `terminal = true` for a
+final outcome.
 
-For diseases where you don't want to model symptom onset at all,
-anchor on `ind.infection_time` via the function form. `from` as a
-function bypasses the validator's `:onset_time` check, so no
-`clinical_presentation` is required:
+### Delays from infection
+
+If you do not model symptom onset, time events from infection instead. With
+`from = :infection` (the default for `Transition`), no
+`clinical_presentation` is needed:
 
 ```julia
-Reporting(
-    delay = LogNormal(2.0, 0.3),
-    from = ind -> ind.infection_time,
-)
+Transition(:reported; from = :infection, delay = LogNormal(2.0, 0.3))
 ```
 
-`Death`, `Recovery`, `Hospitalisation`, and any user-defined
-transition take the same `from` kwarg. The choice is per-transition,
-so mixed timelines are fine: hospitalise from onset but draw outcome
-times from admission.
+The built-in events take `from` too, as a function of the person:
+`Reporting(delay = LogNormal(2.0, 0.3), from = ind -> ind.infection_time)`.
+Each event has its own `from`: a timeline can admit cases a delay after onset
+and time their outcome from admission.
 
-## Composing with multi-type models and demographics
+## Combining with multi-type models and population characteristics
 
-Transitions only read and write `ind.state`. They don't know about
-model topology. So a multi-type branching process (age strata, risk
-groups, spatial patches) and transitions compose without coordination:
-each closure reads whichever state keys it needs. The engine sets
-`ind.state[:type]` to the type index for multi-type models, and
-[`demographics`](@ref) sets `:age` and `:sex` when included in
-`attributes`. A transition closure can read any of these.
+The disease timeline is separate from the transmission model. A
+[multi-type model](multi-type.md) with age or risk groups can have outcomes
+that differ by type. A rule can look up the case's type, `ind.state[:type]`
+(1 for the first type, 2 for the second, in the order of the next-generation
+matrix), as well as its age:
 
 ```@example transitions
 attrs_age = [
@@ -251,16 +222,16 @@ attrs_age = [
     demographics(age_distribution = Uniform(0, 90)),
 ]
 
-# CFR depends on both type and age.
+# Probability of death depends on both type and age.
 death_type_age = Death(
-    delay = LogNormal(2.5, 0.4),
+    delay = LogNormal(1.5, 0.4),  # onset to death: mean about 5 days
     probability = (rng, ind) -> begin
         base = ind.state[:age] >= 65 ? 0.15 : 0.01
-        ind.state[:type] == 1 ? 0.5 * base : base  # children: half the CFR
+        ind.state[:type] == 1 ? 0.5 * base : base  # children: half the risk
     end,
 )
 
-# Type-conditional admission delay.
+# Onset to admission depends on type.
 hosp_type = Hospitalisation(
     delay = (rng, ind) -> ind.state[:type] == 1 ? 1.0 : 3.0,
     probability = 0.2,
@@ -272,7 +243,9 @@ progression = [
     Recovery(delay = LogNormal(2.0, 0.4)),
 ]
 
-# Two-type model with asymmetric mixing between children and adults.
+# Two types, children and adults. Columns are infectors, rows infectees:
+# a child causes 2.0 child and 0.8 adult cases, an adult 0.5 child and
+# 1.5 adult cases. Secondary cases are negative binomial with dispersion k = 0.5.
 multitype = ModelSpec(
     BranchingProcess(
         [2.0 0.5; 0.8 1.5],
@@ -281,7 +254,7 @@ multitype = ModelSpec(
         type_labels = ["children", "adults"]);
     progression = progression, attributes = attrs_age)
 
-rng = StableRNG(42)
+rng = StableRNG(3)
 state = simulate(multitype; max_cases = 500, rng = rng)
 
 n_died_kids = count(state.individuals) do ind
@@ -293,62 +266,40 @@ end
 println("Deaths. Children: $n_died_kids. Adults: $n_died_adults.")
 ```
 
-Populations of different vulnerability work the same way:
-[`transmission_traits`](@ref) sets per-individual `susceptibility` and
-`infectiousness`, demographics or a custom builder sets risk
-indicators, and transitions read whatever keys they need. The layers
-stack because they share one state dict; nothing inside the package
-hard-codes which keys mean what beyond a small set used by the
-transmission engine itself (`susceptibility`, `infectiousness`,
-`infection_time`).
+Children and adults make up similar numbers of cases in this outbreak. The
+halved risk among children shows as fewer deaths, although the counts are
+small and noisy. Death here comes sooner after onset than in the first
+example, which leaves fewer of those who would die to recover first (see
+[Competing outcomes](@ref)).
+Relative susceptibility and infectiousness can also vary between people,
+through [`transmission_traits`](@ref), and outcome rules can use any of these
+characteristics.
 
-## Terminal transitions and competing arbitration
+## Competing outcomes
 
-[`Death`](@ref) and [`Recovery`](@ref) are terminal: they end the
-case. Any transition with `is_terminal(t) == true` and a
-`terminal_event(t, ind) -> (time, label)` method participates. After
-every transition resolves, the engine picks the earliest terminal
-candidate across the vector and writes `:outcome` (the label) and
-`:outcome_time`.
+Death and recovery compete: each case ends with whichever final outcome
+happens first, the situation survival analysis calls competing risks. The
+outcome is recorded as `:outcome`, and its time as `:outcome_time`.
 
-Adding a third terminal state, say "lost to follow-up", is another
-struct plus two methods:
+This affects what the `probability` of `Death` means. It is the probability
+that a case would die if it did not recover first. When recovery tends to
+come sooner than death, as in the first example on this page, some of the
+cases that would have died recover first. The proportion of cases dying is
+then below the `probability` given.
+
+Further final outcomes join the competition through the general `Transition`
+with `terminal = true`. Here 10% of cases are lost to follow-up, a mean of
+about 5 days after onset, unless they die or recover first:
 
 ```@example transitions
-struct LostToFollowUp <: AbstractClinicalTransition
-    delay::Distribution
-    probability::Float64
-end
-
-EpiBranch.required_fields(::LostToFollowUp) = [:onset_time]
-EpiBranch.is_terminal(::LostToFollowUp) = true
-
-function EpiBranch.initialise_individual!(::LostToFollowUp, ind, state)
-    ind.state[:lost_candidate_time] = Inf
-    return nothing
-end
-
-function EpiBranch.resolve_individual!(t::LostToFollowUp, ind, state)
-    ot = onset_time(ind)
-    isnan(ot) && return nothing
-    rand(state.rng) < t.probability || return nothing
-    ind.state[:lost_candidate_time] = ot + rand(state.rng, t.delay)
-    return nothing
-end
-
-function EpiBranch.terminal_event(::LostToFollowUp, ind)
-    t = get(ind.state, :lost_candidate_time, Inf)
-    return isfinite(t) ? (t, :lost) : nothing
-end
-
-# Slot it alongside Death and Recovery. The competing arbitration picks
-# the earliest candidate time across all terminal transitions.
 progression = [
     Death(delay = LogNormal(2.5, 0.4), probability = 0.05),
     Recovery(delay = LogNormal(2.0, 0.4)),
-    LostToFollowUp(LogNormal(1.5, 0.5), 0.1),
+    Transition(:lost; from = :onset, delay = LogNormal(1.5, 0.5),
+        probability = 0.1, terminal = true),
 ]
-model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = clinical)
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+    progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 200, rng = rng)
@@ -360,18 +311,21 @@ println("Outcome counts: ",
      lost = count(==(:lost), outcomes)))
 ```
 
-No engine changes were needed. The same pattern works for ICU
-admission as a sub-state of hospitalisation, treatment-conditional
-outcomes, or whatever else your disease timeline needs.
+Most cases recover. The deaths and losses to follow-up are fewer than 5% and
+10% of cases, because recovery often comes first. The same approach gives
+admission to intensive care after admission to hospital, or outcomes that
+depend on treatment.
 
-### Exclusive outcomes: an exact case-fatality ratio
+### An exact case fatality ratio
 
-Each terminal transition's `probability` is its own Bernoulli draw, so gating
-two of them independently at `p` and `1 - p` does not partition cases
-exactly: about `p(1 - p)` of cases pass both gates (resolved by whichever
-candidate time is earlier) and another `p(1 - p)` pass neither gate, leaving
-`:outcome` unset. [`exclusive_probabilities`](@ref) fixes this by sharing one
-uniform draw between the siblings, so exactly one of them occurs:
+To fix the proportion of symptomatic cases who die, the outcomes must be
+mutually exclusive. If death and recovery each happened independently, with
+probabilities 0.05 and 0.95, some cases would get both and some neither. The
+proportion dying would then differ from 5%. [`exclusive_probabilities`](@ref)
+makes the outcomes mutually exclusive: each case has exactly one of them, with
+the probabilities given. `Recovery` always happens and has no probability to set.
+The recovery outcome is therefore a general `Transition` with its own
+probability:
 
 ```@example transitions
 death_p, recovered_p = exclusive_probabilities([0.05, 0.95])
@@ -392,110 +346,47 @@ println("Symptomatic cases: ", length(symptomatic), ", missing an outcome: ", n_
 println("Died: ", n_died, " of ", length(symptomatic))
 ```
 
-`ModelSpec` warns at composition when every terminal transition is gated
-below certainty and none is unconditional, the same gap this section
-describes, so the mistake surfaces before a run rather than as an implausible
-outbreak or a rejection-sampling error on a structure-driven model.
+Every symptomatic case has an outcome. The proportion who died is close to 5%,
+with the difference due to chance.
 
-## Evaluating the progression's likelihood
+`ModelSpec` warns if no final outcome is certain to happen, because some cases
+would then end without an outcome.
 
-[`progression_loglik`](@ref) gives the log-density of a case's clinical
-timeline under the `progression` that produced it: the log-density of each
-transition's delay when it occurred, and the log-probability of its gate
-either way. It reads the state each transition wrote in
-`resolve_individual!`, so it takes the same individuals (or the
-[`SimulationState`](@ref) holding them) that `simulate` returned:
+## Likelihood of the clinical timeline
+
+To fit reporting or outcome delays to observed cases, you need the likelihood
+of each case's timeline. [`progression_loglik`](@ref) gives the log-likelihood
+of the simulated cases' timelines under the `progression`: for each event, the
+probability that it did or did not happen and, when it happened, the
+probability density of its delay. It takes the simulated outbreak that
+`simulate` returned:
 
 ```@example transitions
 progression = [
     Reporting(delay = LogNormal(1.0, 0.3), probability = 0.7),
     Recovery(delay = LogNormal(2.0, 0.4)),
 ]
-model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); progression = progression, attributes = clinical)
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+    progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 200, rng = rng)
 progression_loglik(model, state)
 ```
 
-This is the natural-history counterpart to [`pairwise_surv_loglik`](@ref),
-which gives the log-density of the infection layer. Added together, the two
-give the full log-likelihood of an outbreak's augmented data — infection
-times, order and clinical timelines — under `model`.
+The result is a log-likelihood: comparing it across parameter values shows
+which fit the timelines better, with higher values fitting better.
+[`pairwise_surv_loglik`](@ref) gives the likelihood of who infected whom and
+when. The two added together are the log-likelihood of the whole outbreak:
+infection times, the transmission tree and clinical timelines, including the
+parts that are not directly observed. Cases that never reached the event an
+event is timed from (an asymptomatic case for an event timed from onset)
+contribute nothing.
 
-Only the individuals `resolve_transitions!` actually ran on contribute: a host
-never infected, or one whose onset (or other anchor) was never reached,
-adds `0.0`. A transition's `delay` must be a `Distribution` or a fixed `Real`
-to be evaluated this way — a raw `Function (rng, ind) -> Real` delay has no
-density, and evaluating one throws.
+!!! warning "Delays that depend on the person cannot be evaluated"
+    A delay given as a function `(rng, ind) -> ...` can be simulated but has
+    no density, and `progression_loglik` throws an error on it. To use the
+    likelihood, give each delay as a distribution or a fixed number of days.
 
-## Writing a non-terminal custom transition
-
-Non-terminal transitions follow the same pattern minus `is_terminal`
-and `terminal_event`. They mark milestones on the timeline that other
-transitions or downstream observation can read:
-
-```@example transitions
-struct AntiviralTreatment <: AbstractClinicalTransition
-    delay::Distribution
-    probability::Float64
-end
-
-EpiBranch.required_fields(::AntiviralTreatment) = [:onset_time]
-
-function EpiBranch.initialise_individual!(::AntiviralTreatment, ind, state)
-    ind.state[:treated] = false
-    ind.state[:treatment_time] = Inf
-    return nothing
-end
-
-function EpiBranch.resolve_individual!(t::AntiviralTreatment, ind, state)
-    ot = onset_time(ind)
-    isnan(ot) && return nothing
-    # Only treat reported cases (read upstream state).
-    get(ind.state, :reported, false) || return nothing
-    rand(state.rng) < t.probability || return nothing
-    ind.state[:treated] = true
-    ind.state[:treatment_time] = ot + rand(state.rng, t.delay)
-    return nothing
-end
-```
-
-A downstream `Death` transition can read `ind.state[:treated]` in its
-own callable probability to encode "treated cases have lower mortality":
-
-```julia
-Death(
-    delay = LogNormal(2.5, 0.4),
-    probability = (rng, ind) -> ind.state[:treated] ? 0.02 : 0.08,
-)
-```
-
-`AntiviralTreatment` has no [`EpiBranch.transition_loglik`](@ref) method of
-its own, so [`progression_loglik`](@ref) throws on a progression that includes
-it. Give it one, reading back the same `:treated`/`:treatment_time` keys
-`resolve_individual!` writes:
-
-```julia
-function EpiBranch.transition_loglik(t::AntiviralTreatment, ind)
-    ot = onset_time(ind)
-    isnan(ot) && return 0.0
-    get(ind.state, :reported, false) || return 0.0
-    occurred = ind.state[:treated]
-    ll = EpiBranch.transition_term(t.probability, t.delay, ind, ot, occurred)
-    occurred || return ll
-    return ll + logpdf(t.delay, ind.state[:treatment_time] - ot)
-end
-```
-
-[`EpiBranch.transition_term`](@ref) gives the gate's contribution. Reading
-`t.probability` directly would be wrong for a gate built by
-[`exclusive_probabilities`](@ref), whose siblings share one draw, and for a
-case whose infection was aborted before the transition could take effect; the
-[extending guide](@ref "Extending EpiBranch") spells both out.
-
-That's the whole extension surface. Three ingredients (the shared
-`ind.state` dict, callable probability/delay, optional terminal
-arbitration) are enough for the cases I've worked through:
-independent parallel draws, sequential chains, treatment-conditional
-outcomes, capacity-dependent rates.
+To write your own kind of event, with its own likelihood, see
+[Extending EpiBranch](extending.md).
