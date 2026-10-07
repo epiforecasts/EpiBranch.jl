@@ -888,22 +888,24 @@ strain, patch or group with its own offspring distribution:
 
 ```julia
 struct MultiTypeChainSizes
-    data::Vector{Int}
+    sizes::Vector{Int}
+    seeds::Vector{Int}  # index cases per cluster
     type::Vector{Int}   # which strain/patch/group
 end
 
 function Distributions.loglikelihood(data::MultiTypeChainSizes,
         offsprings::Vector{<:Distribution})
     total = 0.0
-    for i in eachindex(data.data)
-        d = chain_size_distribution(offsprings[data.type[i]])
-        total += logpdf(d, data.data[i])
+    for (k, offspring) in enumerate(offsprings)
+        in_type = data.type .== k
+        any(in_type) || continue
+        clusters = ChainSizes(data.sizes[in_type]; seeds = data.seeds[in_type])
+        total += loglikelihood(clusters, offspring)
     end
     return total
 end
 ```
 
-The internal `EpiBranch._chain_size_logpdf(d, x, s)` handles clusters with
-several index cases. Call it from your method to get the same closed forms for
-`Borel`, `GammaBorel` and `PoissonGammaChainSize` that `ChainSizes` uses; as an
-internal function, it may change in a later release.
+Each type's clusters go to the existing `loglikelihood(ChainSizes(sizes; seeds), offspring)`,
+which handles clusters with several index cases and uses the same closed forms
+for `Borel`, `GammaBorel` and `PoissonGammaChainSize` as any other chain-size fit.

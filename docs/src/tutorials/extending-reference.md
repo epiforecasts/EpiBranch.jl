@@ -835,4 +835,4 @@ works for simulation has no closed form.
 | A grouping of pairwise likelihood terms | A type `<: EpiBranch.PairwiseReduction` with `EpiBranch.ngroups` and `EpiBranch.group`, run with `EpiBranch.pairwise_reduce` | Likelihood |
 | The likelihood of the natural history | `progression_loglik(spec, individuals)`; built-in transitions work as they are, one of your own needs `transition_loglik` | Likelihood |
 | An observation model | A type `<: ObservationModel` with `observe(base, ::YourObs)` (closed form) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Closed-form results and fitting |
-| Per-cluster information | Either computed into existing `ChainSizes` fields, or a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood |
+| Per-cluster information | Either computed into existing `ChainSizes` fields, or a new data type with a `loglikelihood` method that passes each group to `loglikelihood(ChainSizes(sizes; seeds), offspring)` | Likelihood |
