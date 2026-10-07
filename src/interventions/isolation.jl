@@ -98,8 +98,9 @@ known cases are quarantined through [`ContactTracing`](@ref).
   same household has been detected.
 - `duration` (required): days a case stays isolated before release.
   A number, a distribution or a function `(rng, ind) -> ...`. `Inf` isolates
-  for good; zero isolates nobody. There is no default because indefinite
-  isolation is a modelling choice to make explicitly.
+  for good; with zero the case is still recorded as isolated, so tracing can
+  start from it, but no transmission is prevented. There is no default
+  because indefinite isolation is a modelling choice to make explicitly.
 - `eligibility`: who can be isolated, [`SymptomaticOnly`](@ref) (default) or
   [`AllCases`](@ref) (for example with mass testing).
 - `test_sensitivity`: probability that an eligible case is detected and
