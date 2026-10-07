@@ -470,8 +470,8 @@ The estimate is close to the 4 days the outbreak was simulated with.
 
 !!! warning "Partial protection changes what is estimated"
     Suppose the model that produced the data had partial protection in place
-    throughout, such as a vaccine's efficacy, a leaky isolation, or
-    differences in susceptibility or infectiousness. Each blocks a fraction
+    throughout, such as a vaccine's efficacy or differences in
+    susceptibility or infectiousness. Each blocks a fraction
     `p` of contacts and lowers the rate of infecting contacts by the factor
     `1 - p`. Fitting then estimates that lower rate instead of the rate the
     model was given. Fitting with `loglikelihood(data, model)`, where `model`
