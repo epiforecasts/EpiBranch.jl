@@ -231,7 +231,8 @@ Triggers combine with and (`&`), or (`|`) and not (`!`):
 # Trace suspected or lab-confirmed cases.
 elig = OnSymptomOnset() | OnLabConfirmation()
 
-# Trace symptomatic infectors who have not yet been isolated.
+# Trace symptomatic infectors who are never isolated (for example, those
+# who test negative), from their onset.
 elig_gap = OnSymptomOnset() & !OnIsolation()
 
 ct_combined = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
