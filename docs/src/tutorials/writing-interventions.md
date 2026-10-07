@@ -61,7 +61,7 @@ many people each case infects](@ref).
 | `trace_contacts!(iv, state, infector, contacts[, not_before])` | Continuous-time models only: once per case, when its infection time is final | The case, the contacts it reached whose infection is not yet final, and, from a model whose contacts can arise after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing`; sets values on the contacts |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to collect a case's contacts at all | Nothing | `true` if this intervention has a `trace_contacts!` method (default `false`) |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious period is closed | A person | The time this intervention removes them from onward transmission (default `Inf`) |
-| `on_infection_settled!(iv, individual, state, rng)` | Continuous-time models only: once a case's infection time is final, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
+| `on_infection_settled!(iv, individual, state, rng)` | Network and household models only: once a case's infection time is final, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
 | `risk_applies(iv, route)` | Continuous-time models choosing the risks for a route (`nothing` for an introduction from outside) | Nothing | `Bool`; default `true` |
 | `standing_block(iv)` | Continuous-time models deciding whether a certain block ends a pair's contacts for good | Nothing | `Bool`; default `false` |
 | `risk_depends_on_infector(iv)` | Before a closed population with more than one mixing group runs | Nothing | `Bool`: whether `competing_risk` can block a contact differently depending on its infector (default `true` when the type has its own `competing_risk`) |
@@ -406,7 +406,8 @@ end
 
 Two methods are needed because the two kinds of model reach a new case at
 different steps: branching processes through the batch of new contacts, the
-continuous-time models through each case once its infection time is final.
+network and household models through each case once its infection time is
+final.
 
 ## Susceptibility and infectiousness are risks too
 
