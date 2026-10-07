@@ -228,8 +228,9 @@ can lapse, and [`ContactTracing`](@ref) names the quarantine's own key for any
 read from either, the exposure ending where it starts. A removal of your own names the key it recorded
 under, whose value is a vector of `(start, release)` pairs. A wrapper that can
 withdraw the block part-way through a stretch, such as a [`Scheduled`](@ref)
-with an end, names none and closes the infectious window at the first removal
-instead.
+with an end, names none; the window then narrows only to a wrapped stretch
+that never releases on its own, since a releasing one is still read by the
+per-contact competing risk.
 """
 removal_gap_host_times(component) = ()
 

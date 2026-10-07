@@ -98,10 +98,13 @@ applies them:
 
 ```@example gettingstarted
 # Symptomatic cases isolate on average 2 days after onset, for 7 days
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 # Each contact of an isolated case is traced with probability 0.5, on average
-# 1.5 days after the case isolates
-ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.5))
+# 1.5 days after the case isolates, and quarantined for 7 days
+ct = ContactTracing(
+    probability = 0.5, isolation_to_trace_delay = Exponential(1.5),
+    action = Quarantine(duration = 7.0)
+)
 
 spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
