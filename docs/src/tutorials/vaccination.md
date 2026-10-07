@@ -139,8 +139,10 @@ end
 Contacts infected after the trace are infected in the days between the trace
 and their infector's isolation. Here the trace comes a mean of 1 day after
 onset and the isolation a mean of 2 days after it, so that gap rarely lasts a
-week, and a dose that protects 7 days later comes too late for most of them.
-Containment with the delay falls back towards no vaccination.
+week, and a dose that protects 7 days later comes too late for many of them.
+Containment with the delay lies between no vaccination and same-day
+protection; at these standard errors the runs cannot say how much of the
+benefit is left.
 
 ### Counting doses
 
