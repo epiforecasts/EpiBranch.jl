@@ -353,9 +353,10 @@ estimates the chain-size likelihood by simulating that model.
 
 The data below are 100 chains simulated under isolation with R = 2.0. Each
 case is isolated after an exponentially distributed delay from symptom onset
-(mean 2 days) for 7 days; the incubation period is log-normal with a median of
-about 4.5 days, and the generation time exponential with a mean of 5 days. Each
-simulated outbreak stops at 50 cases.
+(mean 2 days) for 7 days (`duration`), after which they can transmit again;
+the incubation period is log-normal with a median of about 4.5 days, and the
+generation time exponential with a mean of 5 days. Each simulated outbreak
+stops at 50 cases.
 
 ```@example inference
 rng = StableRNG(42)

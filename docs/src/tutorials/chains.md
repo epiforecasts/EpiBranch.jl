@@ -172,9 +172,9 @@ give `loglikelihood` the whole model, isolation included, and it estimates the
 likelihood by simulating that model.
 
 The isolation below starts after an exponentially distributed delay from
-symptom onset (mean 2 days), lasts 7 days and stops all onward transmission
-while it lasts. The incubation period is log-normal with a median of about
-4.5 days.
+symptom onset (mean 2 days) and stops all onward transmission for 7 days
+(`duration`), after which the case can transmit again. The incubation period
+is log-normal with a median of about 4.5 days.
 
 ```@example chains
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
