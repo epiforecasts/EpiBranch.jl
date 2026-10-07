@@ -359,8 +359,9 @@ println("Died: ", n_died, " of ", length(symptomatic))
 Every symptomatic case has an outcome. The proportion who died is close to 5%,
 with the difference due to chance.
 
-`ModelSpec` warns if no final outcome is certain to happen, because some cases
-would then end without an outcome.
+`ModelSpec` warns when every final outcome has a fixed `probability` below 1,
+because some cases could then end without an outcome. Probabilities from
+`exclusive_probabilities` do not trigger the warning.
 
 ## Likelihood of the clinical timeline
 
