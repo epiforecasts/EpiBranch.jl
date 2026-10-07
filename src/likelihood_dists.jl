@@ -139,7 +139,7 @@ simulated outbreaks.
     single-type, and whenever some cluster has more than one index case and
     no exact formula covers several index cases, for example with
     under-reported cases (`PerCaseObservation`) or a `ClusterMixed`
-    offspring whose mixing distribution is not Gamma.
+    offspring other than Poisson offspring with a Gamma-distributed rate.
 
     With `prob_concluded`, the observation model is ignored: cluster sizes are
     treated as fully observed, with no under-reporting and no minimum cluster
