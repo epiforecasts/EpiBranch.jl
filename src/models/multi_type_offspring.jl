@@ -3,30 +3,30 @@
 """
     MultiTypeOffspring(offspring_matrix, dist_fn)
 
-Offspring specification of a multi-type branching process built from an
-offspring matrix. `offspring_matrix[i, j]` is the expected number of type-`i`
-offspring from a type-`j` parent. A type-`j` parent draws its total number of
-offspring from `dist_fn(R_j)`, where `R_j` is the sum of column `j`, and
-allocates them across types multinomially in proportion to that column.
+The offspring distribution of a multi-type branching process (for example
+children and adults, or health-care workers and the community), built from a
+next-generation matrix `M`: `M[i, j]` is the mean number of type-`i` cases
+infected by one type-`j` case.
 
-A column's sum is the argument to `dist_fn`, and its proportions determine how
-the sampled count is split across types. A parent's expected number of offspring
-is the mean of `dist_fn(R_j)`. This equals `R_j` only when the distribution family
-has mean R. Other families rescale the process: `R -> Poisson(θ * R)`, for
-example, applies a scale parameter to a fixed matrix.
+A type-`j` case draws how many people it infects in total from
+`dist_fn(R_j)`, where `R_j` is the sum of column `j`, then splits them at
+random between types in proportion to that column. The mean number infected
+is the mean of `dist_fn(R_j)`, which equals `R_j` only if the distribution
+has mean `R_j`. A function such as `R -> Poisson(θ * R)` scales the whole
+matrix by `θ`.
 
-Check the distribution's parameterisation when the column sums are intended to
-give the reproduction numbers. `Distributions.NegativeBinomial(R, p)` takes a
-number of failures rather than a mean. With `R -> NegativeBinomial(R, 0.3)`, a
-matrix whose spectral radius is 1.045 gives a process with R* = 2.44.
-[`reproduction_number`](@ref) reports the model's reproduction number;
-`NegBin(R, k)` uses the mean-and-dispersion parameterisation.
+!!! warning
+    `dist_fn` must take a mean if the column sums are meant to be the
+    reproduction numbers. Use `R -> NegBin(R, k)` (mean `R`, dispersion `k`).
+    `R -> NegativeBinomial(R, 0.3)` from Distributions.jl reads `R` as a
+    number of failures, not a mean: with it, a matrix whose dominant
+    eigenvalue is 1.045 gives a process with reproduction number 2.44.
+    [`reproduction_number`](@ref) reports the reproduction number the model
+    actually has.
 
-A [`BranchingProcess`](@ref) built with
-`BranchingProcess(offspring_matrix, dist_fn, generation_time)` stores this
-specification. The offspring draw and the multi-type analytics
-([`reproduction_number`](@ref), [`extinction_probability`](@ref)) use the same
-matrix and distribution family.
+`BranchingProcess(M, dist_fn, generation_time)` builds one of these;
+[`reproduction_number`](@ref) and [`extinction_probability`](@ref) use the
+same matrix and distribution.
 """
 struct MultiTypeOffspring{
         M <: AbstractMatrix{<:Real}, F, R <: AbstractVector{<:Real},
@@ -81,9 +81,19 @@ end
 """
     BranchingProcess(offspring_matrix, dist_fn, generation_time; kwargs...)
 
-Construct a multi-type branching process from an offspring matrix.
-`offspring_matrix[i, j]` is the expected number of type-`i` offspring from a
-type-`j` parent. `dist_fn` maps each type's R to an offspring distribution.
+A multi-type branching process from a next-generation matrix:
+`offspring_matrix[i, j]` is the mean number of type-`i` cases infected by one
+type-`j` case. `dist_fn` turns the total for each type of infector (the column
+sum, its reproduction number) into an offspring distribution, and
+`generation_time` is the generation time in days. See
+[`MultiTypeOffspring`](@ref EpiBranch.MultiTypeOffspring) for how secondary
+cases are split between types.
+
+# Examples
+```julia
+M = [1.2 0.4; 0.3 0.9]
+BranchingProcess(M, R -> NegBin(R, 0.5), Gamma(2.0, 3.0))
+```
 """
 function BranchingProcess(
         offspring_matrix::Matrix{Float64},
@@ -102,8 +112,9 @@ end
 """
     draw_offspring(rng, offspring::MultiTypeOffspring, individual, state)
 
-Draw offspring counts per type for a parent of type `j` under an offspring
-matrix: a total from `dist_fn(R_j)`, split multinomially across types.
+Draw the number of secondary cases of each type for a case of type `j`: a
+total from `dist_fn(R_j)`, split at random between types in proportion to
+column `j` of the next-generation matrix.
 """
 function draw_offspring(
         rng::AbstractRNG, offspring::MultiTypeOffspring,

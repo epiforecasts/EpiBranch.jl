@@ -1,16 +1,22 @@
 """
     NegBin(R, k)
 
-Convenience constructor for a Negative Binomial offspring distribution
-parameterised by mean reproduction number `R` and dispersion parameter `k`.
+A negative binomial offspring distribution with mean `R` (the reproduction
+number) and dispersion `k`, so the variance is `R + R²/k`. Smaller `k` means
+more superspreading: `k` below 1 is strong superspreading, and as `k` grows
+the distribution approaches a Poisson. Returns a `NegativeBinomial` from
+Distributions.jl.
 
-A `NegativeBinomial` from Distributions.jl is returned, with mean `R` and
-variance `R + R²/k`.
+!!! warning
+    `NegativeBinomial(r, p)` from Distributions.jl takes a number of
+    successes and a success probability, not a mean and dispersion. Used
+    directly as an offspring distribution it gives wrong results without any
+    error. Use `NegBin(R, k)`.
 
-_Note:_ `NegativeBinomial(r, p)` from Distributions.jl uses a different
-parameterisation (number of successes and success probability). Using it
-directly as an offspring distribution will produce silently wrong results.
-Always use `NegBin(R, k)` for epidemiological parameterisation.
+# Examples
+```julia
+NegBin(2.5, 0.16)   # R = 2.5, k = 0.16 (as estimated for SARS)
+```
 """
 function NegBin(R::Real, k::Real)
     R > 0 || throw(ArgumentError("R must be positive, got $R"))
@@ -22,23 +28,25 @@ end
 """
     incubation_linked_generation_time(; presymptomatic_fraction=0.3, omega=2.0)
 
-Return a function suitable for the `generation_time` field of a
-`BranchingProcess`, in which each individual's generation time is linked
-to their own incubation period.
+A generation time linked to each case's own incubation period, as in
+Hellewell et al. (2020), for use as the `generation_time` of a
+[`BranchingProcess`](@ref). Incubation periods come from
+[`clinical_presentation`](@ref).
 
-The returned function takes an `Individual` and produces a truncated
-skew-normal distribution SN(ξ, ω, α), where ξ is the individual's
-incubation period and α is chosen so that the fraction of generation
-times shorter than the incubation period equals `presymptomatic_fraction`.
-The inversion `α = tan(π(0.5 − presymptomatic_fraction))` is exact for the
-untruncated skew-normal; after truncation to `[0, ∞)` the realised fraction is
-approximate, holding closely when the incubation period is large relative to
-`omega` and diverging for short incubation periods.
-This is the generation time model used in Hellewell et al. (2020).
-Individuals with no usable incubation period (for example asymptomatic
-cases) fall back to a 5-day centre.
+- `presymptomatic_fraction`: the share of transmission that happens before
+  the infector's symptom onset.
+- `omega`: the spread, in days, of the generation time around the
+  incubation period.
 
-Usage:
+Each case's generation time is drawn from a skew-normal distribution centred
+on its incubation period, with scale `omega` and the skew chosen so that
+`presymptomatic_fraction` of generation times are shorter than the incubation
+period. Negative values are excluded, which makes the realised presymptomatic
+share approximate: close when the incubation period is long compared with
+`omega`, less so for short ones. Cases without an incubation period (for
+example asymptomatic cases) are centred on 5 days.
+
+# Examples
 ```julia
 model = BranchingProcess(
     NegBin(2.5, 0.16),
@@ -117,16 +125,11 @@ end
 """
     _sample_value(x, rng, args...) -> Float64
 
-Resolve a value that can be a `Real`, a `Distribution`, or a callable.
-The callable is invoked as `f(rng, args...)` — callers choose the
-signature by what they pass after `rng`. The return is always
-converted to `Float64`.
-
-Used throughout the package for parameters that accept the same
-"scalar | distribution | function" trio: attribute builders
-([`transmission_traits`](@ref), [`clinical_presentation`](@ref)),
-intervention parameters (vaccination eligibility, isolation delays),
-and competing-risk fields ([`Risk`](@ref)).
+Turn a parameter given as a number, a distribution or a function into a
+number: the number itself, a draw from the distribution, or `f(rng, args...)`.
+Used wherever a parameter accepts any of the three, such as
+[`transmission_traits`](@ref), [`clinical_presentation`](@ref), isolation
+delays, vaccination parameters and [`Risk`](@ref) fields.
 """
 _sample_value(x::Real, rng, args...) = float(x)
 _sample_value(d::Distribution, rng, args...) = float(rand(rng, d))

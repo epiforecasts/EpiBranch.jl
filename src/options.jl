@@ -1,27 +1,20 @@
 """
     AbstractStoppingRule
 
-A rule that decides whether the simulation should terminate at the
-current step. Subtypes implement
-[`should_stop(rule, state)`](@ref) returning `Bool`; the engine stops
-when *any* rule returns `true`. The default implementation returns
-`false`, so user-defined rules only need to override the truthy cases.
+A rule for ending a simulation. The run stops as soon as any of its rules
+says so; pass them to [`simulate`](@ref) as `stopping_rules`, or use the
+`max_cases`, `max_generations` and `max_time` keywords, which create the
+first three of these:
 
-Built-in rules:
+- [`MaxCases`](@ref): stop once the outbreak reaches a number of cases.
+- [`MaxGenerations`](@ref): stop after a number of generations.
+- [`MaxTime`](@ref): stop once infections reach a time, in days.
+- [`Extinction`](@ref): stop when transmission has died out. Always included,
+  even when you give your own `stopping_rules`.
 
-- [`Extinction`](@ref) — stop when no active individuals remain
-  (always included in `SimOpts` unless explicitly overridden).
-- [`MaxCases`](@ref) — stop when cumulative cases reach a cap.
-- [`MaxGenerations`](@ref) — stop after a maximum number of
-  generations.
-- [`MaxTime`](@ref) — stop when the maximum infection time crosses a
-  threshold.
-
-User extensions are a single method, qualified with `EpiBranch.` (or
-reached via `import EpiBranch: should_stop`) so it adds to this function
-rather than shadowing it with a new one of the same name, and with
-`state` typed `::SimulationState` so it doesn't clash with the default
-method above:
+To write your own rule, define a new type and a method
+`EpiBranch.should_stop(rule::MyRule, state::SimulationState)` (the
+`EpiBranch.` prefix and the `::SimulationState` are both needed):
 
 ```julia
 struct MaxChainLength <: AbstractStoppingRule
@@ -31,14 +24,13 @@ EpiBranch.should_stop(r::MaxChainLength, state::SimulationState) =
     maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
 ```
 
-The structure-driven (Sellke) models run to extinction or a time bound
-rather than stepping through `should_stop` each generation; a rule that
-should also be able to end such a run overrides
-[`time_bound`](@ref EpiBranch.time_bound), as [`MaxTime`](@ref) does. When
-reaching that bound is the whole of what the rule tests, it also declares
-[`honoured_without_should_stop`](@ref EpiBranch.honoured_without_should_stop),
-so such a run does not report it as ignored.
-See the Extending guide for a worked example.
+The homogeneous, network and household models run until transmission dies
+out or a time limit, and do not check `should_stop`. A rule that should also
+end those runs defines [`time_bound`](@ref EpiBranch.time_bound), as
+[`MaxTime`](@ref) does; if the time limit is all the rule checks, it also
+defines [`honoured_without_should_stop`](@ref EpiBranch.honoured_without_should_stop)
+so those runs do not warn that it was ignored. The Extending guide has a
+worked example.
 """
 abstract type AbstractStoppingRule end
 
@@ -48,20 +40,22 @@ abstract type AbstractStoppingRule end
 const _DEFAULT_MAX_CASES = 10_000
 const _DEFAULT_MAX_GENERATIONS = 100
 
-"""Stop when the simulation has gone extinct (no active individuals)."""
+"""Stop when transmission has died out (no one is left who can still infect
+others)."""
 struct Extinction <: AbstractStoppingRule end
 
-"""Stop when `state.cumulative_cases >= n`."""
+"""Stop once the outbreak has at least `n` cases in total."""
 struct MaxCases <: AbstractStoppingRule
     n::Int
 end
 
-"""Stop when `state.current_generation >= n`."""
+"""Stop once `n` generations have been simulated."""
 struct MaxGenerations <: AbstractStoppingRule
     n::Int
 end
 
-"""Stop when `state.max_infection_time >= t`."""
+"""Stop once the latest infection is at or after time `t` (days since the
+start of the outbreak)."""
 struct MaxTime <: AbstractStoppingRule
     t::Float64
 end
@@ -69,8 +63,8 @@ end
 """
     should_stop(rule::AbstractStoppingRule, state::SimulationState) -> Bool
 
-Whether this rule wants the simulation to terminate given the current
-state. Default: `false`.
+Whether `rule` ends the simulation at this point of the outbreak. Define a
+method of this function for a new stopping rule. Default: `false`.
 """
 should_stop(::AbstractStoppingRule, ::SimulationState) = false
 should_stop(::Extinction, state::SimulationState) = state.extinct
@@ -81,14 +75,11 @@ should_stop(r::MaxTime, state::SimulationState) = state.max_infection_time >= r.
 """
     time_bound(rule::AbstractStoppingRule) -> Real
 
-The latest infection time at which `rule` could still want the simulation to
-continue, or `Inf` if the rule places no bound on time. The continuous-time
-(Sellke) models run over a fixed population to extinction or this bound,
-rather than stepping through `should_stop` each generation, so they read this
-trait instead of enumerating the known stopping-rule subtypes. Override it
-alongside `should_stop` for a rule that, like [`MaxTime`](@ref), should be
-able to end such a run; the default `Inf` leaves it unaffected. Default:
-`Inf`.
+The time limit (days) a stopping rule sets, or `Inf` if it sets none (the
+default). The homogeneous, network and household models do not check
+[`should_stop`](@ref); they run until transmission dies out or until this
+time. Define it alongside `should_stop` for a rule that, like
+[`MaxTime`](@ref), should also end those runs.
 """
 time_bound(::AbstractStoppingRule) = Inf
 time_bound(r::MaxTime) = r.t
@@ -96,31 +87,31 @@ time_bound(r::MaxTime) = r.t
 """
     honoured_without_should_stop(rule::AbstractStoppingRule) -> Bool
 
-Whether a run that never consults [`should_stop`](@ref) still applies `rule` in
-full. The structure-driven (Sellke) models end at extinction or at a time bound
-instead of stepping through `should_stop` each generation, so they apply a rule
-that asks for nothing more: [`Extinction`](@ref), and [`MaxTime`](@ref) through
-its [`time_bound`](@ref EpiBranch.time_bound). A rule that tests anything else
-keeps the default `false` and such a run reports it as ignored, including a
-rule that declares a time bound and tests a case count as well, since only its
-bound is applied. Declaring a time bound is therefore not on its own grounds
-for answering `true`. Default: `false`.
+Whether the homogeneous, network and household models apply `rule` in full.
+They do not check [`should_stop`](@ref) and stop only when transmission dies
+out or at a time limit, so they fully apply only [`Extinction`](@ref) and
+[`MaxTime`](@ref) (through its [`time_bound`](@ref EpiBranch.time_bound)).
+Any other rule keeps the default `false`, and those models warn that it was
+ignored. That includes a rule with a time limit that also checks something
+else, such as a case count, since only its time limit is applied.
 """
 honoured_without_should_stop(::AbstractStoppingRule) = false
 honoured_without_should_stop(::Extinction) = true
 honoured_without_should_stop(::MaxTime) = true
 
 """
-Options controlling simulation termination and setup. Contains only
-simulation control parameters — clinical and demographic properties
-are set via `attributes` functions, [`AbstractClinicalTransition`](@ref)s,
-and interventions.
+    SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time, stopping_rules)
 
-Termination is controlled by `stopping_rules`, a vector of
-[`AbstractStoppingRule`](@ref); the simulation stops at the first step
-for which any rule returns `true`. The keyword constructor accepts
-ergonomic shortcuts (`max_cases`, `max_generations`, `max_time`) that
-build the corresponding rules and prepend [`Extinction`](@ref):
+Settings for how a simulation starts (`n_initial` index cases, or the
+`initial_cases` IDs) and when it stops. [`simulate`](@ref) takes the same
+keywords and builds this for you. Natural history, population
+characteristics and interventions are set with a [`ModelSpec`](@ref).
+
+The run stops at the first generation at which any of the
+`stopping_rules` ([`AbstractStoppingRule`](@ref)) says so, and always when
+transmission dies out ([`Extinction`](@ref)). `max_cases`,
+`max_generations` and `max_time` (days) are shortcuts that create the
+matching rules; they are ignored when `stopping_rules` is given.
 
 ```julia
 SimOpts(max_cases = 500)               # [Extinction(), MaxCases(500)]
@@ -128,7 +119,6 @@ SimOpts(max_generations = 20, max_time = 90.0)
 SimOpts(stopping_rules = [MaxCases(1000), MyCustomRule()])
 ```
 
-For finer control or custom rules, pass `stopping_rules` directly.
 """
 struct SimOpts
     n_initial::Int
@@ -172,9 +162,8 @@ function SimOpts(;
     return SimOpts(count, ids, rules)
 end
 
-"""Extract the `MaxCases` cap from `opts` (or `typemax(Int)` if absent).
-Used by analytical helpers that need to know the cap to flag outbreaks
-that hit it before going extinct."""
+"""The case cap set by `opts` (`typemax(Int)` if none), used to flag
+outbreaks that reached the cap before dying out."""
 function _case_cap(opts::SimOpts)
     for rule in opts.stopping_rules
         rule isa MaxCases && return rule.n

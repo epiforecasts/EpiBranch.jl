@@ -44,17 +44,16 @@ include("transitions/outcome.jl")
 """
     generate_offspring(model, parent, state) -> count
 
-The offspring-driven transmission seam: how many contacts `parent` makes
-this generation, as a single count (single-type) or a count per type
-(multi-type). The engine calls it once per active parent, then creates
-that many fresh contacts and assigns each an infection time from the
-model's `generation_time` — so the model builds no `Individual`s, assigns
-no timing, and takes no `interventions` argument.
+How many people the case `parent` infects in this generation: one number,
+or one number per type in a multi-type model. Defined by transmission models
+in which every contact is a new person, such as a branching process. The
+simulation calls it once for each infectious case, then creates that many
+contacts and times each from the model's generation time, so the model itself
+does not create people, time infections or apply interventions.
 
-This is the path for tree-like models (a branching process), where every
-contact is fresh. Structure-driven models whose contacts are existing
-nodes (a contact network, say) define [`contacts_of`](@ref) and
-override [`collect_exposures`](@ref) instead.
+Models whose contacts are people who already exist (a contact network,
+households) define [`contacts_of`](@ref) and use [`gather_by_target`](@ref)
+instead.
 """
 function generate_offspring end
 

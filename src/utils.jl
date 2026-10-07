@@ -1,11 +1,16 @@
 """
     scale_distribution(d, factor::Real)
 
-Scale an offspring distribution's mean by `factor`, preserving its family and
-shape. Defined for the two offspring families the package scales: `Poisson`
-(returns `Poisson(λ · factor)`) and `NegativeBinomial` (same `k`, mean scaled).
-Any other family raises an `ArgumentError` naming it, rather than a bare
-`MethodError`.
+Multiply the mean of an offspring distribution, the reproduction number, by
+`factor`, keeping the same family and dispersion: for example to model a
+control measure that cuts transmission by a fixed proportion. Defined for
+`Poisson` (`Poisson(R * factor)`) and the negative binomial (same dispersion
+`k`, mean `R * factor`); any other distribution raises an error.
+
+# Examples
+```julia
+scale_distribution(NegBin(2.5, 0.16), 0.5)   # R = 1.25, k = 0.16
+```
 """
 function scale_distribution(d::Poisson, factor::Real)
     return Poisson(mean(d) * factor)

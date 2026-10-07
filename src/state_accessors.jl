@@ -12,49 +12,67 @@ function Base.show(io::IO, ind::Individual)
     )
 end
 
-"""Symptom onset time (`NaN` if asymptomatic or not set); a dual under AD."""
+"""
+    onset_time(ind)
+
+Time of symptom onset, in days since the start of the outbreak (`NaN` if the
+person is asymptomatic or has no onset time).
+
+The functions that read a person's information, such as `onset_time`,
+[`is_isolated`](@ref) or [`is_infected`](@ref), work on the people in a
+simulated outbreak:
+
+```julia
+state = simulate(model)
+count(is_isolated, state.individuals)                 # number isolated
+onsets = [onset_time(i) for i in state.individuals if is_infected(i)]
+```
+"""
 function onset_time(ind::Individual{T}) where {T}
     return convert(T, get(ind.state, :onset_time, T(NaN)))::T
 end
 
 """
-Incubation period: time from infection to symptom onset (Float64, NaN if
-asymptomatic or onset is not set). Useful inside a `generation_time`
-function that links an individual's generation time to their own
-incubation period.
+    incubation_period(ind)
+
+Incubation period: days from infection to symptom onset (`NaN` if the person
+is asymptomatic or has no onset time). Useful inside a `generation_time`
+function that links a case's generation time to its own incubation period.
 """
 incubation_period(ind::Individual) = onset_time(ind) - ind.infection_time
 
 """
-Time of the individual's terminal outcome — the earliest terminal
-[`Transition`](@ref) to occur, e.g. recovery or death (`Inf` if none has
-occurred, whether because the case is still ongoing or the progression has no
-terminal transition); a dual under AD.
+    outcome_time(ind)
+
+Time of the case's outcome, such as recovery or death, in days since the
+start of the outbreak: the earliest step of the natural history that ends the
+case (see [`Transition`](@ref)). `Inf` if there is none yet, or if the
+natural history has no such step.
 """
 function outcome_time(ind::Individual{T}) where {T}
     return convert(T, get(ind.state, :outcome_time, T(Inf)))::T
 end
 
-"""Whether the individual is recorded as isolated, which is what tracing,
-group vaccination and the line list read as a detection. An isolation that
-[`Isolation`](@ref) does not record (see
-[`EpiBranch.records_isolation`](@ref)) still removes the case from
-transmission at [`isolation_time`](@ref) but leaves this `false`."""
+"""Whether the person was isolated in a way that counts as detecting them, so
+that tracing and group vaccination start from them and the line list shows
+it. An isolation that does not count as a detection (see
+[`EpiBranch.records_isolation`](@ref)), such as one after death, still stops
+transmission from [`isolation_time`](@ref) but leaves this `false`."""
 is_isolated(ind::Individual) = _isolation_in_force(ind) && !_isolation_unrecorded(ind)
 
-"""Time from which isolation or quarantine removes the individual from
-transmission (`Inf` if never), whether or not the isolation is recorded as a
-detection (see [`is_isolated`](@ref)); a dual under AD."""
+"""Time from which isolation or quarantine stops the person transmitting, in
+days since the start of the outbreak (`Inf` if never), whether or not it
+counts as a detection (see [`is_isolated`](@ref))."""
 function isolation_time(ind::Individual{T}) where {T}
     return convert(T, get(ind.state, :isolation_time, T(Inf)))::T
 end
 
-"""Time from which the isolation block begun at [`isolation_time`](@ref)
-lapses (`Inf` if it never does); a dual under AD. Set alongside `isolation_time` by
-[`set_isolated!`](@ref); a duration configured on [`Isolation`](@ref) or
-[`ContactTracing`](@ref)'s [`Quarantine`](@ref) action gives this a finite
-value, so a quarantine that ended before a later, unrelated infection no
-longer blocks that case's own onward transmission."""
+"""Time at which the isolation or quarantine that began at
+[`isolation_time`](@ref) ends, in days since the start of the outbreak (`Inf`
+if it never does). It is finite when [`Isolation`](@ref) or the
+[`Quarantine`](@ref) of [`ContactTracing`](@ref) has a duration, so a
+quarantine that ended before the person was later infected does not stop
+their own onward transmission. Set by [`set_isolated!`](@ref)."""
 function isolation_release_time(ind::Individual{T}) where {T}
     return convert(T, get(ind.state, :isolation_release_time, T(Inf)))::T
 end
@@ -74,38 +92,35 @@ function _recorded_isolation_time(ind::Individual{T}) where {T}
     return _isolation_unrecorded(ind) ? T(Inf) : isolation_time(ind)
 end
 
-"""Whether the individual was traced via contact tracing."""
+"""Whether the person was found by contact tracing."""
 is_traced(ind::Individual) = get(ind.state, :traced, false)::Bool
 
-"""Whether the individual is quarantined."""
+"""Whether the person was quarantined as a traced contact."""
 is_quarantined(ind::Individual) = get(ind.state, :quarantined, false)::Bool
 
-"""Whether the individual is vaccinated under the given `dose_label`. The
-default label reads the plain `:vaccinated` key; a non-default label reads the
-namespaced key an `AbstractVaccination` with that `dose_label` writes."""
+"""Whether the person received the vaccine dose named `dose_label` (by
+default, the single dose of a vaccination without a `dose_label`)."""
 function is_vaccinated(ind::Individual; dose_label::Symbol = :default)
     return get(ind.state, _vaccinated_key(dose_label), false)::Bool
 end
 
-"""Time the individual's vaccine-induced immunity develops under the given
-`dose_label` (`Inf` if not vaccinated); a dual under AD. This is
-`vaccination_time + delay_to_immunity`, recorded by [`AbstractVaccination`](@ref)
-at vaccination time so a clinical transition can check it without reaching
-for the vaccination object, which it never sees. Compare against the time an
-outcome would take effect (e.g. `onset_time(ind)` for the default `Death`) to
-decide whether that dose's [`severity_efficacy`](@ref) applies: a dose whose
-immunity develops after that time confers no protection."""
+"""Time at which immunity from the vaccine dose named `dose_label` develops,
+in days since the start of the outbreak: the vaccination time plus the
+dose's `delay_to_immunity` (`Inf` if not vaccinated). A natural-history step
+can compare it with the time an outcome would take effect (for example
+`onset_time(ind)` for the default [`Death`](@ref)) to decide whether the
+dose's [`severity_efficacy`](@ref) applies: immunity that develops later
+gives no protection."""
 function immunity_time(ind::Individual{T}; dose_label::Symbol = :default) where {T}
     return convert(T, get(ind.state, _immunity_time_key(dose_label), T(Inf)))::T
 end
 
-"""Probability that the individual's own disease course is milder — e.g. a
-lower chance of death — once their vaccine-induced immunity has developed
-(`0.0` if not vaccinated, or if the dose carries no severity effect). Sampled
-once per vaccinated individual, alongside `efficacy`, from the
-`severity_efficacy` of the dose's [`VaccineEffect`](@ref). Read this from a
-clinical transition's `probability`, gated on [`immunity_time`](@ref) having
-passed:
+"""Vaccine efficacy against severe outcomes for this person: the
+proportional reduction in, for example, their probability of death once their
+immunity has developed (0 if not vaccinated, or if the dose has no effect on
+severity). Drawn once per vaccinated person from the `severity_efficacy` of
+the dose's [`VaccineEffect`](@ref). Use it in the `probability` of a
+natural-history step, once [`immunity_time`](@ref) has passed:
 
 ```julia
 Death(delay = LogNormal(2.5, 0.4),
@@ -118,14 +133,15 @@ function severity_efficacy(ind::Individual; dose_label::Symbol = :default)
     return get(ind.state, _severity_efficacy_key(dose_label), 0.0)::Float64
 end
 
-"""Whether the individual is asymptomatic."""
+"""Whether the case never develops symptoms."""
 is_asymptomatic(ind::Individual) = get(ind.state, :asymptomatic, false)::Bool
 
 """
     infection_aborted_time(ind)
 
-Time at which the individual's infection was aborted before symptom onset
-(`Inf` if it was not); a dual under AD. Recorded by
+Time at which the person's infection was stopped before symptom onset, for
+example by post-exposure vaccination, in days since the start of the outbreak
+(`Inf` if it was not). Set by
 [`abort_infection!`](@ref EpiBranch.abort_infection!).
 """
 function infection_aborted_time(ind::Individual{T}) where {T}
@@ -135,26 +151,28 @@ end
 """
     abort_infection!(ind, time)
 
-End the individual's infection at `time`, before symptom onset, as a
-post-exposure treatment would. For intervention authors: call it from any hook
-once the individual has an infection time. Several aborts keep the earliest.
+Stop the person's infection at `time` (days), before symptom onset, as
+post-exposure prophylaxis does; [`RingVaccination`](@ref) uses it for
+post-exposure vaccination. For intervention authors: call it from an
+intervention once the person has an infection time. If it is called more than
+once, the earliest time counts.
 
-The engine then treats the infection as ended at `time` on every transmission
-model: the individual stays a case but transmits nothing from `time` on, also
-after the intervention that aborted it stops being active, and every route
-window closes there. It has no onset (`:onset_time` is `NaN` while
-`:asymptomatic` stays `false`), and nothing triggered by onset happens. Any
-clinical transition that would take effect at or after `time` is undone (see
+In every transmission model the person stays a case but infects nobody from
+`time` on, even after the intervention that stopped the infection is no longer
+active, and all their transmission routes end then. They have no symptom onset
+(`:onset_time` is `NaN`, `:asymptomatic` stays `false`), so nothing that
+starts at onset happens. Natural-history steps that would take effect at or
+after `time` are undone (see
 [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)).
 
-On the generation-based engine an intervention acting before infection is
-resolved, in `apply_post_transmission!`, sees each contact's provisional
-infection time, its earliest exposure. If resolution leaves the contact
-uninfected, or infected at or after `time`, the abort did not end that
-infection and the engine discards it, restoring the onset.
+In a branching process, an intervention acting on contacts before it is
+decided whether they are infected (in `apply_post_transmission!`) sees each
+contact's earliest exposure time as its provisional infection time. If the
+contact turns out not to be infected, or to be infected only at or after
+`time`, the stop has no effect and the onset is restored.
 
-Throws an `ArgumentError` unless `time` falls after the infection time and,
-for an individual with a finite `:incubation_period`, before its onset.
+Raises an error unless `time` is after the infection time and, for a person
+with an incubation period, before symptom onset.
 """
 function abort_infection!(ind::Individual, time::Real)
     ind.infection_time < time || throw(
@@ -177,29 +195,29 @@ end
 
 _infection_aborted(ind::Individual) = haskey(ind.state, :infection_aborted_time)
 
-"""Whether the individual develops symptoms: it is not asymptomatic and its
-infection was not aborted before onset."""
+"""Whether the person develops symptoms: they are not asymptomatic and their
+infection was not stopped before onset."""
 _develops_symptoms(ind::Individual) = !is_asymptomatic(ind) && !_infection_aborted(ind)
 
-"""Whether the individual tested positive."""
+"""Whether the case tested positive, as drawn by [`Isolation`](@ref) from its
+`test_sensitivity`."""
 is_test_positive(ind::Individual) = get(ind.state, :test_positive, false)::Bool
 
-"""Whether the individual was successfully infected (vs contact only)."""
+"""Whether the person was infected, as opposed to an exposed contact who
+escaped infection."""
 is_infected(ind::Individual) = get(ind.state, :infected, true)::Bool
 
 """
-Time at which a resolved infection's immunity has waned enough for the host
-to be at risk of a new one (`Inf` if never, the default); a dual under AD.
-Read by [`EpiBranch.HostImmunity`](@ref), the built-in risk source that keeps
-an already-infected host out of reach of a new infection until this time, for
-any model whose [`contacts_of`](@ref) offers one as a candidate contact
-again.
+Time from which a person who has been infected can be infected again,
+because their immunity has waned, in days since the start of the outbreak
+(`Inf`, never, by default). Until then [`EpiBranch.HostImmunity`](@ref)
+prevents reinfection. It matters only for a model that exposes people again
+after infection through its own [`contacts_of`](@ref); none of the built-in
+models does.
 
-Set it the same way `:infectious_time` or a progression's other `_time` keys
-are set: list a [`Transition`](@ref) into a waned state in the model's
-progression, timed from the state that starts the clock, e.g.
-`Transition(:susceptible_again, from = :recovered, delay = Exponential(180))`
-writes `:susceptible_again_time`, which this reads."""
+Set it with a step in the model's `progression`, timed from the state that
+starts waning, for example
+`Transition(:susceptible_again, from = :recovered, delay = Exponential(180))`."""
 function susceptible_again_time(ind::Individual{T}) where {T}
     return convert(T, get(ind.state, :susceptible_again_time, T(Inf)))::T
 end
@@ -207,17 +225,15 @@ end
 """
     is_settled(state, ind) -> Bool
 
-Whether `ind`'s own fate in a continuous-time race is already fixed, so that
-no later discovery on this run will revisit it. Set by
-`_apply_continuous_actions!` once a case's own round of action discovery has
-run; `false` for a case still pending, and for the case currently being
-settled during its own round (letting that round still revise an action it
-had already admitted). An intervention consults this instead of
-reconstructing the settled/pending distinction from the candidate list the
-race handed it."""
+For intervention authors, in the network and household models: whether
+`ind`'s infection, and what interventions do to them, is final for this run,
+so nothing found later will change it. `false` for a person whose infection
+is still undecided, and for the case currently being processed (so its own
+interventions can still be revised)."""
 is_settled(state, ind::Individual) = get(ind.state, :_settled, false)::Bool
 
-"""Type index for multi-type branching processes (default 1)."""
+"""Which type a person is in a multi-type branching process, as a number
+(1 in a single-type model)."""
 individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 
 # The key `set_isolated!` records a removal's history under. A component that
@@ -227,15 +243,14 @@ const REMOVAL_STRETCHES_KEY = :_removal_stretches
 
 const _NO_STRETCHES = Tuple{Float64, Float64}[]
 
-"""Mark an individual as isolated at the given time (any `Real`, so an AD
-dual isolation time flows through), with an optional `release_time` (`Inf`
-by default) from which the block lapses.
+"""Record that a person is isolated from `time` (days), and released at
+`release_time` (`Inf`, never, by default). Used by interventions that isolate
+or quarantine people.
 
-The time is stored under `:isolation_time`, the release under
-`:isolation_release_time`. A route window that isolation should end lists
-[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which respects leaky
-isolation. `:isolated` in an `until` refers to a `Transition(:isolated, …)`
-in the natural history."""
+A transmission route that isolation should end lists
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which also allows
+for leaky isolation. `:isolated` in an `until` instead refers to a
+`Transition(:isolated, …)` step in the natural history."""
 function set_isolated!(ind::Individual, time::Real; release_time::Real = Inf)
     ind.state[:isolated] = true
     delete!(ind.state, :_isolation_unrecorded)
@@ -248,17 +263,16 @@ end
 """
     record_removal!(ind, start, release; key = :_removal_stretches)
 
-Record that a removal took `ind` out of transmission from `start` until
-`release`, which is `Inf` for one that never releases it.
-[`set_isolated!`](@ref) records under the reserved key, which both built-in
-removals share.
+Record that `ind` could not transmit from `start` until `release` (days;
+`Inf` if never released), for example while isolated or quarantined.
+[`set_isolated!`](@ref) records under the default key, shared by isolation
+and quarantine.
 
-A removal of your own that keeps its own history passes its own `key` and
-names that key from
-[`removal_gap_host_times`](@ref EpiBranch.removal_gap_host_times). A
-likelihood then takes the same stretches out of each pair's exposure as the
-simulator blocked, which is what keeps `simulate` and `loglikelihood` in
-agreement.
+An intervention of your own that removes people in its own way passes its own
+`key`, and names it in
+[`removal_gap_host_times`](@ref EpiBranch.removal_gap_host_times). The
+likelihood then leaves out the same periods of exposure that the simulation
+blocked, so that `simulate` and `loglikelihood` agree.
 """
 function record_removal!(
         ind::Individual, start::Real, release::Real;
@@ -292,17 +306,15 @@ end
 """
     removal_stretches(ind, key = :_removal_stretches)
 
-Every stretch a removal has taken `ind` out of transmission for, as sorted
-disjoint `(start, release)` pairs, a release of `Inf` standing for a removal
-that never ends. Recorded by
-[`record_removal!`](@ref EpiBranch.record_removal!), which
-[`set_isolated!`](@ref) calls with the reserved key.
+Every period during which `ind` could not transmit, such as isolation or
+quarantine, as sorted, non-overlapping `(start, release)` pairs in days; a
+release of `Inf` means it never ended. Recorded by
+[`record_removal!`](@ref EpiBranch.record_removal!).
 
-[`isolation_time`](@ref) and [`isolation_release_time`](@ref) hold the removal
-in force, which is what a detection reads; this holds the history, which is
-what a likelihood needs, since one pair of times cannot say that a host was
-quarantined, released, and isolated again later. Treat the returned vector as
-read-only.
+[`isolation_time`](@ref) and [`isolation_release_time`](@ref) give only the
+current isolation. This gives the whole history, which the likelihood needs:
+for example a person quarantined, released, and isolated again later. Do not
+change the returned vector.
 """
 function removal_stretches(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
     return get(ind.state, key, _NO_STRETCHES)
@@ -328,7 +340,7 @@ function first_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY
     return isempty(stretches) ? Inf : first(stretches)[1]
 end
 
-"""Clear an individual's isolation, the inverse of [`set_isolated!`](@ref)."""
+"""Undo a person's isolation, reversing [`set_isolated!`](@ref)."""
 function clear_isolated!(ind::Individual)
     ind.state[:isolated] = false
     delete!(ind.state, :_isolation_unrecorded)

@@ -4,36 +4,62 @@
              n_initial=nothing, initial_cases=nothing, stopping_rules=nothing,
              rng=Random.default_rng(), condition=nothing, max_attempts=10_000)
 
-Run a single outbreak simulation.
+Simulate one outbreak and return it as a [`SimulationState`](@ref). Pass the
+result to [`linelist`](@ref), [`contacts`](@ref), [`chain_statistics`](@ref)
+or [`weekly_incidence`](@ref) to get tables.
 
-`model` is a transmission process or a [`ModelSpec`](@ref)
-composing that process with modelling layers. The progression, interventions,
-attributes and observation come from the [`ModelSpec`](@ref); a bare process
-runs with the empty defaults. `simulate` itself takes only execution controls.
+`model` is a transmission model such as a [`BranchingProcess`](@ref), or a
+[`ModelSpec`](@ref) that adds natural history, interventions, population
+characteristics and reporting to it. A model on its own runs with none of
+these. Times are in the units of the model's delays; the documentation uses
+days throughout.
 
-Termination is set by `max_cases`, `max_generations`, and `max_time` (any
-of which may be `nothing` to drop that limit); the run always stops on
-extinction. For finer control pass a `stopping_rules` vector of
-[`AbstractStoppingRule`](@ref). `n_initial` is the number of seed cases (default 1).
+# Keywords
+- `n_initial`: number of index cases (default 1).
+- `max_cases`, `max_generations`, `max_time` (days): stop the run once any of
+  these is reached. Set one to `nothing` to remove that limit. The run always
+  stops when transmission dies out. The limits are checked at the end of each
+  generation, so the final number of cases can exceed `max_cases`.
+- `stopping_rules`: a vector of [`AbstractStoppingRule`](@ref)s for finer
+  control over when the run ends. When given, `max_cases`,
+  `max_generations` and `max_time` are ignored.
+- `rng`: the random number generator; pass a seeded one, such as
+  `Xoshiro(42)`, for reproducible runs.
+- `condition`: a range of final outbreak sizes, such as `10:1000`. The
+  simulation is repeated until the total number of cases falls inside it (at
+  most `max_attempts` tries), for example to keep only outbreaks that took
+  off. An error is raised if no run qualifies.
+- `initial_cases`: for `NetworkProcess`, `RoutedNetwork` and
+  `HouseholdProcess` only, the IDs of the people infected at time
+  zero (an empty vector is allowed). It replaces the random choice of index
+  cases. Give either `initial_cases` or `n_initial`, not both; IDs outside
+  the population raise an error. With an `external_hazard`, everyone else can
+  still be infected from outside from time zero. Other models raise an error
+  when given a vector here.
 
-`NetworkProcess`, `RoutedNetwork` and `HouseholdProcess` accept `initial_cases`
-as a vector of distinct population IDs to infect at time zero, including an empty
-vector. It replaces each process's default seeding rule. Supply either
-`initial_cases` or `n_initial`; out-of-range IDs raise an error. With an active
-`external_hazard`, everyone outside `initial_cases` remains open to community
-introduction from time zero, as usual. Other processes reject this keyword when
-a vector is supplied. Random seeding is unchanged when it is omitted.
+The probability and delay of each step in a case's natural history are set
+on the transitions in the `progression` of a [`ModelSpec`](@ref). Each takes
+a constant or a function of the random number generator and the individual,
+`(rng, ind) -> value`, so rates and delays can depend on age or risk group.
 
-The case's clinical timeline — the [`AbstractClinicalTransition`](@ref)s a
-case moves through (latent, onset, severity, death/recovery, burial) — is the
-`progression` composed onto the process with a [`ModelSpec`](@ref). Each
-transition's `probability` and `delay` accept constants or
-`(rng, ind) -> value` functions, so age- or risk-conditional rates and
-delays are configured per-transition.
+!!! note
+    [`HomogeneousProcess`](@ref), `NetworkProcess`,
+    `RoutedNetwork` and `HouseholdProcess` run over a fixed
+    population until transmission
+    dies out or `max_time` is reached. They ignore `max_cases`,
+    `max_generations` and most stopping rules, and warn when one is set.
 
-If `condition` is provided (a `UnitRange{Int}`), simulations are repeated
-until one produces an outbreak whose cumulative cases fall within the range,
-up to `max_attempts`.
+# Examples
+```julia
+using EpiBranch, Distributions, Random
+
+model = BranchingProcess(NegBin(2.5, 0.16), Gamma(2.5, 2.0))
+state = simulate(model; max_cases = 500, rng = Xoshiro(1))
+linelist(state)
+
+# keep only outbreaks with between 10 and 500 cases
+state = simulate(model; max_cases = 500, condition = 10:500, rng = Xoshiro(1))
+```
 """
 function simulate(
         model::TransmissionModel;
@@ -112,13 +138,25 @@ end
 """
     simulate(model, n::Int; parallel=false, kwargs...)
 
-Run `n` independent outbreak simulations. Returns a
-`Vector{SimulationState}`. Takes the same termination keywords as the
-single-run method.
+Simulate `n` independent outbreaks from the same model and return them as a
+vector of [`SimulationState`](@ref)s. It takes the same stopping keywords
+(`max_cases`, `max_generations`, `max_time`, `stopping_rules`), `n_initial`,
+`initial_cases` and `rng` as the single-outbreak method; `condition` is not
+available here. The usual next step is
+[`containment_probability`](@ref), the share of these outbreaks that died out.
 
-When `parallel=true`, simulations are distributed across available threads
-using independent RNG streams derived from the provided `rng`. Use
-`julia --threads N` to enable multi-threading.
+With `parallel = true` the runs are spread over the CPU threads Julia was
+started with (for example `julia --threads 4`), and the results are still
+reproducible for a given seeded `rng`.
+
+# Examples
+```julia
+using EpiBranch, Distributions, Random
+
+model = BranchingProcess(NegBin(2.5, 0.16), Gamma(2.5, 2.0))
+states = simulate(model, 1000; max_cases = 5000, rng = Xoshiro(1))
+containment_probability(states; max_cases = 5000)
+```
 """
 function simulate(
         model::TransmissionModel, n::Int;
@@ -302,25 +340,20 @@ end
 """
     contacts_of(model, node, state) -> iterable of (contact, infection_time)
 
-The structure-driven transmission seam: the contacts an infectious `node`
-reaches this generation, as `(contact, infection_time)` pairs. Used by
-models whose contacts are *existing* nodes a plain count cannot name — a
-network returns the node's graph neighbours (a graph with loops);
-households would return household members. Pair it with
-[`gather_by_target`](@ref) so a node reached by several neighbours in one
-generation resolves once.
+The people an infectious case `node` can reach in this generation, each with
+the time they would be infected, as `(contact, infection_time)` pairs.
 
-Offspring-driven models (a branching process, where every contact is
-fresh) use [`generate_offspring`](@ref) instead and never define
-`contacts_of`: they return a count and the engine creates and times the
-contacts. Either way the shared engine ([`collect_exposures`](@ref),
-[`_advance_generation!`](@ref)) handles interventions, competing-risks
-resolution, clinical transitions, and bookkeeping.
+Only needed when writing a new transmission model that spreads over a fixed
+set of people, such as a contact network (the case's network neighbours) or
+households (the other household members). Such a model defines this function
+for its own type and uses [`gather_by_target`](@ref), so that a person
+exposed by several cases in one generation is infected at most once.
 
-No in-package model is structure-driven, so the abstract fallback states
-the contract rather than failing with a bare `MethodError`. A structure-
-driven extension (see the `EpiNetwork` subpackage) defines a method on its
-own model type.
+Models in which every contact is a new person, such as a branching process,
+define [`generate_offspring`](@ref) instead. In both cases the simulation
+applies interventions, natural history and the infection decision itself.
+Calling `contacts_of` on a model that does not define it raises an error
+explaining what to define; the `EpiNetwork` package has a worked example.
 """
 function contacts_of(model::TransmissionModel, parent, state::SimulationState)
     throw(
@@ -336,31 +369,32 @@ end
 """
     model_generation_time(model)
 
-The generation-time spec the default [`collect_exposures`](@ref) reads when
-timing the contacts of an offspring-driven model. Defaults to the model's
-`generation_time` field; a model that times its contacts differently (no such
-field, or a per-window kernel) overrides this instead of being forced to carry
-a `generation_time` field.
+The generation time a model uses to time each case's secondary cases, read
+by the default [`collect_exposures`](@ref). Returns the model's
+`generation_time` field. A new model that times its contacts another way (for
+example with a separate delay per transmission route) defines this function
+for its own type instead of having a `generation_time` field.
 """
 model_generation_time(model::TransmissionModel) = model.generation_time
 
 """
     collect_exposures(model, state) -> (targets, edges, minted, is_new)
 
-This generation's candidate exposures, grouped by target, gathered by
-walking [`contacts_of`](@ref) for each active node. Returns parallel
-vectors: distinct `targets`, the `edges` (`(parent_id, infection_time)`)
-reaching each, the contacts `minted` this generation, and `is_new`
-flagging which targets were created this step.
+The people each infectious case exposes in this generation, and when. Only
+needed when writing a new transmission model.
 
-The default serves offspring-driven models: it asks each active parent
-for an offspring count via [`generate_offspring`](@ref), then creates and
-times that many fresh contacts itself. Every contact is its own target —
-no two parents share one — so `is_new` is all `true`. Models whose
-contacts are existing nodes that can be *shared* across parents in a
-generation (networks, households, clustering) override this with
-[`gather_by_target`](@ref), which walks [`contacts_of`](@ref) and
-deduplicates so a node reached several times resolves once.
+Returns the distinct exposed people (`targets`); for each of them, the
+`(infector_id, infection_time)` exposures reaching them (`edges`) and whether
+they were created in this generation (`is_new`); and the contacts newly
+created in this generation (`minted`).
+
+The default suits models in which every contact is a new person: it asks
+each infectious case how many people it infects via
+[`generate_offspring`](@ref), then creates and times that many contacts.
+Models whose contacts are people who already exist and can be exposed by
+more than one case in a generation (networks, households) use
+[`gather_by_target`](@ref) instead, which calls [`contacts_of`](@ref) and
+groups the exposures by person.
 """
 function collect_exposures(model::TransmissionModel, state::SimulationState)
     pre = length(state.individuals)   # contacts created this step get id > pre
@@ -491,14 +525,11 @@ end
 """
     gather_by_target(model, state) -> (targets, edges, minted, is_new)
 
-A [`collect_exposures`](@ref) implementation for models whose contacts
-can be shared across parents within a generation (networks, households,
-clustering). Exposures are deduplicated by id, so a node reached by
-several infectious neighbours in one generation collects all its incoming
-edges and resolves once. Freshly created contacts (id past the
-generation's starting count) are each their own target, so a model that
-mixes new and existing contacts — e.g. a clustering dial — works too. The
-dedup map is only touched for shared nodes.
+A version of [`collect_exposures`](@ref) for models in which several cases
+can expose the same person in one generation (networks, households). It
+collects every exposure of a person and lets the simulation decide once
+whether, and by whom, they are infected. Newly created contacts are each
+treated separately, so a model may mix new people with existing ones.
 """
 function gather_by_target(model::TransmissionModel, state::SimulationState)
     pre = length(state.individuals)
@@ -531,15 +562,13 @@ function gather_by_target(model::TransmissionModel, state::SimulationState)
     return targets, edges, minted, is_new
 end
 
-"""Advance the simulation by one generation through the unified engine, as
-four phases: interventions act on the active infectives ([`_prepare_parents!`](@ref)),
-the exposure phase ([`collect_exposures`](@ref)) builds and times this
-generation's contacts, contact-level interventions act on the exposed
-([`_intervene!`](@ref)), and the resolve phase ([`_resolve!`](@ref)) decides
-infection under competing risks and updates bookkeeping and clinical
-transitions. In the growing tree the build and time steps are fused in
-`collect_exposures` (a contact is minted with its infection time); they
-separate only in the fixed-population path, where contacts pre-exist."""
+"""Simulate one generation of transmission. Case-level interventions such as
+isolation act on the infectious cases ([`_prepare_parents!`](@ref)); contacts
+are made and timed ([`collect_exposures`](@ref)); tracing and vaccination act
+on those contacts ([`_intervene!`](@ref)); then each contact is infected or
+not, and the natural history of the new cases is drawn ([`_resolve!`](@ref)).
+In a branching process a contact is created together with its infection
+time; in a fixed population the contacts already exist."""
 function _advance_generation!(
         model::TransmissionModel,
         state::SimulationState, interventions::Vector{<:AbstractIntervention}
@@ -571,7 +600,8 @@ function _reinfection_episodes(targets, is_new)
     return episodes
 end
 
-"""Phase 1 — interventions act on the active infectives before they transmit."""
+"""Step 1 of a generation: interventions act on the infectious cases (for
+example, isolating them) before they transmit."""
 function _prepare_parents!(
         state::SimulationState,
         interventions::Vector{<:AbstractIntervention}
@@ -585,11 +615,11 @@ function _prepare_parents!(
     return nothing
 end
 
-"""Phase 3 — contact-level interventions act on this generation's exposures.
-Newly minted contacts get their intervention state initialised; each target is
-given a provisional parent (its earliest exposing edge) so contact-level
-interventions (tracing, ring vaccination) act on the exposed target before
-infection is resolved; then the interventions act."""
+"""Step 3 of a generation: interventions act on the people exposed in this
+generation, before it is decided whether they are infected. Each new contact
+is set up for every intervention, and each exposed person is provisionally
+assigned to the case that exposed them earliest, so that tracing and ring
+vaccination can reach them."""
 function _intervene!(
         state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
@@ -618,16 +648,15 @@ function _intervene!(
     return nothing
 end
 
-"""Phase 4 — decide infection under competing risks and update bookkeeping.
-Exposure is not infection. Each contact exposed this generation is decided
-infected-or-not: the infector's infectiousness, the contact's susceptibility,
-any risks the model contributes and any interventions all act as competing
-risks on the same footing. A contact is infected if any of its exposing edges
-transmits; the earliest successful edge fixes the infection time. A
-pre-existing node offered again after a prior infection (only
-[`HostImmunity`](@ref EpiBranch.HostImmunity) lets that exposure survive at
-all) has its closing episode archived rather than overwritten; see
-[`close_episode!`](@ref)."""
+"""Step 4 of a generation: decide which exposed people are infected, and
+record the new cases. An exposure need not lead to infection. The infector's
+infectiousness, the contact's susceptibility, anything the model adds and any
+interventions can each prevent it, whichever acts first. A person exposed by
+several cases is infected if any of the exposures transmits, at the time of
+the earliest one that does. When someone who was infected before is
+reinfected (possible only once their immunity has waned, see
+[`HostImmunity`](@ref EpiBranch.HostImmunity)), the earlier infection is kept
+as a past episode; see [`close_episode!`](@ref)."""
 function _resolve!(
         model::TransmissionModel, state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
@@ -760,11 +789,12 @@ end
 """
     new_state(model, transitions, attributes, rng) -> SimulationState
 
-An empty [`SimulationState`](@ref) for `model`: no individuals yet,
-generation 0, carrying the model's population size, the run's `attributes`,
-and the clinical `transitions`. The starting point a model's
-`initialise_state` builds on with [`add_individuals!`](@ref) and
-[`seed!`](@ref).
+An empty outbreak for `model`, before anyone exists or is infected: a
+[`SimulationState`](@ref) at generation 0 holding the model's population
+size, the population characteristics (`attributes`) and the natural-history
+`transitions`. Used when writing a new transmission model: its
+`initialise_state` starts from this and adds people with
+[`add_individuals!`](@ref) and index cases with [`seed!`](@ref).
 """
 function new_state(
         model::TransmissionModel, transitions, attributes,
@@ -782,17 +812,19 @@ end
     add_individuals!(state, n, interventions; n_types = 1, setup = (ind, i) -> nothing,
                      infection_time = NaN)
 
-Create `n` individuals, append them to `state`, and return them. Each starts
-with the given `infection_time`, `NaN` by default because none is infected
-yet; [`seed!`](@ref) stamps the seed cases' infection time, and a model's own
-transmission logic stamps everyone else's should they go on to be infected.
-Pass `infection_time = 0` when every individual created is an index case, so
-that attributes, which run at creation, already see the time they are seeded
-at. For each, `setup(ind, i)` runs after the attributes (to stamp
-model-specific state such as a node or household id), then a random type is
-assigned for multi-type models, then each intervention's
-`initialise_individual!` runs. Used by a model's `initialise_state` to build
-its population.
+Add `n` people to the outbreak's population and return them. Used by a new
+transmission model's `initialise_state` to build its population.
+
+Each person starts with the given `infection_time`: `NaN` by default, since
+nobody is infected yet. [`seed!`](@ref) sets the index cases' infection time,
+and the model sets everyone else's if they are infected later. Pass
+`infection_time = 0` when everyone added is an index case, so that population
+characteristics drawn at creation see the time of their infection.
+
+For each person, the population characteristics are drawn first, then
+`setup(ind, i)` runs (to record model-specific information such as a network
+node or household id), then a random type is drawn for multi-type models, and
+finally each intervention sets up its own information on that person.
 """
 function add_individuals!(
         state::SimulationState, n::Integer, interventions;
@@ -820,13 +852,15 @@ end
 """
     seed!(state, ids, interventions, transitions) -> state
 
-Mark the individuals with the given `ids` as infected index cases: set
-`infection_time` to 0, set `:infected`, derive `:onset_time` from any
-incubation period, validate that the interventions' and transitions' required
-fields are present (on the first id, before any transition closure runs, so a
-missing field surfaces as the engine's friendly message), and record the
-run's initial bookkeeping (`cumulative_cases`, `active_ids`, `extinct`). Used
-by a model's `initialise_state` after [`add_individuals!`](@ref).
+Make the people with the given `ids` the index cases of the outbreak,
+infected at time 0. Used by a new transmission model's `initialise_state`
+after [`add_individuals!`](@ref).
+
+It sets their infection time to 0, marks them infected, sets their symptom
+onset from any incubation period, and sets the outbreak's case count and list
+of infectious cases. It also checks, on the first index case, that the
+information the interventions and natural history need is present, so a
+missing population characteristic gives a clear error.
 """
 function seed!(state::SimulationState, ids, interventions, transitions)
     T = _timetype(state)
@@ -850,11 +884,11 @@ end
 """
     initialise_state(model, sim_opts, interventions, transitions, attributes, rng) -> SimulationState
 
-Build the starting [`SimulationState`](@ref) for `model`: its population and
-its index cases, before the engine steps any generations. The default
-offspring-driven method mints `sim_opts.n_initial` index cases and seeds them.
-A structure-driven model (a fixed, depleting population such as a network or
-households) defines its own method, typically by building the population with
+Set up the outbreak at time 0, before any transmission: the population and
+its index cases, as a [`SimulationState`](@ref). The default, used by
+branching processes, creates `sim_opts.n_initial` index cases. A model with a
+fixed population that is used up as people are infected (a network,
+households) defines its own method, usually by building the population with
 [`new_state`](@ref) and [`add_individuals!`](@ref) and infecting the index
 cases with [`seed!`](@ref).
 """
@@ -883,20 +917,14 @@ end
 """
     susceptible_fraction(state::SimulationState, extra_infected::Int = 0) -> Float64
 
-Fraction of the population still susceptible at this point in the
-simulation. Dispatched on the `population_size` type carried by
-`SimulationState{<:Any, <:Any, P}`, so downstream packages can introduce
-structured populations (households, contact networks, age-stratified
-pools) by defining a new population-size type and adding a method
-here.
+Share of the population still susceptible at this point of the outbreak:
+`1.0` when the population is unbounded (no `population_size`), otherwise one
+minus the share already infected. `extra_infected` counts people infected in
+the current generation who are not yet in the case count.
 
-`extra_infected` accounts for contacts already infected within the
-current step but not yet registered in `state.cumulative_cases`.
-
-Built-in methods:
-
-- `NoPopulation` — unbounded, always `1.0`.
-- `Int` — single global pool of that size; depletion is global.
+For extension authors: a package can add its own kind of structured
+population by defining a new type for `population_size` and a method of this
+function for it.
 """
 function susceptible_fraction(
         state::SimulationState{<:Any, <:Any, NoPopulation},
@@ -914,13 +942,11 @@ function susceptible_fraction(
     return n_susceptible / state.population_size
 end
 
-"""Create a new Individual with attributes applied. `:infected` is left
-at `false` so that every freshly created contact carries a
-not-yet-decided flag — only the engine's competing-risks resolution may
-set it to `true`. Intervention `initialise_individual!` is called by the
-engine after exposures are collected, not here; this keeps contact
-creation (`make_contact!`, and any model's [`contacts_of`](@ref))
-intervention-free.
+"""Create a new person and draw their population characteristics. They
+start as not infected; only the infection decision later in the generation
+marks them infected. Interventions set up their information on the person
+later in the generation, so creating a contact (in `make_contact!` or a
+model's [`contacts_of`](@ref)) involves no intervention.
 """
 function _create_individual(
         state::SimulationState, parent_id::Int,
@@ -950,17 +976,14 @@ _set_type!(contact, idx::Int) = (contact.state[:type] = idx)
 """
     make_contact!(state, parent, infection_time; type_idx = NoTypeLabels())
 
-Create a new contact of `parent` at `infection_time`, add it to
-`state.individuals`, and register it in `parent.secondary_case_ids`.
-Returns the new `Individual`. Attributes are applied at creation;
-intervention state is initialised by the engine after the generation's
-exposures are collected, not here.
+Add one new contact of the case `parent`, exposed at `infection_time` (days),
+to the outbreak, and return it. Its population characteristics are drawn
+when it is created; interventions act on it later in the generation.
 
-This is an engine primitive. The default offspring-driven path calls it
-for each contact a model's [`generate_offspring`](@ref) count asks for, so
-those models never touch it. A structure-driven model that mints fresh
-nodes inside its [`contacts_of`](@ref) may call it directly, returning
-each contact with its infection time:
+Only needed when writing a new transmission model. The built-in models call
+it for every secondary case [`generate_offspring`](@ref) asks for. A model
+that creates new people inside its [`contacts_of`](@ref) calls it directly,
+returning each contact with its infection time:
 
 ```julia
 function contacts_of(m::MyModel, parent, state)
@@ -971,12 +994,9 @@ function contacts_of(m::MyModel, parent, state)
 end
 ```
 
-The engine handles every other side effect: `resolve_individual!` on
-each parent before collection, `initialise_individual!` and
-`apply_post_transmission!` on the new contacts after, competing-risks
-resolution that sets `:infected`, clinical transitions, and per-step
-bookkeeping (`cumulative_cases`, `active_ids`, `max_infection_time`,
-…).
+The simulation does everything else: it applies interventions to the case
+and its contacts, decides whether each contact is infected, draws the natural
+history of new cases and updates the case counts.
 """
 function make_contact!(
         state::SimulationState, parent::Individual,
@@ -997,29 +1017,25 @@ end
 """
     resolve_transitions!(state, individual)
 
-Resolve `individual`'s clinical natural history: run every transition on
-`state.transitions` (the model's `progression`) against the individual — first
-each transition's `initialise_individual!`, then each `resolve_individual!` —
-and arbitrate the terminal outcome. This stamps the timeline keys downstream
-code reads (`:infectious_time`, `:onset_time`, `:outcome`/`:outcome_time`, and
-anything else a transition writes) onto `individual.state`.
+Draw a case's natural history: the time of each step in the model's
+`progression` (becoming infectious, symptom onset, hospitalisation, outcome)
+and which outcome it reaches first. The results are recorded on
+`individual.state` (`:infectious_time`, `:onset_time`, `:outcome`,
+`:outcome_time` and whatever else each step records).
 
-Part of the public extension API. The built-in engine calls this for every new
-case; a structure-driven model that runs its own simulation loop (rather than
-the generation-based engine) calls it itself, once per case, after the case's
-attributes and intervention state are set. The transitions come from the model's
-`progression`, placed on the state when it is built with
-[`new_state`](@ref EpiBranch.new_state).
+The built-in simulation calls this for every new case. Only a new
+transmission model that runs its own simulation loop needs to call it, once
+per case, after the case's population characteristics and intervention
+information are set. The steps come from the model's `progression`, placed on
+the outbreak when it is built with [`new_state`](@ref EpiBranch.new_state).
 
-An infection aborted before onset (see
-[`abort_infection!`](@ref EpiBranch.abort_infection!)) ends its clinical course
-at the abort time. A transition takes effect at the times it writes under
-`_time` keys, so one that writes a time at or after the abort is undone,
-whatever state it is timed from: every key it bound is restored, so a
-transition must record through `individual.state` rather than by mutating a
-container it finds there. Transitions timed from an undone one then find their
-`from` state unreached, and it contributes no terminal candidate to the
-outcome. Transitions that take effect strictly before the abort stand.
+If the infection was stopped before symptom onset (see
+[`abort_infection!`](@ref EpiBranch.abort_infection!)), its natural history
+ends at that time. Steps that take effect before then stand; any step that
+would take effect at or after it is undone, and steps that follow from an
+undone one do not happen. Undoing restores each entry a step set on
+`individual.state`, so a transition must record its results by setting
+entries there rather than by changing a vector or dictionary it finds there.
 """
 function resolve_transitions!(state::SimulationState, individual)
     transitions = state.transitions
@@ -1128,55 +1144,54 @@ _iter_risks(rs) = rs
 # them with the user's interventions and privileges neither, and a user
 # could replace or extend them the same way.
 
-"""Default risk source: the host's per-individual susceptibility, as a
-block probability `1 - susceptibility` on the [`competing_risk`](@ref)
-surface."""
+"""Partial susceptibility of the exposed person: a contact whose
+`susceptibility` is below 1 escapes infection with probability
+`1 - susceptibility`. Applied to every exposure in a branching process, like
+an intervention's [`competing_risk`](@ref)."""
 struct HostSusceptibility end
 function competing_risk(::HostSusceptibility, parent, contact, state)
     return contact.susceptibility < 1.0 ?
         Risk(block_probability = 1.0 - contact.susceptibility) : nothing
 end
 
-"""Default risk source: the infector's infectiousness, as a block
-probability `1 - infectiousness` on the [`competing_risk`](@ref) surface."""
+"""Reduced infectiousness of the infector: a case whose `infectiousness` is
+below 1 fails to infect each contact with probability `1 - infectiousness`.
+Applied to every exposure in a branching process, like an intervention's
+[`competing_risk`](@ref)."""
 struct InfectorInfectiousness end
 function competing_risk(::InfectorInfectiousness, parent, contact, state)
     return parent.infectiousness < 1.0 ?
         Risk(block_probability = 1.0 - parent.infectiousness) : nothing
 end
 
-"""Default risk source: only an infected source transmits. An uninfected
-source blocks transmission entirely, so the engine can keep uninfected
-nodes active (e.g. for contact tracing depth, via [`keep_active`](@ref))
-to grow their contacts without those contacts becoming infected. A no-op
-in the usual case where every active node is infected."""
+"""Only infected people transmit. A contact who was not infected can still
+be followed up for its own contacts (for example to trace contacts of
+contacts, see [`keep_active`](@ref)), but none of those contacts is infected
+through them. Has no effect when everyone being followed is infected."""
 struct InfectiousSource end
 function competing_risk(::InfectiousSource, parent, contact, state)
     return is_infected(parent) ? nothing : Risk(block_probability = 1.0)
 end
 
-"""Default risk source: a host already carrying an infection is immune to a
-new one until [`susceptible_again_time`](@ref) reads in the past. `Inf` by
-default, so this blocks every exposure of an already-infected host outright —
-a no-op for every built-in model, none of which ever offers one as a
-candidate contact. A model that does, through its own [`contacts_of`](@ref),
-opts into reinfection purely by giving its progression a transition that
-writes `:susceptible_again_time`; the generation engine then archives the
-closing episode (see [`close_episode!`](@ref)) rather than
-overwriting it when a later exposure succeeds."""
+"""Immunity after infection: a person who has been infected cannot be
+infected again until [`susceptible_again_time`](@ref), which is `Inf` (never)
+unless a natural-history step sets it. None of the built-in models exposes an
+infected person again, so this matters only for a new model that does,
+through its own [`contacts_of`](@ref). Such a model allows reinfection by
+adding a step to its `progression` that sets `:susceptible_again_time`; the
+earlier infection is then kept as a past episode (see
+[`close_episode!`](@ref)) when the person is reinfected."""
 struct HostImmunity end
 function competing_risk(::HostImmunity, parent, contact, state)
     is_infected(contact) || return nothing
     return Risk(block_probability = 1.0, release_time = susceptible_again_time(contact))
 end
 
-"""Default risk source: an infectiousness window's censoring. A contact
-whose transmission time falls at or after the earliest of its window's
-`until` states (the infector's death, recovery, burial, …) is blocked: the
-infector was removed before the contact would have happened. The window's
-`until` state names are tagged on the contact as `:censor_until`; each
-resolves to the infector's `Symbol(state, :_time)`. A no-op for windows
-with no `until` (the default), which write no tag."""
+"""End of a transmission route's window: no infection happens at or after
+the earliest of the route's `until` events for the infector (death, recovery,
+burial and so on), because the infector stopped transmitting by that route
+before the contact would have happened. Routes without `until` (the default)
+are not affected."""
 struct WindowCensor end
 function competing_risk(::WindowCensor, parent, contact, state)
     until = get(contact.state, :censor_until, ())
@@ -1190,12 +1205,10 @@ function competing_risk(::WindowCensor, parent, contact, state)
     return Risk(event_time = t_end, block_probability = 1.0)
 end
 
-"""Default risk source: the end of an aborted infection. An infector whose
-infection was aborted ([`abort_infection!`](@ref EpiBranch.abort_infection!),
-as a post-exposure dose of [`RingVaccination`](@ref) does) transmits nothing
-from that time on. The block reads the infector's state and nothing else, so it
-lasts exactly as long as the abort is recorded, whether or not the intervention
-that recorded it is still active. A no-op on every infector without the key."""
+"""Stopped infections: a case whose infection was stopped before symptom
+onset ([`abort_infection!`](@ref EpiBranch.abort_infection!), as post-exposure
+vaccination with [`RingVaccination`](@ref) does) infects nobody from that
+time on, whether or not the intervention that stopped it is still active."""
 struct AbortedInfection end
 function competing_risk(::AbortedInfection, parent, contact, state)
     _infection_aborted(parent) || return nothing
@@ -1257,25 +1270,24 @@ end
 """
     transmission_risks(model) -> iterable of risk sources
 
-Risk sources the *model* contributes to competing-risks resolution, on the same
-[`competing_risk`](@ref) surface as the built-ins and interventions. A
-structure-driven model whose transmission probability is a property of the
-*edge* — a metapopulation's coupling, say — returns a source here so that
-probability is a competing risk on every potential
-contact (the contact is still produced and seen by `apply_post_transmission!`),
-rather than a filter that drops contacts before they reach the engine. Defaults
-to none, so offspring-driven models are unaffected.
+Ways in which the transmission model itself can stop a contact becoming
+infected, applied alongside susceptibility, infectiousness and the
+interventions. Only needed when writing a new model. For example, a
+metapopulation model in which transmission between two places succeeds only
+with some probability returns a source here, so that probability acts on
+every contact while the contact is still made (and can still be traced).
+Each source defines [`competing_risk`](@ref). Returns none by default.
 """
 transmission_risks(::TransmissionModel) = ()
 
 """
-Decide whether `contact` is infected by its parent. The transmission risks act as
-competing hazards, and the first to block wins. An index case (no parent) is
-always infected. Otherwise finite-population depletion
-([`susceptible_fraction`](@ref)) applies first, then each risk source in turn: the
-built-in host susceptibility and infector infectiousness, then any from the
-model's [`transmission_risks`](@ref), then the interventions. Returns `true` when
-the contact is infected.
+Decide whether `contact` is infected by the case that exposed it, and return
+`true` if so. An index case is always infected. Otherwise, in a finite
+population the contact first escapes with probability one minus the
+[`susceptible_fraction`](@ref). Then each thing that can prevent infection
+is checked in turn: the contact's susceptibility and the infector's
+infectiousness, anything from the model's [`transmission_risks`](@ref), and
+the interventions. The first one that prevents it decides.
 """
 function _decide_infected(
         state::SimulationState, contact::Individual,
@@ -1359,14 +1371,13 @@ function _apply_attributes!(builders::Union{Tuple, AbstractVector}, rng, ind)
 end
 
 """
-Attributes-list element that draws one value per group and shares it with
-every member of that group (see [`group_attribute`](@ref)). The group is
-read from `group_key` on the individual, so the value is shared across
-whatever labels those groups: [`groups`](@ref), or any earlier attributes
-function writing that key. Values are drawn lazily, the first time each group
-is seen, and held in `cache` for the rest of the run.
+A population characteristic drawn once per group and shared by every member
+of that group, such as a household's reporting probability. The group is
+whatever the individual has under `group_key`, set by [`groups`](@ref) or an
+earlier entry in `attributes`. Each group's value is drawn when its first
+member is created and kept for the rest of the outbreak.
 
-Use [`group_attribute`](@ref) to construct one.
+Create one with [`group_attribute`](@ref).
 """
 struct GroupAttribute{D}
     key::Symbol
@@ -1404,18 +1415,20 @@ _fresh_attributes(xs::Union{Tuple, AbstractVector}) = map(_fresh_attributes, xs)
 """
     clinical_presentation(; incubation_period, prob_asymptomatic = 0.0)
 
-Return an attributes function that sets `:onset_time` and
-`:asymptomatic` on each individual.
+Give each case a symptom onset time and decide whether it is asymptomatic.
+Pass the result as `attributes` to [`ModelSpec`](@ref).
 
-For symptomatic cases, `:onset_time = infection_time + rand(incubation_period)`.
-For asymptomatic cases (drawn with probability `prob_asymptomatic`),
-`:onset_time = NaN` and `:asymptomatic = true`. Required by
-[`Isolation`](@ref) and used by [`linelist`](@ref) to populate
-`date_onset`.
+- `incubation_period`: distribution of the time from infection to symptom
+  onset, in days. Each symptomatic case's onset time is its infection time
+  plus a draw from it.
+- `prob_asymptomatic`: probability that a case never develops symptoms
+  (default 0). Asymptomatic cases have no onset time (`NaN`). Give a number,
+  a distribution (one probability drawn per case) or a function of the random
+  number generator and the individual, `(rng, ind) -> probability`, for
+  example to make it depend on age.
 
-`prob_asymptomatic` accepts a `Real`, a `Distribution`, or a function
-`(rng, ind) -> Real`. Use the function form for age- or
-state-conditional asymptomatic fractions.
+[`Isolation`](@ref) needs these onset times, and [`linelist`](@ref) reports
+them as `date_onset`.
 
 # Examples
 
@@ -1498,7 +1511,28 @@ end
 """
     demographics(; age_distribution=nothing, age_range=(0, 90), prob_female=0.5)
 
-Return an attributes function. `:age` and `:sex` are set on each individual.
+Give each person an age (`:age`, whole years) and a sex (`:sex`, `:female`
+or `:male`). Pass the result as `attributes` to [`ModelSpec`](@ref); list it
+before any population characteristic that reads the age.
+
+- `age_distribution`: distribution of ages. Draws are rounded down and kept
+  within `age_range`. Without one, ages are drawn uniformly from `age_range`.
+- `age_range`: youngest and oldest age as a tuple (default `(0, 90)`).
+- `prob_female`: probability that a person is female (default 0.5).
+
+# Examples
+```julia
+attributes = demographics(age_distribution = Gamma(4.0, 9.0), prob_female = 0.52)
+
+# age-dependent asymptomatic fraction
+attributes = [
+    demographics(age_range = (0, 85)),
+    clinical_presentation(
+        incubation_period = LogNormal(1.6, 0.5),
+        prob_asymptomatic = (rng, ind) -> ind.state[:age] < 18 ? 0.6 : 0.2,
+    ),
+]
+```
 """
 function demographics(;
         age_distribution::Union{Distribution, NoAgeDistribution} = NoAgeDistribution(),
@@ -1520,21 +1554,16 @@ end
 """
     groups(n_groups::Integer; key::Symbol = :group)
 
-Return an attributes function that assigns each individual to one of
-`n_groups` groups, labelled `1:n_groups` and drawn uniformly at random,
-under `key` (`:group` by default).
+Assign each person at random to one of `n_groups` equally likely groups,
+numbered `1` to `n_groups` and recorded under `key` (default `:group`). A
+group can stand for a community, a health area or a household; it is what
+[`GroupVaccination`](@ref) and [`group_attribute`](@ref) work on.
 
-The branching process has no geography, but a group does not need one:
-`key` can stand for a community, a health area, or a household, and
-[`GroupVaccination`](@ref) targets whichever one it names without the
-model knowing where it is. `groups` only labels individuals, uniformly and
-independently of who infected whom, which is enough to test a
-group-triggered vaccination on its own. Concentrating transmission within
-a group as well is a separate, existing choice: give a multi-type
-[`BranchingProcess`](@ref) an offspring matrix that favours the diagonal,
-one type per group, and write a custom attributes function in place of
-this one that assigns `:group` from whatever labels the model's types
-(households, a contact network) rather than drawing them independently.
+Groups are assigned independently of who infected whom, so transmission does
+not cluster within them. To make it cluster, use a multi-type
+[`BranchingProcess`](@ref) with one type per group and a next-generation
+matrix with most transmission within types, and set `:group` from the type
+with your own function `(rng, ind) -> ...` in place of `groups`.
 
 # Examples
 
@@ -1562,22 +1591,22 @@ end
 """
     transmission_traits(; susceptibility = 1.0, infectiousness = 1.0)
 
-Return an attributes function that sets `susceptibility` (per-contact
-probability of infection given exposure) and `infectiousness` (parent-side
-modifier on transmission) on each individual. On the continuous-time models
-both act as multipliers on the transmission hazard instead, which lower the
-chance of infection only within a finite infectious window.
+Give each person a susceptibility and an infectiousness. Pass the result as
+`attributes` to [`ModelSpec`](@ref).
 
-Each argument accepts:
+- `susceptibility`: probability that an exposed person is infected.
+- `infectiousness`: probability that each contact the person makes once
+  infected leads to infection, so 0.5 halves the number they infect.
 
-- a `Real`: assigned directly to every individual.
-- a `Distribution`: sampled per individual via `rand(rng, dist)`.
-- a callable `(rng, ind) -> value`: called per individual; the
-  returned value is assigned. Use this for attribute-dependent rules
-  (e.g. age-conditional susceptibility) — place the builder after
-  `demographics` in the attributes list so `ind.state[:age]` is set first.
+Both default to 1 (no change). In the continuous-time models
+([`HomogeneousProcess`](@ref), network and household models) both instead
+multiply the rate of transmission, which lowers the chance of infection only
+over an infectious period of limited length.
 
-Both default to `1.0` (no Bernoulli filtering in the transmission model).
+Each argument can be a number given to everyone, a distribution drawn once
+per person, or a function of the random number generator and the individual,
+`(rng, ind) -> value`, for example to make it depend on age (list
+[`demographics`](@ref) first so the age is set).
 
 # Examples
 
@@ -1608,9 +1637,8 @@ attributes = [
 ]
 ```
 
-The closure form `(rng, ind) -> (ind.susceptibility = ...)` as a list
-entry remains available as an escape hatch for cases this builder does
-not cover.
+For rules this function does not cover, an `attributes` entry can set the
+fields directly, as in `(rng, ind) -> (ind.susceptibility = ...)`.
 
 See also [`clinical_presentation`](@ref), [`demographics`](@ref).
 """
@@ -1636,15 +1664,17 @@ _trait_sampler(f) = (rng, ind) -> float(f(rng, ind))
 """
     group_attribute(key::Symbol; value, group_key = :group)
 
-Set the numeric attribute `key` once per group, sharing its value with every
-member across generations. `value` accepts a `Real`, a `Distribution`, or a
-callable `(rng, ind) -> Real`. A callable receives the first member created in
-that group; subsequent members reuse the draw. Values are converted with `float`.
+Give every member of a group the same value of a numeric population
+characteristic `key`, drawn once per group, such as a household's reporting
+probability or a community's acceptance of vaccination. The value lasts for
+the whole outbreak.
 
-Place [`groups`](@ref), or an attributes function setting `group_key`, earlier
-in the attributes list. A missing group key raises an `ArgumentError`.
-Each simulation gets its own cache, including parallel runs, so the same
-builder can be reused between simulations.
+`value` can be a number, a distribution or a function of the random number
+generator and the individual, `(rng, ind) -> value`; a function is called for
+the first member created in each group. List [`groups`](@ref), or another
+entry that sets `group_key`, earlier in `attributes`; a person without it
+raises an error. Each simulation draws its own group values, so the same
+`group_attribute` can be reused across simulations.
 
 For example, share a reporting probability within each household:
 
@@ -1665,38 +1695,28 @@ end
 """
     vaccine_acceptance(; propensity, group_key = :group, key = :vaccine_acceptance)
 
-Return an attributes function that sets `key` (default `:vaccine_acceptance`)
-on each individual, drawn once per group and shared by every member of that
-group. The group is whatever the individual holds under `group_key`
-(`:group` by default, as [`groups`](@ref) assigns it), so refusal clusters in
-the same unit [`GroupVaccination`](@ref) vaccinates, and a group's value lasts
-for the whole run, across generations.
+Give each group a probability of accepting vaccination, shared by all its
+members, recorded under `key` (default `:vaccine_acceptance`). Acceptance
+tends to cluster by household or community, and the contacts who avoid
+tracing are often the ones who decline a dose. The group is whatever the
+person has under `group_key` (default `:group`, as set by [`groups`](@ref)),
+so refusal clusters in the same unit [`GroupVaccination`](@ref) vaccinates.
+List the entry that sets `group_key` before this one; a person without it
+raises an error.
 
-Engagement with a response clusters by household or community: the
-contacts who evade tracing tend to be the same ones who decline a dose.
-A vaccination's `coverage` (or `MassVaccination`'s `eligibility_time`)
-accepts a function `(rng, ind) -> Real`, but has no group to read on its
-own; this builder supplies one. Read it back with a closure such as
-`coverage = (rng, ind) -> ind.state[:vaccine_acceptance]`, so members of one
-group share an acceptance probability while other groups draw their own.
+Use the value as a vaccination's `coverage` (or `MassVaccination`'s
+`eligibility_time`) with a function such as
+`coverage = (rng, ind) -> ind.state[:vaccine_acceptance]`.
 
-List the attributes function that sets `group_key` (`groups`, or a custom one
-labelling households or communities) ahead of this one, since the key has to be
-on the individual by the time this runs. Applying it to an individual without
-that key raises an `ArgumentError`.
-
-`propensity` accepts a `Real`, a `Distribution`, or a function
-`(rng, ind) -> Real`; it is sampled once per group, for the first member of
-that group to be created. Each member still draws its own coin against the
-shared value. A constant `Real` propensity therefore gives every group the
-same probability, indistinguishable from independent per-contact draws at that
-probability. A `Distribution` propensity varies the shared probability group to
-group, giving the same average coverage as independent draws but more variance
-in per-group coverage: some groups mostly covered, others mostly untouched,
-while any one group's members still differ among themselves. Only a propensity
-that is itself degenerate at `0` or `1` (e.g. `(rng, ind) ->
-Float64(rand(rng, Bernoulli(p)))`) makes a group accept or decline as a
-block.
+`propensity` is a number, a distribution or a function
+`(rng, ind) -> probability`, drawn once per group when its first member is
+created. Each member then accepts or declines at random with that
+probability. With a single number every group has the same probability, which
+is the same as no grouping. With a distribution, the average coverage is the
+same but coverage varies more between groups, some mostly vaccinated and
+others mostly not. For a whole group to accept or decline together, use a
+propensity of exactly 0 or 1, such as
+`(rng, ind) -> Float64(rand(rng, Bernoulli(p)))`.
 
 # Examples
 
@@ -1729,12 +1749,13 @@ end
 
 # ── Intervention field validation ────────────────────────────────────
 
-"""Fields that an intervention requires on individuals. Default: none."""
+"""The information an intervention needs recorded on each person, such as
+`:onset_time` for isolation, checked when the outbreak starts. Default: none."""
 required_fields(::AbstractIntervention) = Symbol[]
 
-"""Check that all required fields are present on an individual. Works for
-any iterable of items that define `required_fields` — used for both
-interventions and clinical transitions."""
+"""Check that a person has all the information the interventions or
+natural-history steps need (their [`required_fields`](@ref EpiBranch.required_fields)),
+and raise an error naming the missing one and how to provide it."""
 function _validate_required_fields(individual, items)
     for item in items
         for field in required_fields(item)

@@ -3,28 +3,51 @@
 """
     Infectiousness(offspring; from = :infection, until = (), kernel = NoGenerationTime())
 
-A transmission window on a case's timeline: a source of `offspring`
-contacts that becomes active at the `from` state, times each contact by
-`kernel` measured from `from`, and is ended by the earliest of the
-`until` states.
+When, and how much, a case transmits by one route. `offspring` is the
+distribution of the number of people infected by this route; transmission
+starts when the case reaches state `from` and stops at the earliest of the
+`until` states. Give a [`BranchingProcess`](@ref) several of these for
+different routes, such as community and funeral transmission of Ebola.
 
-- `from` names a state (`:infection`, the default, or a state a
-  transition wrote, e.g. `:infectious`, `:died`). The window contributes
-  contacts only once that state has been reached.
-- `until` is a tuple of state names whose earliest occurrence censors the
-  window: `(:recovered, :died)` for community spread, `(:buried,)` for a
-  funeral window. Each name `s` resolves to the infector's
-  `Symbol(s, :_time)`. Empty by default (no censoring). Isolation censoring
-  comes from the `Isolation` intervention, not from a state here.
-- `kernel` is the contact interval, measured from `from`: a
-  `Distribution`, a callable `(ind) -> Distribution`, or
-  `NoGenerationTime()` (contacts land at the `from` time).
-- `offspring` is the window's own draw: a `Distribution` (single-type), a
-  callable `(rng, ind[, state]) -> Int` / `-> Vector{Int}` (multi-type),
-  or any spec [`draw_offspring`](@ref) accepts.
+- `offspring`: a distribution of secondary cases, such as `NegBin(R, k)`
+  (mean `R`, dispersion `k`), or for a multi-type model a function
+  `(rng, ind) -> counts` returning one count per type (see
+  [`draw_offspring`](@ref EpiBranch.draw_offspring)).
+- `from`: the state at which transmission starts, `:infection` by default.
+  Any other name refers to a state set by a step of the natural history, such
+  as `:infectious` or `:died`; transmission starts only once the case reaches
+  it.
+- `until`: the states at which transmission stops, for example
+  `(:recovered, :died)` for community transmission or `(:buried,)` for a
+  funeral. The earliest one reached ends transmission, and infections that
+  would have happened later do not. Empty by default. Isolation is set with
+  the [`Isolation`](@ref) intervention, not here.
+- `kernel`: the time in days from `from` to each infection: a distribution,
+  a function of the individual returning a distribution, `(ind) -> ...`, or
+  `NoGenerationTime()` to place every infection at the `from` time. With no
+  `until` this is the generation time. With `until` it is the contact
+  interval (the time to a contact that would infect if nothing stopped it),
+  and the generation time follows from which comes first, the contact or the
+  end of transmission, so do not also shorten it by hand.
 
-Several windows on one [`BranchingProcess`](@ref) (community, funeral)
-each carry their own offspring, timing, and censoring.
+# Examples
+```julia
+using EpiBranch, Distributions
+
+progression = [
+    Transition(:infectious, from = :infection, delay = Gamma(4.0, 2.0)),
+    Transition(:died, from = :infectious, delay = Gamma(4.0, 2.0),
+        probability = 0.6, terminal = true),
+    Transition(:recovered, from = :infectious, delay = Gamma(5.0, 2.0),
+        terminal = true),
+    Transition(:buried, from = :died, delay = 2.0),
+]
+community = Infectiousness(NegBin(1.2, 0.5);
+    from = :infectious, until = (:recovered, :died), kernel = Exponential(4.0))
+funeral = Infectiousness(Poisson(0.5);
+    from = :died, until = (:buried,), kernel = Uniform(0.0, 2.0))
+model = ModelSpec(BranchingProcess(community, funeral); progression)
+```
 """
 struct Infectiousness{O, F, U, K}
     offspring::O
@@ -42,36 +65,49 @@ end
 # ── BranchingProcess type and constructors ──────────────────────────
 
 """
-Stochastic branching process transmission model.
+    BranchingProcess(offspring, generation_time; population_size)
+    BranchingProcess(offspring)
+    BranchingProcess(windows::Infectiousness...)
 
-Each infected case independently generates a random number of secondary
-cases — its offspring — and the outbreak is the branching tree that grows
-from the seeds. The first positional argument is that offspring
-distribution; a negative binomial is the usual choice, its overdispersion
-standing in for superspreading. The second positional argument is the
-contact interval (generation-time distribution); with the default single
-window and no natural-history states it is the generation interval, exactly
-as before.
+A stochastic branching process: each case independently infects a random
+number of others, drawn from the offspring distribution `offspring`, and the
+outbreak grows as a tree from the index cases. A negative binomial,
+`NegBin(R, k)` with mean `R` and dispersion `k`, is the usual choice; smaller
+`k` means more superspreading.
 
-The process describes the transmission alone: the modelling layers
-(progression, interventions, attributes, observation) are attached with a
-[`ModelSpec`](@ref), not on the constructor.
+`generation_time` is the distribution of the time in days from a case's
+infection to the infection of each of its secondary cases. Leave it out to
+study only chain sizes and lengths, without timing. `population_size` limits
+the number of people who can be infected (unlimited by default).
+
+The transmission model describes only who infects whom and when. Add the
+natural history, interventions, population characteristics and reporting
+with a [`ModelSpec`](@ref).
 
 # Examples
 
 ```julia
+# R = 2.5, k = 0.16; generation time log-normal with log-mean 1.6 and
+# log-sd 0.5 (mean about 5.6 days)
 BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
-BranchingProcess(NegBin(0.8, 0.5))  # no timing, pure chain statistics
-BranchingProcess(M, R_j -> NegBin(R_j, 0.16), LogNormal(1.6, 0.5))  # multi-type
 
-# attach a policy via a ModelSpec
+# no timing: chain sizes and lengths only
+BranchingProcess(NegBin(0.8, 0.5))
+
+# two types (e.g. children and adults): M[i, j] is the mean number of
+# type-i cases infected by one type-j case
+M = [1.2 0.4; 0.3 0.9]
+BranchingProcess(M, R -> NegBin(R, 0.16), LogNormal(1.6, 0.5))
+
+# add isolation with a ModelSpec
 ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
+    attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
     interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)])
 ```
 
-Transmission is a tuple of [`Infectiousness`](@ref) windows; the
-convenience constructors above build a single default window with
-`from = :infection` and no censoring.
+For transmission by several routes, or starting and stopping at points in
+the natural history, build the process from [`Infectiousness`](@ref)
+windows. The forms above make a single one that starts at infection.
 """
 struct BranchingProcess{W <: Tuple, P, L} <: TransmissionModel
     infectiousness::W
@@ -269,11 +305,10 @@ end
 """
     generate_offspring(model::BranchingProcess, parent, state)
 
-Return how many contacts `parent` makes this generation through the
-model's single infectiousness window: a count (single-type) or a count
-per type (multi-type). The engine's window-aware
-[`collect_exposures`](@ref) is what actually drives multi-window models;
-this is the single-window seam kept for external callers.
+Draw how many people the case `parent` infects: one number, or one number
+per type in a multi-type model. Only defined for a process with a single
+[`Infectiousness`](@ref) window; the simulation handles several windows
+through [`collect_exposures`](@ref).
 """
 function generate_offspring(model::BranchingProcess, parent, state)
     length(model.infectiousness) == 1 || throw(
@@ -286,7 +321,8 @@ end
 
 # ── Offspring drawing ────────────────────────────────────────────────
 
-"""Single-type offspring draw."""
+"""Draw the number of secondary cases of one case from an offspring
+distribution."""
 function draw_offspring(
         rng::AbstractRNG, offspring::Distribution,
         individual, state::SimulationState
@@ -294,10 +330,11 @@ function draw_offspring(
     return rand(rng, offspring)
 end
 
-"""Callable offspring draw. The rule may be called as
-`(rng, individual)` or `(rng, individual, state)`; the latter form lets
-the offspring rule read population-level state (e.g. cumulative cases
-for time- or policy-dependent caps)."""
+"""Draw the number of secondary cases of one case from an offspring
+function, written either as `(rng, individual) -> n` or as
+`(rng, individual, state) -> n`. The second form can read the state of the
+whole outbreak, for example to reduce transmission once the case count
+passes a threshold."""
 function draw_offspring(rng, offspring, individual, state)
     if applicable(offspring, rng, individual, state)
         return offspring(rng, individual, state)
