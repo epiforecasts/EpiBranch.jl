@@ -60,7 +60,7 @@ unless you set `n_initial`.
 ## Control
 
 **Isolation.** Removing a known case from transmission, usually some time after
-symptom onset. See [Interventions](tutorials/interventions.md).
+symptom onset. See [Isolation and contact tracing](tutorials/interventions.md).
 
 **Quarantine.** Removing a traced contact, who is not (yet) a known case, from
 transmission from the time they are traced. Quarantine reaches contacts before

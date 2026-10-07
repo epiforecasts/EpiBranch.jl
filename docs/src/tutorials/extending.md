@@ -2,7 +2,8 @@
 
 If you only want to *use* the interventions, attributes and models that ship
 with EpiBranch, you don't need this page — start with
-[Interventions](interventions.md) and the other tutorials. This page is for
+[Isolation and contact tracing](interventions.md),
+[Vaccination](vaccination.md) and the other tutorials. This page is for
 writing new pieces in Julia.
 
 ## Extension points
