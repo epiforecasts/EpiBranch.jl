@@ -389,7 +389,7 @@ they were created in this generation (`is_new`); and the contacts newly
 created in this generation (`minted`).
 
 The default suits models in which every contact is a new person: it asks
-each infectious case how many people it infects via
+each infectious case how many contacts it makes via
 [`generate_offspring`](@ref), then creates and times that many contacts.
 Models whose contacts are people who already exist and can be exposed by
 more than one case in a generation (networks, households) use
