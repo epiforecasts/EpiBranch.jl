@@ -147,8 +147,8 @@ available here. The usual next step is
 
 With `parallel = true` the runs are spread over the CPU threads Julia was
 started with (for example `julia --threads 4`). The results are reproducible
-for a given seeded `rng` and number of threads, though they are not the same
-outbreaks as with `parallel = false`.
+for a given seeded `rng`. When Julia has more than one thread, they are not
+the same outbreaks as with `parallel = false`.
 
 # Examples
 ```julia
