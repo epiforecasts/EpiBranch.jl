@@ -148,6 +148,7 @@ export AbstractVaccination, VaccineEffect, RingVaccination, MassVaccination,
     GroupVaccination
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
+export AbstractTrigger, is_triggered!, trigger_can_lapse, Infections, ReportedCases
 export CapacityConstrained, capacity_usage, default_capacity_priority
 export RouteWindow, window_open, window_close
 export is_active, intervention_time

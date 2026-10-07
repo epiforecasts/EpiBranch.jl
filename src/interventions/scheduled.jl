@@ -40,14 +40,23 @@ of their own — wrap them with `Scheduled` to schedule them in time.
 
 # Keyword constructor
 
-Any combination of `start_time`, `end_time`, and `start_after_cases` is
-accepted.  They are combined with `&&`:
+Any combination of `start_time`, `end_time`, `start_after_cases`, and
+`start_after` is accepted. They are combined with `&&`:
 
 ```julia
 Scheduled(Isolation(onset_to_isolation_delay=Exponential(2.0), isolation_duration=7.0); start_time=14.0)
 Scheduled(ContactTracing(probability=0.5, isolation_to_trace_delay=Exponential(1.0)); start_after_cases=50)
 Scheduled(iso; start_time=10.0, end_time=30.0)
+Scheduled(iso; start_after=ReportedCases(20))
 ```
+
+`start_after_cases = n` is shorthand for `start_after = Infections(n)`: it
+counts every infection as soon as it occurs, including one never reported
+or reported only after the date it opens on. [`ReportedCases`](@ref) counts
+only reports dated by the simulation clock instead, which is what a
+reactive policy triggered by surveillance needs. `start_after` takes any
+[`AbstractTrigger`](@ref EpiBranch.AbstractTrigger), so a user-defined count
+works the same way without editing `Scheduled`.
 
 # Predicate constructor
 
@@ -75,13 +84,94 @@ struct Scheduled{I <: AbstractIntervention, F} <: InterventionWrapper
     can_lapse::Bool
 end
 
+"""
+    AbstractTrigger
+
+Base type for a `start_after` trigger passed to [`Scheduled`](@ref), as in
+`Scheduled(iv; start_after = ReportedCases(20))`. A subtype implements
+[`is_triggered!`](@ref) to say whether its condition holds now, and may
+override the trait [`trigger_can_lapse`](@ref) to say whether that can turn
+false again. `Scheduled` reads both to set its own `population_dependent`
+and `can_lapse` flags, so a trigger written outside the package works
+without editing `Scheduled`.
+"""
+abstract type AbstractTrigger end
+
+"""
+    is_triggered!(trigger, state::SimulationState) -> Bool
+
+Whether `trigger`'s condition holds now. The same trigger object is reused
+across the repeated simulations of `simulate(model, n)` (serially, or
+across threads under `parallel = true`), so a trigger must keep no state
+of its own between calls; read [`CapacityConstrained`](@ref)'s
+`_capacity_usage` for the precedent of deriving a running count fresh
+from `state` on every call instead.
+"""
+function is_triggered! end
+
+"""
+    trigger_can_lapse(trigger) -> Bool
+
+Whether `trigger`'s condition, once true, can turn false again. The
+default is the conservative `true` — a trigger written outside the package
+is assumed able to close again until it says otherwise, as an opaque
+[`Scheduled`](@ref) predicate already is. [`Infections`](@ref) and
+[`ReportedCases`](@ref) return `false`: each counts something that can only
+rise.
+"""
+trigger_can_lapse(::AbstractTrigger) = true
+
+"""
+    Infections(n)
+
+A [`Scheduled`](@ref) `start_after` trigger that opens once `n` infections
+have occurred — every case, as soon as it is created, including one never
+reported or reported only after the date it opens on. Equivalent to the
+`start_after_cases` keyword.
+"""
+struct Infections <: AbstractTrigger
+    n::Int
+end
+is_triggered!(t::Infections, state::SimulationState) = state.cumulative_cases >= t.n
+trigger_can_lapse(::Infections) = false
+
+# The count of reports dated by `state.max_infection_time`. Recomputed from
+# `state.individuals` on every call rather than cached: an individual is
+# appended to `state.individuals` by `make_contact!` as soon as it is
+# created, before its clinical transitions run. `Reporting`, which sets
+# `:reported` and `:reporting_time`, is one of those transitions and can
+# resolve several calls later. A cache that marked the individual "seen"
+# on an earlier call would miss the report once it lands.
+function _reported_cases_due(state::SimulationState)
+    now = state.max_infection_time
+    return count(state.individuals) do ind
+        get(ind.state, :reported, false) && ind.state[:reporting_time] <= now
+    end
+end
+
+"""
+    ReportedCases(n)
+
+A [`Scheduled`](@ref) `start_after` trigger that opens once `n` cases have
+been reported *as of the simulation clock* (`state.max_infection_time`) —
+unlike [`Infections`](@ref), a case whose `:reporting_time` lies after the
+current time does not count yet. Needs a `Reporting` transition in the
+model's `progression`, which sets `:reported` and `:reporting_time`.
+"""
+struct ReportedCases <: AbstractTrigger
+    n::Int
+end
+is_triggered!(t::ReportedCases, state::SimulationState) = _reported_cases_due(state) >= t.n
+trigger_can_lapse(::ReportedCases) = false
+
 # ── Keyword convenience constructor ──────────────────────────────────
 
 function Scheduled(
         intervention::AbstractIntervention;
         start_time::Union{Float64, Nothing} = nothing,
         end_time::Union{Float64, Nothing} = nothing,
-        start_after_cases::Union{Int, Nothing} = nothing
+        start_after_cases::Union{Int, Nothing} = nothing,
+        start_after::Union{AbstractTrigger, Nothing} = nothing
     )
     conditions = Function[]
     start_time !== nothing && push!(
@@ -96,6 +186,10 @@ function Scheduled(
         conditions,
         s -> s.cumulative_cases >= start_after_cases
     )
+    start_after !== nothing && push!(
+        conditions,
+        s -> is_triggered!(start_after, s)
+    )
 
     isempty(conditions) && error("Scheduled requires at least one condition")
 
@@ -105,10 +199,10 @@ function Scheduled(
         s -> all(c -> c(s), conditions)
     end
     t = start_time === nothing ? 0.0 : start_time
-    return Scheduled(
-        intervention, condition, t, start_after_cases !== nothing,
-        end_time !== nothing
-    )
+    population_dependent = start_after_cases !== nothing || start_after !== nothing
+    can_lapse = end_time !== nothing ||
+        (start_after !== nothing && trigger_can_lapse(start_after))
+    return Scheduled(intervention, condition, t, population_dependent, can_lapse)
 end
 
 # Predicate constructor: no individual-level reset. The predicate is opaque, so
