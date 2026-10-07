@@ -34,7 +34,7 @@ later discovery may offer them again with their cached draws.
 Network and household races execute supported ring and group actions through
 this protocol. Mass vaccination and legacy batch-only interventions remain
 unsupported there. Ring delivery on these races requires an infinite eligibility
-window and zero post-exposure efficacy; pending infection times are unknown.
+window; pending infection times are unknown.
 The homogeneous pool has no contact-tracing action path.
 
 ```julia
