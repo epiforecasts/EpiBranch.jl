@@ -163,6 +163,7 @@ an intervention that finds its targets among freshly created contacts,
 
 `HomogeneousProcess` assumes everyone mixes with everyone else at the same
 rate. When mixing is uneven, for example age bands, spatial patches or
-demographic strata that contact each other at different rates, the same
-Sellke pool takes a contact structure without rewriting the simulation.
-The [Extending](extending.md) guide shows how to write such a model.
+demographic strata that contact each other at different rates, [`MixingProcess`](@ref)
+runs the same Sellke pool over a contact structure instead, with no simulation
+code of your own. The [Extending](extending.md) guide works through an
+age-structured example.
