@@ -103,8 +103,8 @@ struct InfectionEpisode{T <: Real}
 end
 
 """
-One person in a simulated outbreak: a case, or a contact who was exposed
-but not infected.
+One person in a simulation: for a [`BranchingProcess`](@ref), a case or a
+contact they exposed; for models with a fixed population, anyone in it.
 
 - `id`: the person's number, which is also their position in
   `state.individuals`.
@@ -226,8 +226,9 @@ row per exposure), [`chain_statistics`](@ref) or [`weekly_incidence`](@ref).
 
 Useful fields:
 
-- `individuals`: everyone in the outbreak, cases and uninfected contacts, as
-  [`Individual`](@ref)s.
+- `individuals`: one [`Individual`](@ref) per person in the simulation: the
+  cases and the contacts they exposed for a [`BranchingProcess`](@ref),
+  everyone for models with a fixed population.
 - `cumulative_cases`: the total number of cases.
 - `extinct`: whether transmission had died out when the run stopped.
 - `current_generation`: the last generation simulated.
