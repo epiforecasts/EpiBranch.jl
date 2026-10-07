@@ -170,7 +170,8 @@ is ended separately, so the same event can end one route and leave another
 open.
 
 A route listing [`EpiBranch.INTERVENTION_REMOVAL`](@ref) also closes when the
-`interventions` isolate or quarantine the case. Pass the interventions the
+`interventions` remove the case for good (perfect isolation, or quarantine,
+with no end); leaky or time-limited isolation acts on each contact instead. Pass the interventions the
 simulation used to get the same closing time as the simulation.
 """
 function window_close(ind::Individual, w::RouteWindow, interventions = ())
