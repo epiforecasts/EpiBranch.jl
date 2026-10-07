@@ -449,7 +449,8 @@ Five built-in risks are always present:
 
 A susceptibility or infectiousness of `1.0` blocks nothing, and these risks have
 no effect unless a population characteristic sets a value below one. You can
-replace or add to them with a `competing_risk` of your own.
+add to them with a `competing_risk` of your own. They always apply, so a risk of
+your own should not apply susceptibility or infectiousness a second time.
 
 `HostSusceptibility` and `InfectorInfectiousness` apply on branching processes.
 The continuous-time models apply the same two values as multipliers on the rate
