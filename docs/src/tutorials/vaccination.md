@@ -499,8 +499,8 @@ Ring doses are given at the trace. A second dose sets `dose_delay`, the days
 from the trace to that dose, and names the dose it follows with
 `requires_dose`. Only contacts who have had the earlier dose by the time the
 later one is due receive it. The boost's `coverage` is then the share
-retained between doses. List each dose after the dose it requires; a boost listed
-first finds no one primed and is never given.
+retained between doses. List each dose after the dose it requires; listing a
+boost before its prime is an error.
 
 ```@example vaccination
 prime_ring = RingVaccination(efficacy = 0.6, delay_to_immunity = 21.0,
