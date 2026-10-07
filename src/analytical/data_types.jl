@@ -4,8 +4,8 @@
     OffspringCounts(data)
 
 Observed numbers of secondary cases: how many people each case infected, one
-count per case. Pass it to `loglikelihood` with an offspring distribution, or
-with a model, to estimate R and the dispersion k.
+count per case. Pass it to `loglikelihood` with an offspring distribution,
+such as `NegBin(R, k)`, to estimate R and the dispersion k.
 
 # Examples
 
