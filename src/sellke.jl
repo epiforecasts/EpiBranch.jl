@@ -137,9 +137,8 @@ end
 # arguments (the hook itself counted among them): a hook written for `T` with
 # the wrong arity turns up under `methods` here, same as a correctly aritied
 # one, but is never the method an exact-arity call resolves to, so it does not
-# count. A trailing `args...` is sized separately, since it is reachable at
-# any arity its minimum allows rather than only the one `methods` lists it
-# under.
+# count. A trailing `args...` is handled separately, since it is reachable at
+# any arity its minimum allows, rather than the one `methods` lists it under.
 function _has_own_method(f, T::Type, base::Type, n::Int)
     return any(methods(f, Tuple{T, Vararg{Any}})) do mm
         params = Base.unwrap_unionall(mm.sig).parameters

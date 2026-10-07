@@ -243,7 +243,7 @@ EpiBranch.competing_risk(::BlockVariadic, args...) = Risk(block_probability = 1.
         # stay silent: the check reads the full set, not just `competing_risk`.
         @test_logs ModelSpec(bp; interventions = [_ActionsOnly()])
         # A trailing `args...` is reachable at the call's arity even though
-        # its own arity, as `methods` reports it, is not `n`.
+        # `methods` reports its own arity as something other than `n`.
         @test_logs ModelSpec(bp; interventions = [BlockVariadic()])
         # `Isolation` implements several hooks properly and stays silent too.
         iso = Isolation(
