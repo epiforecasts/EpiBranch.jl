@@ -41,6 +41,12 @@ struct DoseAndTrace <: EpiBranch.AbstractIntervention end
 EpiBranch.apply_post_transmission!(::DoseAndTrace, state, new_contacts) = nothing
 EpiBranch.traces_contacts(::DoseAndTrace) = true
 EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
+# Written for both engines: `apply_post_transmission!` for the generation
+# engine, `on_infection_settled!` for the continuous-time race. Neither traces,
+# so this is honoured through the settled hook alone.
+struct DoseAndSettle <: EpiBranch.AbstractIntervention end
+EpiBranch.apply_post_transmission!(::DoseAndSettle, state, new_contacts) = nothing
+EpiBranch.on_infection_settled!(::DoseAndSettle, ind, state, rng) = nothing
 
 # The same leaky vaccine with its arguments typed, as the style guide asks for.
 struct LeakyVaccineTyped <: EpiBranch.AbstractIntervention
@@ -375,6 +381,14 @@ end
                 rng = StableRNG(1), n_initial = 2
             )
         end
+        # A method of its own for `on_infection_settled!` is `apply_post_transmission!`'s
+        # continuous-time counterpart, so this is honoured and warns about nothing,
+        # even though the pool still never calls `apply_post_transmission!` itself.
+        @test EpiBranch._sellke_honours(prog_pool, DoseAndSettle())
+        @test_logs min_level = Base.CoreLogging.Warn simulate(
+            ModelSpec(prog_pool; progression = prog, interventions = [DoseAndSettle()]);
+            rng = StableRNG(1), n_initial = 2
+        )
         # The package's own interventions that the pool honours warn about nothing.
         onsets = clinical_presentation(
             incubation_period = LogNormal(-1.0, 0.3),
