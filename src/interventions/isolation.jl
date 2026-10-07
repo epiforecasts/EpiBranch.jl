@@ -20,34 +20,36 @@
 """
     IsolationEligibility
 
-Trait deciding whether an individual is eligible to be isolated based
-on the structural gate (e.g. symptomatic vs all-cases). Implementations
-override [`is_eligible_for_isolation(elig, individual, state)`](@ref).
-Whether eligibility actually leads to isolation also depends on the
-intervention's `test_sensitivity`.
+Rule for which cases can be isolated: [`SymptomaticOnly`](@ref) (the default)
+or [`AllCases`](@ref). Whether an eligible case is actually isolated also
+depends on the intervention's `test_sensitivity`.
+
+To write a new rule, define a subtype and a method of
+[`is_eligible_for_isolation`](@ref EpiBranch.is_eligible_for_isolation).
 """
 abstract type IsolationEligibility end
 
 """
     is_eligible_for_isolation(eligibility, individual, state) -> Bool
+
+Whether this case can be isolated under the eligibility rule (`true` by
+default).
 """
 is_eligible_for_isolation(::IsolationEligibility, individual, state) = true
 
 """
     records_isolation(eligibility, individual, state, isolation_time) -> Bool
 
-Whether an isolation at `isolation_time` is recorded as a detection, once a
-pathway has reached one. The case is removed from transmission from
-`isolation_time` either way; this decides only whether
-[`is_isolated`](@ref) reports it, and so whether tracing, group vaccination,
-line lists and detection counts see it. The default declines a time at or
-after the case's own [`outcome_time`](@ref), since a self-report or trace
-reaching a case that has already recovered or died describes a detection that
-did not happen.
+Whether an isolation at `isolation_time` counts as a detection of the case.
+The case stops transmitting from `isolation_time` either way; this decides
+only whether [`is_isolated`](@ref) reports it, and so whether tracing, group
+vaccination, line lists and detection counts see it. By default an isolation
+at or after the case's own [`outcome_time`](@ref) (recovery or death) is not
+counted, since isolating someone who has already recovered or died is not a
+detection.
 
-Override it to record a detection that arrives late anyway. Post-mortem
-detection is the case that wants it, as with an Ebola death found at burial,
-which triggers tracing:
+Define a method to count a late detection anyway. Post-mortem detection is the
+usual reason, as with an Ebola death found at burial, which triggers tracing:
 
 ```julia
 struct DetectAfterOutcome <: EpiBranch.IsolationEligibility end
@@ -60,7 +62,7 @@ function records_isolation(::IsolationEligibility, individual, state, isolation_
     return isolation_time < outcome_time(individual)
 end
 
-"""Symptomatic cases only. Reproduces the original `Isolation` gate."""
+"""Only symptomatic cases can be isolated (the default for [`Isolation`](@ref))."""
 struct SymptomaticOnly <: IsolationEligibility end
 is_eligible_for_isolation(::SymptomaticOnly, ind, state) = !is_asymptomatic(ind)
 
@@ -79,66 +81,63 @@ _required_for_eligibility(::IsolationEligibility) = [:onset_time]
 # ── Isolation intervention ──────────────────────────────────────────
 
 """
-Isolate cases after a delay from symptom onset.
+    Isolation(; onset_to_isolation_delay, isolation_duration,
+              eligibility = SymptomaticOnly(), test_sensitivity = 1.0,
+              post_isolation_transmission = 0.0)
 
-The structural gate (who can be isolated) is given by `eligibility`,
-an [`IsolationEligibility`](@ref) trait. The default
-[`SymptomaticOnly`](@ref) reproduces the previous behaviour
-(symptomatic cases only).
+Isolate cases a delay after symptom onset, so they stop (or reduce) onward
+transmission. Isolation applies to cases; traced contacts who are not yet
+known cases are quarantined through [`ContactTracing`](@ref).
 
-`test_sensitivity` is the probability that an eligible individual
-tests positive and so reaches isolation; it accepts a `Real`, a
-`Distribution`, or a function `(rng, ind) -> Real` (sampled once per
-individual at init time, stored as `:test_positive`).
+# Arguments
+- `onset_to_isolation_delay`: days from symptom onset to isolation. A number,
+  a distribution such as `Exponential(2.0)` (mean 2 days), or a function of
+  the random number generator and the individual, `(rng, ind) -> ...`, drawn
+  for each case. The function can read information another intervention has
+  recorded on the case, for example to shorten the delay once a case in the
+  same household has been detected.
+- `isolation_duration` (required): days a case stays isolated before release.
+  A number, a distribution or a function `(rng, ind) -> ...`. `Inf` isolates
+  for good; zero isolates nobody. There is no default because indefinite
+  isolation is a modelling choice to make explicitly.
+- `eligibility`: who can be isolated, [`SymptomaticOnly`](@ref) (default) or
+  [`AllCases`](@ref) (for example with mass testing).
+- `test_sensitivity`: probability that an eligible case is detected and
+  isolated (default 1). A number, a distribution or a function
+  `(rng, ind) -> ...`, drawn once per case.
+- `post_isolation_transmission`: fraction of normal transmission that
+  continues while isolated, between 0 and 1 (default 0, perfect isolation;
+  0.25 would be leaky isolation).
 
-`onset_to_isolation_delay` is the time from symptom onset to
-self-reported isolation; it accepts a `Real`, a `Distribution`, or a
-function `(rng, ind) -> Real` (drawn per individual, per resolution). The
-function form can read state recorded on the individual by another
-intervention earlier in the stack — for example a group's own event time,
-switching the delay once a household's first case has been detected.
+After a finite `isolation_duration` the case transmits again at its normal
+rate from the release time ([`isolation_release_time`](@ref)) until its
+infectious period ends. A finite duration therefore gives the same result as
+`Inf` only when the case stops being infectious before it is released.
 
-`post_isolation_transmission` ∈ [0, 1] sets the residual transmission
-probability after isolation. The competing risk's `block_probability`
-is `1 - post_isolation_transmission`.
+An isolation at or after the case's own outcome (recovery, death or any other
+terminal [`Transition`](@ref)) still stops transmission, so a route that
+opens at the outcome, such as a funeral, is cut. It does not count as a
+detection: [`is_isolated`](@ref) stays `false`, so `OnIsolation` tracing and
+the line list do not count it.
+[`records_isolation`](@ref EpiBranch.records_isolation) makes that choice and
+can be changed through a custom eligibility rule.
 
-`isolation_duration` is how long the removal lasts before it lapses; it
-accepts a `Real`, a `Distribution`, or a function `(rng, ind) -> Real`
-(drawn per individual, each time isolation is set). There is no default:
-callers must choose, since indefinite isolation is a choice to make rather
-than one to inherit. `Inf` never releases the case; a finite duration gives
-[`isolation_release_time`](@ref) the time the block lapses, and a duration of
-zero isolates nobody.
+# Examples
+```julia
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = Inf)
+model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
+spec = ModelSpec(model; interventions = [iso], attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
+state = simulate(spec; max_cases = 500)
 
-`Inf` and a finite duration coincide only where the case is infectious for a
-bounded period that the duration outlasts. Where it does not, each contact
-drawn after the release goes through. A removal set before its host was
-infected at all is [`Quarantine`](@ref)'s to release, not this one's: isolation
-follows an onset, so its own release always falls after the infection.
+# Leaky isolation lasting 14 days, open to all cases
+Isolation(
+    onset_to_isolation_delay = 1.0, isolation_duration = 14.0,
+    eligibility = AllCases(), post_isolation_transmission = 0.25,
+)
+```
 
-What that changes depends on the engine. On a generation-based process the
-block is a per-contact risk, so a contact after the release is not blocked.
-
-On the continuous-time (Sellke) models a removal that is due to lapse does not
-close the window: it stays open on the case's other removal states, if any,
-and the per-contact competing risk blocks exactly the isolated stretches, so
-the case transmits again from the release time, matching the generation engine.
-Only a removal that never releases closes the window there, which is cheaper
-than leaving it to the per-contact risk and is exact because nothing is left to
-reopen. Leaky isolation closes no window either way, so there the release ends
-the hazard reduction and the case transmits at full rate again.
-
-An isolation time at or after the case's own outcome (recovery, death, or
-any other terminal [`Transition`](@ref)) still removes the case from
-transmission, so a route that opens at the outcome, such as a funeral, is cut
-as before. It is not recorded as a detection: [`is_isolated`](@ref) stays
-`false`, so `OnIsolation` tracing and the line list do not count it.
-[`EpiBranch.records_isolation`](@ref) makes that choice and can be overridden
-through the eligibility.
-
-Initialises: `:isolated`, `:isolation_time`, `:isolation_release_time`,
-`:test_positive`; sets `:_isolation_unrecorded` for an isolation it does not
-record.
+For extension authors: the case records `:isolated`, `:isolation_time`,
+`:isolation_release_time` and `:test_positive` in `ind.state`.
 """
 struct Isolation{E <: IsolationEligibility, D, S, U} <: AbstractIntervention
     eligibility::E
@@ -182,11 +181,10 @@ function infectious_removal_time(iso::Isolation, ind::Individual)
     return permanent_removal_time(ind)
 end
 
-"""Isolation blocks the parent → contact transmission while the parent's
-isolation is in force: from its isolation time until its
-[`isolation_release_time`](@ref), which an `isolation_duration` of `Inf`
-leaves infinite. Residual transmission is governed by
-`post_isolation_transmission`: `block_probability = 1 - post_isolation_transmission`."""
+"""An isolated infector does not infect a contact while isolated, from its
+isolation time until its [`isolation_release_time`](@ref) (never released when
+`isolation_duration` is `Inf`). Each such contact is prevented with probability
+`1 - post_isolation_transmission`."""
 function competing_risk(iso::Isolation, parent, contact, state)
     return _removal_risks(parent, 1.0 - iso.post_isolation_transmission)
 end

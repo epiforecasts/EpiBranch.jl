@@ -1,55 +1,64 @@
 """
-Base type for all interventions. Subtypes implement one or more of:
-`initialise_individual!`, `resolve_individual!`, `apply_post_transmission!`,
-`competing_risk`.
+Parent type of all interventions: [`Isolation`](@ref),
+[`ContactTracing`](@ref), [`RingVaccination`](@ref),
+[`MassVaccination`](@ref) and [`GroupVaccination`](@ref). Wrap one in
+[`Scheduled`](@ref) to start or stop it at a given time or case count, or in
+[`CapacityConstrained`](@ref) to limit how many people it can reach per day.
+Pass a vector of them as `interventions` to [`ModelSpec`](@ref).
 
-To support time-based scheduling (`Scheduled(iv; start_time=...)`), also
-implement [`intervention_time`](@ref) and [`reset!`](@ref). The default
-implementations return `-Inf` and a no-op respectively, which is correct
-for interventions whose effect time is always considered "now".
+Measures that limit the number of secondary cases directly (a cap per case, a
+limit on gathering size) are written as an offspring distribution that depends
+on the simulation state, passed to [`BranchingProcess`](@ref).
 
-Tree-shaping interventions (a hard cap on offspring per parent,
-gathering-size limits, etc.) are expressed by passing a state-aware
-function-form offspring distribution to [`BranchingProcess`](@ref) —
-not via the intervention protocol. See the
-[Extending guide](@ref "Extending EpiBranch") for an example.
+For extension authors: a new intervention is a subtype that defines one or
+more of [`initialise_individual!`](@ref EpiBranch.initialise_individual!),
+[`resolve_individual!`](@ref EpiBranch.resolve_individual!),
+[`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!) and
+[`competing_risk`](@ref EpiBranch.competing_risk). To work with `Scheduled`
+it also defines [`intervention_time`](@ref EpiBranch.intervention_time) and
+[`reset!`](@ref EpiBranch.reset!), whose defaults (`-Inf` and doing nothing)
+suit an intervention that always acts immediately. See the
+[Extending guide](@ref "Extending EpiBranch").
 """
 abstract type AbstractIntervention end
 
-"""Set up intervention-specific fields on a newly created individual. Default: no-op."""
+"""Record this intervention's starting information on a person when they
+enter the simulation (for example "not yet isolated"). Default: does nothing."""
 initialise_individual!(::AbstractIntervention, individual, state) = nothing
 
-"""Determine intervention state before transmission. Default: no-op."""
+"""Decide what the intervention does to a case before it transmits (for
+example when it is isolated). Default: does nothing."""
 resolve_individual!(::AbstractIntervention, individual, state) = nothing
 
-"""Act on contacts after creation. All contacts are received. Default: no-op."""
+"""Act on the contacts a generation of cases has just made, infected or not
+(for example tracing or vaccinating them). Default: does nothing."""
 apply_post_transmission!(::AbstractIntervention, state, new_contacts) = nothing
 
 """
     trace_contacts!(intervention, state, infector, contacts[, not_before])
 
-Act on the `contacts` that `infector` reaches, on the continuous-time (Sellke)
-path. The counterpart of [`apply_post_transmission!`](@ref), which the
-generation engine calls with freshly created contact individuals whose
-`parent_id` names their infector. The continuous-time models have no such
-objects: every node exists from the start and the race only settles when each
-is infected, so the infector has to be passed explicitly.
+Act on the people `infector` has been in contact with, in a continuous-time
+model (homogeneous, network or household), for example by tracing them. It is
+the continuous-time counterpart of
+[`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!).
+In these models everyone in the population exists from the start and infection
+times are settled one at a time (the "race" between possible infections), so
+the infector is passed explicitly. Called once per case, when its infection
+and course are known, with the contacts it can still affect. Default: does
+nothing.
 
-Called once per case, when the race finalises it and its timeline is therefore
-known, with the contacts it can still affect. Default: no-op.
-
-`not_before[i]`, when given, is the earliest time `contacts[i]` can be sought:
-when that person became a contact of `infector`. A contact met only at a
-funeral cannot be traced before the funeral, while a household member is a
-contact from the start and has `not_before = -Inf`. On `RoutedNetwork` it is the
-time of the linking route's `contacts_from` state. The race calls this method
-whenever the model yields `(id, time)` contacts and the four-argument method
+`not_before[i]`, when given, is the earliest time (days) `contacts[i]` can be
+reached: when that person became a contact of `infector`. A contact met only
+at a funeral cannot be traced before the funeral, while a household member is
+a contact from the start (`not_before = -Inf`). On `RoutedNetwork` it is the
+time of the linking route's `contacts_from` state. The five-argument method
+is called when the model provides contact times, the four-argument one
 otherwise; by default the five-argument method calls the four-argument one, so
-an intervention that does not time its action from the contact need not handle
-it.
+an intervention that does not time its action from the contact need not
+handle it.
 
-Pair with [`traces_contacts`](@ref EpiBranch.traces_contacts), which tells the
-race whether an intervention needs this hook at all.
+Define [`traces_contacts`](@ref EpiBranch.traces_contacts) as `true` too, or
+this method is not called.
 """
 trace_contacts!(::AbstractIntervention, state, infector, contacts) = nothing
 function trace_contacts!(iv::AbstractIntervention, state, infector, contacts, not_before)
@@ -59,54 +68,48 @@ end
 """
     traces_contacts(intervention) -> Bool
 
-Whether `intervention` implements [`trace_contacts!`](@ref
-EpiBranch.trace_contacts!). The continuous-time race gathers a case's
-reachable contacts only when some intervention says `true`, so an
-intervention that does not trace costs nothing. Default: `false`.
+Whether `intervention` acts on a case's contacts in continuous-time models
+through [`trace_contacts!`](@ref EpiBranch.trace_contacts!). Contacts are
+collected only when some intervention returns `true`. Default: `false`.
 """
 traces_contacts(::AbstractIntervention) = false
 
 """
     keep_active(intervention, state, targets, is_new) -> iterable of Int
 
-The ids of this generation's contacts that should stay *active* into the
-next generation (keep generating contacts of their own), beyond the newly
-infected cases, which always do. Default: none.
+Which uninfected contacts from this generation should go on making contacts
+of their own in the next generation, as ids. Newly infected cases always do.
+Default: none.
 
-The engine unions these into the next active set, so who keeps generating
-contacts is not a special built-in rule. An intervention that needs the
-engine to keep growing contacts from *uninfected* nodes, such as contact
-tracing reaching contacts-of-contacts, returns those nodes' ids here. Pair
-it with the `InfectiousSource` risk source (a default) so those uninfected
-nodes generate contacts without infecting them.
+Contact tracing uses this to reach contacts of contacts: a traced but
+uninfected person keeps making contacts so they can be traced, and the default
+[`InfectiousSource`](@ref EpiBranch.InfectiousSource) rule stops an uninfected
+person infecting anyone.
 
 `targets` are this generation's contacts and `is_new[i]` flags which were
-freshly created. Return ids of nodes that are *not* already infected; the
-infected ones stay active anyway."""
+newly created. Return only ids of people who are not infected."""
 keep_active(::AbstractIntervention, state, targets, is_new) = ()
 
-"""Whether an intervention is currently active given the simulation state. Default: always."""
+"""Whether an intervention is in effect at this point of the simulation (for
+example after a [`Scheduled`](@ref) start). Default: always."""
 is_active(::AbstractIntervention, ::SimulationState) = true
 
 """
     Risk(event_time, block_probability, release_time)
 
-A competing risk contributed by an intervention against a single
-contact's transmission. The risk's event is in force at transmission time `T`
-if `event_time <= T < release_time`; while in force, transmission is blocked
-with probability `block_probability`. A contact is infected iff no
-intervention's risk blocks it.
+How an intervention can prevent one infection: from `event_time` until
+`release_time` (days), an infection that would happen is prevented with
+probability `block_probability`. A contact is infected only if no
+intervention prevents it; each intervention's chance acts independently, so
+whichever applies first (competing risks) decides.
 
-All three fields accept either a `Real` or a function
-`(rng, parent, contact, state) -> Real`. The function form lets the
-event time, block probability, or release time depend on per-individual
-state, e.g. age-conditional vaccine efficacy, or a quarantine's duration.
+Each field is a number or a function `(rng, parent, contact, state) -> Real`,
+for example vaccine efficacy that depends on age, or a quarantine's duration.
+`parent` is the infector.
 
-Use `event_time = -Inf` (the default) for risks that are not
-time-tagged — pop_suscept, per-individual susceptibility,
-infectiousness, and the like. Use `release_time = Inf` (the default) for a
-block that, once in force, never lapses, such as a removal that is never
-released.
+Leave `event_time = -Inf` (the default) for protection that does not start at
+a particular time, such as reduced susceptibility. Leave `release_time = Inf`
+(the default) for protection that never lapses.
 
 Returned by [`competing_risk`](@ref).
 """
@@ -125,15 +128,14 @@ Risk(event_time, block_probability) = Risk(event_time, block_probability, Inf)
     competing_risk(intervention, parent, contact, state)
         -> Union{Nothing, Risk, NTuple{N, Risk}}
 
-Return the [`Risk`](@ref)(s) this intervention contributes against the
-parent → contact transmission, or `nothing` if the intervention does
-not gate this transmission. Default: `nothing`.
+How this intervention can prevent the infection of `contact` by `parent`
+(the infector): one or more [`Risk`](@ref)s giving the probability and the
+time window, or `nothing` if it has no effect on this infection. Default:
+`nothing`.
 
-Most interventions gate transmission through a single mechanism and
-return one `Risk`. Interventions that gate it through more than one
-mechanism — e.g. ring vaccination's susceptibility reduction on the
-contact *and* its onward-infectiousness reduction on the parent — may
-return a tuple of risks instead; the engine applies each independently.
+An intervention that acts in more than one way, such as ring vaccination
+reducing both the contact's susceptibility and the infector's onward
+transmission, returns a tuple of risks, each applied independently.
 
 A community introduction on a continuous-time model has no infector, and the
 person being introduced stands in for one, so a risk that reads the infector
@@ -141,23 +143,22 @@ sees the contact itself. Return `nothing` when `parent === contact` if that is
 not what your risk means, as [`RingVaccination`](@ref)'s onward-transmission
 risk does.
 
-On the generation-based engine, resolution happens after
-`apply_post_transmission!` so that risks can read state that other
-interventions have written on the contact (e.g. `:vaccination_time`
-set by tracing-driven vaccination). The continuous-time models resolve
-the same risks against each infection they propose, after the infector
-has been traced, which is where their own tracing-driven state is
-written.
+In a branching process the risks are evaluated after
+[`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!), so they
+can read what other interventions recorded on the contact (such as a
+vaccination time set after tracing). Continuous-time models evaluate them
+against each possible infection after the infector's contacts have been
+traced.
 """
 competing_risk(::AbstractIntervention, parent, contact, state) = nothing
 
 """
     intervention_time(intervention, individual)
 
-Time at which this intervention's effect occurs for an individual. Used
-by [`Scheduled`](@ref) to enforce `start_time`: if the intervention time
-is earlier than `Scheduled`'s `start_time`, the effect is undone via
-[`reset!`](@ref).
+Time (days) at which this intervention acts on a person, such as their
+isolation time. [`Scheduled`](@ref) uses it to enforce `start_time`: an
+effect timed before the start is undone with
+[`reset!`](@ref EpiBranch.reset!).
 
 Default: `-Inf` (effect always applies).
 """
@@ -166,80 +167,76 @@ intervention_time(::AbstractIntervention, ::Individual) = -Inf
 """
     infectious_removal_time(intervention, individual) -> Real
 
-The time at which this intervention takes `individual` out of onward
-transmission. The continuous-time (Sellke) transmission models
-([`HomogeneousProcess`](@ref), and the network/household processes) close the
-infectious window at the earliest removal time across the interventions.
-`Isolation` removes a case at its isolation time, and `ContactTracing` removes a
-quarantined contact at its trace time. The default is `Inf` (no removal), which
-is what an intervention whose effect is a per-contact block rather than a
-removal wants — a leaky vaccination, say: those reach the continuous-time models
-through [`competing_risk`](@ref) instead, resolved against each infection the
-model proposes. Not read by the generation-based engine.
+The time (days) at which this intervention ends `individual`'s infectious
+period for good. Continuous-time models ([`HomogeneousProcess`](@ref) and the
+network and household models) end a case's infectious period at the earliest
+such time across interventions: `Isolation` at the isolation time,
+`ContactTracing` at a quarantined contact's trace time. The default `Inf`
+(no removal) suits an intervention that reduces transmission per contact,
+such as a leaky vaccine, which acts through
+[`competing_risk`](@ref EpiBranch.competing_risk) instead. Branching processes
+do not use it.
 """
 infectious_removal_time(::AbstractIntervention, ::Individual) = Inf
 
 """
     on_infection_settled!(intervention, individual, state, rng)
 
-Continuous-time models only: called on each case the moment the race fixes its
-infection time, before the onset derived from it, the clinical transitions, or
-the other intervention hooks read it.
+Continuous-time models only: called on each case as soon as its infection
+time is fixed, before its onset, clinical course or other interventions are
+worked out from it.
 
-The place for an effect that has to be reconsidered against the exposure the
-race has just chosen, rather than the one standing when the intervention acted.
-A dose given to a still-uninfected member of the race is the worked example:
-when it was given the member had no infection time to abort, and
-[`RingVaccination`](@ref) uses this hook to decide the abort once it does.
-
-The race's own `rng` is passed rather than taken from `state`, so a draw here
-stays in the stream the race threads. Default: no-op.
+Use it for an effect that depends on when the person was actually infected.
+For example, [`RingVaccination`](@ref) can vaccinate someone before they are
+infected; whether post-exposure protection stops the infection is decided
+here, once the infection time is known. Draw random numbers from the `rng`
+passed in, not from `state`. Default: does nothing.
 """
 on_infection_settled!(::AbstractIntervention, individual, state, rng) = nothing
 
 """
     reset!(intervention, individual)
 
-Undo the effect of an intervention on an individual. Called by
-[`Scheduled`](@ref) when `intervention_time` falls before `start_time`.
-
-Default: no-op.
+Undo this intervention's effect on a person. [`Scheduled`](@ref) calls it
+when the effect would have happened before `start_time`. Default: does
+nothing.
 """
 reset!(::AbstractIntervention, ::Individual) = nothing
 
 """
     risk_applies(intervention, route) -> Bool
 
-Whether an intervention's [`competing_risk`](@ref) applies to a continuous-time
-route. `route` is the existing [`RouteWindow`](@ref), or `nothing` for a
-community introduction whose source is outside the population. Models using
-the single-route shorthand, including the homogeneous pool, supply a window
-named `:transmission`. The default is
-`true`, so protection follows a person across routes. Wrappers delegate to their
-wrapped intervention.
+Whether this intervention's [`competing_risk`](@ref EpiBranch.competing_risk)
+acts on infections through a given transmission route in a continuous-time
+model. `route` is a [`RouteWindow`](@ref), or `nothing` for an infection from
+outside the population. A model with a single route names it
+`:transmission`. The default is `true`, so protection such as vaccination
+follows a person across routes. [`Scheduled`](@ref) and
+[`CapacityConstrained`](@ref) answer for the intervention they contain.
 
-[`Isolation`](@ref) and [`ContactTracing`](@ref) apply only to routes listing
-[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in `until`; they do not protect against
-community introductions. External interventions may select routes by any window
-property. This predicate does not filter model-provided risk sources or the
-generation-based engine's contacts.
+[`Isolation`](@ref) and [`ContactTracing`](@ref) act only on routes listing
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in `until`, and not on infections
+from outside the population. Other interventions may select routes by any
+property of the route. This does not affect protection set by the model
+itself or contacts in a branching process.
 """
 risk_applies(::AbstractIntervention, route) = true
 
 """
     risk_depends_on_infector(intervention) -> Bool
 
-Whether an intervention's [`competing_risk`](@ref) can block a contact
-differently depending on who infected it. A fixed-size pool with more than one
-mixing group draws each contact's infector in proportion to infectiousness,
-without regard to which groups mix with which. That draw is exact only for
-risks that ignore the infector, and the pool refuses an intervention for which
-this is `true`. Every other engine ignores it.
+Whether this intervention's protection against an infection can depend on
+who the infector is (for example an isolated infector). A
+[`HomogeneousProcess`](@ref) with more than one mixing type picks each
+infection's infector in proportion to infectiousness, which is exact only for
+protection that ignores the infector, so it refuses an intervention for which
+this is `true`. Other models ignore it.
 
-The default is `true` for an intervention with a `competing_risk` method of its
-own and `false` for one without. Return `false` from an intervention whose risk
-reads only the contact, such as a vaccine's protection of the person exposed.
-Wrappers delegate to their wrapped intervention.
+The default is `true` for an intervention with its own
+[`competing_risk`](@ref EpiBranch.competing_risk) method and `false` otherwise.
+Return `false` when the protection depends only on the person exposed, such
+as a vaccine's. [`Scheduled`](@ref) and [`CapacityConstrained`](@ref) answer
+for the intervention they contain.
 """
 function risk_depends_on_infector(iv::AbstractIntervention)
     return _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
@@ -290,34 +287,30 @@ end
 """
     reads_population_state(intervention) -> Bool
 
-Whether `intervention`'s delivery can depend on population-wide state — a
-running case count, a capacity budget shared across every individual — rather
-than only on the individual it is resolving. A structure-driven model that
-races a clique (a household) at a time, rather than the whole population on
-one clock, gives each clique's race the state left by whichever clique raced
-before it, in race order rather than calendar order; an intervention that
-reads population-wide state through that race therefore needs every clique on
-one shared clock instead.
+Whether who receives this intervention, or when, can depend on the whole
+population (a running case count, a capacity shared by everyone) rather than
+only on the person concerned. A household model can simulate one household at
+a time only when no intervention reads population-wide information; otherwise
+all households are simulated together on one clock so the information is in
+calendar order.
 
-The default is the conservative `true`. An intervention written outside the
-package therefore reads population-wide state until it says otherwise.
+The default is `true`, the safe choice for an intervention written outside the
+package.
 
-`RingVaccination` and `MassVaccination` return `false`, each delivering
-against the individual it resolves. `GroupVaccination` returns `true`, since a
+`RingVaccination` and `MassVaccination` return `false`, each acting on one
+person at a time. `GroupVaccination` returns `true`, since a
 group's trigger is the earliest eligible time among members who may live
-anywhere in the population. `CapacityConstrained` returns `true`, because its
-admission decision reads how much of the shared budget every other individual
-has used. A `Scheduled` built with `start_after_cases` returns `true`, the
+anywhere in the population. `CapacityConstrained` returns `true`, because
+whether a person is served depends on how much of the shared capacity others
+have used. A `Scheduled` built with `start_after_cases` returns `true`, the
 case count being exactly such a read; one built with only
-`start_time`/`end_time` compares against the time of the case being resolved
-and answers for the intervention it wraps, returning `false` only while that
-intervention does.
+`start_time`/`end_time` compares against the time of the case concerned
+and answers for the intervention it contains.
 
-`Isolation` and `ContactTracing` answer for the components they are given —
-`ContactTracing` its eligibility, rate, delay and action, `Isolation` its
-eligibility — each defaulting to `false`, and an eligibility combinator
-answers for what it wraps. A component of your own that reads population-wide
-state declares `true` for itself, which lifts the intervention holding it. Wrappers without a read of their own delegate to the intervention
-they wrap.
+`Isolation` and `ContactTracing` answer for their parts (`ContactTracing` its
+eligibility, rate, delay and action; `Isolation` its eligibility), each
+`false` by default, and a combined eligibility rule answers for its
+conditions. A part of your own that reads population-wide information returns
+`true`, which makes the intervention containing it return `true`.
 """
 reads_population_state(::AbstractIntervention) = true

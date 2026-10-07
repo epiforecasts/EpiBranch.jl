@@ -1,11 +1,15 @@
 """
     InterventionAction(individual, time, effect!)
 
-A candidate intervention action on `individual` at simulation `time`.
-`effect!(individual, time, state)` records the admitted action. Discovery must
-not record delivery. Effects may record future dates; admission occurs at the
-current simulation clock. A resource-constrained effect sets its intervention's
-`capacity_key` flag only when it consumes that resource.
+A proposed action of an intervention (such as giving one dose) on
+`individual` at day `time`, which [`Scheduled`](@ref) and
+[`CapacityConstrained`](@ref) can accept or turn down before it happens.
+
+For extension authors: `effect!(individual, time, state)` performs the
+action once accepted; proposing an action must not record it. The effect may
+record a future date, but acceptance happens on the current simulation clock.
+An effect limited by capacity sets its intervention's
+[`capacity_key`](@ref EpiBranch.capacity_key) only when it uses up capacity.
 """
 struct InterventionAction{I, T, F}
     individual::I
@@ -16,10 +20,17 @@ end
 """
     intervention_actions(intervention, state, candidates)
 
-Discover candidate [`InterventionAction`](@ref)s before scheduling or admission.
-An intervention may expand the incoming candidates, for example to their whole
-groups. Return `nothing` to use the legacy batch hook. An external producer can
-implement this method and call `apply_actions!` from its batch hook.
+The actions (such as doses) an intervention proposes for `candidates`, as
+[`InterventionAction`](@ref EpiBranch.InterventionAction)s, so that
+[`Scheduled`](@ref) and [`CapacityConstrained`](@ref) can check each one
+before it happens. An intervention may widen the candidates, for example to
+everyone in their groups.
+
+For extension authors: return `nothing` (the default) to have the
+intervention's own [`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!)
+called instead. An intervention defining this method calls
+[`apply_actions!`](@ref EpiBranch.apply_actions!) from its
+`apply_post_transmission!`.
 """
 intervention_actions(::AbstractIntervention, state, candidates) = nothing
 function intervention_actions(w::InterventionWrapper, state, candidates)
@@ -29,9 +40,10 @@ end
 """
     _action_cache(individual)
 
-The per-individual cache action discovery draws into (see [`action_draw!`](@ref)).
-Exposed so an intervention can also record bookkeeping of its own, such as which
-discovery a decision was made under. The cache is omitted from line-list output.
+For extension authors: the per-person store of random draws made when
+proposing actions (see [`action_draw!`](@ref EpiBranch.action_draw!)). An
+intervention can also keep its own records there, such as which proposal a
+decision was made under. It does not appear in the line list.
 """
 function _action_cache(individual)
     return get!(individual.state, :_intervention_actions) do
@@ -42,10 +54,10 @@ end
 """
     action_draw!(sample, individual, key)
 
-Cache `sample()` for one individual's action identity `key`. Repeated discovery
-returns the same value, including a rejected acceptance draw. Use distinct keys
-for distinct visits or dose labels. The cache belongs to the simulation's
-individual and is omitted from line-list output.
+Draw `sample()` once for this person and action `key`, and return the same
+value whenever the action is proposed again, so a person who was turned down
+(for example by a coverage draw) stays turned down. Use different keys for
+different visits or doses. The stored draws do not appear in the line list.
 """
 function action_draw!(sample, individual, key)
     return get!(sample, _action_cache(individual), key)
@@ -54,10 +66,11 @@ end
 """
     apply_actions!(intervention, state, candidates)
 
-Discover and admit actions through the intervention's wrappers. Schedules use
-candidate action times; capacity uses the simulation clock at admission. A
-candidate rejected by a wrapper may be considered on later discovery, using
-its cached draws. Completed actions are excluded by their producer.
+Propose the intervention's actions for `candidates` and perform those that
+its [`Scheduled`](@ref) and [`CapacityConstrained`](@ref) settings accept.
+Schedules check each action's own day; capacity uses the simulation clock. A
+person turned down may be offered the action again later, with the same
+random draws. The intervention itself leaves out actions already performed.
 """
 function apply_actions!(iv, state, candidates)
     actions = intervention_actions(iv, state, candidates)
@@ -169,14 +182,11 @@ end
 """
     may_revise(intervention, prior_trigger, new_trigger) -> Bool
 
-Whether a dose [`intervention`](@ref AbstractIntervention) already admitted
-under `prior_trigger` may be moved to `new_trigger`, a later discovery's
-candidate replacement. The default is `false`: an admitted dose keeps its
-date, as the design requires. [`GroupVaccination`](@ref) is the one built-in
-that opts in, since its trigger is only the earliest eligible member found so
-far on a continuous-time race, and a later discovery may find a genuinely
-earlier one; it permits the move only where `new_trigger` actually improves on
-`prior_trigger`."""
+Whether a dose already accepted under `prior_trigger` may be moved to
+`new_trigger`, found later. The default is `false`: an accepted dose keeps its
+date. [`GroupVaccination`](@ref) allows the move when `new_trigger` is
+earlier, since in continuous-time models a group's earliest eligible case may
+only be found after a later one."""
 may_revise(::AbstractIntervention, prior_trigger, new_trigger) = false
 function may_revise(w::InterventionWrapper, prior_trigger, new_trigger)
     return may_revise(w.intervention, prior_trigger, new_trigger)
@@ -282,10 +292,10 @@ end
 """
     continuous_actions(intervention) -> Bool
 
-Whether candidate actions can be discovered after a case is finalised on a
-network or household race. External producers opt in only when discovery does
-not require a pending contact's unknown infection time or revise an already
-finalised case. The default is `false`.
+Whether this intervention can act in network and household models, by
+proposing its actions after each case's infection is settled. Return `true`
+only if proposing actions needs no infection time of a contact not yet
+infected and never changes a case already settled. The default is `false`.
 """
 continuous_actions(::AbstractIntervention) = false
 function continuous_actions(w::InterventionWrapper)
@@ -317,20 +327,15 @@ end
 """
     _continuous_candidates(intervention, state, current, members, processed, contacts, pos, traced)
 
-The individuals to offer `intervention`'s [`intervention_actions`](@ref) once
-`current` has just settled. The default is every other still-pending member
-together with `current` itself — safe for any intervention, but a full scan
-of the population on every settled case. [`RingVaccination`](@ref) and
-[`GroupVaccination`](@ref) need far less: the members the tracing walk
-reached from `current`, or the members of `current`'s own group found through
-the group-to-members index (see `EpiBranch._group_members`), so they override
-this with a candidate list bounded by ring or group size rather than
-population size.
+The people to offer `intervention`'s actions to once `current`'s infection
+is settled in a network or household model. The default is `current` and
+everyone not yet settled, which suits any intervention. [`RingVaccination`](@ref)
+and [`GroupVaccination`](@ref) narrow it to the people tracing reached from
+`current` or the members of `current`'s group.
 
-`traced` is the set the race's walk reached, or `nothing` where no walk ran. A
-ring wider than one hop reaches people `current` does not neighbour, so a
-candidate list built from `contacts(current.id, state)` alone would leave them
-out.
+`traced` is the set tracing reached, or `nothing` if there was no tracing. A
+ring wider than one step reaches people who are not `current`'s direct
+contacts, so a list built from `current`'s contacts alone would miss them.
 """
 function _continuous_candidates(
         ::AbstractIntervention, state, current, members, processed, contacts, pos,
