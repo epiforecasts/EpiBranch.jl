@@ -27,8 +27,7 @@ println("Geometric(R=3): P(ext) = $(round(q, digits=4)) (exact: $(round(1/3, dig
 
 The epidemic probability is the complement: the chance that one introduced case
 starts an outbreak that does not die out by itself. With R = 2.5 and k = 0.16,
-estimates for SARS-CoV-2
-([Endo et al. 2020](https://doi.org/10.12688/wellcomeopenres.15842.3)), it is low despite the high R:
+the values used throughout these tutorials, it is low despite the high R:
 
 ```@example analytical
 p = epidemic_probability(2.5, 0.16)
@@ -86,7 +85,7 @@ secondary cases) follows a gamma distribution with mean R and shape k, the model
 behind the negative binomial offspring distribution:
 
 ```@example analytical
-# SARS-CoV-2: R = 2.5, k = 0.16
+# R = 2.5, k = 0.16
 prop = proportion_transmission(2.5, 0.16; prop_cases = 0.2)
 println("Top 20% of cases cause $(round(prop * 100, digits=1))% of transmission")
 
