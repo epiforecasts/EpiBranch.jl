@@ -126,10 +126,16 @@ end
 
 Without interventions, and with a single-type offspring distribution, this is
 the exact chain-size distribution (`Borel` or `GammaBorel`, adjusted for the
-observation model). It stays exact with `prob_concluded`, and with `seeds`
-unless cases are under-reported (`PerCaseObservation`). With
-interventions, or an offspring distribution that is not single-type, the
-probability of the data is estimated from simulated outbreaks.
+observation model). It stays exact with `seeds` or `prob_concluded`, with the
+limits in the box below. With interventions, or an offspring distribution
+that is not single-type, the probability of the data is estimated from
+simulated outbreaks.
+
+!!! warning
+    With under-reported cases (`PerCaseObservation`), `seeds` is ignored: the
+    probability is estimated from simulated outbreaks that each start from
+    `n_initial` index cases, whatever the number of index cases in each
+    observed cluster.
 
 Keyword arguments:
 
