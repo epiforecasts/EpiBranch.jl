@@ -479,8 +479,13 @@ function _simulated_person_time(
     state = simulate(sample_spec; rng)
 
     from = _resolve_infectious_from(process.from, spec.progression)
+    # A removal that lapses, such as a finite-duration isolation or quarantine,
+    # does not close the window (see `infectious_removal_time`); it blocks the
+    # isolated stretch per contact instead, which the pairwise likelihood takes
+    # out of the exposure through the same recorded stretches.
+    gaps = get(_layer_host_times(state, sample_spec, (;)), REMOVAL_STRETCHES_KEY, nothing)
     person_time = zeros(length(sample.members))
-    for ind in state.individuals
+    for (i, ind) in enumerate(state.individuals)
         is_infected(ind) || continue
         opened = EpiBranch._window_open(ind, from)
         closed = min(
@@ -497,9 +502,25 @@ function _simulated_person_time(
                     "listed in the process's `until` states, reached by every case"
             )
         )
-        person_time[ind.state[:household]] += closed - opened
+        stretches = gaps === nothing ? () : gaps[i]
+        person_time[ind.state[:household]] += closed - opened -
+            _removed_duration(stretches, opened, closed)
     end
     return person_time
+end
+
+# How much of a case's isolated or quarantined stretches fall inside its
+# community-infectious window, clipped to it so a stretch starting before the
+# window opens or outlasting its close only counts for the part the case would
+# otherwise have spent in the community.
+function _removed_duration(stretches, opened::Float64, closed::Float64)
+    total = 0.0
+    for (start, release) in stretches
+        lo = clamp(start, opened, closed)
+        hi = clamp(release, opened, closed)
+        total += max(hi - lo, 0.0)
+    end
+    return total
 end
 
 # The offspring law of a sample of households with the given total
