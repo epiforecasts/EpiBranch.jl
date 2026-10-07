@@ -98,10 +98,8 @@ below rather than to this parameter, isolation following an onset and so
 always releasing after the infection.
 
 A case isolated part-way through its infectious period transmits again once
-released, on the continuous-time models as much as on a generation-based one.
-The one exception is a removal wrapped in a [`Scheduled`](@ref) that can close,
-which on the continuous-time models removes the case for good at the isolation
-instead; the generation engine applies the duration either way. Leaky isolation
+released, on the continuous-time models as much as on a generation-based one,
+and inside a [`Scheduled`](@ref) as much as composed on its own. Leaky isolation
 (`post_isolation_transmission > 0`) closes no window at all, only reducing each
 contact's hazard, so there the release ends the reduction and the case
 transmits at full rate again; a finite duration can change a leaky model's
