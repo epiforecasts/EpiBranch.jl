@@ -2942,9 +2942,9 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "start_after = ReportedCases delays activation past Infections" begin
-            # Only a fifth of cases are ever reported, each after a delay, so
-            # at the moment `Infections(n)` would open — the n'th infection's
-            # own time — fewer than `n` reports are dated by that clock yet:
+            # Only a fifth of cases are ever reported, each after a delay. At
+            # the moment `Infections(n)` would open (the n'th infection's own
+            # time), fewer than `n` reports are dated by that clock yet, so
             # `ReportedCases(n)` must still be closed.
             progression = [
                 Reporting(delay = Exponential(2.0), probability = 0.2),

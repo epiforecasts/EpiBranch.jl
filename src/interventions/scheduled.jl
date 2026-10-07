@@ -113,7 +113,7 @@ function is_triggered! end
     trigger_can_lapse(trigger) -> Bool
 
 Whether `trigger`'s condition, once true, can turn false again. The
-default is the conservative `true` — a trigger written outside the package
+default is the conservative `true`: a trigger written outside the package
 is assumed able to close again until it says otherwise, as an opaque
 [`Scheduled`](@ref) predicate already is. [`Infections`](@ref) and
 [`ReportedCases`](@ref) return `false`: each counts something that can only
@@ -125,7 +125,7 @@ trigger_can_lapse(::AbstractTrigger) = true
     Infections(n)
 
 A [`Scheduled`](@ref) `start_after` trigger that opens once `n` infections
-have occurred — every case, as soon as it is created, including one never
+have occurred: every case, as soon as it is created, including one never
 reported or reported only after the date it opens on. Equivalent to the
 `start_after_cases` keyword.
 """
@@ -153,7 +153,7 @@ end
     ReportedCases(n)
 
 A [`Scheduled`](@ref) `start_after` trigger that opens once `n` cases have
-been reported *as of the simulation clock* (`state.max_infection_time`) —
+been reported *as of the simulation clock* (`state.max_infection_time`):
 unlike [`Infections`](@ref), a case whose `:reporting_time` lies after the
 current time does not count yet. Needs a `Reporting` transition in the
 model's `progression`, which sets `:reported` and `:reporting_time`.
