@@ -6,13 +6,12 @@ using Random
 
 # `NetworkProcess` describes the transmission alone over EpiBranch's continuous-time
 # simulation surface: it builds a population with `new_state`/`add_individuals!`
-# and runs the shared `_simulate` seam, deriving the infectious window from the
+# and runs the shared `simulate_once` seam, deriving the infectious window from the
 # progression composed onto it with a `ModelSpec`. `import` is needed for the
-# methods we add to (`population_size`, `_simulate`); the rest are pulled in
+# methods we add to (`population_size`, `simulate_once`); the rest are pulled in
 # because they are not brought into scope by `using EpiBranch`.
 import EpiBranch: population_size, new_state, add_individuals!, apply_observation!,
-    _simulate, SimOpts, _resolve_infectious_from,
-    _retry_for_condition, _reconcile_sellke_bookkeeping!,
+    simulate_once, SimOpts, infectious_from,
     _honours_termination_controls, _validate_process_windows,
     _warn_uncovered_terminal_states
 # The infection layer is built and read out of a simulation by EpiBranch's
