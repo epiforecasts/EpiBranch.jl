@@ -71,8 +71,8 @@ wanes from its own immunity date. The doses act independently, so an
 exposure gets through all of them with probability `prod(1 - eff_i * w_i)`,
 where `eff_i` is dose `i`'s efficacy and `w_i` the fraction it retains: a
 prime at 0.6 and a boost at 0.7, both at full strength, together prevent
-0.88 of exposures. A single dose with the default label is what
-[`is_vaccinated`](@ref) reports.
+0.88 of exposures. [`is_vaccinated`](@ref) reports the dose with the default
+label; pass its `dose_label` keyword to check another.
 """
 abstract type AbstractVaccination <: AbstractIntervention end
 
