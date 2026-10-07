@@ -9,8 +9,8 @@ Distributions.jl.
 
 !!! warning
     `NegativeBinomial(r, p)` from Distributions.jl takes a number of
-    successes and a success probability, not a mean and dispersion. Used
-    directly as an offspring distribution it gives wrong results without any
+    successes and a success probability, not a mean and dispersion, so
+    `NegativeBinomial(R, k)` gives a different distribution without any
     error. Use `NegBin(R, k)`.
 
 # Examples
