@@ -692,7 +692,7 @@ end
 # The HomogeneousProcess provides the fixed population and its removal states;
 # `force` replaces its transmission rate, so any value will do here. Each
 # person's :age_band is set as they are created; any characteristic works,
-# including the built-in demographics (:age, :sex, :risk_group).
+# including the built-in demographics (:age, :sex).
 carrier = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
 progression = [Transition(:recovered; from = :infection,
     delay = Exponential(1.0), terminal = true)]
