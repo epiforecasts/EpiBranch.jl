@@ -1174,9 +1174,8 @@ default) leaves every hazard as the kernel gives it. Through
 [`susceptibility_components`](@ref EpiBranch.susceptibility_components) the
 effect says how it scales every hazard a person faces, from possible infectors
 and from outside alike. A `VaccineEffect` reads each person's immunity time
-from the record's `host_times`, which [`household_infections`](@ref
-EpiBranch.household_infections) and [`network_infections`](@ref
-EpiBranch.network_infections) record for a model with vaccination; its
+from the record's `host_times`, which [`household_infections`](@ref) and
+[`network_infections`](@ref) record for a model with vaccination; its
 `efficacy` must be a number. Under [`LeakyMode`](@ref), a vaccinated person's
 hazards from their immunity time on are multiplied by `1 - efficacy`, or by
 `1 - efficacy * waning(dt)` with `waning`. Under [`AllOrNothingMode`](@ref),
