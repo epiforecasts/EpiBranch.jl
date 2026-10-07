@@ -205,17 +205,19 @@ final outcome.
 
 ### Delays from infection
 
-If you do not model symptom onset, time events from infection instead. With
-`from = :infection` (the default for `Transition`), no
-`clinical_presentation` is needed:
+If you do not model symptom onset, time events from infection instead, and
+no `clinical_presentation` is needed. The built-in events take `from` as a
+function of the person:
 
 ```julia
-Transition(:reported; from = :infection, delay = LogNormal(2.0, 0.3))
+Reporting(delay = LogNormal(2.0, 0.3), from = ind -> ind.infection_time)
 ```
 
-The built-in events take `from` too, as a function of the person:
-`Reporting(delay = LogNormal(2.0, 0.3), from = ind -> ind.infection_time)`.
-Each event has its own `from`: a timeline can admit cases a delay after onset
+`Transition(:reported; from = :infection, ...)` also times an event from
+infection (its default), but it records `:reported_time`. The line list then
+has a `date_reported` column in place of `date_reporting`, and
+`weekly_incidence(state; by = :reporting)` counts no cases. Use `Reporting`
+when you want the standard reporting dates. Each event has its own `from`: a timeline can admit cases a delay after onset
 and time their outcome from admission.
 
 ## Combining with multi-type models and population characteristics
