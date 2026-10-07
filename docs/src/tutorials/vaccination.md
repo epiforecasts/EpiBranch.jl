@@ -119,8 +119,7 @@ end
 
 A vaccine that takes time to protect can be too late. Here protection starts
 7 days after the dose, compared with no vaccination and same-day protection
-over more outbreaks, so that the differences stand out from the Monte Carlo
-error:
+over more outbreaks, with the standard error of each:
 
 ```@example vaccination
 rv_delayed = RingVaccination(efficacy = 0.8, delay_to_immunity = 7.0)
@@ -138,11 +137,10 @@ end
 ```
 
 Contacts infected after the trace are infected in the days between the trace
-and their infector's isolation, so a dose that protects a week later comes
-too late for most of them. Containment with the delay falls back towards no
-vaccination. The gap that remains is about twice the standard error of a
-difference between two scenarios (about 1.4 times that of each), so these
-runs cannot say whether any benefit is left.
+and their infector's isolation. Here the trace comes a mean of 1 day after
+onset and the isolation a mean of 2 days after it, so that gap rarely lasts a
+week, and a dose that protects 7 days later comes too late for most of them.
+Containment with the delay falls back towards no vaccination.
 
 ### Counting doses
 
