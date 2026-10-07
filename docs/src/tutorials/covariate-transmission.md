@@ -344,9 +344,11 @@ then both measure the contact interval from each case's onset. An ordinary
 distribution is enough.
 
 A rule can also read the onset itself, for transmission that depends on it in
-other ways. Here the contact interval is counted from symptom onset: it is the
-time from infection to onset plus an exponential waiting time with mean 1 day.
-Adding a number to a distribution shifts it by that number.
+other ways. Here no one is infected before the infector's symptom onset: the
+contact interval, measured from infection, is the incubation period plus an
+exponential waiting time with mean 1 day. The incubation period is
+`Gamma(2.0, 1.0)` (shape 2, scale 1, so a mean of 2 days). Adding a number to a
+distribution shifts it by that number.
 
 ```@example stateful
 onset_state(ind) = (onset = get(ind.state, :onset_time, NaN),)
