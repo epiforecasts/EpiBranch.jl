@@ -111,8 +111,8 @@ value releases them. A released case who is still infectious transmits again:
 a secondary case whose infection would fall after the release is not
 prevented. A duration of 0 stops no transmission at all.
 
-Choosing `Inf` to mean "isolated for the rest of the infectious period" is
-only safe when infectiousness ends before any finite duration would. The
+A finite duration means "isolated for the rest of the infectious period"
+only when infectiousness ends before the duration runs out. The
 generation time here has no upper limit, so cases released after the 7 days
 above can still infect people. Isolation follows onset and always starts after
 infection. Removing a contact before they are infected is quarantine, below.
