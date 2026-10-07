@@ -224,12 +224,8 @@ Contacts who were not infected appear when something stopped transmission,
 such as isolation, quarantine or vaccination. This model has no interventions:
 every contact was infected.
 
-!!! note "Household and network models"
-    In the household and network models (`HouseholdProcess`, `NetworkProcess`,
-    `RoutedNetwork`) the contacts table lists each pair of people who are in
-    contact, and a vaccinated or otherwise protected pair appears exactly as an
-    unprotected one would. It does not count how many separate contact events
-    a pair had, or when they happened. If you need that count, add a
-    [`ContactRecorder`](@ref) to the model; see
-    [Recording every contact event](@ref "Recording every contact event") in
-    the extending guide.
+!!! warning "Fixed-population models"
+    For models that simulate a fixed population (`HomogeneousProcess`,
+    `HouseholdProcess`, `NetworkProcess`, `RoutedNetwork`), `contacts`
+    currently returns an empty table. Who infected whom is in the line list's
+    `parent_id` column.
