@@ -10,10 +10,10 @@ and the time stays `Inf`.
 
 `from` names an earlier state whose time this one is measured from:
 `:infection` (the default) resolves to the individual's `infection_time`;
-any other symbol `s` resolves to `Symbol(s, :_time)` in `ind.state` (so
-`from = :onset` reads `:onset_time`), unless `s` already ends in `_time`,
-in which case it is looked up as-is (so `from = :onset_time` works the
-same way). A `Function (ind) -> Real` is also accepted, for anchors held
+any other symbol `s` resolves to `Symbol(s, :_time)` in `ind.state`
+(`from = :onset` reads `:onset_time`), unless `s` already ends in
+`_time`, in which case it is looked up as-is (`from = :onset_time` also
+works). A `Function (ind) -> Real` is also accepted, for anchors held
 as fields on the `Individual`. If the `from` state's time is not finite
 (the upstream state was never reached, or an asymptomatic case has a
 `NaN` onset), the transition is skipped. A `from` that names neither a

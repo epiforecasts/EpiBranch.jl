@@ -3,8 +3,8 @@ same way `Transition` does: `:infection` reads the case's infection time, and
 any other state name resolves to its `:*_time` key, so `from = :onset` reads
 `:onset_time` and `from = :infection` reads the infection time instead of a
 state-dict key that is never set. Previously both read `from` as a raw
-state-dict key, so neither ever resolved and the step silently never
-happened for any case; the existing key form (`from = :onset_time`) still
+state-dict key: neither ever resolved, and the step silently never
+happened for any case. The existing key form (`from = :onset_time`) still
 works as before.
 
 A `from` that names neither a state any step or attribute produces nor an

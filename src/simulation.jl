@@ -847,12 +847,13 @@ function seed!(state::SimulationState, ids, interventions, transitions)
     return state
 end
 
-# A throwaway individual carrying the first seed case's attribute-derived
+# A throwaway individual that holds the first seed case's attribute-derived
 # state plus every transition's own `initialise_individual!` keys. A `from`
 # anchored on another transition's output is not yet written on any real
-# individual at seed time — the transitions themselves haven't run — so
-# `_validate_required_fields` is checked against this probe instead, which
-# makes every step's own keys visible without running any step for real.
+# individual at seed time, because the transitions themselves haven't run
+# yet. `_validate_required_fields` is checked against this probe instead,
+# which makes every step's own keys visible without running any step for
+# real.
 function _transition_probe(first_ind, transitions, state)
     probe = Individual(;
         id = first_ind.id, infection_time = first_ind.infection_time,

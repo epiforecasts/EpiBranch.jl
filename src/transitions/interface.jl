@@ -420,7 +420,7 @@ _anchor_ok(anchor) = isfinite(anchor)
 # The key a transition's `required_fields` demands of its `from` anchor.
 # `:infection` is always available (the individual's own `infection_time`
 # field), so it demands nothing. Every other symbol demands its resolved
-# key — present already when `from` names an attribute-produced state
+# key: present already when `from` names an attribute-produced state
 # (`:onset_time`), or once the start-up validator has primed a probe
 # individual with every transition's own `initialise_individual!` (see
 # `_transition_probe` in simulation.jl) when `from` names another

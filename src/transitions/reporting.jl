@@ -2,13 +2,13 @@
 Cases are reported with probability `probability` after a `delay`
 drawn per case, measured from `from`. `from` defaults to `:onset_time`.
 `:infection` resolves to the individual's infection time; any other
-`Symbol` names a state and resolves to its `:*_time` key (so `from =
-:onset` reads `:onset_time`, and `from = :test` reads `:test_time`),
-unless it already ends in `_time`, in which case it is looked up as-is
-(so `from = :test_time` works the same way). A `Function (ind) -> Real`
-is also accepted, for composite anchors. If the anchor is not finite,
-the transition is skipped — either the `from` state was never reached
-(its `:*_time` key still at its `Inf` default), or the anchor is `NaN`,
+`Symbol` names a state and resolves to its `:*_time` key (`from =
+:onset` reads `:onset_time`, `from = :test` reads `:test_time`), unless
+it already ends in `_time`, in which case it is looked up as-is (`from =
+:test_time` also works). A `Function (ind) -> Real` is also accepted,
+for composite anchors. If the anchor is not finite, the transition is
+skipped: either the `from` state was never reached (its `:*_time` key
+still at its `Inf` default), or the anchor is `NaN`,
 most commonly an asymptomatic case under [`clinical_presentation`](@ref)
 whose `:onset_time` is `NaN`.
 
