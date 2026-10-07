@@ -803,7 +803,7 @@ simulate(process; rng = Xoshiro(42))
 
 The multi-type constructor that takes a contact matrix also accepts such a type
 as its distribution family. Distributions and offspring specifications with
-their own `draw_offspring` method work as before. Closed-form results need an
+their own `draw_offspring` method are used as they are. Closed-form results need an
 offspring distribution with the corresponding analytical methods; a rule that
 works for simulation has no closed form.
 
