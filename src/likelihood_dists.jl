@@ -124,10 +124,11 @@ says the observed sizes follow this distribution:
 end
 ```
 
-Without interventions or keyword arguments, and with a single-type offspring
-distribution, this is the exact chain-size distribution (`Borel` or
-`GammaBorel`, adjusted for the observation model). Otherwise the probability
-of the data is estimated from simulated outbreaks.
+Without interventions, and with a single-type offspring distribution, this is
+the exact chain-size distribution (`Borel` or `GammaBorel`, adjusted for the
+observation model), also when `seeds` or `prob_concluded` is given. With
+interventions, or an offspring distribution that is not single-type, the
+probability of the data is estimated from simulated outbreaks.
 
 Keyword arguments:
 
