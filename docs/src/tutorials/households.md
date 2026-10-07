@@ -113,9 +113,10 @@ households is a branching process of its own, in which the unit is a whole
 household: an infected household infects other households through its members'
 contacts in the community. Its reproduction number is the **household
 reproduction number R\***: the mean number of other households that one
-infected household infects. An epidemic of households can grow only if R\* >
-1. R\* is not the same as the individual reproduction number, because it
-counts the community infections made by everyone infected in the household.
+infected household infects. An epidemic of households can grow only if
+R\* > 1. R\* is not the same as the individual reproduction number, because
+it counts the community infections made by everyone infected in the
+household.
 
 [`household_offspring`](@ref) gives the distribution of the number of other
 households one infected household infects. It needs one number that the
