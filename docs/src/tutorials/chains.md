@@ -256,7 +256,11 @@ data ~ chain_size_distribution(BranchingProcess(Poisson(R));
 ```
 
 If the model includes interventions, EpiBranch estimates the likelihood by
-simulation instead, which is slower. `prob_concluded` cannot be combined with
-interventions.
+simulation instead, which is slower.
+
+!!! warning
+    `seeds` and `prob_concluded` only work for models without interventions.
+    With interventions, `prob_concluded` stops with an error, and `seeds` is
+    ignored: every cluster is treated as starting from a single index case.
 
 The [inference tutorial](inference.md) runs these models in full.
