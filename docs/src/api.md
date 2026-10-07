@@ -178,6 +178,11 @@ EpiBranch.realise_prior_dose!
 
 EpiBranch.supports_waning
 Scheduled
+AbstractTrigger
+is_triggered!
+trigger_can_lapse
+Infections
+ReportedCases
 CapacityConstrained
 capacity_usage
 EpiBranch.InterventionAction
