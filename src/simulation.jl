@@ -980,8 +980,9 @@ Add one new contact of the case `parent`, exposed at `infection_time` (days),
 to the outbreak, and return it. Its population characteristics are drawn
 when it is created; interventions act on it later in the generation.
 
-Only needed when writing a new transmission model. The built-in models call
-it for every contact [`generate_offspring`](@ref) asks for. A model
+Only needed when writing a new transmission model. The simulation calls it
+for every contact drawn from a branching process's offspring distribution, or
+from [`generate_offspring`](@ref) in a model that defines it. A model
 that creates new people inside its [`contacts_of`](@ref) calls it directly,
 returning each contact with its infection time:
 
