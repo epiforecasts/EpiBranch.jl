@@ -175,7 +175,7 @@ when the function reads no state key (for example one that looks people up by
 `ind.id`). Anything that can change during the outbreak must be read from
 `individual.state`, which is the only place changes are followed, and not from
 a field such as `ind.susceptibility`. With no `state`, or with a vector of
-records, nothing can change, and passing `watches` is an error.
+records, nothing can change, and passing a non-empty `watches` is an error.
 
 `calendar`, a [`Steps`](@ref) schedule or any type with a
 [`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) method, multiplies
