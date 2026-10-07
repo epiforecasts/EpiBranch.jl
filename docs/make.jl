@@ -18,6 +18,7 @@ makedocs(;
     pages = [
         "Home" => "index.md",
         "Installation" => "installation.md",
+        "Julia for R users" => "julia-for-r-users.md",
         "Tutorials" => [
             "Getting started" => "tutorials/getting-started.md",
             "Interventions" => [
@@ -41,6 +42,7 @@ makedocs(;
             "Extending EpiBranch" => "tutorials/extending.md",
         ],
         "Design" => "design.md",
+        "Glossary" => "glossary.md",
         "API reference" => "api.md",
     ]
 )
