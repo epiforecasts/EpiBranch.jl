@@ -15,7 +15,7 @@ Distributions.jl.
 
 # Examples
 ```julia
-NegBin(2.5, 0.16)   # R = 2.5, k = 0.16 (as estimated for SARS)
+NegBin(2.5, 0.16)   # R = 2.5, k = 0.16 (k as estimated for SARS)
 ```
 """
 function NegBin(R::Real, k::Real)
