@@ -1227,10 +1227,10 @@ Vaccinate the population on a schedule, independently of contact tracing.
 - `mode`, `dose_label`: see [`AbstractVaccination`](@ref). Use two
   `MassVaccination`s with different `dose_label`s for a multi-dose rollout.
 
-Each person's vaccination day is drawn when they enter the simulation, and
-they count as vaccinated if it is finite. They are protected against an
-exposure only if their vaccination day plus `delay_to_immunity` comes before
-it.
+Each contact's vaccination day is drawn when a branching process creates
+the contact (index cases are not vaccinated), and they count as vaccinated
+if it is finite. They are protected against an exposure only if their
+vaccination day plus `delay_to_immunity` comes before it.
 
 # Examples
 
