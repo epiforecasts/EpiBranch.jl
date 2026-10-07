@@ -593,7 +593,9 @@ cannot be read off near zero.
 
 !!! note "Gamma distributions with Turing"
     To fit a `Gamma` contact interval or community hazard with Turing, use
-    `NUTS(; adtype = AutoMooncake())`. The default sampler settings fail for
+    `NUTS(; adtype = AutoMooncake())`, after adding the Mooncake package to
+    your environment and loading it with `using Mooncake`. The default sampler
+    settings fail for
     `Gamma` with a `MethodError` that comes from a dependency of this package.
     `Exponential` and `Weibull`, the distributions used above, work with the
     defaults.

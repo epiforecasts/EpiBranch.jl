@@ -630,5 +630,6 @@ who can infect person `i` are those who list `i` as a contact.
       cannot explain, such as someone infected when none of their contacts was
       infectious and there is no community hazard.
     - To fit a `Gamma` contact interval or community hazard with Turing, use
-      `NUTS(; adtype = AutoMooncake())`; the default sampler settings fail for
+      `NUTS(; adtype = AutoMooncake())`, with the Mooncake package installed
+      and loaded (`using Mooncake`); the default sampler settings fail for
       `Gamma`. `Exponential` and `Weibull` work with the defaults.
