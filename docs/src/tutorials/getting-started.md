@@ -146,12 +146,18 @@ first(r_df, 5)
 
 ## Analytical functions
 
-Some quantities have closed-form solutions — no simulation needed:
+Some quantities have closed-form solutions — no simulation needed. They
+read a spec's interventions too, but only ones whose effect on the
+offspring law is itself exact in closed form; `spec` above carries
+`Isolation`, whose effect on R depends on how its timing overlaps the
+generation-time distribution, so calling them on `spec` would refuse
+rather than silently ignore it. The underlying `model` carries no such
+intervention:
 
 ```@example gettingstarted
-println("P(extinction): $(round(extinction_probability(spec), digits=3))")
-println("P(epidemic):   $(round(epidemic_probability(spec), digits=3))")
-println("Top 20% cause $(round(proportion_transmission(spec; prop_cases=0.2) * 100, digits=1))% of transmission")
+println("P(extinction): $(round(extinction_probability(model), digits=3))")
+println("P(epidemic):   $(round(epidemic_probability(model), digits=3))")
+println("Top 20% cause $(round(proportion_transmission(model; prop_cases=0.2) * 100, digits=1))% of transmission")
 ```
 
 ## Conditioned simulation
