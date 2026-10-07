@@ -494,7 +494,8 @@ struct HospitalBay <: TransmissionModel
     p::Float64      # probability that an exposure of a neighbour infects
 end
 
-# Patients are a fixed set of beds, not a growing population.
+# Patients run out because each is infected at most once, so no
+# population-wide susceptible fraction is applied on top.
 EpiBranch.population_size(::HospitalBay) = EpiBranch.NoPopulation()
 
 # Create every patient at the start and infect the first `n_initial`.
