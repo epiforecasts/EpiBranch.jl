@@ -68,8 +68,9 @@ Interventions on this process:
 
 - `Isolation` removes a case from their isolation time for its `duration`,
   cutting their secondary cases; with `duration = Inf` this ends their
-  infectious period. Leaky isolation reduces each
-  household contact's chance of infecting by the same fraction.
+  infectious period. Leaky isolation reduces the rate at which each
+  household contact is infected by the same fraction, which lowers their
+  chance of infection by less.
 - `ContactTracing` treats a case's household members as their contacts;
   quarantining a traced contact stops that contact's transmission for the
   quarantine's `duration`.
@@ -77,7 +78,7 @@ Interventions on this process:
   course of infection is known, which in a fast-spreading household means the
   ones infected later.
 - A vaccine's efficacy, and per-person susceptibility and infectiousness, reduce
-  each household contact's chance of infecting.
+  the rate at which each household contact is infected.
 - `RingVaccination` and `GroupVaccination` work, including with `Scheduled`
   and `CapacityConstrained`, and a ring dose's `post_exposure_efficacy` can stop
   a household member's own infection before onset. A capacity limit is one
