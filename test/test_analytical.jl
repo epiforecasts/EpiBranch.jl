@@ -170,6 +170,60 @@
         end
     end
 
+    @testset "cdf of chain-size distributions" begin
+        # Regression: none of these defined a `cdf`/`cdf(d, ::Integer)`
+        # method, so Distributions.jl's discrete fallback called itself
+        # until the stack overflowed.
+        @testset "Borel" begin
+            d = Borel(0.5)
+            @test cdf(d, 3) ≈ sum(pdf(d, n) for n in 1:3)
+            @test cdf(d, 3) + ccdf(d, 3) ≈ 1.0
+            @test cdf(d, 0) == 0.0
+        end
+
+        @testset "GammaBorel (the issue's reproduction)" begin
+            d = chain_size_distribution(NegBin(0.8, 0.5))
+            @test cdf(d, 3) ≈ sum(pdf(d, n) for n in 1:3)
+            @test cdf(d, 3) + ccdf(d, 3) ≈ 1.0
+        end
+
+        @testset "PoissonGammaChainSize" begin
+            d = PoissonGammaChainSize(0.5, 0.8)
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+        end
+
+        @testset "IndexChainSize" begin
+            d = IndexChainSize(Poisson(0.4), NegBin(0.6, 0.5))
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+        end
+
+        @testset "TruncatedChainSize" begin
+            base = chain_size_distribution(NegBin(0.8, 0.5))
+            d = observe(base, MinimumSize(2))
+            @test cdf(d, 1) == 0.0  # below min_size has no mass
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 2:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+        end
+
+        @testset "ChainSizeMixture" begin
+            cm = ClusterMixed(R -> NegBin(R, 0.5), Gamma(2.0, 0.3))
+            d = chain_size_distribution(cm)
+            @test d isa ChainSizeMixture
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+        end
+
+        @testset "ThinnedChainSize" begin
+            base = chain_size_distribution(NegBin(0.8, 0.5))
+            d = observe(base, PerCaseObservation(0.7, Dirac(0.0)))
+            @test d isa ThinnedChainSize
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+        end
+    end
+
     @testset "IndexChainSize" begin
         @testset "PMF matches the mixture formula" begin
             index = Poisson(0.4)
