@@ -60,9 +60,11 @@ Collect who was infected when from a network outbreak simulated from `model`
 (infection times, start and end of each infectious period, index cases), in
 the form the pairwise likelihood needs, with the model's network as the
 contact structure. The infectious periods are the ones the simulation used, as
-described for [`InfectionLayer`](@ref). Only the infectious periods are
-recorded, so any other effect on transmission must be built into the kernel
-passed to the likelihood. A bare `NetworkProcess` is accepted too (its
+described for [`InfectionLayer`](@ref). Besides the infectious periods, the
+event times listed below are recorded, and `loglikelihood` applies
+interventions that change susceptibility, such as vaccination, from them. Any
+other effect on transmission must be built into the kernel passed to the
+likelihood. A bare `NetworkProcess` is accepted too (its
 infectious period starts at `:infection`, and it has no interventions).
 
 `host_times` names further per-person event times to record, such as
