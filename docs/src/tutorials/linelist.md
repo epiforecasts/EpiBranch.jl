@@ -10,7 +10,10 @@ Every line list has the columns `id`, `parent_id` (the infector's `id`),
 `generation`, `chain_id` and `date_infection`. Anything else the simulation
 records about a case, such as symptom onset, age or outcome, becomes a column
 as well. A recorded time whose name ends in `_time` becomes a date column, so
-`onset_time` appears as `date_onset`. To get a new column, record that value on
+`onset_time` appears as `date_onset`. A model with isolation or quarantine
+adds `isolated` and `date_isolation`, and when they last a finite time (a
+finite `duration`) also `date_isolation_release`, the date the person was
+released. To get a new column, record that value on
 each case during the simulation, for example as a population characteristic
 (see the [clinical transitions tutorial](transitions.md)).
 
@@ -195,10 +198,11 @@ happen to a person whether or not they are infected are kept:
 
 - `date_trace`, when the contact was traced;
 - `date_vaccination` and `date_immunity`;
-- `date_isolation`, when the contact was quarantined on being traced. If a
-  traced contact was later due to be isolated at what would have been their
-  symptom onset, that isolation date is `missing` (they were never infected, so
-  never had an onset), and the earlier quarantine date is shown instead.
+- `date_isolation`, when the contact was quarantined on being traced, and
+  `date_isolation_release`, when that quarantine ended. If a traced contact
+  was later due to be isolated at what would have been their symptom onset,
+  that isolation is not shown (they were never infected, so never had an
+  onset): both columns give the earlier quarantine instead.
 
 Columns that are not dates, such as `asymptomatic`, `traced` or `vaccinated`,
 are shown unchanged.
