@@ -174,8 +174,18 @@ reproduction_number(ClusterMixed(Poisson, Gamma(2.0, 0.6)))  # 1.2
 """
 reproduction_number(d::DiscreteUnivariateDistribution) = _law_mean(d)
 reproduction_number(o::MultiTypeOffspring) = _spectral_radius(_mean_matrix(o))
-function reproduction_number(model::Union{TransmissionModel, ModelSpec})
+function reproduction_number(model::TransmissionModel)
     return reproduction_number(_analytic_offspring(model))
+end
+
+# For a `ModelSpec`, the offspring law is folded through every intervention's
+# `analytic_offspring_effect` first; a spec carrying an intervention without
+# one throws, naming the simulation-based alternative, rather than returning
+# the bare process's reproduction number as if the interventions were not
+# there.
+function reproduction_number(spec::ModelSpec)
+    off = _offspring_through_interventions(spec, _analytic_offspring(spec))
+    return reproduction_number(off)
 end
 
 """

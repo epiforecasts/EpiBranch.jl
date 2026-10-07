@@ -321,3 +321,41 @@ state declares `true` for itself, which lifts the intervention holding it. Wrapp
 they wrap.
 """
 reads_population_state(::AbstractIntervention) = true
+
+"""
+    analytic_offspring_effect(intervention, offspring) -> offspring
+
+The effect `intervention` has on a case's offspring specification (a
+`Distribution` for a single-type process, a [`MultiTypeOffspring`](@ref) for
+a multi-type one), when that effect is exact in closed form on its own — not
+an approximation, and not one that depends on how the intervention's own
+event times interact with the model's generation-time distribution, which
+the offspring draw does not carry and is generally not integrable in closed
+form at all (isolation's effect on R, for one, depends on exactly that
+overlap, so `Isolation` has no method here). Given the offspring
+specification a bare process would use, returns the one a case under
+`intervention` draws from instead: a thinned distribution for a
+population-level reduction in R, or a mixture with `Dirac(0)` for a per-case
+probability of being removed before transmitting at all (what
+[`probability_contain`](@ref)'s `ind_control` expresses).
+
+No default: an intervention without a method of its own falls through to the
+generic method below, which refuses. [`extinction_probability`](@ref),
+[`epidemic_probability`](@ref), [`probability_contain`](@ref),
+[`reproduction_number`](@ref), [`proportion_transmission`](@ref) and
+[`offspring_distribution`](@ref), called on a [`ModelSpec`](@ref) that
+carries such an intervention, therefore refuse too rather than return a
+number that silently ignores it.
+"""
+function analytic_offspring_effect(iv::AbstractIntervention, offspring)
+    throw(
+        ArgumentError(
+            "$(typeof(iv)) has no closed-form effect on the offspring distribution " *
+                "(no `analytic_offspring_effect` method of its own), so this analytical " *
+                "function would otherwise ignore it. Use " *
+                "probability_contain(R, k; ind_control, pop_control) for an " *
+                "approximation, or containment_probability(simulate(spec, n)) for " *
+                "the simulated answer."
+        )
+    )
+end

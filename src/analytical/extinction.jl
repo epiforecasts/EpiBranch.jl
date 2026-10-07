@@ -105,6 +105,7 @@ end
 
 """
     extinction_probability(model::TransmissionModel; kwargs...)
+    extinction_probability(spec::ModelSpec; kwargs...)
 
 Extinction probability for a transmission model, computed from the model's
 offspring specification. For a single-type model the result is a number,
@@ -112,9 +113,20 @@ computed from the law returned by `single_type_offspring`; this covers
 `BranchingProcess` and wrappers that delegate that accessor (e.g. `Observed`).
 For a multi-type model built from an offspring matrix the result is a vector
 with one entry per type of index case.
+
+For a `ModelSpec`, the offspring law is folded through every intervention's
+[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec carrying an
+intervention without one throws, naming the simulation-based alternative,
+rather than returning the bare process's extinction probability as if the
+interventions were not there.
 """
-function extinction_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
+function extinction_probability(model::TransmissionModel; kwargs...)
     return extinction_probability(_analytic_offspring(model); kwargs...)
+end
+
+function extinction_probability(spec::ModelSpec; kwargs...)
+    off = _offspring_through_interventions(spec, _analytic_offspring(spec))
+    return extinction_probability(off; kwargs...)
 end
 
 # ── Containment probability (analytical) ─────────────────────────────
@@ -198,11 +210,23 @@ end
 
 """
     probability_contain(model::TransmissionModel; kwargs...)
+    probability_contain(spec::ModelSpec; kwargs...)
 
 Containment probability for a single-type transmission model. Delegates
 through `single_type_offspring`, so wrappers such as `Observed`
 work too.
+
+For a `ModelSpec`, the offspring law is folded through every intervention's
+[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec carrying an
+intervention without one throws, naming the simulation-based alternative,
+rather than returning the bare process's containment probability as if the
+interventions were not there.
 """
-function probability_contain(model::Union{TransmissionModel, ModelSpec}; kwargs...)
+function probability_contain(model::TransmissionModel; kwargs...)
     return probability_contain(single_type_offspring(model); kwargs...)
+end
+
+function probability_contain(spec::ModelSpec; kwargs...)
+    off = _offspring_through_interventions(spec, single_type_offspring(spec))
+    return probability_contain(off; kwargs...)
 end

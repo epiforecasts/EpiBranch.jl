@@ -55,9 +55,16 @@ end
 
 """
     proportion_transmission(model::BranchingProcess; prop_cases=0.2)
+    proportion_transmission(spec::ModelSpec; prop_cases=0.2)
 
 Proportion of transmission from the most infectious fraction of cases,
 extracted from the model's offspring distribution (must be NegativeBinomial).
+
+For a `ModelSpec`, the offspring law is folded through every intervention's
+[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec carrying an
+intervention without one throws, naming the simulation-based alternative,
+rather than returning the bare process's proportion as if the interventions
+were not there.
 """
 function proportion_transmission(d::NegativeBinomial; prop_cases::Real = 0.2)
     return proportion_transmission(mean(d), d.r; prop_cases)
@@ -71,11 +78,13 @@ function proportion_transmission(d::Distribution; prop_cases::Real = 0.2)
     throw(ArgumentError("proportion_transmission not defined for $(typeof(d)). Use NegativeBinomial or Poisson."))
 end
 
-function proportion_transmission(
-        model::Union{TransmissionModel, ModelSpec};
-        prop_cases::Real = 0.2
-    )
+function proportion_transmission(model::TransmissionModel; prop_cases::Real = 0.2)
     return proportion_transmission(single_type_offspring(model); prop_cases)
+end
+
+function proportion_transmission(spec::ModelSpec; prop_cases::Real = 0.2)
+    off = _offspring_through_interventions(spec, single_type_offspring(spec))
+    return proportion_transmission(off; prop_cases)
 end
 
 # ── Proportion of cases responsible for a share of transmission ──────
