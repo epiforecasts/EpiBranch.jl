@@ -66,7 +66,8 @@ terminal_target(::AbstractClinicalTransition) = nothing
 # certainty. A transition that does not override this is simply treated as
 # unknown rather than guessed at from its field layout; override it alongside
 # `is_terminal` and `terminal_event` to make that check see past it. Not part
-# of the transition interface documented in `extending.md`.
+# of the transition interface documented in `writing-interventions.md` and
+# `extending-reference.md`.
 terminal_certainty(::AbstractClinicalTransition) = missing
 
 # Whether a constant `probability` guarantees the gate it sits behind passes;

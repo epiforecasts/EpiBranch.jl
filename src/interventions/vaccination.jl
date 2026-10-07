@@ -51,8 +51,8 @@ draw is stored alongside the other per-dose state, so it is made once
 and read back at every exposure the individual faces, however many
 there are. A new mode subtypes `AbstractEffectMode` and implements
 [`realised_efficacy`](@ref EpiBranch.realised_efficacy) and
-[`realise_prior_dose!`](@ref EpiBranch.realise_prior_dose!); see the
-Extending guide for a worked example. `AllOrNothingMode` cannot yet be
+[`realise_prior_dose!`](@ref EpiBranch.realise_prior_dose!); see
+[A custom effect mode](@ref) for a worked example. `AllOrNothingMode` cannot yet be
 combined with `waning` (see below); a `VaccineEffect` combining them raises
 an `ArgumentError`.
 
@@ -127,8 +127,8 @@ Concrete subtypes:
   rest gain no protection against infection (per-individual semantics).
 
 A new mode is two methods, dispatched on it: [`EpiBranch.realised_efficacy`](@ref)
-and [`EpiBranch.realise_prior_dose!`](@ref). See the Extending guide for a
-worked example.
+and [`EpiBranch.realise_prior_dose!`](@ref). See [A custom effect mode](@ref)
+for a worked example.
 """
 abstract type AbstractEffectMode end
 
@@ -185,7 +185,7 @@ given.
 
 The built-in vaccinations take these as keywords and produce the
 `VaccineEffect` themselves; construct one directly for a custom vaccination
-type (see the Extending guide).
+type (see [A custom vaccination](@ref)).
 """
 struct VaccineEffect{E, SV, D, W, M <: AbstractEffectMode}
     efficacy::E

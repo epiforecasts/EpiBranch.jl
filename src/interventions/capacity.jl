@@ -99,7 +99,7 @@ function capacity_key(iv::AbstractIntervention)
         ArgumentError(
             "CapacityConstrained needs a `capacity_key` method for $(typeof(iv)) " *
                 "to know which state key measures how much of its resource has been " *
-                "used. See the Extending guide."
+                "used. See \"Capacity limits\" in the \"Writing an intervention\" docs page."
         )
     )
 end
@@ -117,7 +117,7 @@ function capacity_time_key(iv::AbstractIntervention)
         ArgumentError(
             "CapacityConstrained needs a `capacity_time_key` method for " *
                 "$(typeof(iv)) to measure usage within a period (carry_over = false). " *
-                "See the Extending guide."
+                "See \"Capacity limits\" in the \"Writing an intervention\" docs page."
         )
     )
 end
