@@ -17,8 +17,8 @@ more of [`initialise_individual!`](@ref EpiBranch.initialise_individual!),
 [`competing_risk`](@ref EpiBranch.competing_risk). To work with `Scheduled`
 it also defines [`intervention_time`](@ref EpiBranch.intervention_time) and
 [`reset!`](@ref EpiBranch.reset!), whose defaults (`-Inf` and doing nothing)
-suit an intervention that always acts immediately. See the
-[Extending guide](@ref "Extending EpiBranch").
+suit an intervention that always acts immediately. See the Writing an
+intervention page of the Extending EpiBranch guide.
 """
 abstract type AbstractIntervention end
 

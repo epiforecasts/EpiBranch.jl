@@ -29,8 +29,8 @@ out or a time limit, and do not check `should_stop`. A rule that should also
 end those runs defines [`time_bound`](@ref EpiBranch.time_bound), as
 [`MaxTime`](@ref) does; if the time limit is all the rule checks, it also
 defines [`honoured_without_should_stop`](@ref EpiBranch.honoured_without_should_stop)
-so those runs do not warn that it was ignored. The Extending guide has a
-worked example.
+so those runs do not warn that it was ignored. The "Stopping rules" section
+of the Extending EpiBranch guide has a worked example.
 """
 abstract type AbstractStoppingRule end
 

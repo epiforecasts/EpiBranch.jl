@@ -16,7 +16,8 @@ given size are recorded).
 
 To write a new one, define [`observe`](@ref) (for the likelihood) and
 [`apply_observation!`](@ref EpiBranch.apply_observation!) (for simulation)
-for it; see the Extending guide.
+for it; see "Adding an observation model" on the New transmission structures
+page of the Extending EpiBranch guide.
 """
 abstract type ObservationModel end
 

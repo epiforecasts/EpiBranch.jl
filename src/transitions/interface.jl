@@ -12,7 +12,8 @@ compete and whichever comes first wins.
 
 Interventions are the policy applied to a case ([`AbstractIntervention`](@ref));
 progression steps are the biology that happens to it. To write a new kind of
-step, such as loss to follow-up, see the Extending guide.
+step, such as loss to follow-up, see "Custom clinical transitions" on the
+Writing an intervention page of the Extending EpiBranch guide.
 
 # For extension authors
 

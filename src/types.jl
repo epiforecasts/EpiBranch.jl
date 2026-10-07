@@ -36,8 +36,8 @@ abstract type AbstractClinicalTransition end
 The parent type of all transmission models: [`BranchingProcess`](@ref),
 [`HomogeneousProcess`](@ref), `NetworkProcess`,
 `RoutedNetwork` and `HouseholdProcess`. Needed only to write
-a new kind of model; the [Extending guide](@ref "Extending EpiBranch") lists
-what a new model defines.
+a new kind of model; the New transmission structures page of the Extending
+EpiBranch guide lists what a new model defines.
 """
 abstract type TransmissionModel end
 
@@ -236,8 +236,9 @@ Useful fields:
 For extension authors: `transitions` holds the natural-history steps of the
 model, and `scratch` is space in which an intervention can keep its own
 working information for the run (as `Individual.state` is for each person),
-named as the extending guide describes. The simulation never reads
-`scratch`. `GroupVaccination` keeps its list of each group's members there.
+named as the Extension reference page of the Extending EpiBranch guide
+describes. The simulation never reads `scratch`. `GroupVaccination` keeps its
+list of each group's members there.
 """
 mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     individuals::Vector{Individual{T}}
