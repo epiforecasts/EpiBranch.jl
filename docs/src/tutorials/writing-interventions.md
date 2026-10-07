@@ -286,7 +286,7 @@ method fails silently. Three checks:
 ## Combining with built-in interventions
 
 A custom intervention combines with the built-in ones. Here the border closure
-from the [quick start](@ref "A custom intervention: closing a border") is added
+from [Extending EpiBranch](@ref "A custom intervention: closing a border") is added
 to isolation of symptomatic cases, with the incubation period
 `LogNormal(1.5, 0.5)` (mean and standard deviation of the log, in days) and
 isolation 2 days after onset on average:

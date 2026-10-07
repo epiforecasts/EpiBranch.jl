@@ -4,7 +4,7 @@ This page covers changes to *who can infect whom, and when*: a latent period
 before a case becomes infectious, transmission over several routes at once
 (community, household, funeral), seasonal transmission, a contact structure the
 package lacks, a closed population with structured mixing, and new ways in
-which cases are observed. It assumes the [quick start](extending.md) and its
+which cases are observed. It assumes [Extending EpiBranch](extending.md) and its
 [words used in these pages](@ref "Words used in these pages").
 
 ## Infectiousness windows
