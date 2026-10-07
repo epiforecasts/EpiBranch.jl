@@ -14,6 +14,8 @@ infection. All times are in days, counted from the infection of the first
 index case. Each scenario simulates a number of outbreaks, stopped at
 `max_cases` cases, and [`containment_probability`](@ref) is the proportion
 that died out before reaching that cap (see the [glossary](../glossary.md)).
+If Julia syntax such as `x -> ...`, `do` blocks or `c ? a : b` is new, see
+[Julia for R users](../julia-for-r-users.md).
 
 ```@example vaccination
 using EpiBranch
@@ -40,7 +42,9 @@ and quarantines them, also for good.
 ## How a dose protects
 
 A dose protects from `delay_to_immunity` days after it is given (0 by
-default). It has up to three effects, each a probability:
+default). It has up to three effects, each a probability; the last two,
+`onward_efficacy` and `post_exposure_efficacy`, are only on
+[`RingVaccination`](@ref):
 
 | Parameter | What it prevents | Acts if protection starts |
 |---|---|---|
@@ -116,20 +120,31 @@ end
 ### Delay to immunity
 
 A vaccine that takes time to protect can be too late. Here protection starts
-7 days after the dose:
+7 days after the dose, compared with no vaccination and same-day protection
+over more outbreaks, with the standard error of each:
 
 ```@example vaccination
 rv_delayed = RingVaccination(efficacy = 0.8, delay_to_immunity = 7.0)
 
-rng = StableRNG(42)
-results = simulate(scenario([iso, ct_onset, rv_delayed]), 1000; max_cases = 500, rng = rng)
-println("With a 7-day delay to immunity: $(round(containment_probability(results), digits=3))")
+n_delay = 4000
+for (label, interventions) in (
+        ("no vaccination", [iso, ct_onset]),
+        ("same-day protection", [iso, ct_onset, rv]),
+        ("7-day delay", [iso, ct_onset, rv_delayed]))
+    runs = simulate(scenario(interventions), n_delay; max_cases = 500, rng = StableRNG(42))
+    p = containment_probability(runs)
+    println(rpad(label, 22), round(p, digits = 3),
+        " (standard error ", round(sqrt(p * (1 - p) / n_delay), digits = 3), ")")
+end
 ```
 
-Compare this with the same-day protection above. Contacts infected after the
-trace are infected within days of it, by infectors who have not yet been
-isolated, so a dose that protects a week later comes too late for most of
-them.
+Contacts infected after the trace are infected in the days between the trace
+and their infector's isolation. Here the trace comes a mean of 1 day after
+onset and the isolation a mean of 2 days after it, so that gap is longer than
+a week for only about 2% of contacts. A dose that protects 7 days later comes
+too late for almost all of them. Runs of 20,000 outbreaks put the 7-day
+result level with no vaccination, so any gap between the two above is
+simulation error.
 
 ### Counting doses
 
@@ -154,8 +169,10 @@ The ratio of the two is the number of doses used per case in this outbreak.
 By default tracing reaches a case's direct contacts. `depth = 2` also traces
 the contacts of those contacts, the second ring that Ebola ring vaccination
 protocols vaccinate around a confirmed case. An infected contact who meets the
-tracing trigger starts a ring of their own, and contacts who were not infected
-are followed one step further so the ring can extend past them. The same
+tracing trigger starts a ring of their own. Contacts who do not start a ring
+of their own (those not infected, or infected without meeting the trigger,
+such as asymptomatic contacts) are followed one step further so the ring can
+extend past them. The same
 `RingVaccination` vaccinates everyone in the ring:
 
 ```@example vaccination
@@ -365,8 +382,9 @@ Under `ct`, ring vaccination cannot change whether an outbreak is contained
 (see the warning in [Ring vaccination](@ref)). Measuring the effect of
 clustering on containment needs a scenario where vaccination acts. Here tracing does not
 quarantine, and `onward_efficacy` reduces a vaccinated contact's own onward
-transmission. Every scenario draws the same population characteristics, leaving
-vaccination as the only difference between them:
+transmission. Every scenario uses the same population characteristics
+(`clinical`, `community`, `acceptance`), so vaccination is the only difference
+in how they are set up:
 
 ```@example vaccination
 rv_clustered_onward = RingVaccination(efficacy = 0.8, onward_efficacy = 0.8,
@@ -413,6 +431,10 @@ eligible on day 30 and protection starts 14 days later:
 ```@example vaccination
 mv = MassVaccination(efficacy = 0.85, eligibility_time = 30.0,
     delay_to_immunity = 14.0)
+
+rng = StableRNG(42)
+results = simulate(scenario(), 200; max_cases = 500, rng = rng)
+println("No interventions: $(round(containment_probability(results), digits=3))")
 
 rng = StableRNG(42)
 results = simulate(scenario([mv]), 200; max_cases = 500, rng = rng)
@@ -625,12 +647,13 @@ println("Doses with at most 5 people admitted a day: $(count(is_vaccinated, stat
 ```
 
 !!! warning "The limit is on people admitted each day"
-    The limit applies when people are selected for a dose, which happens
-    when contacts are traced; the doses themselves are dated later, at the
-    trace time plus `dose_delay`. Doses can therefore bunch up on other days
-    than the one whose allowance paid for them. One day can see several
-    times `budget_per_period` doses given: the limit does not cap the
-    doses given per day.
+    The simulation selects everyone traced from one generation of cases at
+    once, and charges them to the allowance of the day it has reached: the
+    date of the latest infection so far. The doses themselves are dated at
+    each trace plus `dose_delay`, so they can fall on other days than the one
+    whose allowance paid for them. One day can see several times
+    `budget_per_period` doses given: the limit does not cap the doses given
+    per day.
 
 [`capacity_usage`](@ref) reports how much of the allowance a simulated
 outbreak had used, and how much was available, by the time it stopped:
@@ -660,7 +683,10 @@ nothing # hide
 
 With a finite `period`, `carry_over = true` (the default) adds a day's unused
 allowance to the next day's; `carry_over = false` discards it, so only that
-day's own `budget_per_period` is ever available.
+day's own `budget_per_period` is ever available. A generation of cases can
+span several days but draws on a single day's allowance, so without carry-over
+the days in between add nothing, and admissions can fall well below
+`budget_per_period` a day.
 
 !!! note "Which models support capacity limits"
     On the network and household models, capacity limits work for ring and

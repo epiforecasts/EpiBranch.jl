@@ -210,8 +210,9 @@ the trigger:
 
 Every trigger except `OnSymptomOnset` waits for the infector's isolation, so
 even under `TraceEveryone` the contacts of an infector who is never isolated
-(asymptomatic and not traced, or missed by the test) are never quarantined or isolated
-through tracing. [`is_traced`](@ref) still marks them as traced.
+(asymptomatic and never quarantined, or symptomatic but missed by the test
+and never traced) are never quarantined or isolated through tracing.
+[`is_traced`](@ref) still marks them as traced.
 
 Under `OnSymptomOnset` the delay keeps its keyword name,
 `isolation_to_trace_delay`, but counts from onset:
@@ -230,7 +231,8 @@ Triggers combine with and (`&`), or (`|`) and not (`!`):
 # Trace suspected or lab-confirmed cases.
 elig = OnSymptomOnset() | OnLabConfirmation()
 
-# Trace symptomatic infectors who have not yet been isolated.
+# Trace symptomatic infectors who are never isolated (for example, those
+# who test negative), from their onset.
 elig_gap = OnSymptomOnset() & !OnIsolation()
 
 ct_combined = ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
@@ -296,10 +298,10 @@ may begin on day 14, or contact tracing once cases pass a threshold.
 in this section go back to the 7-day isolation from the start of the page,
 and compare with its result.
 
-Two checks decide whether a scheduled intervention reaches a case. The
-simulation sets up each case at the start of the generation in which they
-transmit, and the intervention applies to them only if some case in the
-outbreak has by then been infected on or after the start day. The action's
+Two checks decide whether a scheduled isolation or contact tracing reaches a
+case. The simulation sets up each case at the start of the generation in
+which they transmit, and the intervention applies to them only if some case
+in the outbreak has by then been infected on or after the start day. The action's
 own time must then also fall on or after the start day. With testing from
 day 10, someone whose isolation would fall on day 9 is never isolated.
 Someone infected on day 8 with symptom onset on day 9 and a 2-day delay would
@@ -307,10 +309,12 @@ be isolated on day 11, which happens only if another case had been infected
 on or after day 10 by the time they were set up.
 
 !!! note "The earliest cases are missed"
-    Index cases are set up on day 0, so an intervention scheduled to start
-    later never reaches them. The same holds for any case set up before the
+    Index cases are set up on day 0, so isolation or tracing scheduled to
+    start later never reaches them. The same holds for any case set up before the
     outbreak's latest infection reaches the start day, even if their isolation
-    would fall after it.
+    would fall after it. A scheduled [vaccination](vaccination.md) is checked
+    differently: each dose counts if its own date falls within the schedule,
+    whenever the case was set up.
 
 ```@example interventions
 # Testing starts on day 10
@@ -353,10 +357,16 @@ a few percentage points either way is within simulation noise.
 Start and end times can be combined:
 
 ```@example interventions
-# Active only between day 5 and day 30
+# Isolation for cases set up between day 5 and day 30
 iso_window = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 7.0);
     start_time = 5.0, end_time = 30.0)
 ```
+
+The end is checked when each case is set up, against the outbreak's latest
+infection so far. Isolation reaches a case set up while that is still on or
+before day 30, even if their own isolation falls later, and misses a case set
+up after it, even if their isolation would fall earlier. A scheduled
+vaccination instead checks each dose's own date.
 
 For any other trigger, pass a function of the [`SimulationState`](@ref) that
 returns `true` while the intervention should be on. This one switches

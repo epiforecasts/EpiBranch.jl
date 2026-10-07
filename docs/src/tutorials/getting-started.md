@@ -209,7 +209,7 @@ reproduction number Rt estimated from incidence data.
 
 ```@example gettingstarted
 r_df = generation_R(outbreak)
-first(r_df, 5)
+r_df
 ```
 
 With few cases per generation and strong superspreading the ratio jumps about,

@@ -68,7 +68,8 @@ they have symptoms, and those who were never infected.
 
 **Isolation and quarantine duration.** How long isolation or quarantine lasts,
 set with `duration` on [`Isolation`](@ref) and [`Quarantine`](@ref): a number
-of days, a distribution or a function of the individual. When it ends the
+of days, a distribution, or a function of the random number generator and the
+individual, `(rng, ind) -> ...`. When it ends the
 person is released, and one who is still infectious can transmit again.
 `duration = Inf` means they are never released. When a
 duration is finite, the line list records the release date in
