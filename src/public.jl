@@ -29,7 +29,7 @@ public infection_aborted_time
 public records_isolation
 
 # Pair kernels: the host records a kernel's hazards depend on, and the
-# projection it reads them through.
+# projection against which the race checks that declaration.
 public watched_records
 public kernel_projection
 

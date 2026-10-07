@@ -901,7 +901,7 @@ function _sellke_race!(
     # A route with a live projection is tracked even when it watches nothing:
     # declaring no key is a claim that nothing can move its hazard, and the
     # race holds the kernel to that claim (`_check_undeclared_read!`) rather
-    # than drawing on from it unchecked.
+    # than drawing from it unchecked.
     route_projections = _route_projections(projections, length(rts))
     route_names = Tuple(w.name for (w, _) in rts)
     live_route = Bool[
@@ -1428,7 +1428,7 @@ end
 # what it read last; a route whose own declared keys (`host_moved`) already
 # cover `k` is skipped, since it redraws regardless, but a mismatch on any
 # other route means the claim was false, and the race throws naming it rather
-# than drawing on from a hazard that went stale unnoticed.
+# than drawing from a hazard that went stale unnoticed.
 function _check_undeclared_read!(
         full_snapshot, route_projections, route_names, w::_LiveWatch, openings,
         ind, k, now, processed, host_moved
