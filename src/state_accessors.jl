@@ -228,15 +228,17 @@ const REMOVAL_STRETCHES_KEY = :_removal_stretches
 const _NO_STRETCHES = Tuple{Float64, Float64}[]
 
 """Mark an individual as isolated at the given time (any `Real`, so an AD
-dual isolation time flows through), with an optional `release_time` (`Inf`
-by default) from which the block lapses.
+dual isolation time flows through), with the `release_time` from which the
+block lapses. `release_time` is required: a removal that never releases its
+host is a choice to state, `Inf` saying so, and no policy should inherit it
+silently.
 
 The time is stored under `:isolation_time`, the release under
 `:isolation_release_time`. A route window that isolation should end lists
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which respects leaky
 isolation. `:isolated` in an `until` refers to a `Transition(:isolated, …)`
 in the natural history."""
-function set_isolated!(ind::Individual, time::Real; release_time::Real = Inf)
+function set_isolated!(ind::Individual, time::Real; release_time::Real)
     ind.state[:isolated] = true
     delete!(ind.state, :_isolation_unrecorded)
     ind.state[:isolation_time] = time

@@ -175,13 +175,13 @@ post-simulation from a detection-probability draw). Composing both in the
 same simulation is not supported, because they will overwrite each other.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
-alongside it for when the block lapses; a release of `Inf`, which is what
-`set_isolated!` assumes when given no `release_time`, never comes. Those two
-hold the removal in force, which is what a detection reads. The history, which
-a likelihood needs, is the list of stretches under `:_removal_stretches`, since
-one pair of times cannot say that a host was quarantined, released, and
-isolated again later. A window that isolation
-should end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
+alongside it for when the block lapses; `set_isolated!` takes that release as
+a required keyword, and a release of `Inf` never comes. Those two hold the removal
+in force, which is what a detection reads. The history, which a likelihood
+needs, is the list of stretches under `:_removal_stretches`, since one pair of
+times cannot say that a host was quarantined, released, and isolated again
+later. A window that isolation should end lists
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
 [Transmission routes](#Transmission-routes)), which respects leaky isolation.
 `:isolated` in an `until` refers to a `Transition(:isolated, …)` in the natural
 history. Set and undo isolation with `set_isolated!` and `clear_isolated!`.
@@ -491,7 +491,11 @@ function resolve_individual!(iso::Isolation, individual, state)
     # A contact traced before its onset was known has only the bare trace
     # time, so hold it back to the onset.
     traced_time = max(get(individual.state, :_traced_isolation_time, Inf), onset_time(individual))
-    set_isolated!(individual, min(iso_time, traced_time))
+    start = min(iso_time, traced_time)
+    duration = _removal_duration(
+        iso.duration, state.rng, individual, "`Isolation`'s `duration`"
+    )
+    set_isolated!(individual, start; release_time = start + duration)
     return nothing
 end
 ```
@@ -730,7 +734,7 @@ clinical_with_region = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     (rng, ind) -> (ind.state[:region] = :only),
 ]
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 bc = BorderClosure(10.0, 0.05)
 model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0));
     interventions = [iso, bc], attributes = clinical_with_region)
@@ -1301,9 +1305,8 @@ Naming and tracing are two steps. A route's `traceable` is the chance that the
 case can identify a contact at all. The tracing intervention's own probability
 (its `TraceRate`) is the chance that the programme then reaches a contact it has
 been told about. A contact is traced only if both succeed, so the probabilities
-multiply. With a community route at `traceable = 0.5` and
-`ContactTracing(probability = 0.8)`, 40% of the contacts a case meets only in
-the community are traced. Set each probability for what it describes: a limit
+multiply. With a community route at `traceable = 0.5` and a tracing probability of
+`0.8`, 40% of the contacts a case meets only in the community are traced. Set each probability for what it describes: a limit
 on naming belongs in `traceable` alone, and counting it again in the tracing
 probability would reduce tracing twice.
 
@@ -2302,7 +2305,7 @@ naming none is right is a wrapper, which can withdraw the inner block
 part-way through a stretch it recorded: a [`Scheduled`](@ref) with an end does
 that, and `InterventionWrapper` then narrows the infectious window only when
 the wrapped removal never releases on its own; a releasing one, such as a
-finite `isolation_duration` or a `Quarantine`'s `duration`, stays within the
+finite `Isolation` `duration` or a `Quarantine`'s, stays within the
 per-contact competing risk instead, which re-checks the wrapper's gate at
 every proposal. That narrowing is the wrapper's own and no plain intervention
 inherits it, the default `infectious_removal_time` being `Inf`.

@@ -15,11 +15,11 @@ The batch-hook behaviour below applies to interventions without this protocol.
 A schedule built with an `end_time`, or from a predicate, can withdraw a block
 it has already delivered, which one per-host record of a removal's stretches
 cannot express. On the continuous-time models the per-contact risk re-checks
-the schedule at every proposal regardless; a wrapped `isolation_duration` or
-`Quarantine` `duration` still hands the case back on its own terms. Only a
-removal with no release of its own (`isolation_duration = Inf`) closes the
-infectious window at its start, since there is nothing left for the
-wrapper's own withdrawal to hand back either way.
+the schedule at every proposal regardless; a wrapped `Isolation`'s `duration`
+or a `Quarantine`'s still hands the case back on its own terms. Only a removal
+with no release of its own (`duration = Inf`) closes the infectious window at
+its start, since there is nothing left for the wrapper's own withdrawal to
+hand back either way.
 
 `Scheduled` is the single entry point for time-based intervention
 scheduling. It enforces start times at two levels:
@@ -44,8 +44,8 @@ Any combination of `start_time`, `end_time`, and `start_after_cases` is
 accepted.  They are combined with `&&`:
 
 ```julia
-Scheduled(Isolation(onset_to_isolation_delay=Exponential(2.0), isolation_duration=7.0); start_time=14.0)
-Scheduled(ContactTracing(probability=0.5, isolation_to_trace_delay=Exponential(1.0)); start_after_cases=50)
+Scheduled(Isolation(onset_to_isolation_delay=Exponential(2.0), duration=7.0); start_time=14.0)
+Scheduled(ContactTracing(probability=0.5, isolation_to_trace_delay=Exponential(1.0), action=Quarantine(duration=7.0)); start_after_cases=50)
 Scheduled(iso; start_time=10.0, end_time=30.0)
 ```
 

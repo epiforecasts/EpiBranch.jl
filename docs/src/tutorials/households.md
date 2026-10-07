@@ -213,7 +213,7 @@ isolated = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
     progression = [Transition(:onset; from = :infection, delay = 1.0),
         Transition(:recovered; from = :infection, delay = 6.0, terminal = true)],
     interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0),
-        eligibility = AllCases(), isolation_duration = 7.0)])
+        eligibility = AllCases(), duration = 7.0)])
 reproduction_number(household_offspring(isolated; global_rate = 0.1,
     rng = StableRNG(7)))
 ```
