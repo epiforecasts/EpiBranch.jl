@@ -238,8 +238,8 @@ exposure where it starts. An intervention of your own names the key it records
 under, whose value is a vector of `(start, release)` pairs. A wrapper that can
 lift the removal part-way through a period, such as a [`Scheduled`](@ref) with
 an end time, names none. The infectious period then ends at the first removal
-only if that removal has no release of its own; one with a release still ends
-on time.
+only if that removal never releases. A removal with a release is left out of
+the record, and in simulation acts contact by contact instead.
 """
 removal_gap_host_times(component) = ()
 
