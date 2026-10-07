@@ -587,9 +587,9 @@ cannot be read off near zero.
     the terms that do not involve α, near zero it is `n_ext log(α) - α T`,
     where `n_ext` is the number of cases only the community can explain and
     `T` is the total time the population is exposed to the community. On the
-    log(α) scale this is a straight line of slope `n_ext`. In 400 households
-    of four with `n_ext = 401`, the slope is 401.0 at α = 1e-6 and 393.5 at α
-    = 1e-3, and falls to zero at the maximum near α = 0.052.
+    log(α) scale this is a straight line of slope `n_ext`. The slope stays
+    close to `n_ext` while α is small and falls to zero at the maximum
+    likelihood estimate.
 
 !!! note "Gamma distributions with Turing"
     To fit a `Gamma` contact interval or community hazard with Turing, use
