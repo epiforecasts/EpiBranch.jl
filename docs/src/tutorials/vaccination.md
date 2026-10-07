@@ -42,7 +42,9 @@ and quarantines them, also for good.
 ## How a dose protects
 
 A dose protects from `delay_to_immunity` days after it is given (0 by
-default). It has up to three effects, each a probability:
+default). It has up to three effects, each a probability; the last two,
+`onward_efficacy` and `post_exposure_efficacy`, are only on
+[`RingVaccination`](@ref):
 
 | Parameter | What it prevents | Acts if protection starts |
 |---|---|---|
