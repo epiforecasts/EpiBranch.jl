@@ -449,6 +449,13 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   first trigger found even once a genuinely earlier one turned up. A settled
   member's dose, and a dose another vaccination already gave, still keep
   their date.
+- `household_offspring` (in `EpiHouseholds`) now leaves each simulated case's
+  isolated or quarantined stretches out of its community-infectious
+  person-time, the way the pairwise likelihood already does. A removal that
+  lapses, such as a finite-duration `Isolation`, does not close the
+  infectious window, so these stretches were previously counted as time spent
+  making community contacts; R* under a finite isolation duration overstated
+  transmission between households as a result.
 
 ## [0.1.0] - 2026-06-16
 
