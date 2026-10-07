@@ -259,7 +259,7 @@ Competing risks read tracing and delivery state at exposure time. Supported ring
 and group actions are discovered after tracing and admitted through their
 wrappers. Admission fixes the recorded delivery date; subsequent traces do not
 revise it. Already settled cases are not revisited. See the
-[action protocol](@ref "Intervention actions") for timing and eligibility
+[action protocol](@ref "Proposing, admitting and keeping actions") for timing and eligibility
 limits.
 
 ## Several routes at once
