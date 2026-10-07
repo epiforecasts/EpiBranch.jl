@@ -92,18 +92,29 @@ println("Simulated:  $(round(containment_probability(results), digits = 3))")
 
 ## Custom offspring function
 
-For full control, pass a function `(rng, individual) → Vector{Int}`:
+For full control over who infects whom, pass your own function in place of the
+matrix. It takes the random number generator and the infector,
+`(rng, individual) -> counts`, and returns a vector of whole numbers with one
+entry per type: entry `i` is the number of secondary cases of type `i` that this
+infector causes. For example, `[3, 1]` means three type-1 cases and one type-2
+case. Use `rng` for every random draw, so that runs are reproducible.
+
+Here a type-1 (high-risk) infector causes a highly overdispersed number of
+secondary cases, 30% of them high-risk; a type-2 (low-risk) infector causes a
+Poisson number with mean 1, 10% of them high-risk. Each case draws its total
+once and splits it between the two types with a single binomial draw, so the
+two entries always add up to the total:
 
 ```@example multitype
 function heterogeneous_offspring(rng, individual)
-    pt = individual_type(individual)
-    if pt == 1  # high-risk type
+    if individual_type(individual) == 1  # high-risk infector
         n = rand(rng, NegBin(5.0, 0.1))
-        return [rand(rng, Binomial(n, 0.3)), n - rand(rng, Binomial(n, 0.3))]
-    else  # low-risk type
+        h = rand(rng, Binomial(n, 0.3))
+    else  # low-risk infector
         n = rand(rng, Poisson(1.0))
-        return [rand(rng, Binomial(n, 0.1)), n - rand(rng, Binomial(n, 0.1))]
+        h = rand(rng, Binomial(n, 0.1))
     end
+    return [h, n - h]  # [high-risk cases, low-risk cases]
 end
 
 model = BranchingProcess(heterogeneous_offspring, Exponential(5.0); n_types = 2)
