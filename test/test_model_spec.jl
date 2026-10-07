@@ -12,6 +12,24 @@ function EpiBranch.terminal_event(r::AlwaysOccursRule, individual)
     return (individual.infection_time + 1.0, r.probability > 0.5 ? :died : :recovered)
 end
 
+# Two interventions meant to block every transmission, each written so that
+# the engine never reaches the method: `BlockWrongArity`'s `competing_risk`
+# is missing its `state` argument, and `BlockUnqualified`'s is defined
+# without the `EpiBranch.` prefix, which gives this module a new function of
+# the same name rather than a method on the package's own. Both therefore
+# fall back to the no-op default. Defined at module scope for the same
+# reason as `AlwaysOccursRule` above.
+struct BlockWrongArity <: AbstractIntervention end
+EpiBranch.competing_risk(::BlockWrongArity, parent, contact) = Risk(block_probability = 1.0)
+
+struct BlockUnqualified <: AbstractIntervention end
+competing_risk(::BlockUnqualified, parent, contact, state) = Risk(block_probability = 1.0)
+
+# Implements only the least common of `_EFFECT_HOOKS`, to check the full set
+# is read rather than a subset headlined by `competing_risk`.
+struct _ActionsOnly <: AbstractIntervention end
+EpiBranch.intervention_actions(::_ActionsOnly, state, candidates) = nothing
+
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
     # attributes, observation) around a pure transmission process. The process
@@ -195,5 +213,33 @@ end
         # transition is skipped rather than misjudged from its field layout.
         @test ismissing(EpiBranch.terminal_certainty(AlwaysOccursRule(0.0)))
         @test_logs ModelSpec(bp; progression = [AlwaysOccursRule(0.0)])
+    end
+
+    @testset "an intervention with no reachable hook warns" begin
+        bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+
+        # Wrong arity: the method exists but is never the one a four-argument
+        # call to `competing_risk` resolves to.
+        @test_logs (:warn, r"BlockWrongArity has a method of its own for none") match_mode = :any ModelSpec(
+            bp; interventions = [BlockWrongArity()]
+        )
+        # Unqualified: the method belongs to a different function entirely.
+        @test_logs (:warn, r"BlockUnqualified has a method of its own for none") match_mode = :any ModelSpec(
+            bp; interventions = [BlockUnqualified()]
+        )
+        # Wrapping does not hide it: the check reads the wrapped type, since
+        # a wrapper such as `Scheduled` always has its own delegating methods
+        # whatever it wraps.
+        @test_logs (:warn, r"BlockWrongArity has a method of its own for none") match_mode = :any ModelSpec(
+            bp; interventions = [Scheduled(BlockWrongArity(); start_time = 1.0)]
+        )
+        # A hook outside `competing_risk`, at the right arity, is enough to
+        # stay silent — the check reads the full set, not a subset of it.
+        @test_logs ModelSpec(bp; interventions = [_ActionsOnly()])
+        # `Isolation` implements several hooks properly and stays silent too.
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf
+        )
+        @test_logs ModelSpec(bp; interventions = [iso])
     end
 end
