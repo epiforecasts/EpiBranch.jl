@@ -1105,9 +1105,10 @@ transmission tree need not be known.
 Each person accumulates hazard from every possible infector while that
 infector is infectious and they are still uninfected, and each infected person
 adds the log of the total hazard at their infection time. If an infected person
-(other than one the likelihood conditions on) has no possible infector who is
-infectious at their infection time, the infection times are impossible under
-the model and the result is `-Inf`.
+(other than one the likelihood conditions on) faces zero total hazard at their
+infection time, because no possible infector can infect them then and there is
+no infection from outside, the infection times are impossible under the model
+and the result is `-Inf`.
 
 `kernel` is the contact interval, in days from the start of the infector's
 infectious period. It can be one distribution shared by every pair, a function
