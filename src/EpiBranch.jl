@@ -164,8 +164,8 @@ export NoAgeDistribution, NoCases
 # Exports — accessors
 export onset_time, incubation_period, outcome_time, is_isolated, isolation_time,
     isolation_release_time, is_traced, is_quarantined
-export is_vaccinated, immunity_time, severity_efficacy, is_asymptomatic, is_test_positive,
-    is_infected, susceptible_again_time
+export is_vaccinated, immunity_time, severity_efficacy, vaccine_efficacy, is_asymptomatic,
+    is_test_positive, is_infected, susceptible_again_time
 export individual_type, set_isolated!, clear_isolated!
 
 # Exports — distributions

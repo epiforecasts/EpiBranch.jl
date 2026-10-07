@@ -99,6 +99,17 @@ function immunity_time(ind::Individual{T}; dose_label::Symbol = :default) where 
     return convert(T, get(ind.state, _immunity_time_key(dose_label), T(Inf)))::T
 end
 
+"""Full-strength efficacy of the individual's dose against infection under the
+given `dose_label`, as sampled when the dose was given — a per-exposure block
+probability under `LeakyMode`, a responder status of `1.0` or `0.0` under
+`AllOrNothingMode` — or `nothing` if no dose with that label has been
+recorded. Unlike [`severity_efficacy`](@ref), there is no default of `0.0`:
+`nothing` is what distinguishes an individual with no such dose from one
+given a dose with `efficacy = 0.0`."""
+function vaccine_efficacy(ind::Individual; dose_label::Symbol = :default)
+    return get(ind.state, _vaccine_efficacy_key(dose_label), nothing)
+end
+
 """Probability that the individual's own disease course is milder — e.g. a
 lower chance of death — once their vaccine-induced immunity has developed
 (`0.0` if not vaccinated, or if the dose carries no severity effect). Sampled
