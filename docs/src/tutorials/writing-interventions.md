@@ -127,12 +127,15 @@ In practice:
     0.63). The per-exposure reading on continuous-time models is what a leaky
     vaccine means there; check which one your scenario needs.
 
-- Simulating with a partial block that starts partway through the infectious
-  period (a leaky isolation, say), or with an effect not declared through
-  `infection_likelihood_compatible` or `susceptibility_components`, and then
-  fitting the result with `loglikelihood` on a network or household model will
-  disagree. Complete isolation is fitted exactly, and so is vaccination within
-  the limits listed in [Likelihood compatibility](@ref).
+- On a network or household model, `loglikelihood(data, spec)` refuses any
+  part of `spec` the likelihood cannot represent: a partial block that starts
+  partway through the infectious period (a leaky isolation, say), or an effect
+  not declared through `infection_likelihood_compatible` or
+  `susceptibility_components`. Complete isolation is fitted exactly, and so is
+  vaccination within the limits listed in [Likelihood compatibility](@ref),
+  when the fit is given the same `spec` as the simulation. Fitting with the
+  bare model, or with a `spec` that leaves the intervention out, gives no error
+  and disagrees with the simulation.
 - An intervention that reaches people only through `apply_post_transmission!`
   or `keep_active` (`MassVaccination`'s rollout vaccinates each new contact as
   it is created) has nothing to act on in a model that creates no contacts. You
