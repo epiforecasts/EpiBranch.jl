@@ -183,9 +183,10 @@ are unchanged, because they act on individual people, not on types.
     opening state, the states that end it, its contact-interval distribution
     and whom it reaches, and the continuous-time simulation handles several
     routes per case, each ended separately, for any model that supplies them.
-    The branching-process half, with the mixture distribution and its closed
-    forms, is designed but not yet built. Exact results are therefore not yet
-    available for models with several routes.
+    Branching processes also simulate several windows per case (see
+    [Infectiousness windows](@ref)). What is designed but not yet built is the
+    mixture distribution of secondary cases and its closed forms, so exact
+    results are not yet available for models with several routes.
 
 Some diseases spread by several routes, each open over a different part of a
 case's illness. Ebola spreads in the community while a case is ill, in
