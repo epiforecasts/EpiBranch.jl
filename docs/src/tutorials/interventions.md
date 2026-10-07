@@ -151,7 +151,8 @@ separately. Each built-in policy tests one thing about the infector:
 | [`TraceEveryone`](@ref) / [`TraceNobody`](@ref) | always / never |
 
 Pass a policy with the positional constructor (an eligibility policy, a
-trace probability, and a delay distribution):
+trace probability, a delay distribution and the action to take on a traced
+contact):
 
 ```@example interventions
 # Begin tracing as soon as the infector shows symptoms, without waiting
