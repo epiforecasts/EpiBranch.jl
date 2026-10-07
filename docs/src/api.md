@@ -394,7 +394,8 @@ ChainSizeMixture
 The likelihood of data on who was exposed to whom and when, used to estimate
 the contact interval or transmission rate from household or contact-network
 studies with individual infection times. The contact interval is the time from
-the infector's infection to a contact that would infect if nothing intervened.
+the start of the infector's infectious period to a contact that would infect
+if nothing intervened.
 
 ```@docs
 pairwise_surv_loglik
