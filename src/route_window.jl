@@ -21,9 +21,9 @@
                 contacts_from = :infection, traceable = 1.0)
 
 A route of transmission, such as community, household or funeral, with its
-own start, end and timing over a case's natural history. Used with the
-network and household models (see `RoutedNetwork`), where each route reaches
-a different set of people.
+own start, end and timing over a case's natural history. Used with
+[`RoutedNetwork`](@ref), where each route reaches a different set of people
+in the network.
 
 - `name` labels the route (`:community`, `:household`, `:funeral`, …).
 - `from` is the state at which this route's infectiousness begins. `:infection`
