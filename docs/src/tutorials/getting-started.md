@@ -258,8 +258,11 @@ discarding the rest, and returns that one.
 
 ## Next steps
 
-- [Interventions](interventions.md): how several control measures combine, and
-  which acts first
+- Interventions:
+  - [Isolation and contact tracing](interventions.md): isolating cases and
+    tracing and quarantining their contacts
+  - [Vaccination](vaccination.md): ring, mass and group vaccination, and
+    protecting contacts already exposed
 - [Clinical transitions](transitions.md): clinical progression from symptom
   onset to reporting, admission, and recovery or death
 - Transmission models:
