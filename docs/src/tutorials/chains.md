@@ -245,14 +245,18 @@ using Turing
 end
 ```
 
-With no interventions this uses the exact formula and fitting is fast. If the
-model includes interventions, or you pass options such as `seeds` (the number of
-index cases in each cluster) or `prob_concluded` (the probability that each
-cluster has finished growing), EpiBranch simulates instead, which is slower:
+With no interventions this uses the exact formula and fitting is fast. The
+formula also covers the options `seeds` (the number of index cases in each
+cluster) and `prob_concluded` (the probability that each cluster has finished
+growing):
 
 ```julia
 data ~ chain_size_distribution(BranchingProcess(Poisson(R));
     seeds = seeds, prob_concluded = prob_concluded)
 ```
+
+If the model includes interventions, EpiBranch estimates the likelihood by
+simulation instead, which is slower. `prob_concluded` cannot be combined with
+interventions.
 
 The [inference tutorial](inference.md) runs these models in full.
