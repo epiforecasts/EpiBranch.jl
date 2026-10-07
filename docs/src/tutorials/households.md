@@ -459,11 +459,11 @@ The estimate matches the 4 days the outbreak was simulated with.
     Suppose the model that produced the data had partial protection in place
     throughout, such as a vaccine's efficacy, a leaky isolation, or
     differences in susceptibility or infectiousness. Each blocks a fraction
-    `p` of contacts and lowers the rate of infecting contacts by the factor `1
-    - p`. Fitting then estimates that lower rate instead of the rate the model
-      was given. Protection that starts partway through someone's infectious
-      period, such as isolation or a vaccine dose given after tracing, is not
-      in the likelihood at all.
+    `p` of contacts and lowers the rate of infecting contacts by the factor
+    `1 - p`. Fitting then estimates that lower rate instead of the rate the
+    model was given. Protection that starts partway through someone's
+    infectious period, such as isolation or a vaccine dose given after
+    tracing, is not in the likelihood at all.
 
 The contact-interval distribution can also depend on who infects whom, for
 example adults transmitting faster than children, through a function
