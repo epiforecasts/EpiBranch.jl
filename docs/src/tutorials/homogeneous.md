@@ -187,13 +187,14 @@ expected to grow.
 An [`Isolation`](@ref) that leaves some transmission after isolating
 (`post_isolation_transmission > 0`) reduces transmission in the same way.
 
-!!! warning "Interventions that need contacts do not apply"
-    In a well-mixed population nobody has named contacts, so interventions
-    that act on a case's contacts cannot work. [`ContactTracing`](@ref),
-    [`MassVaccination`](@ref) and [`GroupVaccination`](@ref) are not applied
-    to a `HomogeneousProcess`; `simulate` warns if you include one. Isolation,
-    reduced susceptibility or infectiousness, and events in the natural
-    history all apply.
+!!! warning "Contact tracing and vaccination do not apply"
+    Contact tracing needs named contacts, and the built-in vaccinations dose
+    people as transmission reaches them; a well-mixed population has
+    neither. [`ContactTracing`](@ref), [`MassVaccination`](@ref) and
+    [`GroupVaccination`](@ref) are not applied to a `HomogeneousProcess`;
+    `simulate` warns if you include one. Isolation, reduced susceptibility or
+    infectiousness, and events in the natural history all apply. To model
+    vaccine protection, lower susceptibility with `transmission_traits`.
 
 !!! note "Stopping the simulation"
     A `HomogeneousProcess` runs until no one is infectious or until
