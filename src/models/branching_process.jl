@@ -10,9 +10,10 @@ starts when the case reaches state `from` and stops at the earliest of the
 different routes, such as community and funeral transmission of Ebola.
 
 - `offspring`: a distribution of secondary cases, such as `NegBin(R, k)`
-  (mean `R`, dispersion `k`), or for a multi-type model a function
-  `(rng, ind) -> counts` returning one count per type (see
-  [`draw_offspring`](@ref EpiBranch.draw_offspring)).
+  (mean `R`, dispersion `k`), or a function `(rng, ind) -> n` returning the
+  number infected by a given case (one count per type in a multi-type
+  model). The function may also take the outbreak state as a third argument
+  (see [`draw_offspring`](@ref EpiBranch.draw_offspring)).
 - `from`: the state at which transmission starts, `:infection` by default.
   Any other name refers to a state set by a step of the natural history, such
   as `:infectious` or `:died`; transmission starts only once the case reaches
