@@ -278,6 +278,42 @@ function _chain_size_right_tail_logprob(d, x::Integer, s::Integer)
 end
 
 """
+    _chain_size_cdf(d, n::Integer)
+
+Internal: single-seed CDF of a chain size distribution `d`, `P(X ≤ n)`,
+computed by summing the PMF from `minimum(d)` to `n`. Shared by the `cdf`
+methods of the chain-size distributions defined here and in
+`cluster_mixed.jl` and `observation.jl`, none of which Distributions.jl
+knows how to evaluate on its own (see the `cdf`/`logccdf` methods below for
+why that otherwise overflows the stack).
+"""
+function _chain_size_cdf(d, n::Integer)
+    lo = minimum(d)
+    n < lo && return 0.0
+    return sum(pdf(d, j) for j in lo:n)
+end
+
+# Distributions.jl's fallback for a `DiscreteUnivariateDistribution` routes
+# `cdf(d, ::Real)` through `cdf(d, floor(Int, x))`, which without a
+# dedicated `cdf(d, ::Integer)` method calls straight back into that same
+# fallback and overflows the stack. Defining `cdf` here breaks the cycle
+# and, through Distributions' own `ccdf`/`logcdf` defaults, gives those for
+# free; `logccdf` is reused from `_chain_size_right_tail_logprob`, already
+# written to avoid cancellation in the tail.
+Distributions.cdf(d::Borel, n::Integer) = _chain_size_cdf(d, n)
+Distributions.logccdf(d::Borel, n::Integer) = _chain_size_right_tail_logprob(d, n + 1, 1)
+
+Distributions.cdf(d::GammaBorel, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::GammaBorel, n::Integer)
+    return _chain_size_right_tail_logprob(d, n + 1, 1)
+end
+
+Distributions.cdf(d::PoissonGammaChainSize, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::PoissonGammaChainSize, n::Integer)
+    return _chain_size_right_tail_logprob(d, n + 1, 1)
+end
+
+"""
     chain_size_distribution(offspring::Poisson)
 
 Analytical chain size distribution for Poisson offspring.
@@ -364,6 +400,11 @@ end
 
 Distributions.pdf(d::IndexChainSize, n::Integer) = exp(logpdf(d, n))
 
+Distributions.cdf(d::IndexChainSize, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::IndexChainSize, n::Integer)
+    return _chain_size_right_tail_logprob(d, n + 1, 1)
+end
+
 # E[N] = P(J=0)·1 + Σ_{j≥1} P(J=j)·E[1 + size(j seeds)]
 #      = 1 + E[J]·E[dist], since a j-seed chain's expected size is j·E[dist].
 # An index case with E[J] = 0 never seeds later cases, so N ≡ 1 regardless
@@ -424,4 +465,9 @@ function _chain_size_right_tail_logprob(d::TruncatedChainSize, x::Integer, s::In
     x <= d.min_size && return zero(denom)
     isfinite(denom) || return oftype(denom, -Inf)
     return _chain_size_right_tail_logprob(d.base, max(x, d.min_size), s) - denom
+end
+
+Distributions.cdf(d::TruncatedChainSize, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::TruncatedChainSize, n::Integer)
+    return _chain_size_right_tail_logprob(d, n + 1, 1)
 end
