@@ -2300,8 +2300,11 @@ the likelihood fits on the whole exposure while the simulation blocked part of
 it, which biases the fit without any sign of it. The one component for which
 naming none is right is a wrapper, which can withdraw the inner block
 part-way through a stretch it recorded: a [`Scheduled`](@ref) with an end does
-that, and `InterventionWrapper` narrows the infectious window to the first
-removal instead. That narrowing is the wrapper's own and no plain intervention
+that, and `InterventionWrapper` then narrows the infectious window only when
+the wrapped removal never releases on its own; a releasing one, such as a
+finite `isolation_duration` or a `Quarantine`'s `duration`, stays within the
+per-contact competing risk instead, which re-checks the wrapper's gate at
+every proposal. That narrowing is the wrapper's own and no plain intervention
 inherits it, the default `infectious_removal_time` being `Inf`.
 
 ### Choosing initial cases in a fixed population
