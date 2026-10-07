@@ -98,7 +98,7 @@ downstream packages should pick names that do not collide.
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | Engine, written through `abort_infection!` (e.g. by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
 | `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | `apply_post_transmission!` |
-| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
+| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / Post-simulation projection |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
 | `:death_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
@@ -106,7 +106,6 @@ downstream packages should pick names that do not collide.
 | `:outcome` | `Symbol` | — | `Outcome` transition | `resolve_individual!` (terminal) |
 | `:outcome_time` | `Float64` | — | `Outcome` transition | `resolve_individual!` (terminal) |
 | `:reported` | `Bool` | `false` | `PerCaseObservation` *or* `Reporting` transition | Post-simulation projection / `resolve_individual!` |
-| `:report_time` | `Float64` | — | `PerCaseObservation` | Post-simulation projection |
 | `:cluster_theta` | `Float64` | — | `ClusterMixed` analytics | First simulation read |
 | `:vaccine_acceptance` | `Float64` | — | `vaccine_acceptance` | Init (default key; customisable) |
 | `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
@@ -169,10 +168,14 @@ infects it. On the continuous-time models the infection time is final by the
 time `on_infection_settled!` runs, and an abort recorded there needs no such
 check.
 
-`:reported` is shared between the `Reporting` clinical transition (which
-sets it from a probability gate) and `PerCaseObservation` (which sets it
-post-simulation from a detection-probability draw). Composing both in the
-same simulation is not supported, because they will overwrite each other.
+`:reported` and `:reporting_time` are shared between the `Reporting`
+clinical transition (which sets them from a probability gate) and
+`PerCaseObservation` (which sets them post-simulation from a
+detection-probability draw). Both routes leave `:reporting_time` at `Inf`
+for a case that was not reported, so [`weekly_incidence`](@ref)'s
+`by = :reporting` counts reported cases the same way under either.
+Composing both in the same simulation is not supported, because they will
+overwrite each other.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 alongside it for when the block lapses; `set_isolated!` takes that release as
