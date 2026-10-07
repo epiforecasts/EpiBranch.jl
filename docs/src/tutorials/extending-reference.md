@@ -744,8 +744,7 @@ On network and household models, supported actions run after a newly final
 case is traced. Interventions of your own opt in with
 `EpiBranch.continuous_actions(iv) = true`, and must work without the infection
 time of a contact whose infection is not yet final. Ring delivery supports an
-eligibility window with no end and zero post-exposure efficacy; group delivery
-uses known triggering cases. Scheduling and capacity work as on branching
+eligibility window with no end; group delivery uses known triggering cases. Scheduling and capacity work as on branching
 processes. Mass vaccination and the homogeneous pool are not supported here.
 With several households, capacity needs `period = Inf` for one budget over the
 whole run. Finite periods are refused because each household is simulated
