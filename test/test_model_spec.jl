@@ -30,6 +30,12 @@ competing_risk(::BlockUnqualified, parent, contact, state) = Risk(block_probabil
 struct _ActionsOnly <: AbstractIntervention end
 EpiBranch.intervention_actions(::_ActionsOnly, state, candidates) = nothing
 
+# A `competing_risk` hook written with a trailing `args...`: a method a
+# four-argument call does reach, despite `methods` listing its own arity as
+# two rather than four.
+struct BlockVariadic <: AbstractIntervention end
+EpiBranch.competing_risk(::BlockVariadic, args...) = Risk(block_probability = 1.0)
+
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
     # attributes, observation) around a pure transmission process. The process
@@ -236,6 +242,9 @@ EpiBranch.intervention_actions(::_ActionsOnly, state, candidates) = nothing
         # A hook outside `competing_risk`, at the right arity, is enough to
         # stay silent: the check reads the full set, not just `competing_risk`.
         @test_logs ModelSpec(bp; interventions = [_ActionsOnly()])
+        # A trailing `args...` is reachable at the call's arity even though
+        # its own arity, as `methods` reports it, is not `n`.
+        @test_logs ModelSpec(bp; interventions = [BlockVariadic()])
         # `Isolation` implements several hooks properly and stays silent too.
         iso = Isolation(
             onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf
