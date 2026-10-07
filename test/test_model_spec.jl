@@ -12,6 +12,14 @@ function EpiBranch.terminal_event(r::AlwaysOccursRule, individual)
     return (individual.infection_time + 1.0, r.probability > 0.5 ? :died : :recovered)
 end
 
+# A minimal intervention declaring a closed-form effect on the offspring law
+# (halving R), used below to check that the analytical functions on a
+# ModelSpec apply a declared effect instead of refusing. Defined at module
+# scope for the same reason as AlwaysOccursRule above.
+struct _HalfThinning <: AbstractIntervention end
+EpiBranch.analytic_offspring_effect(::_HalfThinning, d::NegativeBinomial) =
+    NegBin(mean(d) / 2, d.r)
+
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
     # attributes, observation) around a pure transmission process. The process
@@ -77,6 +85,45 @@ end
             loglikelihood(ChainLengths([0, 1, 0]), subc)
         # batch simulation through a spec
         @test length(simulate(spec, 20; max_cases = 100, rng = StableRNG(3))) == 20
+    end
+
+    @testset "analytical functions refuse to ignore interventions" begin
+        # An intervention without a declared closed-form offspring effect (every
+        # built-in one, Isolation included: its effect on R depends on how its
+        # timing overlaps the generation-time distribution, which has no closed
+        # form here) must make every analytical function on the spec refuse,
+        # rather than silently answer as if it were not there.
+        bp = BranchingProcess(NegativeBinomial(2.5, 0.5), Gamma(4.0, 1.25))
+        iso = Isolation(onset_to_isolation_delay = 0.0, isolation_duration = Inf)
+        spec = ModelSpec(bp; interventions = [iso])
+
+        for f in (
+                extinction_probability, epidemic_probability, probability_contain,
+                reproduction_number, proportion_transmission, offspring_distribution,
+            )
+            @test_throws r"Isolation" f(spec)
+            @test_throws r"probability_contain\(R, k; ind_control, pop_control\)" f(spec)
+            @test_throws r"containment_probability\(simulate\(spec, n\)\)" f(spec)
+        end
+
+        # A spec with no interventions is unaffected.
+        bare = ModelSpec(bp)
+        @test extinction_probability(bare) == extinction_probability(bp)
+    end
+
+    @testset "a declared offspring effect is applied analytically" begin
+        # `_HalfThinning` (defined at module scope above) declares a closed-form
+        # effect, so the analytical functions apply it instead of refusing.
+        bp = BranchingProcess(NegativeBinomial(2.5, 0.5))
+        spec = ModelSpec(bp; interventions = [_HalfThinning()])
+        halved = NegBin(reproduction_number(bp) / 2, single_type_offspring(bp).r)
+
+        @test offspring_distribution(spec) == halved
+        @test reproduction_number(spec) == reproduction_number(halved)
+        @test extinction_probability(spec) == extinction_probability(halved)
+        @test epidemic_probability(spec) == epidemic_probability(halved)
+        @test probability_contain(spec) == probability_contain(halved)
+        @test proportion_transmission(spec) == proportion_transmission(halved)
     end
 
     @testset "analytical chain likelihood ignores non-transmission layers" begin
