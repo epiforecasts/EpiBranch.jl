@@ -266,8 +266,10 @@ contacts are never traced.
 
 The simulation keeps everyone each case could have infected, including those
 who were not infected. It can therefore count how many contacts tracing reached as a
-measure of workload. `condition = 50:200` keeps simulating until one outbreak
-ends with between 50 and 200 cases, and returns that one outbreak:
+measure of workload. `condition = 50:200` keeps simulating until an outbreak
+stops with between 50 and 200 cases, and returns that one outbreak. It stops
+either because it died out or because it reached the 200-case cap, as the
+one here did:
 
 ```@example interventions
 rng = StableRNG(42)

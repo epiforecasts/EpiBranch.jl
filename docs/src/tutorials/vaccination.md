@@ -133,9 +133,11 @@ them.
 
 ### Counting doses
 
-`condition = 50:200` keeps simulating until one outbreak ends with between 50
-and 200 cases and returns it. `count(is_vaccinated, state.individuals)` then
-counts everyone vaccinated, like `sum(is_vaccinated(x))` in R:
+`condition = 50:200` keeps simulating until an outbreak stops with between 50
+and 200 cases and returns it. It stops either because it died out or because
+it reached the 200-case cap, as the one here did.
+`count(is_vaccinated, state.individuals)` then counts everyone vaccinated,
+like `sum(is_vaccinated(x))` in R:
 
 ```@example vaccination
 rng = StableRNG(42)
