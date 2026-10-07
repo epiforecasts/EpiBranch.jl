@@ -124,8 +124,9 @@ end
 
 With no keyword arguments, no interventions and a single-type offspring law,
 the analytical chain-size distribution (`Borel` / `GammaBorel`) is returned
-directly; otherwise a wrapper that evaluates via `loglikelihood`. Keyword
-arguments:
+directly; otherwise a wrapper that evaluates via `loglikelihood`, falling
+back to simulation for a multi-type or multi-window model rather than
+erroring. Keyword arguments:
 
 - `seeds`: per-cluster number of index cases, for multi-seed clusters.
 - `prob_concluded`: per-cluster probability the cluster is finished (its
@@ -140,12 +141,14 @@ function chain_size_distribution(
         seeds = nothing, prob_concluded = nothing, kwargs...
     )
     # The analytical fast path is only valid when nothing perturbs the
-    # bare offspring law. A model that carries interventions must route
-    # through the simulation-based wrapper, even with no explicit kwargs,
-    # or its interventions would be silently dropped. The model's
+    # bare offspring law, and the law itself has a closed form. A model
+    # that carries interventions must route through the simulation-based
+    # wrapper, even with no explicit kwargs, or its interventions would be
+    # silently dropped; a multi-type or multi-window model has no
+    # single-type law to fall back on in the first place. The model's
     # observation is applied analytically via `observe`.
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
-            isempty(interventions(model))
+            isempty(interventions(model)) && has_single_type_law(model)
         return observe(
             chain_size_distribution(single_type_offspring(model)),
             observation(model)
@@ -159,7 +162,7 @@ function chain_size_distribution(
         prob_concluded = nothing, kwargs...
     )
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
-            isempty(interventions(spec))
+            isempty(interventions(spec)) && has_single_type_law(spec)
         return observe(
             chain_size_distribution(single_type_offspring(spec.process)),
             observation(spec)
