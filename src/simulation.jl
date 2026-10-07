@@ -27,8 +27,8 @@ days throughout.
   `Xoshiro(42)`, for reproducible runs.
 - `condition`: a range of final outbreak sizes, such as `10:1000`. The
   simulation is repeated until the total number of cases falls inside it (at
-  most `max_attempts` tries), for example to keep only outbreaks that took
-  off. An error is raised if no run qualifies.
+  most `max_attempts` tries), for example to leave out outbreaks that died
+  out after a few cases. An error is raised if no run qualifies.
 - `initial_cases`: for `NetworkProcess`, `RoutedNetwork` and
   `HouseholdProcess` only, the IDs of the people infected at time
   zero (an empty vector is allowed). It replaces the random choice of index
