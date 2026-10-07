@@ -306,8 +306,9 @@ dosed_kernel = PairKernel(
 EpiBranch.watched_records(dosed_kernel)
 ```
 
-This rule scales each person's contact rate by a fixed value looked up by
-their number, `ind.id`, and reads nothing that can change:
+This rule sets each infector's mean contact interval to a fixed value looked
+up by their number, `ind.id` (a larger value means slower transmission), and
+reads nothing that can change:
 
 ```@example stateful
 scale_by_id = [1.0, 2.0, 0.5]
