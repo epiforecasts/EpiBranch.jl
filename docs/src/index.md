@@ -29,8 +29,8 @@ using EpiBranch
 using Distributions
 using StableRNGs
 
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
-ct = ContactTracing(OnSymptomOnset(), 0.5, Exponential(1.5), Quarantine())
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+ct = ContactTracing(OnSymptomOnset(), 0.5, Exponential(1.5), Quarantine(duration = 7.0))
 
 # A model composes a process with the population (attributes) and the
 # policy in force (interventions) via a ModelSpec; simulate reads both from it.
