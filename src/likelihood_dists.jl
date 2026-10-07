@@ -132,12 +132,14 @@ that is not single-type, the probability of the data is estimated from
 simulated outbreaks.
 
 !!! warning
-    When the probability is estimated from simulated outbreaks (with
-    interventions, an offspring distribution that is not single-type, or
-    under-reported cases with `PerCaseObservation` and some clusters started
-    by more than one index case), `seeds` is ignored: every observed cluster
-    is compared with simulated chains that each start from a single index
-    case, whatever `n_initial` is.
+    When the probability is estimated from simulated outbreaks, `seeds` is
+    ignored: every observed cluster is compared with simulated chains that
+    each start from a single index case, whatever `n_initial` is. This
+    happens with interventions, with an offspring distribution that is not
+    single-type, and whenever some cluster has more than one index case and
+    no exact formula covers several index cases, for example with
+    under-reported cases (`PerCaseObservation`) or a `ClusterMixed`
+    offspring whose mixing distribution is not Gamma.
 
     With `prob_concluded`, the observation model is ignored: cluster sizes are
     treated as fully observed, with no under-reporting and no minimum cluster
