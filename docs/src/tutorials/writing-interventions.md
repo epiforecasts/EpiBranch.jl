@@ -336,7 +336,7 @@ prevents.
 [`ContactTracing`](@ref) decides which cases have their contacts traced
 through an eligibility policy, such as `OnSymptomOnset()` or
 `OnLabConfirmation()`, and policies combine with `&`, `|` and `!` (see
-[Interventions](interventions.md)). A policy the built-ins cannot express is a
+[Isolation and contact tracing](interventions.md)). A policy the built-ins cannot express is a
 type subtyping `EpiBranch.TraceEligibility` with one `is_eligible` method,
 which receives the infector, the contact and the simulation state. It then
 combines with the operators like a built-in policy.
