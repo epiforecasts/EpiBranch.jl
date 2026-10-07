@@ -202,7 +202,8 @@ happen to a person whether or not they are infected are kept:
   `date_isolation_release`, when that quarantine ended. If a traced contact
   was later due to be isolated at what would have been their symptom onset,
   that isolation is not shown (they were never infected, so never had an
-  onset): both columns give the earlier quarantine instead.
+  onset): both columns give the earlier quarantine if there was one, and are
+  `missing` otherwise.
 
 Columns that are not dates, such as `asymptomatic`, `traced` or `vaccinated`,
 are shown unchanged.
