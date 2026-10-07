@@ -454,11 +454,13 @@ The estimate matches the 4 days the outbreak was simulated with.
     differences in susceptibility or infectiousness. Each blocks a fraction
     `p` of contacts and lowers the rate of infecting contacts by the factor
     `1 - p`. Fitting then estimates that lower rate instead of the rate the
-    model was given. Fitting with `loglikelihood(data, model)` instead of
-    `pairwise_surv_loglik` allows for a vaccine's efficacy. Isolation or
-    quarantine that stops all transmission is recorded in the data, and the
-    likelihood allows for it. Leaky isolation that starts partway through
-    someone's infectious period is not in the likelihood at all.
+    model was given. Fitting with `loglikelihood(data, model)`, where `model`
+    includes the vaccination, allows for a vaccine's efficacy against
+    infection. Isolation or quarantine that stops all transmission is
+    recorded in the data, and the likelihood allows for it. Isolation that
+    still lets some transmission through is not in the likelihood:
+    `loglikelihood(data, model)` stops with an error for such a model, and
+    `pairwise_surv_loglik` ignores it.
 
 The contact-interval distribution can also depend on who infects whom, for
 example adults transmitting faster than children, through a function
