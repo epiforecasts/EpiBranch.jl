@@ -825,7 +825,7 @@ works for simulation has no closed form.
 | Offspring as a function | A function `(rng, ind) -> Int` | Offspring draw |
 | Multi-type offspring as a function | A function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | An offspring specification | A type with `draw_offspring` and `chain_size_distribution` | Offspring draw and closed-form results |
-| A transmission model | A type `<: TransmissionModel` with `generate_offspring` (offspring-driven) or `initialise_state`, `contacts_of` and `gather_by_target` (structure-driven); optionally `single_type_offspring` and accessors | Simulation and closed-form results |
+| A transmission model | A type `<: TransmissionModel` with `generate_offspring` (offspring-driven) or `initialise_state`, `contacts_of` and `collect_exposures` returning `gather_by_target` (structure-driven); optionally `single_type_offspring` and accessors | Simulation and closed-form results |
 | A transmission route | `RouteWindow(name; from, until, kernel, reach)` on a model that reads routes | Continuous-time models, each case |
 | Structured mixing in a closed population | `mixing_by` (a tuple of characteristic names) and `force(group, counts)` for the internal `_sellke_pool!` | Simulation |
 | A clinical transition | A type `<: AbstractClinicalTransition` with `initialise_individual!` and `resolve_individual!`; `is_terminal`, `terminal_event` and `terminal_target` if terminal; `transition_loglik` to evaluate it | When a case is created |
