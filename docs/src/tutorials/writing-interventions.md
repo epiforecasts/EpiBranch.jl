@@ -194,8 +194,8 @@ is the potential infection time just drawn for that pair.
 
 ## The hooks in the built-in interventions
 
-These excerpts from the package source show one hook each. They call internal
-functions and do not run on their own. The full source is in
+These simplified versions of the package source show one hook each. They call
+internal functions and do not run on their own. The full source is in
 `src/interventions/`.
 
 `initialise_individual!`: `ContactTracing` sets the two values it keeps on
@@ -218,7 +218,6 @@ means "stop here unless `x` is true".
 
 ```julia
 function resolve_individual!(iso::Isolation, individual, state)
-    is_isolated(individual) && return nothing
     is_test_positive(individual) || return nothing
 
     iso_delay = _sample_value(iso.onset_to_isolation_delay, state.rng, individual)
@@ -492,14 +491,13 @@ intervention defines two methods:
   intervention acts on the person (for example the isolation time).
 - `EpiBranch.reset!(intervention, individual)`: undo its effect on the person.
 
-`Isolation` defines them like this:
+A simplified version of the pair `Isolation` defines:
 
 ```julia
 EpiBranch.intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 
 function EpiBranch.reset!(::Isolation, ind::Individual)
-    ind.state[:isolated] = false
-    ind.state[:isolation_time] = Inf
+    clear_isolated!(ind)
     return nothing
 end
 ```
