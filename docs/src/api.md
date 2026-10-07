@@ -374,8 +374,8 @@ offspring_distribution
 ### Observation models
 
 An observation model describes how outbreaks are detected or reported: for
-example each case is reported with some probability, or only chains above a
-minimum size are seen. Add one to a model with `observation = ...`.
+example each case is reported with some probability, or only chains of at least a
+given size are seen. Add one to a model with `observation = ...`.
 
 ```@docs
 ObservationModel
