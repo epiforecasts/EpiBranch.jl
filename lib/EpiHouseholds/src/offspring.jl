@@ -510,9 +510,9 @@ function _simulated_person_time(
 end
 
 # How much of a case's isolated or quarantined stretches fall inside its
-# community-infectious window, clipped to it so a stretch starting before the
-# window opens or outlasting its close only counts for the part the case would
-# otherwise have spent in the community.
+# community-infectious window. Each stretch is clipped to the window: one
+# starting before it opens or outlasting its close counts only for the part
+# the case would otherwise have spent in the community.
 function _removed_duration(stretches, opened::Float64, closed::Float64)
     total = 0.0
     for (start, release) in stretches

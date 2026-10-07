@@ -453,9 +453,9 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   isolated or quarantined stretches out of its community-infectious
   person-time, the way the pairwise likelihood already does. A removal that
   lapses, such as a finite-duration `Isolation`, does not close the
-  infectious window, so these stretches were previously counted as time spent
-  making community contacts; R* under a finite isolation duration overstated
-  transmission between households as a result.
+  infectious window; these stretches were previously counted as time spent
+  making community contacts, and R* under a finite isolation duration
+  overstated transmission between households.
 
 ## [0.1.0] - 2026-06-16
 

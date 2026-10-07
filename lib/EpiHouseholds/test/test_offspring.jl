@@ -265,8 +265,8 @@ end
     end
 
     @testset "a finite isolation duration still cuts the community person-time" begin
-        # A removal that lapses does not close the infectious window (it blocks
-        # the isolated stretch per contact instead), so the person-time the
+        # A removal that lapses does not close the infectious window; it blocks
+        # the isolated stretch per contact instead. The person-time the
         # offspring law reads has to leave that stretch out itself.
         prog = [
             Transition(:onset; from = :infection, delay = 1.0),
@@ -289,12 +289,12 @@ end
         r_none = rstar(none)
         r_inf = rstar(isolated(Inf))
         # Isolation starting around day two and lasting seven days outlasts a
-        # case's six-day infectious period, so it leaves the same community
+        # case's six-day infectious period, leaving the same community
         # person-time as one that never lapses.
         @test rstar(isolated(7.0)) ≈ r_inf rtol = 0.05
         # A duration that releases the case well inside its infectious period
-        # blocks only part of it, so R* sits strictly between no isolation and
-        # one that lasts the rest of the case's infectious period.
+        # blocks only part of it: R* then sits strictly between no isolation
+        # and one that lasts the rest of the case's infectious period.
         r_short = rstar(isolated(1.0))
         @test r_inf < r_short < r_none
     end
