@@ -642,12 +642,13 @@ println("Doses with at most 5 people admitted a day: $(count(is_vaccinated, stat
 ```
 
 !!! warning "The limit is on people admitted each day"
-    The limit applies when people are selected for a dose, which happens
-    when contacts are traced; the doses themselves are dated later, at the
-    trace time plus `dose_delay`. Doses can therefore bunch up on other days
-    than the one whose allowance paid for them. One day can see several
-    times `budget_per_period` doses given: the limit does not cap the
-    doses given per day.
+    The simulation selects everyone traced from one generation of cases at
+    once, and charges them to the allowance of the day it has reached: the
+    date of the latest infection so far. The doses themselves are dated at
+    each trace plus `dose_delay`, so they can fall on other days than the one
+    whose allowance paid for them. One day can see several times
+    `budget_per_period` doses given: the limit does not cap the doses given
+    per day.
 
 [`capacity_usage`](@ref) reports how much of the allowance a simulated
 outbreak had used, and how much was available, by the time it stopped:
@@ -677,7 +678,10 @@ nothing # hide
 
 With a finite `period`, `carry_over = true` (the default) adds a day's unused
 allowance to the next day's; `carry_over = false` discards it, so only that
-day's own `budget_per_period` is ever available.
+day's own `budget_per_period` is ever available. A generation of cases can
+span several days but draws on a single day's allowance, so without carry-over
+the days in between add nothing, and admissions can fall well below
+`budget_per_period` a day.
 
 !!! note "Which models support capacity limits"
     On the network and household models, capacity limits work for ring and
