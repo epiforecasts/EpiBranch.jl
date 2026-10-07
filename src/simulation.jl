@@ -146,8 +146,9 @@ available here. The usual next step is
 [`containment_probability`](@ref), the share of these outbreaks that died out.
 
 With `parallel = true` the runs are spread over the CPU threads Julia was
-started with (for example `julia --threads 4`), and the results are still
-reproducible for a given seeded `rng`.
+started with (for example `julia --threads 4`). The results are reproducible
+for a given seeded `rng` and number of threads, though they are not the same
+outbreaks as with `parallel = false`.
 
 # Examples
 ```julia
