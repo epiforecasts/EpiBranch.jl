@@ -234,8 +234,9 @@ total. Nothing depletes, so the model covers the early phase: R\*, and the chanc
 that a single introduction dies out. An epidemic peak and a whole-population
 final size need a finite, depleting pool of households.
 
-Between-household contact tracing is the `ContactTracing` of
-[Interventions](interventions.md) attached to [`HouseholdProcess`](@ref), where a
+Between-household contact tracing is the `ContactTracing` from
+[Isolation and contact tracing](interventions.md) attached to
+[`HouseholdProcess`](@ref), where a
 case's household-mates are already its contacts. It finds them one at a time
 through the same competing-risk resolution as any other contact, so a household
 whose members share one exposure gains nothing from being flagged together.

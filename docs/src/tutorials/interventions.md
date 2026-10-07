@@ -111,8 +111,8 @@ value releases them. A released case who is still infectious transmits again:
 a secondary case whose infection would fall after the release is not
 prevented. A duration of 0 stops no transmission at all.
 
-Choosing `Inf` to mean "isolated for the rest of the infectious period" is
-only safe when infectiousness ends before any finite duration would. The
+A finite duration means "isolated for the rest of the infectious period"
+only when infectiousness ends before the duration runs out. The
 generation time here has no upper limit, so cases released after the 7 days
 above can still infect people. Isolation follows onset and always starts after
 infection. Removing a contact before they are infected is quarantine, below.
@@ -151,8 +151,8 @@ happens to a traced contact:
   the trace, whichever is later, unless the usual onset-to-isolation delay
   would isolate them sooner. Asymptomatic contacts are never isolated.
 
-From here on, isolation and quarantine last indefinitely (`duration = Inf`),
-to keep the comparisons about tracing.
+Until the section on scheduled interventions, isolation and quarantine last
+indefinitely (`duration = Inf`), to keep the comparisons about tracing.
 
 ```@example interventions
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
@@ -195,13 +195,14 @@ ContactTracing(
 
 ### What triggers contact tracing
 
-By default, tracing starts when the infector is isolated, which only happens
-to symptomatic infectors, and the delay counts from the isolation. Real
+By default, a contact is traced once their infector has developed symptoms
+and been isolated, and the delay counts from the isolation. Real
 programmes start tracing on different events. The `eligibility` keyword sets
 the trigger:
 
 | Trigger | Traces once the infector… | Delay counts from |
 |---|---|---|
+| [`SymptomaticParent`](@ref) (default) | has developed symptoms and been isolated | isolation |
 | [`OnSymptomOnset`](@ref) | develops symptoms | symptom onset |
 | [`OnLabConfirmation`](@ref) | has tested positive | isolation |
 | [`OnIsolation`](@ref) | has been isolated | isolation |
@@ -209,7 +210,7 @@ the trigger:
 
 Every trigger except `OnSymptomOnset` waits for the infector's isolation, so
 even under `TraceEveryone` the contacts of an infector who is never isolated
-(asymptomatic, or missed by the test) are never quarantined or isolated
+(asymptomatic and not traced, or missed by the test) are never quarantined or isolated
 through tracing. [`is_traced`](@ref) still marks them as traced.
 
 Under `OnSymptomOnset` the delay keeps its keyword name,
@@ -266,8 +267,10 @@ contacts are never traced.
 
 The simulation keeps everyone each case could have infected, including those
 who were not infected. It can therefore count how many contacts tracing reached as a
-measure of workload. `condition = 50:200` keeps simulating until one outbreak
-ends with between 50 and 200 cases, and returns that one outbreak:
+measure of workload. `condition = 50:200` keeps simulating until an outbreak
+stops with between 50 and 200 cases, and returns that one outbreak. It stops
+either because it died out or because it reached the 200-case cap, as the
+one here did:
 
 ```@example interventions
 rng = StableRNG(42)
@@ -289,13 +292,25 @@ infections is the number of infections isolation and quarantine prevented.
 
 In real outbreaks interventions are rarely in place from the start. Testing
 may begin on day 14, or contact tracing once cases pass a threshold.
-[`Scheduled`](@ref) sets when an intervention begins or ends.
+[`Scheduled`](@ref) sets when an intervention begins or ends. The examples
+in this section go back to the 7-day isolation from the start of the page,
+and compare with its result.
 
-What matters is when the action would happen, not when the person was
-infected. Someone infected on day 8 with symptom onset on day 9 and a 2-day
-delay would be isolated on day 11. If testing starts on day 10, they are
-isolated. Someone whose isolation would fall on day 9 is not, because
-testing was not yet available.
+Two checks decide whether a scheduled intervention reaches a case. The
+simulation sets up each case at the start of the generation in which they
+transmit, and the intervention applies to them only if some case in the
+outbreak has by then been infected on or after the start day. The action's
+own time must then also fall on or after the start day. With testing from
+day 10, someone whose isolation would fall on day 9 is never isolated.
+Someone infected on day 8 with symptom onset on day 9 and a 2-day delay would
+be isolated on day 11, which happens only if another case had been infected
+on or after day 10 by the time they were set up.
+
+!!! note "The earliest cases are missed"
+    Index cases are set up on day 0, so an intervention scheduled to start
+    later never reaches them. The same holds for any case set up before the
+    outbreak's latest infection reaches the start day, even if their isolation
+    would fall after it.
 
 ```@example interventions
 # Testing starts on day 10
@@ -327,7 +342,7 @@ println("Tracing after 20 cases: $(round(containment_probability(results), digit
 
 Tracing that waits for 20 cases misses the contacts of the first cases, and
 it changes nothing in outbreaks that die out before reaching 20. The result
-is therefore close to isolation alone; with 200 simulations, a difference of
+is therefore close to 7-day isolation alone; with 200 simulations, a difference of
 a few percentage points either way is within simulation noise.
 
 !!! note "The case count includes undetected cases"

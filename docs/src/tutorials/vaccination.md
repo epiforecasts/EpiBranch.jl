@@ -46,7 +46,7 @@ default). It has up to three effects, each a probability:
 |---|---|---|
 | `efficacy` | the vaccinated person being infected | before the exposure |
 | `onward_efficacy` | the vaccinated person infecting others | before each of their transmissions |
-| `post_exposure_efficacy` | an infection the person already has | after the exposure but before symptom onset |
+| `post_exposure_efficacy` | an infection the person already has | before symptom onset (if before the exposure, it blocks the infection itself) |
 
 `efficacy` is leaky by default: each exposure after protection starts is
 blocked with that probability. `mode = AllOrNothingMode()` instead makes that
@@ -133,9 +133,11 @@ them.
 
 ### Counting doses
 
-`condition = 50:200` keeps simulating until one outbreak ends with between 50
-and 200 cases and returns it. `count(is_vaccinated, state.individuals)` then
-counts everyone vaccinated, like `sum(is_vaccinated(x))` in R:
+`condition = 50:200` keeps simulating until an outbreak stops with between 50
+and 200 cases and returns it. It stops either because it died out or because
+it reached the 200-case cap, as the one here did.
+`count(is_vaccinated, state.individuals)` then counts everyone vaccinated,
+like `sum(is_vaccinated(x))` in R:
 
 ```@example vaccination
 rng = StableRNG(42)
@@ -276,7 +278,7 @@ nothing is left.
     blocking at exposure is all it can do. `post_exposure_efficacy` needs an
     incubation period, set by [`clinical_presentation`](@ref).
 
-!!! warning "Stopped infections are not traced"
+!!! warning "Contacts of stopped infections are not traced"
     Under quarantine neither `post_exposure_efficacy` nor `onward_efficacy`
     has transmission left to block, and `post_exposure_efficacy` can even
     lower containment. A contact whose infection is stopped never develops
@@ -351,8 +353,11 @@ but people within one still decide individually.
 A community's acceptance lasts the whole outbreak, so a community that
 refuses keeps refusing in later generations. Give [`GroupVaccination`](@ref)
 the same `coverage` function to cluster refusal within the groups it
-vaccinates, or use the value in [`MassVaccination`](@ref)'s `eligibility_time`
-in the same way.
+vaccinates. [`MassVaccination`](@ref) has no `coverage`; its
+`eligibility_time` returns a day instead, and `Inf` means never vaccinated, so
+`(rng, ind) -> rand(rng) < ind.state[:vaccine_acceptance] ? 30.0 : Inf`
+vaccinates each person on day 30 with their community's acceptance as the
+probability.
 
 ### Clustered refusal and containment
 
@@ -497,8 +502,8 @@ Ring doses are given at the trace. A second dose sets `dose_delay`, the days
 from the trace to that dose, and names the dose it follows with
 `requires_dose`. Only contacts who have had the earlier dose by the time the
 later one is due receive it. The boost's `coverage` is then the share
-retained between doses. List each dose after the dose it requires; a boost listed
-first finds no one primed and is never given.
+retained between doses. List each dose after the dose it requires; listing a
+boost before its prime is an error.
 
 ```@example vaccination
 prime_ring = RingVaccination(efficacy = 0.6, delay_to_immunity = 21.0,
