@@ -910,18 +910,14 @@ end
             )
         end
 
-        # The declaration is what makes the route follow the record: a kernel
-        # reading `:tick` without declaring it keeps the contacts it first drew.
+        # The declaration is a promise the race checks: a kernel reading
+        # `:tick` without declaring it is caught rather than left to keep the
+        # contacts it first drew.
         undeclared = PairKernel((c, a, b) -> Exponential(0.3 * (1 + a.tick)); state = ind -> (tick = get(ind.state, :tick, 0)::Int,), watches = ())
         stale = RoutedNetwork(
             [RouteWindow(:all; until = (:recovered,), kernel = undeclared, reach = adj)]
         )
-        @test any(
-            !isequal(
-                [i.infection_time for i in live_run(routed_live, s).individuals],
-                [i.infection_time for i in live_run(stale, s).individuals]
-            ) for s in 1:5
-        )
+        @test_throws "watches" live_run(stale, 1)
 
         # A per-edge kernel of the wrong shape names the route it came from.
         bad = try
@@ -977,8 +973,8 @@ end
         # that route's contacts, and the first route hears nothing about it.
         # Both routes read a record here, so the first route's own pending
         # contact is what shows that the keying is by record and not by route:
-        # it keeps its draw while the second route's is redrawn.
-        two_atoms(declared) = ModelSpec(
+        # it keeps its draw whether or not the second route's is redrawn.
+        two_atoms(watches; flagged = true) = ModelSpec(
             RoutedNetwork(
                 [
                     RouteWindow(
@@ -995,29 +991,35 @@ end
                         kernel = PairKernel(
                             (c, a, b) -> Dirac(b.flag == 0 ? 5.0 : 1.0);
                             state = ind -> (flag = get(ind.state, :flag, 0)::Int,),
-                            watches = declared
+                            watches = watches
                         ),
                         reach = [[3], Int[], [1], Int[], Int[]]
                     ),
                 ]
             );
-            progression = _sir(6.0), interventions = [_FlagHosts()]
+            progression = _sir(6.0),
+            interventions = flagged ? AbstractIntervention[_FlagHosts()] : AbstractIntervention[]
         )
-        atom_times(declared) = [
+        atom_times(watches; flagged = true) = [
             i.infection_time
                 for i in simulate(
-                    two_atoms(declared); initial_cases = [1], rng = StableRNG(7)
+                    two_atoms(watches; flagged); initial_cases = [1], rng = StableRNG(7)
                 ).individuals
         ]
-        declared_times, stale_times = atom_times((:flag,)), atom_times(())
-        # The second route follows the record it declares.
+        declared_times = atom_times((:flag,))
+        unmoved_times = atom_times((:flag,); flagged = false)
+        # The second route follows the record it declares, and leaves its
+        # contact alone when nothing ever writes it.
         @test declared_times[3] == 1.0
-        @test stale_times[3] == 5.0
-        # The first route declares a record nothing writes, so its own pending
-        # contact stands: host 4 keeps the time it was drawn at. Were the race
-        # to invalidate by route, `:flag` moving would redraw this one too.
-        @test declared_times[4] == stale_times[4]
-        @test isequal(declared_times[1:2], stale_times[1:2])
+        @test unmoved_times[3] == 5.0
+        # The first route's own pending contact is unaffected either way: hosts
+        # 2 and 4 keep the times they were drawn at. Were the race to
+        # invalidate by route, `:flag` moving would redraw these too.
+        @test declared_times[4] == unmoved_times[4]
+        @test isequal(declared_times[1:2], unmoved_times[1:2])
+        # Reading `:flag` without declaring it is caught rather than left to
+        # keep a stale draw.
+        @test_throws "watches" atom_times(())
 
         # Both routes reach cases, so the first comparison has something in it.
         reached = simulate(two_routes((:quiet,)); n_initial = 2, rng = StableRNG(1))
