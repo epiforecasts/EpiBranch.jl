@@ -430,7 +430,7 @@ interventions alike. `competing_risk` is the single way to block a
 transmission, whether the reason is a vaccine, a border closure or the
 person's own susceptibility.
 
-Five built-in risks are always present:
+Six built-in risks are always present:
 
 - [`EpiBranch.HostSusceptibility`](@ref) blocks with probability
   `1 - susceptibility` of the contact. A contact with susceptibility 0.3
@@ -442,6 +442,10 @@ Five built-in risks are always present:
   infected (see [Following up contacts who were not infected](@ref)) can
   generate contacts without infecting them. Usually every active person is
   infected and it does nothing.
+- The end of an infectiousness window blocks a contact timed at or after the
+  earliest `until` state of the infector's window, such as their death or
+  recovery (see [Infectiousness windows](@ref)). A window with no `until`
+  blocks nothing.
 - [`EpiBranch.AbortedInfection`](@ref) blocks every transmission an infector
   makes from its `:infection_aborted_time`, so an infection ended by
   [`EpiBranch.abort_infection!`](@ref) stays ended after the intervention that
