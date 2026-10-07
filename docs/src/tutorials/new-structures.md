@@ -728,8 +728,9 @@ combination or one where band and SES contacts multiply independently.
     risk that depends on the infector would be applied to the wrong
     infectors. The simulation therefore stops with an error for any
     intervention whose [`EpiBranch.risk_depends_on_infector`](@ref) is
-    `true`: a leaky `Isolation`, a `RingVaccination` with an onward effect,
-    and by default any intervention with its own `competing_risk`.
+    `true`: an `Isolation` that is leaky or has a finite `duration`, a
+    `RingVaccination` with an onward effect, and by default any intervention
+    with its own `competing_risk`.
 
 An intervention whose risk reads only the contact declares so, and is then
 accepted:
@@ -746,8 +747,9 @@ EpiBranch.risk_depends_on_infector(::MyProphylaxis) = false
 Per-person infectiousness is accepted: it enters the force through the weighted
 counts, so it is exact. Risks on the contact alone, such as a per-person
 susceptibility, also apply exactly. Differences in infectiousness between
-groups belong in `force`. The natural history, isolation and line-list output
-are the same as for `HomogeneousProcess`.
+groups belong in `force`. The natural history and line-list output are the
+same as for `HomogeneousProcess`; with more than one mixing group, the only
+isolation accepted is complete isolation with `duration = Inf`.
 
 ## Choosing initial cases in a fixed population
 
