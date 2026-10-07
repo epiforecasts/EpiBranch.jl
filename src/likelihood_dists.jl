@@ -137,9 +137,10 @@ Keyword arguments:
   observed size is its final size (for real-time data with clusters still
   growing; see [`end_of_outbreak_probability`](@ref)). Only available with the
   exact distribution, so not with interventions.
-- `n_sim`, `interventions` and other keywords of
-  `loglikelihood(::ChainSizes, model)`: control the simulation used when no
-  exact formula applies.
+- `n_sim`, `n_initial`, `max_cases`, `max_generations`, `max_time`,
+  `stopping_rules` and `rng`: control the simulation used when no exact
+  formula applies. Interventions come from the model; add them with a
+  [`ModelSpec`](@ref).
 """
 function chain_size_distribution(
         model::TransmissionModel;
@@ -188,9 +189,10 @@ chain-length data, for example in Turing.jl:
 end
 ```
 
-Extra keywords (`n_sim`, `interventions`, ...) control the simulation used
-when no exact formula exists; see [`ChainLengths`](@ref) for the length
-convention.
+Keywords `n_sim`, `n_initial`, `max_cases`, `max_generations`, `max_time`,
+`stopping_rules` and `rng` control the simulation used when no exact formula
+exists. Interventions come from the model; add them with a
+[`ModelSpec`](@ref). See [`ChainLengths`](@ref) for the length convention.
 """
 function chain_length_distribution(model::TransmissionModel; kwargs...)
     return _ChainLengthLaw(model, NamedTuple(kwargs))
