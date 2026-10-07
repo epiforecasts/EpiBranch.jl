@@ -558,6 +558,14 @@ quarantine a case, the data record when that happened, and their contacts
 are not at risk from them during it. A case isolated for good counts as infectious only
 up to isolation.
 
+!!! warning "Partial protection is not in the data"
+    Isolation that still lets some transmission through is not recorded in
+    the data. `pairwise_surv_loglik` ignores it, which pulls the estimated
+    rate of infecting contacts down, and `loglikelihood(data, model)` stops
+    with an error for such a model. A vaccine's efficacy against infection is
+    allowed for by `loglikelihood(data, model)` with the vaccination in
+    `model`.
+
 There is no one-call fitting function. Here we evaluate the log-likelihood at
 a grid of mean contact intervals and take the best one, the maximum likelihood
 estimate, for an outbreak simulated with a mean of 6 days on a small-world
