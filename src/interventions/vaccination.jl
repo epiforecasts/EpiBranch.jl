@@ -555,10 +555,11 @@ is no later hospitalisation, death or other outcome; transitions before it
 stand. A stopped infection is still a case: it is counted by
 [`chain_statistics`](@ref) and listed by [`linelist`](@ref) with no onset date
 and a `date_infection_aborted` column. Where immunity is already in place at
-the exposure, or the contact never has symptoms, the dose instead prevents the
-infection with the same probability. `post_exposure_efficacy` therefore
-already covers every exposure `efficacy` would; set one or the other, since
-setting both counts the protection twice.
+the exposure, the dose instead prevents the infection with the same
+probability. That is all it does for a contact who never has symptoms, so such
+a contact exposed before immunity is not protected. `post_exposure_efficacy`
+therefore already covers every exposure `efficacy` would; set one or the
+other, since setting both counts the protection twice.
 
 `onward_efficacy` leaves the contact's infection and illness in place but
 prevents each of their transmissions after immunity with this probability,
