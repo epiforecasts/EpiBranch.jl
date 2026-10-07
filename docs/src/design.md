@@ -176,6 +176,15 @@ are unchanged, because they act on individual people, not on types.
 
 ## Host timeline and transmission-route windows
 
+!!! note "Planned"
+    The continuous-time half of this is built: `RouteWindow` records a route's
+    opening state, the states that end it, its contact-interval distribution
+    and whom it reaches, and the continuous-time simulation handles several
+    routes per case, each ended separately, for any model that supplies them.
+    The branching-process half, with the mixture distribution and its closed
+    forms, is designed but not yet built. Exact results are therefore not yet
+    available for models with several routes.
+
 Some diseases spread by several routes, each open over a different part of a
 case's illness. Ebola spreads in the community while a case is ill, in
 hospital between admission and discharge, and at funerals between death and
@@ -212,23 +221,14 @@ A window contributes contacts only once its opening state has happened, so a
 survivor never has funeral contacts and no contact is created only to be
 removed. The distribution of secondary cases that drives outbreak size is then
 a mixture: community contacts for everyone, plus funeral contacts for the
-proportion who die. It has a closed form when each part is a negative binomial
-and falls back to simulation otherwise. Exact results and simulation still
-agree.
+proportion who die. Once built, it will have a closed form when each part is a
+negative binomial and fall back to simulation otherwise, so exact results and
+simulation will still agree.
 
 The same quantities let a household or metapopulation model reuse this at a
 smaller scale: a household is one route window limited to its members, with
 the contact-interval distribution as the window's timing and the infectious
 period as its end.
-
-!!! note "Planned"
-    The continuous-time half of this is built: `RouteWindow` records a route's
-    opening state, the states that end it, its contact-interval distribution
-    and whom it reaches, and the continuous-time simulation handles several
-    routes per case, each ended separately, for any model that supplies them.
-    The branching-process half, with the mixture distribution and its closed
-    forms, is designed but not yet built. Exact results are therefore not yet
-    available for models with several routes.
 
 ## One model for simulating and fitting
 
