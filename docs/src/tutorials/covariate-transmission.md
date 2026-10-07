@@ -246,7 +246,8 @@ person. The rule then takes three arguments: the pair's `context`, the
 infector's record (here called `source`) and the susceptible's record (`target`).
 `watches` lists the person-level variables the `state` function reads; the
 next section explains why it matters. `::Float64` asserts that the value is a
-number.
+`Float64` (a decimal number); an integer or other number type there gives an
+error.
 
 ```@example stateful
 using EpiBranch, EpiNetwork, Distributions, Random
