@@ -164,7 +164,7 @@ characteristics attach in the same way whatever the source of the graph.
 
 | Intervention | What it does on a network |
 |:-- | :-- |
-| Isolation of cases: [`Isolation`](@ref), or an `:isolated` transition | Stops the case transmitting while they are isolated. An `:isolated` transition, or `Isolation(duration = Inf)`, ends their infectious period; with a finite `duration` a case still infectious when released transmits again ([below](#Isolation-curtails-onward-spread)). |
+| Isolation of cases: [`Isolation`](@ref), or an `:isolated` transition | Stops the case transmitting while they are isolated. An `:isolated` transition, or `Isolation(duration = Inf)`, ends their infectious period; with a finite `duration` a case still infectious when released transmits again ([below](#Several-routes-at-once)). |
 | Partial protection: leaky isolation, a vaccine's efficacy | Blocks a fraction of the infecting contacts. The pair keeps meeting, and blocking a fraction `p` of contacts lowers the rate of infecting contacts along that link by the factor `1 - p`. |
 | Individual differences in susceptibility or infectiousness | Multiply the rate of infecting contacts along each of that person's links by the person's factor. |
 | [`ContactTracing`](@ref) | Traces a case's contacts in the network and quarantines them ([below](#Contact-tracing-on-a-network)). |
