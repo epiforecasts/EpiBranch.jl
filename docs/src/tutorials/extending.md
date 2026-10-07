@@ -518,7 +518,7 @@ end
 
 ### Verifying your intervention
 
-The engine never errors when a hook is missing — every hook has a no-op default. That is convenient for partial implementations but means that *forgotten* hooks fail silently. Quick checks:
+The engine never errors when a hook is missing — every hook has a no-op default. That is convenient for partial implementations but means that *forgotten* hooks fail silently: a hook defined with the wrong number of arguments, or without the `EpiBranch.` prefix (which adds a method to a new function of the same name instead of the package's own), reaches no further than that default. `ModelSpec` warns, naming the type, when none of an intervention's hooks are reachable at all — the case a typo or a missing prefix produces — but cannot tell a deliberately partial implementation from one missing a hook it needs. Quick checks for the rest:
 
 - Run a tiny simulation (`max_cases = 50`) with and without your intervention in the stack. If the outcome looks the same in both, your `competing_risk` or `apply_post_transmission!` is probably not being called for the cases you think.
 - Override `required_fields` (see below) so the engine fails at simulation start when an upstream attributes function hasn't set a field your intervention needs.
