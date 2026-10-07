@@ -589,7 +589,9 @@ struct MyInfections{T <: Real} <: InfectionLayer
 end
 EpiBranch.contact_structure(d::MyInfections) = d.contacts
 
-Distributions.loglikelihood(d::MyInfections, m::MyModel) =
+# MyContactModel: your structure-driven model, with `kernel` and
+# `external_hazard` fields
+Distributions.loglikelihood(d::MyInfections, m::MyContactModel) =
     pairwise_surv_loglik(m.kernel, d; external_hazard = m.external_hazard)
 ```
 
