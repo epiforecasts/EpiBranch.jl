@@ -167,8 +167,10 @@ The ratio of the two is the number of doses used per case in this outbreak.
 By default tracing reaches a case's direct contacts. `depth = 2` also traces
 the contacts of those contacts, the second ring that Ebola ring vaccination
 protocols vaccinate around a confirmed case. An infected contact who meets the
-tracing trigger starts a ring of their own, and contacts who were not infected
-are followed one step further so the ring can extend past them. The same
+tracing trigger starts a ring of their own. Contacts who do not start a ring
+of their own (those not infected, or infected without meeting the trigger,
+such as asymptomatic contacts) are followed one step further so the ring can
+extend past them. The same
 `RingVaccination` vaccinates everyone in the ring:
 
 ```@example vaccination
