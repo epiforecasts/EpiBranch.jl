@@ -77,8 +77,10 @@ Interventions on this process:
   Tracing can only reach household members infected after the case's own
   course of infection is known, which in a fast-spreading household means the
   ones infected later.
-- A vaccine's efficacy, and per-person susceptibility and infectiousness, reduce
-  the rate at which each household contact is infected.
+- A leaky vaccine's efficacy, and per-person susceptibility and
+  infectiousness, reduce the rate at which each household contact is
+  infected. An all-or-nothing vaccine instead fully protects its share of the
+  vaccinated from their immunity date.
 - `RingVaccination` and `GroupVaccination` work, including with `Scheduled`
   and `CapacityConstrained`, and a ring dose's `post_exposure_efficacy` can stop
   a household member's own infection before onset. A capacity limit is one
