@@ -118,14 +118,60 @@ EpiBranch.PiecewiseConstantCalendar), the default, which needs
 declares for its own type:
 
 ```julia
-struct Seasonal{T <: Real}
-    amplitude::T
+struct DayOfWeekRamp{T <: Real}
+    slope::T
 end
-EpiBranch.calendar_multiplier(s::Seasonal, t) = 1 + s.amplitude * sin(2π * t / 365)
-EpiBranch.calendar_shape(::Seasonal) = EpiBranch.SmoothCalendar()
+EpiBranch.calendar_multiplier(s::DayOfWeekRamp, t) = 1 + s.slope * mod(t, 7)
+EpiBranch.calendar_shape(::DayOfWeekRamp) = EpiBranch.SmoothCalendar()
 ```
+
+[`Seasonal`](@ref) is the smooth schedule the package provides, and a plain
+callable `t -> multiplier` is read as a smooth schedule too, with no
+`calendar_shape` method of its own needed.
 """
 calendar_shape(schedule) = PiecewiseConstantCalendar()
+
+"""
+    Seasonal(; amplitude, peak_day, period = 365.0)
+
+A smoothly oscillating multiplier on calendar time: `1 + amplitude *
+cos(2π * (t - peak_day) / period)`. `amplitude` must be between 0 and 1, which
+keeps the multiplier non-negative; `peak_day` is the calendar time of the
+highest multiplier, and `period` defaults to a year.
+
+Used as the `calendar` a [`PairKernel`](@ref) multiplies its contact-interval
+hazard by, on the calendar-time axis. It declares
+[`EpiBranch.SmoothCalendar`](@ref), so its cumulative hazard is integrated by
+quadrature rather than exactly as [`Steps`](@ref)'s is. `amplitude` and
+`peak_day` share a type parameter so the likelihood can be differentiated with
+respect to either.
+"""
+struct Seasonal{T <: Real}
+    amplitude::T
+    peak_day::T
+    period::Float64
+    function Seasonal{T}(amplitude, peak_day, period) where {T <: Real}
+        0 <= amplitude <= 1 || throw(
+            ArgumentError("Seasonal amplitude must be between 0 and 1")
+        )
+        return new{T}(amplitude, peak_day, period)
+    end
+end
+function Seasonal(; amplitude, peak_day, period = 365.0)
+    T = promote_type(typeof(amplitude), typeof(peak_day), Float64)
+    return Seasonal{T}(T(amplitude), T(peak_day), Float64(period))
+end
+
+# The multiplier in force at calendar time `t`.
+(s::Seasonal)(t::Real) = calendar_multiplier(s, t)
+
+calendar_multiplier(s::Seasonal, t::Real) = 1 + s.amplitude * cos(2π * (t - s.peak_day) / s.period)
+calendar_shape(::Seasonal) = SmoothCalendar()
+
+# A plain function read as a calendar schedule: `calendar = t -> multiplier`
+# for forcing of any shape, with no breaks to declare.
+calendar_multiplier(f::Function, t::Real) = f(t)
+calendar_shape(::Function) = SmoothCalendar()
 
 """
     PairKernel(callback; state = nothing, calendar = nothing, watches = nothing)
@@ -164,7 +210,8 @@ move has to be read from there rather than from a field such as
 nothing that can move and so nothing to declare: `watches` is refused there
 rather than ignored.
 
-`calendar`, a [`Steps`](@ref) schedule or any type implementing
+`calendar`, a [`Steps`](@ref) or [`Seasonal`](@ref) schedule, a plain callable
+`t -> multiplier`, or any other type implementing
 [`calendar_multiplier`](@ref EpiBranch.calendar_multiplier), multiplies the
 returned profile's hazard by the schedule's value at the calendar date (the infector's infectious
 opening plus time elapsed). A pair whose schedule differs from the shared one —
