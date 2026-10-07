@@ -157,12 +157,15 @@ In practice:
 
 Two differences in order matter when your intervention has to work on both:
 
-- On a branching process a contact's own `resolve_individual!` runs **before**
-  it is traced. On the continuous-time models the order is reversed: a contact
-  is traced when its *infector*'s infection becomes final, before the contact's
-  own. An intervention that writes onto a contact must therefore not assume the
-  contact has nothing written yet, and one that reads a contact's own values
-  must not assume they are already set. This is why `Isolation` treats a
+- On both kinds of model a contact is traced before its own
+  `resolve_individual!` runs. On a branching process the contact's population
+  characteristics and onset are already set when it is traced, and its
+  `resolve_individual!` runs in the next generation. On the continuous-time
+  models a contact is traced when its *infector*'s infection becomes final,
+  before the contact's own infection time, and so its onset, is final. An
+  intervention that writes onto a contact must therefore not assume the contact
+  has nothing written yet, and one that reads a contact's own values must not
+  assume they are already set. This is why `Isolation` treats a
   quarantine already in place as a competing route to isolation and keeps the
   earliest time.
 - On the continuous-time models tracing reaches only contacts whose own
