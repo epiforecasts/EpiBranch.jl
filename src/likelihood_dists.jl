@@ -112,28 +112,34 @@ end
     chain_size_distribution(model; seeds=nothing, prob_concluded=nothing, kwargs...)
     chain_size_distribution(spec::ModelSpec; seeds=nothing, prob_concluded=nothing, kwargs...)
 
-Distribution over observed chain (cluster) sizes under `model`, the primary
-entry point for Bayesian inference on chain-size data with Turing's `~`:
+Distribution of observed chain sizes (the number of cases in a cluster) under
+`model`, including its interventions and observation model. Use it to fit a
+model to cluster-size data, for example in Turing.jl, where `sizes ~ ...`
+says the observed sizes follow this distribution:
 
 ```julia
-@model function fit(sizes)
+@model function chain_model(sizes)
     R ~ Gamma(2, 1)
     sizes ~ chain_size_distribution(BranchingProcess(NegBin(R, 0.5)))
 end
 ```
 
-With no keyword arguments, no interventions and a single-type offspring law,
-the analytical chain-size distribution (`Borel` / `GammaBorel`) is returned
-directly; otherwise a wrapper that evaluates via `loglikelihood`. Keyword
-arguments:
+Without interventions or keyword arguments, and with a single-type offspring
+distribution, this is the exact chain-size distribution (`Borel` or
+`GammaBorel`, adjusted for the observation model). Otherwise the probability
+of the data is estimated from simulated outbreaks.
 
-- `seeds`: per-cluster number of index cases, for multi-seed clusters.
-- `prob_concluded`: per-cluster probability the cluster is finished (its
-  observed size is its final size), for real-time data with ongoing clusters —
-  see `end_of_outbreak_probability`. Defined only against the analytical law,
-  so it is not supported alongside interventions.
-- `n_sim`, `interventions`, …: forwarded to the underlying simulation-based
-  `loglikelihood` when the analytical fast path does not apply.
+Keyword arguments:
+
+- `seeds`: number of index cases in each cluster, for clusters started by
+  several introductions.
+- `prob_concluded`: for each cluster, the probability that it is over, so its
+  observed size is its final size (for real-time data with clusters still
+  growing; see [`end_of_outbreak_probability`](@ref)). Only available with the
+  exact distribution, so not with interventions.
+- `n_sim`, `interventions` and other keywords of
+  `loglikelihood(::ChainSizes, model)`: control the simulation used when no
+  exact formula applies.
 """
 function chain_size_distribution(
         model::TransmissionModel;
@@ -171,19 +177,20 @@ end
 """
     chain_length_distribution(model; kwargs...)
 
-Distribution over observed chain lengths under `model`. Use with
-Turing's `~`:
+Distribution of observed chain lengths (generations of onward transmission
+in a cluster, 0 for a single case) under `model`. Use it to fit a model to
+chain-length data, for example in Turing.jl:
 
 ```julia
-@model function fit(data)
+@model function chain_model(lengths)
     R ~ Beta(1, 1)
-    data ~ chain_length_distribution(BranchingProcess(Poisson(R)))
+    lengths ~ chain_length_distribution(BranchingProcess(Poisson(R)))
 end
 ```
 
-`kwargs` are forwarded to the underlying
-`loglikelihood(::ChainLengths, model)` call (e.g. `n_sim`,
-`interventions` for the simulation-based path).
+Extra keywords (`n_sim`, `interventions`, ...) control the simulation used
+when no exact formula exists; see [`ChainLengths`](@ref) for the length
+convention.
 """
 function chain_length_distribution(model::TransmissionModel; kwargs...)
     return _ChainLengthLaw(model, NamedTuple(kwargs))
@@ -196,13 +203,15 @@ end
 """
     offspring_distribution(model)
 
-Per-case offspring distribution of `model`. For a `BranchingProcess`
-this is the same `Distribution` you passed in as `offspring`.
+Offspring distribution of `model`: the distribution of the number of secondary
+cases per case. For a `BranchingProcess` it is the distribution you gave as
+`offspring`. Use it to fit a model to counts of secondary cases, for example
+in Turing.jl:
 
 ```julia
-@model function fit(data)
+@model function offspring_model(counts)
     R ~ Beta(1, 1)
-    data ~ offspring_distribution(BranchingProcess(Poisson(R)))
+    counts ~ offspring_distribution(BranchingProcess(Poisson(R)))
 end
 ```
 """

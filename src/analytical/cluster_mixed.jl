@@ -4,9 +4,9 @@
 # from `mixing`; within a chain the offspring distribution is `build(θ)`.
 
 """
-Marker type for Poisson offspring. The type parameter makes
-`ClusterMixed(Poisson, mixing)` statically known, so dispatch can route
-Poisson + Gamma to the closed form `PoissonGammaChainSize`.
+Stands for Poisson offspring in `ClusterMixed(Poisson, mixing)`, so that a
+Gamma `mixing` distribution gets the exact chain size distribution
+([`PoissonGammaChainSize`](@ref EpiBranch.PoissonGammaChainSize)).
 """
 struct PoissonFamily end
 (::PoissonFamily)(λ) = Poisson(λ)
@@ -14,25 +14,28 @@ struct PoissonFamily end
 """
     ClusterMixed(build, mixing)
 
-Offspring specification with cluster-level heterogeneity: each chain
-draws `θ` from `mixing`, and the offspring distribution within that
-chain is `build(θ)`.
+Offspring where the reproduction number varies from chain to chain rather
+than from case to case, for example between settings or clusters: each chain
+draws a value `θ` from `mixing`, and every case in that chain draws its
+number of secondary cases from `build(θ)`. Use it in a
+[`BranchingProcess`](@ref), or directly with `loglikelihood` and
+[`chain_size_distribution`](@ref).
 
-If `build` is a distribution family type (e.g. `Poisson`) and a closed
-form exists for the combination, dispatch uses it automatically. For
-everything else the likelihood falls back to numerical quadrature over
-`mixing`.
+`build` is a function of `θ` returning an offspring distribution, or the
+`Poisson` family itself. Poisson offspring with a Gamma-distributed rate has
+an exact chain size distribution, which is used automatically; other
+combinations are evaluated numerically by integrating over `mixing`.
 
 # Examples
 
 ```julia
-# Poisson offspring with Gamma-distributed rate uses the closed-form
-# PoissonGammaChainSize via dispatch.
+# Poisson offspring whose rate is Gamma distributed between chains
+# (shape 2, mean 0.8): exact chain size distribution
 o = ClusterMixed(Poisson, Gamma(2.0, 0.4))
 loglikelihood(ChainSizes([1, 2, 1, 5]), o)
 
-# NegBin offspring with Gamma-distributed R (fixed k) has no closed
-# form and is evaluated by quadrature.
+# negative binomial offspring (k = 0.5) with R varying between chains:
+# evaluated numerically
 o = ClusterMixed(R -> NegBin(R, 0.5), Gamma(2.0, 0.3))
 loglikelihood(ChainSizes([1, 1, 3, 2]), o)
 ```
@@ -53,14 +56,13 @@ end
 """
     ChainSizeMixture(build, mixing)
 
-Chain size distribution defined by integrating the chain size PMF of
-`build(θ)` over `mixing`. `logpdf(d, n)` uses adaptive Gauss-Kronrod
-quadrature on the 0.001-0.999 quantile range of `mixing`.
+Chain size distribution when the reproduction number varies between chains
+([`ClusterMixed`](@ref)) and no exact formula is available: the chain size
+probabilities of `build(θ)`, averaged over `θ` drawn from `mixing`.
+[`chain_size_distribution`](@ref) returns it.
 
-This is the generic chain size distribution for a [`ClusterMixed`](@ref)
-offspring. When a closed form exists (e.g. [`PoissonGammaChainSize`](@ref)
-for Poisson + Gamma), `chain_size_distribution` dispatches to it directly
-instead.
+The average is computed by numerical integration over the central 99.8% of
+`mixing` (its 0.001 to 0.999 quantiles).
 """
 struct ChainSizeMixture{F, D <: Distribution} <: DiscreteUnivariateDistribution
     build::F
@@ -85,11 +87,10 @@ Distributions.pdf(d::ChainSizeMixture, n::Integer) = exp(logpdf(d, n))
 """
     chain_size_distribution(o::ClusterMixed)
 
-Return the chain size distribution for a cluster-mixed offspring. Uses
-the closed form when one is known (e.g. Poisson + Gamma returns
-[`PoissonGammaChainSize`](@ref)); otherwise returns
-[`ChainSizeMixture`](@ref), which evaluates the PMF pointwise by
-numerical quadrature.
+Chain size distribution when the reproduction number varies between chains:
+exact for Poisson offspring with a Gamma-distributed rate
+([`PoissonGammaChainSize`](@ref EpiBranch.PoissonGammaChainSize)), otherwise
+computed numerically ([`ChainSizeMixture`](@ref)).
 """
 chain_size_distribution(o::ClusterMixed) = ChainSizeMixture(o.build, o.mixing)
 
@@ -109,13 +110,14 @@ end
     BranchingProcess(offspring::ClusterMixed, gt; population_size=NoPopulation())
     BranchingProcess(offspring::ClusterMixed; population_size=NoPopulation())
 
-Wrap a cluster-mixed offspring in a `BranchingProcess`. Simulation
-samples `θ` once per chain at the index case and reuses it for every
-descendant via `parent_id` lookup. The per-individual draw is
-`rand(build(θ))`.
+A branching process in which the reproduction number varies between chains:
+each chain draws `θ` once, from the `mixing` distribution of the
+[`ClusterMixed`](@ref) offspring, when its index case is created, and every
+case in the chain draws its number of secondary cases from `build(θ)`.
+`gt` is the generation time distribution (days).
 
-The process describes the transmission alone; attach interventions, attributes
-or an observation model with a [`ModelSpec`](@ref).
+Add interventions, population characteristics or an observation model with a
+[`ModelSpec`](@ref).
 """
 function BranchingProcess(
         offspring::ClusterMixed, gt;
@@ -137,9 +139,9 @@ end
 """
     draw_offspring(rng, offspring::ClusterMixed, individual, state)
 
-Draw offspring under a cluster-mixed specification. Samples `θ ~ mixing`
-once per chain, caches it on the index case, and looks it up via
-`parent_id` for every descendant so all members of a chain share `θ`.
+Draw the number of secondary cases of one case when the reproduction number
+varies between chains: `θ` is drawn once per chain, at the index case, and
+every case in the chain draws from `build(θ)`.
 """
 function draw_offspring(
         rng::AbstractRNG, offspring::ClusterMixed,
@@ -219,15 +221,14 @@ reproduction_number(o::ClusterMixed{PoissonFamily}) = mean(o.mixing)
 """
     extinction_probability(o::ClusterMixed; tol=1e-10, max_iter=1000)
 
-Probability that a chain started by a single index case dies out under
-cluster-level heterogeneity. The chain's `θ` is drawn once from `mixing`.
-The result averages the extinction probability of `build(θ)` over `mixing`.
-At each `θ`, Newton's method finds the smallest fixed point of the offspring
-PGF. When the mean of `build(θ)` is at most 1, the function returns exactly 1;
-this assumes the offspring count varies.
+Probability that a chain started by a single index case dies out when the
+reproduction number varies between chains: the extinction probability of
+`build(θ)`, averaged over `θ` drawn from `mixing`. Chains whose `θ` gives a
+mean of at most 1 die out with certainty (assuming the number of secondary
+cases is not fixed).
 
-`mixing` can be any continuous distribution, integrated by adaptive quadrature
-on the probability scale, or a `DiscreteNonParametric`, summed over its support.
+`mixing` can be any continuous distribution or a `DiscreteNonParametric`
+distribution over a set of values.
 """
 function extinction_probability(
         o::ClusterMixed; tol::Real = 1.0e-10,

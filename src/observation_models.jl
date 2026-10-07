@@ -7,12 +7,16 @@
 # any process / observation pairing for which the protocol is defined.
 
 """
-Abstract supertype for observation models. Subtypes describe how
-underlying transmission events generate observable data — per-case
-detection, reporting delays, aggregation, multi-stream surveillance,
-etc. Attached to a process as the `observation` forcing on its constructor;
-participates through [`observe`](@ref) and `apply_observation!`, dispatched
-on the observation type.
+How true cases become observed data: which cases are detected, how long
+reporting takes, or which outbreaks are recorded at all. Pass one to a model
+as `observation = ...`. Built in: [`NoObservation`](@ref) (every case seen),
+[`PerCaseObservation`](@ref) (each case detected with some probability, after
+a reporting delay) and [`MinimumSize`](@ref) (only chains above a size are
+recorded).
+
+To write a new one, define [`observe`](@ref) (for the likelihood) and
+[`apply_observation!`](@ref EpiBranch.apply_observation!) (for simulation)
+for it; see the Extending guide.
 """
 abstract type ObservationModel end
 
@@ -20,35 +24,38 @@ abstract type ObservationModel end
     PerCaseObservation(; detection_prob = 1.0, delay = Dirac(0.0),
                        from = :onset_time)
 
-Independent per-case observation: each case is reported with
-probability `detection_prob`, and reports lag the anchor time given by
-`from` by an independent draw from `delay`. `from` defaults to
-`:onset_time` because real surveillance lags symptom onset, not
-infection. Set `from = ind -> ind.infection_time` to anchor on
-infection time instead.
+Under-reporting and reporting delay: each case is reported independently with
+probability `detection_prob`, `delay` days after symptom onset (or after
+`from`). Each simulated case records `:reported` and `:report_time`.
 
-If the anchor evaluates to `NaN` (e.g. an asymptomatic case under
-`clinical_presentation`), reporting falls back to the infection time so
-the report time is still well-defined.
+- `detection_prob`: the probability a case is reported, a number, a
+  distribution, or a function of the random number generator and the
+  individual, `(rng, ind) -> ...` (for example to make reporting depend on
+  age).
+- `delay`: days from `from` to report, as a number, distribution or such a
+  function.
+- `from`: the time reporting is measured from. Symptom onset by default,
+  because surveillance follows onset; `from = ind -> ind.infection_time`
+  measures from infection. A case without an onset time (for example an
+  asymptomatic case from `clinical_presentation`) is measured from its
+  infection time.
 
-`detection_prob` and `delay` both accept the standard
-`Real | Distribution | callable` trio:
+`detection_prob = 1.0, delay = Dirac(0.0)` (the defaults) means every case is
+seen at once; `detection_prob = ρ, delay = Dirac(0.0)` is under-reporting
+alone.
 
-- a `Real` (or `Distribution` for `delay`) reproduces the original
-  behaviour;
-- a callable `(rng, ind) -> Real` lets the value depend on
-  per-individual state (e.g. age-conditional reporting probability).
+!!! note
+    The closed-form chain-size results ([`observe`](@ref),
+    [`ThinnedChainSize`](@ref)) need `detection_prob` to be a single number
+    and give an error otherwise. For reporting that varies between cases, use
+    the simulation-based likelihood.
 
-Per-individual variation is honoured by the simulation path
-(`apply_observation!`). The closed-form analytical helpers —
-`ThinnedChainSize`, `observe(distribution, ::PerCaseObservation)` —
-require a scalar `detection_prob` and will throw when given
-a `Distribution` or callable; fall back to the simulation likelihood for
-per-individual reporting.
+# Examples
 
-`detection_prob = 1.0, delay = Dirac(0.0)` ↔ no observation effect.
-`detection_prob = 1.0, delay = D` ↔ full reporting with delay `D`.
-`detection_prob = ρ, delay = Dirac(0.0)` ↔ binomial thinning, no delay.
+```julia
+# 60% of cases reported, on average 3 days after onset
+PerCaseObservation(detection_prob = 0.6, delay = Gamma(3.0, 1.0))
+```
 """
 struct PerCaseObservation{P, D, F} <: ObservationModel
     detection_prob::P
@@ -101,16 +108,15 @@ end
 """
     MinimumSize(min_size)
 
-Observation model for chain sizes recorded only once a cluster reaches
-`min_size` cases, as when only groups of two or more are investigated. The
-analytical side conditions each cluster's density on `N ≥ min_size`
-([`observe`](@ref) returns a truncated chain-size law); the simulation side
-drops simulated clusters below it, so both evaluate against the same conditional
-distribution.
+Only chains of at least `min_size` cases are recorded, as when only clusters
+of two or more cases are investigated. In the likelihood, chain sizes are
+then conditioned on being at least `min_size` ([`TruncatedChainSize`](@ref));
+in simulation, smaller chains are left out of the chain-size data. Both
+therefore describe the same recorded data.
 
-It selects whole clusters rather than individual cases, so it leaves the
-latent cases of a simulated run untouched and combines with no other
-observation model (a model carries one).
+It acts on whole chains rather than on individual cases, so it leaves the
+simulated cases themselves unchanged. A model has one observation model, so
+`MinimumSize` cannot be combined with [`PerCaseObservation`](@ref).
 """
 struct MinimumSize <: ObservationModel
     min_size::Int

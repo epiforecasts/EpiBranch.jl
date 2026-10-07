@@ -1,20 +1,21 @@
 """
     proportion_transmission(R::Real, k::Real; prop_cases::Real=0.2)
 
-Compute the proportion of transmission caused by the most infectious
-fraction `prop_cases` of cases, under a Negative Binomial offspring
-distribution with mean `R` and dispersion `k`.
+Proportion of all transmission caused by the most infectious fraction
+`prop_cases` of cases, with `NegBin(R, k)` offspring. This is the "80/20 rule"
+measure of superspreading: with `prop_cases = 0.2`, the share of transmission
+caused by the 20% most infectious cases.
 
-This is the "80/20 rule" metric for superspreading: with `prop_cases=0.2`,
-returns the proportion of all transmission events caused by the top 20% of
-transmitters.
+Cases are ranked by their individual reproduction number (the expected number
+of people they infect, Gamma-distributed with mean `R` and shape `k`). The
+result depends only on `k`, so two calls with the same `k` and different `R`
+give the same value.
 
-The result depends only on the dispersion `k`; `R` is accepted for interface
-consistency but does not affect it, because the Lorenz curve of the underlying
-`Gamma(k, R/k)` is scale-invariant in the mean. Two calls with the same `k` and
-different `R` return the same value.
+# Examples
 
-Computed via the regularised incomplete beta function.
+```julia
+proportion_transmission(2.5, 0.16)   # share of transmission from the top 20%
+```
 """
 function proportion_transmission(R::Real, k::Real; prop_cases::Real = 0.2)
     R > 0 || throw(ArgumentError("R must be positive, got $R"))
@@ -56,8 +57,11 @@ end
 """
     proportion_transmission(model::BranchingProcess; prop_cases=0.2)
 
-Proportion of transmission from the most infectious fraction of cases,
-extracted from the model's offspring distribution (must be NegativeBinomial).
+Proportion of transmission caused by the most infectious fraction
+`prop_cases` of cases, using the model's offspring distribution, which must
+be negative binomial (or Poisson). Interventions and population
+characteristics in a `ModelSpec` are ignored; for transmission under control
+measures, simulate and count secondary cases instead.
 """
 function proportion_transmission(d::NegativeBinomial; prop_cases::Real = 0.2)
     return proportion_transmission(mean(d), d.r; prop_cases)
@@ -83,19 +87,18 @@ end
 """
     proportion_cases_individual(R::Real, k::Real; prop_transmission::Real=0.8)
 
-Inverse of [`proportion_transmission`](@ref): the proportion of cases
-responsible for a given proportion `prop_transmission` of transmission,
-under the continuous Gamma approximation to individual reproduction
-numbers.
+Proportion of cases responsible for a share `prop_transmission` of all
+transmission (for example the 80% in the "80/20 rule"), with `NegBin(R, k)`
+offspring, ranking cases by their individual reproduction number. The inverse
+of [`proportion_transmission`](@ref). It depends only on `k`.
 
-As with `proportion_transmission`, the result depends only on the
-dispersion `k`; `R` is accepted for interface consistency but does not
-affect it.
-
-This is not the same question as [`proportion_cases_offspring`](@ref),
-which ranks realised, integer offspring counts rather than continuous
-individual reproduction numbers, and can give a substantially different
-answer for the same `R` and `k`.
+!!! note "Two ways to rank cases"
+    `proportion_cases_individual` ranks cases by their individual
+    reproduction number, a continuous Gamma-distributed quantity.
+    [`proportion_cases_offspring`](@ref) ranks them by the number of people
+    they actually infected, a whole number. The two answer slightly different
+    questions and can differ substantially for the same `R` and `k`. When
+    reporting, say which one was used.
 """
 function proportion_cases_individual(R::Real, k::Real; prop_transmission::Real = 0.8)
     R > 0 || throw(ArgumentError("R must be positive, got $R"))
@@ -115,8 +118,9 @@ end
 """
     proportion_cases_individual(d::NegativeBinomial; prop_transmission=0.8)
 
-Proportion of cases responsible for `prop_transmission` of transmission,
-extracted from a Negative Binomial offspring distribution.
+Proportion of cases responsible for a share `prop_transmission` of
+transmission, ranking by individual reproduction number, for a negative
+binomial offspring distribution.
 """
 function proportion_cases_individual(d::NegativeBinomial; prop_transmission::Real = 0.8)
     return proportion_cases_individual(mean(d), d.r; prop_transmission)
@@ -133,9 +137,9 @@ end
 """
     proportion_cases_individual(model::BranchingProcess; prop_transmission=0.8)
 
-Proportion of cases responsible for `prop_transmission` of transmission,
-extracted from the model's offspring distribution (must be NegativeBinomial
-or Poisson).
+Proportion of cases responsible for a share `prop_transmission` of
+transmission, ranking by individual reproduction number, using the model's
+offspring distribution (negative binomial or Poisson).
 """
 function proportion_cases_individual(
         model::Union{TransmissionModel, ModelSpec};
@@ -147,22 +151,18 @@ end
 """
     proportion_cases_offspring(d::DiscreteUnivariateDistribution; prop_transmission::Real=0.8)
 
-The proportion of cases responsible for a given proportion `prop_transmission`
-of transmission, computed from the realised, integer offspring counts of any
-discrete offspring distribution `d` with finite mean — the version usually
-reported alongside the "80/20 rule".
+Proportion of cases responsible for a share `prop_transmission` of all
+transmission, ranking cases by the number of people they actually infected.
+This answers "what share of infected people caused 80% of onward
+infections?". Works for any discrete offspring distribution `d` with a finite
+mean.
 
-Cases are ranked by their actual number of secondary cases, from the most
-infectious downwards; the count at the crossing threshold is split
-fractionally between the responsible and non-responsible groups so the
-target share of transmission is met exactly, rather than rounded to a whole
-count.
+Cases are ranked from the most secondary cases downwards. Where the target
+share is crossed part-way through cases with the same count, those cases are
+counted fractionally, so the target share is met exactly.
 
-This is not the same question as [`proportion_cases_individual`](@ref),
-which uses a continuous Gamma approximation to individual reproduction
-numbers rather than realised offspring counts, and the two can differ
-substantially for the same offspring distribution — report both, clearly
-labelled, rather than picking one.
+See the note in [`proportion_cases_individual`](@ref) on how the two
+functions differ.
 """
 function proportion_cases_offspring(d::DiscreteUnivariateDistribution; prop_transmission::Real = 0.8)
     0.0 < prop_transmission < 1.0 ||
@@ -195,9 +195,9 @@ end
 """
     proportion_cases_offspring(R::Real, k::Real; prop_transmission::Real=0.8)
 
-Proportion of cases responsible for `prop_transmission` of transmission,
-computed from the realised offspring counts of a Negative Binomial
-distribution with mean `R` and dispersion `k`.
+Proportion of cases responsible for a share `prop_transmission` of
+transmission, ranking by number of people infected, with `NegBin(R, k)`
+offspring.
 """
 function proportion_cases_offspring(R::Real, k::Real; prop_transmission::Real = 0.8)
     R > 0 || throw(ArgumentError("R must be positive, got $R"))
@@ -208,8 +208,9 @@ end
 """
     proportion_cases_offspring(model::BranchingProcess; prop_transmission=0.8)
 
-Proportion of cases responsible for `prop_transmission` of transmission,
-computed from the model's realised offspring distribution.
+Proportion of cases responsible for a share `prop_transmission` of
+transmission, ranking by number of people infected, using the model's
+offspring distribution.
 """
 function proportion_cases_offspring(
         model::Union{TransmissionModel, ModelSpec};
@@ -223,14 +224,16 @@ end
 """
     proportion_cluster_size(R, k; cluster_size=10)
 
-Proportion of secondary cases that arise from transmission events where
-the infector caused at least `cluster_size` secondary cases.
+Proportion of all secondary cases caused by cases who each infected at least
+`cluster_size` people (superspreading events), with `NegBin(R, k)` offspring.
+With strong superspreading (small `k`), a large share of cases come from a
+few such events.
 
-This quantifies case concentration: with high overdispersion (low k),
-a large fraction of cases come from a few superspreading events.
+Here `cluster_size` is the number of secondary cases of one infector, not the
+size of a transmission chain as in [`chain_size_distribution`](@ref).
 
-Uses the tail expectation of the NegBin distribution:
-    E[X | X ≥ c] × P(X ≥ c) / E[X]
+It is `E[X; X ≥ c] / E[X]` for the offspring distribution `X` and
+`c = cluster_size`.
 """
 function proportion_cluster_size(R::Real, k::Real; cluster_size::Int = 10)
     R > 0 || throw(ArgumentError("R must be positive, got $R"))
@@ -252,7 +255,8 @@ end
 """
     proportion_cluster_size(d::NegativeBinomial; cluster_size=10)
 
-Proportion of cases from large clusters for a NegBin offspring distribution.
+Proportion of secondary cases caused by cases who each infected at least
+`cluster_size` people, for a negative binomial offspring distribution.
 """
 function proportion_cluster_size(d::NegativeBinomial; cluster_size::Int = 10)
     return proportion_cluster_size(mean(d), d.r; cluster_size)
@@ -261,7 +265,8 @@ end
 """
     proportion_cluster_size(model::BranchingProcess; cluster_size=10)
 
-Proportion of cases from large clusters for a branching process model.
+Proportion of secondary cases caused by cases who each infected at least
+`cluster_size` people, using the model's offspring distribution.
 """
 function proportion_cluster_size(
         model::Union{TransmissionModel, ModelSpec};
@@ -281,24 +286,35 @@ end
 """
     heterogeneous_contact_R(mean_contacts, sd_contacts, duration, prob_transmission)
 
-Compute the basic reproduction number adjusted for heterogeneous contact
-patterns in a network.
+Basic reproduction number when people differ in how many contacts they have.
+People with many contacts are both more likely to be infected and to infect
+more others, which raises R above what the average number of contacts
+suggests.
 
-Returns a named tuple `(R=..., R_net=...)`:
-- `R`: unadjusted, assuming homogeneous mixing (`β × mean_contacts × duration`)
-- `R_net`: network-adjusted, accounting for contact heterogeneity
-  (`β × duration × (mean + variance/mean)`)
+- `mean_contacts`, `sd_contacts`: mean and standard deviation of the number
+  of contacts per person per day.
+- `duration`: duration of infectiousness, in days.
+- `prob_transmission`: probability of transmission per contact.
 
-The adjustment reflects that high-contact individuals both acquire and
-transmit more, amplifying R beyond what homogeneous mixing predicts.
+Returns `(R = ..., R_net = ...)`:
 
-This is a mean-field, configuration-model result: it depends only on the
-mean and variance of the contact (degree) distribution and assumes no
-clustering. It is an analytical summary, distinct from an explicit
-network simulation, which transmits over a graph that may have the
-clustering this formula assumes away. It is a direct port of
-`calc_network_R` in superspreading (Lambert et al.,
+- `R`: assuming everyone has the average number of contacts,
+  `prob_transmission × mean_contacts × duration`.
+- `R_net`: allowing for the variation in contacts,
+  `prob_transmission × duration × (mean + variance / mean)`.
+
+This assumes contacts are formed at random given each person's number of
+contacts, with no clustering (friends of friends being friends). A
+simulation on an explicit network with clustering, such as `NetworkProcess`,
+can give a different answer. It is a port of `calc_network_R` in the R
+package superspreading (Lambert et al.,
 https://github.com/epiverse-trace/superspreading, MIT).
+
+# Examples
+
+```julia
+heterogeneous_contact_R(10.0, 15.0, 5.0, 0.01)
+```
 """
 function heterogeneous_contact_R(
         mean_contacts::Real, sd_contacts::Real,
