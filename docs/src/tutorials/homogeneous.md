@@ -212,9 +212,5 @@ your own mixing structure for a closed population is covered in
 [Extending EpiBranch](extending.md).
 
 !!! note "How the simulation works"
-    The simulation uses the Sellke construction. It gives the exact
-    stochastic SIR final-size distribution in continuous time, with an
-    infection time for every case. Each susceptible gets a resistance
-    threshold drawn from `Exponential(1)`. The force of infection it receives
-    adds up over time, and it is infected when the total passes its
-    threshold.
+    The simulation gives the exact stochastic SIR final-size distribution in
+    continuous time, with an infection time for every case.
