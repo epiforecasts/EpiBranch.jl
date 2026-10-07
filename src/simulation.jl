@@ -1565,8 +1565,8 @@ group can stand for a community, a health area or a household; it is what
 Groups are assigned independently of who infected whom, so transmission does
 not cluster within them. To make it cluster, use a multi-type
 [`BranchingProcess`](@ref) with one type per group and a next-generation
-matrix with most transmission within types, and set `:group` from the type
-with your own function `(rng, ind) -> ...` in place of `groups`.
+matrix with most transmission within types, and use the type itself as the
+group, for example `GroupVaccination(...; group_key = :type)`.
 
 # Examples
 
