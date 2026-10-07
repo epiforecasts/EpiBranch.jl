@@ -44,9 +44,10 @@ the continuous-time counterpart of
 [`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!).
 In these models everyone in the population exists from the start and infection
 times are settled one at a time (the "race" between possible infections), so
-the infector is passed explicitly. Called once per case, when its infection
-and course are known, with the contacts it can still affect. Default: does
-nothing.
+the infector is passed explicitly. Called when a case's infection and course
+are known, with the contacts it can still affect. When tracing reaches further
+than a case's own contacts, it is called again for each contact it carries on
+from, with that contact as `infector` and their own contacts. Default: does nothing.
 
 `not_before[i]`, when given, is the earliest time (days) `contacts[i]` can be
 reached: when that person became a contact of `infector`. A contact met only
