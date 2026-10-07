@@ -258,8 +258,12 @@ end
 Log-likelihood of observed chain sizes under a model, including its
 interventions and observation model. Without interventions and with a
 single-type offspring distribution it is exact (the chain-size distribution
-adjusted by [`observe`](@ref)); otherwise it is estimated by simulating
-`n_sim` outbreaks and comparing their observed chain sizes with the data.
+adjusted by [`observe`](@ref)), unless some cluster has more than one index
+case and no exact formula covers that, as with under-reported cases
+([`PerCaseObservation`](@ref)). Otherwise it is estimated by simulating
+`n_sim` outbreaks and comparing their observed chain sizes with the data; the
+simulated chains each start from one index case, so `seeds` is ignored (see
+[`chain_size_distribution`](@ref)).
 
 Keywords control that simulation: `n_sim`, `n_initial`, `max_cases`,
 `max_generations`, `max_time`, `stopping_rules` and `rng`. Simulated
