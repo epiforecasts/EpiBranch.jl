@@ -24,10 +24,13 @@ The model works as follows:
   infectious period. If the infector has recovered by then, or is in
   isolation at the time, the
   contact does not infect.
-- A simulation starts each household from one index case. Infection between
-  households is not simulated person by person: it is either summarised by R\*
-  (see [below](#The-reproduction-number-between-households)) or added as
-  introductions from the community (`external_hazard`).
+- Without `external_hazard`, a simulation starts each household from one
+  index case. Infection between households is not simulated person by person:
+  it is either summarised by R\* (see
+  [below](#The-reproduction-number-between-households)) or added as
+  introductions from the community (`external_hazard`). With
+  `external_hazard`, households are infected only by these introductions,
+  some not at all, and the process needs a finite `obs_end`.
 
 !!! warning "What isolation means here"
     A household model has a single infectious period per case. Isolating a
