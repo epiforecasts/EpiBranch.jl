@@ -282,11 +282,14 @@ that is `:contact_scale`, the one variable the `state` function reads.
     include it. A `state` function that reads none, such as one that looks
     a value up by the person's number, takes `watches = ()`.
 
-Here vaccinated susceptibles have a longer mean contact interval (4 days
-against 1.5) and are less likely to be infected. The `state` function reads the
+The next rule shows `watches` at work. Its `state` function reads the
 vaccination date, which [`RingVaccination`](@ref) records (`Inf` means never
 vaccinated), and the onset date, which [`clinical_presentation`](@ref) records.
-Both are listed in `watches`. [`EpiBranch.watched_records`](@ref) shows what a
+Both are listed in `watches`. The rule gives a vaccinated susceptible a mean
+contact interval of 4 days against 1.5, but it checks only whether a
+vaccination date exists, so it is not a model of vaccine protection to fit:
+the [checklist](@ref "Checklist for time-varying transmission") below explains
+why. [`EpiBranch.watched_records`](@ref) shows what a
 kernel watches:
 
 ```@example stateful
