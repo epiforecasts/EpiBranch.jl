@@ -118,8 +118,10 @@ end
 println("Deaths: $n_died, of which 80+: $n_died_80plus")
 ```
 
-People aged 80 and over are about one in nine of the population here, yet
-they account for most of the few deaths. Age is one example: any
+People aged 80 and over are about one in nine of the population here, but
+their probability of death is 15 times higher, so they make up a large share
+of the deaths. With so few deaths, the printed split varies between runs. Age
+is one example: any
 characteristic you give people through `attributes` (risk group,
 comorbidity, vaccination status) can be used the same way.
 
