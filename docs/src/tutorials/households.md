@@ -332,9 +332,10 @@ other contact. Tracing does not reach a whole household at once.
     - Ring vaccination works only without an `eligibility_window` (the
       default). With a window set, `simulate` warns and ignores the ring
       vaccination.
-    - Tracing is forward only. When a case is detected, their housemates can
-      be traced. Backward (source) tracing, to find the person who infected
-      the case, is not supported.
+    - Tracing is forward only. It can reach the housemates who had not been
+      infected by the time the case was. Housemates infected before the case,
+      including the person who infected them, are not reached: backward
+      (source) tracing is not supported.
     - `household_offspring` does not accept an intervention wrapped in
       `Scheduled`. To see what switching a policy on does, compute R\* once
       without the intervention and once with it in place from the start.
