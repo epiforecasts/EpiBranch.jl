@@ -297,10 +297,10 @@ may begin on day 14, or contact tracing once cases pass a threshold.
 in this section go back to the 7-day isolation from the start of the page,
 and compare with its result.
 
-Two checks decide whether a scheduled intervention reaches a case. The
-simulation sets up each case at the start of the generation in which they
-transmit, and the intervention applies to them only if some case in the
-outbreak has by then been infected on or after the start day. The action's
+Two checks decide whether a scheduled isolation or contact tracing reaches a
+case. The simulation sets up each case at the start of the generation in
+which they transmit, and the intervention applies to them only if some case
+in the outbreak has by then been infected on or after the start day. The action's
 own time must then also fall on or after the start day. With testing from
 day 10, someone whose isolation would fall on day 9 is never isolated.
 Someone infected on day 8 with symptom onset on day 9 and a 2-day delay would
@@ -308,10 +308,12 @@ be isolated on day 11, which happens only if another case had been infected
 on or after day 10 by the time they were set up.
 
 !!! note "The earliest cases are missed"
-    Index cases are set up on day 0, so an intervention scheduled to start
-    later never reaches them. The same holds for any case set up before the
+    Index cases are set up on day 0, so isolation or tracing scheduled to
+    start later never reaches them. The same holds for any case set up before the
     outbreak's latest infection reaches the start day, even if their isolation
-    would fall after it.
+    would fall after it. A scheduled [vaccination](vaccination.md) is checked
+    differently: each dose counts if its own date falls within the schedule,
+    whenever the case was set up.
 
 ```@example interventions
 # Testing starts on day 10
