@@ -497,11 +497,14 @@ contacts that ring vaccination then targets.
 `Scheduled(iv; start_time = ...)`. Built-in interventions have no start-time
 field of their own.
 
-`Scheduled` checks the time at which the intervention would act on each person,
-not when they were infected, so someone infected before the start can still be
-affected if, say, their isolation would fall after it. When a person's action
-time would fall before the start, `Scheduled` undoes it. For this the
-intervention defines two methods:
+`Scheduled` makes two checks. It applies only once some case in the outbreak
+has been infected on or after the start day, and then it checks the time at
+which the intervention would act on each person. When that time would fall
+before the start, `Scheduled` undoes the action. Cases set up before the
+outbreak reaches the start day, such as index cases, are therefore missed even
+when their action would fall after it (see [Interventions that start or stop
+during the outbreak](@ref)). For the second check the intervention defines two
+methods:
 
 - `EpiBranch.intervention_time(intervention, individual)`: the time at which the
   intervention acts on the person (for example the isolation time).
