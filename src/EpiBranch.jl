@@ -44,12 +44,14 @@ include("transitions/outcome.jl")
 """
     generate_offspring(model, parent, state) -> count
 
-How many people the case `parent` infects in this generation: one number,
-or one number per type in a multi-type model. Defined by transmission models
-in which every contact is a new person, such as a branching process. The
-simulation calls it once for each infectious case, then creates that many
-contacts and times each from the model's generation time, so the model itself
-does not create people, time infections or apply interventions.
+How many contacts the case `parent` makes in this generation, before
+susceptibility and interventions decide which of them are infected: one
+number, or one number per type in a multi-type model. Defined by
+transmission models in which every contact is a new person, such as a
+branching process. The simulation calls it once for each infectious case,
+then creates that many contacts and times each from the model's generation
+time, so the model itself does not create people, time infections or apply
+interventions.
 
 Models whose contacts are people who already exist (a contact network,
 households) define [`contacts_of`](@ref) and use [`gather_by_target`](@ref)
