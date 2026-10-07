@@ -27,7 +27,7 @@ println("Geometric(R=3): P(ext) = $(round(q, digits=4)) (exact: $(round(1/3, dig
 
 The epidemic probability is the complement: the chance that one introduced case
 starts an outbreak that does not die out by itself. With R = 2.5 and k = 0.16,
-the values used throughout these tutorials, it is low despite the high R:
+it is low despite the high R:
 
 ```@example analytical
 p = epidemic_probability(2.5, 0.16)
