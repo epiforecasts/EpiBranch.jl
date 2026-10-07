@@ -112,15 +112,36 @@ function _admit_actions!(cc::CapacityConstrained, state, actions)
     return nothing
 end
 
-function _give_dose!(v::AbstractVaccination, person, at, rng)
+"""
+    record_dose!(v::AbstractVaccination, person, at, rng)
+
+Record one dose of `v` on `person` at time `at`, skipping a `person` already
+recorded as vaccinated under `v`'s own `dose_label`, and reconsidering a
+post-exposure abort ([`RingVaccination`](@ref)'s `post_exposure_efficacy`)
+against the dose just given. [`dose_action`](@ref) is what the admitted
+action protocol calls; call this directly to record a dose outside it, for
+example from a custom `apply_post_transmission!` or when seeding a dose
+before a run starts.
+"""
+function record_dose!(v::AbstractVaccination, person, at, rng)
     get(person.state, _vaccinated_key(dose_label(v)), false) && return nothing
     _record_vaccination!(v, person, at, rng)
     _after_action_dose!(v, person, at, rng)
     return nothing
 end
 
-function _dose_action(v, ind, time)
-    effect! = (person, at, state) -> _give_dose!(v, person, at, state.rng)
+"""
+    dose_action(v::AbstractVaccination, ind, time) -> InterventionAction
+
+The [`InterventionAction`](@ref) that gives `ind` one dose of `v` at `time`
+via [`record_dose!`](@ref), exactly as the built-in vaccinations do. A custom
+vaccination's own [`intervention_actions`](@ref) method returns one of these
+per candidate it will dose, so [`Scheduled`](@ref) and
+[`CapacityConstrained`](@ref) admit it the same way they admit a
+[`MassVaccination`](@ref) dose.
+"""
+function dose_action(v::AbstractVaccination, ind, time)
+    effect! = (person, at, state) -> record_dose!(v, person, at, state.rng)
     return InterventionAction(ind, time, effect!)
 end
 
@@ -161,7 +182,7 @@ function intervention_actions(rv::RingVaccination, state, candidates)
         accepted = action_draw!(ind, (rv, :acceptance)) do
             _covers(rv.coverage, ind, state.rng)
         end
-        accepted && push!(actions, _dose_action(rv, ind, time))
+        accepted && push!(actions, dose_action(rv, ind, time))
     end
     return actions
 end
@@ -207,7 +228,7 @@ function _group_dose_action(gv::GroupVaccination, ind, trigger, time)
             person.state[_vaccination_time_key(label)] = at
             person.state[_immunity_time_key(label)] += at - old_time
         else
-            _give_dose!(gv, person, at, state.rng)
+            record_dose!(gv, person, at, state.rng)
         end
         _action_cache(person)[_group_trigger_cache_key(gv)] = trigger
         return nothing
@@ -274,7 +295,7 @@ function intervention_actions(mv::MassVaccination, state, candidates)
         time = action_draw!(ind, (mv, :time)) do
             _sample_value(mv.eligibility_time, state.rng, ind)
         end
-        isfinite(time) && push!(actions, _dose_action(mv, ind, time))
+        isfinite(time) && push!(actions, dose_action(mv, ind, time))
     end
     return actions
 end
