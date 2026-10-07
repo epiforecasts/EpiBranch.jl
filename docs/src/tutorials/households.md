@@ -394,13 +394,6 @@ reduce it, increase `n_samples`; to make results reproducible, fix `rng`. With
 a contact-interval distribution that depends on who lives in the household,
 the whole model is simulated until at least `n_samples` households have run.
 
-The simulation noise is only in the outbreak within each household. With the
-same contact-interval distribution for every pair and a single infectious
-period from the disease timeline, the mean number of households infected is
-computed exactly even when the distribution is simulated. The exception is
-large households with weak transmission and a random infectious period, where
-the exact calculation loses accuracy and the simulated mean is used.
-
 The model is the two-level mixing model of [Ball, Mollison and Scalia-Tomba
 (1997)](https://doi.org/10.1214/aoap/1034625252), and R\* is their R\*. The
 final size within a household comes from the recursion of [Ball
