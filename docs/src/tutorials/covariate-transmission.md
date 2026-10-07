@@ -423,10 +423,10 @@ policy that starts partway through someone's infectious period changes only the
 rest of that period. A run in which no policy is ever triggered follows the
 same distribution as the kernel without the policy.
 
-In a household model, a policy can depend on cases in other households. One
-restriction applies: with several households, a vaccination capacity limit
-must have `period = Inf`. A daily or weekly dose limit shared between
-households is not available.
+In a household model, a policy can depend on cases in other households, and a
+vaccine dose limit can be shared between households, as a single stock or as
+a daily or weekly allowance. All households then run on one shared calendar,
+so doses are counted in the order they are given.
 
 ## Checklist for time-varying transmission
 
