@@ -320,7 +320,10 @@ results = simulate(scenario([iso, ct_triggered]), 200; max_cases = 500, rng = rn
 println("Tracing after 20 cases: $(round(containment_probability(results), digits=3))")
 ```
 
-Tracing that waits for 20 cases misses the contacts of the first cases.
+Tracing that waits for 20 cases misses the contacts of the first cases, and
+it changes nothing in outbreaks that die out before reaching 20. The result
+is therefore close to isolation alone; with 200 simulations, a difference of
+a few percentage points either way is within simulation noise.
 
 !!! note "The case count includes undetected cases"
     `start_after_cases` counts every infection in the simulation, including
