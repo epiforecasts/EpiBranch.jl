@@ -407,7 +407,9 @@ end
 Two methods are needed because the two kinds of model reach a new case at
 different steps: branching processes through the batch of new contacts, the
 network and household models through each case once its infection time is
-final.
+final. On those models the simulation still warns that `Antiviral` "will have
+no effect", because it checks only for the `apply_post_transmission!` method;
+`on_infection_settled!` does the work there, so the warning can be ignored.
 
 ## Susceptibility and infectiousness are risks too
 
