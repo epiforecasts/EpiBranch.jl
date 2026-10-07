@@ -130,8 +130,8 @@ observation model). It stays exact with `seeds` or `prob_concluded`, with the
 limits in the box below. With interventions, the probability of the data is
 estimated from simulated outbreaks. A model whose offspring distribution is
 not single-type (several types of case, or several routes of transmission)
-is simulated too, but only when a simulation keyword such as `n_sim` is
-given; without one, this function raises an error.
+is simulated too. If such a model has no interventions, pass a simulation
+keyword such as `n_sim`: without any keyword, this function raises an error.
 
 !!! warning
     When the probability is estimated from simulated outbreaks, `seeds` is
