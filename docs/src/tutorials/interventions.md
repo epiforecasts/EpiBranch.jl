@@ -151,8 +151,8 @@ happens to a traced contact:
   the trace, whichever is later, unless the usual onset-to-isolation delay
   would isolate them sooner. Asymptomatic contacts are never isolated.
 
-From here on, isolation and quarantine last indefinitely (`duration = Inf`),
-to keep the comparisons about tracing.
+Until the section on scheduled interventions, isolation and quarantine last
+indefinitely (`duration = Inf`), to keep the comparisons about tracing.
 
 ```@example interventions
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
@@ -289,7 +289,9 @@ infections is the number of infections isolation and quarantine prevented.
 
 In real outbreaks interventions are rarely in place from the start. Testing
 may begin on day 14, or contact tracing once cases pass a threshold.
-[`Scheduled`](@ref) sets when an intervention begins or ends.
+[`Scheduled`](@ref) sets when an intervention begins or ends. The examples
+in this section go back to the 7-day isolation from the start of the page,
+and compare with its result.
 
 What matters is when the action would happen, not when the person was
 infected. Someone infected on day 8 with symptom onset on day 9 and a 2-day
@@ -327,7 +329,7 @@ println("Tracing after 20 cases: $(round(containment_probability(results), digit
 
 Tracing that waits for 20 cases misses the contacts of the first cases, and
 it changes nothing in outbreaks that die out before reaching 20. The result
-is therefore close to isolation alone; with 200 simulations, a difference of
+is therefore close to 7-day isolation alone; with 200 simulations, a difference of
 a few percentage points either way is within simulation noise.
 
 !!! note "The case count includes undetected cases"
