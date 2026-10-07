@@ -210,8 +210,9 @@ the trigger:
 
 Every trigger except `OnSymptomOnset` waits for the infector's isolation, so
 even under `TraceEveryone` the contacts of an infector who is never isolated
-(asymptomatic and not traced, or missed by the test) are never quarantined or isolated
-through tracing. [`is_traced`](@ref) still marks them as traced.
+(asymptomatic, or missed by the test, and not reached by tracing themselves)
+are never quarantined or isolated through tracing. [`is_traced`](@ref) still
+marks them as traced.
 
 Under `OnSymptomOnset` the delay keeps its keyword name,
 `isolation_to_trace_delay`, but counts from onset:
