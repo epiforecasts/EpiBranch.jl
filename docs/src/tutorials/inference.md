@@ -407,8 +407,9 @@ isolation and the cap on outbreak size.
     A likelihood estimated by simulation is noisy. NUTS follows the slope of the
     likelihood and cannot be used. `MH()` (Metropolis-Hastings) needs
     only likelihood values. It is slower and needs more draws, so check
-    convergence as above, and increase `n_sim` if the estimates vary between
-    runs. Each likelihood evaluation runs `n_sim` simulations, and fitting takes
+    convergence as above. To check `n_sim`, change the seed inside the model
+    (`StableRNG(1)` above) and refit: if the estimates move, increase `n_sim`.
+    Each likelihood evaluation runs `n_sim` simulations, and fitting takes
     much longer than with an exact formula.
 
 ## Clusters started by more than one case
