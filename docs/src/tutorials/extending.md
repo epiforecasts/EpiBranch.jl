@@ -2060,6 +2060,17 @@ To let [`progression_loglik`](@ref) evaluate `FollowupVisit`, add a
 the delay's log-density if the event occurred, the gate's log-probability
 either way, and `0.0` when the starting event was never reached.
 
+```julia
+function EpiBranch.transition_loglik(visit::FollowupVisit, ind)
+    anchor = ind.infection_time
+    isfinite(anchor) || return 0.0
+    occurred = isfinite(get(ind.state, :followup_time, Inf))
+    ll = EpiBranch.transition_term(visit.probability, visit.delay, ind, anchor, occurred)
+    occurred || return ll
+    return ll + logpdf(visit.delay, ind.state[:followup_time] - anchor)
+end
+```
+
 Two cases need more than reading the keys back, and
 [`EpiBranch.transition_term`](@ref) handles both: call it for the gate rather
 than reading `probability` yourself, then add the delay density to what it
