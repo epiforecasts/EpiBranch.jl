@@ -43,15 +43,15 @@ other action) would fall before `start_time` is not acted on, even if the
 case itself appears after the start. The `condition` form has no start time
 to compare against and does not do this check.
 
-Protection already given continues after the schedule ends where the
-intervention keeps it (vaccination does; see
+Isolation and quarantine already in place end when the schedule ends (after
+`end_time`, or once `condition` returns `false`). Only protection the
+intervention keeps, such as vaccination, continues (see
 [`persistent_competing_risks`](@ref EpiBranch.persistent_competing_risks)).
 Everyone still records the intervention's starting information, such as "not
 isolated", before it starts.
 
-A finite isolation or quarantine `duration` releases the case on time
-whatever the schedule does later, including a schedule with an `end_time` or
-a `condition`.
+A finite isolation or quarantine `duration` can end it before the schedule
+does, never later.
 
 For extension authors: an intervention that proposes its actions through
 [`intervention_actions`](@ref EpiBranch.intervention_actions) has each action
