@@ -161,9 +161,9 @@ This is step 3 above.
 Interventions are applied in the order they are listed. A policy that starts on
 a given date, or stops after a number of cases, is described by wrapping the
 intervention in [`Scheduled`](@ref) instead of giving every intervention its
-own start date. The start date applies to when the intervention would act on a
-person, not to when they were infected: with isolation starting on day 14, a
-case infected on day 10 whose isolation would fall on day 16 is still isolated.
+own start date. With isolation starting on day 14, the policy acts once the
+outbreak has reached day 14, and an isolation that would have started before
+day 14 is then undone.
 How to write an intervention is in [Writing an
 intervention](tutorials/writing-interventions.md).
 
