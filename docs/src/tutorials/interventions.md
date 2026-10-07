@@ -147,8 +147,9 @@ happens to a traced contact:
 - `action = Quarantine(duration = Inf)` quarantines the contact at the trace.
   They stop transmitting from then on, even before any symptoms.
 - `action = FlagOnly()` only flags the contact as traced. They keep
-  transmitting, and if they develop symptoms they are isolated at onset,
-  without the usual onset-to-isolation delay.
+  transmitting. If they develop symptoms, they are isolated at onset or at
+  the trace, whichever is later, unless the usual onset-to-isolation delay
+  would isolate them sooner. Asymptomatic contacts are never isolated.
 
 From here on, isolation and quarantine last indefinitely (`duration = Inf`),
 to keep the comparisons about tracing.
