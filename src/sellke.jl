@@ -133,6 +133,20 @@ function _has_own_method(f, T::Type, base::Type)
     end
 end
 
+# As above, but also requiring the method to take exactly `n` arguments
+# (the hook itself counted among them): a hook written for `T` with the wrong
+# arity turns up under `methods` here, same as a correctly aritied one, but is
+# never the method an exact-arity call resolves to, so it does not count.
+function _has_own_method(f, T::Type, base::Type, n::Int)
+    return any(methods(f, Tuple{T, Vararg{Any}})) do mm
+        params = Base.unwrap_unionall(mm.sig).parameters
+        length(params) == n + 1 || return false
+        p = params[2]
+        p isa TypeVar && (p = p.ub)
+        p !== base && p <: base
+    end
+end
+
 # Whether an intervention implements a hook that only the generation engine calls.
 function _has_generation_hook(iv::AbstractIntervention)
     T = typeof(iv)
