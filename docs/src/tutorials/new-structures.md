@@ -545,7 +545,7 @@ n_infected(s) = count(is_infected, s.individuals)
 no_control = simulate(ModelSpec(bay), 200; n_initial = 1, stopping_rules = stop,
     rng = StableRNG(11))
 
-iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = 14.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 14.0)
 isolating = ModelSpec(bay; interventions = [iso],
     attributes = clinical_presentation(incubation_period = LogNormal(1.0, 0.4)))
 with_isolation = simulate(isolating, 200; n_initial = 1, stopping_rules = stop,

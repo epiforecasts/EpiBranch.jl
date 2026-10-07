@@ -304,7 +304,7 @@ attrs = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     (rng, ind) -> (ind.state[:region] = rand(rng, (:north, :south))),
 ]
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 process = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
 
 isolation_only = simulate(ModelSpec(process; interventions = [iso], attributes = attrs),
@@ -345,12 +345,12 @@ end
 
 attrs = [clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     demographics(age_distribution = Normal(50, 20))]
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 process = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
 n_traced(runs) = sum(s -> count(ind -> get(ind.state, :traced, false), s.individuals), runs)
 
-everyone = ContactTracing(OnSymptomOnset(), 0.7, Exponential(1.0))
-older_only = ContactTracing(SymptomaticOver65(), 0.7, Exponential(1.0))
+everyone = ContactTracing(OnSymptomOnset(), 0.7, Exponential(1.0), Quarantine(duration = Inf))
+older_only = ContactTracing(SymptomaticOver65(), 0.7, Exponential(1.0), Quarantine(duration = Inf))
 traced_all = simulate(ModelSpec(process; interventions = [iso, everyone], attributes = attrs),
     100; max_cases = 200, rng = StableRNG(5))
 traced_older = simulate(ModelSpec(process; interventions = [iso, older_only], attributes = attrs),
