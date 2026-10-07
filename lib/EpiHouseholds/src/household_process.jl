@@ -66,11 +66,13 @@ with one index case at day 0.
 
 Interventions on this process:
 
-- `Isolation` removes a case at their isolation time, ending their infectious
-  period and cutting their secondary cases. Leaky isolation reduces each
+- `Isolation` removes a case from their isolation time for its `duration`,
+  cutting their secondary cases; with `duration = Inf` this ends their
+  infectious period. Leaky isolation reduces each
   household contact's chance of infecting by the same fraction.
 - `ContactTracing` treats a case's household members as their contacts;
-  quarantining a traced contact ends that contact's infectious period in turn.
+  quarantining a traced contact stops that contact's transmission for the
+  quarantine's `duration`.
   Tracing can only reach household members infected after the case's own
   course of infection is known, which in a fast-spreading household means the
   ones infected later.
@@ -78,15 +80,14 @@ Interventions on this process:
   each household contact's chance of infecting.
 - `RingVaccination` and `GroupVaccination` work, including with `Scheduled`
   and `CapacityConstrained`, and a ring dose's `post_exposure_efficacy` can stop
-  a household member's own infection before onset.
+  a household member's own infection before onset. A capacity limit is one
+  budget shared by all households, renewed every `period` days of the
+  outbreak.
 - A removal `Transition` in the progression always applies.
 
 Limits:
 
 - `MassVaccination` is not supported.
-- With several households, `CapacityConstrained` needs `period = Inf`, because
-  each household is simulated on its own timeline and a budget that renews
-  every period cannot be shared between them in calendar order.
 - `RingVaccination` needs `eligibility_window = Inf`, because a household
   member's own infection time is not yet known when the dose is decided.
 - Existing protection can instead be given through `transmission_traits`, a
