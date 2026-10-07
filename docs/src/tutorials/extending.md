@@ -281,6 +281,18 @@ ones your intervention needs (all default to no-ops).
 | `standing_block(iv)` | Continuous-time models deciding whether a certain block has settled a pair for good | Nothing | `Bool`; defaults to `false` |
 | `risk_depends_on_infector(iv)` | Before a fixed-size pool with more than one mixing group runs | Nothing | `Bool`: whether `competing_risk` can block a contact differently depending on its infector (default `true` when the type has its own `competing_risk`) |
 | `reads_population_state(iv)` | Before a structure-driven model (e.g. `HouseholdProcess`) decides whether to race each clique separately or put every clique on one shared clock | Nothing | `Bool`: whether delivery can depend on population-wide state such as a running case count or a shared capacity budget (default `true`, conservative) |
+| `analytic_offspring_effect(iv, offspring)` | By `extinction_probability`, `epidemic_probability`, `probability_contain`, `reproduction_number`, `proportion_transmission` and `offspring_distribution`, when called on a `ModelSpec` that carries `iv` | The offspring `Distribution` a bare process would use | The `Distribution` a case under `iv` draws from instead; the generic method refuses (no useful default — see below) |
+
+`analytic_offspring_effect` is for an intervention whose effect on the
+offspring law is exact in closed form on its own, independent of how its
+event times interact with the model's generation-time distribution — a
+population-level thinning, say, or a mixture with `Dirac(0)` for a per-case
+removal probability. Most interventions have no such form: isolation's effect
+on R, for one, depends on exactly that interaction, so `Isolation` has no
+method here, and the analytical functions above refuse on a spec that carries
+it, naming `probability_contain(R, k; ind_control, pop_control)` for an
+approximation and `containment_probability(simulate(spec, n))` for the
+simulated answer, rather than silently returning the bare process's number.
 
 `reads_population_state` covers whatever an intervention delegates to: a
 component or callable you supply counts as part of its owner's answer. A
