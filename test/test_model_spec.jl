@@ -94,7 +94,7 @@ EpiBranch.analytic_offspring_effect(::_HalfThinning, d::NegativeBinomial) =
         # form here) must make every analytical function on the spec refuse,
         # rather than silently answer as if it were not there.
         bp = BranchingProcess(NegativeBinomial(2.5, 0.5), Gamma(4.0, 1.25))
-        iso = Isolation(onset_to_isolation_delay = 0.0, isolation_duration = Inf)
+        iso = Isolation(onset_to_isolation_delay = 0.0, duration = Inf)
         spec = ModelSpec(bp; interventions = [iso])
 
         for f in (
