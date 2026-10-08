@@ -57,7 +57,7 @@ using StableRNGs
             [0.5], counts_data
         ),
         # Per-case detection thins the chain-size law through
-        # `ThinnedChainSize`, whose cached normalising constant must carry
+        # `ThinnedChainSize`, whose cached normalising constant must hold
         # a `Dual` for this to differentiate.
         scenario(
             (R, d) -> loglikelihood(

@@ -68,10 +68,10 @@ summed the same way. The computation only needs `logpdf` on the base,
 so this composes without specialised methods. `P(0 detected)` depends
 only on `base` and `detection_prob`, which lets it be computed once
 at construction rather than on every `logpdf` call. It is stored with
-whatever element type `base`'s parameters give `logpdf`, not hard-coded
-to `Float64`, so differentiating through `base` (e.g. fitting an
-offspring parameter with `ForwardDiff`) carries a `Dual` through this
-field rather than erroring on the conversion.
+whatever element type `base`'s parameters give `logpdf`, rather than
+fixed to `Float64`, so differentiating through `base` (e.g. fitting an
+offspring parameter with `ForwardDiff`) passes a `Dual` through this
+field instead of hitting a conversion error.
 """
 struct ThinnedChainSize{D <: DiscreteUnivariateDistribution, T <: Real} <:
     DiscreteUnivariateDistribution
