@@ -201,6 +201,7 @@ function _sellke_pool!(
             ind.parent_id = infector.id
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
+            push!(infector.secondary_case_ids, ind.id)
         end
         # A pre-created member has no infection time, and so no onset, until
         # now. Derive the onset from the infection time before transitions and
