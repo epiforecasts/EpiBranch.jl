@@ -226,6 +226,7 @@ every contact was infected.
 
 !!! warning "Fixed-population models"
     For models that simulate a fixed population (`HomogeneousProcess`,
-    `HouseholdProcess`, `NetworkProcess`, `RoutedNetwork`), `contacts`
-    currently returns an empty table. Who infected whom is in the line list's
-    `parent_id` column.
+    `HouseholdProcess`, `NetworkProcess`, `RoutedNetwork`), `contacts` lists
+    every infector-infectee pair the race settled, but no row for a
+    household-mate or network neighbour who was exposed without being
+    infected: these models keep no record of that.
