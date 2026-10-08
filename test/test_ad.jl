@@ -56,6 +56,19 @@ using StableRNGs
             (R, d) -> loglikelihood(OffspringCounts(d), Poisson(R[1])),
             [0.5], counts_data
         ),
+        # Per-case detection thins the chain-size law through
+        # `ThinnedChainSize`, whose cached normalising constant must carry
+        # a `Dual` for this to differentiate.
+        scenario(
+            (R, d) -> loglikelihood(
+                ChainSizes(d),
+                ModelSpec(
+                    BranchingProcess(Poisson(R[1]));
+                    observation = PerCaseObservation(detection_prob = 0.7)
+                )
+            ),
+            [0.5], sizes_data
+        ),
     ]
 
     DIT.test_differentiation(

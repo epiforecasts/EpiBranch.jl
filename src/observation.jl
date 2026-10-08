@@ -67,18 +67,23 @@ over `n >= obs` until the tail is negligible, then subtracts
 summed the same way. The computation only needs `logpdf` on the base,
 so this composes without specialised methods. `P(0 detected)` depends
 only on `base` and `detection_prob`, which lets it be computed once
-at construction rather than on every `logpdf` call.
+at construction rather than on every `logpdf` call. It is stored with
+whatever element type `base`'s parameters give `logpdf`, not hard-coded
+to `Float64`, so differentiating through `base` (e.g. fitting an
+offspring parameter with `ForwardDiff`) carries a `Dual` through this
+field rather than erroring on the conversion.
 """
-struct ThinnedChainSize{D <: DiscreteUnivariateDistribution} <:
+struct ThinnedChainSize{D <: DiscreteUnivariateDistribution, T <: Real} <:
     DiscreteUnivariateDistribution
     base::D
     detection_prob::Float64
-    log_prob_any_detected::Float64
+    log_prob_any_detected::T
 end
 
 function ThinnedChainSize(base::D, detection_prob) where {D <: DiscreteUnivariateDistribution}
     p = Float64(detection_prob)
-    return ThinnedChainSize{D}(base, p, _log_prob_any_detected(base, p))
+    log_prob_any_detected = _log_prob_any_detected(base, p)
+    return ThinnedChainSize{D, typeof(log_prob_any_detected)}(base, p, log_prob_any_detected)
 end
 
 Distributions.minimum(::ThinnedChainSize) = 1
