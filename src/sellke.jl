@@ -642,11 +642,11 @@ end
 # `continuous_actions`: that already answers, for its own configuration,
 # whether `apply_post_transmission!`'s mechanism has a continuous-time
 # counterpart, and a settled hook written for an unrelated feature must not
-# override it. `RingVaccination` is the case in point — its settled hook only
-# ever reconsiders a post-exposure dose, never the ring dosing
-# `apply_post_transmission!` performs, so a finite `eligibility_window`, which
-# makes its own `continuous_actions` false, must still leave the ring dosing
-# unhonoured.
+# override it. `RingVaccination`'s settled hook, for one, only ever
+# reconsiders a post-exposure dose, never the ring dosing
+# `apply_post_transmission!` performs, so a finite `eligibility_window` —
+# which makes its own `continuous_actions` false — must still leave the ring
+# dosing unhonoured.
 #
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
