@@ -917,6 +917,65 @@
             )
             @test isfinite(ll)
         end
+
+        @testset "Honours seeds (regression for issue #447)" begin
+            # Previously every simulation drew `n_initial = 1` seed and
+            # compared each seed's own chain against the data, so a 3-seed
+            # cluster's observed size was scored as if it were a single-seed
+            # chain. A 3-seed cluster reaching a given total size needs far
+            # less onward transmission than a single-seed chain reaching the
+            # same size, so once `seeds` is honoured the two must differ, and
+            # the multi-seed reading must be the more probable one.
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+            spec = ModelSpec(
+                BranchingProcess(Poisson(0.5), Exponential(5.0));
+                interventions = [iso],
+                attributes = clinical_presentation(
+                    incubation_period = LogNormal(1.0, 0.3)
+                )
+            )
+            sizes = [3, 4, 5]
+            one_seed = ChainSizes(sizes)
+            three_seeds = ChainSizes(sizes; seeds = [3, 3, 3])
+            ll_one = loglikelihood(one_seed, spec; n_sim = 20_000, rng = StableRNG(1))
+            ll_three = loglikelihood(three_seeds, spec; n_sim = 20_000, rng = StableRNG(1))
+            @test isfinite(ll_one)
+            @test isfinite(ll_three)
+            @test ll_three > ll_one
+
+            # n_initial no longer stands in as a substitute for seeds: the
+            # number of index cases per simulated cluster comes from
+            # `data.seeds` alone.
+            @test_throws MethodError loglikelihood(
+                three_seeds, spec; n_initial = 3, n_sim = 100
+            )
+        end
+
+        @testset "prob_concluded no longer refused under interventions (regression for issue #447)" begin
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+            spec = ModelSpec(
+                BranchingProcess(Poisson(0.5), Exponential(5.0));
+                interventions = [iso],
+                attributes = clinical_presentation(
+                    incubation_period = LogNormal(1.0, 0.3)
+                )
+            )
+            data = ChainSizes([3, 4, 5])
+            ll_concluded = loglikelihood(data, spec; n_sim = 20_000, rng = StableRNG(1))
+            ll_mixed = loglikelihood(
+                data, spec; prob_concluded = [1.0, 0.5, 0.5],
+                n_sim = 20_000, rng = StableRNG(1)
+            )
+            @test isfinite(ll_mixed)
+            # Mixing in P(X ≥ x), a superset of P(X = x), can only raise the
+            # per-cluster likelihood relative to treating every cluster as
+            # concluded.
+            @test ll_mixed >= ll_concluded
+
+            @test_throws ArgumentError loglikelihood(
+                data, spec; prob_concluded = [0.5, 0.5], n_sim = 100
+            )
+        end
     end
 
     @testset "Simulation-based chain length likelihood" begin
