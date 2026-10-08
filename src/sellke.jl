@@ -673,8 +673,8 @@ _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
 # The hooks of `iv` the continuous-time race actually skips, for naming in
 # `_warn_unhonoured_interventions`: the same shortcuts `_sellke_honours` takes
 # drop a hook from this list the moment its counterpart covers it, so an
-# intervention honoured through `on_infection_settled!` is not named over
-# `apply_post_transmission!`, which it does reach.
+# intervention honoured through `on_infection_settled!` never gets
+# `apply_post_transmission!` named, since it already reaches that hook.
 function _unhonoured_hooks(model, iv::AbstractIntervention)
     hooks = _generation_hooks(iv)
     continuous_actions(iv) && return hooks
