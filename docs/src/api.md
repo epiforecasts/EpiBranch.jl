@@ -6,6 +6,7 @@
 BranchingProcess
 Infectiousness
 HomogeneousProcess
+MixingProcess
 NetworkProcess
 RoutedNetwork
 HouseholdProcess
@@ -104,6 +105,7 @@ EpiBranch.honoured_without_should_stop
 
 ```@docs
 simulate
+EpiBranch.simulate_once
 EpiBranch.generate_offspring
 EpiBranch.contacts_of
 EpiBranch.collect_exposures
@@ -113,6 +115,9 @@ EpiBranch.transmission_risks
 EpiBranch.race_groups
 make_contact!
 susceptible_fraction
+EpiBranch.infectious_from
+EpiBranch.sellke_race!
+EpiBranch.sellke_pool!
 ```
 
 ### Building a model's starting population

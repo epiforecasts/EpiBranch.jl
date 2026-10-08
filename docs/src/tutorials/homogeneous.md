@@ -209,9 +209,12 @@ An [`Isolation`](@ref) that leaves some transmission after isolating
 `HomogeneousProcess` assumes everyone mixes with everyone else at the same
 rate. For transmission that differs between age groups or other groups, see
 [Multi-type models](multi-type.md); for contact networks and households, see
-[Network models](networks.md) and [Household models](households.md). Writing
-your own mixing structure for a closed population is covered in
-[Extending EpiBranch](extending.md).
+[Network models](networks.md) and [Household models](households.md). When
+mixing is uneven, for example age bands, spatial patches or demographic
+strata that contact each other at different rates, [`MixingProcess`](@ref)
+runs the same Sellke pool over a contact structure instead, with no
+simulation code of your own; the [Extending](extending.md) guide works
+through an age-structured example.
 
 !!! note "How the simulation works"
     The simulation gives the exact stochastic SIR final-size distribution in

@@ -478,7 +478,7 @@ function _simulated_person_time(
     )
     state = simulate(sample_spec; rng)
 
-    from = _resolve_infectious_from(process.from, spec.progression)
+    from = something(process.from, infectious_from(spec.progression))
     person_time = zeros(length(sample.members))
     for ind in state.individuals
         is_infected(ind) || continue
@@ -688,7 +688,7 @@ function _window_length_law(spec::ModelSpec{<:HouseholdProcess})
     # Only a `Transition` names the state it writes; any other element may write
     # a `<state>_time` key that opens or closes the window unseen here.
     all(t -> t isa Transition, spec.progression) || return nothing
-    from = _resolve_infectious_from(spec.process.from, spec.progression)
+    from = something(spec.process.from, infectious_from(spec.progression))
     closers = filter(t -> _enters(t, spec.process.until), spec.progression)
     length(closers) == 1 || return nothing
     closer = closers[1]

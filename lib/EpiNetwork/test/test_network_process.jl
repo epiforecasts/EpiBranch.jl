@@ -74,7 +74,7 @@ end
         @test EpiBranch.population_size(m) isa EpiBranch.NoPopulation
 
         # with no latent transition the window opens at :infection
-        @test EpiBranch._resolve_infectious_from(m.from, _sir(6.0)) === :infection
+        @test EpiBranch.infectious_from(_sir(6.0)) === :infection
 
         # a latent transition anchors the window at :infectious
         seir = [
@@ -84,7 +84,7 @@ end
                 terminal = true
             ),
         ]
-        @test EpiBranch._resolve_infectious_from(nothing, seir) === :infectious
+        @test EpiBranch.infectious_from(seir) === :infectious
 
         # a scalar and a distribution external hazard are both accepted
         @test NetworkProcess(ring, Exponential(2.0); external_hazard = 0.05) isa
