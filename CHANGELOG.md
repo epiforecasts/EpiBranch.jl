@@ -348,12 +348,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
-- `ThinnedChainSize`'s `logpdf` now conditions on at least one case being
-  detected, matching the chains a `PerCaseObservation` actually records: a
-  chain with no detected case leaves no trace in the data, so its law over
-  observed sizes sums to 1 rather than to the probability of any detection.
-  The analytical chain-size likelihood under `PerCaseObservation` now agrees
-  with the simulation route, which already dropped undetected chains.
 - `initial_cases` can now be combined with an active `external_hazard` on
   `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess`: the chosen cases are
   seeded at time zero, and the hazard still acts on everyone else from the
