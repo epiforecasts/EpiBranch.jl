@@ -146,9 +146,6 @@ function _generation_hooks(iv::AbstractIntervention)
 end
 _generation_hooks(s::Scheduled) = _generation_hooks(s.intervention)
 
-# Whether an intervention implements a hook that only the generation engine calls.
-_has_generation_hook(iv::AbstractIntervention) = !isempty(_generation_hooks(iv))
-
 # One case's window on one route: who it is, which route, and when that window
 # opened and closes. Every proposal a case makes along a route shares one of
 # these, and names it by its index, so the race remembers each proposal in a
