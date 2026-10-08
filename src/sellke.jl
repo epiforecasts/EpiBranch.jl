@@ -1160,7 +1160,7 @@ end
 """
     sellke_race!(state, members, rng, sim_opts; kwargs...) -> state
 
-Public wrapper around [`EpiBranch._sellke_race!`](@ref): resolves the race's
+Public wrapper around `_sellke_race!`: resolves the race's
 `max_time` from `sim_opts`'s stopping rules, then reconciles `state`'s
 aggregate bookkeeping (`cumulative_cases`, `max_infection_time`, `extinct`)
 from the per-individual state the race wrote directly, before returning

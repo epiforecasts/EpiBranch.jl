@@ -499,7 +499,7 @@ end
 """
     sellke_pool!(state, members, rng, sim_opts; kwargs...) -> state
 
-Public wrapper around [`EpiBranch._sellke_pool!`](@ref): resolves the pool's
+Public wrapper around `_sellke_pool!`: resolves the pool's
 `max_time` from `sim_opts`'s stopping rules, then reconciles `state`'s
 aggregate bookkeeping (`cumulative_cases`, `max_infection_time`, `extinct`)
 before returning `state`. A model with its own simulation loop calls this

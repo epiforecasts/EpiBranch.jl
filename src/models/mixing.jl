@@ -39,7 +39,7 @@ do not apply, and `simulate` warns if you set one.
 
 With more than one mixing group, an intervention whose `competing_risk`
 depends on which individual is the infector (a leaky isolation, say) is
-refused: see [`EpiBranch.sellke_pool!`](@ref EpiBranch._sellke_pool!) for why,
+refused: see [`EpiBranch.sellke_pool!`](@ref) for why,
 and [`EpiBranch.risk_depends_on_infector`](@ref) for how an intervention
 whose risk reads only the contact opts back in.
 
