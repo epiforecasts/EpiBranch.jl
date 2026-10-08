@@ -72,7 +72,7 @@
     @testset "prob_concluded keeps the model's observation" begin
         # With every cluster marked concluded, the mixture must reduce to
         # the plain closed form under the observation, not to the bare
-        # offspring law with no observation applied at all.
+        # offspring law with no observation applied.
         bp = BranchingProcess(NegBin(0.6, 0.5))
         data = [2, 3, 7]
         pc = fill(1.0, length(data))
