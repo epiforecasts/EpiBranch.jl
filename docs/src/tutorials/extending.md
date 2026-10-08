@@ -417,11 +417,18 @@ What this means in practice:
   engine creates it — has nothing to act on when no contacts are created. You
   need not declare this: when your type has a method of its own for either
   hook, the continuous-time models name it in their warning, unless your type
-  also defines that hook's continuous-time counterpart. `on_infection_settled!`
-  is taken as `apply_post_transmission!`'s counterpart; [Ending an infection
+  also defines that hook's continuous-time counterpart and leaves
+  `continuous_actions` at its default. `on_infection_settled!` is taken as
+  `apply_post_transmission!`'s counterpart; [Ending an infection
   early](#Ending-an-infection-early) below defines the two together, to treat
-  the same case the moment each engine can reach it. `trace_contacts!` is
-  taken as `keep_active`'s counterpart the same way, but needs a model that
+  the same case the moment each engine can reach it. A type that also defines
+  its own `continuous_actions` forgoes that counterpart, whatever the method
+  returns for a given configuration: `RingVaccination` defines both
+  `on_infection_settled!` and `continuous_actions`, so a finite
+  `eligibility_window` — which makes its own `continuous_actions` false — still
+  leaves `apply_post_transmission!` reported, since the type having its own
+  method is what matters, not the value it happens to return. `trace_contacts!`
+  is taken as `keep_active`'s counterpart the same way, but needs a model that
   can name a case's contacts: it is honoured on a model that can and reported
   on one that cannot, such as the mass-action pool.
 - **Contact tracing** spans the two. Its action is a removal, so it applies
