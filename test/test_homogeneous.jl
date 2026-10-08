@@ -406,6 +406,10 @@ end
             ModelSpec(prog_pool; progression = prog, interventions = [DoseSettleAndTrace()]);
             rng = StableRNG(1), n_initial = 2
         )
+        # Naming is scoped to the hook the race actually skips: the settled
+        # hook still reaches `apply_post_transmission!`, so only `keep_active`
+        # is named, not the whole intervention.
+        @test EpiBranch._unhonoured_hooks(prog_pool, DoseSettleAndTrace()) == [:keep_active]
         # The package's own interventions that the pool honours warn about nothing.
         onsets = clinical_presentation(
             incubation_period = LogNormal(-1.0, 0.3),

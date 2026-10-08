@@ -670,6 +670,26 @@ function _sellke_honours(model, iv::AbstractIntervention)
 end
 _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
 
+# The hooks of `iv` the continuous-time race actually skips, for naming in
+# `_warn_unhonoured_interventions`: the same shortcuts `_sellke_honours` takes
+# drop a hook from this list the moment its counterpart covers it, so an
+# intervention honoured through `on_infection_settled!` is not named over
+# `apply_post_transmission!`, which it does reach.
+function _unhonoured_hooks(model, iv::AbstractIntervention)
+    hooks = _generation_hooks(iv)
+    continuous_actions(iv) && return hooks
+    isempty(hooks) && return hooks
+    T = typeof(iv)
+    if !_has_own_method(continuous_actions, T, AbstractIntervention) &&
+            _has_own_method(on_infection_settled!, T, AbstractIntervention)
+        hooks = filter(!=(:apply_post_transmission!), hooks)
+    end
+    traces_contacts(iv) && supplies_contacts(model) &&
+        (hooks = filter(!=(:keep_active), hooks))
+    return hooks
+end
+_unhonoured_hooks(model, s::Scheduled) = _unhonoured_hooks(model, s.intervention)
+
 """
     supplies_contacts(model) -> Bool
 
@@ -772,7 +792,7 @@ function _warn_unhonoured_interventions(model, interventions)
     _honours_termination_controls(model) && return nothing
     unhonoured = unique(
         String[
-            "$(nameof(typeof(iv))) ($(join(_generation_hooks(iv), ", ")))"
+            "$(nameof(typeof(iv))) ($(join(_unhonoured_hooks(model, iv), ", ")))"
                 for iv in interventions if !_sellke_honours(model, iv)
         ]
     )
