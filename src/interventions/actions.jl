@@ -118,10 +118,10 @@ end
 Record one dose of `v` on `person` at time `at`, skipping a `person` already
 recorded as vaccinated under `v`'s own `dose_label`, and reconsidering a
 post-exposure abort ([`RingVaccination`](@ref)'s `post_exposure_efficacy`)
-against the dose just given. [`dose_action`](@ref) is what the admitted
-action protocol calls; call this directly to record a dose outside it, for
-example from a custom `apply_post_transmission!` or when seeding a dose
-before a run starts.
+against the dose just given. The action protocol calls this through
+[`dose_action`](@ref); call it directly to record a dose outside that
+protocol, for example from a custom `apply_post_transmission!` or when
+seeding a dose before a run starts.
 """
 function record_dose!(v::AbstractVaccination, person, at, rng)
     get(person.state, _vaccinated_key(dose_label(v)), false) && return nothing
