@@ -65,12 +65,20 @@ in the data, so it cannot be one of the observed sizes.
 over `n >= obs` until the tail is negligible, then subtracts
 `log(1 - P(0 detected))`, with `P(0 detected) = Σ_n P(base = n) (1 - p)^n`
 summed the same way. The computation only needs `logpdf` on the base,
-so this composes without specialised methods.
+so this composes without specialised methods. `P(0 detected)` depends
+only on `base` and `detection_prob`, so it is computed once at
+construction rather than on every `logpdf` call.
 """
 struct ThinnedChainSize{D <: DiscreteUnivariateDistribution} <:
     DiscreteUnivariateDistribution
     base::D
     detection_prob::Float64
+    log_prob_any_detected::Float64
+end
+
+function ThinnedChainSize(base::D, detection_prob) where {D <: DiscreteUnivariateDistribution}
+    p = Float64(detection_prob)
+    return ThinnedChainSize{D}(base, p, _log_prob_any_detected(base, p))
 end
 
 Distributions.minimum(::ThinnedChainSize) = 1
@@ -116,13 +124,14 @@ _log1mexp(x::Real) = x > -log(2) ? log(-expm1(x)) : log1p(-exp(x))
 # summed over the base's support (chains always have at least one case).
 # At p = 1 every term is -Inf (zero mass), and the streaming sum can't
 # subtract two infinite terms; short-circuit to the same answer directly.
-function _log_prob_none_detected(d::ThinnedChainSize)
-    d.detection_prob >= 1.0 && return -Inf
-    lq = log1p(-d.detection_prob)
-    return _streaming_logsumexp(n -> logpdf(d.base, n) + n * lq, 1)
+function _log_prob_none_detected(base, detection_prob::Float64)
+    detection_prob >= 1.0 && return -Inf
+    lq = log1p(-detection_prob)
+    return _streaming_logsumexp(n -> logpdf(base, n) + n * lq, 1)
 end
 
-_log_prob_any_detected(d::ThinnedChainSize) = _log1mexp(_log_prob_none_detected(d))
+_log_prob_any_detected(base, detection_prob::Float64) =
+    _log1mexp(_log_prob_none_detected(base, detection_prob))
 
 function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
     obs < 1 && return -Inf
@@ -130,7 +139,7 @@ function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
     unconditioned = _streaming_logsumexp(
         n -> logpdf(d.base, n) + logpdf(Binomial(n, p), obs), obs
     )
-    return unconditioned - _log_prob_any_detected(d)
+    return unconditioned - d.log_prob_any_detected
 end
 
 Distributions.pdf(d::ThinnedChainSize, n::Integer) = exp(logpdf(d, n))
