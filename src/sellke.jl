@@ -144,7 +144,6 @@ function _generation_hooks(iv::AbstractIntervention)
     _has_own_method(keep_active, T, AbstractIntervention) && push!(hooks, :keep_active)
     return hooks
 end
-_generation_hooks(s::Scheduled) = _generation_hooks(s.intervention)
 
 # One case's window on one route: who it is, which route, and when that window
 # opened and closes. Every proposal a case makes along a route shares one of
