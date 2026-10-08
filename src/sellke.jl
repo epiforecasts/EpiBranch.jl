@@ -648,11 +648,11 @@ end
 # which makes its own `continuous_actions` false — must still leave the ring
 # dosing unhonoured.
 #
-# The settled hook only stands in for `apply_post_transmission!`, so it leaves
-# `keep_active` to its own counterpart, `trace_contacts!`, when an intervention
-# implements both pairs: one that doses through a settled hook and *also* grows
-# a ring through `keep_active` is unhonoured wherever that ring cannot, even
-# though its dosing alone would pass.
+# The settled hook stands in only for `apply_post_transmission!`; `keep_active`
+# still needs its own counterpart, `trace_contacts!`. An intervention that doses
+# through a settled hook and *also* grows a ring through `keep_active` is
+# therefore unhonoured wherever that ring cannot trace, even though its dosing
+# alone would pass.
 #
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's

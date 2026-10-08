@@ -48,8 +48,8 @@ struct DoseAndSettle <: EpiBranch.AbstractIntervention end
 EpiBranch.apply_post_transmission!(::DoseAndSettle, state, new_contacts) = nothing
 EpiBranch.on_infection_settled!(::DoseAndSettle, ind, state, rng) = nothing
 # Written for both engines like `DoseAndSettle`, but also grows a ring through
-# `keep_active`, whose own counterpart is `trace_contacts!`, not the settled
-# hook: the settled hook must not paper over a ring the pool cannot grow.
+# `keep_active`. That hook's own counterpart is `trace_contacts!`, so the
+# settled hook must not paper over a ring the pool cannot grow.
 struct DoseSettleAndTrace <: EpiBranch.AbstractIntervention end
 EpiBranch.apply_post_transmission!(::DoseSettleAndTrace, state, new_contacts) = nothing
 EpiBranch.on_infection_settled!(::DoseSettleAndTrace, ind, state, rng) = nothing
@@ -398,9 +398,9 @@ end
             ModelSpec(prog_pool; progression = prog, interventions = [DoseAndSettle()]);
             rng = StableRNG(1), n_initial = 2
         )
-        # The settled hook covers only `apply_post_transmission!`; a `keep_active`
-        # grown through tracing still needs its own counterpart honoured, which
-        # the pool cannot do, so this stays unhonoured despite the settled hook.
+        # The settled hook covers only `apply_post_transmission!`; `keep_active`
+        # still needs its own counterpart, `trace_contacts!`, honoured, and the
+        # pool cannot do that, so this stays unhonoured despite the settled hook.
         @test !EpiBranch._sellke_honours(prog_pool, DoseSettleAndTrace())
         @test_logs (:warn, r"DoseSettleAndTrace"i) match_mode = :any simulate(
             ModelSpec(prog_pool; progression = prog, interventions = [DoseSettleAndTrace()]);
