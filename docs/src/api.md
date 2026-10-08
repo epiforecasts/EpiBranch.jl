@@ -30,6 +30,7 @@ household_final_size
 PairKernel
 EpiBranch.watched_records
 Steps
+Seasonal
 EpiBranch.calendar_multiplier
 EpiBranch.next_calendar_break
 EpiBranch.calendar_shape

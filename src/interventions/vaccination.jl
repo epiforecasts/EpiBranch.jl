@@ -11,7 +11,7 @@ when. The parameters describing what a dose does (`efficacy`,
 [`vaccine_effect`](@ref EpiBranch.vaccine_effect); shared code reads these
 parameters only through that method. An effect only some vaccinations have,
 such as `RingVaccination`'s `post_exposure_efficacy`, stays on the type that
-has it and records its per-dose draw through the `_record_effect_draws!` hook.
+has it and records its per-dose draw through the `record_effect_draws!` hook.
 Subtypes share the [`competing_risk`](@ref) machinery: a vaccinated
 contact whose immunity has developed by their transmission time has
 their infection blocked with probability `efficacy` under `LeakyMode`, and
@@ -342,12 +342,6 @@ function _dose_time(label::Symbol, ind)
     return isfinite(vacc_t) ? vacc_t : nothing
 end
 
-"""Full-strength efficacy of dose `v` against infection of `ind`, as sampled
-when the dose was given, or `nothing` if none was recorded."""
-function _vaccine_efficacy(v::AbstractVaccination, ind)
-    return get(ind.state, _vaccine_efficacy_key(dose_label(v)), nothing)
-end
-
 # Fraction of a dose's efficacy still in force `dt` after immunity develops.
 _retained(::Nothing, dt) = 1.0
 _retained(w, dt) = w(dt)
@@ -375,18 +369,34 @@ function _immunity_time(delay, label, ind, vacc_t)
     return get(ind.state, _immunity_time_key(label), Inf)
 end
 
-# A scalar per-dose parameter is the same for every individual, so it is read
-# straight off the intervention: no dictionary lookup in the competing risk, no
-# per-contact state (and so no extra line-list column), and a value carrying a
-# derivative reaches the risk unchanged. A distribution or function was drawn
-# once when the dose was given, and that stored draw governs every exposure of
-# the individual. `key` is applied to the label only on the varying branch, so
-# the scalar path builds no `Symbol`.
-_dose_value(x::Real, key, label, ind) = x
-_dose_value(x, key, label, ind) = get(ind.state, key(label), 0.0)
+"""
+    dose_value(x, key, label, ind)
 
-_store_draw!(x::Real, key, label, ind, rng) = nothing
-function _store_draw!(x, key, label, ind, rng)
+Read a per-dose effect `x` for `ind`: a scalar `x` is the same for every
+individual and is read straight off the vaccination, with no dictionary
+lookup and no per-contact state (so no extra line-list column, and a value
+carrying a derivative reaches its reader unchanged); a `Distribution` or
+`Function` was drawn once when the dose was given, via [`store_draw!`](@ref),
+and that stored draw is read back here. `key(label)` names the per-contact
+state the varying branch reads, e.g. [`RingVaccination`](@ref)'s
+`post_exposure_efficacy` and `onward_efficacy`. For an effect only some
+vaccinations have, call this from a [`record_effect_draws!`](@ref) method.
+"""
+dose_value(x::Real, key, label, ind) = x
+dose_value(x, key, label, ind) = get(ind.state, key(label), 0.0)
+
+"""
+    store_draw!(x, key, label, ind, rng)
+
+Draw and store a per-dose effect `x` for `ind` under `key(label)`, the
+counterpart [`dose_value`](@ref) reads back: a scalar `x` needs no draw and
+stores nothing, since [`dose_value`](@ref) reads it straight off the
+vaccination; a `Distribution` or `Function` is sampled once, here, and the
+result stored on `ind.state`. Call this from a [`record_effect_draws!`](@ref)
+method for an effect only some vaccinations have.
+"""
+store_draw!(x::Real, key, label, ind, rng) = nothing
+function store_draw!(x, key, label, ind, rng)
     ind.state[key(label)] = _sample_value(x, rng, ind)
     return nothing
 end
@@ -461,7 +471,7 @@ already has, see `post_exposure_efficacy` and `onward_efficacy` on
 function _susceptibility_risk(v::AbstractVaccination, contact)
     vacc_t = _dose_time(dose_label(v), contact)
     vacc_t === nothing && return nothing
-    eff = _vaccine_efficacy(v, contact)
+    eff = vaccine_efficacy(contact; dose_label = dose_label(v))
     eff === nothing && return nothing
     # A zero-efficacy dose can never block, and the engine skips such a risk.
     # Returning nothing keeps it out of the returned tuple, so the recommended
@@ -530,13 +540,21 @@ function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     contact.state[_severity_efficacy_key(label)] = _sample_value(
         severity_efficacy(v), rng, contact
     )
-    _record_effect_draws!(v, contact, label, rng)
+    record_effect_draws!(v, contact, label, rng)
     return nothing
 end
 
-# Draws for effects only some vaccinations have (`post_exposure_efficacy` and
-# `onward_efficacy` exist only on `RingVaccination`).
-_record_effect_draws!(::AbstractVaccination, contact, label, rng) = nothing
+"""
+    record_effect_draws!(v::AbstractVaccination, contact, label, rng)
+
+Hook called by `_record_vaccination!` after it draws the shared effects
+(`efficacy`, `severity_efficacy`, `delay_to_immunity`) to draw and store any
+further per-dose effect a vaccination type has of its own, such as
+[`RingVaccination`](@ref)'s `post_exposure_efficacy` and `onward_efficacy`. The
+default does nothing. A method typically calls [`store_draw!`](@ref) for each
+such effect; see the Extending guide for a worked example.
+"""
+record_effect_draws!(::AbstractVaccination, contact, label, rng) = nothing
 
 # ── RingVaccination ──────────────────────────────────────────────────
 
@@ -627,7 +645,7 @@ Requires `:traced` (set by [`ContactTracing`](@ref)).
     isolated, and a non-leaky `Isolation` then already blocks every later
     transmission to the contact. A dose acting only through `efficacy`
     leaves the results unchanged, with or without quarantine
-    (`quarantine_on_trace = false`). `efficacy` has infections left to
+    (`action = FlagOnly()`). `efficacy` has infections left to
     prevent only when a contact can still be infected after being traced:
     under leaky isolation (`post_isolation_transmission > 0`), when tracing
     starts before the infector is isolated (for example
@@ -796,21 +814,21 @@ required_dose(rv::RingVaccination) = rv.requires_dose
 # scalar off the intervention, or the draw stored when the dose was given. A
 # contact with no dose of this vaccination has no draw stored and reads zero.
 function _post_exposure_efficacy(rv::RingVaccination, ind)
-    return _dose_value(
+    return dose_value(
         rv.post_exposure_efficacy, _post_exposure_efficacy_key,
         dose_label(rv), ind
     )
 end
 function _onward_efficacy(rv::RingVaccination, ind)
-    return _dose_value(rv.onward_efficacy, _onward_efficacy_key, dose_label(rv), ind)
+    return dose_value(rv.onward_efficacy, _onward_efficacy_key, dose_label(rv), ind)
 end
 
-function _record_effect_draws!(rv::RingVaccination, contact, label, rng)
-    _store_draw!(
+function record_effect_draws!(rv::RingVaccination, contact, label, rng)
+    store_draw!(
         rv.post_exposure_efficacy, _post_exposure_efficacy_key, label, contact,
         rng
     )
-    _store_draw!(rv.onward_efficacy, _onward_efficacy_key, label, contact, rng)
+    store_draw!(rv.onward_efficacy, _onward_efficacy_key, label, contact, rng)
     return nothing
 end
 
@@ -849,7 +867,7 @@ function _contact_risk(rv::RingVaccination, contact)
     post > 0.0 || return _susceptibility_risk(rv, contact)
     vacc_t = _dose_time(dose_label(rv), contact)
     vacc_t === nothing && return nothing
-    eff = something(_vaccine_efficacy(rv, contact), 0.0)
+    eff = something(vaccine_efficacy(contact; dose_label = dose_label(rv)), 0.0)
     imm_t = _immunity_time(rv, contact, vacc_t)
     block(retained) = 1 - (1 - eff * retained) * (1 - post * retained)
     return Risk(
@@ -1161,7 +1179,7 @@ recorded as vaccinated by the time `GroupVaccination` runs and is
 skipped, leaving the group dose to reach only those the ring did not:
 
 ```julia
-[ContactTracing(OnLabConfirmation(), 0.7, Exponential(1.0)),
+[ContactTracing(OnLabConfirmation(), 0.7, Exponential(1.0), Quarantine(duration = 7.0)),
  RingVaccination(efficacy = 0.9),
  GroupVaccination(efficacy = 0.6)]
 ```

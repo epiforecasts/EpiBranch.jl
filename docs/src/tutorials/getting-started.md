@@ -70,8 +70,11 @@ Interventions are another layer you compose with a [`ModelSpec`](@ref).
 at the call site:
 
 ```@example gettingstarted
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
-ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(1.5))
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+ct = ContactTracing(
+    probability = 0.5, isolation_to_trace_delay = Exponential(1.5),
+    action = Quarantine(duration = 7.0)
+)
 
 spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
     attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),

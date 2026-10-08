@@ -175,13 +175,13 @@ post-simulation from a detection-probability draw). Composing both in the
 same simulation is not supported, because they will overwrite each other.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
-alongside it for when the block lapses; a release of `Inf`, which is what
-`set_isolated!` assumes when given no `release_time`, never comes. Those two
-hold the removal in force, which is what a detection reads. The history, which
-a likelihood needs, is the list of stretches under `:_removal_stretches`, since
-one pair of times cannot say that a host was quarantined, released, and
-isolated again later. A window that isolation
-should end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
+alongside it for when the block lapses; `set_isolated!` takes that release as
+a required keyword, and a release of `Inf` never comes. Those two hold the removal
+in force, which is what a detection reads. The history, which a likelihood
+needs, is the list of stretches under `:_removal_stretches`, since one pair of
+times cannot say that a host was quarantined, released, and isolated again
+later. A window that isolation should end lists
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until` (see
 [Transmission routes](#Transmission-routes)), which respects leaky isolation.
 `:isolated` in an `until` refers to a `Transition(:isolated, …)` in the natural
 history. Set and undo isolation with `set_isolated!` and `clear_isolated!`.
@@ -491,7 +491,11 @@ function resolve_individual!(iso::Isolation, individual, state)
     # A contact traced before its onset was known has only the bare trace
     # time, so hold it back to the onset.
     traced_time = max(get(individual.state, :_traced_isolation_time, Inf), onset_time(individual))
-    set_isolated!(individual, min(iso_time, traced_time))
+    start = min(iso_time, traced_time)
+    duration = _removal_duration(
+        iso.duration, state.rng, individual, "`Isolation`'s `duration`"
+    )
+    set_isolated!(individual, start; release_time = start + duration)
     return nothing
 end
 ```
@@ -730,7 +734,7 @@ clinical_with_region = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     (rng, ind) -> (ind.state[:region] = :only),
 ]
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)
+iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 bc = BorderClosure(10.0, 0.05)
 model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0));
     interventions = [iso, bc], attributes = clinical_with_region)
@@ -760,9 +764,13 @@ subtype then inherits:
 - the dose-schedule checks made when a `ModelSpec` is built, so it can give the
   dose a later [`RingVaccination`](@ref) names in `requires_dose`.
 
-It adds an `apply_post_transmission!` method choosing whom to vaccinate and
-when. That method records each dose with `EpiBranch._record_vaccination!(v, ind,
-vaccination_time, rng)`, which writes the per-dose keys listed under
+It adds an `intervention_actions` method choosing whom to vaccinate and when,
+returning one `EpiBranch.dose_action(v, ind, time)` per candidate it will
+dose — the same action protocol the built-in vaccinations use, so
+[`Scheduled`](@ref) and [`CapacityConstrained`](@ref) wrap this vaccination
+exactly as they wrap a [`MassVaccination`](@ref). `apply_post_transmission!`
+then only has to admit the discovered actions, through `EpiBranch.apply_actions!`.
+A dose admitted this way writes the per-dose keys listed under
 [Reserved keys](#Reserved-keys) and draws `efficacy`, `severity_efficacy` and
 `delay_to_immunity` for that individual, whichever of the `Real`,
 `Distribution` and function forms they were given in. Here, a campaign on day
@@ -785,12 +793,17 @@ end
 EpiBranch.vaccine_effect(v::OlderAdultVaccination) = v.effect
 EpiBranch.required_fields(::OlderAdultVaccination) = [:age]
 
-function EpiBranch.apply_post_transmission!(v::OlderAdultVaccination, state, new_contacts)
-    for ind in new_contacts
+function EpiBranch.intervention_actions(v::OlderAdultVaccination, state, candidates)
+    actions = EpiBranch.InterventionAction[]
+    for ind in candidates
         ind.state[:age] >= v.min_age || continue
-        EpiBranch._record_vaccination!(v, ind, v.campaign_time, state.rng)
+        push!(actions, EpiBranch.dose_action(v, ind, v.campaign_time))
     end
-    return nothing
+    return actions
+end
+
+function EpiBranch.apply_post_transmission!(v::OlderAdultVaccination, state, new_contacts)
+    return EpiBranch.apply_actions!(v, state, new_contacts)
 end
 
 older = OlderAdultVaccination(min_age = 60, campaign_time = 10.0,
@@ -809,20 +822,20 @@ belongs in `VaccineEffect`, where every vaccination gains it at once; a
 parameter describing whom a dose reaches belongs on the subtype.
 
 An effect only your vaccination has is a field on it, `booster_uptake` above,
-and its per-dose draw goes through the `_record_effect_draws!` hook, which
-`_record_vaccination!` calls for every vaccination. `RingVaccination` records
+and its per-dose draw goes through the `EpiBranch.record_effect_draws!` hook,
+which a dose calls for every vaccination. `RingVaccination` records
 `post_exposure_efficacy` and `onward_efficacy` that way:
 
 ```julia
 _booster_uptake_key(label) = Symbol("booster_uptake_", label)
 
-function EpiBranch._record_effect_draws!(v::OlderAdultVaccination, contact, label, rng)
-    EpiBranch._store_draw!(v.booster_uptake, _booster_uptake_key, label, contact, rng)
+function EpiBranch.record_effect_draws!(v::OlderAdultVaccination, contact, label, rng)
+    EpiBranch.store_draw!(v.booster_uptake, _booster_uptake_key, label, contact, rng)
     return nothing
 end
 ```
 
-For a scalar, `_store_draw!` stores nothing and `EpiBranch._dose_value` reads
+For a scalar, `store_draw!` stores nothing and `EpiBranch.dose_value` reads
 the value straight off the vaccination; for a distribution or a function it
 stores the draw.
 
@@ -851,8 +864,8 @@ end
 partial = RingVaccination(efficacy = 0.6, mode = PartialResponseMode(0.2))
 draws = map(1:8) do i
     contact = Individual(id = i, parent_id = 0, infection_time = 10.0)
-    EpiBranch._record_vaccination!(partial, contact, 0.0, StableRNG(i))
-    EpiBranch._vaccine_efficacy(partial, contact)
+    EpiBranch.record_dose!(partial, contact, 0.0, StableRNG(i))
+    vaccine_efficacy(contact)
 end
 draws
 ```
@@ -1301,9 +1314,8 @@ Naming and tracing are two steps. A route's `traceable` is the chance that the
 case can identify a contact at all. The tracing intervention's own probability
 (its `TraceRate`) is the chance that the programme then reaches a contact it has
 been told about. A contact is traced only if both succeed, so the probabilities
-multiply. With a community route at `traceable = 0.5` and
-`ContactTracing(probability = 0.8)`, 40% of the contacts a case meets only in
-the community are traced. Set each probability for what it describes: a limit
+multiply. With a community route at `traceable = 0.5` and a tracing probability of
+`0.8`, 40% of the contacts a case meets only in the community are traced. Set each probability for what it describes: a limit
 on naming belongs in `traceable` alone, and counting it again in the tracing
 probability would reduce tracing twice.
 
@@ -1385,10 +1397,11 @@ moved, and nothing reports it.
 
 A [`PairKernel`](@ref)'s `calendar` multiplies its contact-interval hazard by a
 function of calendar time. [`Steps`](@ref) is the piecewise-constant schedule
-the package provides; any other schedule is a type with a
-[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) method returning
-the non-negative multiplier at a calendar time. How simulation and the
-likelihood integrate it is set by
+the package provides, and [`Seasonal`](@ref) the smooth one; any other
+schedule is a type with a [`calendar_multiplier`](@ref
+EpiBranch.calendar_multiplier) method returning the non-negative multiplier at
+a calendar time, or a plain callable `t -> multiplier`, read as smooth. How
+simulation and the likelihood integrate a type's own schedule is set by
 [`calendar_shape`](@ref EpiBranch.calendar_shape):
 
 - **Piecewise constant**, the default: also define
@@ -1402,19 +1415,23 @@ likelihood integrate it is set by
   for its target log-survival.
 
 ```julia
-struct Seasonal{T <: Real}
+struct TwoPeakSeasonal{T <: Real}
     amplitude::T
+    first_peak::Float64
 end
-EpiBranch.calendar_multiplier(s::Seasonal, t) = 1 + s.amplitude * sin(2π * t / 365)
-EpiBranch.calendar_shape(::Seasonal) = EpiBranch.SmoothCalendar()
+function EpiBranch.calendar_multiplier(s::TwoPeakSeasonal, t)
+    return 1 + s.amplitude * cos(4π * (t - s.first_peak) / 365)
+end
+EpiBranch.calendar_shape(::TwoPeakSeasonal) = EpiBranch.SmoothCalendar()
 
-kernel = PairKernel(context -> Exponential(4.0); calendar = Seasonal(0.5))
+kernel = PairKernel(context -> Exponential(4.0); calendar = TwoPeakSeasonal(0.5, 15.0))
 ```
 
 Simulation and the likelihood read a schedule only through these methods, so
 both compute the same hazard. Parameterise the schedule's fields by type, as
-`Seasonal{T}` does, to differentiate the likelihood through them. A worked
-seasonal example is in [Covariates and time-varying transmission](covariate-transmission.md).
+`Seasonal`'s own fields are, to differentiate the likelihood through them. A
+worked seasonal example is in [Covariates and time-varying
+transmission](covariate-transmission.md).
 
 ## Adding a transmission model
 
@@ -2057,9 +2074,18 @@ delay callback; `Reporting` and `Hospitalisation` set their flags afterwards.
 To let [`progression_loglik`](@ref) evaluate `FollowupVisit`, add a
 [`EpiBranch.transition_loglik`](@ref) method reading back the same keys:
 the delay's log-density if the event occurred, the gate's log-probability
-either way, and `0.0` when the starting event was never reached — see the
-[`AntiviralTreatment` example](@ref "Writing a non-terminal custom transition")
-in the transitions tutorial.
+either way, and `0.0` when the starting event was never reached.
+
+```julia
+function EpiBranch.transition_loglik(visit::FollowupVisit, ind)
+    anchor = ind.infection_time
+    isfinite(anchor) || return 0.0
+    occurred = isfinite(get(ind.state, :followup_time, Inf))
+    ll = EpiBranch.transition_term(visit.probability, visit.delay, ind, anchor, occurred)
+    occurred || return ll
+    return ll + logpdf(visit.delay, ind.state[:followup_time] - anchor)
+end
+```
 
 Two cases need more than reading the keys back, and
 [`EpiBranch.transition_term`](@ref) handles both: call it for the gate rather
@@ -2304,7 +2330,7 @@ naming none is right is a wrapper, which can withdraw the inner block
 part-way through a stretch it recorded: a [`Scheduled`](@ref) with an end does
 that, and `InterventionWrapper` then narrows the infectious window only when
 the wrapped removal never releases on its own; a releasing one, such as a
-finite `isolation_duration` or a `Quarantine`'s `duration`, stays within the
+finite `Isolation` `duration` or a `Quarantine`'s, stays within the
 per-contact competing risk instead, which re-checks the wrapper's gate at
 every proposal. That narrowing is the wrapper's own and no plain intervention
 inherits it, the default `infectious_removal_time` being `Inf`.

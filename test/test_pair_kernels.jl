@@ -290,6 +290,50 @@ EpiBranch.calendar_multiplier(::BreaklessSchedule, t) = 1.0
     @test all(isfinite, ForwardDiff.gradient(drawn, y))
 end
 
+# The antiderivative of `Seasonal`'s multiplier, for analytical cumulative
+# hazards.
+seasonal_integral(s::Seasonal, t) =
+    t + s.amplitude * s.period / 2π * sin(2π * (t - s.peak_day) / s.period)
+
+@testset "Seasonal calendar" begin
+    @test_throws ArgumentError Seasonal(amplitude = 1.5, peak_day = 30.0)
+    @test_throws ArgumentError Seasonal(amplitude = -0.1, peak_day = 30.0)
+    s = Seasonal(amplitude = 0.6, peak_day = 30.0)
+    @test s.period == 365.2425
+    @test EpiBranch.calendar_shape(s) === EpiBranch.SmoothCalendar()
+    @test EpiBranch.calendar_multiplier(s, 30.0) ≈ 1.6
+    @test EpiBranch.calendar_multiplier(s, 30.0 + 365.2425 / 2) ≈ 0.4
+
+    kernel = PairKernel(context -> Exponential(4.0); calendar = s)
+    interval = EpiBranch.pair_kernel(kernel, 1, 2, 0.0, 100.0)
+    @test EpiBranch.cumhazard(interval, 2.0) ≈
+        0.25 * (seasonal_integral(s, 102.0) - seasonal_integral(s, 100.0))
+    @test EpiBranch.cumhazard(interval, 2.0) ≈ 0.6026949328797594
+
+    # A plain callable reproduces the same hazard, read as a smooth schedule.
+    seasonal(t) = 1 + 0.6 * cos(2π * (t - 30.0) / 365.2425)
+    @test EpiBranch.calendar_shape(seasonal) === EpiBranch.SmoothCalendar()
+    plain_kernel = PairKernel(context -> Exponential(4.0); calendar = seasonal)
+    plain_interval = EpiBranch.pair_kernel(plain_kernel, 1, 2, 0.0, 100.0)
+    @test EpiBranch.cumhazard(plain_interval, 2.0) ≈ EpiBranch.cumhazard(interval, 2.0)
+
+    # `amplitude` and `peak_day` are both differentiable.
+    data = calendar_data(1.0, 2.0)
+    layout = compile_contact_pairs(data)
+    f(x) = pairwise_surv_loglik(
+        PairKernel(ctx -> Exponential(1.0); calendar = Seasonal(amplitude = x[1], peak_day = x[2])),
+        data, layout
+    )
+    reference(x) = begin
+        sched = Seasonal(amplitude = x[1], peak_day = x[2])
+        log(EpiBranch.calendar_multiplier(sched, 4.0)) -
+            (seasonal_integral(sched, 4.0) - seasonal_integral(sched, 2.0))
+    end
+    x = [0.5, 80.0]
+    @test f(x) ≈ reference(x)
+    @test ForwardDiff.gradient(f, x) ≈ ForwardDiff.gradient(reference, x)
+end
+
 struct StateKernelInfections{T} <: InfectionLayer
     infection_time::Vector{T}
     infectious_time::Vector{T}

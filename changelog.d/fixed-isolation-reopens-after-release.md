@@ -1,4 +1,4 @@
-On the continuous-time (Sellke) models, a finite `isolation_duration` or
+On the continuous-time (Sellke) models, a finite `Isolation` `duration` or
 `ContactTracing`'s `Quarantine` `duration` closed the infectious window for
 good at the removal's own start, even when its release fell well before the
 rest of the infectious period: a case isolated for a week part-way through a
@@ -10,9 +10,9 @@ removal is due to lapse, and the release-aware per-contact `competing_risk`
 blocks exactly the isolated stretches instead, matching the generation engine.
 A removal with no release still closes the window at its own start, as before.
 `ContactTracing`'s `Quarantine` behaves the same way, gaining a per-contact
-risk of its own so a quarantine with a duration hands the case back once
-released, and one without a duration now reduces onward transmission on the
-generation engine as well.
+risk of its own so a finite duration hands the case back once released, and a
+duration of `Inf` now reduces onward transmission on the generation engine as
+well.
 
 Because the window stays open across a removal that lapses, a blocked contact
 proposal asks the pair's kernel for a later one, which a kernel whose support

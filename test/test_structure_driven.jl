@@ -139,11 +139,11 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
     spec = ModelSpec(
         AbortPoolModel(300, 4, 0.4);
         interventions = [
-            Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf),
+            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
             ContactTracing(
                 probability = 1.0,
                 isolation_to_trace_delay = Exponential(0.5),
-                quarantine_on_trace = false
+                action = FlagOnly()
             ),
             RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
         ],
@@ -191,7 +191,7 @@ end
     spec = ModelSpec(
         AbortPoolModel(300, 4, 0.4);
         interventions = [
-            Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.0, isolation_duration = Inf),
+            Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.0, duration = Inf),
             ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), FlagOnly()),
             RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
         ],
@@ -243,11 +243,11 @@ end
     spec = ModelSpec(
         AbortPoolModel(300, 4, 0.4);
         interventions = [
-            Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf),
+            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
             ContactTracing(
                 probability = 1.0,
                 isolation_to_trace_delay = Exponential(0.5),
-                quarantine_on_trace = false
+                action = FlagOnly()
             ),
             RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
             ExposureGenerations(),
