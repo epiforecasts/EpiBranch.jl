@@ -66,8 +66,8 @@ over `n >= obs` until the tail is negligible, then subtracts
 `log(1 - P(0 detected))`, with `P(0 detected) = Σ_n P(base = n) (1 - p)^n`
 summed the same way. The computation only needs `logpdf` on the base,
 so this composes without specialised methods. `P(0 detected)` depends
-only on `base` and `detection_prob`, so it is computed once at
-construction rather than on every `logpdf` call.
+only on `base` and `detection_prob`, which lets it be computed once
+at construction rather than on every `logpdf` call.
 """
 struct ThinnedChainSize{D <: DiscreteUnivariateDistribution} <:
     DiscreteUnivariateDistribution
