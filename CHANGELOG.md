@@ -348,6 +348,12 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
+- `chain_size_distribution`'s `prob_concluded` mixture now evaluates against
+  the model's own observed chain-size law, as every other route does, rather
+  than against the bare offspring law with no observation applied. Previously
+  a `MinimumSize` or `PerCaseObservation` model with every cluster marked
+  concluded gave the likelihood of an unobserved model instead of matching the
+  closed form.
 - `initial_cases` can now be combined with an active `external_hazard` on
   `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess`: the chosen cases are
   seeded at time zero, and the hazard still acts on everyone else from the

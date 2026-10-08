@@ -69,6 +69,21 @@
         @test logpdf(d, data) ≈ loglikelihood(ChainSizes(data), obs)
     end
 
+    @testset "prob_concluded keeps the model's observation" begin
+        # With every cluster marked concluded, the mixture must reduce to
+        # the plain closed form under the observation, not to the bare
+        # offspring law with no observation applied at all.
+        bp = BranchingProcess(NegBin(0.6, 0.5))
+        data = [2, 3, 7]
+        pc = fill(1.0, length(data))
+        for obs in (MinimumSize(2), PerCaseObservation(; detection_prob = 0.5))
+            spec = ModelSpec(bp; observation = obs)
+            closed_form = sum(logpdf(chain_size_distribution(spec), n) for n in data)
+            d_pc = chain_size_distribution(spec; prob_concluded = pc)
+            @test logpdf(d_pc, data) ≈ closed_form
+        end
+    end
+
     @testset "rand draws chain sizes from the underlying model" begin
         bp = BranchingProcess(Poisson(0.5), Exponential(5.0))
         d = chain_size_distribution(bp)

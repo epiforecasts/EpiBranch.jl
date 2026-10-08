@@ -27,10 +27,7 @@ function Distributions.logpdf(
     )
     cs = _chain_sizes(data, d.seeds)
     # The real-time `prob_concluded` mixture is only defined against the
-    # analytical chain-size distribution. If we were handed a transmission
-    # model, route `prob_concluded` through its offspring so the analytical
-    # multi-seed method picks it up instead of the simulation-based one (which
-    # has no `prob_concluded` path).
+    # analytical chain-size distribution, so it has no simulation-based path.
     if d.prob_concluded === nothing
         return loglikelihood(cs, d.model; d.kwargs...)
     end
@@ -48,9 +45,15 @@ function Distributions.logpdf(
             )
         )
     end
-    target = d.model isa Union{TransmissionModel, ModelSpec} ?
-        single_type_offspring(d.model) : d.model
-    return loglikelihood(cs, target; prob_concluded = d.prob_concluded, d.kwargs...)
+    # The mixture is defined against the *observed* chain-size law, the same
+    # one `chain_size_distribution` and `loglikelihood(::ChainSizes, ...)`
+    # build on every other route; evaluating it against the bare offspring
+    # would silently drop `MinimumSize` / `PerCaseObservation`.
+    observed = observe(
+        chain_size_distribution(single_type_offspring(d.model)),
+        observation(d.model)
+    )
+    return _chain_size_loglik(observed, cs; prob_concluded = d.prob_concluded)
 end
 
 function Distributions.loglikelihood(
