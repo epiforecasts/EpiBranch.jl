@@ -648,6 +648,12 @@ end
 # which makes its own `continuous_actions` false — must still leave the ring
 # dosing unhonoured.
 #
+# The settled hook only stands in for `apply_post_transmission!`, so it leaves
+# `keep_active` to its own counterpart, `trace_contacts!`, when an intervention
+# implements both pairs: one that doses through a settled hook and *also* grows
+# a ring through `keep_active` is unhonoured wherever that ring cannot, even
+# though its dosing alone would pass.
+#
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
 # neighbours and a household its members, but the mass-action pool has no
@@ -656,10 +662,12 @@ end
 # admission protocol; legacy batch-only delivery remains unsupported.
 function _sellke_honours(model, iv::AbstractIntervention)
     continuous_actions(iv) && return supplies_contacts(model)
-    _has_generation_hook(iv) || return true
+    hooks = _generation_hooks(iv)
+    isempty(hooks) && return true
     T = typeof(iv)
-    if !_has_own_method(continuous_actions, T, AbstractIntervention)
-        _has_own_method(on_infection_settled!, T, AbstractIntervention) && return true
+    if !_has_own_method(continuous_actions, T, AbstractIntervention) &&
+            _has_own_method(on_infection_settled!, T, AbstractIntervention)
+        :keep_active in hooks || return true
     end
     return traces_contacts(iv) && supplies_contacts(model)
 end

@@ -47,6 +47,15 @@ EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
 struct DoseAndSettle <: EpiBranch.AbstractIntervention end
 EpiBranch.apply_post_transmission!(::DoseAndSettle, state, new_contacts) = nothing
 EpiBranch.on_infection_settled!(::DoseAndSettle, ind, state, rng) = nothing
+# Written for both engines like `DoseAndSettle`, but also grows a ring through
+# `keep_active`, whose own counterpart is `trace_contacts!`, not the settled
+# hook: the settled hook must not paper over a ring the pool cannot grow.
+struct DoseSettleAndTrace <: EpiBranch.AbstractIntervention end
+EpiBranch.apply_post_transmission!(::DoseSettleAndTrace, state, new_contacts) = nothing
+EpiBranch.on_infection_settled!(::DoseSettleAndTrace, ind, state, rng) = nothing
+EpiBranch.keep_active(::DoseSettleAndTrace, state, targets, is_new) = ()
+EpiBranch.traces_contacts(::DoseSettleAndTrace) = true
+EpiBranch.trace_contacts!(::DoseSettleAndTrace, state, infector, contacts) = nothing
 
 # The same leaky vaccine with its arguments typed, as the style guide asks for.
 struct LeakyVaccineTyped <: EpiBranch.AbstractIntervention
@@ -387,6 +396,14 @@ end
         @test EpiBranch._sellke_honours(prog_pool, DoseAndSettle())
         @test_logs min_level = Base.CoreLogging.Warn simulate(
             ModelSpec(prog_pool; progression = prog, interventions = [DoseAndSettle()]);
+            rng = StableRNG(1), n_initial = 2
+        )
+        # The settled hook covers only `apply_post_transmission!`; a `keep_active`
+        # grown through tracing still needs its own counterpart honoured, which
+        # the pool cannot do, so this stays unhonoured despite the settled hook.
+        @test !EpiBranch._sellke_honours(prog_pool, DoseSettleAndTrace())
+        @test_logs (:warn, r"DoseSettleAndTrace"i) match_mode = :any simulate(
+            ModelSpec(prog_pool; progression = prog, interventions = [DoseSettleAndTrace()]);
             rng = StableRNG(1), n_initial = 2
         )
         # The package's own interventions that the pool honours warn about nothing.
