@@ -638,6 +638,16 @@ end
 # never blocks; `GroupVaccination` doses whole groups as their members are
 # created, and goes the same way.
 #
+# The settled-hook shortcut yields to a method of the intervention's own for
+# `continuous_actions`: that already answers, for its own configuration,
+# whether `apply_post_transmission!`'s mechanism has a continuous-time
+# counterpart, and a settled hook written for an unrelated feature must not
+# override it. `RingVaccination` is the case in point — its settled hook only
+# ever reconsiders a post-exposure dose, never the ring dosing
+# `apply_post_transmission!` performs, so a finite `eligibility_window`, which
+# makes its own `continuous_actions` false, must still leave the ring dosing
+# unhonoured.
+#
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
 # neighbours and a household its members, but the mass-action pool has no
@@ -647,8 +657,10 @@ end
 function _sellke_honours(model, iv::AbstractIntervention)
     continuous_actions(iv) && return supplies_contacts(model)
     _has_generation_hook(iv) || return true
-    _has_own_method(on_infection_settled!, typeof(iv), AbstractIntervention) &&
-        return true
+    T = typeof(iv)
+    if !_has_own_method(continuous_actions, T, AbstractIntervention)
+        _has_own_method(on_infection_settled!, T, AbstractIntervention) && return true
+    end
     return traces_contacts(iv) && supplies_contacts(model)
 end
 _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
