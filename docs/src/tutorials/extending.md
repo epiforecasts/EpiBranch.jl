@@ -169,13 +169,15 @@ time `on_infection_settled!` runs, and an abort recorded there needs no such
 check.
 
 `:reported` and `:reporting_time` are shared between the `Reporting`
-clinical transition (which sets them from a probability gate) and
-`PerCaseObservation` (which sets them post-simulation from a
+clinical transition (which sets them from a probability gate during the
+run) and `PerCaseObservation` (which sets them post-simulation from a
 detection-probability draw). Both routes leave `:reporting_time` at `Inf`
 for a case that was not reported, so [`weekly_incidence`](@ref)'s
 `by = :reporting` counts reported cases the same way whichever route
-produced them. Composing both in the same simulation is not supported,
-because they will overwrite each other.
+produced them. Composing both in the same simulation is supported:
+`PerCaseObservation` finds `:reported` already set on a case the
+`Reporting` transition ran against and reuses it rather than drawing
+and overwriting it with a second, independent report.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 alongside it for when the block lapses; `set_isolated!` takes that release as

@@ -187,6 +187,32 @@ end
         )
     end
 
+    @testset "Reporting transition's report is reused, not overwritten" begin
+        # A Reporting transition already drew this case's report during the
+        # simulation; PerCaseObservation must reuse it rather than drawing
+        # and overwriting it with an independent one under its own
+        # detection_prob.
+        rep = Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5)
+        obs = PerCaseObservation(detection_prob = 0.9, delay = Exponential(1.0))
+        attrs = clinical_presentation(
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+        )
+        rng = StableRNG(5)
+        model = BranchingProcess(Poisson(0.0), Exponential(5.0))
+        state = simulate(
+            ModelSpec(model; progression = [rep], attributes = attrs, observation = obs);
+            n_initial = 300, rng = rng
+        )
+        for ind in state.individuals
+            @test ind.state[:reported] == isfinite(ind.state[:reporting_time])
+        end
+        frac_reported = count(ind -> ind.state[:reported], state.individuals) /
+            length(state.individuals)
+        # Reporting's probability = 0.5 should still show through; under the
+        # bug, PerCaseObservation's detection_prob = 0.9 would overwrite it.
+        @test 0.35 <= frac_reported <= 0.65
+    end
+
     @testset "scalar_detection_prob rejects non-scalar fields" begin
         scalar = PerCaseObservation(detection_prob = 0.7)
         @test EpiBranch.scalar_detection_prob(scalar) == 0.7

@@ -6,3 +6,7 @@ than getting a report time regardless of detection.
 `weekly_incidence(state; by = :reporting)` previously found no cases at
 all for a simulation using `PerCaseObservation`; it now counts the
 reported cases from either route.
+
+A model combining a `Reporting` transition with `PerCaseObservation`
+had the two overwrite each other's report; `PerCaseObservation` now
+finds the transition's report already on the case and reuses it instead.
