@@ -924,6 +924,41 @@ end
         @test major([band1_attack(run_bands(s; interventions = [leaky])) for s in 1:30]) < base
     end
 
+    @testset "susceptibility thins mass action exactly" begin
+        # Proposals are sampled at the largest susceptibility and thinned to each
+        # member's own, so half the population at 0.4 must give the same process
+        # as two bands whose pair rates are scaled by the contacted band's 0.4.
+        N = 400
+        β = 2.5
+        prog = [
+            Transition(
+                :recovered; from = :infection, delay = Exponential(1.0),
+                terminal = true
+            ),
+        ]
+        lower_half = transmission_traits(
+            susceptibility = (rng, ind) -> ind.id <= N ÷ 2 ? 1.0 : 0.4
+        )
+        thinned = [
+            simulate(
+                ModelSpec(
+                    HomogeneousProcess(; transmission_rate = β, population_size = N);
+                    progression = prog, attributes = lower_half
+                );
+                n_initial = 5, rng = StableRNG(s)
+            ).cumulative_cases
+                for s in 1:1500
+        ]
+        band_of = ind -> (ind.id <= N ÷ 2 ? 1 : 2)
+        rate = (from, to) -> β / N * (to[1] == 1 ? 1.0 : 0.4)
+        banded = [
+            length(infected(_run_mixing(N, band_of, rate; rng = StableRNG(10_000 + s))))
+                for s in 1:1500
+        ]
+        se = sqrt(var(thinned) / 1500 + var(banded) / 1500)
+        @test abs(mean(thinned) - mean(banded)) < 4 * se
+    end
+
     @testset "conditioned simulation and show" begin
         prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
         spec = ModelSpec(

@@ -13,10 +13,16 @@
 # That is the same process as drawing every pair and discarding the late ones,
 # at a cost per contact rather than per pair.
 #
+# Per-individual traits give each pair its own rate, the group's rate scaled by
+# the infector's infectiousness and the member's susceptibility. The route then
+# samples at a bound on those rates, the group's largest susceptibility, and keeps
+# each selected pair with the ratio of its own contact probability to the
+# bound's, which leaves exactly the pairs with a contact at their own rate, still
+# at a cost per contact.
+#
 # Everything else is the race's: blocked contacts redraw on the pair (the pair
-# kernel below), per-individual traits scale the pair's rate, interventions and
-# risks resolve when a proposal is popped, and the infector of a case is the
-# member whose contact reached it first.
+# kernel below), interventions and risks resolve when a proposal is popped, and
+# the infector of a case is the member whose contact reached it first.
 
 """
     _MassAction(state, members; mixing_by = (), rate)
@@ -32,11 +38,17 @@ one member of the second: `β/N` for homogeneous mixing, or `M[b, a]/n[b]` for a
 contact matrix `M[b, a]` giving the rate at which one infective in band `a`
 contacts the `n[b]` members of band `b` between them. The rate may be any real type,
 a dual under automatic differentiation included, and is fixed for the run.
+
+Each group's largest susceptibility is also read when the route is built, as the
+bound its proposals are sampled at. A member's susceptibility may fall during the
+run but not rise above that bound, which is how the race already reads it: as set
+when the member is created.
 """
-struct _MassAction{T <: Real}
+struct _MassAction{T <: Real, S <: Real}
     groups::Vector{Vector{Int}}  # member ids in each mixing group
     group_of::Dict{Int, Int}     # member id → index of its group
     rate::Matrix{T}              # rate[a, b]: one infective in a to one member of b
+    max_susceptibility::Vector{S}  # largest susceptibility in each group
 end
 
 function _MassAction(state::SimulationState, members; mixing_by::Tuple = (), rate)
@@ -59,7 +71,10 @@ function _MassAction(state::SimulationState, members; mixing_by::Tuple = (), rat
     all(r -> isfinite(r) && r >= 0, rates) || throw(
         ArgumentError("mass-action contact rates must be finite and non-negative")
     )
-    return _MassAction(groups, group_of, float.(rates))
+    max_susceptibility = [
+        maximum(id -> state.individuals[id].susceptibility, group) for group in groups
+    ]
+    return _MassAction(groups, group_of, float.(rates), max_susceptibility)
 end
 
 # The route as any other: every susceptible member with its pair kernel. The race
@@ -91,31 +106,38 @@ function _propose_along!(
     window = close_t - open_t
     window > 0 || return nothing
     for (b, group) in enumerate(m.groups)
-        r = m.rate[a, b]
-        r > 0 || continue
-        if traits
-            _propose_scaled!(race, group, infector, r, opening_id, open_t, window)
-        else
-            _propose_sampled!(race, group, infector_id, r, opening_id, open_t, window)
-        end
+        r = traits ? m.rate[a, b] * infector.infectiousness : m.rate[a, b]
+        bound = traits ? r * m.max_susceptibility[b] : r
+        bound > 0 || continue
+        _propose_sampled!(
+            race, group, infector_id, r, bound, traits, opening_id, open_t, window
+        )
     end
     return nothing
 end
 
-# Every pair in `group` at rate `r`, sampled by the pairs with a contact in the
-# window. With an unbounded window every pair has one, so each draws its time
-# directly. Otherwise the gap to the next pair that does is geometric with the
-# per-pair probability `p`, and its time is the exponential conditioned on
-# `dt ≤ window`, `-log(1 - u·p)/r`.
-function _propose_sampled!(race, group, infector_id, r, opening_id, open_t, window)
-    (; rng) = race
+# Every pair in `group`, at rate `r` scaled by the member's susceptibility when
+# `traits` is set, sampled by the pairs with a contact in the window. With an
+# unbounded window every pair has one, so each draws its time directly.
+# Otherwise pairs are selected at the `bound` rate: the gap to the next pair with
+# a contact is geometric with the bound's per-pair probability `p`. A pair at a
+# lower rate, with probability `pk`, is kept with probability `pk/p`, and its
+# time is the exponential at its own rate conditioned on `dt ≤ window`,
+# `-log(1 - u·pk)/rate`.
+function _propose_sampled!(
+        race, group, infector_id, r, bound, traits, opening_id, open_t, window
+    )
+    (; rng, state) = race
+    pair_rate(id) = traits ? r * state.individuals[id].susceptibility : r
     if !isfinite(window)
         for id in group
-            _propose_contact!(race, id, infector_id, opening_id, open_t + randexp(rng) / r)
+            rate = pair_rate(id)
+            rate > 0 || continue
+            _propose_contact!(race, id, infector_id, opening_id, open_t + randexp(rng) / rate)
         end
         return nothing
     end
-    p = -expm1(-r * window)
+    p = -expm1(-bound * window)
     logq = log1p(-p)
     n = length(group)
     i = 0
@@ -123,21 +145,21 @@ function _propose_sampled!(race, group, infector_id, r, opening_id, open_t, wind
         gap = log1p(-rand(rng)) / logq
         gap < n - i || break
         i += 1 + floor(Int, gap)
-        dt = -log1p(-rand(rng) * p) / r
-        _propose_contact!(race, group[i], infector_id, opening_id, open_t + dt)
-    end
-    return nothing
-end
-
-# With per-individual traits each pair has its own rate, so every pair in the
-# group draws, as the race's default route does.
-function _propose_scaled!(race, group, infector, r, opening_id, open_t, window)
-    (; state, rng) = race
-    for id in group
-        rate = r * infector.infectiousness * state.individuals[id].susceptibility
-        rate > 0 || continue
-        dt = randexp(rng) / rate
-        dt <= window && _propose_contact!(race, id, infector.id, opening_id, open_t + dt)
+        id = group[i]
+        rate, pk = bound, p
+        if traits
+            rate = pair_rate(id)
+            rate <= bound || throw(
+                ArgumentError(
+                    "a member's susceptibility rose above its group's largest when " *
+                        "the mass-action route was built; set it when the member is created"
+                )
+            )
+            pk = -expm1(-rate * window)
+            rand(rng) * p < pk || continue
+        end
+        dt = -log1p(-rand(rng) * pk) / rate
+        _propose_contact!(race, id, infector_id, opening_id, open_t + dt)
     end
     return nothing
 end
