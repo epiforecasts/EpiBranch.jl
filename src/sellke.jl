@@ -964,6 +964,12 @@ function _sellke_race!(
     # For a live kernel, which hosts' records a pending or future draw reads.
     # Empty and unused otherwise.
     watch = _LiveWatch(live ? m : 0, length(rts))
+    # What a route needs to propose from an opening (see `_propose_along!`).
+    # Every field is bound once and only mutated in place.
+    race = (;
+        pending, proposals, head, best, represents, processed, pos, state, rng,
+        watch, snapshot, watched_keys, may_block,
+    )
     for k in 1:m
         best[k] < Inf || continue
         seeded = best[k]
@@ -1122,39 +1128,60 @@ function _sellke_race!(
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
             live && _watch_opening!(watch, j, live_route[ri])
-
-            for (target_id, kernel) in route_targets(members[j], state)
-                k = get(pos, target_id, 0)
-                (k == 0 || processed[k]) && continue
-                if live_route[ri]
-                    # This opening's draws come from the target's record as it
-                    # stands now, which is what later comparisons start from.
-                    _watch_target!(watch, opening_id, k)
-                    _refresh_host!(
-                        snapshot, watched_keys, state.individuals[target_id], k
-                    )
-                end
-                # Both per-individual traits are rate multipliers on this
-                # pair's contact interval, folded into the draw rather than
-                # resolved contact by contact. A pair at the default 1 draws
-                # exactly as it did before they were honoured here.
-                dt = traits ?
-                    _traits_scaled_draw(
-                        rng, kernel,
-                        ind.infectiousness *
-                        state.individuals[target_id].susceptibility
-                    ) :
-                    rand(rng, kernel)
-                cand = open_t + dt
-                cand <= close_t || continue
-                _propose!(
-                    pending, proposals, head, best, represents, k, opening_id,
-                    cand, may_block
-                )
-            end
+            _propose_along!(
+                route_targets, race, members[j], opening_id, open_t, close_t,
+                traits, live_route[ri]
+            )
         end
     end
     return true
+end
+
+# Propose the infections one case's window on one route leads to. The default
+# asks the route for every susceptible target and its pair kernel, and draws one
+# contact per pair, keeping those inside the window. A route that can find the
+# pairs with a contact inside the window without drawing every pair, such as
+# mass action (`_MassAction`), has a method of its own.
+function _propose_along!(
+        route_targets, race, infector_id, opening_id, open_t, close_t, traits, live
+    )
+    (; state, rng, pos, processed, watch, snapshot, watched_keys) = race
+    infector = state.individuals[infector_id]
+    for (target_id, kernel) in route_targets(infector_id, state)
+        k = get(pos, target_id, 0)
+        (k == 0 || processed[k]) && continue
+        if live
+            # This opening's draws come from the target's record as it
+            # stands now, which is what later comparisons start from.
+            _watch_target!(watch, opening_id, k)
+            _refresh_host!(
+                snapshot, watched_keys, state.individuals[target_id], k
+            )
+        end
+        # Both per-individual traits are rate multipliers on this
+        # pair's contact interval, folded into the draw rather than
+        # resolved contact by contact. A pair at the default 1 draws
+        # exactly as it did before they were honoured here.
+        dt = traits ?
+            _traits_scaled_draw(
+                rng, kernel,
+                infector.infectiousness *
+                state.individuals[target_id].susceptibility
+            ) :
+            rand(rng, kernel)
+        cand = open_t + dt
+        cand <= close_t || continue
+        _propose!(race, k, opening_id, cand)
+    end
+    return nothing
+end
+
+# Record a proposal through the race's own queues.
+function _propose!(race, k, opening_id, t)
+    return _propose!(
+        race.pending, race.proposals, race.head, race.best, race.represents,
+        k, opening_id, t, race.may_block
+    )
 end
 
 """
