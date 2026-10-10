@@ -39,6 +39,57 @@ function _warn_incomplete_terminal_coverage(progression)
     return nothing
 end
 
+# The hooks whose default on `AbstractIntervention` is a no-op, together with
+# the signature the engine calls each with (`trace_contacts!` has two, the
+# four-argument one being what the five-argument fallback calls in turn). An
+# intervention with no method of its own, at the right arity, for any of
+# these can have no effect on a simulation; see `_warn_inert_interventions`.
+const _EFFECT_HOOKS = (
+    (initialise_individual!, 3, "initialise_individual!(intervention, individual, state)"),
+    (resolve_individual!, 3, "resolve_individual!(intervention, individual, state)"),
+    (
+        apply_post_transmission!, 3,
+        "apply_post_transmission!(intervention, state, new_contacts)",
+    ),
+    (competing_risk, 4, "competing_risk(intervention, parent, contact, state)"),
+    (trace_contacts!, 4, "trace_contacts!(intervention, state, infector, contacts)"),
+    (
+        trace_contacts!, 5,
+        "trace_contacts!(intervention, state, infector, contacts, not_before)",
+    ),
+    (keep_active, 4, "keep_active(intervention, state, targets, is_new)"),
+    (
+        on_infection_settled!, 4,
+        "on_infection_settled!(intervention, individual, state, rng)",
+    ),
+    (infectious_removal_time, 2, "infectious_removal_time(intervention, individual)"),
+    (intervention_actions, 3, "intervention_actions(intervention, state, candidates)"),
+)
+
+# Warn when a composed intervention has a method of its own for none of
+# `_EFFECT_HOOKS`, at the right arity: a hook written with the wrong number
+# of arguments, or defined without the `EpiBranch.` qualification needed to
+# add a method rather than shadow it, leaves only the `AbstractIntervention`
+# fallback reachable, and the intervention does nothing with no sign that
+# anything is missing. Checked on the type an intervention wraps, if any,
+# since a wrapper such as `Scheduled` always has its own delegating methods
+# whatever it wraps.
+function _warn_inert_interventions(interventions)
+    for iv in interventions
+        T = typeof(_unwrap_scheduled(iv))
+        any(_EFFECT_HOOKS) do (f, n, _)
+            _has_own_method(f, T, AbstractIntervention, n)
+        end && continue
+        @warn "$(nameof(T)) has a method of its own for none of the hooks the " *
+            "engine calls, so it can have no effect on the simulation: " *
+            "$(join((sig for (_, _, sig) in _EFFECT_HOOKS), ", ")). This is usually " *
+            "a hook defined with the wrong number of arguments, or without the " *
+            "`EpiBranch.` prefix needed to add a method to the package's " *
+            "function instead of defining a new one of the same name." intervention = T
+    end
+    return nothing
+end
+
 struct ModelSpec{P <: TransmissionModel, A, O, C}
     process::P
     progression::Vector{AbstractClinicalTransition}
@@ -76,6 +127,7 @@ function ModelSpec(
     _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
     _validate_dose_schedule(ivs)
+    _warn_inert_interventions(ivs)
     return ModelSpec(process, prog, ivs, attributes, observation, recorder)
 end
 
