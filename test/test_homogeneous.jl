@@ -41,6 +41,21 @@ struct DoseAndTrace <: EpiBranch.AbstractIntervention end
 EpiBranch.apply_post_transmission!(::DoseAndTrace, state, new_contacts) = nothing
 EpiBranch.traces_contacts(::DoseAndTrace) = true
 EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
+# Written for both engines: `apply_post_transmission!` for the generation
+# engine, `on_infection_settled!` for the continuous-time race. Neither traces,
+# so this is honoured through the settled hook alone.
+struct DoseAndSettle <: EpiBranch.AbstractIntervention end
+EpiBranch.apply_post_transmission!(::DoseAndSettle, state, new_contacts) = nothing
+EpiBranch.on_infection_settled!(::DoseAndSettle, ind, state, rng) = nothing
+# Written for both engines like `DoseAndSettle`, but also grows a ring through
+# `keep_active`. That hook's own counterpart is `trace_contacts!`, so the
+# settled hook must not paper over a ring the pool cannot grow.
+struct DoseSettleAndTrace <: EpiBranch.AbstractIntervention end
+EpiBranch.apply_post_transmission!(::DoseSettleAndTrace, state, new_contacts) = nothing
+EpiBranch.on_infection_settled!(::DoseSettleAndTrace, ind, state, rng) = nothing
+EpiBranch.keep_active(::DoseSettleAndTrace, state, targets, is_new) = ()
+EpiBranch.traces_contacts(::DoseSettleAndTrace) = true
+EpiBranch.trace_contacts!(::DoseSettleAndTrace, state, infector, contacts) = nothing
 
 # The same leaky vaccine with its arguments typed, as the style guide asks for.
 struct LeakyVaccineTyped <: EpiBranch.AbstractIntervention
@@ -375,6 +390,26 @@ end
                 rng = StableRNG(1), n_initial = 2
             )
         end
+        # A method of its own for `on_infection_settled!` is `apply_post_transmission!`'s
+        # continuous-time counterpart, so this is honoured and warns about nothing,
+        # even though the pool still never calls `apply_post_transmission!` itself.
+        @test EpiBranch._sellke_honours(prog_pool, DoseAndSettle())
+        @test_logs min_level = Base.CoreLogging.Warn simulate(
+            ModelSpec(prog_pool; progression = prog, interventions = [DoseAndSettle()]);
+            rng = StableRNG(1), n_initial = 2
+        )
+        # The settled hook covers only `apply_post_transmission!`; `keep_active`
+        # still needs its own counterpart, `trace_contacts!`, honoured, and the
+        # pool cannot do that, so this stays unhonoured despite the settled hook.
+        @test !EpiBranch._sellke_honours(prog_pool, DoseSettleAndTrace())
+        @test_logs (:warn, r"DoseSettleAndTrace"i) match_mode = :any simulate(
+            ModelSpec(prog_pool; progression = prog, interventions = [DoseSettleAndTrace()]);
+            rng = StableRNG(1), n_initial = 2
+        )
+        # Naming is scoped to the hook the race actually skips: the settled
+        # hook still reaches `apply_post_transmission!`, so only `keep_active`
+        # is named rather than the whole intervention.
+        @test EpiBranch._unhonoured_hooks(prog_pool, DoseSettleAndTrace()) == [:keep_active]
         # The package's own interventions that the pool honours warn about nothing.
         onsets = clinical_presentation(
             incubation_period = LogNormal(-1.0, 0.3),

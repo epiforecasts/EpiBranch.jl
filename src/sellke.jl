@@ -133,11 +133,16 @@ function _has_own_method(f, T::Type, base::Type)
     end
 end
 
-# Whether an intervention implements a hook that only the generation engine calls.
-function _has_generation_hook(iv::AbstractIntervention)
+# The generation-only hooks an intervention implements a method of its own
+# for, named so a warning can say exactly which ones the race skips rather
+# than claiming the intervention itself does nothing.
+function _generation_hooks(iv::AbstractIntervention)
     T = typeof(iv)
-    return _has_own_method(apply_post_transmission!, T, AbstractIntervention) ||
-        _has_own_method(keep_active, T, AbstractIntervention)
+    hooks = Symbol[]
+    _has_own_method(apply_post_transmission!, T, AbstractIntervention) &&
+        push!(hooks, :apply_post_transmission!)
+    _has_own_method(keep_active, T, AbstractIntervention) && push!(hooks, :keep_active)
+    return hooks
 end
 
 # One case's window on one route: who it is, which route, and when that window
@@ -616,15 +621,34 @@ end
 # asks it which contacts the ring grows from), so an intervention that answers
 # it and does not trace has nothing to call it. So an intervention with a method
 # of its own for either hook is taken to reach its targets that way, and
-# reported as unhonoured, unless it
-# also traces contacts: `trace_contacts!` is then its continuous-time
-# counterpart, which needs a model that can name a case's contacts. The check
+# reported as unhonoured, unless it has a continuous-time counterpart: a method
+# of its own for `on_infection_settled!`, called once a case's infection time is
+# fixed, stands in for `apply_post_transmission!`, which an intervention
+# written for both engines defines alongside it to treat the same case the
+# moment each engine can; `trace_contacts!` stands in for `keep_active` the same
+# way, but needs a model that can name a case's contacts as well. The check
 # reads the methods themselves, so an intervention written outside the package
 # is reported without declaring anything. `MassVaccination`'s rollout, for one,
 # doses each new contact as the generation engine creates it, so on the
 # continuous-time path nobody is ever dosed and the efficacy risk it contributes
 # never blocks; `GroupVaccination` doses whole groups as their members are
 # created, and goes the same way.
+#
+# The settled-hook shortcut yields to a method of the intervention's own for
+# `continuous_actions`: that already answers, for its own configuration,
+# whether `apply_post_transmission!`'s mechanism has a continuous-time
+# counterpart, and a settled hook written for an unrelated feature must not
+# override it. `RingVaccination`'s settled hook, for one, only ever
+# reconsiders a post-exposure dose, never the ring dosing
+# `apply_post_transmission!` performs, so a finite `eligibility_window` —
+# which makes its own `continuous_actions` false — must still leave the ring
+# dosing unhonoured.
+#
+# The settled hook stands in only for `apply_post_transmission!`; `keep_active`
+# still needs its own counterpart, `trace_contacts!`. An intervention that doses
+# through a settled hook and *also* grows a ring through `keep_active` is
+# therefore unhonoured wherever that ring cannot trace, even though its dosing
+# alone would pass.
 #
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
@@ -634,10 +658,36 @@ end
 # admission protocol; legacy batch-only delivery remains unsupported.
 function _sellke_honours(model, iv::AbstractIntervention)
     continuous_actions(iv) && return supplies_contacts(model)
-    _has_generation_hook(iv) || return true
+    hooks = _generation_hooks(iv)
+    isempty(hooks) && return true
+    T = typeof(iv)
+    if !_has_own_method(continuous_actions, T, AbstractIntervention) &&
+            _has_own_method(on_infection_settled!, T, AbstractIntervention)
+        :keep_active in hooks || return true
+    end
     return traces_contacts(iv) && supplies_contacts(model)
 end
 _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
+
+# The hooks of `iv` the continuous-time race actually skips, for naming in
+# `_warn_unhonoured_interventions`: the same shortcuts `_sellke_honours` takes
+# drop a hook from this list the moment its counterpart covers it, so an
+# intervention honoured through `on_infection_settled!` never gets
+# `apply_post_transmission!` named, since it already reaches that hook.
+function _unhonoured_hooks(model, iv::AbstractIntervention)
+    hooks = _generation_hooks(iv)
+    continuous_actions(iv) && return hooks
+    isempty(hooks) && return hooks
+    T = typeof(iv)
+    if !_has_own_method(continuous_actions, T, AbstractIntervention) &&
+            _has_own_method(on_infection_settled!, T, AbstractIntervention)
+        hooks = filter(!=(:apply_post_transmission!), hooks)
+    end
+    traces_contacts(iv) && supplies_contacts(model) &&
+        (hooks = filter(!=(:keep_active), hooks))
+    return hooks
+end
+_unhonoured_hooks(model, s::Scheduled) = _unhonoured_hooks(model, s.intervention)
 
 """
     supplies_contacts(model) -> Bool
@@ -733,12 +783,15 @@ end
 # Warn once (per `simulate` call) when a continuous-time model is handed
 # interventions it cannot honour, so the limitation is loud rather than silent.
 # Gated on `_honours_termination_controls`, which is `false` for exactly the
-# structure-driven models that run their own Sellke loop.
+# structure-driven models that run their own Sellke loop. Names the hooks the
+# race skips rather than the intervention itself, since an intervention
+# reported here may still act through `competing_risk`, `resolve_individual!`,
+# `infectious_removal_time` or `on_infection_settled!`.
 function _warn_unhonoured_interventions(model, interventions)
     _honours_termination_controls(model) && return nothing
     unhonoured = unique(
         String[
-            string(nameof(typeof(iv)))
+            "$(nameof(typeof(iv))) ($(join(_unhonoured_hooks(model, iv), ", ")))"
                 for iv in interventions if !_sellke_honours(model, iv)
         ]
     )
@@ -746,10 +799,10 @@ function _warn_unhonoured_interventions(model, interventions)
     @warn "$(nameof(typeof(model))) is a continuous-time model that settles one " *
         "pre-existing case at a time, so it never creates the batches of new " *
         "contacts the generation engine's post-transmission hooks act on; it " *
-        "does not honour these, which will have no effect: " *
+        "does not honour the named hooks, which will have no effect: " *
         "$(join(unhonoured, ", ")). Express such control as a removal " *
         "`Transition` in the progression, or through an intervention that acts " *
-        "when each individual is initialised, resolved, or traced."
+        "when each individual is initialised, resolved, settled, or traced."
     return nothing
 end
 
