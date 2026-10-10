@@ -123,8 +123,7 @@ Core fields (used by the engine):
 On the continuous-time models (`HomogeneousProcess`, and `NetworkProcess`,
 `RoutedNetwork` and `HouseholdProcess` in the companion packages) both traits
 instead multiply the transmission hazard: they scale the rate at which a pair
-meets, and in the mass-action pool the pressure a susceptible absorbs and the
-weight an infective adds to the force. They then reduce the chance of infection
+meets. They then reduce the chance of infection
 only within a finite infectious window: a pair whose window never closes
 eventually transmits for any positive value, later on average, and a contact
 interval that is certain to fall inside the window (a `Dirac`, say) transmits

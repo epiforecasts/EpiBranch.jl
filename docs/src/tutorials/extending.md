@@ -303,16 +303,16 @@ by a race between contact-interval draws. What they do have is the potential
 infection itself — a drawn time for a named pair — so a `Risk` has somewhere to
 hang after all, alongside the infectious window.
 
-| Hook | Generation engine | Network / household (Sellke race) | Homogeneous pool |
-|---|---|---|---|
-| `initialise_individual!` | yes | yes | yes |
-| `resolve_individual!` | yes | yes | yes |
-| `competing_risk` | yes | yes | yes |
-| `infectious_removal_time` | not read | yes | yes |
-| `on_infection_settled!` | not called | yes | not called |
-| `trace_contacts!` | not called | yes | no contact set |
-| `apply_post_transmission!` | yes | not called | not called |
-| `keep_active` | yes | not called | not called |
+| Hook | Generation engine | Continuous-time race (network, household, homogeneous) |
+|---|---|---|
+| `initialise_individual!` | yes | yes |
+| `resolve_individual!` | yes | yes |
+| `competing_risk` | yes | yes |
+| `infectious_removal_time` | not read | yes |
+| `on_infection_settled!` | not called | yes |
+| `trace_contacts!` | not called | yes, where the model names contacts (not homogeneous) |
+| `apply_post_transmission!` | yes | not called |
+| `keep_active` | yes | not called |
 
 What this means in practice:
 
@@ -325,28 +325,23 @@ What this means in practice:
   infectiousness, which ride the same surface. The continuous-time models put
   each potential infection to the composed risks at the moment they propose it,
   against the time they propose it for. A blocked contact does not transmit and
-  the contact process carries on: on a graph the pair's next contact is drawn
-  from its own hazard conditioned on falling later, and in the mass-action pool
-  the susceptible waits for the next contact with a fresh resistance. Blocking
-  each contact with probability `p` therefore thins the force of infection to
-  `(1 - p)` of it on both, so the two agree — a two-person clique with a
-  one-day mean contact interval and a two-day infectious period is the same
-  process as a pool of two at `β = 2`, and at efficacy 0.5 both infect
-  `1 - exp(-1) = 0.63` of the time.
+  the contact process carries on: the pair's next contact is drawn from its own
+  hazard conditioned on falling later. Blocking each contact with probability
+  `p` therefore thins the force of infection to `(1 - p)` of it, so a pair with
+  a one-day mean contact interval and a two-day infectious period infects
+  `1 - exp(-1) = 0.63` of the time at efficacy 0.5.
 - Per-individual susceptibility and infectiousness reach the same thinning by a
   shorter route. They are constants of the two people rather than something that
   arrives at a time, so the models fold them into the draw: a multiplier `m`
-  turns a pair's contact-interval survival `S(t)` into `S(t)^m`, the pool scales
-  each susceptible's threshold and weights each infective's share of the force,
-  and a community introduction's hazard is scaled the same way. A multiplier of
+  turns a pair's contact-interval survival `S(t)` into `S(t)^m`, and a
+  community introduction's hazard is scaled the same way. A multiplier of
   0 never transmits and draws nothing. Static proportional effects can use these
   traits or an effective kernel directly, avoiding repeated rejected contacts.
 - Repeated-contact sampling after a blocked proposal requires finite remaining
   integrated hazard. A race rejects a continuation if the kernel's survival is
   zero at the end of its window, including an unbounded Exponential window or a
-  continuous bounded kernel whose support ends inside the window. A pool
-  requires finite removal times for all active sources when a contact is
-  blocked. These cases raise `ArgumentError`, even for a risk that might later
+  continuous bounded kernel whose support ends inside the window. These cases
+  raise `ArgumentError`, even for a risk that might later
   permit infection: an opaque callback cannot establish eventual termination.
   Supply a finite infectious/introduction window with nonzero kernel survival
   at its end, or represent static protection through host traits or the kernel.
@@ -420,7 +415,7 @@ What this means in practice:
   intervention that also traces contacts (`traces_contacts` returns `true`),
   whose `trace_contacts!` is taken as the continuous-time counterpart of those
   hooks; it is honoured on a model that can name a case's contacts and reported
-  on one that cannot, such as the mass-action pool.
+  on one that cannot, such as `HomogeneousProcess`.
 - **Contact tracing** spans the two. Its action is a removal, so it applies
   on both, but it needs to know who a case's contacts were. The generation
   engine reads that off each contact's `parent_id`; the continuous-time
@@ -431,9 +426,8 @@ What this means in practice:
   (`contacts_from = :died` on a `RoutedNetwork` route). `time` is when each
   person became a contact, and `ContactTracing` runs that contact's trace delay
   from no earlier than it.
-  A graph names a node's neighbours and a household its members; the
-  homogeneous pool is mass-action and has no pairwise contact structure, so
-  tracing stays unhonoured there.
+  A graph names a node's neighbours and a household its members; mass action
+  (`HomogeneousProcess`) names no contacts, so tracing stays unhonoured there.
 
 Two ordering differences follow from this, and they matter when you write an
 intervention that has to work on both:
@@ -1671,44 +1665,41 @@ simulate(ModelSpec(MyModel(...); observation = PerCaseObservation(detection_prob
 The engine applies the observation after the run, and `loglikelihood(data,
 spec)` reads it off the spec — the same path `BranchingProcess` takes.
 
-## A fixed-size population on the Sellke pool
+## A fixed-size population with structured mixing
 
 The built-in [Homogeneous models](homogeneous.md) tutorial covers
 `HomogeneousProcess`, a closed population where everyone mixes with everyone else
 at the same rate. Mixing is often uneven, though: age bands, sex, income strata
-or spatial patches contact each other at different rates, so susceptibles in
-different groups feel a different force of infection. You can build a model like
-that on the same pool without touching the simulation itself. Only one thing
-changes from the homogeneous case: how the force of infection depends on which
-group a susceptible belongs to. You supply it as two pieces:
+or spatial patches contact each other at different rates. You can build a model
+like that on the same continuous-time race without touching the simulation
+itself, as mass action between groups. You supply two pieces:
 
-1. **Which attributes define the mixing groups** — `mixing_by`, a tuple of
+1. **Which attributes define the mixing groups**: `mixing_by`, a tuple of
    attribute keys each individual already carries (`:age_band`, `:ses`, `:patch`;
-   real attributes, not a synthetic group index). A susceptible's group is the
+   real attributes, not a synthetic group index). An individual's group is the
    tuple of those attribute values. With `mixing_by = ()` everyone lands in one
    group, which recovers the homogeneous case.
-2. **The force of infection** `force(group, counts)` — the hazard on a
-   susceptible in a given group. `counts` is a `Dict` mapping each mixing group to
-   the infectiousness-weighted number currently infectious in it, each case
-   contributing its own `infectiousness` (1 by default). Homogeneous mixing is
-   `β/N` times the total of those counts; structured mixing applies a contact
-   matrix to the per-group prevalence.
+2. **The pair contact rate** `rate(infector_group, target_group)`: the rate at
+   which one infective in the first group contacts one member of the second.
+   Homogeneous mixing is `β/N` for every pair. With a contact matrix `M[b, a]`,
+   the rate at which one infective in group `a` contacts the `n[b]` members of
+   group `b` between them, each pair meets at `M[b, a]/n[b]`.
 
-A mixing group is always the *tuple* of `mixing_by` values, so it stays a tuple
-even when there is a single attribute. Under `mixing_by = (:age_band,)` a
-susceptible in band `b` has group `(b,)`, not bare `b`. Inside `force` you
-therefore read the band out with `group[1]` and key `counts` by `(h,)`. That one
-wrinkle is what usually trips people up on a first read.
+A group is always the *tuple* of `mixing_by` values, so it stays a tuple even
+when there is a single attribute. Under `mixing_by = (:age_band,)` a member of
+band `b` has group `(b,)`, not bare `b`, so inside `rate` you read the band out
+with `group[1]`. That one wrinkle is what usually trips people up on a first
+read.
 
 ### A worked age-structured example
 
 Below is a two-age-band population with an asymmetric contact matrix, where the
 younger, more socially active band mixes more than the older band. It drives the
-pool through `EpiBranch._sellke_pool!`. That function is internal for now: the
-underscore means it is not part of the public API and may be renamed or given a
-public wrapper in a later release. The `mixing_by`/`force` contract shown here is
-the stable part and will carry over; only the call site would change. If you
-build on it, pin your package version.
+race through `EpiBranch._sellke_race!` with an `EpiBranch._MassAction` route.
+Both are internal for now: the underscore means they are not part of the public
+API and may be renamed or given a public wrapper in a later release. The
+`mixing_by`/`rate` contract shown here is the stable part and will carry over;
+only the call site would change. If you build on it, pin your package version.
 
 ```julia
 using EpiBranch, Distributions, Random
@@ -1719,25 +1710,19 @@ N = 2000
 n = [N ÷ 2, N ÷ 2]                     # band sizes
 band_of = i -> (i <= n[1] ? 1 : 2)
 
-# A 2×2 contact matrix: M[b, h] is the mean rate at which one infectious
-# individual in band h contacts a susceptible in band b. Band 1 mixes far more.
+# A 2×2 contact matrix: M[b, a] is the mean rate at which one infectious
+# individual in band a contacts the members of band b. Band 1 mixes far more.
 M = [3.0 0.5;
      0.5 0.5]
 
-# Force of infection on a susceptible in mixing group `group`, given `counts`.
-# A group is the tuple of :age_band values, so band b is `(b,)`: read the band
-# with group[1] and index counts by (h,). This sums, over bands h, the contact
-# rate M[b, h] times band h's prevalence counts[(h,)] / n[h].
-force = (group, counts) -> begin
-    b = group[1]
-    sum(M[b, h] * get(counts, (h,), 0) / n[h] for h in 1:2)
-end
+# The rate at which one infective in `from` contacts one member of `to`. A group
+# is the tuple of :age_band values, so band a is `(a,)`: read it with group[1].
+rate = (from, to) -> M[to[1], from[1]] / n[to[1]]
 
-# A HomogeneousProcess supplies only the fixed pool and its removal states; the
-# force above replaces its transmission rate, so any placeholder value does. The
-# natural history (progression) and the empty forcing layers are handed to the
-# pool directly. Tag each individual's :age_band as it is created; any attribute
-# works, including the built-in demographics (:age, :sex, :risk_group).
+# A HomogeneousProcess supplies only the population and its removal states; the
+# rate above replaces its transmission rate, so any placeholder value does. Tag
+# each individual's :age_band as it is created; any attribute works, including
+# the built-in demographics (:age, :sex, :risk_group).
 carrier = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
 progression = [Transition(:recovered; from = :infection,
     delay = Exponential(1.0), terminal = true)]
@@ -1746,51 +1731,32 @@ state = EpiBranch.new_state(carrier, progression, NoAttributes(), rng)
 EpiBranch.add_individuals!(state, N, AbstractIntervention[];
     setup = (ind, i) -> (ind.state[:age_band] = band_of(i)))
 
-# Run the Sellke pool. `mixing_by = (:age_band,)` names the attribute that groups
-# individuals; each group is read from it, and the model supplies only the force.
-EpiBranch._sellke_pool!(state, collect(1:N), rng; mixing_by = (:age_band,),
-    force = force, n_initial = 5,
+# Run the race from five index cases at time 0, with mass action between the
+# bands as its one route.
+members = collect(1:N)
+EpiBranch._sellke_race!(state, members, rng;
+    seed! = (best, _, r) -> (best[randperm(r, N)[1:5]] .= 0),
+    targets = EpiBranch._MassAction(state, members; mixing_by = (:age_band,), rate),
     from = EpiBranch._resolve_infectious_from(carrier.from, progression),
     until = carrier.until)
 
 linelist(state)
 ```
 
-Band-1 susceptibles feel a higher force and reach a higher attack rate. To check
-the wiring, set `M` uniform: the two bands should collapse back to a single
-homogeneous pool with the SIR final size. The same pattern extends to further
-strata. Give individuals a `:ses` attribute and pass
-`mixing_by = (:age_band, :ses)`, and `force` now receives a `(band, ses)` tuple
-as its group and a `counts` Dict keyed by `(band, ses)` pairs. From there you can
-write whatever contact structure you want: a full matrix over every
-`(band, ses)` combination, or a factorised one where band and SES contacts
+Band-1 members are contacted more often and reach a higher attack rate. To check
+the wiring, make every pair rate equal: the two bands should collapse back to a
+single homogeneous population with the SIR final size. The same pattern extends
+to further strata. Give individuals a `:ses` attribute and pass
+`mixing_by = (:age_band, :ses)`, and `rate` now receives `(band, ses)` tuples.
+From there you can write whatever contact structure you want: a full matrix over
+every `(band, ses)` combination, or a factorised one where band and SES contacts
 multiply independently.
 
-Competing risks carry over with one restriction. The pool attributes each
-contact to an infector drawn in proportion to infectiousness, which is a uniform
-draw while every infective is at the default, because `force` does not say how
-much each infective contributes to it. With more than one mixing group that
-attribution is not weighted by the contact matrix, so a risk that depends on who
-the infector is would be applied against the wrong infectors. The pool therefore
-refuses, with an error, any intervention for which
-[`EpiBranch.risk_depends_on_infector`](@ref) is `true`: a leaky `Isolation`, a
-`RingVaccination` with an onward effect, and by default any intervention with
-its own `competing_risk`. An intervention whose risk reads only the contact
-declares so and is then accepted:
-
-```julia
-struct MyProphylaxis <: AbstractIntervention
-    efficacy::Float64
-end
-EpiBranch.competing_risk(p::MyProphylaxis, parent, contact, state) =
-    Risk(block_probability = p.efficacy)
-EpiBranch.risk_depends_on_infector(::MyProphylaxis) = false
-```
-
-Per-individual infectiousness is not refused: it reaches the force through the
-weighted counts, so it needs no attribution to be exact. Risks on the contact
-alone, such as a per-individual susceptibility, apply exactly. Differences in infectiousness
-between groups belong in `force`.
+Every contact is a contact between two named people, so competing risks,
+per-individual susceptibility and infectiousness, and risks that read the
+infector, such as a leaky isolation, all apply as they do on any other route of
+the race. The rate is fixed for the run; a force of infection that is not linear
+in the number infectious has no pairwise form and cannot be written this way.
 
 The natural history, isolation and line-list output are all unchanged from
 `HomogeneousProcess`. Internally these map to the engine's build, time, intervene
@@ -2005,7 +1971,7 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
 | Transmission route | `RouteWindow(name; from, until, kernel, reach)` on a process that reads them | Continuous-time race, per case |
-| Structured fixed-size pool | Reuse the Sellke pool: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply a `force(group, counts)` | Simulation |
+| Structured fixed-size population | Mass action on the race: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply the pair rate `rate(infector_group, target_group)` | Simulation |
 | Custom clinical transition | Struct `<: AbstractClinicalTransition` + `initialise_individual!`, `resolve_individual!`; `is_terminal`/`terminal_event`/`terminal_target` if terminal; `transition_loglik` to evaluate it | Case creation |
 | Calendar schedule for a pair kernel | Struct + `calendar_multiplier`, and `next_calendar_break` or `calendar_shape(::YourSchedule) = SmoothCalendar()` | Simulation + likelihood |
 | Pairwise likelihood for a structure | Struct `<: InfectionLayer` + `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood evaluation |
@@ -2521,7 +2487,7 @@ case. External producers opt in with `EpiBranch.continuous_actions(iv) = true`.
 They must work without a pending contact's infection time. Ring delivery supports
 an infinite eligibility window and zero post-exposure efficacy; group delivery
 uses known triggering cases. Schedules and capacity wrappers use the same action
-contract as the generation engine. Mass vaccination and the homogeneous pool
+contract as the generation engine. Mass vaccination and `HomogeneousProcess`
 remain unsupported on this path. With several households, capacity requires
 `period = Inf` for a shared lifetime budget. Finite periods are rejected because
 the simulator completes each household separately and resets its clock for the

@@ -512,12 +512,13 @@ end
             ) for s in 1:20
         ) < 1.0e3
 
-        # The traits scale the force, so a susceptibility of s is the same
-        # process as a transmission rate scaled by s. Compare attack rates.
-        half_beta = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
+        # The traits scale every pair's rate, so a susceptibility of s is the
+        # same process as a transmission rate scaled by s. Compare attack rates
+        # away from R0 = 1, where 40 runs cannot pin the mean down.
+        double_beta = HomogeneousProcess(; transmission_rate = 4.0, population_size = N)
         scaled = sum(
             simulate(
-                ModelSpec(half_beta; progression = prog);
+                ModelSpec(pool; progression = prog);
                 rng = StableRNG(s), n_initial = 3
             ).cumulative_cases
                 for s in 1:40
@@ -525,7 +526,7 @@ end
         blocked = sum(
             simulate(
                 ModelSpec(
-                    pool; progression = prog,
+                    double_beta; progression = prog,
                     attributes = transmission_traits(susceptibility = 0.5)
                 );
                 rng = StableRNG(s), n_initial = 3
@@ -614,9 +615,10 @@ end
     @testset "a non-exclusive terminal gate refuses with a pointed hint" begin
         # Two terminal transitions gated independently at p and 1 - p leave
         # about p(1 - p) of cases with neither outcome, so their infectious
-        # window never closes; with a blocking risk in play, the rejection
-        # sampler cannot find a way out either — and should say why rather
-        # than just naming the symptom.
+        # window never closes, and ten seeds make one such case all but
+        # certain; with a blocking risk in play, the rejection sampler cannot
+        # find a way out either — and should say why rather than just naming
+        # the symptom.
         pool40 = HomogeneousProcess(; transmission_rate = 2.0, population_size = 40)
         non_exclusive = [
             Transition(
@@ -632,7 +634,7 @@ end
             pool40; progression = non_exclusive, interventions = [LeakyVaccine(1.0, 0.0)]
         )
         err = try
-            simulate(m; rng = StableRNG(3), n_initial = 2)
+            simulate(m; rng = StableRNG(3), n_initial = 10)
             nothing
         catch caught
             caught
@@ -677,7 +679,7 @@ end
         @test mean_cc(mk(1000.0)) > 0.5 * mean_cc(base)
 
         # Mid start_time gates on the case's own infection time.
-        st = simulate(mk(3.0); rng = StableRNG(1), n_initial = 3)
+        st = simulate(mk(3.0); rng = StableRNG(1), n_initial = 10)
         @test !any(ind -> ind.infection_time < 3.0 && is_isolated(ind), st.individuals)
         @test any(ind -> ind.infection_time >= 3.0 && is_isolated(ind), st.individuals)
 
@@ -812,13 +814,17 @@ end
         )
     end
 
-    # A small helper that runs the structured pool directly: tag a real
-    # attribute (`:age_band`) on a fixed population of size N via `band_of`, name
-    # it as the mixing attribute with `mixing_by = (:age_band,)`, supply a force
-    # keyed on the band value, and return the band each infected case fell in.
-    function _run_pool(N, band_of, force; n_initial = 5, rng)
+    # A small helper that runs structured mass action on the race directly: tag
+    # a real attribute (`:age_band`) on a fixed population of size N via
+    # `band_of`, name it as the mixing attribute with `mixing_by = (:age_band,)`,
+    # supply the pair rate between bands, and return the state.
+    function _run_mixing(
+            N, band_of, rate; n_initial = 5, rng,
+            interventions = AbstractIntervention[], setup! = ind -> nothing
+        )
         process = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
         prog = [
+            Transition(:onset; from = :infection, delay = 0.1),
             Transition(
                 :recovered; from = :infection, delay = Exponential(1.0),
                 terminal = true
@@ -826,33 +832,35 @@ end
         ]
         state = EpiBranch.new_state(process, prog, NoAttributes(), rng)
         EpiBranch.add_individuals!(
-            state, N, AbstractIntervention[];
-            setup = (ind, i) -> (ind.state[:age_band] = band_of(ind))
+            state, N, interventions;
+            setup = (ind, i) -> begin
+                ind.state[:age_band] = band_of(ind)
+                setup!(ind)
+            end
         )
-        EpiBranch._sellke_pool!(
-            state, collect(1:N), rng;
-            mixing_by = (:age_band,), force = force,
-            n_initial = n_initial, from = :infection,
-            until = (:recovered, :died, :isolated)
+        members = collect(1:N)
+        EpiBranch._sellke_race!(
+            state, members, rng;
+            seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
+            targets = EpiBranch._MassAction(state, members; mixing_by = (:age_band,), rate),
+            from = :infection, until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
+            interventions
         )
-        return [
-            ind.state[:age_band]
-                for ind in state.individuals
-                if get(ind.state, :infected, false)
-        ]
+        return state
     end
+    band(ind) = ind.state[:age_band]
+    infected(state) = filter(is_infected, state.individuals)
 
-    @testset "two-band uniform matrix reduces to one pool" begin
-        # Two bands with uniform contact behave as a single pool of size N: the
-        # force felt is β/N·(total infectious) regardless of band, so the
-        # major-outbreak attack rate matches the homogeneous law (z ≈ 0.7968 at
-        # R0 = 2, since β = 2 and mean infectious period = 1).
+    @testset "two-band uniform matrix reduces to one population" begin
+        # Two bands with uniform contact behave as a single population of size N:
+        # every pair meets at β/N regardless of band, so the major-outbreak
+        # attack rate matches the homogeneous law (z ≈ 0.7968 at R0 = 2, since
+        # β = 2 and mean infectious period = 1).
         N = 3000
         β = 2.0
         band_of = ind -> (ind.id <= N ÷ 2 ? 1 : 2)
-        force = (type, counts) -> β / N * sum(values(counts))
         finals = [
-            length(_run_pool(N, band_of, force; rng = StableRNG(s)))
+            length(infected(_run_mixing(N, band_of, (_, _) -> β / N; rng = StableRNG(s))))
                 for s in 1:40
         ]
         major = filter(x -> x > 0.3 * N, finals)
@@ -863,24 +871,19 @@ end
 
     @testset "asymmetric mixing orders attack rates" begin
         # A 2×2 contact matrix keyed by band, where band 1 mixes far more than
-        # band 2. With equal band sizes, the force on a band-`b` susceptible is
-        # (1/half)·Σ_h M[b,h]·counts[(h,)]. The high-contact band should suffer a
-        # strictly higher attack rate than the low-contact band, over replicates.
+        # band 2: M[b, h] is the rate at which one band-h infective contacts the
+        # half of the population in band b, so each pair meets at M[b, h]/half.
+        # The high-contact band should suffer a strictly higher attack rate than
+        # the low-contact band, over replicates.
         N = 2000
         half = N ÷ 2
-        M = [3.0 0.5; 0.5 0.5]         # band 1 mixes much more than band 2
+        M = [3.0 0.5; 0.5 0.5]
         band_of = ind -> (ind.id <= half ? 1 : 2)
-        force = (type, counts) -> begin
-            b = type[1]
-            sum(M[b, h] * get(counts, (h,), 0) for h in 1:2) / half
-        end
+        rate = (from, to) -> M[to[1], from[1]] / half
         ar1 = Float64[]
         ar2 = Float64[]
         for s in 1:40
-            bands = _run_pool(
-                N, band_of, force; n_initial = 10,
-                rng = StableRNG(s)
-            )
+            bands = band.(infected(_run_mixing(N, band_of, rate; n_initial = 10, rng = StableRNG(s))))
             n1 = count(==(1), bands)
             n2 = count(==(2), bands)
             # Keep major outbreaks only, so the ordering is about who is hit hardest.
@@ -892,169 +895,43 @@ end
         @test mean(ar1) > mean(ar2)
     end
 
-    @testset "structured pool refuses risks that depend on the infector" begin
-        # Two bands that never mix (M = diag(2, 2)). Band 1's epidemic cannot
-        # depend on anything about band 2's infectives, but a contact's infector
-        # is drawn from everyone infectious without regard to which types mix, so
-        # a block read off the infector would let band 2 thin band 1's contacts.
-        # The pool refuses such risks. The two per-individual traits are not
-        # among them: they are in the force and the thresholds, not in the
-        # attribution, and leave band 1 untouched.
+    @testset "structured mixing attributes each contact to its infector" begin
+        # Two bands that never mix. Every contact comes from a member of the
+        # infector's own band, so every case's parent shares its band, band 1's
+        # attack rate is the SIR final size at R0 = 2 whatever band 2's traits
+        # are, and a risk that reads the infector, such as a leaky isolation,
+        # acts within each band.
         N = 2000
         half = N ÷ 2
-        force = (type, counts) -> 2.0 * get(counts, type, 0) / half
-        prog = [
-            Transition(
-                :recovered; from = :infection, delay = Exponential(1.0),
-                terminal = true
-            ),
-        ]
-        function band1_attack(
-                s; interventions = AbstractIntervention[],
-                band2! = ind -> nothing
-            )
-            rng = StableRNG(s)
-            process = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
-            state = EpiBranch.new_state(process, prog, NoAttributes(), rng)
-            EpiBranch.add_individuals!(
-                state, N, interventions;
-                setup = (ind, i) -> begin
-                    ind.state[:band] = i <= half ? 1 : 2
-                    i > half && band2!(ind)
-                end
-            )
-            EpiBranch._sellke_pool!(
-                state, collect(1:N), rng; mixing_by = (:band,),
-                force, n_initial = 20, from = :infection, until = (:recovered,),
-                interventions
-            )
-            return count(
-                ind -> ind.state[:band] == 1 && is_infected(ind),
-                state.individuals
-            ) / half
-        end
+        band_of = ind -> (ind.id <= half ? 1 : 2)
+        rate = (from, to) -> from == to ? 2.0 / half : 0.0
+        band1_attack(state) = count(ind -> band(ind) == 1, infected(state)) / half
         major(ars) = mean(filter(>(0.2), ars))
-        @test band1_attack(1; interventions = [RouteSelectedBlock(:household)]) ==
-            band1_attack(1)
-        @test band1_attack(
-            1;
-            interventions = [Scheduled(RouteSelectedBlock(:household); start_time = 0.0)]
-        ) ==
-            band1_attack(1)
+        run_bands(s; kwargs...) = _run_mixing(
+            N, band_of, rate; n_initial = 20, rng = StableRNG(s), kwargs...
+        )
 
-        leaky = Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
-            post_isolation_transmission = 0.5, duration = Inf
-        )
-        @test_throws r"Isolation" band1_attack(1; interventions = [leaky])
-        @test_throws r"Isolation" band1_attack(
-            1;
-            interventions = [Scheduled(leaky; start_time = 5.0)]
-        )
-        # A user's own risk may read the infector, so it is refused too, whether
-        # or not its arguments are typed.
-        @test_throws r"LeakyVaccine" band1_attack(
-            1;
-            interventions = [LeakyVaccine(0.5, 0.0)]
-        )
-        @test_throws r"LeakyVaccineTyped" band1_attack(
-            1;
-            interventions = [LeakyVaccineTyped(0.5, 0.0)]
-        )
-        @test_throws r"LeakyVaccine" band1_attack(
-            1;
-            interventions = [CapacityConstrained(LeakyVaccine(0.5, 0.0); budget_per_period = 5.0)]
-        )
-        # One written outside the package that declares its risk reads only the
-        # contact is accepted, and blocking every contact leaves only the seeds.
-        @test band1_attack(1; interventions = [ContactOnlyBlock(1.0)]) <= 20 / half
-        @test band1_attack(
-            1;
-            interventions = [Scheduled(ContactOnlyBlock(1.0); start_time = 0.0)]
-        ) <= 20 / half
+        state = run_bands(1)
+        @test all(infected(state)) do ind
+            ind.parent_id == 0 || band(state.individuals[ind.parent_id]) == band(ind)
+        end
 
-        depends = EpiBranch.risk_depends_on_infector
-        # Perfect isolation closes the window, so it never blocks a drawn contact.
-        perfect = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
-        @test !depends(perfect)
-        @test depends(leaky)
-        @test !depends(Scheduled(perfect; start_time = 5.0))
-        @test depends(Scheduled(leaky; start_time = 5.0))
-        # Without a risk of its own an intervention cannot read the infector.
-        @test !depends(DoseNewContacts())
-        @test depends(LeakyVaccine(0.5, 0.0))
-        @test depends(LeakyVaccineTyped(0.5, 0.0))
-        @test !depends(ContactOnlyBlock(0.5))
-        # Wrappers answer for the intervention they wrap.
-        @test !depends(RingVaccination(efficacy = 0.8))
-        @test !depends(
-            CapacityConstrained(RingVaccination(efficacy = 0.8); budget_per_period = 5.0)
-        )
-        @test depends(
-            CapacityConstrained(
-                RingVaccination(efficacy = 0.8, onward_efficacy = 0.5);
-                budget_per_period = 5.0
-            )
-        )
-        @test !depends(
-            CapacityConstrained(GroupVaccination(efficacy = 0.8); budget_per_period = 200.0)
-        )
-        @test !depends(MassVaccination(efficacy = 0.8, eligibility_time = 0.0))
-
-        # Band 2's susceptibility acts on its own contacts only, and its
-        # infectiousness is a weight in its own band's force, so band 1's attack
-        # rate is the SIR final size at R0 = 2 whatever either of them is. A
-        # contact drawn from the wrong infector would show up here.
-        base = major([band1_attack(s) for s in 1:30])
+        base = major([band1_attack(run_bands(s)) for s in 1:30])
         immune2 = major(
-            [
-                band1_attack(s; band2! = ind -> (ind.susceptibility = 0.0))
-                    for s in 1:30
-            ]
+            [band1_attack(run_bands(s; setup! = ind -> band(ind) == 2 && (ind.susceptibility = 0.0))) for s in 1:30]
         )
         silent2 = major(
-            [
-                band1_attack(s; band2! = ind -> (ind.infectiousness = 0.0))
-                    for s in 1:30
-            ]
+            [band1_attack(run_bands(s; setup! = ind -> band(ind) == 2 && (ind.infectiousness = 0.0))) for s in 1:30]
         )
         @test isapprox(base, 0.7968; atol = 0.03)
         @test isapprox(immune2, 0.7968; atol = 0.03)
         @test isapprox(silent2, 0.7968; atol = 0.03)
 
-        # One mixing type attributes every contact exactly, so nothing is refused.
-        pool = HomogeneousProcess(; transmission_rate = 2.0, population_size = 200)
-        @test simulate(
-            ModelSpec(
-                pool; progression = prog,
-                attributes = transmission_traits(infectiousness = 0.5)
-            );
-            rng = StableRNG(1), n_initial = 3
-        ).cumulative_cases >= 3
-    end
-
-    @testset "positive force with empty infectious pool is index-labelled" begin
-        # A custom force with a count-independent positive hazard (external
-        # importation) keeps generating infections even when no one is infectious.
-        # The first infection draws its source from an empty pool: without a
-        # guard that throws; with the guard it falls back to the index-case label 0.
-        N = 50
-        process = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
-        prog = [
-            Transition(
-                :recovered; from = :infection, delay = Exponential(1.0),
-                terminal = true
-            ),
-        ]
-        rng = StableRNG(1)
-        state = EpiBranch.new_state(process, prog, NoAttributes(), rng)
-        EpiBranch.add_individuals!(state, N, AbstractIntervention[])
-        EpiBranch._sellke_pool!(
-            state, collect(1:N), rng; mixing_by = (),
-            force = (type, counts) -> 0.5, n_initial = 0,
-            from = :infection, until = (:recovered, :died, :isolated)
+        leaky = Isolation(
+            onset_to_isolation_delay = 0.1, post_isolation_transmission = 0.5,
+            duration = Inf
         )
-        @test count(ind -> get(ind.state, :infected, false), state.individuals) > 0
+        @test major([band1_attack(run_bands(s; interventions = [leaky])) for s in 1:30]) < base
     end
 
     @testset "conditioned simulation and show" begin

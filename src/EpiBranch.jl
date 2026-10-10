@@ -91,9 +91,9 @@ include("route_window.jl")
 # models over a finite, depleting set of nodes, e.g. household cliques).
 include("sellke.jl")
 
-# Sellke fixed-size population pool (homogeneously-mixing closed population) and
-# its first user, HomogeneousProcess.
-include("sellke_pool.jl")
+# Mass-action contacts as a route of the race, and the closed population that
+# mixes that way, HomogeneousProcess.
+include("mass_action.jl")
 include("models/homogeneous.jl")
 
 # ModelSpec: compose a process with its forcing/observation layers.

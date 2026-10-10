@@ -201,8 +201,8 @@ _rule_names(rules) = join([string(nameof(typeof(r))) for r in rules], ", ")
 
 # Warn when a termination control is set on a model that ignores it, so the
 # silent no-op is discoverable. Compares against the keyword defaults, so only
-# an explicitly-set control triggers the warning; `simulate` on a pool with no
-# termination keywords stays quiet.
+# an explicitly-set control triggers the warning; `simulate` on a fixed
+# population with no termination keywords stays quiet.
 function _warn_ignored_termination(
         model, max_cases, max_generations, max_time, stopping_rules
     )
@@ -1307,14 +1307,12 @@ generation engine on each contact it created, the continuous-time models on
 each candidate infection time they propose — so an intervention writes one
 [`Risk`](@ref) for both. What that risk does to the epidemic still differs: the
 generation engine blocks a contact and loses it, while on a continuous-time
-model the contact comes round again — the race redraws the pair's contact
-interval, the pool gives the susceptible a fresh resistance above the pressure
-it has absorbed — so blocking a fraction of the contacts thins the hazard by
+model the contact comes round again, as the race redraws the pair's contact
+interval, so blocking a fraction of the contacts thins the hazard by
 the same fraction. `builtin_blocks` is where the two part company, dropping
 four of the five built-in sources on a continuous-time model: two that cannot
 apply there, and the per-individual susceptibility and infectiousness, which
-those models already carry in the contact-interval draw and in the pool's
-threshold and force.
+those models already carry in the contact-interval draw.
 Nothing is drawn from the rng unless a risk actually applies."""
 function _composed_risks_block(
         state::SimulationState, parent, contact,

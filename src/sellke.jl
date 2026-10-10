@@ -68,9 +68,7 @@ end
 # with probability `p` thins that hazard to `(1-p)·h(t)` and the first contact
 # that gets through arrives with survival `S(t)^(1-p)`. That is the per-exposure
 # reading of a leaky vaccine and the rate-multiplier reading of a relative
-# susceptibility, and it is what the mass-action pool does with the stream of
-# contacts it delivers: a clique of this race and an equivalent pool are then the
-# same process. A degenerate kernel (`Dirac`) has one contact and no more, so a
+# susceptibility. A degenerate kernel (`Dirac`) has one contact and no more, so a
 # block ends that pair.
 # Rejection continuations require finite remaining integrated hazard; otherwise
 # an opaque risk could reject contacts forever and the model is refused.
@@ -628,9 +626,8 @@ end
 #
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
-# neighbours and a household its members, but the mass-action pool has no
-# pairwise contact structure, so tracing has nothing to act along there and stays
-# unhonoured. Supported candidate actions run after tracing through the shared
+# neighbours and a household its members, but mass action names no contacts, so
+# tracing has nothing to act along there and stays unhonoured. Supported candidate actions run after tracing through the shared
 # admission protocol; legacy batch-only delivery remains unsupported.
 function _sellke_honours(model, iv::AbstractIntervention)
     continuous_actions(iv) && return supplies_contacts(model)
@@ -646,7 +643,7 @@ Whether a continuous-time model can name the contacts each case reached, so
 that [`trace_contacts!`](@ref EpiBranch.trace_contacts!) has something to act
 on. True for the structure-driven processes, whose contacts are a node's
 neighbours or a household's members; false by default, and in particular for
-the mass-action pool, which has no pairwise contact structure. A model that
+`HomogeneousProcess`, whose mass action names no contacts. A model that
 returns `true` must pass a `contacts` closure to `_sellke_race!`.
 """
 supplies_contacts(::TransmissionModel) = false
