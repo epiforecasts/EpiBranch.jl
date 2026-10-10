@@ -15,9 +15,20 @@ function _window_open(ind::Individual{T}, from::Symbol) where {T}
 end
 
 # Earliest of the `until` removal states' times (Inf if none reached).
-function _window_close(ind::Individual{T}, until::Tuple) where {T}
-    return isempty(until) ? T(Inf) :
-        minimum(convert(T, get(ind.state, Symbol(s, :_time), T(Inf))) for s in until)
+_window_close(ind::Individual, until::Tuple) = _close_at(ind, _time_keys(until))
+
+# The state keys holding the times of `states`. Building a key concatenates two
+# names, which costs more than reading it, so a loop that closes many windows on
+# the same states builds the keys once.
+_time_keys(states::Tuple) = map(s -> Symbol(s, :_time), states)
+
+# Earliest of the times held under `keys` (Inf if none is set).
+function _close_at(ind::Individual{T}, keys::Tuple) where {T}
+    t = T(Inf)
+    for key in keys
+        t = min(t, convert(T, get(ind.state, key, T(Inf))))
+    end
+    return t
 end
 
 # ── Interventions on the continuous-time (Sellke) models ─────────────
@@ -577,8 +588,8 @@ const INTERVENTION_REMOVAL = :intervention_removal
 # abort undoes (see `resolve_transitions!`) never closes, and the rejection
 # sampler that redraws a blocked pair's next contact has no bound to redraw
 # within.
-function _route_close(ind, w::RouteWindow, interventions)
-    t = _window_close(ind, w.until)
+function _route_close(ind, w::RouteWindow, interventions, keys = _time_keys(w.until))
+    t = _close_at(ind, keys)
     if INTERVENTION_REMOVAL in w.until
         t = min(t, _intervention_removal_time(ind, interventions))
     end
@@ -878,6 +889,7 @@ function _sellke_race!(
         filter(iv -> risk_applies(iv, w), interventions)
             for (w, _) in rts
     ]
+    close_keys = map(((w, _),) -> _time_keys(w.until), rts)
 
     seed!(best, members, rng)
     # The host state each route's kernel reads, as the keys it declares through
@@ -1124,7 +1136,7 @@ function _sellke_race!(
         for (ri, (w, route_targets)) in enumerate(rts)
             open_t = window_open(ind, w)
             isfinite(open_t) || continue
-            close_t = _route_close(ind, w, interventions)
+            close_t = _route_close(ind, w, interventions, close_keys[ri])
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
             live && _watch_opening!(watch, j, live_route[ri])
