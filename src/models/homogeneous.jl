@@ -48,12 +48,17 @@ newly created contacts — `MassVaccination`'s rollout, `GroupVaccination`, or
 reported with a warning rather than applied. Control expressed as a removal
 `Transition` in the progression always applies.
 
-The population is simulated over its fixed population until extinction or `max_time`,
-whichever comes first; with `max_time`, individuals whose infection would fall
-later stay uninfected. The other `simulate` termination controls
-(`max_cases`, `max_generations`, `stopping_rules` other than `MaxTime`) do not
-apply, and `simulate` warns if you set one. This holds for the structure-driven
-models generally.
+The population is simulated until extinction or `max_time`, whichever comes
+first; with `max_time`, individuals whose infection would fall later stay
+uninfected. The other `simulate` termination controls (`max_cases`,
+`max_generations`, `stopping_rules` other than `MaxTime`) do not apply, and
+`simulate` warns if you set one. This holds for the structure-driven models
+generally.
+
+A run costs about one draw per contact made inside an infectious window. A
+window that never closes, as in an SI model with no removal transition, makes
+each case contact every member, so such a run costs O(N) per case unless
+`max_time` bounds it.
 
 # Example
 

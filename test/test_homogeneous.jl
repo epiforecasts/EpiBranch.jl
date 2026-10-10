@@ -992,6 +992,20 @@ end
         # with candidates still pending, so only the full run is extinct.
         @test is_extinct(full)
         @test !is_extinct(cut)
+
+        # A window that never closes is sampled only up to the time limit, and the
+        # contacts it leaves beyond it still make the cut run unfinished. Once
+        # everyone is infected nothing is left to reach, and the run is extinct.
+        si = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 500);
+            progression = Transition[]
+        )
+        si_cut = simulate(si; n_initial = 3, max_time = 1.0, rng = StableRNG(4))
+        @test !is_extinct(si_cut)
+        @test all(i -> !is_infected(i) || i.infection_time <= 1.0, si_cut.individuals)
+        si_all = simulate(si; n_initial = 3, max_time = 100.0, rng = StableRNG(4))
+        @test count(is_infected, si_all.individuals) == 500
+        @test is_extinct(si_all)
     end
 
     @testset "termination controls warn on the fixed pool" begin

@@ -42,13 +42,17 @@ a dual under automatic differentiation included, and is fixed for the run.
 Each group's largest susceptibility is also read when the route is built, as the
 bound its proposals are sampled at. A member's susceptibility may fall during the
 run but not rise above that bound, which is how the race already reads it: as set
-when the member is created.
+when the member is created. The route also records what it left past the run's
+time limit, so build one for each run.
 """
 struct _MassAction{T <: Real, S <: Real}
     groups::Vector{Vector{Int}}  # member ids in each mixing group
     group_of::Dict{Int, Int}     # member id → index of its group
     rate::Matrix{T}              # rate[a, b]: one infective in a to one member of b
     max_susceptibility::Vector{S}  # largest susceptibility in each group
+    # cut[a, b]: an unbounded window of an infective in a was sampled only up to
+    # the run's time limit, while it could still reach b.
+    cut::Matrix{Bool}
 end
 
 function _MassAction(state::SimulationState, members; mixing_by::Tuple = (), rate)
@@ -74,7 +78,10 @@ function _MassAction(state::SimulationState, members; mixing_by::Tuple = (), rat
     max_susceptibility = [
         maximum(id -> state.individuals[id].susceptibility, group) for group in groups
     ]
-    return _MassAction(groups, group_of, float.(rates), max_susceptibility)
+    return _MassAction(
+        groups, group_of, float.(rates), max_susceptibility,
+        zeros(Bool, length(groups), length(groups))
+    )
 end
 
 # The route as any other: every susceptible member with its pair kernel. The race
@@ -103,12 +110,20 @@ function _propose_along!(
     )
     infector = race.state.individuals[infector_id]
     a = m.group_of[infector_id]
+    # A window that never closes would have this case contact every member. A
+    # contact after `max_time` is never used, so with a time limit the window is
+    # sampled only up to it, and the run remembers that contacts were left
+    # beyond it (`_pending_beyond`). A window that closes is sampled whole, which
+    # keeps a run cut at `max_time` the same draw as the full run.
     window = close_t - open_t
-    window > 0 || return nothing
+    unbounded = !isfinite(window) && isfinite(race.max_time)
+    unbounded && (window = race.max_time - open_t)
     for (b, group) in enumerate(m.groups)
         r = traits ? m.rate[a, b] * infector.infectiousness : m.rate[a, b]
         bound = traits ? r * m.max_susceptibility[b] : r
         bound > 0 || continue
+        unbounded && (m.cut[a, b] = true)
+        window > 0 || continue
         _propose_sampled!(
             race, group, infector_id, r, bound, traits, opening_id, open_t, window
         )
@@ -118,7 +133,8 @@ end
 
 # Every pair in `group`, at rate `r` scaled by the member's susceptibility when
 # `traits` is set, sampled by the pairs with a contact in the window. With an
-# unbounded window every pair has one, so each draws its time directly.
+# unbounded window every pair has one, so each draws its time directly, at O(N)
+# per case.
 # Otherwise pairs are selected at the `bound` rate: the gap to the next pair with
 # a contact is geometric with the bound's per-pair probability `p`. A pair at a
 # lower rate, with probability `pk`, is kept with probability `pk/p`, and its
@@ -162,6 +178,18 @@ function _propose_sampled!(
         _propose_contact!(race, id, infector_id, opening_id, open_t + dt)
     end
     return nothing
+end
+
+# Whether a window sampled only up to the time limit could still have reached a
+# member left uninfected, in which case the run was cut off rather than extinct.
+function _pending_beyond(m::_MassAction, race)
+    any(m.cut) || return false
+    return any(CartesianIndices(m.cut)) do ab
+        a, b = Tuple(ab)
+        m.cut[a, b] && any(m.groups[b]) do id
+            !race.processed[race.pos[id]] && race.state.individuals[id].susceptibility > 0
+        end
+    end
 end
 
 # A contact with a member who is the infector or already infected is wasted, as

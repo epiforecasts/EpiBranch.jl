@@ -61,6 +61,17 @@ SUITE["simulation: homogeneous, susceptibility trait"] = @benchmarkable simulate
     n_initial = 20, rng = StableRNG(1)
 )
 
+# A window that never closes would have each case contact every member; the
+# time limit bounds the window the pairs are sampled over.
+SUITE["simulation: homogeneous SI, max_time"] = @benchmarkable simulate(
+    $(
+        ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 50_000);
+            progression = Transition[]
+        )
+    ); n_initial = 50, rng = StableRNG(1), max_time = 3.0
+)
+
 SUITE["simulation: households"] = @benchmarkable simulate(
     $(
         ModelSpec(

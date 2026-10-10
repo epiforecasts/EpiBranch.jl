@@ -3,7 +3,10 @@ network models, as mass action in which every pair meets at `β/N`, and the
 separate Sellke pool is gone. The process and its final-size law are unchanged,
 but a seeded run draws a different trajectory than before. Every case now has
 the infector whose contact reached it first, and `on_infection_settled!` is
-called on it as on the other continuous-time models.
+called on it as on the other continuous-time models. A run costs about one draw
+per contact; an infectious window that never closes, as in an SI model, makes
+each case contact every member and costs O(N) per case unless `max_time` bounds
+it.
 
 Structured mixing in a closed population takes a pair rate,
 `rate(infector_group, target_group)`, where the extending guide's recipe took a

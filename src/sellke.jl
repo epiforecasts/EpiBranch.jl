@@ -821,7 +821,10 @@ are put to no risk at all. An introduced case's `:infection_route` is
 
 `max_time` ends the race at that time: individuals whose infection would fall
 later are left uninfected, and the state is exactly the full run's state
-restricted to infections up to `max_time`. Returns `true` when the race ran
+restricted to infections up to `max_time`. The exception is a mass-action route
+(`_MassAction`) whose infectious window never closes, which samples its contacts
+only up to `max_time`: there the cut run is a draw of the same process rather
+than the same draw. Returns `true` when the race ran
 until no candidate infection remained (the population reached extinction) and
 `false` when it was cut off at `max_time` with candidates still pending.
 
@@ -980,7 +983,7 @@ function _sellke_race!(
     # Every field is bound once and only mutated in place.
     race = (;
         pending, proposals, head, best, represents, processed, pos, state, rng,
-        watch, snapshot, watched_keys, may_block,
+        watch, snapshot, watched_keys, may_block, max_time,
     )
     for k in 1:m
         best[k] < Inf || continue
@@ -1146,8 +1149,13 @@ function _sellke_race!(
             )
         end
     end
-    return true
+    return !any(((_, route_targets),) -> _pending_beyond(route_targets, race), rts)
 end
+
+# Whether a route left contacts past the time limit that it never proposed, so
+# that a race which ran out of candidates was cut off rather than extinct. A
+# route that proposes every contact it draws leaves none.
+_pending_beyond(route_targets, race) = false
 
 # Propose the infections one case's window on one route leads to. The default
 # asks the route for every susceptible target and its pair kernel, and draws one
