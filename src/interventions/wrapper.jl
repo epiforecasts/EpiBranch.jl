@@ -3,9 +3,10 @@
 # subtype stores the wrapped intervention in an `intervention` field and
 # inherits the plain delegation of every hook below, then overrides only the
 # hooks it gates. `apply_post_transmission!` and `trace_contacts!` have no
-# default here, so each wrapper states what it does with them; `keep_active`
-# defaults to plain forwarding below, for a wrapper with nothing of its own to
-# gate there, and a wrapper that does override it just as the others do.
+# default here, so each wrapper states what it does with them. `keep_active`
+# does default to plain forwarding below, for a wrapper with nothing of its
+# own to gate there; a wrapper that does gate it overrides the default just
+# like the others.
 abstract type InterventionWrapper <: AbstractIntervention end
 
 function initialise_individual!(w::InterventionWrapper, ind, state)

@@ -135,13 +135,13 @@ end
 
 # The intervention whose own method for `f` would actually run: an
 # `InterventionWrapper` that does not override `f` only inherits its blanket
-# forwarding to `w.intervention` (that method is declared for
-# `InterventionWrapper` itself, not the concrete wrapper), so judging
-# ownership against the wrapper's type credits it with a method it never
+# forwarding to `w.intervention` (that method is declared on
+# `InterventionWrapper` itself, not the concrete wrapper). Judging ownership
+# against the wrapper's type would therefore credit it with a method it never
 # wrote. `CapacityConstrained` overrides `apply_post_transmission!` to gate it
 # on its budget, but leaves `continuous_actions`, `on_infection_settled!` and
-# `keep_active` to that forwarding, so unwrapping for those three hooks
-# reaches the wrapped intervention's own method instead.
+# `keep_active` to that forwarding; unwrapping for those three hooks reaches
+# the wrapped intervention's own method instead.
 function _hook_owner(f, iv::AbstractIntervention)
     while iv isa InterventionWrapper && !_has_own_method(f, typeof(iv), InterventionWrapper)
         iv = iv.intervention
@@ -662,10 +662,10 @@ end
 # `apply_post_transmission!` performs, so a finite `eligibility_window` —
 # which makes its own `continuous_actions` false — must still leave the ring
 # dosing unhonoured. Both checks are judged against `_hook_owner`, not `iv`
-# itself, so a wrapper such as `CapacityConstrained` that leaves
+# itself: a wrapper such as `CapacityConstrained`, which leaves
 # `continuous_actions` and `on_infection_settled!` to `InterventionWrapper`'s
-# forwarding is judged by the intervention it wraps, while its own override of
-# `apply_post_transmission!` still counts as its own.
+# forwarding, is judged by the intervention it wraps, while its own override
+# of `apply_post_transmission!` still counts as its own.
 #
 # The settled hook stands in only for `apply_post_transmission!`; `keep_active`
 # still needs its own counterpart, `trace_contacts!`. An intervention that doses
