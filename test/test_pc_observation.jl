@@ -187,7 +187,7 @@ end
         )
     end
 
-    @testset "Reporting transition's report is reused, not overwritten" begin
+    @testset "Reporting transition's report is reused" begin
         # A Reporting transition already drew this case's report during the
         # simulation; PerCaseObservation must reuse it rather than drawing
         # and overwriting it with an independent one under its own

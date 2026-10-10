@@ -9,4 +9,5 @@ reported cases from either route.
 
 A model combining a `Reporting` transition with `PerCaseObservation`
 had the two overwrite each other's report; `PerCaseObservation` now
-finds the transition's report already on the case and reuses it instead.
+finds the transition's report already on the case and reuses it
+instead of drawing its own.
