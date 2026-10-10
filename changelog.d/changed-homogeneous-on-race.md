@@ -13,4 +13,4 @@ infector, such as a leaky isolation, are no longer refused under structured
 mixing, because every contact comes from a named infector.
 
 The race also runs faster on dense contact structures: a complete graph of 1,000
-nodes takes milliseconds where it took over a second.
+nodes takes about 9 ms a run, where it took about 130 ms.
