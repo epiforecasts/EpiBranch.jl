@@ -109,6 +109,11 @@ end
 
 Distributions.pdf(d::ThinnedChainSize, n::Integer) = exp(logpdf(d, n))
 
+Distributions.cdf(d::ThinnedChainSize, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::ThinnedChainSize, n::Integer)
+    return _chain_size_right_tail_logprob(d, n + 1, 1)
+end
+
 """
     observe(base_distribution, obs::ObservationModel)
 
