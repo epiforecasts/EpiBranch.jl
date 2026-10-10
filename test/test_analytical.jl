@@ -377,6 +377,46 @@
             @test ll_with_delay ≈ ll_no_delay atol = 1.0e-12
         end
 
+        @testset "ThinnedChainSize conditions on at least one detection" begin
+            # A chain with no detected case leaves no trace in the data, so
+            # the law of observed sizes (n >= 1) must sum to 1, not to
+            # P(at least one detection).
+            d = ThinnedChainSize(chain_size_distribution(Poisson(0.5)), 0.5)
+            @test sum(pdf(d, n) for n in 1:500) ≈ 1.0 atol = 1.0e-6
+
+            # Conditioned pdf(d, 1) matches size-1's share of simulated
+            # chains with at least one reported case.
+            model = ModelSpec(
+                BranchingProcess(Poisson(0.5));
+                observation = PerCaseObservation(detection_prob = 0.5)
+            )
+            rng = StableRNG(1)
+            sizes = Int[]
+            for _ in 1:50_000
+                state = simulate(model; rng)
+                n = count(
+                    ind -> EpiBranch.is_infected(ind) &&
+                        ind.state[:reported],
+                    state.individuals
+                )
+                n > 0 && push!(sizes, n)
+            end
+            @test pdf(d, 1) ≈ mean(==(1), sizes) atol = 0.01
+
+            # The documented ten-chain Poisson(0.9) example: conditioning
+            # raises the log-likelihood at detection 0.7 above full detection.
+            data = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
+            mk09(p) = ModelSpec(
+                BranchingProcess(Poisson(0.9));
+                observation = PerCaseObservation(detection_prob = p)
+            )
+            ll_full = loglikelihood(data, mk09(1.0))
+            ll_07 = loglikelihood(data, mk09(0.7))
+            @test ll_full ≈ -14.987159110200091 atol = 1.0e-6
+            @test ll_07 ≈ -14.67 atol = 0.01
+            @test ll_07 > ll_full
+        end
+
         @testset "Cluster-level heterogeneity" begin
             data = ChainSizes([1, 1, 2, 3, 1])
 
