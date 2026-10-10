@@ -638,8 +638,9 @@ end
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
 # neighbours and a household its members, but mass action names no contacts, so
-# tracing has nothing to act along there and stays unhonoured. Supported candidate actions run after tracing through the shared
-# admission protocol; legacy batch-only delivery remains unsupported.
+# tracing has nothing to act along there and stays unhonoured. Supported
+# candidate actions run after tracing through the shared admission protocol;
+# legacy batch-only delivery remains unsupported.
 function _sellke_honours(model, iv::AbstractIntervention)
     continuous_actions(iv) && return supplies_contacts(model)
     _has_generation_hook(iv) || return true

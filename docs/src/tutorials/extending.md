@@ -340,8 +340,8 @@ What this means in practice:
   integrated hazard. A race rejects a continuation if the kernel's survival is
   zero at the end of its window, including an unbounded Exponential window or a
   continuous bounded kernel whose support ends inside the window. These cases
-  raise `ArgumentError`, even for a risk that might later
-  permit infection: an opaque callback cannot establish eventual termination.
+  raise `ArgumentError`, even for a risk that might later permit infection: an
+  opaque callback cannot establish eventual termination.
   Supply a finite infectious/introduction window with nonzero kernel survival
   at its end, or represent static protection through host traits or the kernel.
   A `Dirac` kernel has no contact after its atom and needs no continuation.
@@ -1680,9 +1680,9 @@ itself, as mass action between groups. You supply two pieces:
    group, which recovers the homogeneous case.
 2. **The pair contact rate** `rate(infector_group, target_group)`: the rate at
    which one infective in the first group contacts one member of the second.
-   Homogeneous mixing is `β/N` for every pair. With a contact matrix `M[b, a]`,
-   the rate at which one infective in group `a` contacts the `n[b]` members of
-   group `b` between them, each pair meets at `M[b, a]/n[b]`.
+   Homogeneous mixing is `β/N` for every pair. With a contact matrix `M[b, a]`
+   giving the rate at which one infective in group `a` contacts the `n[b]`
+   members of group `b` between them, each pair meets at `M[b, a]/n[b]`.
 
 A group is always the *tuple* of `mixing_by` values, so it stays a tuple even
 when there is a single attribute. Under `mixing_by = (:age_band,)` a member of
@@ -1743,8 +1743,8 @@ linelist(state)
 ```
 
 Band-1 members are contacted more often and reach a higher attack rate. To check
-the wiring, make every pair rate equal: the two bands should collapse back to a
-single homogeneous population with the SIR final size. The same pattern extends
+the wiring, give every pair the same rate: the two bands should collapse back to
+a single homogeneous population with the SIR final size. The same pattern extends
 to further strata. Give individuals a `:ses` attribute and pass
 `mixing_by = (:age_band, :ses)`, and `rate` now receives `(band, ses)` tuples.
 From there you can write whatever contact structure you want: a full matrix over

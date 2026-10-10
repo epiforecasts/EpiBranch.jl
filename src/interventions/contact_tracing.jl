@@ -870,7 +870,6 @@ function _trace_removal_keys(action::TraceAction)
     return isempty(keys) ? (REMOVAL_STRETCHES_KEY,) : keys
 end
 
-
 # A quarantine that lapses leaves the window open above, and the stretches it
 # removed the case for are blocked per contact here instead. One with no
 # release is blocked here too, from its own start and never released, which is

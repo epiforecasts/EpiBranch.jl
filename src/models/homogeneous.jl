@@ -5,10 +5,10 @@
 # outbreak depletes a finite population with no structure beyond its size. It
 # runs on the continuous-time race as mass action (`_MassAction`), every pair
 # meeting at β/N, which reproduces the exact stochastic SIR final-size law and
-# yields infection times, not just the final size. It describes the transmission alone: the natural
-# history (progression), interventions, attributes and observation are composed onto it
-# with a `ModelSpec`, and the infectious window is resolved from that progression
-# when the model is simulated.
+# yields infection times, not just the final size. It describes the transmission
+# alone: the natural history (progression), interventions, attributes and
+# observation are composed onto it with a `ModelSpec`, and the infectious window
+# is resolved from that progression when the model is simulated.
 
 """
     HomogeneousProcess(; transmission_rate, population_size,
@@ -17,8 +17,9 @@
 A closed population of `population_size` individuals that mix homogeneously:
 every infectious person exerts the same force of infection on every susceptible.
 It is simulated in continuous time as mass action, every pair meeting at the
-same rate, which reproduces the exact stochastic SIR final-size law. Transmission is the per-infective rate
-`transmission_rate` (β, so β/N to each susceptible).
+same rate, which reproduces the exact stochastic SIR final-size law.
+Transmission is the per-infective rate `transmission_rate` (β, so β/N to each
+susceptible).
 
 The process describes the transmission alone. The natural history is a
 `progression` of [`Transition`](@ref)s attached with a [`ModelSpec`](@ref),

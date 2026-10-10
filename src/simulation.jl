@@ -1308,8 +1308,8 @@ each candidate infection time they propose — so an intervention writes one
 [`Risk`](@ref) for both. What that risk does to the epidemic still differs: the
 generation engine blocks a contact and loses it, while on a continuous-time
 model the contact comes round again, as the race redraws the pair's contact
-interval, so blocking a fraction of the contacts thins the hazard by
-the same fraction. `builtin_blocks` is where the two part company, dropping
+interval, so blocking a fraction of the contacts thins the hazard by the same
+fraction. `builtin_blocks` is where the two part company, dropping
 four of the five built-in sources on a continuous-time model: two that cannot
 apply there, and the per-individual susceptibility and infectiousness, which
 those models already carry in the contact-interval draw.
