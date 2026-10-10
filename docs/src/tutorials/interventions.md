@@ -928,6 +928,44 @@ results = simulate(scenario([iso, ct_triggered]), 200; max_cases = 500, rng = rn
 println("Tracing after 20 cases: $(round(containment_probability(results), digits=3))")
 ```
 
+`start_after_cases` counts every infection the moment it occurs, including
+one never reported or reported only after the date it opens on. A policy
+that reacts to surveillance (for example, "once the health system has
+confirmed 20 cases") wants [`ReportedCases`](@ref) instead, passed through
+`start_after`: it opens only once that many cases have a [`Reporting`](@ref)
+report dated by the simulation clock.
+
+```@example interventions
+progression = [
+    Reporting(delay = LogNormal(1.0, 0.3), probability = 0.2),
+    Recovery(delay = LogNormal(2.0, 0.4)),
+]
+ct_on_reports = Scheduled(
+    ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0));
+    start_after = ReportedCases(20),
+)
+model = ModelSpec(
+    BranchingProcess(Poisson(3.0), Exponential(5.0));
+    progression, interventions = [iso, ct_on_reports], attributes = clinical
+)
+
+rng = StableRNG(42)
+state = simulate(model; max_cases = 500, rng = rng)
+reported = count(
+    ind -> get(ind.state, :reporting_time, Inf) <= state.max_infection_time,
+    state.individuals
+)
+println("Cumulative cases: $(state.cumulative_cases), reports by the end: $(reported)")
+```
+
+With only a fifth of cases ever reported, after a delay, far fewer reports
+accumulate than infections. `ReportedCases(20)` needs the health system to
+have actually confirmed 20 cases, which takes substantially longer than 20
+infections to happen. `start_after` takes any [`AbstractTrigger`](@ref
+EpiBranch.AbstractTrigger); [`Infections`](@ref) is `start_after_cases`'s own
+count, also available this way, and a trigger written outside the package
+works the same way without editing `Scheduled`.
+
 Conditions can be combined:
 
 ```@example interventions
