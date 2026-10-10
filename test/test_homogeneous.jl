@@ -54,16 +54,6 @@ function EpiBranch.competing_risk(
     return Risk(event_time = v.from_time, block_probability = v.efficacy)
 end
 
-# A prophylaxis written outside the package whose risk reads only the contact,
-# and which says so.
-struct ContactOnlyBlock <: EpiBranch.AbstractIntervention
-    efficacy::Float64
-end
-function EpiBranch.competing_risk(b::ContactOnlyBlock, parent, contact, state)
-    return Risk(block_probability = b.efficacy)
-end
-EpiBranch.risk_depends_on_infector(::ContactOnlyBlock) = false
-
 struct ResolveInfectiousness <: EpiBranch.AbstractIntervention
     include_seeds::Bool
 end

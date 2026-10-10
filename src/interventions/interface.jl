@@ -226,25 +226,6 @@ generation-based engine's contacts.
 """
 risk_applies(::AbstractIntervention, route) = true
 
-"""
-    risk_depends_on_infector(intervention) -> Bool
-
-Whether an intervention's [`competing_risk`](@ref) can block a contact
-differently depending on who infected it. A fixed-size pool with more than one
-mixing group draws each contact's infector in proportion to infectiousness,
-without regard to which groups mix with which. That draw is exact only for
-risks that ignore the infector, and the pool refuses an intervention for which
-this is `true`. Every other engine ignores it.
-
-The default is `true` for an intervention with a `competing_risk` method of its
-own and `false` for one without. Return `false` from an intervention whose risk
-reads only the contact, such as a vaccine's protection of the person exposed.
-Wrappers delegate to their wrapped intervention.
-"""
-function risk_depends_on_infector(iv::AbstractIntervention)
-    return _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
-end
-
 # A removal's duration, drawn or given. A negative or `NaN` one puts the
 # release before its own start, which the generation engine reads as no removal
 # and the continuous-time engines as a permanent one, so it is refused here

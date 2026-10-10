@@ -870,15 +870,6 @@ function _trace_removal_keys(action::TraceAction)
     return isempty(keys) ? (REMOVAL_STRETCHES_KEY,) : keys
 end
 
-# A quarantine's block is the quarantine's own, never the stretches some other
-# removal put this host in: a leaky `Isolation` composed with tracing would
-# otherwise become a perfect block over days the quarantine had nothing to do
-# with. A quarantine that never releases is honoured by the infectious window
-# instead, as a standing isolation is, which is what keeps it inside a
-# fixed-size pool's single clock.
-risk_depends_on_infector(ct::ContactTracing) = risk_depends_on_infector(ct.action)
-risk_depends_on_infector(::TraceAction) = false
-risk_depends_on_infector(q::Quarantine) = !(q.duration === Inf)
 
 # A quarantine that lapses leaves the window open above, and the stretches it
 # removed the case for are blocked per contact here instead. One with no

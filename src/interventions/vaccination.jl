@@ -489,12 +489,6 @@ function competing_risk(v::AbstractVaccination, parent, contact, state)
     return _susceptibility_risk(v, contact)
 end
 
-# The protection above reads only the contact. A subtype with a risk of its own
-# is taken to read the infector, as any other intervention is.
-function risk_depends_on_infector(v::AbstractVaccination)
-    return _has_own_method(competing_risk, typeof(v), AbstractVaccination)
-end
-
 """
     realised_efficacy(mode::AbstractEffectMode, eff, rng) -> Real
 
@@ -957,9 +951,6 @@ function competing_risk(rv::RingVaccination, parent, contact, state)
     onward === nothing && return exposure
     return (exposure, onward)
 end
-
-# Only the onward risk reads the infector.
-risk_depends_on_infector(rv::RingVaccination) = rv.onward_efficacy > 0
 
 # A ring doses the infector's own traced contacts: delivery depends on the
 # individual being resolved. A shared budget wrapped around one is
