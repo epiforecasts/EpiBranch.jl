@@ -28,8 +28,10 @@ public infection_aborted_time
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation
 
-# Pair kernels: the host records a kernel's hazards depend on.
+# Pair kernels: the host records a kernel's hazards depend on, and the
+# projection against which the race checks that declaration.
 public watched_records
+public kernel_projection
 
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:

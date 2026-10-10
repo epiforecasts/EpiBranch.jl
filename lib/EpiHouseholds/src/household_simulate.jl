@@ -67,8 +67,11 @@ function _simulate(
     initial_cases = sim_opts.initial_cases === nothing ? nothing :
         Set(sim_opts.initial_cases)
     # The keys the kernel's hazards depend on, for `_sellke_race!` to redraw a
-    # pending contact when one moves.
+    # pending contact when one moves, and the projection it reads them
+    # through, so the race can check that declaration against what the
+    # projection actually reads.
     watched = EpiBranch.watched_records(model.kernel)
+    projection = EpiBranch.kernel_projection(model.kernel)
     # Only a policy that can read population-wide state — cases in other
     # households, a kernel reading host records an intervention can move, a
     # capacity budget shared across households — needs every household on one
@@ -85,7 +88,7 @@ function _simulate(
             from = from, until = model.until, interventions = interventions,
             max_time = EpiBranch._max_time(sim_opts),
             risks = EpiBranch.transmission_risks(model),
-            watches = (watched,), recorder = recorder,
+            watches = (watched,), projections = (projection,), recorder = recorder,
             seed! = (best, members, r) -> _seed_household_race!(
                 best, members, model, state, Tobs, r, initial_cases
             ),
