@@ -2,9 +2,10 @@
 # (when it may act) or `CapacityConstrained` (how many it may reach). A
 # subtype stores the wrapped intervention in an `intervention` field and
 # inherits the plain delegation of every hook below, then overrides only the
-# hooks it gates. `apply_post_transmission!`, `keep_active` and
-# `trace_contacts!` have no default here, so each wrapper states what it does
-# with them.
+# hooks it gates. `apply_post_transmission!` and `trace_contacts!` have no
+# default here, so each wrapper states what it does with them; `keep_active`
+# defaults to plain forwarding below, for a wrapper with nothing of its own to
+# gate there, and a wrapper that does override it just as the others do.
 abstract type InterventionWrapper <: AbstractIntervention end
 
 function initialise_individual!(w::InterventionWrapper, ind, state)
@@ -40,6 +41,9 @@ end
 traces_contacts(w::InterventionWrapper) = traces_contacts(w.intervention)
 function on_infection_settled!(w::InterventionWrapper, ind, state, rng)
     return on_infection_settled!(w.intervention, ind, state, rng)
+end
+function keep_active(w::InterventionWrapper, state, targets, is_new)
+    return keep_active(w.intervention, state, targets, is_new)
 end
 _unwrap_scheduled(w::InterventionWrapper) = _unwrap_scheduled(w.intervention)
 

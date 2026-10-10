@@ -410,6 +410,20 @@ end
         # hook still reaches `apply_post_transmission!`, so only `keep_active`
         # is named rather than the whole intervention.
         @test EpiBranch._unhonoured_hooks(prog_pool, DoseSettleAndTrace()) == [:keep_active]
+        # Wrapping in `CapacityConstrained` must not lose the settled-hook
+        # exemption: the wrapper only overrides `apply_post_transmission!`
+        # itself, forwarding `continuous_actions`, `on_infection_settled!` and
+        # `keep_active` unchanged, so the wrapped intervention is still
+        # honoured through its own settled hook.
+        cc = CapacityConstrained(DoseAndSettle(); budget_per_period = 1.0)
+        @test EpiBranch._sellke_honours(prog_pool, cc)
+        @test EpiBranch._unhonoured_hooks(prog_pool, cc) == Symbol[]
+        # Wrapping `DoseSettleAndTrace` keeps it unhonoured for the right
+        # reason: its `keep_active`, forwarded unchanged, still needs
+        # `trace_contacts!`, which the pool cannot supply.
+        cc_trace = CapacityConstrained(DoseSettleAndTrace(); budget_per_period = 1.0)
+        @test !EpiBranch._sellke_honours(prog_pool, cc_trace)
+        @test EpiBranch._unhonoured_hooks(prog_pool, cc_trace) == [:keep_active]
         # The package's own interventions that the pool honours warn about nothing.
         onsets = clinical_presentation(
             incubation_period = LogNormal(-1.0, 0.3),

@@ -238,10 +238,8 @@ end
 
 # ── Delegation of every other hook ────────────────────────────────────
 
-# The remaining hooks are inherited from `InterventionWrapper`.
-function keep_active(cc::CapacityConstrained, state, targets, is_new)
-    return keep_active(cc.intervention, state, targets, is_new)
-end
+# `keep_active` is inherited from `InterventionWrapper`'s plain forwarding:
+# a ring's growth spends no budget, so capacity has nothing to gate there.
 
 # The continuous-time race has no batch of competing contacts to ration, so
 # passing its tracing through would let the wrapped intervention act with no

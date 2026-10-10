@@ -133,15 +133,34 @@ function _has_own_method(f, T::Type, base::Type)
     end
 end
 
+# The intervention whose own method for `f` would actually run: an
+# `InterventionWrapper` that does not override `f` only inherits its blanket
+# forwarding to `w.intervention` (that method is declared for
+# `InterventionWrapper` itself, not the concrete wrapper), so judging
+# ownership against the wrapper's type credits it with a method it never
+# wrote. `CapacityConstrained` overrides `apply_post_transmission!` to gate it
+# on its budget, but leaves `continuous_actions`, `on_infection_settled!` and
+# `keep_active` to that forwarding, so unwrapping for those three hooks
+# reaches the wrapped intervention's own method instead.
+function _hook_owner(f, iv::AbstractIntervention)
+    while iv isa InterventionWrapper && !_has_own_method(f, typeof(iv), InterventionWrapper)
+        iv = iv.intervention
+    end
+    return iv
+end
+
 # The generation-only hooks an intervention implements a method of its own
 # for, named so a warning can say exactly which ones the race skips rather
 # than claiming the intervention itself does nothing.
 function _generation_hooks(iv::AbstractIntervention)
-    T = typeof(iv)
     hooks = Symbol[]
-    _has_own_method(apply_post_transmission!, T, AbstractIntervention) &&
-        push!(hooks, :apply_post_transmission!)
-    _has_own_method(keep_active, T, AbstractIntervention) && push!(hooks, :keep_active)
+    _has_own_method(
+        apply_post_transmission!, typeof(_hook_owner(apply_post_transmission!, iv)),
+        AbstractIntervention
+    ) && push!(hooks, :apply_post_transmission!)
+    _has_own_method(
+        keep_active, typeof(_hook_owner(keep_active, iv)), AbstractIntervention
+    ) && push!(hooks, :keep_active)
     return hooks
 end
 
@@ -642,7 +661,11 @@ end
 # reconsiders a post-exposure dose, never the ring dosing
 # `apply_post_transmission!` performs, so a finite `eligibility_window` —
 # which makes its own `continuous_actions` false — must still leave the ring
-# dosing unhonoured.
+# dosing unhonoured. Both checks are judged against `_hook_owner`, not `iv`
+# itself, so a wrapper such as `CapacityConstrained` that leaves
+# `continuous_actions` and `on_infection_settled!` to `InterventionWrapper`'s
+# forwarding is judged by the intervention it wraps, while its own override of
+# `apply_post_transmission!` still counts as its own.
 #
 # The settled hook stands in only for `apply_post_transmission!`; `keep_active`
 # still needs its own counterpart, `trace_contacts!`. An intervention that doses
@@ -660,9 +683,10 @@ function _sellke_honours(model, iv::AbstractIntervention)
     continuous_actions(iv) && return supplies_contacts(model)
     hooks = _generation_hooks(iv)
     isempty(hooks) && return true
-    T = typeof(iv)
-    if !_has_own_method(continuous_actions, T, AbstractIntervention) &&
-            _has_own_method(on_infection_settled!, T, AbstractIntervention)
+    cont_T = typeof(_hook_owner(continuous_actions, iv))
+    settled_T = typeof(_hook_owner(on_infection_settled!, iv))
+    if !_has_own_method(continuous_actions, cont_T, AbstractIntervention) &&
+            _has_own_method(on_infection_settled!, settled_T, AbstractIntervention)
         :keep_active in hooks || return true
     end
     return traces_contacts(iv) && supplies_contacts(model)
@@ -678,9 +702,10 @@ function _unhonoured_hooks(model, iv::AbstractIntervention)
     hooks = _generation_hooks(iv)
     continuous_actions(iv) && return hooks
     isempty(hooks) && return hooks
-    T = typeof(iv)
-    if !_has_own_method(continuous_actions, T, AbstractIntervention) &&
-            _has_own_method(on_infection_settled!, T, AbstractIntervention)
+    cont_T = typeof(_hook_owner(continuous_actions, iv))
+    settled_T = typeof(_hook_owner(on_infection_settled!, iv))
+    if !_has_own_method(continuous_actions, cont_T, AbstractIntervention) &&
+            _has_own_method(on_infection_settled!, settled_T, AbstractIntervention)
         hooks = filter(!=(:apply_post_transmission!), hooks)
     end
     traces_contacts(iv) && supplies_contacts(model) &&
