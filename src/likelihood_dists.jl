@@ -195,6 +195,7 @@ end
 
 """
     offspring_distribution(model)
+    offspring_distribution(spec::ModelSpec)
 
 Per-case offspring distribution of `model`. For a `BranchingProcess`
 this is the same `Distribution` you passed in as `offspring`.
@@ -205,6 +206,12 @@ this is the same `Distribution` you passed in as `offspring`.
     data ~ offspring_distribution(BranchingProcess(Poisson(R)))
 end
 ```
+
+For a `ModelSpec`, the offspring law is folded through every intervention's
+[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec with an
+intervention that has none throws, naming the simulation-based alternative,
+rather than returning the bare process's offspring distribution as if the
+interventions were not there.
 """
 function offspring_distribution(model::TransmissionModel)
     off = single_type_offspring(model)
@@ -223,4 +230,6 @@ function offspring_distribution(model::TransmissionModel)
     return off
 end
 
-offspring_distribution(spec::ModelSpec) = offspring_distribution(spec.process)
+function offspring_distribution(spec::ModelSpec)
+    return _offspring_through_interventions(spec, offspring_distribution(spec.process))
+end

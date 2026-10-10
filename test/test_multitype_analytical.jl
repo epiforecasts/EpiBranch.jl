@@ -41,6 +41,14 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         @test reproduction_number(model) ≈ ρ
         @test reproduction_number(ModelSpec(model)) ≈ ρ
 
+        # A multi-type offspring law isn't a `Distribution`, so an
+        # intervention without `analytic_offspring_effect` must still refuse
+        # with the clear message, not a bare `MethodError`.
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        spec = ModelSpec(model; interventions = [iso])
+        @test_throws r"Isolation" reproduction_number(spec)
+        @test_throws r"containment_probability\(simulate\(spec, n\)\)" reproduction_number(spec)
+
         M3 = [
             2.0 0.5 0.1;
             0.5 1.5 0.3;

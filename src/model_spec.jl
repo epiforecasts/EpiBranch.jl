@@ -154,6 +154,23 @@ function simulate(
     )
 end
 
+# ── Interventions in the analytical functions ────────────────────────
+#
+# `extinction_probability`, `epidemic_probability`, `probability_contain`,
+# `reproduction_number`, `proportion_transmission` and `offspring_distribution`
+# each read an offspring law off a spec. Folding it through every
+# intervention's `analytic_offspring_effect` keeps that law honest: a spec
+# whose interventions all declare a closed-form effect gets it applied, and
+# one with an intervention that declares none has that trait's own
+# generic method refuse, rather than quietly handing back the bare process's
+# law as if the interventions were not there.
+function _offspring_through_interventions(spec::ModelSpec, offspring)
+    for iv in interventions(spec)
+        offspring = analytic_offspring_effect(iv, offspring)
+    end
+    return offspring
+end
+
 function Base.show(io::IO, s::ModelSpec)
     return print(
         io, "ModelSpec(", s.process, "; ", length(s.interventions),
