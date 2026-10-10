@@ -3084,19 +3084,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test all(r -> r.block_probability == 1.0, risks)
         @test EpiBranch.infectious_removal_time(quarantining, lapsing) == Inf
 
-        # A tracing action that quarantines nobody reads no stretch, and a
-        # quarantine with no release is honoured by the window instead of by a
-        # risk a fixed-size pool cannot take.
+        # A tracing action that quarantines nobody reads no stretch.
         @test isempty(EpiBranch.removal_gap_host_times(FlagOnly()))
         @test isempty(EpiBranch.removal_gap_host_times(plain))
         @test EpiBranch.removal_gap_host_times(quarantining) == (key,)
-        @test !EpiBranch.risk_depends_on_infector(plain)
-        @test !EpiBranch.risk_depends_on_infector(
-            ContactTracing(
-                TraceEveryone(), 1.0, Exponential(1.0), Quarantine(duration = Inf)
-            )
-        )
-        @test EpiBranch.risk_depends_on_infector(quarantining)
     end
 
     @testset "reads_population_state" begin

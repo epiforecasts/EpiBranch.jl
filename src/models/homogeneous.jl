@@ -2,10 +2,10 @@
 #
 # A homogeneously-mixing closed population of fixed size N: every infectious
 # individual exerts the same force of infection on every susceptible, so the
-# outbreak is a finite, depleting pool with no structure beyond its size. It is
-# simulated by the Sellke threshold construction (`_sellke_pool!`), which
-# reproduces the exact stochastic SIR final-size law and yields infection times,
-# not just the final size. It describes the transmission alone: the natural
+# outbreak depletes a finite population with no structure beyond its size. It
+# runs on the continuous-time race as mass action (`_MassAction`), every pair
+# meeting at β/N, which reproduces the exact stochastic SIR final-size law and
+# yields infection times, not just the final size. It describes the transmission alone: the natural
 # history (progression), interventions, attributes and observation are composed onto it
 # with a `ModelSpec`, and the infectious window is resolved from that progression
 # when the model is simulated.
@@ -16,8 +16,8 @@
 
 A closed population of `population_size` individuals that mix homogeneously:
 every infectious person exerts the same force of infection on every susceptible.
-It is simulated by the Sellke threshold construction, which reproduces the exact
-stochastic SIR final-size law. Transmission is the per-infective rate
+It is simulated in continuous time as mass action, every pair meeting at the
+same rate, which reproduces the exact stochastic SIR final-size law. Transmission is the per-infective rate
 `transmission_rate` (β, so β/N to each susceptible).
 
 The process describes the transmission alone. The natural history is a
@@ -38,18 +38,17 @@ closed population, and one infection per person.
 Interventions attach through two seams. An intervention that removes a case from
 transmission, such as `Isolation`, shortens its infectious window and curtails
 spread; one whose effect is a per-contact block, such as a leaky isolation or a
-vaccine's efficacy, is resolved against each contact the pool delivers, and a
-blocked contact leaves the susceptible waiting for the next, so blocking a
-fraction of the contacts thins the force of infection by the same fraction.
-Per-individual susceptibility and infectiousness reach that thinning directly:
-they scale the pressure a susceptible absorbs and the weight an infective adds
-to the force. An intervention that finds
-its targets only among newly created contacts — `MassVaccination`'s rollout,
-`GroupVaccination`, or `ContactTracing`, which has no contact structure to act
-along in a mass-action pool — is reported with a warning rather than applied. Control expressed as a
-removal `Transition` in the progression always applies.
+vaccine's efficacy, is resolved against each contact a pair makes, and a
+blocked contact leaves the pair to meet again, so blocking a fraction of the
+contacts thins the force of infection by the same fraction. Per-individual
+susceptibility and infectiousness reach that thinning directly: they scale the
+rate at which each pair meets. An intervention that finds its targets only among
+newly created contacts — `MassVaccination`'s rollout, `GroupVaccination`, or
+`ContactTracing`, which has no contacts to act along under mass action — is
+reported with a warning rather than applied. Control expressed as a removal
+`Transition` in the progression always applies.
 
-The pool is simulated over its fixed population until extinction or `max_time`,
+The population is simulated over its fixed population until extinction or `max_time`,
 whichever comes first; with `max_time`, individuals whose infection would fall
 later stay uninfected. The other `simulate` termination controls
 (`max_cases`, `max_generations`, `stopping_rules` other than `MaxTime`) do not
@@ -86,7 +85,8 @@ function HomogeneousProcess(;
         )
     )
     # Keep β at whatever real type it comes in as — a dual under automatic
-    # differentiation — so a gradient with respect to β flows into the pool.
+    # differentiation — so a gradient with respect to β flows into the infection
+    # times.
     return HomogeneousProcess(
         Int(population_size), float(transmission_rate), from, Tuple(until)
     )
@@ -94,7 +94,7 @@ end
 
 population_size(m::HomogeneousProcess) = m.population_size
 
-# The pool runs over its fixed population until extinction or `max_time`; the
+# The race runs over the fixed population until extinction or `max_time`; the
 # other termination controls do not apply, and `simulate` warns if any is set.
 _honours_termination_controls(::HomogeneousProcess) = false
 
@@ -103,8 +103,8 @@ function _validate_process_windows(m::HomogeneousProcess, progression)
     return _warn_uncovered_terminal_states(m.until, progression; from = m.from)
 end
 
-# The state's timing type follows β's type, so a dual β makes an
-# `Individual{Dual}` pool and gradients flow through the crossing times.
+# The state's timing type follows β's type, so a dual β makes `Individual{Dual}`
+# members and gradients flow through the contact times.
 _time_type(::HomogeneousProcess{T}) where {T} = T
 
 function Base.show(io::IO, m::HomogeneousProcess)
@@ -118,13 +118,10 @@ end
     _simulate(model::HomogeneousProcess, sim_opts; interventions, attributes,
               progression, observation, recorder, rng, condition, max_attempts)
 
-Simulate the homogeneous pool by the Sellke threshold construction, with the
-modelling layers supplied by the caller (a bare process, or a `ModelSpec`). The
-infectious window's `from` state is resolved here from the composed
-`progression`. The pool draws a fresh infector for every contact rather than
-meeting the same one again (see `_proposal_blocked`'s call site in
-`sellke_pool.jl`), so it has no standing pair for `recorder` to be asked
-about; it is accepted for a uniform call signature and otherwise unused.
+Simulate the homogeneous population on the continuous-time race, as mass action
+among its members (`_MassAction`), with the modelling layers supplied by the
+caller (a bare process, or a `ModelSpec`). The infectious window's `from` state
+is resolved here from the composed `progression`.
 """
 function _simulate(
         model::HomogeneousProcess, sim_opts::SimOpts;
@@ -153,15 +150,16 @@ function _simulate(
         setup = (ind, i) -> nothing
     )
 
-    # The homogeneous pool is the one-type case of the structured Sellke pool:
-    # no attributes name the mixing, so every individual feels the same force
-    # β/N per unit of infectiousness (`sum(values(counts))` = the
-    # infectiousness-weighted number currently infectious).
-    extinct = _sellke_pool!(
-        state, collect(1:model.population_size), rng;
-        force = (type, counts) -> β / model.population_size * sum(values(counts)),
-        n_initial = n_initial, from = from, until = model.until, interventions,
-        risks = transmission_risks(model), max_time = _max_time(sim_opts)
+    # Homogeneous mixing is mass action with a single group: every pair meets at
+    # β/N, scaled by the two members' infectiousness and susceptibility.
+    N = model.population_size
+    members = collect(1:N)
+    extinct = _sellke_race!(
+        state, members, rng;
+        seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
+        targets = _MassAction(state, members; rate = (_, _) -> β / N),
+        from = from, until = model.until, interventions,
+        risks = transmission_risks(model), max_time = _max_time(sim_opts), recorder
     )
 
     _reconcile_sellke_bookkeeping!(state, extinct)
