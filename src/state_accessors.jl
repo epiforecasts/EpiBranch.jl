@@ -115,12 +115,24 @@ function immunity_time(ind::Individual{T}; dose_label::Symbol = :default) where 
     return convert(T, get(ind.state, _immunity_time_key(dose_label), T(Inf)))::T
 end
 
+"""The full-strength efficacy against infection drawn for this person's dose
+named `dose_label`, as it was sampled when the dose was given: the probability
+that an exposure is blocked under `LeakyMode`, or `1.0` or `0.0` for whether
+they responded under `AllOrNothingMode`. `nothing` if no dose with that label
+was recorded, which is what tells a person with no such dose apart from one
+given a dose of `efficacy = 0.0`; [`severity_efficacy`](@ref) returns `0.0`
+for both."""
+function vaccine_efficacy(ind::Individual; dose_label::Symbol = :default)
+    return get(ind.state, _vaccine_efficacy_key(dose_label), nothing)
+end
+
 """Vaccine efficacy against severe outcomes for this person: the
 proportional reduction in, for example, their probability of death once their
 immunity has developed (0 if not vaccinated, or if the dose has no effect on
-severity). Drawn once per vaccinated person from the `severity_efficacy` of
-the dose's [`VaccineEffect`](@ref). Use it in the `probability` of a
-natural-history step, once [`immunity_time`](@ref) has passed:
+severity). Drawn once per vaccinated person, alongside `efficacy`, from the
+`severity_efficacy` of the dose's [`VaccineEffect`](@ref). Use it in the
+`probability` of a natural-history step, once [`immunity_time`](@ref) has
+passed:
 
 ```julia
 Death(delay = LogNormal(2.5, 0.4),

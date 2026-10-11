@@ -62,36 +62,54 @@ end
 Distribution of observed chain sizes under under-reporting: each case in a
 chain whose true size follows `base` is detected independently with
 probability `detection_prob`, and the observed size is the number detected.
-The probability of each observed size sums over the possible true sizes.
-Usually built for you by [`observe`](@ref) with a
-[`PerCaseObservation`](@ref).
+A chain with nobody detected leaves no trace in the data, so the distribution
+is conditioned on at least one case being detected. Usually built for you by
+[`observe`](@ref) with a [`PerCaseObservation`](@ref).
+
+`logpdf(d, obs)` adds `logpdf(base, n) + logpdf(Binomial(n, p), obs)` over
+`n >= obs` until the remaining tail is negligible, then subtracts
+`log(1 - P(0 detected))`, where `P(0 detected) = Σ_n P(base = n) (1 - p)^n` is
+summed the same way. Only `logpdf` on the base is needed, so any base
+distribution works without a method of its own. `P(0 detected)` depends on
+`base` and `detection_prob` alone, so it is worked out once when the
+distribution is built. Its field takes whatever element type `base`'s
+parameters give `logpdf`, rather than `Float64`, so a `Dual` can pass through
+it when something differentiates through `base`, such as fitting an offspring
+parameter with `ForwardDiff`.
 """
-struct ThinnedChainSize{D <: DiscreteUnivariateDistribution} <:
+struct ThinnedChainSize{D <: DiscreteUnivariateDistribution, T <: Real} <:
     DiscreteUnivariateDistribution
     base::D
     detection_prob::Float64
+    log_prob_any_detected::T
+end
+
+function ThinnedChainSize(base::D, detection_prob) where {D <: DiscreteUnivariateDistribution}
+    p = Float64(detection_prob)
+    log_prob_any_detected = _log_prob_any_detected(base, p)
+    return ThinnedChainSize{D, typeof(log_prob_any_detected)}(base, p, log_prob_any_detected)
 end
 
 Distributions.minimum(::ThinnedChainSize) = 1
 Distributions.maximum(::ThinnedChainSize) = Inf
 Distributions.insupport(::ThinnedChainSize, n::Integer) = n >= 1
 
-function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
-    obs < 1 && return -Inf
-    p = d.detection_prob
-    # Streaming log-sum-exp: maintain running max `m` and `S = Σ exp(xᵢ - m)`.
-    # Stop when the accumulated value stops changing (within `tol`) and at
-    # least 20 further terms have been added, to avoid false early
-    # convergence on heavy-tailed bases (e.g. GammaBorel with low k).
-    tol = 1.0e-12
-    max_n = 100_000
-    first = logpdf(d.base, obs) + logpdf(Binomial(obs, p), obs)
-    m = first
+"""
+Streaming log-sum-exp of `term(n)` for `n = n_start, n_start + 1, …`:
+maintain a running max `m` and `S = Σ exp(xᵢ - m)`. Stop when the
+accumulated value stops changing (within `tol`) and at least 20 further
+terms have been added, to avoid false early convergence on heavy-tailed
+bases (e.g. GammaBorel with low k).
+"""
+function _streaming_logsumexp(
+        term, n_start::Integer; tol::Float64 = 1.0e-12, max_n::Int = 100_000
+    )
+    m = term(n_start)
     S = 1.0
     prev = m
-    n = obs + 1
+    n = n_start + 1
     while n <= max_n
-        x = logpdf(d.base, n) + logpdf(Binomial(n, p), obs)
+        x = term(n)
         if x > m
             S = 1.0 + S * exp(m - x)
             m = x
@@ -100,7 +118,7 @@ function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
         end
         cur = m + log(S)
         if isfinite(cur) && isfinite(prev) && abs(cur - prev) < tol &&
-                n - obs >= 20
+                n - n_start >= 20
             return cur
         end
         prev = cur
@@ -109,7 +127,36 @@ function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
     return prev
 end
 
+_log1mexp(x::Real) = x > -log(2) ? log(-expm1(x)) : log1p(-exp(x))
+
+# log P(no case in the chain is detected) = log Σ_n P(base = n) (1 - p)^n,
+# summed over the base's support (chains always have at least one case).
+# At p = 1 every term is -Inf (zero mass), and the streaming sum can't
+# subtract two infinite terms; short-circuit to the same answer directly.
+function _log_prob_none_detected(base, detection_prob::Float64)
+    detection_prob >= 1.0 && return -Inf
+    lq = log1p(-detection_prob)
+    return _streaming_logsumexp(n -> logpdf(base, n) + n * lq, 1)
+end
+
+_log_prob_any_detected(base, detection_prob::Float64) =
+    _log1mexp(_log_prob_none_detected(base, detection_prob))
+
+function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
+    obs < 1 && return -Inf
+    p = d.detection_prob
+    unconditioned = _streaming_logsumexp(
+        n -> logpdf(d.base, n) + logpdf(Binomial(n, p), obs), obs
+    )
+    return unconditioned - d.log_prob_any_detected
+end
+
 Distributions.pdf(d::ThinnedChainSize, n::Integer) = exp(logpdf(d, n))
+
+Distributions.cdf(d::ThinnedChainSize, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::ThinnedChainSize, n::Integer)
+    return _chain_size_right_tail_logprob(d, n + 1, 1)
+end
 
 """
     observe(base_distribution, obs::ObservationModel)
