@@ -42,13 +42,14 @@ and quarantines them, also for good.
 ## How a dose protects
 
 A dose protects from `delay_to_immunity` days after it is given (0 by
-default). It has up to three effects, each a probability; the last two,
+default). It has up to four effects, each a probability; two of them,
 `onward_efficacy` and `post_exposure_efficacy`, are only on
 [`RingVaccination`](@ref):
 
 | Parameter | What it prevents | Acts if protection starts |
 |---|---|---|
 | `efficacy` | the vaccinated person being infected | before the exposure |
+| `severity_efficacy` | a severe outcome, such as death, in a vaccinated person who is infected anyway | before that outcome would take effect |
 | `onward_efficacy` | the vaccinated person infecting others | before each of their transmissions |
 | `post_exposure_efficacy` | an infection the person already has | before symptom onset (if before the exposure, it blocks the infection itself) |
 
@@ -58,6 +59,18 @@ proportion of vaccinated people fully protected and leaves the rest
 unprotected. In a branching process every exposure is a different person, and
 the two give the same results on average. They differ in models where a
 person can be exposed more than once, such as households and networks.
+
+`severity_efficacy` is the one effect the model does not apply on its own. It
+reaches the outbreak only through a clinical step in `progression`, such as
+[`Death`](@ref) or [`Hospitalisation`](@ref), whose `probability` reads
+[`severity_efficacy`](@ref) and [`immunity_time`](@ref) for the person:
+
+```julia
+Death(delay = LogNormal(2.5, 0.4),
+      probability = (rng, ind) ->
+          immunity_time(ind) <= onset_time(ind) ?
+              0.7 * (1 - severity_efficacy(ind)) : 0.7)
+```
 
 !!! note "Compare many replicates"
     Every scenario uses its own random draws. Two scenarios run once each
