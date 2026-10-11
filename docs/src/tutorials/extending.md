@@ -1545,6 +1545,14 @@ specification (`reproduction_number`, `extinction_probability`,
   defined). Specialise this and you get the analytical helpers for
   free.
 
+If a model only sometimes has a closed-form law — a multi-type or
+multi-window model, say — the default
+[`has_single_type_law`](@ref EpiBranch.has_single_type_law) already covers it
+by calling `single_type_offspring` and reporting `false` on the error it
+throws, so `chain_size_distribution` and `loglikelihood(ChainSizes, model)`
+fall back to simulation. Specialise it only if there is a cheaper way to
+know, without calling `single_type_offspring`, that no law is available.
+
 For **likelihoods** on data types that don't go through the offspring
 spec, define methods on `loglikelihood` directly.
 
