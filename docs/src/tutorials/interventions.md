@@ -360,6 +360,7 @@ Start and end times can be combined:
 # Isolation for cases set up between day 5 and day 30
 iso_window = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 7.0);
     start_time = 5.0, end_time = 30.0)
+nothing # hide
 ```
 
 The end is checked when each case is set up, against the outbreak's latest
@@ -378,6 +379,7 @@ iso_gen3 = Scheduled(
     Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0),
     state -> state.current_generation >= 3,
 )
+nothing # hide
 ```
 
 ## Writing your own intervention
