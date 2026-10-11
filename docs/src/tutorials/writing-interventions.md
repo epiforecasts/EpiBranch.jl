@@ -589,19 +589,16 @@ The new type then gets, without further code:
 - the checks on dose schedules made when a `ModelSpec` is built, so a later
   [`RingVaccination`](@ref) can name its dose in `requires_dose`.
 
-It adds an `apply_post_transmission!` method choosing whom to vaccinate and
-when. That method records each dose with `EpiBranch._record_vaccination!(v,
-ind, vaccination_time, rng)`, which writes the per-dose values listed in
-[Individual state and reserved keys](@ref) and draws `efficacy`,
-`severity_efficacy` and `delay_to_immunity` for that person, whether they were
-given as numbers, distributions or functions.
-
-!!! note "This recipe uses internal functions"
-    `_record_vaccination!`, and `_record_effect_draws!`, `_store_draw!`,
-    `_dose_value` and `_vaccine_efficacy` below, start with an underscore: they
-    are not part of the public interface and may change in a later release.
-    There is no public way to record a dose yet. If you build on them, fix the
-    EpiBranch version your project uses.
+It adds an `intervention_actions` method choosing whom to vaccinate and when,
+returning one `EpiBranch.dose_action(v, ind, time)` for each person it will
+dose. That is the same action protocol the built-in vaccinations use, so
+[`Scheduled`](@ref) and [`CapacityConstrained`](@ref) wrap your vaccination
+exactly as they wrap a [`MassVaccination`](@ref). `apply_post_transmission!`
+then only has to admit the actions, through `EpiBranch.apply_actions!`. A dose
+admitted this way writes the per-dose values listed in [Individual state and
+reserved keys](@ref) and draws `efficacy`, `severity_efficacy` and
+`delay_to_immunity` for that person, whether they were given as numbers,
+distributions or functions.
 
 Here a campaign on day 10 reaches everyone aged 60 or over. `kwargs...` passes
 any further keywords on, as `...` does in R:
@@ -623,12 +620,17 @@ end
 EpiBranch.vaccine_effect(v::OlderAdultVaccination) = v.effect
 EpiBranch.required_fields(::OlderAdultVaccination) = [:age]
 
-function EpiBranch.apply_post_transmission!(v::OlderAdultVaccination, state, new_contacts)
-    for ind in new_contacts
+function EpiBranch.intervention_actions(v::OlderAdultVaccination, state, candidates)
+    actions = EpiBranch.InterventionAction[]
+    for ind in candidates
         ind.state[:age] >= v.min_age || continue
-        EpiBranch._record_vaccination!(v, ind, v.campaign_time, state.rng)
+        push!(actions, EpiBranch.dose_action(v, ind, v.campaign_time))
     end
-    return nothing
+    return actions
+end
+
+function EpiBranch.apply_post_transmission!(v::OlderAdultVaccination, state, new_contacts)
+    return EpiBranch.apply_actions!(v, state, new_contacts)
 end
 
 older = OlderAdultVaccination(min_age = 60, campaign_time = 10.0,
@@ -650,20 +652,20 @@ dose does belongs in `VaccineEffect`, where every vaccination gains it at once;
 a parameter describing whom a dose reaches belongs on the new type.
 
 An effect only your vaccination has is a field of the type (`booster_uptake`
-above). Its per-dose draw is recorded by a method of `_record_effect_draws!`,
-which `_record_vaccination!` calls for every vaccination. `RingVaccination`
+above). Its per-dose draw is recorded by a method of
+`EpiBranch.record_effect_draws!`, which every dose calls. `RingVaccination`
 records `post_exposure_efficacy` and `onward_efficacy` that way:
 
 ```julia
 _booster_uptake_key(label) = Symbol("booster_uptake_", label)
 
-function EpiBranch._record_effect_draws!(v::OlderAdultVaccination, contact, label, rng)
-    EpiBranch._store_draw!(v.booster_uptake, _booster_uptake_key, label, contact, rng)
+function EpiBranch.record_effect_draws!(v::OlderAdultVaccination, contact, label, rng)
+    EpiBranch.store_draw!(v.booster_uptake, _booster_uptake_key, label, contact, rng)
     return nothing
 end
 ```
 
-For a number, `_store_draw!` stores nothing and `EpiBranch._dose_value` reads
+For a number, `store_draw!` stores nothing and `EpiBranch.dose_value` reads
 the value from the vaccination itself; for a distribution or a function it
 stores the draw.
 
@@ -679,8 +681,8 @@ needs to change.
 
 Here a "partial responder" mode gives a proportion `efficacy` of vaccinees full
 protection, as all-or-nothing does, but gives the rest a fixed lower level of
-leaky protection instead of none. The example records eight doses directly
-with the internal functions noted above:
+leaky protection instead of none. The example records eight doses directly,
+with the same dose functions the recipe above uses:
 
 ```@example interventions_dev
 struct PartialResponseMode <: AbstractEffectMode
@@ -695,8 +697,8 @@ end
 partial = RingVaccination(efficacy = 0.6, mode = PartialResponseMode(0.2))
 draws = map(1:8) do i
     contact = Individual(id = i, parent_id = 0, infection_time = 10.0)
-    EpiBranch._record_vaccination!(partial, contact, 0.0, StableRNG(i))
-    EpiBranch._vaccine_efficacy(partial, contact)
+    EpiBranch.record_dose!(partial, contact, 0.0, StableRNG(i))
+    vaccine_efficacy(contact)
 end
 draws
 ```

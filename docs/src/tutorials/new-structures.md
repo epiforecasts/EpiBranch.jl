@@ -221,10 +221,11 @@ changed, without any warning.
 
 A [`PairKernel`](@ref)'s `calendar` multiplies its contact rate by a function
 of calendar time, for seasonal forcing or a contact rate that changes during
-an outbreak. [`Steps`](@ref) is the piecewise-constant schedule the package
-provides. Any other schedule is a type with a
-[`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) method returning
-the (non-negative) multiplier at a calendar time, and
+an outbreak. The package provides two schedules: [`Steps`](@ref), which is
+piecewise constant, and [`Seasonal`](@ref), which is smooth. A plain callable
+`t -> multiplier` works too, and is read as smooth. Any other schedule is a
+type with a [`calendar_multiplier`](@ref EpiBranch.calendar_multiplier) method
+returning the (non-negative) multiplier at a calendar time, and
 [`calendar_shape`](@ref EpiBranch.calendar_shape) says what kind of schedule
 it is:
 
@@ -235,21 +236,27 @@ it is:
 - **Smooth**: declare `calendar_shape(::YourSchedule) = EpiBranch.SmoothCalendar()`,
   and the cumulative rate is integrated numerically.
 
-```julia
-struct Seasonal{T <: Real}
-    amplitude::T
-end
-EpiBranch.calendar_multiplier(s::Seasonal, t) = 1 + s.amplitude * sin(2π * t / 365)
-EpiBranch.calendar_shape(::Seasonal) = EpiBranch.SmoothCalendar()
+A schedule of your own is for a shape neither built-in one gives. This one has
+two peaks a year:
 
-kernel = PairKernel(context -> Exponential(4.0); calendar = Seasonal(0.5))
+```julia
+struct TwoPeakSeasonal{T <: Real}
+    amplitude::T
+    first_peak::Float64
+end
+function EpiBranch.calendar_multiplier(s::TwoPeakSeasonal, t)
+    return 1 + s.amplitude * cos(4π * (t - s.first_peak) / 365)
+end
+EpiBranch.calendar_shape(::TwoPeakSeasonal) = EpiBranch.SmoothCalendar()
+
+kernel = PairKernel(context -> Exponential(4.0); calendar = TwoPeakSeasonal(0.5, 15.0))
 ```
 
 Simulation and the likelihood read a schedule only through these methods, so
 both use the same rate. Give the schedule's fields a type parameter, as
-`Seasonal{T}` does, so the likelihood can be differentiated with respect to
-them. A worked seasonal example is in [Covariates and time-varying
-transmission](covariate-transmission.md).
+`TwoPeakSeasonal{T}` does for its amplitude, so the likelihood can be
+differentiated with respect to them. A worked seasonal example is in
+[Covariates and time-varying transmission](covariate-transmission.md).
 
 ## Offspring distributions of your own
 
