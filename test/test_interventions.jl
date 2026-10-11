@@ -2976,6 +2976,13 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
             @test !EpiBranch.trigger_can_lapse(ReportedCases(2))
 
+            # `PerCaseObservation` marks `:reported` alongside `:report_time`
+            # and never writes `:reporting_time`, so the count has to read the
+            # time it needs without assuming the two keys travel together.
+            inds[5].state[:reported] = true
+            @test EpiBranch.is_triggered!(ReportedCases(2), state)
+            @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+
             # A user's own trigger is conservatively assumed able to lapse,
             # exactly as an opaque `Scheduled` predicate is.
             @test EpiBranch.trigger_can_lapse(_AlwaysOpenTrigger())

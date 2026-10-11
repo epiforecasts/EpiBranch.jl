@@ -145,7 +145,7 @@ trigger_can_lapse(::Infections) = false
 function _reported_cases_due(state::SimulationState)
     now = state.max_infection_time
     return count(state.individuals) do ind
-        get(ind.state, :reported, false) && ind.state[:reporting_time] <= now
+        get(ind.state, :reported, false) && get(ind.state, :reporting_time, Inf) <= now
     end
 end
 
