@@ -46,8 +46,8 @@ function Distributions.logpdf(
         )
     end
     # The analytical mixture below only ever consumes `prob_concluded`; any
-    # other kwarg (e.g. `n_sim`) would silently be ignored rather than
-    # applied, so refuse instead of pretending to honour it.
+    # other kwarg (e.g. `n_sim`) would be silently ignored rather than
+    # applied. Refuse rather than pretend to honour it.
     if !isempty(d.kwargs)
         throw(
             ArgumentError(
