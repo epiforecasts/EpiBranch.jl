@@ -246,7 +246,7 @@ end
             interventions = [
                 Isolation(
                     onset_to_isolation_delay = Exponential(1.0),
-                    eligibility = AllCases(), isolation_duration = Inf
+                    eligibility = AllCases(), duration = Inf
                 ),
             ]
         )
@@ -262,6 +262,41 @@ end
         # community contacts it makes and the household members it infects.
         @test reproduction_number(with_isolation) < reproduction_number(base) / 2
         @test extinction_probability(with_isolation) == [1.0]
+    end
+
+    @testset "a finite isolation duration still cuts the community person-time" begin
+        # A removal that lapses does not close the infectious window; it blocks
+        # the isolated stretch per contact instead. The person-time the
+        # offspring law reads has to leave that stretch out itself.
+        prog = [
+            Transition(:onset; from = :infection, delay = 1.0),
+            Transition(:recovered; from = :infection, delay = 6.0, terminal = true),
+        ]
+        process() = HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0))
+        none = ModelSpec(process(); progression = [prog[2]])
+        isolated(duration) = ModelSpec(
+            process(); progression = prog,
+            interventions = [
+                Isolation(
+                    onset_to_isolation_delay = Exponential(1.0),
+                    eligibility = AllCases(), duration = duration
+                ),
+            ]
+        )
+        rstar(spec) = reproduction_number(
+            household_offspring(spec; global_rate = 0.1, rng = StableRNG(7))
+        )
+        r_none = rstar(none)
+        r_inf = rstar(isolated(Inf))
+        # Isolation starting around day two and lasting seven days outlasts a
+        # case's six-day infectious period, leaving the same community
+        # person-time as one that never lapses.
+        @test rstar(isolated(7.0)) ≈ r_inf rtol = 0.05
+        # A duration that releases the case well inside its infectious period
+        # blocks only part of it: R* then sits strictly between no isolation
+        # and one that lasts the rest of the case's infectious period.
+        r_short = rstar(isolated(1.0))
+        @test r_inf < r_short < r_none
     end
 
     @testset "cases that never become infectious make no contacts" begin
@@ -371,7 +406,7 @@ end
                 Scheduled(
                     Isolation(
                         onset_to_isolation_delay = Exponential(1.0),
-                        eligibility = AllCases(), isolation_duration = Inf
+                        eligibility = AllCases(), duration = Inf
                     ); start_after_cases = 10
                 ),
             ]

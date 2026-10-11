@@ -193,7 +193,7 @@ using DataFrames
             1.5 0.3;
             0.3 1.0
         ]
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         init_fn = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
         rng = StableRNG(42)

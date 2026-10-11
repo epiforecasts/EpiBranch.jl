@@ -66,7 +66,7 @@ BranchingProcess(M, R_j -> NegBin(R_j, 0.16), LogNormal(1.6, 0.5))  # multi-type
 
 # attach a policy via a ModelSpec
 ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0), isolation_duration = 7.0)])
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)])
 ```
 
 Transmission is a tuple of [`Infectiousness`](@ref) windows; the

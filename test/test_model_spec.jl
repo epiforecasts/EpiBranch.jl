@@ -49,7 +49,7 @@ EpiBranch.competing_risk(::BlockVariadic, args...) = Risk(block_probability = 1.
     end
 
     @testset "layers on the spec are applied" begin
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         attr = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         bp = BranchingProcess(Poisson(2.0), Exponential(5.0))
 
@@ -63,7 +63,7 @@ EpiBranch.competing_risk(::BlockVariadic, args...) = Risk(block_probability = 1.
     end
 
     @testset "keywords set the layers; default to none" begin
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf)
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         bp = BranchingProcess(Poisson(2.0), Exponential(5.0))
         # A bare process carries no layers, so the spec defaults to none.
         @test isempty(EpiBranch.interventions(ModelSpec(bp)))

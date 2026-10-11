@@ -105,8 +105,8 @@ state, e.g. age-conditional vaccine efficacy, or a quarantine's duration.
 Use `event_time = -Inf` (the default) for risks that are not
 time-tagged — pop_suscept, per-individual susceptibility,
 infectiousness, and the like. Use `release_time = Inf` (the default) for a
-block that, once in force, never lapses, such as a removal that is never
-released.
+block that, once in force, never lapses, such as a quarantine or isolation
+given an infinite duration.
 
 Returned by [`competing_risk`](@ref).
 """

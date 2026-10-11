@@ -168,7 +168,7 @@ end
             interventions = [
                 Isolation(
                     onset_to_isolation_delay = Exponential(0.5),
-                    post_isolation_transmission = 0.0, isolation_duration = Inf
+                    post_isolation_transmission = 0.0, duration = Inf
                 ),
             ],
             attributes = clinical,
