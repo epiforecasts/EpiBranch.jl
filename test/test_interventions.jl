@@ -2974,7 +2974,9 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
             @test EpiBranch.is_triggered!(ReportedCases(2), state)
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
-            @test !EpiBranch.trigger_can_lapse(ReportedCases(2))
+            # A reinfected host has its report flag cleared, so the count can
+            # fall and the trigger keeps the conservative default.
+            @test EpiBranch.trigger_can_lapse(ReportedCases(2))
 
             # `PerCaseObservation` marks `:reported` alongside `:report_time`
             # and never writes `:reporting_time`, so the count has to read the
@@ -3233,11 +3235,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # An opaque predicate could read anything, so it stays conservative.
         @test reads(Scheduled(iso, state -> true))
 
-        # `Scheduled` reads `can_lapse` from the trigger: `Infections` and
-        # `ReportedCases` count something that can only rise, so neither makes
-        # the schedule lapse; a trigger with no opinion conservatively does.
+        # `Scheduled` reads `can_lapse` from the trigger. `Infections` counts
+        # something that can only rise, so it does not make the schedule
+        # lapse; `ReportedCases` reads a count that falls when a host is
+        # reinfected, and a trigger with no opinion is conservative.
         @test !Scheduled(iso; start_after = Infections(10)).can_lapse
-        @test !Scheduled(iso; start_after = ReportedCases(10)).can_lapse
+        @test Scheduled(iso; start_after = ReportedCases(10)).can_lapse
         @test Scheduled(iso; start_after = _AlwaysOpenTrigger()).can_lapse
 
         # A shared budget is read across every individual.

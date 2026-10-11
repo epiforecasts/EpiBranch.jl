@@ -115,9 +115,10 @@ function is_triggered! end
 Whether `trigger`'s condition, once true, can turn false again. The
 default is the conservative `true`: a trigger written outside the package
 is assumed able to close again until it says otherwise, as an opaque
-[`Scheduled`](@ref) predicate already is. [`Infections`](@ref) and
-[`ReportedCases`](@ref) return `false`: each counts something that can only
-rise.
+[`Scheduled`](@ref) predicate already is. [`Infections`](@ref) returns
+`false`, since `cumulative_cases` only ever rises. [`ReportedCases`](@ref)
+keeps the default: a host that is reinfected has its report flag cleared when
+its transitions are initialised again, so the count it reads can fall.
 """
 trigger_can_lapse(::AbstractTrigger) = true
 
@@ -162,7 +163,6 @@ struct ReportedCases <: AbstractTrigger
     n::Int
 end
 is_triggered!(t::ReportedCases, state::SimulationState) = _reported_cases_due(state) >= t.n
-trigger_can_lapse(::ReportedCases) = false
 
 # ── Keyword convenience constructor ──────────────────────────────────
 
