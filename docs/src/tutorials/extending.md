@@ -697,6 +697,47 @@ Then a user schedules the intervention like:
 Scheduled(BorderClosure(0.0, 0.05); start_time = 10.0)
 ```
 
+#### A custom trigger
+
+`start_after` opens the schedule on a condition rather than a date, and takes
+any subtype of [`AbstractTrigger`](@ref). The built-in [`Infections`](@ref)
+and [`ReportedCases`](@ref) are two; a trigger of your own works without any
+change to `Scheduled`. One method is required and two traits have defaults:
+
+- **`is_triggered!(trigger, state)`** — whether the condition holds
+  now. The same trigger object is reused across the repeated runs of
+  `simulate(model, n)`, so keep no state on it between calls and derive any
+  running count from `state` afresh.
+- **`trigger_can_lapse(trigger)`** — whether the condition, once
+  true, can turn false again. The default is the conservative `true`. Return
+  `false` only for a quantity that cannot fall, as `Infections` does for
+  `cumulative_cases`; a count read back from the population can fall when a
+  host is reinfected, which is why `ReportedCases` keeps the default.
+- **`EpiBranch.required_fields(trigger)`** — the `Individual.state` keys the
+  trigger reads, empty by default. `Scheduled` adds them to the ones its
+  wrapped intervention declares, so a model that cannot supply them is
+  rejected when the outbreak is seeded instead of running with the schedule
+  shut throughout.
+
+```julia
+struct TwentyOnsets <: EpiBranch.AbstractTrigger end
+
+function EpiBranch.is_triggered!(::TwentyOnsets, state)
+    return count(
+        ind -> onset_time(ind) <= state.max_infection_time, state.individuals
+    ) >= 20
+end
+EpiBranch.required_fields(::TwentyOnsets) = [:onset_time]
+
+Scheduled(BorderClosure(0.0, 0.05); start_after = TwentyOnsets())
+```
+
+`TwentyOnsets` keeps the default `trigger_can_lapse`, because an onset time is
+drawn again when a host is reinfected and the count can therefore fall. Its
+`required_fields` names `:onset_time`, so a model built without
+`clinical_presentation` is rejected rather than running with the border never
+closing.
+
 ### Making the intervention capacity-constrained
 
 [`CapacityConstrained`](@ref) admits candidate actions against a shared resource
