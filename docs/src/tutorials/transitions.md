@@ -191,9 +191,9 @@ Cases without a test have no report. In each row, the test date follows
 onset and the report date follows the test.
 
 !!! note "`from` accepts either the event or its recorded time"
-    `Transition`, `Reporting`, `Hospitalisation`, `Death` and `Recovery` all
+    `Transition`, `Reporting`, `Hospitalisation`, `Death` and `Recovery`
     resolve `from` the same way: `from = :onset` and `from = :onset_time`
-    both read `:onset_time`, and `from = :infection` reads the case's
+    both read `:onset_time`; `from = :infection` reads the case's
     infection time.
 
 The general `Transition` covers any event in the timeline: it takes the name
