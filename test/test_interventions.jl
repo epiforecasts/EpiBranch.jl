@@ -3027,29 +3027,48 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "start_after = ReportedCases delays activation past Infections" begin
-            # Only a fifth of cases are ever reported, each after a delay. At
-            # the moment `Infections(n)` would open (the n'th infection's own
-            # time), fewer than `n` reports are dated by that clock yet, so
-            # `ReportedCases(n)` must still be closed.
+            # Only a fifth of cases are ever reported, each after a delay, so a
+            # report-gated schedule opens later than a case-gated one and
+            # isolates a smaller share of the cases. The share is the measure,
+            # not the count: a schedule that opens later controls less, so its
+            # outbreaks are larger and can carry more isolations in total.
             progression = [
                 Reporting(delay = Exponential(2.0), probability = 0.2),
                 Recovery(delay = Exponential(5.0)),
             ]
-            model = ModelSpec(
-                BranchingProcess(NegBin(2.0, 0.5), Exponential(5.0));
-                progression, attributes = clinical
-            )
-            state = simulate(model; max_cases = 300, rng = StableRNG(3))
+            iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+            function isolated_share(trigger)
+                results = simulate(
+                    ModelSpec(
+                        BranchingProcess(NegBin(2.0, 0.5), Exponential(5.0));
+                        progression, attributes = clinical,
+                        interventions = [Scheduled(iso; start_after = trigger)]
+                    ),
+                    50; max_cases = 300, rng = StableRNG(3)
+                )
+                isolated = sum(s -> count(is_isolated, s.individuals), results)
+                return isolated / sum(s -> length(s.individuals), results)
+            end
+            # 0.36 of cases isolated against 0.47 over these 50 outbreaks.
+            @test isolated_share(ReportedCases(20)) < isolated_share(Infections(20))
 
+            # The reason: at the moment `Infections(n)` opens (the n'th
+            # infection's own time), fewer than `n` reports are dated by that
+            # clock yet.
+            state = simulate(
+                ModelSpec(
+                    BranchingProcess(NegBin(2.0, 0.5), Exponential(5.0));
+                    progression, attributes = clinical
+                );
+                max_cases = 300, rng = StableRNG(3)
+            )
             n = 10
             infection_times = sort(
                 [ind.infection_time for ind in state.individuals if is_infected(ind)]
             )
             @test length(infection_times) >= n
-            infections_open_at = infection_times[n]
-
             reported_due = count(
-                ind -> get(ind.state, :reporting_time, Inf) <= infections_open_at,
+                ind -> get(ind.state, :reporting_time, Inf) <= infection_times[n],
                 state.individuals
             )
             @test reported_due < n
