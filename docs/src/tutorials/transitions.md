@@ -475,10 +475,15 @@ function EpiBranch.transition_loglik(t::AntiviralTreatment, ind)
     ot = onset_time(ind)
     isnan(ot) && return 0.0
     get(ind.state, :reported, false) || return 0.0
-    occurred = ind.state[:treated]
-    ll = EpiBranch.transition_term(t.probability, t.delay, ind, ot, occurred)
+    flag = ind.state[:treated]
+    time = flag ? ind.state[:treatment_time] : Inf
+    occurred = flag && time <= outcome_time(ind)
+    ll = EpiBranch.transition_term(
+        t.probability, t.delay, ind, ot, occurred;
+        censor = min(EpiBranch.infection_aborted_time(ind), outcome_time(ind))
+    )
     occurred || return ll
-    return ll + logpdf(t.delay, ind.state[:treatment_time] - ot)
+    return ll + logpdf(t.delay, time - ot)
 end
 ```
 
