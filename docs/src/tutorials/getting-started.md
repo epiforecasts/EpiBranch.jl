@@ -202,8 +202,9 @@ cs = chain_statistics(outbreak)
 cs
 ```
 
-[`generation_R`](@ref) divides the number of cases in each generation by the
-number in the generation before, a rough within-simulation measure of how
+[`generation_R`](@ref) gives, for each generation, the average number of
+people its cases went on to infect: the cases in the next generation divided
+by the cases in this one. It is a rough within-simulation measure of how
 transmission changes as the measures take effect. It is not the time-varying
 reproduction number Rt estimated from incidence data.
 
