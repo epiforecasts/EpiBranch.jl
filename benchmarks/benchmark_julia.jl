@@ -116,8 +116,10 @@ for s in fit_states
 end
 # There is no closed-form maximum-likelihood fit for a negative binomial, so
 # this is the route the documentation gives: EpiBranch's `loglikelihood` paired
-# with an optimiser.
-fit_data = OffspringCounts(fit_counts)
+# with an optimiser. The counts are cut to 1,000 so that the timing is for a
+# dataset of a stated size, comparable with an R implementation on the same
+# number of counts; 1,000 chains of mean size about 3.3 give more than that.
+fit_data = OffspringCounts(fit_counts[1:1000])
 nll(theta) = -loglikelihood(fit_data, NegBin(exp(theta[1]), exp(theta[2])))
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 100
 b = @benchmark optimize($nll, [log(0.7), log(0.5)])
