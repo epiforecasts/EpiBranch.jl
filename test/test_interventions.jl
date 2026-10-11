@@ -2978,9 +2978,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # fall and the trigger keeps the conservative default.
             @test EpiBranch.trigger_can_lapse(ReportedCases(2))
 
-            # `PerCaseObservation` marks `:reported` alongside `:report_time`
-            # and never writes `:reporting_time`, so the count has to read the
-            # time it needs without assuming the two keys travel together.
+            # The count reads the report time it needs rather than indexing
+            # it, so a `:reported` flag from anywhere else does not throw.
+            # `PerCaseObservation` sets one, with `:report_time` and no
+            # `:reporting_time`; it runs after the simulation, so a trigger
+            # never meets it mid-run, and its reports are not what this
+            # trigger counts either way.
             inds[5].state[:reported] = true
             @test EpiBranch.is_triggered!(ReportedCases(2), state)
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
