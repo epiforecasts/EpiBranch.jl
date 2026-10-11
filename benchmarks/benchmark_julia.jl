@@ -83,9 +83,12 @@ BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 
 println("7. Intervention scenario (500 sims, isolation + CT)")
 model_int = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
-# Matches the R run this benchmark is compared against, which never releases.
-iso = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5), isolation_duration = Inf)
-ct = ContactTracing(probability = 0.5, isolation_to_trace_delay = Exponential(2.0))
+# benchmark_r.R never releases isolation, so this matches with Inf.
+iso = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5), duration = Inf)
+ct = ContactTracing(
+    probability = 0.5, isolation_to_trace_delay = Exponential(2.0),
+    action = Quarantine(duration = Inf)
+)
 b = @benchmark simulate(
     $model_int, 500;
     interventions = [$iso, $ct], attributes = $clinical,

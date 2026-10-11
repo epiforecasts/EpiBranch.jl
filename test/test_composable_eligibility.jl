@@ -359,10 +359,10 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.3
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.5, isolation_duration = Inf)
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.5, duration = Inf)
         S, L, I, N = OnSymptomOnset(), OnLabConfirmation(), OnIsolation(), TraceNobody()
         function simulate_with(eligibility, seed)
-            ct = ContactTracing(eligibility, 1.0, Exponential(1.0))
+            ct = ContactTracing(eligibility, 1.0, Exponential(1.0), Quarantine(duration = Inf))
             simulate(
                 ModelSpec(
                     BranchingProcess(Poisson(2.5), Exponential(5.0));
@@ -393,8 +393,11 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases(), isolation_duration = Inf)
-        ct = ContactTracing(OnSymptomOnset() | OnLabConfirmation(), 1.0, Exponential(1.0))
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases(), duration = Inf)
+        ct = ContactTracing(
+            OnSymptomOnset() | OnLabConfirmation(), 1.0, Exponential(1.0),
+            Quarantine(duration = Inf)
+        )
         state = simulate(
             ModelSpec(
                 BranchingProcess(Poisson(2.0), Exponential(5.0));
@@ -416,8 +419,8 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.3
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.5, isolation_duration = Inf)
-        function simulate_with(eligibility, action = Quarantine())
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.5, duration = Inf)
+        function simulate_with(eligibility, action = Quarantine(duration = Inf))
             ct = ContactTracing(
                 eligibility, ConstantRate(1.0),
                 ConstantDelay(Exponential(1.0)), action
@@ -456,7 +459,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
 
     @testset "Integration with ContactTracing constructors" begin
         # Terse positional form wraps probability/delay automatically.
-        ct = ContactTracing(OnSymptomOnset(), 0.7, Exponential(1.5))
+        ct = ContactTracing(OnSymptomOnset(), 0.7, Exponential(1.5), Quarantine(duration = Inf))
         @test ct.eligibility isa OnSymptomOnset
         @test ct.trace_rate isa ConstantRate
         @test ct.isolation_to_trace_delay isa ConstantDelay
@@ -468,7 +471,10 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         @test Set(required_fields(ct2)) == Set([:asymptomatic, :onset_time, :test_positive])
 
         # Keyword form keeps the original default eligibility.
-        ct3 = ContactTracing(probability = 0.6, isolation_to_trace_delay = Exponential(1.0))
+        ct3 = ContactTracing(
+            probability = 0.6, isolation_to_trace_delay = Exponential(1.0),
+            action = Quarantine(duration = Inf)
+        )
         @test ct3.eligibility isa SymptomaticParent
     end
 

@@ -99,6 +99,17 @@ function immunity_time(ind::Individual{T}; dose_label::Symbol = :default) where 
     return convert(T, get(ind.state, _immunity_time_key(dose_label), T(Inf)))::T
 end
 
+"""Full-strength efficacy of the individual's dose against infection under the
+given `dose_label`, as sampled when the dose was given — a per-exposure block
+probability under `LeakyMode`, a responder status of `1.0` or `0.0` under
+`AllOrNothingMode` — or `nothing` if no dose with that label has been
+recorded. Unlike [`severity_efficacy`](@ref), there is no default of `0.0`:
+`nothing` is what distinguishes an individual with no such dose from one
+given a dose with `efficacy = 0.0`."""
+function vaccine_efficacy(ind::Individual; dose_label::Symbol = :default)
+    return get(ind.state, _vaccine_efficacy_key(dose_label), nothing)
+end
+
 """Probability that the individual's own disease course is milder — e.g. a
 lower chance of death — once their vaccine-induced immunity has developed
 (`0.0` if not vaccinated, or if the dose carries no severity effect). Sampled
@@ -228,15 +239,17 @@ const REMOVAL_STRETCHES_KEY = :_removal_stretches
 const _NO_STRETCHES = Tuple{Float64, Float64}[]
 
 """Mark an individual as isolated at the given time (any `Real`, so an AD
-dual isolation time flows through), with an optional `release_time` (`Inf`
-by default) from which the block lapses.
+dual isolation time flows through), with the `release_time` from which the
+block lapses. `release_time` is required: a removal that never releases its
+host is a choice to state, `Inf` saying so, and no policy should inherit it
+silently.
 
 The time is stored under `:isolation_time`, the release under
 `:isolation_release_time`. A route window that isolation should end lists
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which respects leaky
 isolation. `:isolated` in an `until` refers to a `Transition(:isolated, …)`
 in the natural history."""
-function set_isolated!(ind::Individual, time::Real; release_time::Real = Inf)
+function set_isolated!(ind::Individual, time::Real; release_time::Real)
     ind.state[:isolated] = true
     delete!(ind.state, :_isolation_unrecorded)
     ind.state[:isolation_time] = time

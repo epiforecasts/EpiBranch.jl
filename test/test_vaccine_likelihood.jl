@@ -280,7 +280,7 @@ end
 
     @testset "a model's interventions evaluate as their vaccination's effect" begin
         mv = MassVaccination(efficacy = 0.4, eligibility_time = 0.0)
-        interventions = [Isolation(onset_to_isolation_delay = 1.0, isolation_duration = Inf), mv]
+        interventions = [Isolation(onset_to_isolation_delay = 1.0, duration = Inf), mv]
         for d in (data(NaN; followup_end = 5.0), data(3.0))
             @test pairwise_surv_loglik(k, d; susceptibility = interventions) ≈
                 pairwise_surv_loglik(k, d; susceptibility = EpiBranch.vaccine_effect(mv))
