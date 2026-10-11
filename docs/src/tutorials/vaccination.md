@@ -61,8 +61,9 @@ the two give the same results on average. They differ in models where a
 person can be exposed more than once, such as households and networks.
 
 `severity_efficacy` is the one effect the model does not apply on its own. It
-reaches the outbreak only through a clinical step in `progression`, such as
-[`Death`](@ref) or [`Hospitalisation`](@ref), whose `probability` reads
+reaches the outbreak only through a clinical step in the model's `progression`
+(see [Clinical transitions](transitions.md)), such as [`Death`](@ref) or
+[`Hospitalisation`](@ref), whose `probability` reads
 [`severity_efficacy`](@ref) and [`immunity_time`](@ref) for the person:
 
 ```julia
