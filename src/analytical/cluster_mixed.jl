@@ -82,6 +82,11 @@ end
 
 Distributions.pdf(d::ChainSizeMixture, n::Integer) = exp(logpdf(d, n))
 
+Distributions.cdf(d::ChainSizeMixture, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::ChainSizeMixture, n::Integer)
+    return _chain_size_right_tail_logprob(d, n + 1, 1)
+end
+
 """
     chain_size_distribution(o::ClusterMixed)
 
