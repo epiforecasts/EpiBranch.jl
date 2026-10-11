@@ -46,6 +46,12 @@
             seeds = seeds, prob_concluded = pc
         )
         @test_throws ArgumentError logpdf(d_iv, data)
+
+        # prob_concluded's mixture has no path for other kwargs either: an
+        # unsupported one like n_sim must still raise, not be silently
+        # dropped.
+        d_extra = chain_size_distribution(bp; prob_concluded = pc, n_sim = 5)
+        @test_throws ArgumentError logpdf(d_extra, data)
     end
 
     @testset "chain_length_distribution" begin

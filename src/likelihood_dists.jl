@@ -45,6 +45,18 @@ function Distributions.logpdf(
             )
         )
     end
+    # The analytical mixture below only ever consumes `prob_concluded`; any
+    # other kwarg (e.g. `n_sim`) would silently be ignored rather than
+    # applied, so refuse instead of pretending to honour it.
+    if !isempty(d.kwargs)
+        throw(
+            ArgumentError(
+                "prob_concluded (the real-time per-cluster finished weight) has no " *
+                    "closed form that accepts $(keys(d.kwargs)); these kwargs have no " *
+                    "effect on this path. Remove them or omit prob_concluded."
+            )
+        )
+    end
     # The mixture is defined against the *observed* chain-size law, the same
     # one `chain_size_distribution` and `loglikelihood(::ChainSizes, ...)`
     # build on every other route; evaluating it against the bare offspring
