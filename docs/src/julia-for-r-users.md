@@ -155,7 +155,8 @@ typeof(NegBin(2.5, 0.16))
 
 Every Julia value has a type, and `x::Type` says that `x` must have that type.
 `NegBin(2.5, 0.16)` returns a `NegativeBinomial` from the Distributions package.
-You will mostly see `::` in function definitions, as in the next section.
+You will mostly see `::` in function definitions, as under [Adding a method
+to an EpiBranch function](#Adding-a-method-to-an-EpiBranch-function) below.
 
 ## Functions ending in `!`
 
