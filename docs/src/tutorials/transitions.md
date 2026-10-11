@@ -509,9 +509,9 @@ end
 
 That's the whole extension surface. Three ingredients (the shared
 `ind.state` dict, callable probability/delay, optional terminal
-arbitration) are enough for the cases this tutorial has worked
-through: independent parallel draws, sequential chains,
-treatment-conditional outcomes, capacity-dependent rates.
+arbitration) are enough for the cases covered here: independent
+parallel draws, sequential chains, treatment-conditional outcomes,
+capacity-dependent rates.
 
 To write your own kind of event, with its own likelihood, see
 [Extending EpiBranch](extending.md).
