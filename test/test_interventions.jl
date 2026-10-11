@@ -2990,11 +2990,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 Recovery(delay = Dirac(5.0)),
             ]
             iso_cases = Scheduled(
-                Isolation(onset_to_isolation_delay = Dirac(0.0), isolation_duration = Inf);
+                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
                 start_after_cases = 10
             )
             iso_reports = Scheduled(
-                Isolation(onset_to_isolation_delay = Dirac(0.0), isolation_duration = Inf);
+                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
                 start_after = ReportedCases(10)
             )
 
