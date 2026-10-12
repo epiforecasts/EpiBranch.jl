@@ -38,8 +38,9 @@ Pkg.add(["Distributions", "StableRNGs", "DataFrames"])
 using EpiBranch
 ```
 
-A few later pages need more: Graphs for the network models, and Turing,
-OptimizationOptimJL and ProfileLikelihood for the pages on fitting.
+A few later pages need more, such as Graphs for the network models and Turing
+for the pages on fitting. The `using` lines at the top of a page name what
+that page needs.
 
 !!! warning "The registered version is older than these pages"
     The registered version (0.1.0) does not run the examples in these pages,
