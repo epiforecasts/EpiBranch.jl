@@ -63,8 +63,8 @@ struct DoseThroughActions <: EpiBranch.AbstractIntervention end
 EpiBranch.continuous_actions(::DoseThroughActions) = true
 # The same action-producer path as `DoseThroughActions`, but also defines
 # `apply_post_transmission!` of its own. `_generation_hooks` has something to
-# name here, but naming only that would miss `intervention_actions`, the hook
-# this branch is actually reached for.
+# name here, but naming only that would miss `intervention_actions`, which
+# this branch always reaches.
 struct DoseThroughActionsAndSettle <: EpiBranch.AbstractIntervention end
 EpiBranch.continuous_actions(::DoseThroughActionsAndSettle) = true
 EpiBranch.apply_post_transmission!(::DoseThroughActionsAndSettle, state, new_contacts) =
