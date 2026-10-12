@@ -118,11 +118,11 @@ function simulate(
         stopping_rules
     )
     _validate_initial_cases(spec.process, sim_opts)
-    return _simulate(
-        spec.process, sim_opts; interventions = spec.interventions,
-        attributes = spec.attributes, progression = spec.progression,
-        observation = spec.observation, recorder = spec.recorder, rng, condition,
-        max_attempts
+    return _run_once_or_retry(
+        spec.process, sim_opts, condition, max_attempts;
+        interventions = spec.interventions, attributes = spec.attributes,
+        progression = spec.progression, observation = spec.observation,
+        recorder = spec.recorder, rng
     )
 end
 

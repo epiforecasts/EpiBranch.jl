@@ -143,3 +143,19 @@ public supports_waning
 # Contact recorder: whether a continuous-time race should keep drawing a
 # pair's contacts after a standing block would otherwise end them.
 public records_contacts
+
+# The pseudo-state a `RouteWindow` lists in its `until` to be cut by whatever
+# the composed interventions remove the case at.
+public INTERVENTION_REMOVAL
+
+# The run seam a model with its own simulation loop defines (a continuous-time
+# race rather than the generation-based engine), and the public wrapper around
+# its construction: it resolves `max_time` from the run's `SimOpts` and
+# reconciles the aggregate bookkeeping, so a single-race model never touches
+# `_max_time` or `_reconcile_sellke_bookkeeping!` directly.
+public simulate_once
+public sellke_race!
+
+# The state a case's infectious window opens at, derived from the composed
+# progression.
+public infectious_from

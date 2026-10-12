@@ -858,7 +858,7 @@ function _sellke_race!(
         rts = routes
     end
     m = length(members)
-    # Candidate times carry the state's timing type (a dual under automatic
+    # Candidate times share the state's timing type (a dual under automatic
     # differentiation), so a gradient with respect to a transmission parameter
     # flows through the contact draws into the infection times.
     best = fill(_timetype(state)(Inf), m)
@@ -1188,6 +1188,36 @@ function _propose!(race, k, opening_id, t)
         race.pending, race.proposals, race.head, race.best, race.represents,
         k, opening_id, t, race.may_block
     )
+end
+
+"""
+    sellke_race!(state, members, rng, sim_opts; kwargs...) -> state
+
+Public wrapper around `_sellke_race!`: resolves the race's
+`max_time` from `sim_opts`'s stopping rules, then reconciles `state`'s
+aggregate bookkeeping (`cumulative_cases`, `max_infection_time`, `extinct`)
+from the per-individual state the race wrote directly, before returning
+`state`. A model with its own simulation loop calls this rather than
+`_sellke_race!` itself, so it never has to resolve `max_time` or reconcile the
+bookkeeping by hand. `kwargs` are `_sellke_race!`'s own — `seed!`, `targets` or
+`routes`, `from`, `until`, `interventions`, `contacts`, `risks`,
+`introduction`, `watches`, `recorder` — everything but `max_time`, which this
+wrapper sets.
+
+A model with more than one natural race partition (a household process, over
+its households, via [`race_groups`](@ref)) calls `_sellke_race!` directly in
+its own loop instead, with `max_time` resolved once outside it, and reconciles
+`state` once after the loop: this wrapper's per-call reconciliation scans
+every individual, which would cost O(races × population) run inside such a
+loop rather than the O(population) a single-race model gets from calling this
+once. See `HouseholdProcess` in the `EpiHouseholds` package.
+"""
+function sellke_race!(
+        state::SimulationState, members::AbstractVector{Int},
+        rng::AbstractRNG, sim_opts::SimOpts; kwargs...
+    )
+    extinct = _sellke_race!(state, members, rng; max_time = _max_time(sim_opts), kwargs...)
+    return _reconcile_sellke_bookkeeping!(state, extinct)
 end
 
 """
