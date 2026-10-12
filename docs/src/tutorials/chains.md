@@ -203,8 +203,8 @@ Carlo estimate. It changes slightly from run to run unless you fix `rng`.
 `max_cases` stops a simulated chain at 100 cases; a chain that reaches the cap
 counts as "at least 100 cases".
 
-The same `model` can be passed to both `simulate` and `loglikelihood`, so
-there is no separate model for fitting and for simulating.
+The same `model` can be passed to both `simulate` and `loglikelihood`: the
+model you fit is the model you simulate.
 
 ## Fitting
 

@@ -359,7 +359,7 @@ What this means in practice:
   against the time they propose it for. A blocked contact does not transmit and
   the contact process carries on: the pair's next contact is drawn from its own
   hazard conditioned on falling later. Blocking each contact with probability
-  `p` therefore thins the force of infection to `(1 - p)` of it, so a pair with
+  `p` thins the force of infection to `(1 - p)` of it, so a pair with
   a one-day mean contact interval and a two-day infectious period infects
   `1 - exp(-1) = 0.63` of the time at efficacy 0.5.
 - Per-individual susceptibility and infectiousness reach the same thinning by a
@@ -1715,7 +1715,7 @@ itself, as mass action between groups. You supply two pieces:
 
 A group is always the *tuple* of `mixing_by` values, so it stays a tuple even
 when there is a single attribute. Under `mixing_by = (:age_band,)` a member of
-band `b` has group `(b,)`, not bare `b`, so inside `rate` you read the band out
+band `b` has group `(b,)`, not bare `b`; inside `rate` you read the band out
 with `group[1]`. That one wrinkle is what usually trips people up on a first
 read.
 

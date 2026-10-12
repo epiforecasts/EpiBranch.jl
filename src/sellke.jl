@@ -858,9 +858,9 @@ function _sellke_race!(
         rts = routes
     end
     m = length(members)
-    # Candidate times carry the state's timing type (a dual under automatic
-    # differentiation), so a gradient with respect to a transmission parameter
-    # flows through the contact draws into the infection times.
+    # Candidate times are held at the state's timing type (a dual under
+    # automatic differentiation), so a gradient with respect to a transmission
+    # parameter flows through the contact draws into the infection times.
     best = fill(_timetype(state)(Inf), m)
     processed = falses(m)
     pos = Dict{Int, Int}(id => k for (k, id) in enumerate(members))
