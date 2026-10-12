@@ -273,10 +273,10 @@ symptomatic and detected, above. A missed case keeps transmitting until
 something else reaches it, and tracing reaches some of them: a symptomatic
 case quarantined as someone else's contact counts as isolated, which together
 with its symptoms satisfies the default trigger, so its own contacts are
-traced after all. Here that happens to 38% of the symptomatic cases the test
-misses. Asymptomatic cases are quarantined about as often, 37% of them here,
-which stops them transmitting but never starts tracing from them, since the
-default trigger asks for symptoms as well as isolation. They are the largest
+traced after all. Here that happens to 37% of the symptomatic cases the test
+misses. Asymptomatic cases are quarantined at the same rate, which stops them
+transmitting but never starts tracing from them, since the default trigger
+asks for symptoms as well as isolation. They are the largest
 block of untraced contacts on this run: tracing reached the case and still
 had nothing to follow.
 
