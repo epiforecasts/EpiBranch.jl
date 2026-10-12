@@ -212,8 +212,9 @@ returned DataFrame holds one combination of the listed values and its
 `params` maps each setting to the values to try. It must include
 `:offspring` (offspring distributions) and may include `:generation_time`,
 `:interventions` (each value is a vector of interventions applied together),
-`:attributes` and `:population_size`. Other settings are rejected, since they
-would not change the simulation. Settings that apply to every run, such as
+`:attributes` and `:population_size`. Those five are the only axes the sweep
+varies, and any other key is rejected, including settings that do change a
+simulation, such as `:progression`. Settings that apply to every run, such as
 `max_cases`, are passed once as keywords. A setting that is a sweep axis is
 given as a vector even when there is only one value to use.
 
