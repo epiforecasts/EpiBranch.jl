@@ -101,9 +101,11 @@ results = simulate(scenario([iso_leaky]), 200; max_cases = 500, rng = rng)
 println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 ```
 
-That is well below the 0.185 the same isolation gives when it holds
-completely: a case that keeps even a third of its infectiousness is most of
-the way back to no isolation at all.
+That falls between the 0.04 with no isolation and the 0.185 the same isolation
+gives when it holds completely. All three numbers are noisy at 200 outbreaks;
+runs of 5,000 put leaky isolation at about 60% of the benefit complete
+isolation buys. So keeping a third of a case's infectiousness costs a good
+part of what isolation achieves without undoing it.
 
 ### Isolation duration
 
