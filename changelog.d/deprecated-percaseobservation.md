@@ -2,7 +2,7 @@
 step, which `simulate`, `progression_loglik`, the chain-size likelihood and
 `end_of_outbreak_probability` all read directly, rather than splitting the
 same reporting process across a `progression` step and an observation
-model. A model is free to carry both while callers migrate.
+model. A model may keep both while callers migrate.
 
 Two behaviours differ between the two routes. `PerCaseObservation` falls
 back to the infection time when its anchor (`:onset_time` by default) is

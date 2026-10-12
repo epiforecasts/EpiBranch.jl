@@ -739,7 +739,7 @@
             @test_throws ArgumentError end_of_outbreak_probability(om, 5.0)
 
             # A `Reporting` step below certainty is under-reporting too, and
-            # must be refused the same way — not just `PerCaseObservation`.
+            # must be refused the same way as `PerCaseObservation`.
             rm = ModelSpec(
                 BranchingProcess(NegBin(R, k), GT);
                 progression = [Reporting(delay = Dirac(0.0), probability = 0.5)]

@@ -178,7 +178,7 @@ end
 
 """
 Scalar detection probability from a model's `Reporting` step in
-`progression`, or `nothing` when it carries none. Shared by the closed-form
+`progression`, or `nothing` when it has none. Shared by the closed-form
 chain-size law, `chain_size_distribution` and `end_of_outbreak_probability`,
 which all read the same per-case reporting source.
 """
@@ -204,7 +204,7 @@ end
 Thin `base` by a `Reporting` step's detection probability, read straight from
 `progression`, so the closed-form chain-size law and `chain_size_distribution`
 read the same source `simulate` and [`progression_loglik`](@ref) do. Returns
-`base` unchanged when `progression` carries no `Reporting` step, or one with
+`base` unchanged when `progression` has no `Reporting` step, or one with
 probability `1`.
 """
 function _fold_reporting(progression, base)

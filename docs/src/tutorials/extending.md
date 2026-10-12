@@ -174,7 +174,7 @@ sets it from a probability gate) and the deprecated `PerCaseObservation`
 (which sets it post-simulation from a detection-probability draw).
 `Reporting` is the one per-case reporting route: the chain-size likelihood,
 `chain_size_distribution` and `end_of_outbreak_probability` all read it
-directly. Carrying both in the same model still works for `simulate`, but
+directly. Having both in the same model still works for `simulate`, but
 `apply_observation!`'s post-run draw overwrites `Reporting`'s.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
