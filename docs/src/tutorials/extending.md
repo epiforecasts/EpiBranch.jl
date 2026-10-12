@@ -1667,8 +1667,8 @@ infection-time order, rather than the generation-based engine) receives the
 composed layers as arguments instead: define
 [`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
 attributes, progression, observation, recorder, rng)`, read the layers off the
-arguments, and derive any window state you need — the infectious window's
-`from`, say, via [`EpiBranch.infectious_from`](@ref)`(progression)` — there.
+arguments, and derive any window state you need (the infectious window's
+`from`, say, via [`EpiBranch.infectious_from`](@ref)`(progression)`) there.
 `simulate` calls this once, or repeatedly when a `condition` is given, so your
 method takes no `condition`/`max_attempts` of its own. Drive the race with
 [`EpiBranch.sellke_race!`](@ref), passing it `sim_opts` so it resolves

@@ -1277,9 +1277,9 @@ aggregate bookkeeping (`cumulative_cases`, `max_infection_time`, `extinct`)
 from the per-individual state the race wrote directly, before returning
 `state`. A model with its own simulation loop calls this rather than
 `_sellke_race!` itself, so it never has to resolve `max_time` or reconcile the
-bookkeeping by hand. `kwargs` are `_sellke_race!`'s own — `seed!`, `targets` or
+bookkeeping by hand. `kwargs` are `_sellke_race!`'s own (`seed!`, `targets` or
 `routes`, `from`, `until`, `interventions`, `contacts`, `risks`,
-`introduction`, `watches`, `recorder` — everything but `max_time`, which this
+`introduction`, `watches`, `recorder`), everything but `max_time`, which this
 wrapper sets.
 
 A model with more than one natural race partition (a household process, over
