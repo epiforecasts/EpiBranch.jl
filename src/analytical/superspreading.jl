@@ -292,8 +292,8 @@ more others, which raises R above what the average number of contacts
 suggests.
 
 - `mean_contacts`, `sd_contacts`: mean and standard deviation of the number
-  of contacts per person per day.
-- `duration`: duration of infectiousness, in days.
+  of contacts one person makes per unit of time.
+- `duration`: duration of infectiousness, in the same unit of time.
 - `prob_transmission`: probability of transmission per contact.
 
 Returns `(R = ..., R_net = ...)`:
