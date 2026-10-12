@@ -92,24 +92,64 @@ function _hook_arities()
     return out
 end
 
-# Warn when an intervention has a method of its own for a hook but at no
-# number of arguments the engine calls that hook with. The engine calls each
-# hook at a fixed arity, so such a method is never the one a call resolves to
-# and the no-op default runs instead: the hook is written, reads correctly,
-# and does nothing. This is the shape a dropped argument takes on an
-# intervention that implements several hooks, which
-# `_warn_inert_interventions` cannot see, since one correct hook is enough to
-# make the intervention reachable.
-function _warn_misaritied_hooks(T::Type)
-    for (f, arities, sigs) in _hook_arities()
-        _has_own_method(f, T, AbstractIntervention) || continue
-        any(n -> _has_own_method(f, T, AbstractIntervention, n), arities) && continue
-        @warn "$(nameof(T)) has a method of its own for $(nameof(f)), but " *
-            "at no number of arguments the engine calls it with, so the " *
-            "method is never reached and the no-op default runs in its " *
-            "place. The engine calls: $(join(sigs, ", "))." intervention = T
+# Whether the author's own module holds a function of the hook's name that is
+# not the package's, with a method for this intervention: what a hook defined
+# without the `EpiBranch.` prefix leaves behind. Looked for in
+# `parentmodule(T)`, since the hook and the type are written together.
+function _shadowing_hook(f, T::Type)
+    name = nameof(f)
+    mod = parentmodule(T)
+    isdefined(mod, name) || return false
+    g = getglobal(mod, name)
+    (g isa Function && g !== f) || return false
+    return any(methods(g)) do mm
+        params = Base.unwrap_unionall(mm.sig).parameters
+        length(params) < 2 && return false
+        p = params[2]
+        p isa TypeVar && (p = p.ub)
+        p isa Type && T <: p
     end
-    return nothing
+end
+
+# Warn, per hook, about a method an intervention meant as that hook which the
+# engine will never call: one written at an arity no call uses, or one added
+# without the `EpiBranch.` prefix and so belonging to a new function of the
+# same name. Either way the hook reads correctly and the no-op default runs.
+# Returns how many it found, so the caller can tell a diagnosis from silence.
+function _warn_hook_mistakes(T::Type)
+    found = 0
+    for (f, arities, sigs) in _hook_arities()
+        if _has_own_method(f, T, AbstractIntervention)
+            any(n -> _has_own_method(f, T, AbstractIntervention, n), arities) && continue
+            found += 1
+            @warn "$(nameof(T)) has a method of its own for $(nameof(f)), but " *
+                "at no number of arguments the engine calls it with, so the " *
+                "method is never reached and the no-op default runs in its " *
+                "place. The engine calls: $(join(sigs, ", "))." intervention = T
+        elseif _shadowing_hook(f, T)
+            found += 1
+            @warn "$(parentmodule(T)) defines a method of $(nameof(f)) for " *
+                "$(nameof(T)), but on its own function of that name rather " *
+                "than the package's, so the engine never calls it. Write it " *
+                "as `EpiBranch.$(nameof(f))(...)`." intervention = T
+        end
+    end
+    return found
+end
+
+# Each intervention type is examined once: the answer depends only on the
+# type and the methods written for it, and `ModelSpec` is built inside an
+# inference loop in the documented Turing recipe, where repeating the method
+# scans costs far more than the checks are worth.
+const _CHECKED_INTERVENTIONS = Set{Type}()
+const _CHECKED_INTERVENTIONS_LOCK = ReentrantLock()
+
+function _first_sight(T::Type)
+    return lock(_CHECKED_INTERVENTIONS_LOCK) do
+        T in _CHECKED_INTERVENTIONS && return false
+        push!(_CHECKED_INTERVENTIONS, T)
+        return true
+    end
 end
 
 # Warn when a composed intervention has a method of its own for none of
@@ -123,13 +163,14 @@ end
 function _warn_inert_interventions(interventions)
     for iv in interventions
         T = typeof(_unwrap_scheduled(iv))
+        _first_sight(T) || continue
         reachable = any(_effect_hooks()) do (f, n, _)
             _has_own_method(f, T, AbstractIntervention, n)
         end
-        if reachable
-            _warn_misaritied_hooks(T)
-            continue
-        end
+        # A diagnosis of the hook at fault stands in for the general message,
+        # which lists every hook and has to guess at the cause.
+        named = _warn_hook_mistakes(T)
+        (reachable || named > 0) && continue
         @warn "$(nameof(T)) has a method of its own for none of the hooks the " *
             "package calls, so it can have no effect on the simulation or on " *
             "the likelihood: " *

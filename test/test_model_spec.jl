@@ -22,8 +22,24 @@ end
 struct BlockWrongArity <: AbstractIntervention end
 EpiBranch.competing_risk(::BlockWrongArity, parent, contact) = Risk(block_probability = 1.0)
 
+# The same mistake on a second type, for the wrapper check: a type is
+# examined once per session, so re-checking `BlockWrongArity` inside a
+# wrapper would find it already seen.
+struct WrappedWrongArity <: AbstractIntervention end
+EpiBranch.competing_risk(::WrappedWrongArity, parent, contact) =
+    Risk(block_probability = 1.0)
+
 struct BlockUnqualified <: AbstractIntervention end
 competing_risk(::BlockUnqualified, parent, contact, state) = Risk(block_probability = 1.0)
+
+# One hook written correctly and one written without the `EpiBranch.` prefix,
+# so the second lands on the test module's own `competing_risk` above. The
+# intervention is reachable through the first, so only a per-hook check sees
+# the second.
+struct MixedPrefix <: AbstractIntervention end
+EpiBranch.initialise_individual!(::MixedPrefix, ind, state) =
+    (ind.state[:flagged] = true; nothing)
+competing_risk(::MixedPrefix, parent, contact, state) = Risk(block_probability = 1.0)
 
 # Implements only the least common of `_effect_hooks()`, to check the full set
 # is read rather than a subset headlined by `competing_risk`.
@@ -250,20 +266,37 @@ _all_variadic(args...) = nothing
         bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
 
         # Wrong arity: the method exists but is never the one a four-argument
-        # call to `competing_risk` resolves to.
-        @test_logs (:warn, r"BlockWrongArity has a method of its own for none") match_mode = :any ModelSpec(
-            bp; interventions = [BlockWrongArity()]
-        )
-        # Unqualified: the method belongs to a different function entirely.
-        @test_logs (:warn, r"BlockUnqualified has a method of its own for none") match_mode = :any ModelSpec(
-            bp; interventions = [BlockUnqualified()]
-        )
+        # call to `competing_risk` resolves to. The hook at fault is named,
+        # rather than every hook being listed.
+        @test_logs (
+            :warn,
+            r"BlockWrongArity has a method of its own for competing_risk, but at no number of arguments",
+        ) match_mode = :any ModelSpec(bp; interventions = [BlockWrongArity()])
+        # Unqualified: the method belongs to a different function entirely,
+        # which is found in the module the intervention was written in.
+        @test_logs (
+            :warn,
+            r"defines a method of competing_risk for BlockUnqualified, but on its own function",
+        ) match_mode = :any ModelSpec(bp; interventions = [BlockUnqualified()])
+        # A missing prefix on one hook of an intervention whose other hooks
+        # are fine: the intervention is reachable, so only the per-hook
+        # check can see it.
+        @test_logs (
+            :warn,
+            r"defines a method of competing_risk for MixedPrefix, but on its own function",
+        ) match_mode = :any ModelSpec(bp; interventions = [MixedPrefix()])
         # Wrapping does not hide it: the check reads the wrapped type, since
         # a wrapper such as `Scheduled` always has its own delegating methods
         # whatever it wraps.
-        @test_logs (:warn, r"BlockWrongArity has a method of its own for none") match_mode = :any ModelSpec(
-            bp; interventions = [Scheduled(BlockWrongArity(); start_time = 1.0)]
+        @test_logs (
+            :warn,
+            r"WrappedWrongArity has a method of its own for competing_risk",
+        ) match_mode = :any ModelSpec(
+            bp; interventions = [Scheduled(WrappedWrongArity(); start_time = 1.0)]
         )
+        # A type is examined once per session, so building a second spec with
+        # the same intervention does not repeat the warning.
+        @test_logs ModelSpec(bp; interventions = [BlockWrongArity()])
         # A hook outside `competing_risk`, at the right arity, is enough to
         # stay silent: the check reads the full set, not just `competing_risk`.
         @test_logs ModelSpec(bp; interventions = [_ActionsOnly()])

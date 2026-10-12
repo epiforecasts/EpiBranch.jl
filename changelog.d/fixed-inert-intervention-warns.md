@@ -1,5 +1,6 @@
-`ModelSpec` now warns when a composed intervention has no method of its own,
-at the right arity, for any hook the engine calls. A hook written with the
-wrong number of arguments, or defined without the `EpiBranch.` prefix needed
-to add a method rather than shadow it, previously fell back to the package's
-no-op default with no sign that the intervention was inert.
+`ModelSpec` now warns when a composed intervention's hooks will not be
+called. A hook written with the wrong number of arguments, or defined without
+the `EpiBranch.` prefix needed to add a method rather than shadow it,
+previously fell back to the package's no-op default with no sign that
+anything was missing. The warning names the hook at fault in both cases, and
+an intervention with no reachable hook at all is reported on its own.
