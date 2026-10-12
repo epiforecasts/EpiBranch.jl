@@ -322,8 +322,8 @@ which makes [`extinction_probability`](@ref), [`epidemic_probability`](@ref),
 [`proportion_transmission`](@ref), [`proportion_cases_individual`](@ref),
 [`proportion_cases_offspring`](@ref), [`proportion_cluster_size`](@ref),
 `end_of_outbreak_probability` and [`offspring_distribution`](@ref) throw
-too when called on a [`ModelSpec`](@ref) with an intervention that has no
-method.
+too when called on a [`ModelSpec`](@ref), or a process that stores its own
+interventions, holding an intervention that has no method.
 """
 function analytic_offspring_effect(iv::AbstractIntervention, offspring)
     throw(

@@ -189,12 +189,20 @@ this is the same `Distribution` you passed in as `offspring`.
 end
 ```
 
-For a `ModelSpec`, each intervention's
-[`EpiBranch.analytic_offspring_effect`](@ref) is applied to the offspring
-distribution first. If an intervention has no such method, this throws an
-error that names the simulation-based alternative.
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
 function offspring_distribution(model::TransmissionModel)
+    return _offspring_through_interventions(model, _per_case_offspring(model))
+end
+
+function offspring_distribution(spec::ModelSpec)
+    return _offspring_through_interventions(spec, _per_case_offspring(spec.process))
+end
+
+function _per_case_offspring(model::TransmissionModel)
     off = single_type_offspring(model)
     # `single_type_offspring` may return a spec that has a chain-size law
     # but no per-individual offspring `Distribution` (e.g. `ClusterMixed`,
@@ -209,8 +217,4 @@ function offspring_distribution(model::TransmissionModel)
         )
     )
     return off
-end
-
-function offspring_distribution(spec::ModelSpec)
-    return _offspring_through_interventions(spec, offspring_distribution(spec.process))
 end

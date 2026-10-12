@@ -156,11 +156,12 @@ end
 
 # ── Interventions in the analytical functions ────────────────────────
 #
-# Each analytical function on a spec reads the offspring distribution and
-# passes it through every intervention's `analytic_offspring_effect`. An
-# intervention without a method reaches the generic one, which throws.
-function _offspring_through_interventions(spec::ModelSpec, offspring)
-    for iv in interventions(spec)
+# Each analytical function reads the offspring distribution and passes it
+# through every intervention the model holds, on a spec or on a process that
+# stores its own, via `analytic_offspring_effect`. An intervention without a
+# method reaches the generic one, which throws.
+function _offspring_through_interventions(model, offspring)
+    for iv in interventions(model)
         offspring = analytic_offspring_effect(iv, offspring)
     end
     return offspring

@@ -20,6 +20,15 @@ struct _HalfThinning <: AbstractIntervention end
 EpiBranch.analytic_offspring_effect(::_HalfThinning, d::NegativeBinomial) =
     NegBin(mean(d) / 2, d.r)
 
+# A process that stores its own interventions, as a custom process may, to
+# check the analytical functions apply those as well.
+struct _ProcessWithInterventions <: EpiBranch.TransmissionModel
+    offspring::NegativeBinomial{Float64}
+    interventions::Vector{AbstractIntervention}
+end
+EpiBranch.single_type_offspring(m::_ProcessWithInterventions) = m.offspring
+EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
+
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
     # attributes, observation) around a pure transmission process. The process
@@ -112,6 +121,23 @@ EpiBranch.analytic_offspring_effect(::_HalfThinning, d::NegativeBinomial) =
         # A spec with no interventions is unaffected.
         bare = ModelSpec(bp)
         @test extinction_probability(bare) == extinction_probability(bp)
+    end
+
+    @testset "a process's own interventions are applied too" begin
+        iso = Isolation(onset_to_isolation_delay = 0.0, duration = Inf)
+        isolated = _ProcessWithInterventions(NegBin(2.5, 0.5), [iso])
+        for f in (
+                extinction_probability, epidemic_probability, probability_contain,
+                reproduction_number, proportion_transmission, offspring_distribution,
+                proportion_cases_individual, proportion_cases_offspring,
+                proportion_cluster_size,
+            )
+            @test_throws r"Isolation" f(isolated)
+        end
+
+        thinned = _ProcessWithInterventions(NegBin(2.5, 0.5), [_HalfThinning()])
+        @test offspring_distribution(thinned) == NegBin(1.25, 0.5)
+        @test reproduction_number(thinned) ≈ 1.25
     end
 
     @testset "a declared offspring effect is applied analytically" begin

@@ -67,24 +67,17 @@ which needs the Volterra recursion of Thompson, Morgan & Jansen (2019)
 and is not implemented here. Evaluate on a model with no observation to
 get the full-reporting (`ρ = 1`) value.
 
-For a `ModelSpec`, each intervention's
-[`EpiBranch.analytic_offspring_effect`](@ref) is applied to the offspring
-distribution first. If an intervention has no such method, this throws an
-error that names the simulation-based alternative.
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
-function end_of_outbreak_probability(model::BranchingProcess, τ::Real)
+function end_of_outbreak_probability(model::Union{BranchingProcess, ModelSpec}, τ::Real)
     # Refuse under per-case under-reporting rather than silently using
     # the bare offspring: makes the missing `ρ < 1` case discoverable.
     _eoo_assert_full_reporting(observation(model))
-    return end_of_outbreak_probability(
-        single_type_offspring(model), _single_kernel(model), τ
-    )
-end
-
-function end_of_outbreak_probability(spec::ModelSpec, τ::Real)
-    _eoo_assert_full_reporting(observation(spec))
-    off = _offspring_through_interventions(spec, single_type_offspring(spec))
-    return end_of_outbreak_probability(off, _single_kernel(spec), τ)
+    off = _offspring_through_interventions(model, single_type_offspring(model))
+    return end_of_outbreak_probability(off, _single_kernel(model), τ)
 end
 
 _eoo_assert_full_reporting(::NoObservation) = nothing
