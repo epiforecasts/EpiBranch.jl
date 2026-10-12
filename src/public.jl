@@ -18,7 +18,6 @@ public reset!
 public required_fields
 public infectious_removal_time
 public risk_applies
-public risk_depends_on_infector
 public reads_population_state
 public standing_block
 # End an infection early from any intervention hook, and read when it ended.
@@ -148,14 +147,12 @@ public records_contacts
 public INTERVENTION_REMOVAL
 
 # The run seam a model with its own simulation loop defines (a continuous-time
-# race rather than the generation-based engine), and the two continuous-time
-# constructions it is likely to drive: the public wrappers resolve `max_time`
-# from the run's `SimOpts` and reconcile the aggregate bookkeeping, so a
-# single-race model never touches `_max_time` or `_reconcile_sellke_bookkeeping!`
-# directly.
+# race rather than the generation-based engine), and the public wrapper around
+# its construction: it resolves `max_time` from the run's `SimOpts` and
+# reconciles the aggregate bookkeeping, so a single-race model never touches
+# `_max_time` or `_reconcile_sellke_bookkeeping!` directly.
 public simulate_once
 public sellke_race!
-public sellke_pool!
 
 # The state a case's infectious window opens at, derived from the composed
 # progression.

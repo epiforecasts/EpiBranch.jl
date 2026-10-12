@@ -35,7 +35,7 @@ Network and household races execute supported ring and group actions through
 this protocol. Mass vaccination and legacy batch-only interventions remain
 unsupported there. Ring delivery on these races requires an infinite eligibility
 window and zero post-exposure efficacy; pending infection times are unknown.
-The homogeneous pool has no contact-tracing action path.
+`HomogeneousProcess` has no contact-tracing action path.
 
 ```julia
 CapacityConstrained(RingVaccination(efficacy = 0.8);

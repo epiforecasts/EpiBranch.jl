@@ -117,7 +117,6 @@ make_contact!
 susceptible_fraction
 EpiBranch.infectious_from
 EpiBranch.sellke_race!
-EpiBranch.sellke_pool!
 ```
 
 ### Building a model's starting population
@@ -215,7 +214,6 @@ EpiBranch.keep_active
 EpiBranch.competing_risk
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
-EpiBranch.risk_depends_on_infector
 EpiBranch.standing_block
 EpiBranch.intervention_time
 EpiBranch.reset!
