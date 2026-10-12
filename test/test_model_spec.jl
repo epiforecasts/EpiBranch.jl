@@ -247,7 +247,7 @@ EpiBranch.competing_risk(::BlockVariadic, args...) = Risk(block_probability = 1.
         @test_logs ModelSpec(bp; interventions = [BlockVariadic()])
         # `Isolation` implements several hooks properly and stays silent too.
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.0), isolation_duration = Inf
+            onset_to_isolation_delay = Exponential(1.0), duration = Inf
         )
         @test_logs ModelSpec(bp; interventions = [iso])
     end
