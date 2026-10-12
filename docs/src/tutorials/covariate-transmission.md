@@ -1,11 +1,10 @@
 # Covariates and time-varying transmission
 
-How does transmission change with who is in contact, with the time of year, or
-with a policy introduced during the outbreak? In [network](@ref "Network models")
-and [household](@ref "Household models") models, transmission between each pair
-of people is described by the contact interval. This page shows how to make it
-depend on the two people, on the calendar date, and on events during the
-outbreak, both in simulation and in the pairwise likelihood used for fitting.
+In [network](@ref "Network models") and [household](@ref "Household models")
+models, transmission between each pair of people is described by the contact
+interval, and often depends on who the two people are, on the calendar date, or
+on events during the outbreak. This page shows how to make it depend on each of
+these, both in simulation and in the pairwise likelihood used for fitting.
 
 The contact interval is the waiting time from the start of the infector's
 infectious period until the infector would infect a given contact, if that
