@@ -214,7 +214,25 @@ returned DataFrame holds one combination of the listed values and its
 `:interventions` (each value is a vector of interventions applied together),
 `:attributes` and `:population_size`. Other settings are rejected, since they
 would not change the simulation. Settings that apply to every run, such as
-`max_cases`, are passed once as keywords.
+`max_cases`, are passed once as keywords. A setting that is a sweep axis is
+given as a vector even when there is only one value to use.
+
+```julia
+results = scenario_sweep(
+    Dict(
+        :offspring => [NegBin(2.5, 0.16), NegBin(1.5, 0.5)],
+        # Each value is a whole stack of interventions, so one vector per delay.
+        :interventions => [
+            [Isolation(onset_to_isolation_delay = Exponential(d), duration = 7.0)]
+                for d in [1.0, 5.0]
+        ],
+        :attributes => [clinical_presentation(incubation_period = LogNormal(1.6, 0.5))],
+    );
+    n_sim = 200, max_cases = 500
+)
+```
+
+Four combinations, so four rows.
 """
 function scenario_sweep(
         params::Dict{Symbol, <:AbstractVector};
