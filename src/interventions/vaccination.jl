@@ -554,7 +554,7 @@ Hook called by `_record_vaccination!` after it draws the shared effects
 further per-dose effect a vaccination type has of its own, such as
 [`RingVaccination`](@ref)'s `post_exposure_efficacy` and `onward_efficacy`. The
 default does nothing. A method typically calls [`store_draw!`](@ref) for each
-such effect; see the Extending guide for a worked example.
+such effect; see [A custom vaccination](@ref) for a worked example.
 """
 record_effect_draws!(::AbstractVaccination, contact, label, rng) = nothing
 
