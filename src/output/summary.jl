@@ -227,6 +227,10 @@ results = scenario_sweep(
                 for d in [1.0, 5.0]
         ],
         :attributes => [clinical_presentation(incubation_period = LogNormal(1.6, 0.5))],
+        # Without a generation time every secondary case is infected at its
+        # infector's own infection time, and an isolation that starts later
+        # has nothing left to prevent.
+        :generation_time => [LogNormal(1.6, 0.5)],
     );
     n_sim = 200, max_cases = 500
 )
