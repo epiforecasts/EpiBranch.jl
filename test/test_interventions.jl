@@ -2230,7 +2230,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 @test !haskey(st, :outcome) && !haskey(st, :outcome_time)
 
                 control = course(false)
-                # The unconditional Death fires at 6.0, before the
+                # The unconditional Death occurs at 6.0, before the
                 # hospitalisation at 7.0 it is timed independently of;
                 # censor_after_outcome! undoes that non-terminal event too,
                 # the same "stands only before the outcome" rule as the

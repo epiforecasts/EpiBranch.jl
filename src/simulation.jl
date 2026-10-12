@@ -1371,7 +1371,7 @@ interval, so blocking a fraction of the contacts thins the hazard by the same
 fraction. `builtin_blocks` is where the two part company, dropping
 four of the five built-in sources on a continuous-time model: two that cannot
 apply there, and the per-individual susceptibility and infectiousness, which
-those models already carry in the contact-interval draw.
+those models already fold into the contact-interval draw.
 Nothing is drawn from the rng unless a risk actually applies."""
 function _composed_risks_block(
         state::SimulationState, parent, contact,
