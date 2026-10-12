@@ -3001,10 +3001,9 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             inds[1].state[:reporting_time] = Inf
             @test EpiBranch.is_triggered!(ReportedCases(2), state)
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
-            # The clock the count is read against is not monotone: admitting a
-            # scheduled action asks the gate with the action's own time, so
-            # the trigger keeps the conservative default.
-            @test EpiBranch.trigger_can_lapse(ReportedCases(2))
+            # Reports already due never stop being due, so the gate holds
+            # once it opens and the schedule it starts cannot close.
+            @test !EpiBranch.trigger_can_lapse(ReportedCases(2))
 
             # The count reads the report time it needs rather than indexing
             # it, so a `:reported` flag from anywhere else does not throw.
@@ -3336,13 +3335,28 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # An opaque predicate could read anything, so it stays conservative.
         @test reads(Scheduled(iso, state -> true))
 
-        # `Scheduled` reads `can_lapse` from the trigger. `Infections` counts
-        # something that can only rise, so it does not make the schedule
-        # lapse; `ReportedCases` dates its count against a clock that is not
-        # monotone, and a trigger with no opinion is conservative.
+        # `Scheduled` reads `can_lapse` from the trigger. `Infections` and
+        # `ReportedCases` both count something that can only rise, so neither
+        # makes the schedule lapse; a trigger with no opinion is conservative.
         @test !Scheduled(iso; start_after = Infections(10)).can_lapse
-        @test Scheduled(iso; start_after = ReportedCases(10)).can_lapse
+        @test !Scheduled(iso; start_after = ReportedCases(10)).can_lapse
         @test Scheduled(iso; start_after = _AlwaysOpenTrigger()).can_lapse
+
+        # What `can_lapse` buys: a schedule that cannot close speaks for the
+        # isolation releases its intervention recorded, so a report-gated
+        # schedule hands the likelihood the same stretches as the case-gated
+        # one it matches. With `can_lapse` these come back empty and the
+        # likelihood charges each pair for the time the host was isolated.
+        iso7 = Isolation(
+            onset_to_isolation_delay = Exponential(1.0), duration = 7.0
+        )
+        by_cases = Scheduled(iso7; start_after_cases = 10)
+        by_reports = Scheduled(iso7; start_after = ReportedCases(10))
+        @test !isempty(EpiBranch.removal_gap_host_times(by_cases))
+        @test EpiBranch.removal_gap_host_times(by_reports) ==
+            EpiBranch.removal_gap_host_times(by_cases)
+        @test EpiBranch.binding_release(by_reports) ==
+            EpiBranch.binding_release(by_cases)
 
         # A shared budget is read across every individual.
         @test reads(CapacityConstrained(ring; budget_per_period = 5.0))

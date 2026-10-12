@@ -136,11 +136,16 @@ function is_triggered! end
 Whether `trigger`'s condition, once true, can turn false again. The
 default is the conservative `true`: a trigger written outside the package
 is assumed able to close again until it says otherwise, as an opaque
-[`Scheduled`](@ref) predicate already is. [`Infections`](@ref) returns
-`false`, since `cumulative_cases` only ever rises. [`ReportedCases`](@ref)
-keeps the default: the report count only rises, but the clock it is counted
-against does not, since admitting a scheduled action asks the gate with the
-action's own time in place of the simulation clock.
+[`Scheduled`](@ref) predicate already is. [`Infections`](@ref) and
+[`ReportedCases`](@ref) both return `false`, since neither `cumulative_cases`
+nor the number of reports already due can fall.
+
+Answer about the accepted timeline. Admitting a scheduled action asks the gate
+with that action's own time in place of the simulation clock, which settles
+whether that action is admitted rather than whether the window closes. The
+distinction is worth the care: a schedule that can close speaks for none of
+the isolation releases its intervention recorded, so `true` where `false`
+belongs costs a likelihood term rather than buying safety.
 """
 trigger_can_lapse(::AbstractTrigger) = true
 
@@ -245,6 +250,10 @@ struct ReportedCases <: AbstractTrigger
 end
 is_triggered!(t::ReportedCases, state::SimulationState) = _reported_cases_due(state) >= t.n
 required_transitions(::ReportedCases) = (Reporting,)
+# Reports already due never stop being due: a report written for an earlier
+# episode is counted from the archive once the host is reinfected, and the
+# accepted clock only rises.
+trigger_can_lapse(::ReportedCases) = false
 
 # ── Keyword convenience constructor ──────────────────────────────────
 

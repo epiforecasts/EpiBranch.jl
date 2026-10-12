@@ -713,12 +713,13 @@ change to `Scheduled`. One method is required and two traits have defaults:
   a count the engine already keeps, as `Infections` reads `cumulative_cases`,
   costs nothing.
 - **`trigger_can_lapse(trigger)`** — whether the condition, once
-  true, can turn false again. The default is the conservative `true`. Return
-  `false` only for a condition that cannot turn false again, as `Infections`
-  does for `cumulative_cases`. A monotone quantity is not enough on its own:
-  `ReportedCases` keeps the default because the clock it dates reports
-  against is not monotone, admitting a scheduled action asking the gate with
-  the action's own time in place of the simulation clock.
+  true, can turn false again as the clock advances. The default is the
+  conservative `true`. Return `false` for a condition that holds for good, as
+  `Infections` and `ReportedCases` both do: neither the case count nor the
+  number of reports already due can fall. The default is not free, so answer
+  it rather than leaving it: a schedule that can close speaks for none of the
+  isolation releases its intervention recorded, and the likelihood loses
+  them.
 - **`required_transitions(trigger)`** — the transition types the trigger needs
   the model's `progression` to hold, `()` by default. `ModelSpec` warns, naming
   the trigger, when a model does not hold one: without the transition that
