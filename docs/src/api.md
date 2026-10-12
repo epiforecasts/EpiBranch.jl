@@ -18,9 +18,11 @@ they are used for. Most analyses need only a few of them:
 Delays and times are in whatever unit the delay distributions use; the
 documentation uses days throughout. Names written as `EpiBranch.name` are not
 made available by `using EpiBranch` and have to be written in full. A function
-whose name ends in `!` changes its first argument in place. The last section,
-[For extension authors](@ref), lists what you need only to write a new model,
-intervention or observation model.
+whose name ends in `!` changes one of its arguments in place: for the
+extension hooks that is the simulation state or the person being resolved,
+while the first argument is the intervention, step or action the method is
+written for. The last section, [For extension authors](@ref), lists what you
+need only to write a new model, intervention or observation model.
 
 ## Transmission models
 
