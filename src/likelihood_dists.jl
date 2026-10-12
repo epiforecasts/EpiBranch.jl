@@ -148,7 +148,7 @@ function chain_size_distribution(
             isempty(interventions(model))
         return observe(
             chain_size_distribution(single_type_offspring(model)),
-            observation(model)
+            _reporting_observation(_progression(model), observation(model))
         )
     end
     return _ChainSizeLaw(model, seeds, prob_concluded, NamedTuple(kwargs))
@@ -162,7 +162,7 @@ function chain_size_distribution(
             isempty(interventions(spec))
         return observe(
             chain_size_distribution(single_type_offspring(spec.process)),
-            observation(spec)
+            _reporting_observation(_progression(spec), observation(spec))
         )
     end
     return _ChainSizeLaw(spec, seeds, prob_concluded, NamedTuple(kwargs))

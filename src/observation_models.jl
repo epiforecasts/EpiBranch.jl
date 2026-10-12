@@ -49,6 +49,10 @@ per-individual reporting.
 `detection_prob = 1.0, delay = Dirac(0.0)` ↔ no observation effect.
 `detection_prob = 1.0, delay = D` ↔ full reporting with delay `D`.
 `detection_prob = ρ, delay = Dirac(0.0)` ↔ binomial thinning, no delay.
+
+Describes the same reporting process as [`Reporting`](@ref), a `progression`
+step: `ModelSpec` refuses a model that carries both, since `simulate` would
+let this observation's own draw silently overwrite `Reporting`'s.
 """
 struct PerCaseObservation{P, D, F} <: ObservationModel
     detection_prob::P

@@ -175,3 +175,31 @@ function observe(base, o::PerCaseObservation)
     # directly to the base distribution's own multi-seed implementation.
     return p == 1.0 ? base : ThinnedChainSize(base, p)
 end
+
+"""
+Fold a `Reporting` step in `progression` into `obs`, so the closed-form
+chain-size law reads the same detection probability `simulate` and
+[`progression_loglik`](@ref) already do. `ModelSpec` refuses to carry both a
+`Reporting` step and a non-`NoObservation` observation (see its constructor),
+so `obs` here is always `NoObservation` whenever a `Reporting` step is
+present; returns `obs` unchanged when `progression` carries none.
+"""
+function _reporting_observation(progression, obs)
+    reporting = filter(t -> t isa Reporting, progression)
+    isempty(reporting) && return obs
+    length(reporting) == 1 || throw(
+        ArgumentError(
+            "the closed-form chain-size law supports at most one `Reporting` " *
+                "step in `progression`; got $(length(reporting))"
+        )
+    )
+    p = only(reporting).probability
+    p isa Real || throw(
+        ArgumentError(
+            "the closed-form chain-size law needs a scalar `Reporting` " *
+                "probability; got $(typeof(p)). Use the simulation-based " *
+                "likelihood instead, or pass a Real value."
+        )
+    )
+    return PerCaseObservation(; detection_prob = float(p))
+end

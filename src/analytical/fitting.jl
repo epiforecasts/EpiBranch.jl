@@ -227,19 +227,19 @@ function _sim_loglikelihood(
     return _empirical_ll(observed, sim_values; min_val, censored, cap)
 end
 
-# Observed chain sizes for one simulated state. Dispatch on the model's
-# observation: with `NoObservation` every infected case counts;
-# otherwise only the cases the observation marked `:reported`.
-_sim_chain_sizes(state, ::NoObservation) = chain_statistics(state).size
-function _sim_chain_sizes(state, o::MinimumSize)
-    return filter(>=(o.min_size), chain_statistics(state).size)
+# Observed chain sizes for one simulated state. With `NoObservation` and no
+# `Reporting` step in `progression`, nothing thins detection: every infected
+# case counts. Otherwise only the cases marked `:reported` count — written by
+# `Reporting` during the progression pass, or by `apply_observation!`
+# afterwards for an observation model (`ModelSpec` refuses to carry both, see
+# its constructor, so only one of the two ever sets the flag).
+function _sim_chain_sizes(state, obs::MinimumSize, progression)
+    return filter(>=(obs.min_size), chain_statistics(state).size)
 end
-
-# The smallest size an observation could have recorded, which the empirical
-# likelihood bins from.
-_observed_min_size(::ObservationModel) = 1
-_observed_min_size(o::MinimumSize) = o.min_size
-function _sim_chain_sizes(state, ::ObservationModel)
+function _sim_chain_sizes(state, obs, progression)
+    if obs isa NoObservation && !any(t -> t isa Reporting, progression)
+        return chain_statistics(state).size
+    end
     counts = Dict{Int, Int}()
     for ind in state.individuals
         (is_infected(ind) && get(ind.state, :reported, false)) || continue
@@ -247,6 +247,11 @@ function _sim_chain_sizes(state, ::ObservationModel)
     end
     return collect(values(counts))
 end
+
+# The smallest size an observation could have recorded, which the empirical
+# likelihood bins from.
+_observed_min_size(::ObservationModel) = 1
+_observed_min_size(o::MinimumSize) = o.min_size
 
 """
     loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
@@ -293,7 +298,10 @@ function _chain_size_model_loglik(
     # `single_type_offspring` throws and the evaluation falls through to simulation.
     if isempty(ivs)
         try
-            d = observe(chain_size_distribution(single_type_offspring(process)), obs)
+            d = observe(
+                chain_size_distribution(single_type_offspring(process)),
+                _reporting_observation(prog, obs)
+            )
             return _chain_size_loglik(d, data)
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
@@ -313,7 +321,7 @@ function _chain_size_model_loglik(
     cap = _case_cap(sim_opts)
     for state in states
         hit_cap = !state.extinct && state.cumulative_cases >= cap
-        for v in _sim_chain_sizes(state, obs)
+        for v in _sim_chain_sizes(state, obs, prog)
             push!(sim_values, v)
             push!(censored, hit_cap)
         end
