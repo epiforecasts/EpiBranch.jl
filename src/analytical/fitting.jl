@@ -230,10 +230,8 @@ end
 # Observed chain sizes for one simulated state. With `NoObservation` and no
 # `Reporting` step in `progression`, detection is not thinned at all, so
 # every infected case counts. Otherwise only the cases marked `:reported`
-# count. That flag is set either by `Reporting` during the progression pass,
-# or by `apply_observation!` afterwards for an observation model; since
-# `ModelSpec`'s constructor refuses a model that specifies both, only one of
-# the two ever sets it.
+# count, written by `Reporting` during the progression pass, by
+# `apply_observation!` afterwards for an observation model, or both.
 function _sim_chain_sizes(state, obs::MinimumSize, progression)
     return filter(>=(obs.min_size), chain_statistics(state).size)
 end
@@ -260,8 +258,9 @@ _observed_min_size(o::MinimumSize) = o.min_size
 
 Log-likelihood of observed chain sizes. With no interventions and a
 single-type offspring law, uses the analytical chain-size distribution
-transformed by the observation ([`observe`](@ref)); otherwise simulates
-and compares the reported chain sizes against the data. The interventions,
+thinned by a `Reporting` step's detection probability and transformed by the
+observation ([`observe`](@ref)); otherwise simulates and compares the
+reported chain sizes against the data. The interventions, progression,
 attributes and observation come from the process for a bare model, or from
 the spec for a [`ModelSpec`](@ref).
 """
@@ -300,8 +299,8 @@ function _chain_size_model_loglik(
     if isempty(ivs)
         try
             d = observe(
-                chain_size_distribution(single_type_offspring(process)),
-                _reporting_observation(prog, obs)
+                _fold_reporting(prog, chain_size_distribution(single_type_offspring(process))),
+                obs
             )
             return _chain_size_loglik(d, data)
         catch e

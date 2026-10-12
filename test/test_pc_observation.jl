@@ -30,6 +30,10 @@ struct _CaseAnchor end
 end
 
 @testset "PerCaseObservation trait seams" begin
+    @testset "Construction warns that PerCaseObservation is deprecated" begin
+        @test_logs (:warn, r"PerCaseObservation.*deprecated"s) match_mode = :any PerCaseObservation()
+    end
+
     @testset "Default keyword constructor reproduces previous behaviour" begin
         o = PerCaseObservation()
         @test o.detection_prob == 1.0

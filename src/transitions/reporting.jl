@@ -23,11 +23,11 @@ by an upstream transition rather than by an attributes function, so
 the validator can't catch it; instead it'll be non-finite at resolve
 time and the transition skips, which is the correct behaviour.
 
-`simulate`, [`progression_loglik`](@ref) and the chain-size likelihood
-(`loglikelihood(::ChainSizes, ...)`, `chain_size_distribution`) all read this
-step's detection probability. Describes the same reporting process as
-[`PerCaseObservation`](@ref), an observation model: `ModelSpec` refuses a
-model that specifies both.
+`simulate`, [`progression_loglik`](@ref), the chain-size likelihood
+(`loglikelihood(::ChainSizes, ...)`, `chain_size_distribution`) and
+`end_of_outbreak_probability` all read this step's detection probability: it
+is the one per-case reporting route, replacing the deprecated
+[`PerCaseObservation`](@ref) observation model.
 """
 Base.@kwdef struct Reporting{D, P, F} <: AbstractClinicalTransition
     delay::D

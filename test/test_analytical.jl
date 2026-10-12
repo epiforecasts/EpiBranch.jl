@@ -738,6 +738,21 @@
             )
             @test_throws ArgumentError end_of_outbreak_probability(om, 5.0)
 
+            # A `Reporting` step below certainty is under-reporting too, and
+            # must be refused the same way — not just `PerCaseObservation`.
+            rm = ModelSpec(
+                BranchingProcess(NegBin(R, k), GT);
+                progression = [Reporting(delay = Dirac(0.0), probability = 0.5)]
+            )
+            @test_throws ArgumentError end_of_outbreak_probability(rm, 5.0)
+            # A `Reporting` step at probability 1 is still full reporting.
+            full = ModelSpec(
+                BranchingProcess(NegBin(R, k), GT);
+                progression = [Reporting(delay = Dirac(0.0), probability = 1.0)]
+            )
+            @test end_of_outbreak_probability(full, 5.0) ≈
+                end_of_outbreak_probability(R, k, GT, 5.0)
+
             # Vector-of-τ overload returns same elements.
             πs_vec = end_of_outbreak_probability(R, k, GT, collect(taus))
             @test πs_vec ≈ πs

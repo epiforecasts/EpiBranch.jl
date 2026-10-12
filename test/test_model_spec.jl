@@ -197,21 +197,14 @@ end
         @test_logs ModelSpec(bp; progression = [AlwaysOccursRule(0.0)])
     end
 
-    @testset "Reporting and a per-case observation cannot both be set" begin
-        # A `Reporting` step in `progression` and a per-case `observation`
-        # both describe case reporting; specifying both would leave
-        # `simulate` silently letting the observation's draw overwrite
-        # `Reporting`'s.
+    @testset "A Reporting step and an observation model can both be set" begin
+        # `Reporting` is the one per-case reporting route; a non-per-case
+        # observation model, such as `MinimumSize`, composes with it freely.
         bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
         rep = Reporting(delay = Dirac(0.0), probability = 0.5)
-        @test_throws ArgumentError ModelSpec(
-            bp; progression = [rep],
-            observation = PerCaseObservation(detection_prob = 0.5)
-        )
-        # `Reporting` alone, or an observation alone, are both fine.
         @test ModelSpec(bp; progression = [rep]) isa ModelSpec
         @test ModelSpec(
-            bp; observation = PerCaseObservation(detection_prob = 0.5)
+            bp; progression = [rep], observation = MinimumSize(2)
         ) isa ModelSpec
     end
 end

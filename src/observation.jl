@@ -177,29 +177,38 @@ function observe(base, o::PerCaseObservation)
 end
 
 """
-Fold a `Reporting` step in `progression` into `obs`, so the closed-form
-chain-size law reads the same detection probability as `simulate` and
-[`progression_loglik`](@ref). `ModelSpec`'s constructor refuses a model that
-specifies both a `Reporting` step and a non-`NoObservation` observation;
-`obs` here is therefore always `NoObservation` whenever a `Reporting` step is
-present. Returns `obs` unchanged when `progression` has none.
+Scalar detection probability from a model's `Reporting` step in
+`progression`, or `nothing` when it carries none. Shared by the closed-form
+chain-size law, `chain_size_distribution` and `end_of_outbreak_probability`,
+which all read the same per-case reporting source.
 """
-function _reporting_observation(progression, obs)
+function _reporting_probability(progression)
     reporting = filter(t -> t isa Reporting, progression)
-    isempty(reporting) && return obs
+    isempty(reporting) && return nothing
     length(reporting) == 1 || throw(
         ArgumentError(
-            "the closed-form chain-size law supports at most one `Reporting` " *
-                "step in `progression`; got $(length(reporting))"
+            "at most one `Reporting` step in `progression` is supported here; " *
+                "got $(length(reporting))"
         )
     )
     p = only(reporting).probability
     p isa Real || throw(
         ArgumentError(
-            "the closed-form chain-size law needs a scalar `Reporting` " *
-                "probability; got $(typeof(p)). Use the simulation-based " *
-                "likelihood instead, or pass a Real value."
+            "a scalar `Reporting` probability is needed here; got $(typeof(p))"
         )
     )
-    return PerCaseObservation(; detection_prob = float(p))
+    return float(p)
+end
+
+"""
+Thin `base` by a `Reporting` step's detection probability, read straight from
+`progression`, so the closed-form chain-size law and `chain_size_distribution`
+read the same source `simulate` and [`progression_loglik`](@ref) do. Returns
+`base` unchanged when `progression` carries no `Reporting` step, or one with
+probability `1`.
+"""
+function _fold_reporting(progression, base)
+    ρ = _reporting_probability(progression)
+    (ρ === nothing || ρ == 1.0) && return base
+    return ThinnedChainSize(base, ρ)
 end

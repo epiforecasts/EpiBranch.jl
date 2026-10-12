@@ -60,16 +60,16 @@ end
     end_of_outbreak_probability(model::BranchingProcess, τ)
 
 Convenience that reads the offspring and generation-time distributions
-straight off a `BranchingProcess`. Assumes full reporting: a model that
-carries a [`PerCaseObservation`](@ref) means under-reporting (`ρ < 1`),
-which needs the Volterra recursion of Thompson, Morgan & Jansen (2019)
-and is not implemented here. Evaluate on a model with no observation to
-get the full-reporting (`ρ = 1`) value.
+straight off a `BranchingProcess`. Assumes full reporting: a model whose
+`Reporting` step (or deprecated [`PerCaseObservation`](@ref)) reports less
+than every case means under-reporting (`ρ < 1`), which needs the Volterra
+recursion of Thompson, Morgan & Jansen (2019) and is not implemented here.
+Evaluate on a model with full reporting to get the `ρ = 1` value.
 """
 function end_of_outbreak_probability(model::Union{BranchingProcess, ModelSpec}, τ::Real)
     # Refuse under per-case under-reporting rather than silently using
     # the bare offspring: makes the missing `ρ < 1` case discoverable.
-    _eoo_assert_full_reporting(observation(model))
+    _eoo_assert_full_reporting(observation(model), _progression(model))
     return end_of_outbreak_probability(
         single_type_offspring(model), _single_kernel(model), τ
     )
@@ -84,6 +84,21 @@ function _eoo_assert_full_reporting(::PerCaseObservation)
                 "the ρ < 1 case needs the Volterra recursion of Thompson, Morgan & " *
                 "Jansen (2019). Evaluate on a model with no observation to compute " *
                 "the ρ = 1 value."
+        )
+    )
+end
+
+function _eoo_assert_full_reporting(obs, progression)
+    _eoo_assert_full_reporting(obs)
+    ρ = _reporting_probability(progression)
+    (ρ === nothing || ρ >= 1.0) && return nothing
+    throw(
+        ArgumentError(
+            "end_of_outbreak_probability under per-case under-reporting (ρ < 1) " *
+                "is not implemented. The closed form here assumes full reporting; " *
+                "the ρ < 1 case needs the Volterra recursion of Thompson, Morgan & " *
+                "Jansen (2019). Evaluate on a model with a `Reporting` step at " *
+                "probability 1, or none, to compute the ρ = 1 value."
         )
     )
 end

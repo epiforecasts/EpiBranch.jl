@@ -39,23 +39,6 @@ function _warn_incomplete_terminal_coverage(progression)
     return nothing
 end
 
-# A `Reporting` step in `progression` and a per-case `observation` both
-# describe the same reporting process: `simulate` resolves `Reporting` during
-# the progression pass and then lets `apply_observation!` overwrite
-# `:reported` with the observation's own independent draw. Specifying both
-# would silently discard `Reporting`'s result rather than combine with it, so
-# refuse the combination instead of guessing which one the caller meant.
-function _validate_single_reporting_source(progression, observation)
-    observation isa NoObservation && return nothing
-    any(t -> t isa Reporting, progression) || return nothing
-    throw(
-        ArgumentError(
-            "progression has a `Reporting` step and `observation` is a " *
-                "$(typeof(observation)); both describe case reporting, so use only one"
-        )
-    )
-end
-
 struct ModelSpec{P <: TransmissionModel, A, O, C}
     process::P
     progression::Vector{AbstractClinicalTransition}
@@ -91,7 +74,6 @@ function ModelSpec(
     prog = _progvec(progression)
     _validate_process_windows(process, prog)
     _warn_incomplete_terminal_coverage(prog)
-    _validate_single_reporting_source(prog, observation)
     ivs = _intervention_vector(interventions)
     _validate_dose_schedule(ivs)
     return ModelSpec(process, prog, ivs, attributes, observation, recorder)
