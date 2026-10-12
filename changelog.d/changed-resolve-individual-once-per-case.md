@@ -16,6 +16,11 @@ values. On the generation engine this changes three things:
 On the continuous-time models the clinical transitions now see the case's
 clock and count, where they saw those of the previous case. The state such a
 model returns has `current_generation` set to the latest generation reached,
-where it was left at 0. A seeded run on
-the generation engine with tracing deeper than one generation can draw a
-different trajectory than before.
+where it was left at 0.
+
+A seeded run on the generation engine can give different results when an
+intervention's `resolve_individual!` draws random numbers, as `Isolation` does
+with a random `onset_to_isolation_delay`: the last generation's cases now make
+draws of their own, and ring members kept by `keep_active` no longer do. The
+observation model's draws shift with them, as do the later runs of a
+multi-run `simulate`.
