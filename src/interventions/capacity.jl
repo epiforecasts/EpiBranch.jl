@@ -16,9 +16,9 @@ CapacityConstrained(GroupVaccination(efficacy = 0.8); budget_per_period = 200.0)
 
 # Arguments
 - `budget_per_period`: number of people that can be served per period.
-- `period`: length of a period in days, measured on the simulation clock (the
-  latest infection time so far). `Inf` (default) gives a single budget for
-  the whole outbreak.
+- `period`: length of a period in days, measured on the infection time of the
+  case whose actions are being admitted. `Inf` (default) gives a single budget
+  for the whole outbreak.
 - `carry_over`: whether unused capacity is added to later periods
   (default `true`); with `false` each period has its own allowance.
 - `priority`: function `(individual, state) -> number` ordering who is served
