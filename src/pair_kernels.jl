@@ -428,7 +428,9 @@ function kernel_projection(ks::AbstractVector)
     isempty(ks) && return nothing
     proj = kernel_projection(first(ks))
     proj === nothing && return nothing
-    all(k -> kernel_projection(k) === proj, ks) || return nothing
+    for k in ks
+        kernel_projection(k) === proj || return nothing
+    end
     return proj
 end
 
