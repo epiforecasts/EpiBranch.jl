@@ -72,8 +72,10 @@ struct PreviouslyTraced <: TraceEligibility end
 is_eligible(::PreviouslyTraced, infector, contact, state) = is_traced(infector)
 
 """Trace contacts of cases that are symptomatic and isolated, starting from
-isolation. This is the default `eligibility` of [`ContactTracing`](@ref), and
-the same as `OnSymptomOnset() & OnIsolation()`."""
+isolation. This is the default `eligibility` of [`ContactTracing`](@ref).
+`OnSymptomOnset() & OnIsolation()` picks out the same cases but starts from
+the later of onset and isolation, so for a case isolated before its own onset
+the two trace from different times (see [`trigger_time`](@ref EpiBranch.trigger_time))."""
 struct SymptomaticParent <: TraceEligibility end
 function is_eligible(::SymptomaticParent, infector, contact, state)
     return _develops_symptoms(infector) && is_isolated(infector)
