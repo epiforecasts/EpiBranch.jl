@@ -187,11 +187,10 @@ end
         )
     end
 
-    @testset "Reporting transition's report is reused" begin
-        # A Reporting transition already drew this case's report during the
-        # simulation; PerCaseObservation must reuse it rather than drawing
-        # and overwriting it with an independent one under its own
-        # detection_prob.
+    @testset "observation's draw applies alongside a Reporting transition" begin
+        # The likelihood thins chain sizes by detection_prob, so the
+        # simulation must report by detection_prob too, whatever a Reporting
+        # transition drew during the run.
         rep = Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5)
         obs = PerCaseObservation(detection_prob = 0.9, delay = Exponential(1.0))
         attrs = clinical_presentation(
@@ -208,9 +207,18 @@ end
         end
         frac_reported = count(ind -> ind.state[:reported], state.individuals) /
             length(state.individuals)
-        # Reporting's probability = 0.5 should still show through; under the
-        # bug, PerCaseObservation's detection_prob = 0.9 would overwrite it.
-        @test 0.35 <= frac_reported <= 0.65
+        @test 0.82 <= frac_reported <= 0.97
+    end
+
+    @testset "a generic :reported transition does not suppress reports" begin
+        m = ModelSpec(
+            BranchingProcess(Poisson(0.0), Exponential(5.0));
+            progression = [Transition(:reported; delay = Exponential(1.0))],
+            observation = PerCaseObservation(detection_prob = 1.0)
+        )
+        state = simulate(m; n_initial = 50, rng = StableRNG(3))
+        @test all(isfinite(ind.state[:reporting_time]) for ind in state.individuals)
+        @test sum(weekly_incidence(state; by = :reporting).cases) == 50
     end
 
     @testset "scalar_detection_prob rejects non-scalar fields" begin

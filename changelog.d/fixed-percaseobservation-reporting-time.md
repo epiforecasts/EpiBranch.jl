@@ -7,7 +7,6 @@ than getting a report time regardless of detection.
 all for a simulation using `PerCaseObservation`; it now counts the
 reported cases from either route.
 
-A model combining a `Reporting` transition with `PerCaseObservation`
-had the two overwrite each other's report; `PerCaseObservation` now
-finds the transition's report already on the case and reuses it
-instead of drawing its own.
+In a model combining a `Reporting` transition with `PerCaseObservation`,
+the observation's draw replaces the transition's report after the run,
+so the simulated reports follow `detection_prob` as the likelihood does.
