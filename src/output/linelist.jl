@@ -116,7 +116,7 @@ non-infected), with columns `from`, `to`, `infected`, `generation`,
 `infection_time`, `date_infection`.
 
 On the continuous-time models (`HomogeneousProcess`, `HouseholdProcess`,
-`NetworkProcess`, `RoutedNetwork`) only the edges the race settled are rows
+`MixingProcess`, `NetworkProcess`, `RoutedNetwork`) only the edges the race settled are rows
 here: every infector-infectee pair, each with `infected = true`. These models
 keep no record of which further household-mates or network neighbours a
 case exposed without infecting them, so those pairs are left out.
