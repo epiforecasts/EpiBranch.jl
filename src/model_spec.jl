@@ -48,21 +48,6 @@ struct ModelSpec{P <: TransmissionModel, A, O, C}
     recorder::C
 end
 
-"""
-    ModelSpec(process; progression, interventions, attributes, observation, recorder)
-
-Compose a transmission `process` with the modelling layers
-that force and observe it: the within-host `progression`, the `interventions`,
-the per-individual `attributes`, the `observation` model, and the `recorder`
-([`ContactRecorder`](@ref)) that tells a continuous-time race which
-standing-blocked pairs to keep drawing. Each keyword defaults to the value
-already on `process`, so `ModelSpec(process)` wraps it faithfully and the
-keywords override layer by layer.
-
-`simulate(spec)` runs it; `loglikelihood(data, spec)` evaluates observed `data`
-against it. The observations themselves stay outside the spec, as the
-likelihood argument.
-"""
 # The `start_after` triggers a composed intervention holds, looked for through
 # any wrapper around it.
 _triggers_of(::AbstractIntervention) = ()
@@ -90,6 +75,21 @@ function _warn_unmet_trigger_requirements(interventions, progression)
     return nothing
 end
 
+"""
+    ModelSpec(process; progression, interventions, attributes, observation, recorder)
+
+Compose a transmission `process` with the modelling layers
+that force and observe it: the within-host `progression`, the `interventions`,
+the per-individual `attributes`, the `observation` model, and the `recorder`
+([`ContactRecorder`](@ref)) that tells a continuous-time race which
+standing-blocked pairs to keep drawing. Each keyword defaults to the value
+already on `process`, so `ModelSpec(process)` wraps it faithfully and the
+keywords override layer by layer.
+
+`simulate(spec)` runs it; `loglikelihood(data, spec)` evaluates observed `data`
+against it. The observations themselves stay outside the spec, as the
+likelihood argument.
+"""
 function ModelSpec(
         process::TransmissionModel;
         progression = _progression(process),
